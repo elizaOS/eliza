@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const s = vi.hoisted(() => ({
   owner: true,
@@ -14,6 +14,7 @@ vi.mock("./execution.js", () => ({
 }));
 
 import {
+  calendarApprovalOutcome,
   resolveCalendarApproval,
   resolveOwnerCalendarApproval,
 } from "./resolve.js";
@@ -162,4 +163,62 @@ it("executes a reviewed approval that is still pending and unchanged", async () 
     resolutionReason: "Owner review dialog",
   });
   expect(s.execute).toHaveBeenCalledTimes(1);
+});
+
+describe("owner outcome", () => {
+  const failure = (code: string) => ({
+    code,
+    message: "internal: host stack trace",
+    retryable: false,
+  });
+  it.each([
+    [
+      {
+        kind: "invalidated",
+        failure: failure("CALENDAR_MANAGED_TARGET_CHANGED"),
+      },
+      "Calendar change was not made. The event changed after you reviewed it.",
+      { retryable: false, acceptance: "not_accepted" },
+    ],
+    [
+      { kind: "invalidated", failure: failure("CALENDAR_SOMETHING_ELSE") },
+      "Calendar change was not made. Nothing was changed.",
+      { retryable: false, acceptance: "not_accepted" },
+    ],
+    [
+      { kind: "retryable", failure: failure("CALENDAR_SYNC_RATE_LIMITED") },
+      "Calendar change was not made. You can try again.",
+      { retryable: true, acceptance: "not_accepted" },
+    ],
+    [
+      { kind: "blocked", reason: "in_flight" },
+      "This Calendar change is still in progress.",
+      { retryable: false, acceptance: "unknown" },
+    ],
+    [
+      { kind: "blocked", reason: "ambiguous" },
+      "Calendar change is not confirmed. Review its saved status before trying again.",
+      { code: "CALENDAR_REVIEW_UNCONFIRMED", acceptance: "unknown" },
+    ],
+  ])("%o", (result, text, expected) => {
+    const outcome = calendarApprovalOutcome(result as never);
+    expect(outcome.text).toBe(text);
+    expect(outcome.failure).toMatchObject(expected);
+    expect(JSON.stringify(outcome)).not.toContain("internal");
+  });
+  it("reports a completed change and a decline without a failure", () => {
+    expect(
+      calendarApprovalOutcome({
+        kind: "succeeded",
+        duplicateSuppressed: false,
+        receipt: {
+          operation: "modify_event",
+          eventSnapshot: { title: "Standup" },
+        },
+      } as never),
+    ).toEqual({ text: "Completed Calendar modify event: Standup." });
+    expect(calendarApprovalOutcome({ kind: "rejected" })).toEqual({
+      text: "Calendar change declined. Nothing was changed.",
+    });
+  });
 });

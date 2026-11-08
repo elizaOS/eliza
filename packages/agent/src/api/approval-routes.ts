@@ -360,14 +360,30 @@ type CalendarApprovalResolver = (
   },
 ) => Promise<{ kind: string }>;
 
-async function loadCalendarApprovalResolver(): Promise<CalendarApprovalResolver | null> {
+type CalendarApprovalOutcome = (result: { kind: string }) => {
+  text: string;
+  failure?: { code: string; retryable: boolean; acceptance: string };
+};
+
+async function loadCalendarApprovalResolver(): Promise<{
+  resolve: CalendarApprovalResolver;
+  outcome: CalendarApprovalOutcome | null;
+} | null> {
   try {
     const calendar = (await import(
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle.
       "@elizaos/plugin-calendar"
-    )) as { resolveOwnerCalendarApproval?: CalendarApprovalResolver };
-    return calendar.resolveOwnerCalendarApproval ?? null;
+    )) as {
+      resolveOwnerCalendarApproval?: CalendarApprovalResolver;
+      calendarApprovalOutcome?: CalendarApprovalOutcome;
+    };
+    return calendar.resolveOwnerCalendarApproval
+      ? {
+          resolve: calendar.resolveOwnerCalendarApproval,
+          outcome: calendar.calendarApprovalOutcome ?? null,
+        }
+      : null;
   } catch {
     return null;
   }
@@ -403,8 +419,8 @@ async function handleResolveApproval(
     helpers.error(res, "Agent runtime is not ready", 503);
     return;
   }
-  const resolve = await loadCalendarApprovalResolver();
-  if (!resolve) {
+  const calendar = await loadCalendarApprovalResolver();
+  if (!calendar) {
     helpers.error(res, "Calendar approvals are unavailable", 503);
     return;
   }
@@ -412,14 +428,19 @@ async function handleResolveApproval(
     runtime as Pick<IAgentRuntime, "agentId" | "getSetting">,
   );
   try {
-    const result = await resolve(runtime as IAgentRuntime, {
+    const result = await calendar.resolve(runtime as IAgentRuntime, {
       ownerEntityId,
       requestId,
       decision,
       resolutionReason: "Owner review dialog",
       isReviewed: (request) => approvalRevision(request) === revision,
     });
-    helpers.json(res, { requestId, decision, kind: result.kind });
+    helpers.json(res, {
+      requestId,
+      decision,
+      kind: result.kind,
+      ...(calendar.outcome ? calendar.outcome(result) : {}),
+    });
   } catch (error) {
     const status = errorStatus(error);
     if (status === null) throw error;

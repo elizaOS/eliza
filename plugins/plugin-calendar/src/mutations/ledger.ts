@@ -891,6 +891,13 @@ export class CalendarMutationLedger {
       const classified = await this.classifyExistingTx(tx, attempt);
       if (classified) return classified;
       const now = new Date().toISOString();
+      // Same states claim() accepts: a retry after a provider rejection may
+      // find its approval in retryable, or in executing on rows written
+      // before that rule.
+      const approvalStates =
+        attempt.state === "failed_retryable" && attempt.attemptCount > 0
+          ? ["retryable", "executing"]
+          : ["approved"];
       const approvals = await executeRawSqlTx(
         tx,
         `UPDATE approval_requests
@@ -901,13 +908,13 @@ export class CalendarMutationLedger {
                 updated_at = ${sqlText(now)}
           WHERE id = ${sqlText(request.id)}
             AND agent_id = ${sqlText(this.runtime.agentId)}
-            AND state IN (${sqlText("approved")}, ${sqlText("retryable")})
+            AND state IN (${approvalStates.map((state) => sqlText(state)).join(", ")})
           RETURNING id`,
       );
       if (approvals.length === 0) {
         throw invariant(
           "CALENDAR_MUTATION_INVALIDATION_CONFLICT",
-          `approval ${request.id} cannot be invalidated outside approved or retryable`,
+          `approval ${request.id} cannot be invalidated outside ${approvalStates.join(" or ")}`,
           { requestId: request.id, attemptId: attempt.id },
         );
       }

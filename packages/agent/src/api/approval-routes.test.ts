@@ -30,11 +30,15 @@ vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
     };
   },
 }));
-vi.mock("@elizaos/plugin-calendar", async () => ({
-  resolveOwnerCalendarApproval: (
-    await import("../../../../plugins/plugin-calendar/src/mutations/resolve.ts")
-  ).resolveOwnerCalendarApproval,
-}));
+vi.mock("@elizaos/plugin-calendar", async () => {
+  const calendar = await import(
+    "../../../../plugins/plugin-calendar/src/mutations/resolve.ts"
+  );
+  return {
+    resolveOwnerCalendarApproval: calendar.resolveOwnerCalendarApproval,
+    calendarApprovalOutcome: calendar.calendarApprovalOutcome,
+  };
+});
 vi.mock(
   "../../../../plugins/plugin-calendar/src/mutations/execution.ts",
   () => ({ executeCalendarMutationApproval: s.execute }),
@@ -96,19 +100,54 @@ async function post(body: Record<string, unknown>, id = "review") {
 beforeEach(() => {
   s.rows.clear();
   vi.clearAllMocks();
-  s.execute.mockResolvedValue({ kind: "succeeded" });
+  s.execute.mockResolvedValue({
+    kind: "succeeded",
+    duplicateSuppressed: false,
+    receipt: {
+      operation: "schedule_event",
+      eventSnapshot: { title: "QA event" },
+    },
+  });
 });
 
 it("executes an approval at the reviewed revision once", async () => {
   const revision = seed();
   expect(await post({ decision: "approve", revision })).toEqual({
     status: 200,
-    body: { requestId: "review", decision: "approve", kind: "succeeded" },
+    body: {
+      requestId: "review",
+      decision: "approve",
+      kind: "succeeded",
+      text: "Completed Calendar schedule event: QA event.",
+    },
   });
   expect(s.execute).toHaveBeenCalledTimes(1);
   expect(s.execute.mock.calls[0][0].request).toMatchObject({
     id: "review",
     state: "approved",
+  });
+});
+
+it("says a refused change was not made without echoing internal errors", async () => {
+  const revision = seed();
+  s.execute.mockResolvedValue({
+    kind: "invalidated",
+    failure: {
+      code: "CALENDAR_MANAGED_TARGET_CHANGED",
+      message: "internal: etag mismatch at host",
+      retryable: false,
+    },
+  });
+  expect((await post({ decision: "approve", revision })).body).toEqual({
+    requestId: "review",
+    decision: "approve",
+    kind: "invalidated",
+    text: "Calendar change was not made. The event changed after you reviewed it.",
+    failure: {
+      code: "CALENDAR_MANAGED_TARGET_CHANGED",
+      retryable: false,
+      acceptance: "not_accepted",
+    },
   });
 });
 
@@ -134,6 +173,7 @@ it("rejects at the reviewed revision without executing", async () => {
   const revision = seed();
   expect((await post({ decision: "reject", revision })).body).toMatchObject({
     kind: "rejected",
+    text: "Calendar change declined. Nothing was changed.",
   });
   expect(s.rows.get("review")?.state).toBe("rejected");
   expect(s.execute).not.toHaveBeenCalled();
