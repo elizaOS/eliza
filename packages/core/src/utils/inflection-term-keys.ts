@@ -28,6 +28,16 @@ export function inflectionTermKeys(term: string): string[] {
 		if (stem.length >= 3 && stem[stem.length - 1] === stem[stem.length - 2]) {
 			keys.add(stem.slice(0, -1));
 		}
+		if (
+			suffix === "ing" &&
+			stem.length === 2 &&
+			stem.endsWith("y") &&
+			!"aeiou".includes(stem[0])
+		) {
+			// "dying" is the present participle of "die": the "ie" becomes "y"
+			// before "ing", so keep the "ie" form as a key.
+			keys.add(`${stem.slice(0, -1)}ie`);
+		}
 	}
 	return [...keys];
 }
