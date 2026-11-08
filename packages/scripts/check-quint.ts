@@ -1,10 +1,11 @@
 /** Runs source-linked Quint cases. Full verification is the default. */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -366,6 +367,14 @@ export async function main(
       throw new Error(`Unknown Quint option: ${arg}`);
     }
   }
+  const simulate = args.includes("--simulate");
+  rmSync(
+    path.join(
+      outputDirectory,
+      simulate ? "simulation.json" : "verification.json",
+    ),
+    { force: true },
+  );
   const repositorySha256 = quintRepositoryFingerprint(directory);
   const allModels = loadQuintModels(directory);
   const models = selectQuintModels(
@@ -401,7 +410,6 @@ export async function main(
     throw new Error(`Quint ${version} is required; found ${installed.version}`);
   }
   const cli = path.resolve(path.dirname(packageFile), installed.bin.quint);
-  const simulate = args.includes("--simulate");
   const modelInputs = new Map(
     models.map((model) => {
       const files = [
@@ -445,6 +453,7 @@ export async function main(
   };
 
   try {
+    report();
     for (const model of models) {
       for (const item of model.cases) {
         const key = `${model.file}#${item.name}`;
@@ -561,12 +570,55 @@ export async function main(
   }
 }
 
+/** Keep process-group supervision outside the synchronous compiler worker. */
+async function superviseQuintCli(args: string[]): Promise<void> {
+  const child = spawn(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./run-with-deadline.ts", import.meta.url)),
+      // Use Node's maximum timer delay. CI and callers set the task deadline.
+      String(2_147_483_647),
+      "--",
+      process.execPath,
+      fileURLToPath(import.meta.url),
+      "--quint-worker",
+      ...args,
+    ],
+    { stdio: "inherit" },
+  );
+  let interrupted: NodeJS.Signals | undefined;
+  const interrupt = (signal: NodeJS.Signals) => {
+    interrupted ??= signal;
+    child.kill(signal);
+  };
+  const onInterrupt = () => interrupt("SIGINT");
+  const onTerminate = () => interrupt("SIGTERM");
+  process.on("SIGINT", onInterrupt);
+  process.on("SIGTERM", onTerminate);
+  try {
+    process.exitCode = await new Promise<number>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => {
+        const observed = interrupted ?? signal;
+        resolve(observed === "SIGINT" ? 130 : observed ? 143 : (code ?? 1));
+      });
+    });
+  } finally {
+    process.removeListener("SIGINT", onInterrupt);
+    process.removeListener("SIGTERM", onTerminate);
+  }
+}
+
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   try {
-    await main(process.argv.slice(2));
+    if (process.argv[2] === "--quint-worker") {
+      await main(process.argv.slice(3));
+    } else {
+      await superviseQuintCli(process.argv.slice(2));
+    }
   } catch (error) {
     if (!(error instanceof QuintCheckCancelled)) throw error;
     console.error(error.message);

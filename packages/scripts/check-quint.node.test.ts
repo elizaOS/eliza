@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { afterEach, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   createQuintInventory,
   loadQuintModels,
@@ -408,4 +410,145 @@ test("cached case settings cannot be certified after a conformance mutation", as
   assert.equal(report.completed, false);
   assert.notEqual(report.repositorySha256, report.observedRepositorySha256);
   assert.equal(report.results.at(-1).repositoryChanged, true);
+});
+
+test("CLI cancellation reaps checker descendants and retains incomplete evidence", {
+  timeout: 90_000,
+}, async () => {
+  const scriptRoot = path.dirname(fileURLToPath(import.meta.url));
+  const waitFor = async (ready: () => boolean) => {
+    const deadline = Date.now() + 30_000;
+    while (!ready()) {
+      assert(Date.now() < deadline, "timed out waiting for process evidence");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+  const running = (pid: number) => {
+    try {
+      if (process.platform !== "linux") {
+        process.kill(pid, 0);
+        return true;
+      }
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      return (
+        stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z"
+      );
+    } catch (error) {
+      if (
+        ["ENOENT", "ESRCH"].includes(
+          (error as NodeJS.ErrnoException).code ?? "",
+        )
+      )
+        return false;
+      throw error;
+    }
+  };
+  const signals =
+    process.platform === "win32"
+      ? (["SIGTERM"] as const)
+      : (["SIGINT", "SIGTERM"] as const);
+  for (const signal of signals) {
+    const conformance = "packages/example/quint/conformance.mjs";
+    const directory = fixture({
+      ...checkedFiles,
+      ".gitignore": "test-results/\nnode_modules\n",
+      [`${example}.cases.json`]: JSON.stringify({
+        sources: [stateSource],
+        conformance,
+        cases: [modelCase],
+      }),
+      "packages/scripts/check-quint.ts": readFileSync(
+        path.join(scriptRoot, "check-quint.ts"),
+        "utf8",
+      ),
+      "packages/scripts/run-with-deadline.ts": readFileSync(
+        path.join(scriptRoot, "run-with-deadline.ts"),
+        "utf8",
+      ),
+      "packages/scripts/lib/test-output.ts": readFileSync(
+        path.join(scriptRoot, "lib/test-output.ts"),
+        "utf8",
+      ),
+      [conformance]: `import { spawn } from 'node:child_process';
+import { writeFileSync, existsSync } from 'node:fs';
+const grandchild = spawn(process.execPath, ['-e', "process.on('SIGINT', () => process.exit(0)); process.on('SIGTERM', () => process.exit(0)); require('node:fs').writeFileSync('test-results/ready-child', String(process.pid)); setInterval(() => {}, 1000);"]);
+process.on('SIGINT', () => {});
+process.on('SIGTERM', () => {});
+const timer = setInterval(() => {
+  if (existsSync('test-results/ready-child')) {
+    writeFileSync('test-results/ready-parent', String(process.pid));
+    clearInterval(timer);
+  }
+}, 10);
+setInterval(() => {}, 1000);`,
+    });
+    symlinkSync(
+      path.resolve(scriptRoot, "../../node_modules"),
+      path.join(directory, "node_modules"),
+      "dir",
+    );
+    const child = spawn(
+      process.execPath,
+      [path.join(directory, "packages/scripts/check-quint.ts"), "--simulate"],
+      {
+        cwd: directory,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let childOutput = "";
+    child.stdout?.on("data", (chunk) => {
+      childOutput += chunk;
+    });
+    child.stderr?.on("data", (chunk) => {
+      childOutput += chunk;
+    });
+    const closed = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    const evidence = path.join(directory, "test-results");
+    const pids: number[] = [];
+    try {
+      await waitFor(() => {
+        try {
+          return (
+            Number(readFileSync(path.join(evidence, "ready-parent"), "utf8")) >
+            0
+          );
+        } catch {
+          return false;
+        }
+      });
+      for (const file of ["ready-parent", "ready-child"])
+        pids.push(Number(readFileSync(path.join(evidence, file), "utf8")));
+      child.kill(signal);
+      const result = await closed;
+      assert(
+        result.code === (signal === "SIGINT" ? 130 : 143) ||
+          result.signal === signal,
+      );
+      assert.deepEqual(
+        pids.filter(running),
+        [],
+        "checker descendants survived cancellation",
+      );
+      const report = JSON.parse(
+        readFileSync(path.join(evidence, "quint/simulation.json"), "utf8"),
+      );
+      assert.equal(report.completed, false);
+    } catch (error) {
+      throw new Error(`${String(error)}\n${childOutput}`, { cause: error });
+    } finally {
+      for (const pid of pids) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {}
+      }
+      child.kill("SIGKILL");
+      await closed;
+    }
+  }
 });
