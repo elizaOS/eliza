@@ -24,7 +24,17 @@
       ],
       "temporal": ["RetriedCancellationCompletes"],
       "maxSteps": 30,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RetriedCancellationCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in NativeEnrollmentRecovery: RetriedCancellationCompletes = cancel(false, \"none\").weakFair(s).implies( always((s.durable.pending == \"revocation\").implies(eventually( s.durable.pending == \"none\" and not(s.durable.active)))))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

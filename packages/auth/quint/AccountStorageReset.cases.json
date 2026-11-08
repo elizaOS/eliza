@@ -27,7 +27,18 @@
       ],
       "temporal": ["CallsSettle"],
       "maxSteps": 40,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountStorageReset: CallsSettle = FairWork.implies(eventually(and { s.phase.in(Set(\"done\", \"failed\", \"unknown\")), not(s.intent), s.oldWriter != \"pending\", s.freshWriter != \"pending\", }))",
+            "Model fairness predicate FairWork = and { beginReset.weakFair(s), resetWork.weakFair(s), recoveryWork.weakFair(s), oldWrite.weakFair(s), freshPolicy.weakFair(s), freshWrite.weakFair(s), }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

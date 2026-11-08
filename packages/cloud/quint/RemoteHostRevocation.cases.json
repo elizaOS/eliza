@@ -29,7 +29,17 @@
       "invariants": ["safety"],
       "temporal": ["CleanupCompletes"],
       "maxSteps": 30,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CleanupCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in RemoteHostRevocation: CleanupCompletes = and { Revoke(true).weakFair(s), Sessions.forall(id => UnlockSession(id).weakFair(s)), Commands.forall(id => UnlockCommand(id).weakFair(s)) } implies eventually(s.hostRevoked and Drained)",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

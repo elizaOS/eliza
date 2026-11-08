@@ -26,7 +26,17 @@
       ],
       "temporal": ["CleanupProgress"],
       "maxSteps": 30,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CleanupProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in RunnerCancellation: CleanupProgress = (forward.weakFair(s) and force.weakFair(s) and reap.weakFair(s)).implies( s.cancelled.leadsTo(s.phase == \"done\"))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

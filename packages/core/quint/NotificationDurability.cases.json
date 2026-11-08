@@ -30,11 +30,19 @@
         "StoppedHasNoProvisionalRows",
         "SuccessAfterAcknowledgement"
       ],
-      "temporal": [
-        "AdmittedOperationSettles"
-      ],
+      "temporal": ["AdmittedOperationSettles"],
       "maxSteps": 80,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "AdmittedOperationSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in NotificationDurability: AdmittedOperationSettles = (mutate.weakFair(s) and exhausted.weakFair(s) and persist(\"ack\").weakFair(s) and reconcile(true).weakFair(s) and broadcast(true).weakFair(s)).implies((s.phase != \"idle\").leadsTo(s.phase == \"idle\"))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

@@ -36,7 +36,17 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_plain: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "lifecycle",
@@ -53,7 +63,17 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_lifecycle: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "legacy",
@@ -70,7 +90,17 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_legacy: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "missing-resource",
@@ -87,7 +117,17 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_missing_resource: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "foreign-resource",
@@ -104,7 +144,17 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in JobExecutionLease_foreign_resource: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

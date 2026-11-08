@@ -14,14 +14,20 @@
       "main": "api_native_supervisor",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "CloseCompletes"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["CloseCompletes"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CloseCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in api_native_supervisor: CloseCompletes = (spawn.weakFair(s) and receipt.weakFair(s) and startComplete.weakFair(s) and launchFailure.weakFair(s) and drainStop.weakFair(s) and finishClose.weakFair(s)).implies( s.closeRequested.leadsTo(s.closed))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ],
   "conformance": "packages/agent/quint/check-native-supervisor.mjs",

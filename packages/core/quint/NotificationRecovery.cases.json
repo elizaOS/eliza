@@ -24,11 +24,19 @@
         "OnlyFailedServicesStart",
         "BoundedCooldown"
       ],
-      "temporal": [
-        "AttemptsSettle"
-      ],
+      "temporal": ["AttemptsSettle"],
       "maxSteps": 80,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "AttemptsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in NotificationRecovery: AttemptsSettle = (loaded.weakFair(s) and failed.weakFair(s) and finalize.weakFair(s)).implies((s.phase != \"idle\").leadsTo(s.phase == \"idle\"))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }
