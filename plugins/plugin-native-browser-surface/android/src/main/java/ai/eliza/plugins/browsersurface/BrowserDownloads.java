@@ -248,7 +248,12 @@ public final class BrowserDownloads {
 
   /** Whether {@code source}'s tab has had too many requests dropped or refused to be heard now. */
   private boolean ignored(Source source) {
-    return closed || refusals.getOrDefault(source.tab, 0) >= MAX_REFUSALS;
+    return ignoring(source.tab);
+  }
+
+  /** Whether downloads of {@code tab} are ignored now; the host skips preparing a blob: file then. */
+  public boolean ignoring(String tab) {
+    return closed || refusals.getOrDefault(tab, 0) >= MAX_REFUSALS;
   }
 
   /** A request from {@code source} was dropped or refused; returns false for the caller. */
@@ -276,7 +281,7 @@ public final class BrowserDownloads {
     if (pending != null)
       return refuse(source, null);
     if (!history.hasRoom(this::osActive))
-      return refuse(source, "All 50 downloads in the list are still in progress. Wait for one to finish or cancel one in Downloads.");
+      return refuse(source, BrowserDownloadPolicy.History.MAX_ENTRIES + " downloads are in progress. Wait for one to finish or cancel one in Downloads.");
     return true;
   }
 
