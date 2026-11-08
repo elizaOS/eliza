@@ -1319,7 +1319,10 @@ async function directCloudRequest<T>(
   });
 
   if (shouldUseNativeCloudHttp()) {
+    // Same contract as directCloudJsonResponse: refuse an elapsed caller
+    // deadline before dispatch and let the caller signal abort the wait.
     const data = directCloudBodyData(init?.body);
+    throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
     const res = await withDirectCloudHttpTimeout(
       CapacitorHttp.request({
         url,
@@ -1331,11 +1334,12 @@ async function directCloudRequest<T>(
         readTimeout: 10_000,
       }),
       { method, url },
+      init?.signal ?? undefined,
     );
     if (res.status === 401) {
       await clearStoredStewardTokenIfCurrent(token);
     }
-    const parsed = parseDirectCloudJson(res.data) as T;
+    const parsed = parseDirectCloudJsonSafe(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
       throw Object.assign(
         new Error(directCloudResponseErrorMessage(res.status, parsed)),
