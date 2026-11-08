@@ -8,8 +8,10 @@ import ai.eliza.plugins.actionjournal.deletion.DeletionReceiptRecovery;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -156,7 +158,32 @@ public final class DeferredDeletionTest {
   for (int n = 0; n < largeRows.length(); n++) retainedUnknown |= largeRows.getJSONObject(n).getString("id").equals("keep_unknown");
   check(retainedUnknown);
   check(largeRows.length() < 20);
+  // Eviction follows stage order across boots; boot-relative createdElapsed restarts small.
+  DeferredDeletionJournal reboot = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < 100; n++) { String id = "old_boot_" + n; reboot.stage(id, owner, target, new DeletionDeadline("boot:1", 900000 + n, n)); reboot.undo(id, owner, "boot:1", 900001 + n); }
+  for (int n = 0; n < 100; n++) { String id = "new_boot_" + n; reboot.stage(id, owner, target, new DeletionDeadline("boot:2", 10 + n, 1000 + n)); reboot.undo(id, owner, "boot:2", 11 + n); }
+  reboot.stage("after_reboot", owner, target, new DeletionDeadline("boot:2", 500, 2000));
+  Set<String> rebootIds = new HashSet<>();
+  JSONArray rebootRows = reboot.list("boot:2", 600);
+  for (int n = 0; n < rebootRows.length(); n++) rebootIds.add(rebootRows.getJSONObject(n).getString("id"));
+  check(rebootRows.length() == RETAINED + 1);
+  check(!rebootIds.contains("old_boot_72") && rebootIds.contains("old_boot_73") && rebootIds.contains("new_boot_0") && rebootIds.contains("new_boot_99"));
+  // Rows written before the sequence existed load and evict first, in their createdElapsed order.
+  Store legacyStore = new Store();
+  JSONObject legacyRecords = new JSONObject();
+  for (int n = 0; n < 3; n++)
+   legacyRecords.put("legacy_" + n, new JSONObject().put("version", 1).put("id", "legacy_" + n).put("owner", owner).put("target", target).put("phase", "deleted")
+    .put("deadline", new JSONObject().put("continuity", "boot:0").put("createdElapsed", 5000000 - n).put("expiresElapsed", 5010000 - n).put("expiresAt", 10000)));
+  legacyStore.saved = new JSONObject().put("version", 1).put("records", legacyRecords).toString();
+  DeferredDeletionJournal legacy = new DeferredDeletionJournal(legacyStore);
+  check(legacy.list("boot:1", 1).length() == 3);
+  for (int n = 0; n < RETAINED - 1; n++) { String id = "seq_" + n; legacy.stage(id, owner, target, new DeletionDeadline("boot:1", n, n)); legacy.undo(id, owner, "boot:1", n + 1); }
+  legacy.stage("next", owner, target, new DeletionDeadline("boot:1", 1000, 1000));
+  JSONObject kept127 = new JSONObject(legacyStore.saved).getJSONObject("records");
+  check(!kept127.has("legacy_2") && !kept127.has("legacy_1") && kept127.has("legacy_0") && kept127.has("seq_0"));
+  check(kept127.getJSONObject("next").getLong("sequence") == RETAINED);
  }
+ private static final int RETAINED = DeferredDeletionJournal.RETAINED_TERMINAL;
 
  static void claimAndRecovery() throws Exception {
   Map<String, String> memory = new HashMap<>();

@@ -110,10 +110,20 @@ public final class DeferredDeletionJournal {
    String key = i.next(), phase = records.getJSONObject(key).getString("phase");
    if ("deleted".equals(phase) || "undone".equals(phase) || "conflict".equals(phase)) terminal.add(key);
   }
-  terminal.sort((a, b) -> Long.compare(records.optJSONObject(a).optJSONObject("deadline").optLong("createdElapsed"), records.optJSONObject(b).optJSONObject("deadline").optLong("createdElapsed")));
+  // Oldest first by persisted stage sequence; createdElapsed restarts at each boot. Legacy rows
+  // without a sequence predate every sequenced row and keep their old createdElapsed order.
+  terminal.sort((a, b) -> {
+   JSONObject x = records.optJSONObject(a), y = records.optJSONObject(b);
+   boolean xs = x.has("sequence"), ys = y.has("sequence");
+   if (xs != ys) return xs ? 1 : -1;
+   return xs ? Long.compare(x.optLong("sequence"), y.optLong("sequence"))
+    : Long.compare(x.optJSONObject("deadline").optLong("createdElapsed"), y.optJSONObject("deadline").optLong("createdElapsed"));
+  });
   for (int i = 0; i < terminal.size() - RETAINED_TERMINAL; i++) records.remove(terminal.get(i));
   if (records.length() >= MAX_ROWS) throw new IllegalStateException("Pending deletion history requires review");
-  JSONObject row = new JSONObject().put("version", 1).put("id", id).put("owner", copy(owner)).put("target", copy(target)).put("phase", "queued")
+  long sequence = data.optLong("sequence", 0) + 1;
+  data.put("sequence", sequence);
+  JSONObject row = new JSONObject().put("version", 1).put("id", id).put("sequence", sequence).put("owner", copy(owner)).put("target", copy(target)).put("phase", "queued")
    .put("deadline", new JSONObject().put("continuity", deadline.continuity).put("createdElapsed", deadline.createdElapsed).put("expiresElapsed", deadline.expiresElapsed).put("expiresAt", deadline.expiresAt));
   records.put(id, row);
   // Count alone is insufficient when a retained event has a large description.
