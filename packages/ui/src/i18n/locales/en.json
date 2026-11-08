@@ -7737,6 +7737,7 @@
   "cloud.membersList.remove": "Remove",
   "cloud.privacyPanel.exportReady": "Export ready — your download should start automatically.",
   "cloud.privacyPanel.exportFailed": "Export failed: {{message}}",
+  "cloud.privacyPanel.exportSignInAgain": "Sign in again to continue",
   "cloud.privacyPanel.confirmPhrasePrompt": "Please type \"{{phrase}}\" to confirm.",
   "cloud.privacyPanel.deleteRequestFailed": "Delete request failed: {{message}}",
   "cloud.privacyPanel.title": "Privacy",

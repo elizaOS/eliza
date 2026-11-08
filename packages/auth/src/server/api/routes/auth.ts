@@ -552,6 +552,15 @@ function hashToken(raw: string): string {
   return hashSha256Hex(raw);
 }
 
+/** Keeps a stored auth_time; a session without one is stamped now. */
+function withAuthTime(
+  claims: Record<string, unknown>,
+): Record<string, unknown> {
+  return typeof claims.auth_time === "number"
+    ? claims
+    : { ...claims, auth_time: Math.floor(Date.now() / 1000) };
+}
+
 /**
  * Generate a random refresh token, persist its hash in DB, return the raw value.
  * The raw token is sent to the client; only the hash is stored server-side.
@@ -572,13 +581,13 @@ async function createRefreshToken(
     await db
       .insert(refreshTokens)
       .values({ id, userId, tenantId, tokenHash, expiresAt });
-    if (sessionClaims && Object.keys(sessionClaims).length > 0) {
-      await writeMfaJson(
-        `refresh:claims:${tokenHash}`,
-        sessionClaims,
-        REFRESH_TOKEN_EXPIRY_DAYS * 86400 * 1000,
-      );
-    }
+    // Every refresh token is issued at a sign-in. Store its auth_time so
+    // /auth/refresh carries it into each rotated access token unchanged.
+    await writeMfaJson(
+      `refresh:claims:${tokenHash}`,
+      withAuthTime(sessionClaims ?? {}),
+      REFRESH_TOKEN_EXPIRY_DAYS * 86400 * 1000,
+    );
     return raw;
   });
 }
@@ -823,9 +832,11 @@ async function rotateRefreshTokenInsideTenant(
     await getMfaBackend().delete(`refresh:claims:${record.tokenHash}`);
     // MFA freshness is scoped to the tenant where it was performed, as on
     // /user/me/tenants/switch: the switched tenant needs its own step-up.
-    const sessionClaims = switchesTenant
-      ? withoutTenantMfaClaims(storedClaims)
-      : storedClaims;
+    // auth_time is copied unchanged: rotation is not a sign-in. A refresh
+    // token stored before auth_time existed is pinned at its first rotation.
+    const sessionClaims = withAuthTime(
+      switchesTenant ? withoutTenantMfaClaims(storedClaims) : storedClaims,
+    );
 
     const newAccessToken = await createSessionToken(
       walletAddress,

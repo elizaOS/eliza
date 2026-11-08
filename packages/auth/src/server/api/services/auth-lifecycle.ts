@@ -294,7 +294,17 @@ export async function createSessionToken(
       }
     }
   }
-  return signAccessToken({ address, tenantId, ...extra }, expiresIn);
+  // auth_time is when the user last authenticated. A caller carrying an
+  // existing session (refresh rotation, tenant switch) passes it through;
+  // every other caller is a sign-in and stamps now.
+  const authTime =
+    typeof extra?.auth_time === "number"
+      ? extra.auth_time
+      : Math.floor(Date.now() / 1000);
+  return signAccessToken(
+    { address, tenantId, ...extra, auth_time: authTime },
+    expiresIn,
+  );
 }
 
 let _nonceBackend: import("../../auth/index.ts").StoreBackend | null = null;

@@ -89,6 +89,16 @@ export interface StewardTokenClaims {
   issuedAt: number;
   /** Token not-before time, when the issuer supplied one. */
   notBefore?: number;
+  /**
+   * Signed `auth_time`: when the user last authenticated. Re-mints and
+   * refresh-token rotation copy it, so it never moves without a sign-in.
+   */
+  authTime?: number;
+  /**
+   * Signed `sst`: when this bearer-renewed session chain started. Bearer
+   * refresh copies it and refuses renewal once the chain is too old.
+   */
+  sessionStartedAt?: number;
 }
 
 /**
@@ -96,9 +106,10 @@ export interface StewardTokenClaims {
  */
 interface CachedStewardClaims {
   /**
-   * Invalidates pre-Telegram claim memos that omitted signed identity authority.
+   * Invalidates memos that omitted signed identity authority or session-age
+   * claims (auth_time, sst).
    */
-  claimsSchemaVersion: 2;
+  claimsSchemaVersion: 3;
   userId: string;
   email?: string;
   address?: string;
@@ -112,6 +123,8 @@ interface CachedStewardClaims {
   expiration: number;
   issuedAt: number;
   notBefore?: number;
+  authTime?: number;
+  sessionStartedAt?: number;
   cachedAt: number;
   /** Binds a memo to the signing key so rotation invalidates old verification results. */
   signingKeyFingerprint: string;
@@ -311,6 +324,14 @@ export async function mintStewardTokenFromClaims(
   if (claims.stagingSessionBinding) {
     payload.eliza_staging_session = claims.stagingSessionBinding;
   }
+  // A re-mint is not an authentication: carry the signed sign-in time and
+  // session start unchanged. A token without them falls back to its own iat,
+  // never to now, so a chain of re-mints cannot move either one forward.
+  const presentedIssuedAt = claims.issuedAt > 0 ? claims.issuedAt : undefined;
+  const authTime = claims.authTime ?? presentedIssuedAt;
+  if (authTime !== undefined) payload.auth_time = authTime;
+  const sessionStartedAt = claims.sessionStartedAt ?? presentedIssuedAt;
+  if (sessionStartedAt !== undefined) payload.sst = sessionStartedAt;
 
   const token = await new SignJWT(payload)
     .setProtectedHeader(protectedHeader)
@@ -373,6 +394,12 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
   };
 }
 
+function positiveSeconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
 function extractClaims(payload: JWTPayload): StewardTokenClaims {
   const userId =
     typeof payload.sub === "string" && payload.sub.length > 0
@@ -396,6 +423,8 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     }
     telegramId = payload.telegramId;
   }
+  const authTime = positiveSeconds(payload.auth_time);
+  const sessionStartedAt = positiveSeconds(payload.sst);
 
   return {
     userId,
@@ -411,6 +440,8 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     expiration: payload.exp ?? 0,
     issuedAt: payload.iat ?? 0,
     ...(payload.nbf !== undefined ? { notBefore: payload.nbf } : {}),
+    ...(authTime !== undefined ? { authTime } : {}),
+    ...(sessionStartedAt !== undefined ? { sessionStartedAt } : {}),
   };
 }
 
@@ -611,7 +642,7 @@ export async function verifyStewardTokenCached(
         typeof cached.userId !== "string" ||
         typeof cached.expiration !== "number" ||
         typeof cached.issuedAt !== "number" ||
-        cached.claimsSchemaVersion !== 2 ||
+        cached.claimsSchemaVersion !== 3 ||
         typeof cached.signingKeyFingerprint !== "string"
       ) {
         await cache.del(cacheKey);
@@ -641,6 +672,10 @@ export async function verifyStewardTokenCached(
             expiration: cached.expiration,
             issuedAt: cached.issuedAt,
             ...(cached.notBefore !== undefined ? { notBefore: cached.notBefore } : {}),
+            ...(cached.authTime !== undefined ? { authTime: cached.authTime } : {}),
+            ...(cached.sessionStartedAt !== undefined
+              ? { sessionStartedAt: cached.sessionStartedAt }
+              : {}),
           };
 
           if (!(await validateStewardClaims(env, stagingHeader, claims, tokenHash))) {
@@ -678,7 +713,7 @@ export async function verifyStewardTokenCached(
     if (!options.skipDistributedCache && effectiveTtl > 0) {
       const cachedClaims: CachedStewardClaims = {
         ...claims,
-        claimsSchemaVersion: 2,
+        claimsSchemaVersion: 3,
         cachedAt: Date.now(),
         signingKeyFingerprint,
       };
@@ -708,7 +743,7 @@ export async function verifyStewardTokenCached(
     // Also cache in-memory
     IN_MEMORY_STEWARD_CACHE.set(tokenHash, {
       ...claims,
-      claimsSchemaVersion: 2,
+      claimsSchemaVersion: 3,
       cachedAt: Date.now(),
       signingKeyFingerprint,
     });

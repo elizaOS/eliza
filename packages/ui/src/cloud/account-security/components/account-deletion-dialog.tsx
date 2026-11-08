@@ -18,6 +18,7 @@ import {
   endLocalSessionAfterDeletion,
   submitAccountDeletion,
 } from "../data/account-deletion-client";
+import { needsSignInAgain, signInAgainPath } from "../data/sign-in-again";
 
 export function AccountDeletionDialog({
   triggerLabel = "Delete account",
@@ -31,10 +32,12 @@ export function AccountDeletionDialog({
   const [submitting, setSubmitting] = useState(false);
   const [serverAccepted, setServerAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signInAgain, setSignInAgain] = useState(false);
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
+    setSignInAgain(false);
     let accepted: Awaited<ReturnType<typeof submitAccountDeletion>>;
     try {
       accepted = await submitAccountDeletion();
@@ -42,6 +45,11 @@ export function AccountDeletionDialog({
     } catch (cause) {
       // error-policy:J4 request failure remains visibly distinct and leaves
       // the confirmation dialog open for a safe retry.
+      if (needsSignInAgain(cause)) {
+        setSignInAgain(true);
+        setSubmitting(false);
+        return;
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -105,6 +113,17 @@ export function AccountDeletionDialog({
               disabled={submitting}
             />
           </label>
+          {signInAgain ? (
+            <p
+              className="text-sm text-danger"
+              role="alert"
+              data-testid="delete-account-sign-in-again"
+            >
+              <TextLink href={signInAgainPath()}>
+                Sign in again to continue
+              </TextLink>
+            </p>
+          ) : null}
           {error ? (
             <p className="text-sm text-danger" role="alert">
               {error}{" "}
