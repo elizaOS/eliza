@@ -131,6 +131,9 @@ ALTER TABLE app_frontend_deployments ADD COLUMN IF NOT EXISTS upload_quiesced_at
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION guard_frontend_original_upload() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF OLD.status <> 'pending' AND NEW.status = 'pending' THEN
+    RAISE EXCEPTION 'a started frontend cannot return to unstarted authority' USING ERRCODE = '23514';
+  END IF;
   IF OLD.upload_generation IS NOT NULL THEN
     IF NEW.upload_generation IS DISTINCT FROM OLD.upload_generation
       OR NEW.upload_plan IS DISTINCT FROM OLD.upload_plan

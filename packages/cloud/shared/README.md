@@ -411,6 +411,7 @@ confirmed cleanup completes the root or permits its organization to disappear.
 Upload rows retain the full planned key set before the first PUT. A matching
 writer must acknowledge every issued PUT and stop before cleanup; unknown PUT
 outcomes and legacy ambiguous uploads require explicit recovery. Time passing
-is not writer quiescence. Recovery requires the original storage binding and
+is not writer quiescence. The generation belongs to one original writer; recovery
+must not share it with a writer that can still issue PUTs. Recovery requires the original storage binding and
 immutable keys. Legacy
 version-1 roots retain their prior best-effort semantics and possible orphan debt.

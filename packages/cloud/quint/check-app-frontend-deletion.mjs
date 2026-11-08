@@ -50,6 +50,7 @@ const suites = [
       "invalid bundle validation performs no partial upload or orphan draft creation",
       "cleanup authority rejects missing or non-typed digest count and confirmation fields",
       "suppressed writer quiescence cannot publish or authorize app cleanup",
+      "started and failed upload rows cannot regain unstarted deletion authority",
     ],
   },
   {
@@ -117,5 +118,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `App frontend deletion conformance passed twenty-two PGlite and two PostgreSQL cases. Evidence ${directory}`,
+  `App frontend deletion conformance passed twenty-three PGlite and two PostgreSQL cases. Evidence ${directory}`,
 );

@@ -104,4 +104,8 @@ module app_cleanup_uploads {
   action unsafeCascade = all {s.deleting,s'={...s,app:false,objects:Set(),cleaned:true}}
   run latePutAfterOldCascadeWitnessTest = init.then(begin).then(admitPut).then(sendPut).then(fence)
     .then(unsafeCascade).then(remoteEffect).expect(not(safety) and s.cleaned and s.objects != Set())
+  action unsafeResetPending = all {s.inFlight, s'={...s,phase:"pending"}}
+  run resetStartedAsUnstartedWitnessTest = init.then(begin).then(admitPut).then(sendPut).then(fence)
+    .then(unsafeResetPending).then(cascade).expect(not(safety))
+
 }

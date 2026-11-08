@@ -667,3 +667,33 @@ test("suppressed writer quiescence cannot publish or authorize app cleanup", asy
   });
   expect(await appsRepository.findById(identity.id)).toBeDefined();
 });
+
+test("started and failed upload rows cannot regain unstarted deletion authority", async () => {
+  const { eq } = await import("drizzle-orm");
+  for (const [index, owned, status] of [
+    [0, true, "uploading"],
+    [1, true, "failed"],
+    [2, false, "uploading"],
+    [3, false, "failed"],
+  ] as const) {
+    const [row] = await dbWrite
+      .insert(appFrontendDeployments)
+      .values({
+        app_id: identity.id,
+        version: 10 + index,
+        status,
+        r2_prefix: "original/",
+        upload_generation: owned ? randomUUID() : null,
+        upload_plan: owned ? { entrypoint: "index.html", spaFallback: false, files: [] } : null,
+      })
+      .returning();
+    if (!row) throw new Error("Missing upload");
+    await expect(
+      dbWrite
+        .update(appFrontendDeployments)
+        .set({ status: "pending" })
+        .where(eq(appFrontendDeployments.id, row.id))
+        .then(() => undefined),
+    ).rejects.toMatchObject({ cause: { code: "23514" } });
+  }
+});
