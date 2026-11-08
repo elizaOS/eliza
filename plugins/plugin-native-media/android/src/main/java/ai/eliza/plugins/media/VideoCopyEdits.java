@@ -544,8 +544,11 @@ public final class VideoCopyEdits {
       try {
         work.run();
       } catch (Exception error) {
-        call.reject(
-            error.getMessage() == null ? "Video edit could not be confirmed" : error.getMessage());
+        // Only this class's own sentences reach the user; parser and library text does not.
+        boolean plain = error instanceof IOException || error instanceof SecurityException
+            || error instanceof IllegalArgumentException && !(error instanceof NumberFormatException);
+        call.reject(error.getMessage() == null ? "Video edit could not be confirmed"
+            : plain ? error.getMessage() : "This video cannot be edited.");
       }
     }, () -> call.reject("Video editor closed"));
   }
@@ -626,14 +629,10 @@ public final class VideoCopyEdits {
   private void metadata(Session session) throws Exception {
     try (MediaMetadataRetriever media = new MediaMetadataRetriever()) {
       media.setDataSource(session.input.getAbsolutePath());
-      session.durationMs =
-          Long.parseLong(media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
-      session.width =
-          Integer.parseInt(media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-      session.height =
-          Integer.parseInt(media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-      String angle = media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-      int rotation = angle == null ? 0 : Integer.parseInt(angle);
+      session.durationMs = positive(media, MediaMetadataRetriever.METADATA_KEY_DURATION);
+      session.width = (int) positive(media, MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+      session.height = (int) positive(media, MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+      int rotation = rotation(media);
       if (rotation % 90 != 0)
         throw new IOException("This video's orientation is unsupported");
       if (Math.floorMod(rotation, 180) != 0) {
@@ -649,6 +648,26 @@ public final class VideoCopyEdits {
                   - (session.audio ? 128_000 : 0)));
       new VideoEditSpec(0, session.durationMs / 1000d, 0, false, session.durationMs, session.width,
           session.height);
+    }
+  }
+  // Missing or unreadable metadata refuses the video in a plain sentence instead of parser text.
+  private static long positive(MediaMetadataRetriever media, int key) throws IOException {
+    try {
+      long value = Long.parseLong(media.extractMetadata(key));
+      if (value > 0 && value <= Integer.MAX_VALUE)
+        return value;
+    } catch (NumberFormatException unreadable) { /* Falls through to the refusal below. */
+    }
+    throw new IOException("This video cannot be edited.");
+  }
+  private static int rotation(MediaMetadataRetriever media) throws IOException {
+    String angle = media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+    if (angle == null)
+      return 0;
+    try {
+      return Integer.parseInt(angle);
+    } catch (NumberFormatException unreadable) {
+      throw new IOException("This video cannot be edited.");
     }
   }
   private void remove(File file) throws IOException {
@@ -757,13 +776,17 @@ public final class VideoCopyEdits {
       if (terminal(row.optString("status")))
         terminal.add(key);
     }
-    terminal.sort((a, b) -> {
-      try {
-        return Long.compare(read(a).optLong("createdAt"), read(b).optLong("createdAt"));
-      } catch (Exception invalid) {
-        throw new IllegalStateException("Video copy history needs recovery", invalid);
-      }
-    });
+    try {
+      terminal.sort((a, b) -> {
+        try {
+          return Long.compare(read(a).optLong("createdAt"), read(b).optLong("createdAt"));
+        } catch (Exception invalid) {
+          throw new IllegalStateException(invalid);
+        }
+      });
+    } catch (IllegalStateException invalid) {
+      throw new IOException("Video copy history needs recovery", invalid);
+    }
     if (terminal.isEmpty() || !journal.edit().remove(terminal.get(0)).commit())
       throw new IOException("Resolve earlier video copies before editing another");
   }
@@ -957,14 +980,17 @@ public final class VideoCopyEdits {
       throw new IOException("Video copy is empty or exceeds 100 MB");
     try (MediaMetadataRetriever media = new MediaMetadataRetriever()) {
       media.setDataSource(session.output.getAbsolutePath());
-      long duration =
-          Long.parseLong(media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
-      int width = Integer.parseInt(
-              media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)),
-          height = Integer.parseInt(
-              media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-      String angle = media.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-      if (angle != null && Math.floorMod(Integer.parseInt(angle), 180) != 0) {
+      long duration;
+      int width, height, rotation;
+      try {
+        duration = positive(media, MediaMetadataRetriever.METADATA_KEY_DURATION);
+        width = (int) positive(media, MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+        height = (int) positive(media, MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+        rotation = rotation(media);
+      } catch (IOException unreadable) {
+        throw new IOException("Video copy readback did not match the edit");
+      }
+      if (Math.floorMod(rotation, 180) != 0) {
         int old = width;
         width = height;
         height = old;
