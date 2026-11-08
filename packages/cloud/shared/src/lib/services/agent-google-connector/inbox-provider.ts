@@ -79,7 +79,11 @@ function requireScope(grant: InboxGoogleGrant, kind: "read" | "send" | "draft" |
     !grant.scopes.includes(fullScope) &&
     !allowed.some((scope) => grant.scopes.includes(scopePrefix + scope))
   )
-    throw new InboxContractError(403, "The selected Google grant lacks this capability");
+    throw new InboxContractError(
+      403,
+      "The selected Google grant lacks this capability",
+      "reauth_required",
+    );
 }
 function encodedSubject(subject: string): string {
   const chunks: string[] = [];
@@ -262,7 +266,11 @@ export class InboxGoogleProvider {
     const current = await this.dependencies.grant(owner);
     requireScope(current, kind);
     if (current.email !== expected.email)
-      throw new InboxContractError(403, "Google account changed; reopen the inbox");
+      throw new InboxContractError(
+        403,
+        "Google account changed; reopen the inbox",
+        "reauth_required",
+      );
   }
   private async request(
     grant: InboxGoogleGrant,

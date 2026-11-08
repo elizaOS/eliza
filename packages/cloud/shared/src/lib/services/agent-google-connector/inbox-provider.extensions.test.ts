@@ -455,9 +455,11 @@ test("forward carries source attachments bound to the selected message and histo
   const sendOnly = provider(sourceMessageRoute(state), [
     "https://www.googleapis.com/auth/gmail.send",
   ]);
-  await expect(sendOnly.provider.review(owner, proposal, crypto.randomUUID())).rejects.toThrow(
-    "lacks this capability",
-  );
+  const missing = await sendOnly.provider
+    .review(owner, proposal, crypto.randomUUID())
+    .catch((error) => error);
+  expect(missing.message).toContain("lacks this capability");
+  expect(inboxErrorResponse(missing)?.body.code).toBe("reauth_required");
 });
 
 test("opaque byte copy of an unsupported docx or zip, bound to message, part and historyId", async () => {
