@@ -42,8 +42,12 @@ export type MapsState = Readonly<{
    * first) when it offered a choice; empty otherwise. `route` is the chosen one.
    */
   routeOptions: readonly Route[];
+  /** Why the last replan failed; the route it would have replaced stays. */
+  rerouteError: MapsFailure | null;
   saved: ResultState<readonly SavedPlace[]>;
 }>;
+/** A location request that has no fix by then gives up, so the sheet never waits forever. */
+const LOCATE_TIMEOUT_MS = 20_000;
 /** State only; no simulated map and no silent provider discovery/fallback. */
 export class MapsController {
   private state: MapsState;
@@ -52,7 +56,9 @@ export class MapsController {
   private detailRequest?: AbortController;
   private detailPending?: Promise<void>;
   private routeRequest?: AbortController;
+  private replanRequest?: AbortController;
   private originRequest?: AbortController;
+  private locateTimer?: ReturnType<typeof setTimeout>;
   private active = true;
   constructor(
     private config: ProviderConfig,
@@ -73,6 +79,7 @@ export class MapsController {
       mode: "drive",
       route: idle(null),
       routeOptions: [],
+      rerouteError: null,
       saved: idle([]),
     };
     this.reloadSaved();
@@ -92,6 +99,12 @@ export class MapsController {
       originSearch: copy(this.state.originSearch),
       route: copy(this.state.route),
       routeOptions: structuredClone(this.state.routeOptions),
+      rerouteError: this.state.rerouteError
+        ? new MapsFailure(
+            this.state.rerouteError.code,
+            this.state.rerouteError.message,
+          )
+        : null,
       position: copy(this.state.position),
       saved: copy(this.state.saved),
     };
@@ -132,7 +145,9 @@ export class MapsController {
   private invalidateRoute() {
     this.routeRequest?.abort();
     this.routeRequest = undefined;
-    this.update({ route: idle(null), routeOptions: [] });
+    this.replanRequest?.abort();
+    this.replanRequest = undefined;
+    this.update({ route: idle(null), routeOptions: [], rerouteError: null });
   }
   private admitted() {
     return configuredProvider(this.config, this.provider);
@@ -292,17 +307,26 @@ export class MapsController {
     this.update({ origin: null, originLabel: null });
   }
   setOrigin(value: Coordinate, label?: string) {
+    this.useOrigin(value, label, idle(null));
+  }
+  private useOrigin(
+    value: Coordinate,
+    label: string | undefined,
+    position: ResultState<Position | null>,
+  ) {
     const origin = coordinate(value);
     if (label !== undefined && !boundedText(label, 300))
       throw new MapsFailure("unsupported", "The origin name is invalid.");
     this.cancelOriginSearch();
+    clearTimeout(this.locateTimer);
+    this.locateTimer = undefined;
     void this.nativeLocation.stop().catch((error) =>
       this.update({
         position: { phase: "error", value: null, error: failure(error) },
       }),
     );
     this.invalidateRoute();
-    this.update({ origin, originLabel: label ?? null, position: idle(null) });
+    this.update({ origin, originLabel: label ?? null, position });
   }
   /** Use a chosen origin candidate and plan from it. */
   chooseOrigin(candidate: Place | SavedPlace) {
@@ -319,6 +343,71 @@ export class MapsController {
     this.setOrigin(from, label);
     return this.planRoute();
   }
+  /**
+   * Plans from `from` beside the current route, which stays until the new one is ready.
+   * The location watch is left alone. A failure keeps the route and sets `rerouteError`.
+   */
+  async replan(from: Coordinate) {
+    this.replanRequest?.abort();
+    const request = new AbortController();
+    this.replanRequest = request;
+    this.update({ rerouteError: null });
+    try {
+      const origin = coordinate(from),
+        provider = this.admitted(),
+        { selection, mode } = this.state;
+      if (!selection.value)
+        throw new MapsFailure("unsupported", "Choose a destination first.");
+      if (!this.capabilities().modes.includes(mode))
+        throw new MapsFailure(
+          "unsupported",
+          "This provider does not support that route mode.",
+        );
+      const destination = selection.value.coordinate;
+      const result = await provider.route(
+        origin,
+        destination,
+        mode,
+        request.signal,
+      );
+      if (
+        request.signal.aborted ||
+        !this.active ||
+        this.replanRequest !== request
+      )
+        return;
+      const route = this.validRoute(
+        result,
+        provider.providerId,
+        origin,
+        destination,
+        mode,
+      );
+      this.replanRequest = undefined;
+      this.routeRequest?.abort();
+      this.routeRequest = undefined;
+      this.update({
+        origin,
+        originLabel: null,
+        route: { phase: "ready", value: route, error: null },
+        routeOptions: [],
+      });
+    } catch (error) {
+      if (
+        !request.signal.aborted &&
+        this.active &&
+        this.replanRequest === request
+      ) {
+        this.replanRequest = undefined;
+        this.update({ rerouteError: failure(error) });
+      }
+    }
+  }
+  /** Drops a pending replan; its result is never applied. */
+  cancelReplan() {
+    this.replanRequest?.abort();
+    this.replanRequest = undefined;
+  }
   setMode(mode: TravelMode) {
     if (!["drive", "walk", "bicycle", "transit"].includes(mode))
       throw new MapsFailure("unsupported", "This travel mode is unsupported.");
@@ -326,24 +415,47 @@ export class MapsController {
     this.update({ mode });
   }
   async locate() {
+    clearTimeout(this.locateTimer);
+    const timer = setTimeout(() => {
+      if (this.locateTimer !== timer) return;
+      this.locateTimer = undefined;
+      void this.nativeLocation.stop().catch(() => {});
+      this.update({
+        position: {
+          phase: "error",
+          value: null,
+          error: new MapsFailure(
+            "timeout",
+            "No location fix yet. Try again or enter a start point.",
+          ),
+        },
+      });
+    }, LOCATE_TIMEOUT_MS);
+    this.locateTimer = timer;
+    const failed = (error: unknown) => {
+      if (this.locateTimer !== timer) return;
+      clearTimeout(timer);
+      this.locateTimer = undefined;
+      this.update({
+        position: { phase: "error", value: null, error: failure(error) },
+      });
+    };
     this.update({ position: { phase: "loading", value: null, error: null } });
     try {
       await this.nativeLocation.start(
         true,
         (position) => {
-          if (!this.active) return;
-          this.setOrigin(position.coordinate);
-          this.update({
-            position: { phase: "ready", value: position, error: null },
+          if (!this.active || this.locateTimer !== timer) return;
+          this.useOrigin(position.coordinate, undefined, {
+            phase: "ready",
+            value: position,
+            error: null,
           });
         },
-        (error) =>
-          this.update({ position: { phase: "error", value: null, error } }),
+        failed,
       );
     } catch (error) {
-      this.update({
-        position: { phase: "error", value: null, error: failure(error) },
-      });
+      failed(error);
     }
   }
   async planRoute() {
@@ -515,7 +627,10 @@ export class MapsController {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
     this.routeRequest?.abort();
+    this.replanRequest?.abort();
     this.originRequest?.abort();
+    clearTimeout(this.locateTimer);
+    this.locateTimer = undefined;
     try {
       await this.nativeLocation.stop();
     } finally {

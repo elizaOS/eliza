@@ -1,4 +1,4 @@
-import type { Maneuver, RouteStep } from "./contracts.ts";
+import type { Maneuver, RouteStep, TravelMode } from "./contracts.ts";
 import type { RouteProgress } from "./route-distance.ts";
 
 /** 24px stroke icons (prototype `.i` style) for each provider-neutral maneuver. */
@@ -61,8 +61,19 @@ export function atStep(
   const { next: _next, then: _then, ...rest } = progress;
   return { ...rest, ...(next ? { next } : {}), ...(then ? { then } : {}) };
 }
+/** Distance at which the upcoming maneuver is announced again, just before it. */
+const NEAR_METERS: Record<TravelMode, number> = {
+  drive: 200,
+  bicycle: 200,
+  walk: 40,
+  transit: 40,
+};
 /** Presentation of one progress reading for the navigation sheet, voice and notification. */
-export function guidanceView(progress: RouteProgress, now = new Date()) {
+export function guidanceView(
+  progress: RouteProgress,
+  now = new Date(),
+  mode: TravelMode = "drive",
+) {
   const next = progress.next,
     then = progress.then;
   const arrival = new Date(now.getTime() + progress.remainingSeconds * 1000);
@@ -72,6 +83,15 @@ export function guidanceView(progress: RouteProgress, now = new Date()) {
   });
   const distance = next ? guidanceDistance(next.distanceMeters) : "";
   const instruction = next?.step.instruction || "Continue to the destination";
+  const band: "far" | "near" =
+    next && next.distanceMeters > NEAR_METERS[mode] ? "far" : "near";
+  // Arrival is announced once, without a distance; under 10 m a distance adds nothing.
+  const arriving = !!next && (next.step.maneuver === "arrive" || !then);
+  const spoken = !next
+    ? ""
+    : arriving || next.distanceMeters < 10
+      ? instruction
+      : `In ${distance}, ${instruction}`;
   return {
     icon: maneuverIcon(next?.step.maneuver),
     distance,
@@ -81,8 +101,14 @@ export function guidanceView(progress: RouteProgress, now = new Date()) {
     thenText: then?.step.instruction || "",
     remainingTime: guidanceDuration(progress.remainingSeconds),
     remaining: `${guidanceDistance(progress.remainingMeters)} · arrive ${clock} · no live traffic`,
-    /** One utterance per upcoming step: the provider's own instruction text. */
-    spoken: next ? instruction : "",
+    band,
+    /** Each step is spoken once when it becomes next (if far) and once when near. */
+    spoken,
+    spokenKey: !next
+      ? ""
+      : arriving
+        ? `${next.index}`
+        : `${next.index}:${band}`,
     notificationTitle: next ? `${distance} · ${instruction}` : instruction,
     notificationText: `${guidanceDuration(progress.remainingSeconds)} · ${guidanceDistance(progress.remainingMeters)} remaining`,
   };

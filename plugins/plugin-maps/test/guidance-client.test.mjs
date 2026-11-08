@@ -38,7 +38,9 @@ test("guidance presents the next maneuver, the following step and the remaining 
   assert.equal(view.thenIcon, MANEUVER_ICONS.right);
   assert.equal(view.remainingTime, "3 min");
   assert.match(view.remaining, /^900 m · arrive .+ · no live traffic$/);
-  assert.equal(view.spoken, "Turn left onto Rue A");
+  assert.equal(view.spoken, "In 120 m, Turn left onto Rue A");
+  assert.equal(view.band, "near");
+  assert.equal(view.spokenKey, "1:near");
   const near = guidanceView({
     offRouteMeters: 1,
     alongMeters: 0,
@@ -52,7 +54,42 @@ test("guidance presents the next maneuver, the following step and the remaining 
     },
   });
   assert.equal(near.spoken, "Arrive at destination");
+  assert.equal(near.spokenKey, "1");
   assert.equal(near.hasThen, false);
+});
+
+test("each step is announced early with its distance and again near the maneuver", async () => {
+  const { guidanceView } = await import("../src/client/guidance.ts");
+  const step = (instruction, maneuver) => ({
+    instruction,
+    maneuver,
+    coordinate: { latitude: 0, longitude: 0 },
+    distanceMeters: 1,
+  });
+  const at = (distanceMeters) => ({
+    offRouteMeters: 1,
+    alongMeters: 0,
+    remainingMeters: 2000,
+    remainingSeconds: 300,
+    stepIndex: 0,
+    next: { index: 2, step: step("Turn right", "right"), distanceMeters },
+    // biome-ignore lint/suspicious/noThenProperty: RouteProgress names the following maneuver `then`.
+    then: { index: 3, step: step("Arrive", "arrive") },
+  });
+  const said = (distance, mode) => {
+    const view = guidanceView(at(distance), undefined, mode);
+    return [view.spokenKey, view.spoken];
+  };
+  // Driving and cycling: early prompt beyond 200 m, near prompt within it.
+  assert.deepEqual(said(1830, "drive"), ["2:far", "In 1.8 km, Turn right"]);
+  assert.deepEqual(said(150, "drive"), ["2:near", "In 150 m, Turn right"]);
+  assert.deepEqual(said(450, "bicycle"), ["2:far", "In 450 m, Turn right"]);
+  // Walking and transit: the near band is 40 m.
+  assert.deepEqual(said(150, "walk"), ["2:far", "In 150 m, Turn right"]);
+  assert.deepEqual(said(30, "walk"), ["2:near", "In 30 m, Turn right"]);
+  assert.deepEqual(said(30, "transit"), ["2:near", "In 30 m, Turn right"]);
+  // At the maneuver the distance adds nothing.
+  assert.deepEqual(said(4, "drive"), ["2:near", "Turn right"]);
 });
 
 test("the upcoming maneuver stays fixed until the device has come near it", async () => {

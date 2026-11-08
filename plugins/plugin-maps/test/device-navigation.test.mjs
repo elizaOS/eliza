@@ -175,10 +175,10 @@ function screen(maps, options = {}) {
     async locationGranted() {
       return options.granted ?? true;
     },
-    locate(signal) {
+    locate(signal, accept) {
       located.push(signal);
       return options.locate
-        ? options.locate(signal)
+        ? options.locate(signal, accept)
         : Promise.resolve({
             coordinate: CASINO,
             accuracyMeters: 8,
@@ -202,10 +202,11 @@ function screen(maps, options = {}) {
             ...(fix ? { fix } : {}),
           }
         : null,
+    // As the screen: the current route stays until a replacement is ready.
     async reroute(from) {
       rerouting = true;
       try {
-        await controller.reroute(from);
+        await controller.replan(from);
       } finally {
         rerouting = false;
       }
@@ -538,7 +539,7 @@ function screen(maps, options = {}) {
   });
   assert.deepEqual(maps.calls.at(-1), ["route", PALACE, PORT, "drive"]);
   assert.notEqual(phone.surface.guidance().routeId, before);
-  // A failed replan ends guidance on the phone; the agent hears the typed reason.
+  // A failed replan keeps guidance on the current route; the agent hears the typed reason.
   const failing = provider(),
     broken = screen(failing),
     brokenNav = new DeviceMapsNavigation(broken.surface, owner);
@@ -555,8 +556,48 @@ function screen(maps, options = {}) {
       "Eliza Cloud Maps is unreachable. Check the connection.",
     );
   };
+  const kept = broken.surface.guidance().routeId;
   await failsWith(brokenNav.reroute(), "MAPS_PROVIDER_NETWORK", /unreachable/);
-  assert.equal(broken.surface.guidance(), null);
+  assert.equal(broken.surface.guidance().routeId, kept);
+  failing.route = async () => {
+    throw new MapsFailure("rate-limited", "Too many route requests.");
+  };
+  await failsWith(brokenNav.reroute(), "MAPS_RATE_LIMITED", /Too many/);
+  assert.equal(broken.surface.guidance().routeId, kept);
+}
+
+// A coarse first fix is skipped while the location request waits for a usable one.
+{
+  const maps = provider(),
+    fixes = [
+      { accuracyMeters: 70, precision: "precise" },
+      { accuracyMeters: 10, precision: "precise" },
+    ],
+    phone = screen(maps, {
+      locate: (_signal, accept) =>
+        new Promise((resolve) => {
+          let delay = 0;
+          for (const reading of fixes)
+            setTimeout(() => {
+              const fix = {
+                coordinate: CASINO,
+                timestamp: Date.now(),
+                ...reading,
+              };
+              if (!accept || accept(fix)) resolve(fix);
+            }, delay++);
+        }),
+    }),
+    nav = new DeviceMapsNavigation(phone.surface, owner);
+  assert.deepEqual(
+    await nav.start({ destination: portRef, travelMode: "drive" }),
+    {
+      state: "awaiting-confirmation",
+      placeName: "Port Hercule",
+      travelMode: "drive",
+    },
+  );
+  assert.deepEqual(maps.calls.at(-1), ["route", CASINO, PORT, "drive"]);
 }
 
 // While a new route is planned, the session is still active: no agent request takes it over, and arrival ends rerouting.

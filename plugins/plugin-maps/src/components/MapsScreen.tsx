@@ -749,7 +749,7 @@ export function MapsScreen({
                 >
                   <input
                     aria-label="Route origin coordinates"
-                    placeholder="Origin latitude, longitude"
+                    placeholder="Search a place or enter coordinates"
                     value={directions.originText}
                     onChange={(event) =>
                       controller.setOriginText(event.target.value)

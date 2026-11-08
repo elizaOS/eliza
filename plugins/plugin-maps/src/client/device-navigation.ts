@@ -113,8 +113,14 @@ export interface MapsNavigationSurface {
   ): Promise<void>;
   /** Whether location is already granted. Never shows a permission prompt. */
   locationGranted(): Promise<boolean>;
-  /** One location fix from the device; rejects when none arrives. */
-  locate(signal: AbortSignal): Promise<Position>;
+  /**
+   * One location fix from the device; rejects when none arrives. With `accept`, earlier
+   * fixes it refuses are skipped and the first one it accepts resolves.
+   */
+  locate(
+    signal: AbortSignal,
+    accept?: (fix: Position) => boolean,
+  ): Promise<Position>;
   /** Plans the shown route from this device coordinate; resolves when planning settles. */
   planFrom(origin: Coordinate): Promise<void>;
   guidance(): ActiveGuidance | null;
@@ -499,8 +505,12 @@ export class DeviceMapsNavigation implements MapsDeviceNavigation {
               "Navigation ended on the phone before the new route was ready.",
             );
       }
-      if (next.rerouting || next.routeId === active.routeId)
-        throw unavailable("The phone kept the previous route.");
+      if (next.rerouting || next.routeId === active.routeId) {
+        const failed = this.surface.snapshot()?.rerouteError;
+        throw failed
+          ? deviceNavigationFailure(failed)
+          : unavailable("The phone kept the previous route.");
+      }
       return { state: "navigating", ...status };
     } catch (error) {
       throw deviceNavigationFailure(error);
@@ -540,7 +550,7 @@ export class DeviceMapsNavigation implements MapsDeviceNavigation {
     const timer = setTimeout(cancel, this.limits.fixTimeoutMs);
     try {
       const fix = await Promise.race([
-        this.surface.locate(attempt.signal),
+        this.surface.locate(attempt.signal, (fix) => this.usable(fix)),
         new Promise<never>((_, reject) =>
           attempt.signal.addEventListener(
             "abort",

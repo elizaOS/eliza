@@ -49,6 +49,7 @@ function fixture(options = {}) {
     background: [],
     voice: [],
     published: [],
+    revisions: [],
     released: 0,
     handoffDiscarded: 0,
     initialized: 0,
@@ -93,6 +94,7 @@ function fixture(options = {}) {
     },
     async route(from, to, mode, _signal, nested) {
       if (!nested) calls.routes.push({ from, mode });
+      if (options.routeError) throw options.routeError;
       return {
         providerId: "fixture",
         id: `route_0123456789abcdef_${calls.routes.length}`,
@@ -102,7 +104,8 @@ function fixture(options = {}) {
         geometry: [from, to],
         distanceMeters: 1200,
         durationSeconds: 300,
-        steps: [
+        ...options.shape?.(from, to),
+        steps: options.shape?.(from, to).steps ?? [
           {
             instruction: "Head north",
             coordinate: from,
@@ -211,7 +214,10 @@ function fixture(options = {}) {
     handoffReturn: () => options.handoffReturn ?? false,
     released: () => calls.released++,
     now: () => now,
-    publishContext: (kind) => calls.published.push(kind),
+    publishContext: (kind, _identity, revision) => {
+      calls.published.push(kind);
+      calls.revisions.push(revision);
+    },
     clearContext: () => {},
     ...(options.mapsApp ? { mapsApp: options.mapsApp } : {}),
   };
@@ -368,10 +374,7 @@ test("directions need a real origin and a served mode", async () => {
   let view = f.screen.view();
   assert.equal(view.mode, "directions");
   assert.equal(view.directions?.routeReady, false);
-  assert.equal(
-    view.directions?.via,
-    "Choose a real origin to calculate a route.",
-  );
+  assert.equal(view.directions?.via, "Choose a start point.");
   assert.deepEqual(
     view.directions?.modes.map((choice) => [choice.mode, choice.available]),
     [
@@ -834,4 +837,210 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
   assert.match(view.status.text, /outside Monaco map coverage/);
   assert.equal(view.map.selected, undefined);
   assert.equal(view.place?.address, "48.85660, 2.35220");
+});
+
+test("a maneuver passed without coming near it is left behind on the second fix past it", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  const id = f.screen.surface(async () => true).guidance().routeId;
+  // A lane 50 m east of the route line: never within 40 m of the left turn.
+  const lane = (latitude) => ({ latitude, longitude: 7.42062 });
+  const instruction = () => f.screen.view().navigation?.instruction;
+  f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+  assert.equal(instruction(), "Head north");
+  f.advance(1000);
+  f.emit(f.fix({ coordinate: { latitude: 43.733, longitude: 7.42 } }));
+  assert.equal(instruction(), "Turn left onto Rue A");
+  assert.equal(f.calls.voice.at(-1)[1], `${id}:1:far`);
+  assert.match(f.calls.voice.at(-1)[2], /^In \d+ m, Turn left onto Rue A$/);
+  // A minute without fixes, then one fix past the turn: one fix alone does not skip it.
+  f.advance(60_000);
+  f.emit(f.fix({ coordinate: lane(43.7395) }));
+  assert.equal(instruction(), "Turn left onto Rue A");
+  assert.equal(f.screen.view().navigation?.offRoute, false);
+  f.advance(1000);
+  f.emit(f.fix({ coordinate: lane(43.7397) }));
+  assert.equal(instruction(), "Arrive");
+  assert.deepEqual(f.calls.voice.at(-1), ["update", `${id}:2`, "Arrive"]);
+});
+
+test("an out-and-back route does not skip its U-turn on fixes nearer the return lane", async () => {
+  const U = { latitude: 43.736, longitude: 7.42 },
+    back = { latitude: 43.736, longitude: 7.42025 },
+    B = { latitude: 43.7305, longitude: 7.42025 },
+    C = { latitude: 43.7305, longitude: 7.43 },
+    D = { latitude: 43.74, longitude: 7.43 };
+  const step = (instruction, coordinate, maneuver) => ({
+    instruction,
+    coordinate,
+    distanceMeters: 1,
+    maneuver,
+  });
+  const f = fixture({
+    shape: (from, to) => ({
+      geometry: [from, U, back, B, C, D, to],
+      steps: [
+        step("Head north", from, "depart"),
+        step("Make a U-turn", U, "u-turn"),
+        step("Turn left onto Rue B", B, "left"),
+        step("Turn left onto Rue C", D, "left"),
+        step("Arrive", to, "arrive"),
+      ],
+    }),
+  });
+  await planned(f);
+  f.screen.start();
+  await settle();
+  const instruction = () => f.screen.view().navigation?.instruction;
+  f.emit(f.fix({ coordinate: { latitude: 43.733, longitude: 7.42 } }));
+  f.advance(1000);
+  f.emit(f.fix({ coordinate: { latitude: 43.734, longitude: 7.42 } }));
+  assert.equal(instruction(), "Make a U-turn");
+  // Still heading north, but 8 m from the return lane and 12 m from this one.
+  for (const latitude of [43.7345, 43.735]) {
+    f.advance(1000);
+    f.emit(f.fix({ coordinate: { latitude, longitude: 7.42015 } }));
+    assert.equal(instruction(), "Make a U-turn");
+  }
+  f.advance(1000);
+  f.emit(f.fix({ coordinate: { latitude: 43.7359, longitude: 7.42 } }));
+  assert.equal(instruction(), "Turn left onto Rue B");
+});
+
+test("a failed reroute keeps guiding on the current route and leaves Reroute available", async () => {
+  const options = {};
+  const f = fixture(options);
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true);
+  const previous = surface.guidance().routeId,
+    stops = f.stops();
+  for (const error of [
+    new MapsFailure("rate-limited", "Too many route requests."),
+    new MapsFailure("timeout", "The route request timed out."),
+  ]) {
+    options.routeError = error;
+    f.screen.reroute();
+    assert.equal(surface.guidance()?.rerouting, true);
+    await settle();
+    const view = f.screen.view();
+    assert.equal(view.mode, "navigation");
+    assert.equal(surface.guidance()?.routeId, previous);
+    assert.equal(surface.guidance()?.rerouting, false);
+    assert.equal(surface.snapshot().rerouteError?.code, error.code);
+    assert.equal(
+      view.status.text,
+      "Couldn't get a new route. Still guiding on the current route.",
+    );
+    assert.equal(view.navigation?.canReroute, true);
+  }
+  assert.equal(f.stops(), stops, "the navigation watch keeps running");
+  delete options.routeError;
+  f.screen.reroute();
+  await settle();
+  assert.notEqual(surface.guidance()?.routeId, previous);
+  assert.equal(surface.snapshot().rerouteError, null);
+  assert.equal(f.screen.view().status.text, "New route ready.");
+});
+
+test("navigation fixes keep the agent's context revision; a new route changes it", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+  const before = f.calls.revisions.length,
+    revision = f.calls.revisions.at(-1);
+  for (let i = 1; i <= 5; i++) {
+    f.advance(1000);
+    f.emit(
+      f.fix({ coordinate: { latitude: 43.732 + i * 0.0001, longitude: 7.42 } }),
+    );
+  }
+  assert.ok(f.calls.revisions.length > before);
+  assert.deepEqual(
+    new Set(f.calls.revisions.slice(before)),
+    new Set([revision]),
+  );
+  assert.equal(f.calls.published.at(-1), "map-route");
+  f.screen.reroute();
+  await settle();
+  assert.equal(f.screen.view().status.text, "New route ready.");
+  assert.ok(f.calls.revisions.at(-1) > revision);
+});
+
+test("a location request gives up after its deadline; a start point ends it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture();
+  f.screen.locate();
+  assert.equal(f.screen.view().status.locationBusy, true);
+  t.mock.timers.tick(20_000);
+  let view = f.screen.view();
+  assert.equal(view.status.locationBusy, false);
+  assert.equal(
+    view.status.text,
+    "No location fix yet. Try again or enter a start point.",
+  );
+  await planned(f);
+  f.screen.locate();
+  assert.equal(f.screen.view().status.locationBusy, true);
+  f.screen.setOriginText(`${ORIGIN.latitude}, ${ORIGIN.longitude}`);
+  f.screen.planOrigin();
+  await settle();
+  view = f.screen.view();
+  assert.equal(view.status.locationBusy, false);
+  assert.equal(view.directions?.routeReady, true);
+  t.mock.timers.tick(20_000);
+  assert.equal(f.screen.view().directions?.routeReady, true);
+  assert.equal(f.screen.view().status.locationBusy, false);
+});
+
+test("the agent's location read waits for a fix its check accepts", async () => {
+  const f = fixture();
+  const watch = { stops: 0 };
+  f.host.agentLocation = {
+    awaitingPermission: () => false,
+    async start(oneShot, onFix) {
+      watch.oneShot = oneShot;
+      for (const accuracyMeters of [70, 10])
+        queueMicrotask(() =>
+          onFix(f.fix({ coordinate: ORIGIN, accuracyMeters })),
+        );
+    },
+    async stop() {
+      watch.stops++;
+    },
+  };
+  const fix = await f.screen
+    .surface(async () => true)
+    .locate(new AbortController().signal, (next) => next.accuracyMeters <= 50);
+  assert.equal(fix.accuracyMeters, 10);
+  assert.equal(watch.oneShot, false);
+  assert.ok(watch.stops >= 1);
+});
+
+test("a coordinate place shown by the agent can be saved", async () => {
+  const f = fixture();
+  await f.screen
+    .surface(async () => true)
+    .showPlace(
+      {
+        providerId: "fixture",
+        id: "geo:43.7314,7.4199",
+        name: "Palace",
+        coordinate: { latitude: 43.7314, longitude: 7.4199 },
+        attribution: "User-selected coordinates",
+        fetchedAt: Date.now(),
+      },
+      false,
+    );
+  f.screen.toggleSaved();
+  const view = f.screen.view();
+  assert.equal(view.status.text, "Place saved on this device.");
+  assert.equal(view.place?.saved, true);
+  assert.equal(view.place?.meta, "Coordinates");
 });

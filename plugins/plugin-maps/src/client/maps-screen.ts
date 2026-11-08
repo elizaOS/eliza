@@ -26,7 +26,11 @@ import { atStep, guidanceView, maneuverIcon } from "./guidance.ts";
 import type { MapsLocation, Position } from "./location.ts";
 import type { MapOverlay } from "./map-plane.ts";
 import { usableNavigationFix } from "./navigation-fix.ts";
-import { distanceToRoute, routeProgress } from "./route-distance.ts";
+import {
+  distanceToRoute,
+  type RouteProgress,
+  routeProgress,
+} from "./route-distance.ts";
 import type { SavedPlace } from "./saved-places.ts";
 import { type MapShare, placeShare, routeShare } from "./share.ts";
 import type { MapsController, MapsState } from "./state.ts";
@@ -239,6 +243,13 @@ const MODE_LABEL: Record<TravelMode, string> = {
   walk: "Walk",
   bicycle: "Bike",
 };
+/** Fastest believable travel per mode, in m/s; a fix further along than this is an outlier. */
+const TOP_SPEED: Record<TravelMode, number> = {
+  drive: 70,
+  transit: 70,
+  bicycle: 20,
+  walk: 8,
+};
 const COORDINATES = /^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/;
 const coordLabel = (point: Coordinate) =>
   `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`;
@@ -279,10 +290,15 @@ export class MapsScreenController {
   private navStep = 0;
   private navFix?: Position;
   private navRouteId = "";
+  /** The last guidance reading, for the route it was taken on. */
+  private navReading?: { routeId: string; progress: RouteProgress };
+  /** Last fix whose distance along the route was believable. */
+  private navTrusted?: { along: number; timestamp: number };
+  /** Step the previous fix had already passed, for the two-fix catch-up. */
+  private navPassed?: number;
   private follow = true;
   private offRoute = false;
   private rerouting = false;
-  private rerouteCleared = false;
   private navSession = 0;
   private backgroundRunning = false;
   private query = "";
@@ -300,6 +316,10 @@ export class MapsScreenController {
   private sharing?: { abort: AbortController; current: () => boolean };
   private readonly identities = new WeakMap<MapsScreenSelection, object>();
   private readonly searchIdentity = {};
+  /** Agent context revision; it changes only when what the agent could read changes. */
+  private contextRevision = 0;
+  private contextKey = "";
+  private contextIdentity?: object;
   private readonly releaseListeners = new Set<() => void>();
   private readonly lifecycle = {
     releases: 0,
@@ -782,11 +802,12 @@ export class MapsScreenController {
   locate(): void {
     if (this.disposed || this.locating || !this.host.active()) return;
     this.host.discardHandoff?.();
+    const controller = this.ensure();
     this.message = "";
     this.locating = true;
     if (!this.directions) this.selected = undefined;
     this.searching = false;
-    void this.ensure().locate();
+    void controller.locate();
     this.invalidate();
   }
 
@@ -827,8 +848,7 @@ export class MapsScreenController {
         "Connect a Maps provider to plan a route. No route has been calculated.";
     } else {
       this.directions = true;
-      this.message =
-        "Enter an origin latitude, longitude and press Enter, or explicitly use current location.";
+      this.message = "Search a place or enter coordinates.";
       if (
         item.origin !== "provider" &&
         snapshot.provider.status === "configured"
@@ -953,10 +973,10 @@ export class MapsScreenController {
     this.rerouting = false;
     this.navFix = undefined;
     this.navRouteId = route.id;
+    this.resetStepping();
     this.backgroundRunning = false;
     const session = ++this.navSession;
-    this.message =
-      "Waiting for a fresh location fix. Foreground guidance only.";
+    this.message = "Waiting for GPS…";
     void this.host.background
       .start(`Route to ${selected.label}`, "Waiting for location", (reason) => {
         if (session !== this.navSession || !this.navigating) return;
@@ -985,7 +1005,7 @@ export class MapsScreenController {
         this.backgroundRunning = running;
         if (running && !this.navFix)
           this.message =
-            "Waiting for a fresh location fix. Guidance continues with the screen off.";
+            "Waiting for GPS… Guidance continues with the screen off.";
         this.invalidate();
       });
     const locationFailed = (error: unknown) => {
@@ -1085,7 +1105,7 @@ export class MapsScreenController {
         return this.showAgentPlace(place, resolveDetails);
       },
       locationGranted: () => this.host.locationGranted(),
-      locate: async (signal) => {
+      locate: async (signal, accept) => {
         // Checked again right before the watch starts: an agent request never prompts.
         if (!(await this.host.locationGranted()))
           throw new MapsFailure(
@@ -1106,10 +1126,12 @@ export class MapsScreenController {
             return;
           }
           signal.addEventListener("abort", abort, { once: true });
+          // With a predicate the watch stays open until a fix passes it.
           this.host.agentLocation
             .start(
-              true,
+              !accept,
               (fix) => {
+                if (accept && !accept(fix)) return;
                 finish();
                 resolve(fix);
               },
@@ -1314,7 +1336,7 @@ export class MapsScreenController {
           locationState === "denied"
             ? this.host.deniedLocationHelp ||
               "Allow location in settings, or enter coordinates."
-            : "Location access does not share it with your agent.",
+            : "Your agent doesn't receive your location.",
         mapRetry: this.mapState === "error",
         mapsAppHandoff: !!mapsAppText && this.mapsAppAvailable === true,
       },
@@ -1365,13 +1387,18 @@ export class MapsScreenController {
       const detail = this.detail();
       view.place = {
         name: selected.label,
-        meta:
-          (selected.origin === "saved"
+        meta: [
+          selected.origin === "saved"
             ? "Saved on this device"
             : selected.origin === "location"
               ? "Device location"
-              : "Coordinates") +
-          (detail?.phone ? ` · Phone ${detail.phone}` : ""),
+              : selected.origin === "manual"
+                ? "Coordinates"
+                : "",
+          detail?.phone ? `Phone ${detail.phone}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
         address: detail?.address || coordLabel(selected.coordinate),
         ...(detail?.openingHours ? { hours: detail.openingHours } : {}),
         ...(detail?.website ? { website: detail.website } : {}),
@@ -1393,11 +1420,11 @@ export class MapsScreenController {
             : "No route",
         meta: route
           ? `${(route.distanceMeters / 1000).toFixed(1)} km · no live traffic`
-          : "Regional route",
+          : "",
         via: route
           ? (snapshot.originLabel ? `From ${snapshot.originLabel} · ` : "") +
             (route.steps[0]?.instruction || "")
-          : "Choose a real origin to calculate a route.",
+          : "Choose a start point.",
         modes: MODES.map((choice) => ({
           mode: choice,
           selected: snapshot.mode === choice,
@@ -1418,13 +1445,18 @@ export class MapsScreenController {
       const route = this.readyRoute();
       const progress =
         this.navFix && route && !this.arrived && !this.rerouting
-          ? atStep(
-              routeProgress(this.navFix.coordinate, route),
-              route.steps,
-              this.navStep,
-            )
+          ? this.navReading?.routeId === route.id
+            ? this.navReading.progress
+            : atStep(
+                routeProgress(this.navFix.coordinate, route),
+                route.steps,
+                this.navStep,
+              )
           : undefined;
-      const guidance = progress ? guidanceView(progress) : undefined;
+      const guidance =
+        progress && route
+          ? guidanceView(progress, undefined, route.mode)
+          : undefined;
       view.navigation = {
         arrived: this.arrived,
         distance: this.arrived
@@ -1473,23 +1505,29 @@ export class MapsScreenController {
   // ---- internals ------------------------------------------------------------
 
   private observe(next: MapsState): void {
-    if (this.navigating && this.rerouting) {
-      // An explicit reroute keeps the session; only a route planned after the
-      // reroute request cleared the old one replaces it.
-      if (next.route.phase !== "ready" && next.route.phase !== "error")
-        this.rerouteCleared = true;
-      else if (
-        next.route.phase === "ready" &&
-        next.route.value &&
-        this.rerouteCleared
-      ) {
+    if (
+      this.navigating &&
+      this.rerouting &&
+      next.route.phase === "ready" &&
+      next.route.value
+    ) {
+      // A replan keeps the current route until its replacement is ready.
+      if (next.route.value.id !== this.navRouteId) {
         this.rerouting = false;
         this.navStep = 0;
         this.navRouteId = next.route.value.id;
+        this.resetStepping();
         this.host.voice.pause();
         this.message = "New route ready.";
-      } else if (next.route.phase === "error")
-        void this.stopGuidance().catch(() => {});
+      } else if (next.rerouteError) {
+        this.rerouting = false;
+        this.offRoute =
+          !!this.navFix &&
+          distanceToRoute(this.navFix.coordinate, next.route.value.geometry) >
+            Math.max(75, this.navFix.accuracyMeters * 2);
+        this.message =
+          "Couldn't get a new route. Still guiding on the current route.";
+      }
     } else if (
       this.navigating &&
       (next.route.phase !== "ready" || next.route.value?.id !== this.navRouteId)
@@ -1518,7 +1556,9 @@ export class MapsScreenController {
     } else if (this.locating && next.position.phase === "error") {
       this.locating = false;
       this.message = next.position.error?.message || "Location unavailable.";
-    }
+    } else if (this.locating && next.position.phase === "idle")
+      // A start point chosen while locating ends the location request.
+      this.locating = false;
     this.invalidate();
   }
 
@@ -1557,21 +1597,27 @@ export class MapsScreenController {
     } else {
       const nearest = distanceToRoute(fix.coordinate, current.geometry);
       this.offRoute = nearest > Math.max(75, fix.accuracyMeters * 2);
+      const last = current.steps.length - 1;
       // A maneuver is passed once a fix comes within 40 m of it.
       while (
-        this.navStep < current.steps.length - 1 &&
+        this.navStep < last &&
         greatCircle(fix.coordinate, current.steps[this.navStep].coordinate) < 40
       )
         this.navStep++;
-      const reading = atStep(
-        routeProgress(fix.coordinate, current),
-        current.steps,
-        this.navStep,
+      const passedAlong =
+        this.navStep > 0 && this.navReading?.routeId === current.id
+          ? this.navReading.progress.maneuverAlongMeters[this.navStep - 1]
+          : undefined;
+      const progress = routeProgress(
+        fix.coordinate,
+        current,
+        passedAlong === undefined ? {} : { fromAlong: passedAlong },
       );
-      const guidance = guidanceView(reading);
-      this.message = this.offRoute
-        ? "Off route. Stop and calculate a new route."
-        : `Foreground guidance · location accuracy ±${Math.ceil(fix.accuracyMeters)} m${this.backgroundRunning ? " · continues with the screen off" : ""}`;
+      this.catchUp(progress, fix, current);
+      const reading = atStep(progress, current.steps, this.navStep);
+      this.navReading = { routeId: current.id, progress: reading };
+      const guidance = guidanceView(reading, undefined, current.mode);
+      this.message = this.offRoute ? "Off route." : "";
       if (this.offRoute) {
         this.host.voice.pause();
         this.host.background.update(
@@ -1581,7 +1627,7 @@ export class MapsScreenController {
       } else {
         if (reading.next)
           this.host.voice.update(
-            `${current.id}:${reading.next.index}`,
+            `${current.id}:${guidance.spokenKey}`,
             guidance.spoken,
           );
         this.host.background.update(
@@ -1591,6 +1637,44 @@ export class MapsScreenController {
       }
     }
     this.invalidate();
+  }
+
+  /**
+   * Passes maneuvers the device went by without coming within 40 m of them (a GPS gap,
+   * a parallel lane). Two fixes in a row must agree, and a fix further along than the
+   * mode's top speed allows since the last believable one does not count.
+   */
+  private catchUp(progress: RouteProgress, fix: Position, route: Route): void {
+    const trusted = this.navTrusted;
+    const seconds = trusted
+      ? Math.max(0, (fix.timestamp - trusted.timestamp) / 1000)
+      : 0;
+    const believable =
+      !trusted ||
+      progress.alongMeters - trusted.along <=
+        seconds * TOP_SPEED[route.mode] + 2 * fix.accuracyMeters + 50;
+    if (!believable || this.offRoute) {
+      this.navPassed = undefined;
+      return;
+    }
+    this.navTrusted = { along: progress.alongMeters, timestamp: fix.timestamp };
+    const margin = Math.max(40, 2 * fix.accuracyMeters);
+    const along = progress.maneuverAlongMeters;
+    let passed = this.navStep;
+    while (
+      passed < route.steps.length - 1 &&
+      progress.alongMeters > (along[passed] ?? Infinity) + margin
+    )
+      passed++;
+    if (passed > this.navStep && this.navPassed !== undefined)
+      this.navStep = Math.max(this.navStep, Math.min(passed, this.navPassed));
+    this.navPassed = passed > this.navStep ? passed : undefined;
+  }
+
+  private resetStepping(): void {
+    this.navReading = undefined;
+    this.navTrusted = undefined;
+    this.navPassed = undefined;
   }
 
   private rerouteFrom(from: Coordinate): Promise<void> | undefined {
@@ -1603,17 +1687,17 @@ export class MapsScreenController {
       return undefined;
     }
     this.rerouting = true;
-    this.rerouteCleared = false;
     this.offRoute = false;
     this.host.voice.pause();
     this.originText = coordLabel(from);
     this.message = "Planning a new route from here…";
-    const pending = this.ensure().reroute(from);
+    const pending = this.ensure().replan(from);
     this.invalidate();
     return pending;
   }
 
   private stopGuidance(): Promise<void> {
+    this.controller?.cancelReplan();
     this.host.voice.pause();
     this.navigating = false;
     this.rerouting = false;
@@ -1630,11 +1714,13 @@ export class MapsScreenController {
     place: Place,
     resolveDetails: boolean,
   ): Promise<void> {
+    // A coordinate place has no provider identity, so it saves as a plain pin.
     const item: MapsScreenSelection = {
       label: place.name,
       coordinate: place.coordinate,
-      providerId: place.providerId,
-      ...(resolveDetails ? { providerPlaceId: place.id } : {}),
+      ...(resolveDetails
+        ? { providerId: place.providerId, providerPlaceId: place.id }
+        : {}),
       origin: resolveDetails ? "provider" : "manual",
     };
     this.selected = item;
@@ -1781,6 +1867,16 @@ export class MapsScreenController {
     return !this.disposed && this.host.active();
   }
 
+  /** The context revision for this content; a new fix during navigation keeps it. */
+  private contextFor(identity: object, key: string): number {
+    if (identity !== this.contextIdentity || key !== this.contextKey) {
+      this.contextIdentity = identity;
+      this.contextKey = key;
+      this.contextRevision++;
+    }
+    return this.contextRevision;
+  }
+
   /** Publishes the selection to the agent context and asks the host to render. */
   private invalidate(selectionChanged = true): void {
     if (this.sharing && !this.sharing.current()) {
@@ -1832,15 +1928,26 @@ export class MapsScreenController {
           : undefined;
       // Route identity changes with origin, mode and provider updates; a failed or
       // loading route exposes no stale route read.
+      const kind = route ? "map-route" : "map-place";
       this.host.publishContext?.(
-        route ? "map-route" : "map-place",
+        kind,
         identity,
-        token,
+        this.contextFor(
+          identity,
+          `${kind}:${route?.id ?? ""}:${JSON.stringify(read?.() ?? null)}`,
+        ),
         read,
       );
     } else if (selectionChanged && this.searching && this.query.trim())
-      this.host.publishContext?.("map-search", this.searchIdentity, token);
-    else if (selectionChanged) this.host.clearContext?.();
+      this.host.publishContext?.(
+        "map-search",
+        this.searchIdentity,
+        this.contextFor(this.searchIdentity, `map-search:${this.query.trim()}`),
+      );
+    else if (selectionChanged) {
+      this.contextIdentity = undefined;
+      this.host.clearContext?.();
+    }
     queueMicrotask(() => {
       if (!this.disposed && token === this.revision && this.host.active())
         this.host.invalidate();
