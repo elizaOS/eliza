@@ -5,8 +5,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BackgroundNavigation } from "../src/client/background-navigation.ts";
-import { MapsFailure } from "../src/client/contracts.ts";
 import { createCloudMaps } from "../src/client/cloud-provider.ts";
+import { MapsFailure } from "../src/client/contracts.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -837,7 +837,6 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
   assert.equal(view.place?.address, "48.85660, 2.35220");
 });
 
-
 test("Cloud admission failure remains visible through explicit search without provider calls", async () => {
   for (const [status, code, message] of [
     [403, "subscription_required", "Maps needs an active Cloud subscription."],
@@ -846,12 +845,23 @@ test("Cloud admission failure remains visible through explicit search without pr
     const f = fixture({ unconfigured: true });
     await settle();
     const calls = [];
-    const maps = createCloudMaps(() => async (route) => {
-      calls.push(route);
-      throw Object.assign(new Error("private response must not be displayed"), {
-        name: "CloudProtocolError", code: "http", status, data: {code},
-      });
-    }, () => { throw Error("Denied provider must not be installed"); });
+    const maps = createCloudMaps(
+      () => async (route) => {
+        calls.push(route);
+        throw Object.assign(
+          new Error("private response must not be displayed"),
+          {
+            name: "CloudProtocolError",
+            code: "http",
+            status,
+            data: { code },
+          },
+        );
+      },
+      () => {
+        throw Error("Denied provider must not be installed");
+      },
+    );
     f.host.initialize = maps.initializeCloudMaps;
     f.host.diagnostics = maps.cloudMapsDiagnostics;
     await maps.initializeCloudMaps();
