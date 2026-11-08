@@ -163,12 +163,12 @@ function project(
   }
   return best;
 }
-/** Locate a point on a route: nearest position, distance along it, and the next two maneuvers.
- * Each step's maneuver is placed where its coordinate meets the line, in route order. */
-export function routeProgress(
-  point: Coordinate,
-  route: RouteGeometry,
-): RouteProgress {
+type RouteLine = { lengths: number[]; total: number; starts: number[] };
+// Validated routes are never mutated, so the object itself keys its line data.
+const routeLines = new WeakMap<RouteGeometry, RouteLine>();
+function routeLine(route: RouteGeometry): RouteLine {
+  const cached = routeLines.get(route);
+  if (cached) return cached;
   const line = route.geometry;
   const lengths: number[] = [];
   let total = 0;
@@ -177,8 +177,6 @@ export function routeProgress(
     lengths.push(length);
     total += length;
   }
-  const here = project(point, line, lengths);
-  const along = here.along;
   // Maneuvers never move backwards along the line, so a route that revisits a
   // street still orders its steps correctly.
   const starts: number[] = [];
@@ -186,6 +184,32 @@ export function routeProgress(
     starts.push(
       project(step.coordinate, line, lengths, starts.at(-1) ?? 0).along,
     );
+  const result = { lengths, total, starts };
+  routeLines.set(route, result);
+  return result;
+}
+export type RouteProgressOptions = Readonly<{
+  /** Last known distance along the line; the point is first sought from just behind it. */
+  fromAlong?: number;
+}>;
+/** Locate a point on a route: nearest position, distance along it, and the next two maneuvers.
+ * Each step's maneuver is placed where its coordinate meets the line, in route order.
+ * With `fromAlong`, a point within 75 m of the line ahead of that position is placed
+ * there, so a street the route revisits keeps the later pass; otherwise the whole line is scanned. */
+export function routeProgress(
+  point: Coordinate,
+  route: RouteGeometry,
+  options: RouteProgressOptions = {},
+): RouteProgress {
+  const line = route.geometry;
+  const { lengths, total, starts } = routeLine(route);
+  let here: Projection | undefined;
+  if (options.fromAlong !== undefined && Number.isFinite(options.fromAlong)) {
+    here = project(point, line, lengths, Math.max(0, options.fromAlong - 50));
+    if (here.distance > 75) here = undefined;
+  }
+  here ??= project(point, line, lengths);
+  const along = here.along;
   // A maneuver counts as reached within a metre, absorbing projection rounding.
   let stepIndex = 0;
   for (let i = 0; i < starts.length; i++)

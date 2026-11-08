@@ -133,6 +133,61 @@ test("route progress reports the next and following maneuver and the remaining s
   assert.ok(arrived.remainingMeters < 0.5);
 });
 
+test("route progress places the route's maneuvers once per route", () => {
+  let reads = 0;
+  const counted = steps.map((step) => ({
+    ...step,
+    get coordinate() {
+      reads++;
+      return step.coordinate;
+    },
+  }));
+  const route = {
+    geometry: [north(0), north(100), north(200)],
+    steps: counted,
+    durationSeconds: 200,
+  };
+  const first = routeProgress(north(20), route);
+  const placed = reads;
+  assert.ok(placed > 0);
+  const second = routeProgress(north(150), route);
+  assert.equal(reads, placed, "maneuvers are not projected again");
+  assert.deepEqual(second.maneuverAlongMeters, first.maneuverAlongMeters);
+  assert.equal(second.stepIndex, 1);
+});
+
+test("route progress from a known position keeps the later pass of a revisited street", () => {
+  const route = {
+    geometry: [north(0), north(200), north(0)],
+    steps: [],
+    durationSeconds: 400,
+  };
+  const point = north(100);
+  assert.ok(Math.abs(routeProgress(point, route).alongMeters - 100) < 0.5);
+  const back = routeProgress(point, route, { fromAlong: 250 });
+  assert.ok(Math.abs(back.alongMeters - 300) < 0.5);
+  assert.ok(back.offRouteMeters < 0.5);
+});
+
+test("route progress scans the whole line when the point is far from the window", () => {
+  const route = {
+    geometry: [north(0), north(200), north(0)],
+    steps: [],
+    durationSeconds: 400,
+  };
+  const away = { latitude: north(50).latitude, longitude: 200 / 111195 };
+  const off = routeProgress(away, route, { fromAlong: 300 });
+  assert.ok(Math.abs(off.alongMeters - 50) < 0.5);
+  assert.ok(Math.abs(off.offRouteMeters - 200) < 1);
+  const straight = {
+    geometry: [north(0), north(400)],
+    steps: [],
+    durationSeconds: 400,
+  };
+  const behind = routeProgress(north(100), straight, { fromAlong: 300 });
+  assert.ok(Math.abs(behind.alongMeters - 100) < 0.5);
+});
+
 test("route steps keep valid maneuvers and reject unknown ones", async () => {
   let bad = false;
   const controller = controllerWith({
