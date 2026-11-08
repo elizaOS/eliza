@@ -10,6 +10,7 @@ import {
   parsePhoneWorkflowSaveReceipt,
   phoneTimeTriggerCron,
   phoneWorkflowBytes,
+  phoneWorkflowScheduleRefusal,
   phoneWorkflowUsesDevice,
   validatePhoneWorkflowSpec,
   validatePhoneWorkflowTrigger,
@@ -195,6 +196,86 @@ test("the normalizer keeps step, scope, size and enrollment bounds", () => {
   );
   // A description of the byte limit uses UTF-8, as both the phone and the agent measure it.
   assert.equal(phoneWorkflowBytes({ text: "界" }), 14);
+});
+
+const device = { installationId: "install-1", enrollmentId: "enroll-1" };
+
+test("calendar ranges use the device contract's local-day and calendar id rules", () => {
+  const calendar = (range: Record<string, unknown>) => ({
+    ...base,
+    device,
+    steps: [
+      {
+        id: "calendar",
+        kind: "Read",
+        operation: "calendar_range",
+        range: {
+          calendarIds: ["com.google:work.example", "local:7"],
+          timeZone: "America/New_York",
+          maximumEvents: 10,
+          ...range,
+        },
+      },
+    ],
+  });
+  // Seven local days across the 2026-11-01 fall-back are 169 elapsed hours.
+  const accepted = validatePhoneWorkflowSpec(
+    calendar({
+      start: "2026-10-29T04:00:00.000Z",
+      end: "2026-11-05T05:00:00.000Z",
+    }),
+  ).steps[0];
+  assert.deepEqual(
+    accepted?.operation === "calendar_range" && accepted.range.calendarIds,
+    ["com.google:work.example", "local:7"],
+  );
+  assert.equal(
+    message(() =>
+      validatePhoneWorkflowSpec(
+        calendar({
+          start: "2026-10-29T04:00:00.000Z",
+          end: "2026-11-06T05:00:00.000Z",
+        }),
+      ),
+    ),
+    "Choose distinct calendars and a range of at most 7 days",
+  );
+});
+
+test("a scheduled workflow can't read a fixed Calendar range, but still decodes", () => {
+  const scheduled = validatePhoneWorkflowSpec({
+    ...base,
+    device,
+    trigger: weekdays,
+    steps: [
+      {
+        id: "calendar",
+        kind: "Read",
+        operation: "calendar_range",
+        range: {
+          calendarIds: ["7"],
+          start: "2026-10-27T00:00:00.000Z",
+          end: "2026-10-28T00:00:00.000Z",
+          timeZone: "UTC",
+          maximumEvents: 10,
+        },
+      },
+    ],
+  });
+  assert.match(
+    phoneWorkflowScheduleRefusal(scheduled) ?? "",
+    /scheduled workflow can’t read a fixed Calendar range/,
+  );
+  assert.equal(
+    phoneWorkflowScheduleRefusal({ ...scheduled, trigger: { kind: "manual" } }),
+    undefined,
+  );
+  assert.equal(
+    phoneWorkflowScheduleRefusal(
+      validatePhoneWorkflowSpec({ ...base, trigger: weekdays }),
+    ),
+    undefined,
+  );
 });
 
 test("time triggers compile to a cron in their own zone and describe themselves", () => {

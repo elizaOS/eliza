@@ -203,6 +203,14 @@ export function phoneWorkflowIdentifier(value: unknown): string {
     return fail("Invalid device or source identity");
   return id;
 }
+/** Opaque Calendar provider identity (may contain `.`, `:`), as the workflow device contract accepts it. */
+export const PHONE_WORKFLOW_CALENDAR_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+function calendarIdentifier(value: unknown): string {
+  const id = text(value, 128);
+  if (!PHONE_WORKFLOW_CALENDAR_ID_PATTERN.test(id))
+    return fail("Invalid calendar identity");
+  return id;
+}
 function canonicalUtc(value: unknown): string {
   const result = text(value, 30);
   if (
@@ -221,6 +229,50 @@ export function isPhoneWorkflowTimeZone(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+/**
+ * A calendar range that ends no later than the same local wall time `days` days
+ * after it starts, measured in the reviewed zone so DST days are neither cut
+ * short nor stretched. Same rule as plugin-calendar's `calendarRangeFitsLocalDays`,
+ * which the agent applies: both compare local wall-clock times, not elapsed time.
+ */
+export function workflowCalendarRangeFitsLocalDays(
+  start: string,
+  end: string,
+  timeZone: string,
+  days = 7,
+): boolean {
+  if (!Number.isInteger(days) || days < 1 || days > 7) return false;
+  const first = Date.parse(start),
+    last = Date.parse(end);
+  if (
+    !Number.isFinite(first) ||
+    !Number.isFinite(last) ||
+    last <= first ||
+    last - first > (days + 1) * 86_400_000 ||
+    !isPhoneWorkflowTimeZone(timeZone)
+  )
+    return false;
+  // Local wall-clock instants, as if the zone's clock were UTC.
+  const wall = (ms: number) => ms + zoneOffsetMinutes(ms, timeZone) * 60_000;
+  return wall(last) <= wall(first) + days * 86_400_000;
+}
+
+/**
+ * Why a scheduled workflow can't be saved or armed, or undefined. A Calendar
+ * range holds fixed dates, so each scheduled run would read the original days.
+ * Kept out of validatePhoneWorkflowSpec so already-saved specs still decode.
+ */
+export function phoneWorkflowScheduleRefusal(
+  spec: PhoneWorkflowSpec,
+): string | undefined {
+  if (
+    spec.trigger.kind === "time" &&
+    spec.steps.some((step) => step.operation === "calendar_range")
+  )
+    return "A scheduled workflow can’t read a fixed Calendar range yet. Use Run now, or remove the Calendar step.";
+  return undefined;
 }
 
 /** The exact reviewed reminder scope; any other window, zone or bound is refused. */
@@ -350,18 +402,17 @@ export function validatePhoneWorkflowSpec(input: unknown): PhoneWorkflowSpec {
         r.calendarIds.length > 16
       )
         return fail("Select 1 to 16 calendars");
-      const calendarIds = r.calendarIds.map(phoneWorkflowIdentifier),
-        start = canonicalUtc(r.start),
-        end = canonicalUtc(r.end),
-        timeZone = text(r.timeZone, 100);
-      if (
-        new Set(calendarIds).size !== calendarIds.length ||
-        Date.parse(end) <= Date.parse(start) ||
-        Date.parse(end) - Date.parse(start) > 7 * 86_400_000
-      )
-        return fail("Choose distinct calendars and a range of at most 7 days");
+      const timeZone = text(r.timeZone, 100);
       if (!isPhoneWorkflowTimeZone(timeZone))
         return fail("Choose a valid calendar time zone");
+      const calendarIds = r.calendarIds.map(calendarIdentifier),
+        start = canonicalUtc(r.start),
+        end = canonicalUtc(r.end);
+      if (
+        new Set(calendarIds).size !== calendarIds.length ||
+        !workflowCalendarRangeFitsLocalDays(start, end, timeZone)
+      )
+        return fail("Choose distinct calendars and a range of at most 7 days");
       if (
         typeof r.maximumEvents !== "number" ||
         !Number.isInteger(r.maximumEvents) ||

@@ -13,16 +13,17 @@ import { workflowApprovalNoticeIdentity } from "./notice-routes.ts";
 import {
   isPhoneWorkflowLocalDay,
   isPhoneWorkflowTimeZone,
+  PHONE_WORKFLOW_CALENDAR_ID_PATTERN,
   type PhoneWorkflowSpec,
   phoneWorkflowLocalDay,
   phoneWorkflowLocalDayBounds,
   SELECTED_REMINDERS_WINDOW,
   validatePhoneSelectedRemindersScope,
   validatePhoneWorkflowSpec,
-  zoneOffsetMinutes,
+  workflowCalendarRangeFitsLocalDays,
 } from "./phone-workflow.ts";
 
-export { SELECTED_REMINDERS_WINDOW };
+export { SELECTED_REMINDERS_WINDOW, workflowCalendarRangeFitsLocalDays };
 
 export interface WorkflowDeviceBinding {
   workflowId: string;
@@ -137,7 +138,7 @@ export function workflowId(value: unknown): string {
 /** Opaque Calendar provider identity (may contain `.`, `:`). */
 export function workflowCalendarId(value: unknown): string {
   const id = text(value, 128);
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(id) ? id : fail();
+  return PHONE_WORKFLOW_CALENDAR_ID_PATTERN.test(id) ? id : fail();
 }
 function digest(value: unknown): string {
   const result = text(value, 64);
@@ -177,34 +178,6 @@ export async function workflowSha(value: unknown): Promise<string> {
     new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)),
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
-}
-
-/**
- * A calendar range that ends no later than the same local wall time `days` days
- * after it starts, measured in the reviewed zone so DST days are neither cut
- * short nor stretched. Same rule as plugin-calendar's `calendarRangeFitsLocalDays`,
- * which the agent applies: both compare local wall-clock times, not elapsed time.
- */
-export function workflowCalendarRangeFitsLocalDays(
-  start: string,
-  end: string,
-  timeZone: string,
-  days = 7,
-): boolean {
-  if (!Number.isInteger(days) || days < 1 || days > 7) return false;
-  const first = Date.parse(start),
-    last = Date.parse(end);
-  if (
-    !Number.isFinite(first) ||
-    !Number.isFinite(last) ||
-    last <= first ||
-    last - first > (days + 1) * 86_400_000 ||
-    !isPhoneWorkflowTimeZone(timeZone)
-  )
-    return false;
-  // Local wall-clock instants, as if the zone's clock were UTC.
-  const wall = (ms: number) => ms + zoneOffsetMinutes(ms, timeZone) * 60_000;
-  return wall(last) <= wall(first) + days * 86_400_000;
 }
 
 export function parseWorkflowBinding(value: unknown): WorkflowDeviceBinding {

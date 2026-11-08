@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   PHONE_WORKFLOW_DEVICE_OPERATIONS,
   phoneWorkflowRequiredProtocol,
+  phoneWorkflowScheduleRefusal,
 } from '@elizaos/contracts/phone-workflow';
 /**
  * Chat-facing facade for authoring, searching, deploying, and inspecting native
@@ -221,6 +222,8 @@ export class WorkflowService extends Service {
     if (catalogRevision !== PHONE_CATALOG_REVISION || compilerRevision !== PHONE_COMPILER_REVISION)
       throw new WorkflowApiError('Workflow capability catalog changed; review again', 409);
     const spec = validatePhoneSpec(input);
+    const refusal = phoneWorkflowScheduleRefusal(spec);
+    if (refusal) throw new WorkflowApiError(refusal, 400);
     await this.assertPhoneEnrollment(spec, owner);
     if (spec.device && !this.runtime.getService('workflow_device_bridge'))
       throw new WorkflowApiError('Workflow device bridge unavailable', 409);
@@ -645,11 +648,12 @@ export class WorkflowService extends Service {
   ): Promise<WorkflowDefinitionResponse> {
     const current = await this.getWorkflow(id, ownerEntityId);
     // A typed schedule is armed only while its phone target is still the owner's verified enrollment.
-    if (storedPhoneTimeTrigger(current.metadata) && typeof ownerEntityId === 'string')
-      await this.assertPhoneEnrollment(
-        validatePhoneSpec(JSON.parse(String(current.metadata?.[PHONE_SPEC_KEY]))),
-        ownerEntityId
-      );
+    if (storedPhoneTimeTrigger(current.metadata)) {
+      const spec = validatePhoneSpec(JSON.parse(String(current.metadata?.[PHONE_SPEC_KEY])));
+      const refusal = phoneWorkflowScheduleRefusal(spec);
+      if (refusal) throw new WorkflowApiError(refusal, 400);
+      if (typeof ownerEntityId === 'string') await this.assertPhoneEnrollment(spec, ownerEntityId);
+    }
     return this.publicWorkflow(await this.embedded().activateWorkflow(id, expectedVersionId));
   }
 

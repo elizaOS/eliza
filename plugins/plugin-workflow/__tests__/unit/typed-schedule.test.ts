@@ -4,7 +4,10 @@ import {
   generatePhoneSpec,
   phoneGenerationInput,
 } from '../../src/services/phone-workflow-generation';
+import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../../src/services/embedded-workflow-service';
 import {
+  PHONE_CATALOG_REVISION,
+  PHONE_COMPILER_REVISION,
   PHONE_SPEC_KEY,
   phoneTriggerSchedule,
   phoneWorkflowCatalog,
@@ -12,6 +15,7 @@ import {
   typedScheduleAdmission,
   validatePhoneSpec,
 } from '../../src/services/phone-workflow-spec';
+import { WorkflowService } from '../../src/services/workflow-service';
 
 const weekdays = {
   kind: 'time' as const,
@@ -203,4 +207,65 @@ test('a reviewed local time skipped by a spring-forward transition is recorded a
   expect(
     typedScheduleAdmission(auckland, aucklandShifted, aucklandShifted, computeNextCronRunAtMs)
   ).toMatchObject({ status: 'missed', skippedLocalTime: '2026-09-27T02:30' });
+});
+
+test('a scheduled workflow with a fixed Calendar range is refused on save and on arming', async () => {
+  const calendarSpec = {
+    ...spec,
+    device: { installationId: 'install-1', enrollmentId: 'enroll-1' },
+    steps: [
+      {
+        id: 'calendar',
+        kind: 'Read',
+        operation: 'calendar_range',
+        range: {
+          calendarIds: ['7'],
+          start: '2026-10-27T04:00:00.000Z',
+          end: '2026-10-28T04:00:00.000Z',
+          timeZone: 'America/New_York',
+          maximumEvents: 10,
+        },
+      },
+    ],
+  };
+  const stored = { id: 'wf-1', name: 'Morning', active: false, steps: [], metadata: {} };
+  let armed = 0;
+  const services: Record<string, unknown> = {
+    workflow_device_bridge: { validateTarget: async () => {} },
+    [EMBEDDED_WORKFLOW_SERVICE_TYPE]: {
+      getWorkflow: async () => stored,
+      activateWorkflow: async () => {
+        armed++;
+        return { ...stored, active: true };
+      },
+    },
+  };
+  const runtime = {
+    getService: (name: string) => services[name] ?? null,
+    getModel: () => undefined,
+  };
+  const facade = new WorkflowService(runtime as never);
+  const refusal = async (task: () => Promise<unknown>) => {
+    try {
+      await task();
+      return undefined;
+    } catch (error) {
+      return [(error as { statusCode?: number }).statusCode, (error as Error).message];
+    }
+  };
+  const message =
+    'A scheduled workflow can’t read a fixed Calendar range yet. Use Run now, or remove the Calendar step.';
+  const validate = (input: unknown) =>
+    facade.validatePhoneDraft(input, PHONE_CATALOG_REVISION, PHONE_COMPILER_REVISION, 'owner-1');
+  expect(await refusal(() => validate(calendarSpec))).toEqual([400, message]);
+  const manual = await validate({ ...calendarSpec, trigger: { kind: 'manual' } });
+  expect(manual.spec.trigger).toEqual({ kind: 'manual' });
+  // A schedule saved before the refusal still decodes, but is not armed again.
+  stored.metadata = { [PHONE_SPEC_KEY]: JSON.stringify(calendarSpec) };
+  expect(storedPhoneTimeTrigger(stored.metadata)).toEqual(weekdays);
+  expect(await refusal(() => facade.activateWorkflow('wf-1'))).toEqual([400, message]);
+  expect(armed).toBe(0);
+  stored.metadata = { [PHONE_SPEC_KEY]: JSON.stringify(spec) };
+  expect((await facade.activateWorkflow('wf-1')).active).toBe(true);
+  expect(armed).toBe(1);
 });
