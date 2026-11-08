@@ -17,7 +17,11 @@ import {
   identityMergeConfirmationTable,
   identityMergeJournalTable,
 } from "../../schema/identityAuthority";
-import { computeIdentityRequestDigest, SqlPrincipalService } from "../../services/sql-principal";
+import {
+  computeIdentityPersonLinkRequestDigest,
+  computeIdentityRequestDigest,
+  SqlPrincipalService,
+} from "../../services/sql-principal";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -629,5 +633,52 @@ describe("SQL identity authority", () => {
         purpose: "role_resolution",
       })
     ).resolves.toEqual({ decision: "not_bound", reason: "no_active_binding" });
+  });
+
+  it("orders and verifies person-link principals case-insensitively, like the uuid columns", async () => {
+    // The private route accepts upper-case UUIDs (validateUuid is
+    // case-insensitive), e.g. the form Swift's UUID().uuidString produces.
+    const leftId = `a${crypto.randomUUID().slice(1)}` as UUID;
+    const rightId = `b${crypto.randomUUID().slice(1)}` as UUID;
+    await db
+      .insert(entityTable)
+      .values([leftId, rightId].map((id) => ({ id, agentId, names: [id], metadata: {} })));
+    const [state] = await db
+      .select()
+      .from(identityAuthorityStateTable)
+      .where(eq(identityAuthorityStateTable.agentId, agentId));
+    const generation = state?.generation ?? 0;
+    const attestValue = {
+      agentId,
+      leftPrincipalId: leftId,
+      rightPrincipalId: rightId.toUpperCase() as UUID,
+      actorPrincipalId: actorId,
+      actorRole: "OWNER" as const,
+      authority: "authenticated_private_route" as const,
+      transport: "http" as const,
+      reason: "same person on two connectors",
+      idempotencyKey: "person-link-upper-case",
+      expectedGeneration: generation,
+    };
+
+    const attestation = await service.attestPersonLink({
+      ...attestValue,
+      requestDigest: computeIdentityPersonLinkRequestDigest(attestValue),
+    });
+    expect([attestation.leftPrincipalId, attestation.rightPrincipalId]).toEqual([leftId, rightId]);
+    await expect(
+      service.verifyPersonLink({
+        agentId,
+        leftPrincipalId: rightId.toUpperCase() as UUID,
+        rightPrincipalId: leftId,
+        expectedGeneration: generation + 1,
+      })
+    ).resolves.toMatchObject({ decision: "attested" });
+    expect(() =>
+      computeIdentityPersonLinkRequestDigest({
+        ...attestValue,
+        rightPrincipalId: leftId.toUpperCase() as UUID,
+      })
+    ).toThrow(expect.objectContaining({ code: "IDENTITY_PERSON_LINK_INPUT_INVALID" }));
   });
 });

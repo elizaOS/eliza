@@ -114,10 +114,14 @@ export function computeIdentityRequestDigest(
 }
 
 function normalizePersonLinkPair(left: UUID, right: UUID): readonly [UUID, UUID] {
-  if (left === right) {
+  // uuid columns compare case-insensitively; order the canonical lower-case
+  // form so the pair matches the left < right check and stored rows.
+  const leftId = left.toLowerCase() as UUID;
+  const rightId = right.toLowerCase() as UUID;
+  if (leftId === rightId) {
     fail("IDENTITY_PERSON_LINK_INPUT_INVALID", "Person-link principals must be distinct.");
   }
-  return left < right ? [left, right] : [right, left];
+  return leftId < rightId ? [leftId, rightId] : [rightId, leftId];
 }
 
 export function computeIdentityPersonLinkRequestDigest(
