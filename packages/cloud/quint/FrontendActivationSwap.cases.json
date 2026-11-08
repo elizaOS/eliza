@@ -2,12 +2,13 @@
   "sources": [
     "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
     "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/db/schemas/apps.ts",
     "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
     "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts",
     "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.activate-race.pglite.test.ts"
   ],
   "conformance": "packages/cloud/quint/check-frontend-activation-swap.mjs",
-  "bounds": "One app with one active and one superseded deployment. One rollback and one delete can interleave between their initial read and their guarded write. The projection assumes each database operation finishes atomically or rolls back its tentative changes. Upload, finalize, object removal, authorization, multiple activation writers, process recovery and replica lag are separate.",
+  "bounds": "One retained parent app with one active and one superseded deployment. One rollback and one inactive deployment deletion can interleave between their initial read and guarded write. Activation takes the parent app lock before its atomic swap. The separate app_frontend_deletion model checks that lock against whole-app deletion. The frontend_publication model checks bounded upload, finalization and publication. This projection excludes other activation writers, artifact cleanup, authorization, process recovery and replica lag.",
   "cases": [
     {
       "name": "rollback-and-delete",
@@ -27,7 +28,7 @@
           "property": "RejectedWritesKeepLiveRow",
           "expect": "holds",
           "assumptions": [
-            "No scheduling fairness. The deletion predicate is rechecked at write time. A failed promotion rolls back the demotion in the same transaction."
+            "No scheduling fairness. The inactive deployment deletion predicate is rechecked at write time. A failed promotion rolls back the demotion in the same transaction."
           ]
         },
         {

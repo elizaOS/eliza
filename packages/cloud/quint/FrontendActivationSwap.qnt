@@ -1,5 +1,7 @@
 // The repository commits the live-row swap or rolls back its demotion.
-// The DELETE route can interleave between the rollback service's read and swap.
+// Deployment DELETE can interleave between the rollback service's read and swap.
+// The parent app stays present. Its row lock serializes activation with whole-app
+// deletion, which is checked separately by app_frontend_deletion.
 module FrontendActivationSwap {
   type State = { current: str, target: str, activate: str, delete: str }
   var s: State
