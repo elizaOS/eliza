@@ -936,7 +936,7 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite deployment model yet.",
+      "FrontendActivationSwap covers the active-row swap when rollback and deletion race. Build, upload and publication remain unmodeled.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Only complete artifacts are published | Active deployment changes atomically | Rollback retains immutable artifact identity",
       "Abstract states: queued, building, uploading, finalizing, ready, active, superseded, failed, deleted"
@@ -1355,7 +1355,7 @@
     "status": "unmodeled",
     "limitations": [
       "Reviewed source families: shared/src/lib/services/app-deploy, shared/src/lib/services/apps-deploy, shared/src/db/repositories/app-frontend",
-      "Unmodeled obligations: upload and finalize, single active deployment, rollback, ingress publication"
+      "FrontendActivationSwap covers the active-row swap for one rollback and deletion. Upload, finalize, concurrent activations and ingress publication remain unmodeled."
     ]
   },
   {
