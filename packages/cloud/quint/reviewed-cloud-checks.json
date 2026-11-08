@@ -166,5 +166,58 @@
         "0559 preserves unknown historical dispatch and enforces write-once new dispatch"
       ]
     }
+  ],
+  "subscription_event_receipts.qnt": [
+    {
+      "file": "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+      "required": [
+        "accepts exact command replay and rejects digest or tenant divergence",
+        "fences provider dispatch as outcome-unknown and resolves it with revision CAS",
+        "deduplicates exact provider events and lease-CAS applies one revision",
+        "converges reordered authoritative observations and replays a coherent revision",
+        "rebuilds a terminated paid subscription back to the Free projection",
+        "conserves allowance across reserve, partial finalize, release, and cancellation",
+        "forfeits a partial reservation release after its allowance period expires",
+        "records exact incidents, scans due work, and resolves tenant-scoped evidence",
+        "advances deletion fences by local revision without inventing a provider version",
+        "atomically records unfunded original and preserves exact concurrent replay without a grant",
+        "refuses to backfill an existing digest-only receipt",
+        "changed original invoice on replay cannot overwrite retained evidence",
+        "database ownership failure rolls back the newly inserted receipt",
+        "observation storage rejects direct mutation and deletion",
+        "receipt input cannot borrow another organization's observation"
+      ]
+    },
+    {
+      "file": "packages/cloud/shared/src/db/repositories/subscription-lifecycle-finalization.pglite.test.ts",
+      "required": [
+        "commits lifecycle, current projection and receipt before billing admission sees Free",
+        "notice insertion failure rolls back source, projection, receipt, generation and audit together",
+        "a projection failure rolls back the lifecycle journal and leaves the receipt retryable",
+        "a receipt failure rolls back both lifecycle and projection",
+        "audit insertion failure rolls back lifecycle, projection, generation and receipt",
+        "lease expiration after projection still rolls back every domain write",
+        "a lease that expired during provider retrieval cannot write domain state",
+        "stale source and stale projection CAS cannot be hidden by lifecycle replay",
+        "current event replay with different active cannot finalize its receipt",
+        "current event replay with different digest cannot finalize its receipt",
+        "current event replay with different terminal_time cannot finalize its receipt",
+        "matching current event replay can finish a previously unfinalized terminal receipt",
+        "finishing an already published terminal observation preserves generation and audit",
+        "response-loss replay returns historical receipt without overwriting a replacement's admission",
+        "unsupported active policy cannot publish or apply receipt",
+        "unsupported grace policy cannot publish or apply receipt",
+        "unsupported trialing policy cannot publish or apply receipt",
+        "unsupported past_due policy cannot publish or apply receipt",
+        "mismatched provider/plan/period observation fails closed: provider_environment",
+        "mismatched provider/plan/period observation fails closed: customer_id",
+        "mismatched provider/plan/period observation fails closed: subscription_item_id",
+        "mismatched provider/plan/period observation fails closed: plan_key",
+        "mismatched provider/plan/period observation fails closed: earlier_period_start",
+        "mismatched provider/plan/period observation fails closed: invalid_period_start",
+        "deleted-account, cross-tenant and unavailable authority cannot finalize",
+        "an immutable invoice receipt cannot enter terminal lifecycle finalization"
+      ]
+    }
   ]
 }
