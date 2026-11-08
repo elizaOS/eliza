@@ -1,4 +1,8 @@
 import {
+  setInferenceOrganizationActive,
+  setInferenceSubjectActive,
+} from "../../lib/services/inference-credential-revocation";
+import {
   clearDisabledInferencePolicyForAccountDeletion,
   withInferenceUserPolicyMutation,
 } from "../../lib/services/inference-policy-fence";
@@ -533,6 +537,11 @@ export class AccountDeletionRequestsRepository {
           severity: "fatal",
         });
       }
+      // Fence the gate last, still before commit. A rollback leaves the request
+      // "requested", which cancellation refuses, so only a replay of this
+      // activation can repair the gate: no failed write above may reach it.
+      await setInferenceOrganizationActive(organization.id, false);
+      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       return { outcome: "activated", request: activated };
     });
   }
@@ -543,8 +552,34 @@ export class AccountDeletionRequestsRepository {
     leaseOwnerDigest: string;
     now: Date;
     leaseMilliseconds: number;
+    irreversibleRequest?: {
+      requestDigest: string;
+      lifecycleRevision: number;
+      userId: string;
+      organizationId: string;
+    };
   }): Promise<AccountDeletionPhaseLease | undefined> {
     return await dbWrite.transaction(async (tx) => {
+      if (input.irreversibleRequest) {
+        const expected = input.irreversibleRequest;
+        const [request] = await tx
+          .select({ id: accountDeletionRequests.id })
+          .from(accountDeletionRequests)
+          .where(
+            and(
+              eq(accountDeletionRequests.id, input.requestId),
+              eq(accountDeletionRequests.request_digest, expected.requestDigest),
+              eq(accountDeletionRequests.lifecycle_revision, expected.lifecycleRevision),
+              eq(accountDeletionRequests.user_id, expected.userId),
+              eq(accountDeletionRequests.organization_id, expected.organizationId),
+              inArray(accountDeletionRequests.status, ["scheduled", "processing"]),
+              isNotNull(accountDeletionRequests.irreversible_at),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!request) return undefined;
+      }
       const [current] = await tx
         .select()
         .from(accountDeletionPhaseReceipts)
@@ -582,6 +617,15 @@ export class AccountDeletionRequestsRepository {
       if (current.lease_expires_at && current.lease_expires_at > input.now) return undefined;
       if (current.next_attempt_at && current.next_attempt_at > input.now) return undefined;
 
+      // Publish the request state with its first owned phase lease. A canonical
+      // provider may already be complete, so progress cannot depend on a retry
+      // error calling scheduleRequestReconciliation first.
+      if (input.irreversibleRequest) {
+        await tx
+          .update(accountDeletionRequests)
+          .set({ status: "processing", updated_at: input.now })
+          .where(eq(accountDeletionRequests.id, input.requestId));
+      }
       const generation = current.lease_generation + 1;
       const [leased] = await tx
         .update(accountDeletionPhaseReceipts)
@@ -2071,6 +2115,10 @@ export class AccountDeletionRequestsRepository {
       }
 
       const restoredRevision = request.lifecycle_revision + 1;
+      // Inside the transaction: a gate failure rolls back and the cancellation
+      // retries. After commit, a failure would leave the account denied for good.
+      await setInferenceSubjectActive(organization.id, user.id, true, "account");
+      await setInferenceOrganizationActive(organization.id, true);
       await tx
         .update(organizations)
         .set({

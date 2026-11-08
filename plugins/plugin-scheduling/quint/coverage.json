@@ -1,0 +1,28 @@
+[
+  {
+    "id": "plugin-scheduling.ScheduledTaskCommit",
+    "model": "plugins/plugin-scheduling/quint/ScheduledTaskCommit.qnt",
+    "sources": [
+      "plugins/plugin-scheduling/src/scheduled-task/store.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/runner.ts"
+    ],
+    "invariants": [
+      "ReceiptLogAtomicity",
+      "ApplyAtMostOnce",
+      "ClaimAtMostOnce",
+      "DurableReceiptAccounting",
+      "AuthorizationBound",
+      "TypeOK"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One task row, two callers, two receipt identities and at most two attempts per caller.",
+      "Standard scheduled-to-fired claims are covered. Follow-up claim expectations, recurrence, host admission policy, apply-intent reservation and general lifecycle verbs still need separate models.",
+      "The model represents exact state/metadata/definition equality using a revision token and atomic SQL statements. SQL execution and JSON projection need the implementation tests."
+    ],
+    "implementationTests": [
+      "plugins/plugin-scheduling/src/scheduled-task/runner-host-admission.integration.test.ts",
+      "plugins/plugin-scheduling/src/scheduled-task/record-store.test.ts"
+    ]
+  }
+]

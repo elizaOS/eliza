@@ -334,13 +334,6 @@ export const ActionMode = {
 } as const;
 export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 
-/** Hook modes that run in parallel with the corresponding pipeline step. */
-export const NON_BLOCKING_MODES = new Set<ActionMode>([
-	ActionMode.ALWAYS_DURING,
-	ActionMode.CONTEXT_DURING,
-	ActionMode.RESPONSE_HANDLER_DURING,
-]);
-
 /** All non-PLANNER hook modes, in canonical pipeline order. */
 export const HOOK_MODES: readonly ActionMode[] = [
 	ActionMode.ALWAYS_BEFORE,
@@ -354,9 +347,6 @@ export const HOOK_MODES: readonly ActionMode[] = [
 	ActionMode.ALWAYS_AFTER,
 ];
 
-/**
- * Represents an action the agent can perform
- */
 export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
 
 /**
@@ -378,6 +368,7 @@ export type DisclosureGate =
 	| { require: "owner_exclusive" }
 	| { require: "audience_admission"; subject: DisclosureSubject };
 
+/** An action the agent can perform. */
 export interface Action {
 	/** Pure source-owned typed selection adapter for relevance only, never permission. */
 	selectionIdentity?: (selection: unknown) => string | undefined;
@@ -698,8 +689,6 @@ export interface Action {
 	 * caller passed. This lets the planner run on a large/cloud model while
 	 * cheap, narrow actions run on a small or local model.
 	 *
-	 * Closes gap A5 / W1-R2 in the Eliza-1 pipeline plan.
-	 *
 	 * Semantics (cost-aware, ascending escalation on failure):
 	 * - `LOCAL` — prefer a local-provider registration (e.g. Ollama, LM
 	 * Studio, MLX, llama.cpp). If the local registration errors
@@ -724,8 +713,6 @@ export interface Action {
 
 /** Action model-routing classes escalate through the registered LOCAL → TEXT_SMALL → TEXT_LARGE fallback chain. */
 export type ActionModelClass = "TEXT_LARGE" | "TEXT_SMALL" | "LOCAL";
-
-export type { JsonPrimitive } from "./primitives";
 
 /**
  * Value types allowed in provider results.
@@ -787,6 +774,11 @@ export interface ProviderResult {
 	 * deferred-provider restoration contract. Stored provider evidence stays exact. */
 	discoveryText?: string;
 
+	/** A reference-only result whose complete body requires a fresh composition.
+	 * Keep it discoverable even when the notice is longer than the deferred text.
+	 * This is presentation metadata, never authorization to read the body. */
+	referenceBodyDeferred?: true;
+
 	/**
 	 * Complete, explicit retrieval representation used only when the primary
 	 * text cannot fit the selected model's input boundary. This must describe
@@ -818,6 +810,15 @@ export interface ProviderExecutionContext {
 	signal: AbortSignal;
 	/** Providers admitted to this composition, including reused results; registration alone does not establish ownership. */
 	selectedProviderNames?: readonly string[];
+	/**
+	 * The caller shows the model this provider's shorter `discoveryText` in
+	 * place of `text`; the complete `text` is read only through a fresh
+	 * composition (provider restoration). The provider may skip reads that feed
+	 * only `text`, and `text` must then state each skipped read so it never
+	 * reads as empty data. Composition sets this only for owner-exclusive
+	 * providers, whose results are re-run on every composition and never reused.
+	 */
+	referenceBodyDeferred?: boolean;
 }
 
 /**
@@ -935,51 +936,6 @@ export interface Provider {
 		state: State,
 		context?: ProviderExecutionContext,
 	) => Promise<ProviderResult>;
-}
-
-/**
- * Error codes an action handler may set on `ActionResult.values.error` or
- * `ActionResult.data.error` to signal that the next step requires a fresh
- * confirmation message from the user. Native planner execution checks for
- * these (alongside the canonical `requiresConfirmation: true` flag) and
- * pauses the chain so the agent does not spin re-running the same step.
- *
- * Keep this list aligned with `ACTION_CONFIRMATION_STATUS_VALUES` below —
- * both the type and the runtime set are exported so callers (actions,
- * test-spies, downstream packages) can `Set.has(code)` without re-declaring
- * the strings.
- */
-export type ActionConfirmationStatus =
-	| "CONFIRMATION_REQUIRED"
-	| "NOT_CONFIRMED"
-	| "REQUIRES_CONFIRMATION"
-	| "AWAITING_CONFIRMATION"
-	| "NEEDS_CONFIRMATION";
-
-/**
- * Runtime set of {@link ActionConfirmationStatus} values. Frozen so callers
- * cannot mutate the canonical list.
- */
-export const ACTION_CONFIRMATION_STATUS_VALUES: ReadonlySet<ActionConfirmationStatus> =
-	new Set<ActionConfirmationStatus>([
-		"CONFIRMATION_REQUIRED",
-		"NOT_CONFIRMED",
-		"REQUIRES_CONFIRMATION",
-		"AWAITING_CONFIRMATION",
-		"NEEDS_CONFIRMATION",
-	]);
-
-/**
- * Type-narrowing predicate. Returns true when `value` is a known confirmation
- * status string. Use this on stringly-typed error fields off `ActionResult`.
- */
-export function isActionConfirmationStatus(
-	value: unknown,
-): value is ActionConfirmationStatus {
-	return (
-		typeof value === "string" &&
-		ACTION_CONFIRMATION_STATUS_VALUES.has(value as ActionConfirmationStatus)
-	);
 }
 
 /** Tool-owned current inventory evidence. Notes retain their durable revision proof. */

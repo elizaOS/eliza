@@ -79,8 +79,11 @@ beforeAll(async () => {
     CREATE TABLE user_moderation_status(user_id uuid, status text, total_violations integer);
     CREATE TABLE user_identities(user_id uuid, steward_user_id text, expires_at timestamptz, is_anonymous boolean);
   `);
+  // The standing fence advances an authority generation when one exists.
+  await client.exec(
+    "CREATE TABLE organization_subscription_authorities(organization_id uuid, policy_generation bigint)",
+  );
   for (const name of [
-    "organization_subscription_authorities",
     "organization_entitlements",
     "billing_subscriptions",
     "billing_subscription_revisions",
@@ -126,11 +129,14 @@ describe("rate-only enrollment", () => {
   test("blocks the object, enrolls rate only, and publishes the advanced epoch after commit", async () => {
     await withFlags(() => fence.enableInferenceRatePolicyAdmission(ORG));
     expect(await authority(ORG)).toEqual({ enabled: false, rate_enabled: true, epoch: "1" });
+    // The standing fence (cache-served admission) wraps the rate-policy permit.
     expect(calls.map((call) => [call.name, call.path])).toEqual([
+      [ORG, "/policy-fence/begin"],
       [ORG, "/policy-mutation/begin"],
+      [ORG, "/policy-fence/commit"],
       [ORG, "/policy-mutation/commit"],
     ]);
-    expect(calls[1]?.body.fenceToken).toBe(`token-${String(calls[0]?.body.mutationId)}`);
+    expect(calls[3]?.body.fenceToken).toBe(`token-${String(calls[1]?.body.mutationId)}`);
   });
 
   test("a later key cap change takes a permit and advances the epoch", async () => {
@@ -141,7 +147,9 @@ describe("rate-only enrollment", () => {
     );
     expect(await authority(ORG)).toEqual({ enabled: false, rate_enabled: true, epoch: "2" });
     expect(calls.map((call) => call.path)).toEqual([
+      "/policy-fence/begin",
       "/policy-mutation/begin",
+      "/policy-fence/commit",
       "/policy-mutation/commit",
     ]);
   });
@@ -160,7 +168,7 @@ describe("rate-only enrollment", () => {
     expect(await authority(ORG)).toMatchObject({ epoch: "2" });
   });
 
-  test("other tenants are not fenced or published", async () => {
+  test("other tenants take only the standing fence, never a rate-policy publication", async () => {
     await withFlags(() =>
       fence.withInferencePolicyMutation({ organizationIds: [OTHER] }, async (tx) => {
         await tx.execute(
@@ -168,14 +176,19 @@ describe("rate-only enrollment", () => {
         );
       }),
     );
-    expect(calls).toHaveLength(0);
+    expect(calls.map((call) => [call.name, call.path])).toEqual([
+      [OTHER, "/policy-fence/begin"],
+      [OTHER, "/policy-fence/commit"],
+    ]);
   });
 
   test("withdrawal is fenced too and leaves funded escrow off", async () => {
     await withFlags(() => fence.disableInferenceRatePolicyAdmission(ORG));
     expect(await authority(ORG)).toEqual({ enabled: false, rate_enabled: false, epoch: "3" });
-    expect(calls.slice(0, 2).map((call) => call.path)).toEqual([
+    expect(calls.map((call) => call.path)).toEqual([
+      "/policy-fence/begin",
       "/policy-mutation/begin",
+      "/policy-fence/commit",
       "/policy-mutation/commit",
     ]);
   });

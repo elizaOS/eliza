@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One consume, one pre-clear edit/retirement/authority/external-write event, one clear, one rollback, one optional competing rollback write. Faults before/after durable writes, plus review read failure. Revisions 0..3. synchronous host clear, with asynchronous host completion covered separately.",
+  "cases": [
+    {
+      "name": "bounded-consume-rollback",
+      "main": "DraftConsumeRollback",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 5,
+      "samples": 1000
+    }
+  ]
+}

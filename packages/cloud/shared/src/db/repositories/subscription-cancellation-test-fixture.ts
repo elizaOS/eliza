@@ -19,6 +19,13 @@ export async function installCancellationTestSchema(execute: (query: string) => 
       if (statement.trim()) await execute(statement);
   }
   await applyAppBillingTestMigrations(execute, true);
+  const settleMigration = await readFile(
+    new URL("../migrations/0554_subscription_cancellation_dispatch_settle.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of settleMigration.split("--> statement-breakpoint"))
+    if (statement.trim())
+      await execute(statement.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
   const reviewMigration = await readFile(
     new URL("../migrations/0510_subscription_renewal_review_receipts.sql", import.meta.url),
     "utf8",

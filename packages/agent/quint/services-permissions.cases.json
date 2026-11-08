@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/permissions-registry.ts"],
+  "bounds": {
+    "domain": "One permission, one queued probe and revisions 0..2.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_permissions",
+      "main": "services_permissions",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

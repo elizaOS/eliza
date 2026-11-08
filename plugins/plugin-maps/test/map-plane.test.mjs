@@ -67,6 +67,14 @@ function fixture(basemap, effects = {}) {
     getZoom() {
       return this.options.zoom;
     }
+    getBounds() {
+      return {
+        getNorth: () => 43.76,
+        getSouth: () => 43.72,
+        getEast: () => 7.45,
+        getWest: () => 7.4,
+      };
+    }
     getSource(id) {
       return this.sources[id];
     }
@@ -117,6 +125,7 @@ function fixture(basemap, effects = {}) {
     MapLibre: ControlledMap,
     Marker,
     URL,
+    AbortController,
     setWorkerUrl() {},
     setWorkerCount() {},
     addProtocol: (...input) => protocols.push(input),
@@ -278,6 +287,49 @@ test("destroy is idempotent and ignores late map callbacks and updates", () => {
   assert.equal(f.map.removeCalls, 1);
   assert.equal(f.map.marker, undefined);
   assert.equal(f.container.dataset.mapReady, undefined);
+});
+test("updates wait for the style to load, then draw while tiles are still loading", () => {
+  const f = fixture(regional);
+  // MapLibre's isStyleLoaded() is false before "load" and again whenever
+  // in-view tiles load, for example after a camera move.
+  let styleLoaded = false;
+  f.map.isStyleLoaded = () => styleLoaded;
+  const place = { latitude: 43.74, longitude: 7.42 };
+  f.plane.update(place);
+  assert.equal(f.map.marker, undefined, "nothing is drawn before load");
+  styleLoaded = true;
+  f.map.events.load();
+  assert.deepEqual(Array.from(f.map.marker.point), [7.42, 43.74]);
+  styleLoaded = false;
+  f.plane.update(
+    place,
+    {
+      id: "route-1",
+      geometry: [{ latitude: 43.73, longitude: 7.41 }, place],
+    },
+    {
+      pins: [
+        {
+          id: "pin-1",
+          label: "Cafe",
+          coordinate: { latitude: 43.735, longitude: 7.415 },
+        },
+      ],
+    },
+  );
+  assert.ok(f.map.sources.route, "the route line is drawn");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(f.map.sources.route.data.geometry.coordinates)),
+    [
+      [7.41, 43.73],
+      [7.42, 43.74],
+    ],
+  );
+  assert.ok(f.map.fit, "the new route is framed");
+  const pin = f.map.markers.find(
+    (marker) => marker.element.dataset.mapPin === "pin-1",
+  );
+  assert.deepEqual(pin && Array.from(pin.point), [7.415, 43.735]);
 });
 test("explicit global style starts at world scale, permits global manual pins and retains existing ownership cleanup", () => {
   const f = fixture(global);
@@ -664,4 +716,81 @@ test("scaled screen overlays return MapLibre layout-pixel insets", () => {
     left: 24,
     right: 284,
   });
+});
+
+/** Objects built inside the VM realm compare structurally after a JSON round trip. */
+const plain = (value) => JSON.parse(JSON.stringify(value));
+test("a Cloud raster basemap draws Cloud tiles through its own protocol and reports the copyright", async () => {
+  const tiles = [];
+  const views = [];
+  const copyrights = [];
+  const raster = {
+    kind: "cloud-raster",
+    attribution: "Map data © Google",
+    minZoom: 0,
+    maxZoom: 22,
+    tileSize: 256,
+    tile: async (z, x, y) => {
+      tiles.push([z, x, y]);
+      return new Uint8Array([1, 2, 3]).buffer;
+    },
+    copyright: async (view) => {
+      views.push(view);
+      return "Map data ©2026 Google";
+    },
+  };
+  const f = fixture(raster);
+  const [[name, handler]] = f.protocols;
+  assert.match(name, /^test-region-/);
+  const style = f.map.options.style;
+  assert.deepEqual(plain(style.sources.cloud), {
+    type: "raster",
+    tiles: [`${name}://tiles/{z}/{x}/{y}.png`],
+    tileSize: 256,
+    minzoom: 0,
+    maxzoom: 22,
+  });
+  assert.deepEqual(plain(style.layers.map((layer) => layer.id)), [
+    "land",
+    "cloud-raster",
+  ]);
+  assert.deepEqual(plain(f.map.options.center), [0, 20]);
+  assert.equal(f.map.options.maxBounds, undefined);
+  assert.equal(f.map.options.maxZoom, 20);
+  const signal = new AbortController();
+  const result = await handler({ url: `${name}://tiles/3/4/2.png` }, signal);
+  assert.deepEqual([...new Uint8Array(result.data)], [1, 2, 3]);
+  assert.deepEqual(tiles, [[3, 4, 2]]);
+  for (const url of [
+    `${name}://tiles/3/8/2.png`,
+    `${name}://tiles/3/4/2.pbf`,
+    `${name}://tiles/3/4/2.png?key=x`,
+    `other://tiles/3/4/2.png`,
+  ])
+    await assert.rejects(handler({ url }, signal), /Invalid Cloud tile/);
+  assert.equal(tiles.length, 1);
+  assert.equal(f.nativeRequests, 0);
+  // The copyright follows the visible area once the map loads and after each move.
+  const plane = f.create(
+    { onCopyright: (text) => copyrights.push(text) },
+    f.container,
+  );
+  const map = f.maps.at(-1);
+  map.events.load();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(plain(views.at(-1)), {
+    zoom: 2,
+    north: 43.76,
+    south: 43.72,
+    east: 7.45,
+    west: 7.4,
+  });
+  assert.equal(f.container.dataset.mapCopyright, "Map data ©2026 Google");
+  assert.deepEqual(copyrights, ["Map data ©2026 Google"]);
+  map.events.moveend();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(views.length, 2);
+  plane.destroy();
+  f.plane.destroy();
+  assert.equal(f.removedProtocols.length, 2);
 });

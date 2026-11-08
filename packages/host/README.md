@@ -135,8 +135,15 @@ source availability alone does not qualify encrypted storage on a consumer devic
 host source input. A consumer must select it alongside native-agent runtime and
 secure-store native-only sources. No default Gradle dependency or renderer API
 is added. The host supplies its existing dedicated verified-account directory
-and Keystore alias, a separate task-key directory/alias, and an existing private
-0700 no-backup database directory. Resolve the trusted Android Context path with
+and Keystore alias, a separate task-key directory and alias prefix (or its own
+`TaskDataKeyStore.perSlot` store), and an existing private 0700 no-backup
+database directory. Each database key has its own Keystore wrapping key, so a
+generation-bound remove deletes that Keystore entry and a wrapped copy left in
+flash cannot be decrypted. A shared-mode key store is refused. Keys are stored at
+(`Database.ownerIdentity`, database name): to finish a revocation after the
+account record is gone, delete the database files, then call
+`keys.destroy(ownerIdentity, name)`. `ownerIdentity(snapshot)` is
+`VerifiedAccountCredentialStore.ownerIdentity`. Resolve the trusted Android Context path with
 `getCanonicalFile()` before supplying that root; Android data-directory aliases
 are not accepted as canonical paths. All account writes must use this composition
 in the one native host process; it does not provide cross-process credential CAS.

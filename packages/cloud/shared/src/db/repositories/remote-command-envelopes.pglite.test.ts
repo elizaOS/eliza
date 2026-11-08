@@ -222,6 +222,61 @@ afterAll(async () => {
   await pglite.close();
 });
 describe("secure remote relay repositories", () => {
+  it("rolls host revocation back when session terminalization fails", async () => {
+    await enrollAndPair(false);
+    await pglite.exec(
+      "ALTER TABLE remote_sessions ADD CONSTRAINT refuse_test_revocation CHECK (status <> 'revoked')",
+    );
+    try {
+      await expect(hosts.revoke(hostId, organizationId, ownerId)).rejects.toThrow();
+      const [host] = await database.select().from(remoteHosts);
+      const [session] = await database.select().from(remoteSessions);
+      expect(host?.status).toBe("active");
+      expect(session?.status).toBe("pending");
+    } finally {
+      await pglite.exec("ALTER TABLE remote_sessions DROP CONSTRAINT refuse_test_revocation");
+    }
+  });
+  it("revokes claimed target pairings before reporting host cleanup complete", async () => {
+    await enrollAndPair(false);
+    await database.delete(remoteSessions);
+    await sessions.createPendingForAuthenticatedHost({
+      id: sessionId,
+      hostId,
+      hostToken,
+      grantId,
+      grantRevision: 1,
+      code: "123456",
+      pairingSecret,
+      expiresAt: new Date(Date.now() + 5 * 60_000),
+      grantExpiresAt: new Date(Date.now() + 60 * 60_000),
+    });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        controllerDeviceId,
+        controllerKeyId,
+        controllerDisplayName: "Controller",
+        controllerPlatform: "linux",
+        controllerSigningPublicJwk: ecPublicJwk,
+        controllerEncryptionPublicJwk: ecPublicJwk,
+      }),
+    ).toMatchObject({ kind: "claimed" });
+    const revoked = await hosts.revoke(hostId, organizationId, ownerId);
+    const [session] = await database.select().from(remoteSessions);
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+    expect(await sessions.confirmClaimedHost({ sessionId, hostId, hostToken })).toEqual({
+      kind: "not_found",
+    });
+    expect({ cleanup: revoked?.cleanup, status: session?.status }).toEqual({
+      cleanup: { sessions: 1, commands: 0, more: false },
+      status: "revoked",
+    });
+  });
   it("keeps managed enrollment non-authoritative until durable activation", async () => {
     hostToken = generateRemoteHostToken();
     expect(

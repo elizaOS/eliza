@@ -226,6 +226,70 @@ test("a failed durable method review prevents dispatch; successful storage prece
   }
 });
 
+test("her method choice names the reviewed control and grants that one click", async () => {
+  const db = new DatabaseSync(":memory:");
+  const granted = [];
+  const observation = { ...task.observation, origin: "https://biller.example" };
+  const runtime = {
+    owner,
+    get: () => task,
+    execute: async (_id, _rev, p) => {
+      // The grant is issued before the click is sent, for this proposal only.
+      assert.deepEqual(granted, [
+        [
+          p.id,
+          {
+            grantId: granted[0][1].grantId,
+            taskId: task.id,
+            epoch: task.epoch,
+            origin: "https://biller.example",
+            targetRef: "view:0:1",
+            selector: "#existing-method",
+            subaction: "click",
+            expiresAt: p.expiresAt,
+          },
+        ],
+      ]);
+      assert.equal(p.expectedSelector, "#existing-method");
+      return { operations: [{ proposal: p, status: "succeeded" }] };
+    },
+  };
+  const store = createBillOutcomeStore(db, { get: () => task }).forTask(
+    runtime,
+    task.id,
+  );
+  const workflow = new BillWorkflow({
+    deriveBillDecision,
+    runtime,
+    bill: {},
+    taskId: task.id,
+    outcomes: store,
+    controls: {
+      ...validateBillControls(controls),
+      existingMethod: {
+        label: "Use existing method",
+        selector: "#existing-method",
+      },
+    },
+    actuator: {
+      readObservation: () => ({ observation, snapshot }),
+      quiesce: async () => {},
+    },
+    grantCommit: (proposalId, grant) => granted.push([proposalId, grant]),
+  });
+  workflow.refresh = async () => decision;
+  try {
+    await workflow.chooseExistingMethod(decision.reviewKey, {
+      operationId: "operation",
+    });
+    // Once the click was sent or refused, the grant is withdrawn.
+    assert.deepEqual(granted.at(-1), ["operation", null]);
+    assert.equal(granted.length, 2);
+  } finally {
+    db.close();
+  }
+});
+
 test("a selection refused before the click is found again once, then reported", async () => {
   const db = new DatabaseSync(":memory:");
   const runtime = { owner, get: () => task };

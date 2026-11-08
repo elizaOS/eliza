@@ -101,6 +101,17 @@ jobs:
         run: bun run --cwd packages/cloud/shared check:tenant-scope
       - name: Staging admission Worker source contract
         run: bun packages/cloud/admission-worker/verify-staging-contract.ts
+      - name: Staging speech host Worker source contract
+        run: bun packages/cloud/speech-worker/verify-staging-contract.ts
+      # The speech host exists to keep the first-touch isolate small. Bundle it
+      # without uploading and record its size beside the contract result.
+      - name: Staging speech host Worker bundle (dry run)
+        working-directory: packages/cloud/api
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/speech-worker-candidate"
+          bunx wrangler deploy --config ../speech-worker/wrangler.toml --dry-run --outdir "$out"
+          du -b "$out"/*.js | sort -n | tail -3
 
   # NOTE: the Worker bundle stub-drift gate (#14422) runs inside
   # `lint-and-types` above — packages/cloud/api chains `check:worker-bundle`

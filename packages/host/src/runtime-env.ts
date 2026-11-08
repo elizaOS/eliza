@@ -465,6 +465,16 @@ export function isAndroidMobile(
   return resolvePlatform(env) === "android";
 }
 
+/**
+ * The ElizaOS Android runtime: Android with in-process native inference
+ * (`ELIZA_LOCAL_LLAMA=1`). Its AOSP-only plugins load only here.
+ */
+export function isElizaOsAndroidRuntime(
+  env: RuntimeEnvRecord = globalThis.process?.env ?? {},
+): boolean {
+  return isAndroidMobile(env) && env.ELIZA_LOCAL_LLAMA?.trim() === "1";
+}
+
 export function isIosMobile(
   env: RuntimeEnvRecord = globalThis.process?.env ?? {},
 ): boolean {

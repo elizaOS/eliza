@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/conversation-connection-readiness.ts",
+    "packages/agent/src/api/conversation-routes.ts"
+  ],
+  "bounds": {
+    "domain": "One room/runtime, two queued writes and generations 0..2.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_connections",
+      "main": "api_connections",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

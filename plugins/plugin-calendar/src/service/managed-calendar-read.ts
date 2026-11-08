@@ -5,7 +5,10 @@ import type {
   LifeOpsCalendarSourceError,
   LifeOpsCalendarSummary,
 } from "@elizaos/contracts";
-import { calendarReadBrokerDiagnosticHeader } from "@elizaos/contracts";
+import {
+  calendarReadBrokerDiagnosticHeader,
+  MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES,
+} from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 
@@ -259,11 +262,14 @@ export function createManagedCalendarRead(
   async function call(
     calendar: object,
     attempt?: ReadAttempt,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const r = await request(url, {
       method: "POST",
       redirect: "error",
-      signal: AbortSignal.timeout(30000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(30000)])
+        : AbortSignal.timeout(30000),
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -290,6 +296,10 @@ export function createManagedCalendarRead(
       await r.body?.cancel();
       throw fail(attempt, !r.ok ? "HTTP_STATUS" : "BODY_MISSING");
     }
+    const maxBytes =
+      attempt?.operation === "feed"
+        ? MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES
+        : 256 * 1024;
     const reader = r.body.getReader(),
       chunks: Uint8Array[] = [];
     let size = 0;
@@ -298,7 +308,7 @@ export function createManagedCalendarRead(
         const { done, value } = await reader.read();
         if (done) break;
         size += value.length;
-        if (size > 256 * 1024) throw fail(attempt, "BODY_LIMIT");
+        if (size > maxBytes) throw fail(attempt, "BODY_LIMIT");
         chunks.push(value);
       }
     } finally {
@@ -334,9 +344,13 @@ export function createManagedCalendarRead(
     },
     acceptsGrantId: (grantId?: string) => !grantId || scoped(grantId),
     owns: (calendar: LifeOpsCalendarSummary) => scoped(calendar.grantId),
-    async sources(): Promise<LifeOpsCalendarSummary[]> {
+    async sources(signal?: AbortSignal): Promise<LifeOpsCalendarSummary[]> {
       const attempt: ReadAttempt = { operation: "sources", httpStatus: null };
-      const { calendars } = await call({ operation: "sources" }, attempt);
+      const { calendars } = await call(
+        { operation: "sources" },
+        attempt,
+        signal,
+      );
       if (
         !Array.isArray(calendars) ||
         calendars.length > 1000 ||
@@ -368,6 +382,7 @@ export function createManagedCalendarRead(
       timeMax: string,
       timeZone: string,
       agentId: string,
+      signal?: AbortSignal,
     ): Promise<LifeOpsCalendarFeed> {
       const attempt: ReadAttempt = { operation: "feed", httpStatus: null };
       if (!scoped(calendar.grantId))
@@ -382,6 +397,7 @@ export function createManagedCalendarRead(
           timeZone,
         },
         attempt,
+        signal,
       );
       if (
         !record(feed) ||

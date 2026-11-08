@@ -1,0 +1,59 @@
+[
+  {
+    "id": "StripeDeliveryOutbox",
+    "model": "packages/cloud/quint/StripeDeliveryOutbox.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts",
+      "packages/cloud/shared/src/db/repositories/webhook-events.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "One row, two workers, compressed time and attempt budget. Downstream idempotent billing effects and legacy queue adoption are separate obligations.",
+      "The model permits overlapping handlers after lease expiry. Settlement checks token ownership exactly as the repository does.",
+      "Finite verification domain. One row, two workers, four distinct lease tokens, time 0..6, retry budget 3. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "VoiceUsage",
+    "model": "packages/cloud/quint/VoiceUsage.qnt",
+    "sources": ["packages/cloud/api/src/voice-usage-state.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "One user counter, one organization counter. Snapshot entries independently choose 0/1/2; partial snapshots, changed-expiry replay conflicts and all malformed-wire combinations require further coverage.",
+      "Organization/user counter updates and admission are atomic. This model does not establish aggregate conservation because release intentionally clamps each counter independently.",
+      "Finite verification domain. One organization/user pair, time 0..4, org limit 3, user limit 2, imports 0/1/2, amounts 1/2. Larger populations and histories remain unverified.",
+      "Cross-tenant and cross-user noninterference remains unmodeled. This pair-level specification does not establish whole-service isolation; the Durable Object namespace and request-key validation need separate conformance evidence."
+    ]
+  },
+  {
+    "id": "AccountDeletionPhase",
+    "model": "packages/cloud/quint/AccountDeletionPhase.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+      "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "One provider phase, two workers, three attempts. Whole-account phase ordering, cancellation, export, database erasure and billing-specific completion guards require separate models.",
+      "Provider idempotency is abstracted as a monotone applied flag. Adapter inspection is assumed authoritative.",
+      "Finite verification domain. One provider phase, two workers, four lease generations, attempt budget 3, time 0..6. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "RestorePublication",
+    "model": "packages/cloud/quint/RestorePublication.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models coordinator phase/publication ordering. Claim/lease repository CAS, exact attestation crypto, per-await rollback recovery and node/provider lifecycle are separate unmodeled obligations.",
+      "Failure before runtime impact is retryable; post-impact pre-publication failure is represented by completed rollback. Rollback-in-progress failures need a separate model.",
+      "Finite verification domain. One operation and previous/candidate runtime, all explicit coordinator phases, abstract atomic publication and rollback. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  }
+]

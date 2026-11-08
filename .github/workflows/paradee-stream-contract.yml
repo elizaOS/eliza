@@ -34,7 +34,7 @@ jobs:
           fi
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           git diff --name-only "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/paradee-changed.txt"
-          if grep -Eq '^(plugins/plugin-local-inference/native/android/|packages/app/platforms/android/paradee-voice/|packages/app/platforms/android/app/src/main/elizavoice-jni/|packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java$|packages/app/scripts/paradee-voice/(stream|plugin)-contract|packages/app/scripts/voice-quality/wer\.ts$|plugins/plugin-local-inference/native/llama.cpp$|\.github/workflows/(paradee-stream-contract|pr-validation)\.yml$)' "$RUNNER_TEMP/paradee-changed.txt"; then
+          if grep -Eq '^(plugins/plugin-local-inference/native/android/|packages/app/platforms/android/paradee-voice/|packages/app/platforms/android/app/src/main/elizavoice-jni/|packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java$|packages/app/scripts/paradee-voice/(stream|plugin|speech-pipeline)-contract|packages/app/scripts/paradee-voice/speech-pipeline/|packages/app/scripts/voice-quality/wer\.ts$|plugins/plugin-local-inference/native/llama.cpp$|\.github/workflows/(paradee-stream-contract|pr-validation)\.yml$)' "$RUNNER_TEMP/paradee-changed.txt"; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
@@ -60,6 +60,18 @@ jobs:
       - name: Check plugin rules and device WER parity on the JVM
         if: steps.changes.outputs.run == 'true'
         run: node --test packages/app/scripts/paradee-voice/plugin-contract.test.mjs
+      # The speech pipeline contract compiles its JSON-carrying classes against the pinned org.json.
+      - name: Fetch pinned org.json
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/json-20250517.jar"
+          curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
+          echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
+          echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
+      - name: Check the shared speech pipeline (recognizer probe, VAD, playback) on the JVM
+        if: steps.changes.outputs.run == 'true'
+        run: node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs
       - name: Load exact native headers
         if: steps.changes.outputs.run == 'true'
         run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp

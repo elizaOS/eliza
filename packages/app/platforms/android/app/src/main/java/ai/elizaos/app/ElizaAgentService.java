@@ -294,7 +294,7 @@ public class ElizaAgentService extends Service {
         new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();
     private long admittedCredentialShutdownEpoch = -1;
 
-    private static void invalidateCredentialShutdown() { credentialShutdown.beforeStart(); }
+    private static void invalidateCredentialShutdown() { ai.eliza.plugins.agent.updater.RuntimeUpdatePause.beforeStart(); credentialShutdown.beforeStart(); }
 
     /** Native credential writers retain this exact request through their durable commit. */
     public static long stopForCredentialChange(Context context) {
@@ -2324,6 +2324,8 @@ public class ElizaAgentService extends Service {
                     }
                     synchronized (processLock) {
                         if (shuttingDown || requestedRecoveryEpoch != recoveryMaintenanceEpoch) return;
+                        try { ai.eliza.plugins.agent.updater.RuntimeUpdatePause.beforeStart(); }
+                        catch (IllegalStateException updating) { currentStatus="stopping"; return; }
                         ensureBionicVoiceHost();
                         if (restartFirst && !stopAgentProcessOrPreserve(false)) {
                             // The prior resident still owns the runtime; never start a second one.
@@ -2665,6 +2667,16 @@ public class ElizaAgentService extends Service {
                 "ELIZA_ANDROID_APP_DATA_DIR",
                 canonicalAppDataDir
             );
+            // Live ASR needs the voice bundle before any text model loads, and
+            // this app's manifest names its own bundle directory.
+            try {
+                agentEnv.put(
+                    "ELIZA_ANDROID_VOICE_BUNDLE_DIR",
+                    ai.eliza.voice.VoiceBundleAssets.bundleRoot(this).getAbsolutePath()
+                );
+            } catch (IOException error) {
+                Log.w(TAG, "Voice bundle directory unavailable for live ASR", error);
+            }
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");

@@ -1,0 +1,15 @@
+[
+  {
+    "id": "AppStartup",
+    "model": "packages/app/quint/AppStartup.qnt",
+    "sources": ["packages/app/src/runtime/startup-state.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models the exact reducer graph and projection. Host resource readiness and asynchronous startup composition require separate models.",
+      "Invalid transitions are represented as unchanged state plus rejected metadata. Runtime throws are covered by implementation tests.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Two runtime-start attempts; complete phase graph and rejected/self transitions. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  }
+]

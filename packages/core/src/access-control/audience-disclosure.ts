@@ -9,17 +9,12 @@ import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audie
 import type { AccessContext } from "../types/access-context.js";
 import type { DisclosureSubject } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
-import type {
-	ArtifactDisclosure,
-	ArtifactDisclosureRecord,
+import {
+	type ArtifactDisclosure,
+	type ArtifactDisclosureRecord,
+	resolveArtifactDisclosure,
 } from "./artifact-disclosure";
-import { resolveArtifactDisclosure } from "./artifact-disclosure";
 import { isMemoryScope } from "./memory-scope.js";
-
-// The subject shape lives in the types layer so the `DisclosureGate` contract
-// (also in the types layer) can reference it without a barrel cycle. Re-export
-// it here so this module's original public surface is unchanged.
-export type { DisclosureSubject } from "../types/memory.js";
 
 /**
  * The universal disclosure level. Deliberately the SAME type as the artifact

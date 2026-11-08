@@ -22,6 +22,7 @@ import {
   metadataForDeploymentGeneration,
 } from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import type { JobExecutionAuthority } from "../../lib/services/job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -49,6 +50,7 @@ import { appDomains } from "../schemas/app-domains";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { materializeAppBillingAccounts } from "./app-billing-accounts";
+import { assertJobExecutionAuthority, lockJobExecutionAuthority } from "./job-execution-authority";
 
 interface AppCacheFenceIdentity {
   appId?: string;
@@ -132,6 +134,7 @@ export type {
 export interface AppMobileAuthRevocationMutation {
   app: App | undefined;
   revokedKeyHashes: string[];
+  revokedKeys: { id: string; organizationId: string }[];
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -742,6 +745,7 @@ export class AppsRepository {
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
     const generationFilter = generation
       ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
@@ -753,11 +757,38 @@ export class AppsRepository {
       generation && data.metadata
         ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
         : data;
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({ ...nextData, updated_at: new Date() })
-      .where(and(eq(apps.id, id), generationFilter, statusFilter))
-      .returning();
+    const write = async (database: typeof dbWrite | DbTransaction) => {
+      const [updated] = await database
+        .update(apps)
+        .set({ ...nextData, updated_at: new Date() })
+        .where(
+          and(
+            eq(apps.id, id),
+            generationFilter,
+            statusFilter,
+            executionAuthority
+              ? eq(apps.organization_id, executionAuthority.organizationId)
+              : undefined,
+          ),
+        )
+        .returning();
+      return updated;
+    };
+    const updated = executionAuthority
+      ? await dbWrite.transaction(async (tx) => {
+          await lockJobExecutionAuthority(tx, executionAuthority);
+          await tx
+            .select({ id: apps.id })
+            .from(apps)
+            .where(
+              and(eq(apps.id, id), eq(apps.organization_id, executionAuthority.organizationId)),
+            )
+            .for("update")
+            .limit(1);
+          await assertJobExecutionAuthority(tx, executionAuthority);
+          return write(tx);
+        })
+      : await write(dbWrite);
 
     if (updated) {
       await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
@@ -804,7 +835,7 @@ export class AppsRepository {
     const mutation = await dbWrite.transaction(async (tx) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) {
-        return { existing: undefined, updated: undefined, revokedKeyHashes: [] };
+        return { existing: undefined, updated: undefined, revokedKeyHashes: [], revokedKeys: [] };
       }
       const [updated] = await tx
         .update(apps)
@@ -821,7 +852,11 @@ export class AppsRepository {
 
       await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
       const credentials = await tx
-        .select({ keyHash: apiKeys.key_hash })
+        .select({
+          id: apiKeys.id,
+          organizationId: apiKeys.organization_id,
+          keyHash: apiKeys.key_hash,
+        })
         .from(apiKeys)
         .where(eq(apiKeys.source_app_id, id))
         .for("update");
@@ -842,6 +877,7 @@ export class AppsRepository {
         existing,
         updated,
         revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+        revokedKeys: credentials.map(({ id, organizationId }) => ({ id, organizationId })),
       };
     });
 
@@ -851,7 +887,11 @@ export class AppsRepository {
         invalidateAppCacheEntries(id, mutation.updated.api_key_id, mutation.updated.slug),
       ]);
     }
-    return { app: mutation.updated, revokedKeyHashes: mutation.revokedKeyHashes };
+    return {
+      app: mutation.updated,
+      revokedKeyHashes: mutation.revokedKeyHashes,
+      revokedKeys: mutation.revokedKeys,
+    };
   }
 
   async prepareDeleteWithMobileAuthRevocation(
@@ -878,7 +918,11 @@ export class AppsRepository {
         await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
       }
       const credentials = await tx
-        .select({ keyHash: apiKeys.key_hash })
+        .select({
+          id: apiKeys.id,
+          organizationId: apiKeys.organization_id,
+          keyHash: apiKeys.key_hash,
+        })
         .from(apiKeys)
         .where(eq(apiKeys.source_app_id, id))
         .for("update");
@@ -898,6 +942,7 @@ export class AppsRepository {
       return {
         inactive,
         revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+        revokedKeys: credentials.map(({ id, organizationId }) => ({ id, organizationId })),
       };
     });
 
@@ -906,7 +951,11 @@ export class AppsRepository {
     } else {
       await invalidateAppCacheEntries(id);
     }
-    return { app: mutation.inactive, revokedKeyHashes: mutation.revokedKeyHashes };
+    return {
+      app: mutation.inactive,
+      revokedKeyHashes: mutation.revokedKeyHashes,
+      revokedKeys: mutation.revokedKeys,
+    };
   }
 
   /** Permanently removes only an app whose mobile authorization is already revoked. */

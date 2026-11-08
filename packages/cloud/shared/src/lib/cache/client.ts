@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
@@ -128,7 +129,9 @@ export class CacheClient {
   private lastFailureTime = 0;
   private readonly MAX_FAILURES = 5;
   private readonly CIRCUIT_BREAKER_TIMEOUT = 60000;
-  private revalidationQueue = new Map<string, Promise<void>>();
+  // A timed-out delivery can still own an uncancellable loader. Retain that
+  // ownership until the loader settles, including when the cache entry expires.
+  private revalidationQueue = new Map<string, Promise<unknown>>();
   private readonly MAX_REVALIDATION_QUEUE_SIZE = 100;
   private readonly REVALIDATION_TIMEOUT_MS = 30000;
   private nativeRedisConnectPromise: Promise<void> | null = null;
@@ -580,109 +583,114 @@ export class CacheClient {
     ttl?: number,
   ): Promise<T | null> {
     const effectiveTTL = ttl ?? staleTTL * 2;
+    const loadUncached = async (): Promise<T | null> => {
+      const pending = this.revalidationQueue.get(key);
+      return pending ? ((await pending) as T | null) : await revalidate();
+    };
     const redis = await this.getRedisClient();
     if (!redis) {
-      return await revalidate();
+      return await loadUncached();
     }
 
+    const start = Date.now();
+    let cached: { data: T; isStale: boolean } | undefined;
     try {
-      const start = Date.now();
       const value = await redis.get(this.pk(key));
-      const duration = Date.now() - start;
-
-      if (value === null || value === undefined) {
-        this.logMetric(key, "miss", duration);
-        const fresh = await revalidate();
-        if (fresh !== null) {
-          const cachedAt = Date.now();
-          await this.set(
-            key,
-            {
-              data: fresh,
-              cachedAt,
-              staleAt: cachedAt + staleTTL * 1000,
-            } as CachedValue<T>,
-            effectiveTTL,
-          );
-        }
-        return fresh;
+      if (value !== null && value !== undefined) {
+        const raw = typeof value === "string" ? JSON.parse(value) : value;
+        const parsed = raw as CachedValue<T>;
+        cached = { data: parsed.data, isStale: Date.now() > parsed.staleAt };
       }
-
-      const raw = typeof value === "string" ? JSON.parse(value) : value;
-      const parsed = raw as CachedValue<T>;
-
-      const now = Date.now();
-      const isStale = now > parsed.staleAt;
-
-      if (isStale) {
-        this.logMetric(key, "stale", duration);
-
-        // Return stale data immediately
-        const staleData = parsed.data;
-
-        if (this.revalidationQueue.size >= this.MAX_REVALIDATION_QUEUE_SIZE) {
-          logger.warn(
-            `[Cache] Revalidation queue full (${this.revalidationQueue.size}/${this.MAX_REVALIDATION_QUEUE_SIZE}). ` +
-              `Skipping background revalidation for key: ${key}`,
-          );
-          return staleData;
-        }
-
-        // Revalidate in background (deduplicated)
-        if (!this.revalidationQueue.has(key)) {
-          const timeoutPromise = new Promise<T | null>((_, reject) => {
-            setTimeout(
-              () => reject(new Error("Revalidation timeout")),
-              this.REVALIDATION_TIMEOUT_MS,
-            );
-          });
-
-          const revalidationPromise = Promise.race([revalidate(), timeoutPromise])
-            .then((fresh) => {
-              if (fresh !== null) {
-                const cachedAt = Date.now();
-                return this.set(
-                  key,
-                  {
-                    data: fresh,
-                    cachedAt,
-                    staleAt: cachedAt + staleTTL * 1000,
-                  } as CachedValue<T>,
-                  effectiveTTL,
-                );
-              }
-            })
-            .catch((error) => {
-              // Fire-and-forget: without this catch every failed/timed-out
-              // background revalidation became an unhandled rejection (nobody
-              // awaits the queued promise). The stale value already served
-              // stays in place; the next stale hit retries.
-              logger.warn("[Cache] Background revalidation failed", {
-                key,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            })
-            .finally(() => {
-              this.revalidationQueue.delete(key);
-            });
-
-          this.revalidationQueue.set(key, revalidationPromise);
-        }
-
-        return staleData;
-      }
-
-      this.logMetric(key, "hit", duration);
-      this.resetFailures();
-      return parsed.data;
     } catch (error) {
       this.recordFailure();
       logger.warn("[Cache] GET-with-SWR failed, falling back to revalidate", {
         key,
         error: error instanceof Error ? error.message : String(error),
       });
-      return await revalidate();
+      return await loadUncached();
     }
+    const duration = Date.now() - start;
+
+    // Loader failures belong to the caller. A cold failure must not be treated
+    // as a cache read failure and invoke the same loader a second time.
+    if (!cached) {
+      this.logMetric(key, "miss", duration);
+      const pending = this.revalidationQueue.get(key);
+      if (pending) return (await pending) as T | null;
+      const fresh = await revalidate();
+      if (fresh !== null) {
+        const cachedAt = Date.now();
+        await this.set(
+          key,
+          { data: fresh, cachedAt, staleAt: cachedAt + staleTTL * 1000 } as CachedValue<T>,
+          effectiveTTL,
+        );
+      }
+      return fresh;
+    }
+
+    if (cached.isStale) {
+      this.logMetric(key, "stale", duration);
+
+      // Return stale data immediately. The queue tracks actual loader lifetime,
+      // not just its delivery deadline; timeout is not proof of cancellation.
+      if (!this.revalidationQueue.has(key)) {
+        if (this.revalidationQueue.size >= this.MAX_REVALIDATION_QUEUE_SIZE) {
+          logger.warn(
+            `[Cache] Revalidation queue full (${this.revalidationQueue.size}/${this.MAX_REVALIDATION_QUEUE_SIZE}). ` +
+              `Skipping background revalidation for key: ${key}`,
+          );
+          return cached.data;
+        }
+
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new ElizaError("Revalidation timeout", {
+                  code: "CACHE_REVALIDATION_TIMEOUT",
+                  severity: "ephemeral",
+                }),
+              ),
+            this.REVALIDATION_TIMEOUT_MS,
+          );
+        });
+        // Publish ownership before invoking a loader that may synchronously
+        // throw or reenter this cache.
+        const load = Promise.resolve().then(revalidate);
+        const result = Promise.race([load, timeout])
+          .finally(() => clearTimeout(timer))
+          .then(async (fresh) => {
+            if (fresh !== null) {
+              const cachedAt = Date.now();
+              await this.set(
+                key,
+                { data: fresh, cachedAt, staleAt: cachedAt + staleTTL * 1000 } as CachedValue<T>,
+                effectiveTTL,
+              );
+            }
+            return fresh;
+          });
+        this.revalidationQueue.set(key, result);
+        void result.catch((error) => {
+          // error-policy:J5 every waiter retains the original failure; this
+          // observer handles the background-only path without inventing data.
+          logger.warn("[Cache] Background revalidation failed", {
+            key,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        void Promise.allSettled([load, result]).then(() => {
+          if (this.revalidationQueue.get(key) === result) this.revalidationQueue.delete(key);
+        });
+      }
+      return cached.data;
+    }
+
+    this.logMetric(key, "hit", duration);
+    this.resetFailures();
+    return cached.data;
   }
 
   /**
@@ -1147,24 +1155,6 @@ export class CacheClient {
     } catch (error) {
       this.recordFailure();
       logger.error("[Cache] queue push failed", {
-        key,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  }
-
-  async popQueueTail(key: string): Promise<string | null> {
-    const redis = await this.getRedisClient();
-    if (!redis) return null;
-
-    try {
-      const value = await redis.rpop(this.pk(key));
-      this.resetFailures();
-      return value;
-    } catch (error) {
-      this.recordFailure();
-      logger.error("[Cache] queue pop failed", {
         key,
         error: error instanceof Error ? error.message : String(error),
       });

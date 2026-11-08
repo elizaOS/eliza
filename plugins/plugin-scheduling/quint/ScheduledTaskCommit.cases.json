@@ -1,0 +1,29 @@
+{
+  "sources": [
+    "plugins/plugin-scheduling/src/scheduled-task/store.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-scheduling/src/scheduled-task/runner-host-admission.integration.test.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/record-store.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "ScheduledTaskCommit",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ReceiptLogAtomicity",
+        "ApplyAtMostOnce",
+        "ClaimAtMostOnce",
+        "DurableReceiptAccounting",
+        "AuthorizationBound",
+        "TypeOK"
+      ],
+      "temporal": [],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

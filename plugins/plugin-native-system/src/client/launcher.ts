@@ -602,10 +602,16 @@ export function createLauncher(
       }
       saveFavorites([...kept, key]);
     },
-    /** Moves a favorite one place among the installed favorites; uninstalled ones keep their slots. */
-    moveFavorite(app: InstalledApp, direction: -1 | 1) {
+    /** Moves a favorite among the visible installed favorites; the others keep their slots. */
+    moveFavorite(
+      app: InstalledApp,
+      direction: -1 | 1,
+      visibleKeys?: ReadonlySet<string>,
+    ) {
       const key = appKey(app),
-        visible = state.favorites.filter(installed),
+        visible = state.favorites.filter(
+          (item) => installed(item) && (!visibleKeys || visibleKeys.has(item)),
+        ),
         at = visible.indexOf(key),
         other = visible[at + direction];
       if (at < 0 || !other) return;
