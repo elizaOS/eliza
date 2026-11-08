@@ -265,10 +265,17 @@ public final class NativeProviderSlot {
     if (committed == null || !committed.equals(store.readProvider())) throw new IllegalStateException("Provider change unconfirmed");
   }
 
-  /** Deletes the provider slot and confirms by reading it back; returns the unconfigured identity. */
+  /** Retires routing while retaining Own keys; records without keys keep legacy slot removal. */
   public static JSONObject clearProviderSlot(Store store, boolean onlyIfPresent) throws Exception {
-    store.removeProvider(onlyIfPresent);
+    String previous = store.readProvider();
+    store.assertCurrent();
+    String kept = NativeProviderAdmission.unbindProvider(previous);
+    if (kept == null) store.removeProvider(onlyIfPresent);
+    else if (!kept.equals(previous) && store.compareExchangeProvider(previous, kept) == null)
+      throw new IllegalStateException("Provider changed");
+    store.assertCurrent();
     String retained = store.readProvider();
+    if (kept != null && !kept.equals(retained)) throw new IllegalStateException("Saved keys could not be confirmed");
     if (retained != null && !new JSONObject(retained).optBoolean("unbound")) throw new IllegalStateException("Provider binding still present");
     return NativeProviderAdmission.providerIdentity(retained);
   }
