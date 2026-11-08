@@ -50,7 +50,7 @@ module a2a_task_store {
     snapshots' = snapshots,
   }
   action read(client, organization) = all {
-    store' = store.with("serving", true)
+    store' = store.with("serving", store.serving or organization == 1)
       .with("lastReader", organization)
       .with("lastRead", if (organization == 1 and visible) store.history else Set()),
     snapshots' = snapshots.set(client, if (organization == 1 and visible)
@@ -147,6 +147,9 @@ module a2a_task_store {
     .expect(safety and store.history == Set(0))
   run foreignReadsHaveNoContentTest = init.then(create(1)).then(read(1, 2))
     .then(tryAppend(1)).expect(safety and store.history == Set(0) and store.lastRead == Set())
+  run rejectedForeignReadKeepsImportOpenTest = init.then(importSnapshot(1, 1, true))
+    .then(read(1, 2)).then(importSnapshot(1, 1, true))
+    .expect(safety and not(store.serving) and store.fingerprint == 1)
   run importIsIdempotentUntilServingTest = init.then(importSnapshot(1, 1, true))
     .then(importSnapshot(1, 1, true)).then(read(1, 1)).then(tryImport(2, 1, true))
     .expect(safety and store.fingerprint == 1 and store.history == Set(0))

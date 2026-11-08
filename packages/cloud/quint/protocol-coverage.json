@@ -7,9 +7,7 @@
       "packages/cloud/shared/src/lib/utils/credit-reservation.ts",
       "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One organization and reservation, integer money units, balance 5, hold 1..3, actual cost 0..8.",
@@ -25,9 +23,7 @@
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Four rows in a total timestamp/ID order, two initially fail, and the run budget can visit all four.",
@@ -48,9 +44,7 @@
       "packages/cloud/shared/src/db/schemas/approval-requests.ts",
       "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
@@ -70,9 +64,7 @@
       "packages/cloud/services/agent-server/src/agent-lifecycle.test.ts",
       "packages/cloud/services/agent-server/src/routes.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One agent projection; initialize, stop and publication acknowledge independently.",
@@ -93,9 +85,7 @@
       "packages/cloud/services/operator/capabilities/__tests__/routing-state.integration.test.ts",
       "packages/cloud/services/operator/capabilities/index.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two server owners and one agent; compare-and-delete is atomic.",
@@ -112,9 +102,7 @@
       "packages/cloud/api/src/inference-admission-budget.ts",
       "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two installed grants of two units, two immutable request IDs, maximum reservation 1..3, costs 0..3, clock 0..4.",
@@ -128,18 +116,20 @@
     "model": "packages/cloud/quint/a2a_task_store.qnt",
     "sources": [
       "packages/cloud/api/src/a2a-task-state.ts",
-      "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts"
+      "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
+      "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+      "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+      "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
       "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
-      "Arbitrary unconditional replacement, the Redis backend, semantic task status transitions and implementation refinement are excluded.",
-      "A foreign read closes the abstract import phase, conservatively earlier than implementation; this restricts import interleavings.",
       "History is set-valued in this model; ordering, multiplicity, and byte fidelity are not proved.",
+      "Foreign-owner requests are rejected before closing the owned import phase. Ten real workerd/SQLite tests check version conflicts, recreation, expiry, tenant isolation, ordered complete content with duplicate retention, import conflict atomicity and process restart.",
+      "The hook checks selected implementation scenarios. General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this model. No temporal or fairness claim.",
+      "Arbitrary unconditional replacement, the Redis backend, semantic task status transitions and implementation refinement are excluded.",
       "No temporal or fairness claim. Implementation refinement remains unproved."
     ]
   },
@@ -152,9 +142,7 @@
       "packages/cloud/services/_common/src/redis-ownership.ts",
       "packages/cloud/services/agent-server/src/agent-routing.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One manager serializes snapshots, local retirement and close. Redis writes and ownership-checked cleanup acknowledge separately.",
@@ -174,9 +162,7 @@
       "packages/cloud/services/agent-server/src/agent-shutdown.test.ts",
       "packages/cloud/services/agent-server/src/agent-lifecycle.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One absolute deadline and three ordered shutdown phases; each operation may acknowledge, reject or stall.",
@@ -192,9 +178,7 @@
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/utils/credit-reservation.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -207,12 +191,8 @@
   {
     "id": "cloud-flow-reservation-recovery-sweep",
     "model": "packages/cloud/quint/billing_sweep.qnt",
-    "sources": [
-      "packages/cloud/shared/src/lib/services/credits.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/cloud/shared/src/lib/services/credits.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -230,9 +210,7 @@
       "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
       "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -269,9 +247,7 @@
       "packages/cloud/shared/src/lib/services/payment-requests.ts",
       "packages/cloud/shared/src/db/repositories/payment-requests.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -289,9 +265,7 @@
       "packages/cloud/shared/src/lib/services/payment-request-settlement.ts",
       "packages/cloud/shared/src/db/schemas/payment-requests.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -310,9 +284,7 @@
       "packages/cloud/shared/src/db/repositories/auto-top-up-attempts.ts",
       "packages/cloud/shared/src/db/schemas/auto-top-up-attempts.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -331,9 +303,7 @@
       "packages/cloud/api/src/checkout-reconciliation.ts",
       "packages/cloud/api/stripe/create-checkout-session/route.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -433,9 +403,7 @@
       "packages/cloud/shared/src/db/schemas/oauth-intents.ts",
       "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
@@ -457,9 +425,7 @@
       "packages/cloud/shared/src/db/schemas/approval-requests.ts",
       "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
@@ -507,9 +473,7 @@
       "packages/cloud/shared/src/db/schemas/api-keys.ts",
       "packages/cloud/shared/src/lib/services/auth-credential-policy.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One issuance request, one grant, two candidate credential identities with at most one persisted credential, two exchange attempts, two acknowledgement attempts, clock 0..3 measured from issuance, code deadline 1 and credential deadline 3. Attempts do not reuse slots.",
@@ -570,21 +534,22 @@
     "sources": [
       "packages/cloud/api/src/a2a-task-state.ts",
       "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
-      "packages/cloud/shared/src/lib/services/a2a-task-store.ts"
+      "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+      "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+      "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One task, two optimistic writers, two organizations and fresh bounded versions.",
       "History is a set of abstract complete items; order, byte content and duplicate client retries are not modeled.",
       "Initial create/import and append updates only; arbitrary unconditional overwrites, Redis and semantic task status policy are excluded.",
-      "A rejected foreign read conservatively closes import in this model; the implementation rejects ownership first.",
       "Bounded Cloudflare store projection; Redis and arbitrary unconditional overwrite are excluded.",
-      "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Stale optimistic writes cannot erase acknowledged appends | Import fingerprints are immutable and import closes after serving | Expired or deleted records are not revived by old versions",
-      "Abstract states: absent, present, expired, deleted, importing, serving"
+      "Abstract states: absent, present, expired, deleted, importing, serving",
+      "Foreign-owner requests are rejected before closing the owned import phase. Ten real workerd/SQLite tests check version conflicts, recreation, expiry, tenant isolation, ordered complete content with duplicate retention, import conflict atomicity and process restart.",
+      "The hook checks selected implementation scenarios. General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this model. No temporal or fairness claim.",
+      "Verify implementation transitions and failure paths against the formal contract."
     ]
   },
   {
@@ -595,9 +560,7 @@
       "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts",
       "packages/cloud/shared/src/db/repositories/inference-funding-budgets.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two already-installed grants of two integer units and two immutable request IDs.",
@@ -639,9 +602,7 @@
       "packages/cloud/api/v1/responses/route.ts",
       "packages/cloud/shared/src/lib/services/inference-passthrough.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
@@ -707,9 +668,7 @@
       "packages/cloud/services/agent-server/src/agent-routing.ts",
       "packages/cloud/services/agent-server/src/agent-shutdown.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One runtime projection; initialization, stop and status publication can complete independently.",
@@ -728,9 +687,7 @@
       "packages/cloud/services/operator/capabilities/reconciler.ts",
       "packages/cloud/services/operator/capabilities/deployment-status.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owners and one agent, with atomic compare-and-delete.",
@@ -753,9 +710,7 @@
       "packages/cloud/shared/src/lib/services/container-job-executors.ts",
       "packages/cloud/shared/src/node/provisioning-worker.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
@@ -782,9 +737,7 @@
       "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
       "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
@@ -917,9 +870,7 @@
       "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
       "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
@@ -1451,9 +1402,7 @@
       "packages/cloud/shared/src/db/schemas/payment-requests.ts",
       "packages/cloud/shared/src/lib/services/__tests__/payment-request-settlement.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One payment, two provider events, two workers, eight clock ticks, bounded attempts.",
@@ -1469,9 +1418,7 @@
       "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
       "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One immutable command and scope, two workers, three lease generations, nine clock ticks, two subscription revisions.",
@@ -1488,9 +1435,7 @@
       "packages/cloud/shared/src/db/repositories/test-support/auto-top-up-test-schema.ts",
       "packages/cloud/shared/src/db/repositories/auto-top-up-cutover.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two transactions contend for one organization and one attempt in a consistent row-lock order.",
@@ -1508,9 +1453,7 @@
       "packages/cloud/shared/src/db/schemas/api-keys.ts",
       "packages/cloud/shared/src/lib/services/auth-credential-policy.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two grants, three credential identities, one absent-credential sentinel, two sweeps, two batches per sweep, batch sizes 1 and 2, and clock 0..3. Fifteen initial classes include shared/foreign/missing references, malformed lifecycle data, and valid/invalid tombstones.",
@@ -1535,9 +1478,7 @@
       "packages/cloud/shared/src/db/repositories/remote-command-envelopes.pglite.test.ts",
       "packages/cloud/shared/src/db/repositories/remote-host-revocation.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One host, two sessions and two commands. Session1 begins pending, claimed, activating or active. Session2 is active and owns both commands. Each command begins pending, claimed or started.",
@@ -1556,9 +1497,7 @@
       "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
       "packages/cloud/services/agent-server/src/index.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Imports the unchanged finite shutdown_sequence transition system: three phases and a logical deadline of two ticks.",
@@ -1575,9 +1514,7 @@
       "packages/cloud/shared/src/lib/services/containers/hetzner-client/client.ts",
       "packages/cloud/shared/src/db/migrations/0558_container_placement_revision.sql"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One logical container, two row incarnations, one restart, one newer deployment, placement metadata A-to-B-to-A and one bookkeeping update.",
@@ -1596,9 +1533,7 @@
       "packages/cloud/shared/src/lib/services/container-job-executors.ts",
       "packages/cloud/shared/src/lib/services/container-retirement.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One tenant projection, two app generations/row incarnations, one metadata change and atomic publication CAS.",
@@ -1619,9 +1554,7 @@
       "packages/cloud/shared/src/node/provisioning-worker.ts",
       "packages/cloud/shared/src/db/repositories/jobs.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One durable job, two execution generations and a clock bounded to six ticks. The same app generation may survive job recovery.",
@@ -1639,9 +1572,7 @@
       "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
       "packages/cloud/api/stripe/create-checkout-session/route.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
@@ -1658,9 +1589,7 @@
       "packages/cloud/api/src/checkout-reconciliation.ts",
       "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Independent database and application clocks each range over 0, 22, 44 and 66 hours; up to three create attempts.",
@@ -1675,9 +1604,7 @@
     "sources": [
       "packages/cloud/shared/src/lib/services/inference-passthrough.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two fixed line grammars, chunks of one to three atoms, and explicit EOF or abort.",
@@ -1694,9 +1621,7 @@
       "packages/cloud/services/vast-pyworker/onstart-vllm.sh",
       "packages/training/scripts/inference/heartbeat.py"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two observer attempts, one kernel flock, one heartbeat thread per owner, one persisted history bit.",
@@ -1714,9 +1639,7 @@
       "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
       "packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One fixed terminal restore and immutable S0 attempt, one counted slot, two concurrent trusted coordinator turns and two node occurrences.",
@@ -1733,9 +1656,7 @@
       "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
       "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Three fixed terminal operations, page size two, and two completed cycles; two operations lack proof permanently and the third can settle.",
@@ -1753,9 +1674,7 @@
       "packages/cloud/services/vast-pyworker/worker.py",
       "packages/training/scripts/inference/heartbeat.py"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two observer attempts, one process-owned kernel lock and one heartbeat thread per owner.",
