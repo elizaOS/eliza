@@ -27,7 +27,7 @@ import {
   type ExecuteWorkflowOptions,
   isWorkflowRemoved,
 } from './embedded-workflow-service';
-import { HOSTED_SPEC, validateDigestSpec } from './hosted-digest';
+import { DIGEST_V1_DESCRIPTIONS, HOSTED_SPEC, validateDigestSpec } from './hosted-digest';
 import { generatePhoneSpec, phoneGenerationInput } from './phone-workflow-generation';
 import {
   PHONE_CATALOG_REVISION,
@@ -54,6 +54,23 @@ export interface WorkflowGenerationOptions {
   triggerContext?: TriggerContext;
   existingWorkflow?: WorkflowDefinitionResponse;
 }
+
+/** Owner-facing text for the descriptions compiled into hosted-digest-1 sources.
+ * Those stay frozen in the source; an owner-edited description is shown as is. */
+const DIGEST_DESCRIPTIONS = new Map<string, string>([
+  [
+    DIGEST_V1_DESCRIPTIONS.native,
+    'Reads your selected Calendar and reminders when the phone is on at the scheduled time.',
+  ],
+  [
+    DIGEST_V1_DESCRIPTIONS.google,
+    'Reads your selected Google account when the phone is on at the scheduled time.',
+  ],
+  [
+    DIGEST_V1_DESCRIPTIONS.snapshot,
+    'Summarises the snapshot you shared when the phone is on at the scheduled time.',
+  ],
+]);
 
 const OWNER_METADATA_KEY = 'elizaOwnerEntityId';
 
@@ -353,8 +370,13 @@ export class WorkflowService extends Service {
       elizaPhoneTriggerCleanup: _cleanup,
       ...metadata
     } = workflow.metadata ?? {};
+    const digestDescription =
+      workflow.metadata?.[HOSTED_SPEC] && workflow.description
+        ? DIGEST_DESCRIPTIONS.get(workflow.description)
+        : undefined;
     return {
       ...workflow,
+      ...(digestDescription ? { description: digestDescription } : {}),
       removed: isWorkflowRemoved(workflow),
       triggerCleanup:
         workflow.metadata?.elizaPhoneTriggerCleanup === 'pending' ? 'pending' : 'complete',

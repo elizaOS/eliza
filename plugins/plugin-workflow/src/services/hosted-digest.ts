@@ -15,6 +15,7 @@ import {
 import {
   DIGEST_MISSED_TEXT,
   DIGEST_PAUSED_TEXT,
+  DIGEST_REVIEW_REQUIRED_TEXT,
   DIGEST_SOURCE_UNAVAILABLE_TEXT,
   digestOccurrenceMissed,
   digestSourceState,
@@ -22,7 +23,11 @@ import {
 } from './hosted-digest-policy';
 import type { HostedGoogleSelection } from './hosted-google-source';
 import type { HostedNativeSelection } from './hosted-native-source';
-import { type PhoneWorkflowSpec, phoneDraftDefinition } from './phone-workflow-spec';
+import {
+  PHONE_COMPILER_KEY,
+  type PhoneWorkflowSpec,
+  verifyPhoneWorkflowSource,
+} from './phone-workflow-spec';
 export const HOSTED_SPEC = 'elizaHostedDigestV1';
 export const HOSTED_TEMPLATE_VERSION = 'hosted-digest-1';
 export interface DigestSpec {
@@ -126,7 +131,17 @@ export function digestCron(spec: DigestSpec) {
   const [hour, minute] = spec.localTime.split(':').map(Number);
   return `${minute} ${hour} * * *`;
 }
-export function digestPhoneSpec(spec: DigestSpec, source: DigestSource): PhoneWorkflowSpec {
+/** Descriptions compiled into hosted-digest-1 sources. They are frozen with that
+ * builder; owner-facing text is substituted when a workflow is listed. */
+export const DIGEST_V1_DESCRIPTIONS = Object.freeze({
+  native:
+    'Reviewed read-only phone sources. Reads selected Calendar and reminders only while this resident connection and consent remain valid.',
+  google:
+    'Reviewed read-only Google digest. Reads only the selected account and window while the phone is offline.',
+  snapshot:
+    'Reviewed hosted snapshot digest. Runs without the phone; no fresh phone data is implied.',
+});
+function digestPhoneSpecV1(spec: DigestSpec, source: DigestSource): PhoneWorkflowSpec {
   return {
     version: 1,
     name: spec.manualOnly
@@ -138,9 +153,9 @@ export function digestPhoneSpec(spec: DigestSpec, source: DigestSource): PhoneWo
           : 'Evening task summary',
     description: source.live
       ? source.live.provider === 'native'
-        ? 'Reviewed read-only phone sources. Reads selected Calendar and reminders only while this resident connection and consent remain valid.'
-        : 'Reviewed read-only Google digest. Reads only the selected account and window while the phone is offline.'
-      : 'Reviewed hosted snapshot digest. Runs without the phone; no fresh phone data is implied.',
+        ? DIGEST_V1_DESCRIPTIONS.native
+        : DIGEST_V1_DESCRIPTIONS.google
+      : DIGEST_V1_DESCRIPTIONS.snapshot,
     trigger: { kind: 'manual' },
     steps: [
       {
@@ -175,6 +190,23 @@ export function digestPhoneSpec(spec: DigestSpec, source: DigestSource): PhoneWo
       },
     ],
   };
+}
+/** Saved digest sources are verified by recompiling their spec, so a builder's
+ * text is part of every saved digest. Any change to names, descriptions or
+ * instructions adds a new version builder here and bumps HOSTED_TEMPLATE_VERSION;
+ * never edit an old builder. */
+const DIGEST_SPEC_BUILDERS: ReadonlyMap<
+  string,
+  (spec: DigestSpec, source: DigestSource) => PhoneWorkflowSpec
+> = new Map([['hosted-digest-1', digestPhoneSpecV1]]);
+export function digestPhoneSpec(
+  spec: DigestSpec,
+  source: DigestSource,
+  templateVersion: string = HOSTED_TEMPLATE_VERSION
+): PhoneWorkflowSpec {
+  const build = DIGEST_SPEC_BUILDERS.get(templateVersion);
+  if (!build) throw new WorkflowApiError('Unknown digest template version', 409);
+  return build(spec, source);
 }
 export async function digestSource(
   db: DbAccess,
@@ -225,11 +257,27 @@ export async function digestAdmission(
         : 'explicit_snapshot',
     },
   };
-  if (
-    source.revision !== spec.sourceRevision ||
-    workflow.source !== phoneDraftDefinition(digestPhoneSpec(spec, source)).source
-  )
+  if (source.revision !== spec.sourceRevision)
     throw new WorkflowApiError('Digest source integrity changed', 409);
+  // Any reviewed compiler's output of this exact spec runs; a compiler update
+  // must not stop saved digests. Anything else needs the owner to review again.
+  const templateVersion = workflow.metadata?.elizaHostedTemplateVersion ?? HOSTED_TEMPLATE_VERSION;
+  const reviewed =
+    typeof templateVersion === 'string' &&
+    DIGEST_SPEC_BUILDERS.has(templateVersion) &&
+    verifyPhoneWorkflowSource(
+      digestPhoneSpec(spec, source, templateVersion),
+      workflow.source,
+      workflow.metadata?.[PHONE_COMPILER_KEY]
+    );
+  if (!reviewed) {
+    if (spec.manualOnly)
+      throw new WorkflowApiError(
+        'This dossier must be reviewed and saved again. Nothing ran.',
+        409
+      );
+    return { ...base, status: 'unavailable', text: DIGEST_REVIEW_REQUIRED_TEXT };
+  }
   const sourceState = digestSourceState(source, now);
   if (!spec.manualOnly && spec.enabled && sourceState !== 'current')
     return {

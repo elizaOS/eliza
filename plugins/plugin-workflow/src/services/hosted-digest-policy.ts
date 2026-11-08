@@ -8,6 +8,10 @@
  * that came due while the agent was not running once, at startup; admission
  * then records it once as `missed` and never runs it late. The trigger re-arms
  * from the current time, so a long absence leaves one record and no backlog.
+ *
+ * Saving a changed schedule while an occurrence of the previous version is due
+ * replaces that occurrence; it is not recorded. The owner acted at that moment
+ * and the new version arms its next occurrence.
  */
 
 /**
@@ -36,6 +40,9 @@ export const DIGEST_PAUSED_TEXT: Readonly<Record<'expired' | 'revoked', string>>
 });
 export const DIGEST_SOURCE_UNAVAILABLE_TEXT =
   'The reviewed source is revoked or expired. No fresh phone data was read.';
+/** A saved digest whose source is not reviewed output of its spec does not run. */
+export const DIGEST_REVIEW_REQUIRED_TEXT =
+  'This digest must be reviewed and saved again before it can run. Nothing ran.';
 
 /** True for a status the agent records without running the occurrence. */
 export function isDigestNotRunStatus(status: unknown): status is DigestNotRunStatus {

@@ -12,7 +12,7 @@ import { createRealTestRuntime } from '../../../../packages/app/test/helpers/rea
 import { testOutputPath } from '../../../../packages/scripts/lib/test-output';
 import { DeviceActionService } from '../../../plugin-assistant/src/services/device-actions/service.ts';
 import { workflowAction } from '../../src/actions/workflow';
-import { typedMutations } from '../../src/db/schema';
+import { embeddedWorkflows, typedMutations } from '../../src/db/schema';
 import { workflowPlugin } from '../../src/index';
 import { handleWorkflowRoutes } from '../../src/routes/workflow-routes';
 import {
@@ -24,6 +24,8 @@ import {
   assertHostedNativeSource,
   configureHostedNativeSourceReader,
 } from '../../src/services/hosted-native-source';
+import { compilePhoneWorkflowV3 } from '../../src/services/phone-workflow-compiler-v3';
+import { PHONE_COMPILER_KEY, PHONE_SPEC_KEY } from '../../src/services/phone-workflow-spec';
 import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
 
 test('native selected source persists through HTTP; explicit dossier has one model pass and zero scheduler jobs, with revoke and owner fences', async () => {
@@ -471,6 +473,32 @@ test('native selected source persists through HTTP; explicit dossier has one mod
       confirmed: true,
     });
     expect(enabled.status).toBe(200);
+    expect((await call(`/workflows/${enabled.body.receipt.workflowId}`)).body.description).toBe(
+      'Reads your selected Calendar and reminders when the phone is on at the scheduled time.'
+    );
+    // A brief saved by the previous compiler still runs after the compiler update.
+    const storedWhere = and(
+      eq(embeddedWorkflows.agentId, state.runtime.agentId),
+      eq(embeddedWorkflows.id, enabled.body.receipt.workflowId)
+    );
+    const [stored] = await db.select().from(embeddedWorkflows).where(storedWhere);
+    const previous = compilePhoneWorkflowV3(
+      JSON.parse(String(stored.workflow.metadata?.[PHONE_SPEC_KEY]))
+    );
+    expect(previous).not.toBe(stored.workflow.source);
+    await db
+      .update(embeddedWorkflows)
+      .set({
+        workflow: {
+          ...stored.workflow,
+          source: previous,
+          metadata: {
+            ...stored.workflow.metadata,
+            [PHONE_COMPILER_KEY]: 'phone-workflow-compiler-3',
+          },
+        },
+      })
+      .where(storedWhere);
     const run = await service.executeWorkflow(enabled.body.receipt.workflowId, {
       mode: 'trigger',
       triggerData: { scheduledAtMs: minute, workflowVersionId: enabled.body.receipt.versionId },

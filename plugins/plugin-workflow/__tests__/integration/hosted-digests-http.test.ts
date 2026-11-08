@@ -8,11 +8,14 @@ import { and, eq } from 'drizzle-orm';
 import { expect, test } from 'vitest';
 import { registerTriggerTaskWorker } from '../../../../packages/agent/src/triggers/runtime.ts';
 import { createRealTestRuntime } from '../../../../packages/app/test/helpers/real-runtime.ts';
-import { embeddedExecutions, hostedResults } from '../../src/db/schema';
+import { embeddedExecutions, embeddedWorkflows, hostedResults } from '../../src/db/schema';
 import { workflowPlugin } from '../../src/index';
 import { handleWorkflowRoutes } from '../../src/routes/workflow-routes';
 import type { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 import { digestDeliveryProjection } from '../../src/services/hosted-digest';
+import { DIGEST_REVIEW_REQUIRED_TEXT } from '../../src/services/hosted-digest-policy';
+import { compilePhoneWorkflowV3 } from '../../src/services/phone-workflow-compiler-v3';
+import { PHONE_COMPILER_KEY, PHONE_SPEC_KEY } from '../../src/services/phone-workflow-spec';
 import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
 
 test('two actual scheduled hosted digests survive restart and reconnect with one persisted result each', async () => {
@@ -491,6 +494,113 @@ test('two actual scheduled hosted digests survive restart and reconnect with one
       ).toBe(200);
     }
     expect(delivered).toBe(14);
+    // Digests saved before a compiler update keep running; altered sources settle
+    // as a visible not-run record and keep their schedule.
+    const rewrite = async (workflowId: string, change: (workflow: any) => void) => {
+      const db = state!.runtime.db as any,
+        where = and(
+          eq(embeddedWorkflows.agentId, state!.runtime.agentId),
+          eq(embeddedWorkflows.id, workflowId)
+        );
+      const [row] = await db.select().from(embeddedWorkflows).where(where);
+      const workflow = structuredClone(row.workflow);
+      change(workflow);
+      await db.update(embeddedWorkflows).set({ workflow }).where(where);
+    };
+    const waitFinished = async (runId: string) => {
+      let run = await freshEngine.getExecution(runId);
+      for (let i = 0; !run.finished && i < 1200; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        run = await freshEngine.getExecution(runId);
+      }
+      return run;
+    };
+    const upgradeMinute = Math.floor(Date.now() / 60000) * 60000;
+    const current = (
+      await call('/hosted/sources', {
+        ...input,
+        id: randomUUID(),
+        observedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      })
+    ).body.source;
+    const upgradeLoop = async (template: string) => {
+      const saved = await call('/hosted/loops', {
+        mutationId: randomUUID(),
+        confirmed: true,
+        spec: {
+          version: 1,
+          template,
+          sourceId: current.id,
+          sourceRevision: current.revision,
+          timeZone: 'UTC',
+          localTime: new Date(upgradeMinute).toISOString().slice(11, 16),
+          enabled: true,
+        },
+      });
+      expect(saved.status).toBe(200);
+      owned.push(saved.body.receipt.workflowId);
+      return saved.body.receipt;
+    };
+    const compiler3 = await upgradeLoop('morning');
+    const listed = (await call(`/workflows/${compiler3.workflowId}`)).body;
+    expect(listed.description).toBe(
+      'Summarises the snapshot you shared when the phone is on at the scheduled time.'
+    );
+    expect(
+      (await call('/workflows')).body.workflows.find((w: any) => w.id === compiler3.workflowId)
+        .description
+    ).toBe(listed.description);
+    await rewrite(compiler3.workflowId, (workflow) => {
+      const source = compilePhoneWorkflowV3(JSON.parse(workflow.metadata[PHONE_SPEC_KEY]));
+      expect(source).not.toBe(workflow.source);
+      workflow.source = source;
+      workflow.metadata[PHONE_COMPILER_KEY] = 'phone-workflow-compiler-3';
+    });
+    const upgraded = await waitFinished(
+      (
+        await freshEngine.startWorkflow(compiler3.workflowId, {
+          mode: 'trigger',
+          triggerData: { scheduledAtMs: upgradeMinute, workflowVersionId: compiler3.versionId },
+        })
+      ).id
+    );
+    expect(upgraded.status).toBe('finished');
+    expect(JSON.stringify(upgraded.output)).toContain('synthetic task');
+    expect(modelCalls).toBe(3);
+    await rewrite(compiler3.workflowId, (workflow) => {
+      workflow.description = 'My own description';
+    });
+    expect((await call(`/workflows/${compiler3.workflowId}`)).body.description).toBe(
+      'My own description'
+    );
+    const tampered = await upgradeLoop('evening');
+    await rewrite(tampered.workflowId, (workflow) => {
+      workflow.source += '\n// unreviewed executable source';
+    });
+    const stopped = await freshEngine.startWorkflow(tampered.workflowId, {
+      mode: 'trigger',
+      triggerData: { scheduledAtMs: upgradeMinute, workflowVersionId: tampered.versionId },
+    });
+    expect(stopped.finished).toBe(true);
+    expect(stopped.output).toMatchObject({
+      status: 'unavailable',
+      text: DIGEST_REVIEW_REQUIRED_TEXT,
+    });
+    expect(
+      (await call('/hosted/results?clientId=upgrade-phone')).body.entries.filter(
+        (entry: any) => entry.workflowId === tampered.workflowId
+      )
+    ).toMatchObject([
+      { runId: stopped.id, status: 'unavailable', output: { text: DIGEST_REVIEW_REQUIRED_TEXT } },
+    ]);
+    expect((await call(`/workflows/${tampered.workflowId}`)).body.active).toBe(true);
+    expect(
+      (
+        await state!.runtime.getTasks({ agentIds: [state!.runtime.agentId], tags: ['trigger'] })
+      ).filter((t) => String((t.metadata?.trigger as any)?.workflowId) === tampered.workflowId)
+    ).toHaveLength(1);
+    expect(modelCalls).toBe(3);
   } finally {
     await stop();
     for (const id of owned)
