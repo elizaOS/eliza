@@ -549,21 +549,29 @@
   },
   {
     "id": "cloud-flow-remote-session-pairing",
-    "model": null,
+    "model": "packages/cloud/quint/RemoteSessionPairing.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/remote-sessions-store.ts",
+      "packages/cloud/shared/src/db/repositories/remote-hosts.ts",
+      "packages/cloud/shared/src/db/repositories/remote-command-envelopes.ts",
+      "packages/cloud/shared/src/db/repositories/primary-database-clock.ts",
       "packages/cloud/shared/src/db/schemas/remote-sessions.ts",
-      "packages/cloud/shared/src/db/crypto/remote-pairing-code.ts"
+      "packages/cloud/shared/src/db/migrations/0332_remote_target_initiated_pairing.sql",
+      "packages/cloud/shared/src/db/crypto/remote-pairing-code.ts",
+      "packages/cloud/shared/src/db/repositories/remote-command-envelopes.pglite.test.ts",
+      "packages/cloud/api/v1/remote/sessions/route.ts",
+      "packages/cloud/api/v1/remote/sessions/[id]/activate/route.ts",
+      "packages/cloud/api/v1/remote/pair/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite implementation model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Pairing token has one owner | Grant revision and sequence do not regress | Revocation prevents further authority",
-      "Abstract states: pending, claimed, activating, active, denied, revoked, expired"
+      "One enrolled host, one owner, two distinct target challenges, two possible controller identities, and one outstanding target confirmation read. Issue at time 0 through 2, advance to time 5, and give each challenge a pairing deadline two ticks after issue and a grant deadline three ticks after issue.",
+      "Scope and HMAC verification use matching and mismatching input classes. Secret bytes, rate policy, HTTP and cryptographic correctness are outside the model. The command predicate projects only a live host, active session and grant deadline.",
+      "Target-created challenges use immutable distinct grant identities and revision 1. Controller-created legacy issuance, code lookup collisions and limits, agent pairing, command sequences and key rotation remain outside this model.",
+      "The database's controller-identity constraint rolls back attempted legacy activation of an unclaimed target challenge. Atomic state changes abstract lock ordering, storage failures and retry delivery. The single outstanding confirmation read is rechecked before it can stage a grant.",
+      "The model assumes canonical database constraints and covers both rows in one unlocked host revocation page. Locked rows and continuation have a separate RemoteHostRevocation model. Native durable grant installation remains a caller responsibility.",
+      "Progress assumes time advances and a successful sweep runs for each persistently expired uncommitted row. It does not require either party to confirm or commit a pairing."
     ]
   },
   {
