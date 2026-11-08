@@ -15,6 +15,7 @@ import {
   type OutgoingMailAttachment,
   reviewOpaqueAttachment,
 } from "./attachments.ts";
+import { isDigest } from "./digest.ts";
 import { ManagedGmailProtocolError } from "./failures.ts";
 import { safeMailLink } from "./links.ts";
 import type {
@@ -70,18 +71,51 @@ const RECEIPT_STATES: readonly string[] = [
   "rejected",
   "outcome-unknown",
 ];
-/** Attachment types the content review can open; others are opaque byte copies. */
-const REVIEWABLE_TYPES: readonly string[] = [
-  "application/pdf",
-  "text/plain",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-];
+/**
+ * Attachment types the content review can open, with the file name each must
+ * have; others are opaque byte copies. The same rule as Cloud's.
+ */
+const REVIEWABLE_TYPES: Readonly<Record<string, RegExp>> = {
+  "application/pdf": /\.pdf$/i,
+  "text/plain": /\.txt$/i,
+  "image/png": /\.png$/i,
+  "image/jpeg": /\.jpe?g$/i,
+  "image/webp": /\.webp$/i,
+};
+/** Largest attachment Cloud opens for review. */
+const REVIEWABLE_BYTES = 5 * 1024 * 1024;
+const reviewable = (name: string, mimeType: string, size: number) =>
+  name.length > 0 &&
+  name.length <= 120 &&
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: reject control characters in untrusted names.
+  !/[\\/\x00-\x1f\x7f]/.test(name) &&
+  Object.hasOwn(REVIEWABLE_TYPES, mimeType) &&
+  REVIEWABLE_TYPES[mimeType].test(name) &&
+  size <= REVIEWABLE_BYTES;
 const INBOX_V1 = "/api/v1/eliza/google/gmail/inbox-v1";
-const DISPATCH_TIMEOUT_MS = 45000;
+/**
+ * A reviewed operation uploads its whole proposal, attachments included, so
+ * its timeout grows with the body at an assumed 32 KiB/s uplink, up to the
+ * native transport's 120 s.
+ */
+const PREPARE_TIMEOUT_MS = 30_000;
+const DISPATCH_TIMEOUT_MS = 45_000;
+const UPLOAD_BYTES_PER_SECOND = 32 * 1024;
+export const MAX_OPERATION_TIMEOUT_MS = 120_000;
+export const operationTimeout = (base: number, body: unknown): number =>
+  Math.min(
+    MAX_OPERATION_TIMEOUT_MS,
+    Math.ceil(
+      base +
+        (new TextEncoder().encode(JSON.stringify(body)).length /
+          UPLOAD_BYTES_PER_SECOND) *
+          1000,
+    ),
+  );
 /** Display bounds for one message body; what exceeds them is reported, not silently dropped. */
 const MAX_MAIL_LINKS = 50;
+/** Link rows inspected for one message; the rest are counted as left out. */
+const MAX_MAIL_LINK_ROWS = 200;
 const MAX_MAIL_HTML_BYTES = 512 * 1024;
 
 export class ManagedGmailMailboxClient {
@@ -119,36 +153,31 @@ export class ManagedGmailMailboxClient {
 
   /** Inert, validated links; at most 50 distinct. */
   mailLinks(value: unknown): GmailLink[] {
-    return this.distinctLinks(value).slice(0, MAX_MAIL_LINKS);
+    return this.linkFields(value).links;
   }
 
-  /** The displayed links, and how many distinct safe links were left out. */
+  /**
+   * The displayed links, and how many were left out. At most 200 rows are
+   * inspected: distinct safe links past the first 50 are counted, and every
+   * row past the first 200 is counted without being inspected.
+   */
   private linkFields(value: unknown): {
     links: GmailLink[];
     omittedLinks?: number;
   } {
-    const links = this.distinctLinks(value);
-    return links.length > MAX_MAIL_LINKS
-      ? {
-          links: links.slice(0, MAX_MAIL_LINKS),
-          omittedLinks: links.length - MAX_MAIL_LINKS,
-        }
-      : { links };
-  }
-
-  private distinctLinks(value: unknown): GmailLink[] {
-    if (value === undefined) return [];
-    if (!Array.isArray(value) || value.length > 200) throw this.invalid();
+    if (value === undefined) return { links: [] };
+    if (!Array.isArray(value)) throw this.invalid();
     const seen = new Set<string>(),
       links: GmailLink[] = [];
-    for (const row of value) {
+    let omitted = Math.max(0, value.length - MAX_MAIL_LINK_ROWS);
+    for (const row of value.slice(0, MAX_MAIL_LINK_ROWS)) {
       const link = safeMailLink(row);
-      if (link && !seen.has(link.href)) {
-        seen.add(link.href);
-        links.push(link);
-      }
+      if (!link || seen.has(link.href)) continue;
+      seen.add(link.href);
+      if (links.length < MAX_MAIL_LINKS) links.push(link);
+      else omitted++;
     }
-    return links;
+    return omitted ? { links, omittedLinks: omitted } : { links };
   }
 
   /** The complete optional display body; oversized HTML keeps the plain alternative. */
@@ -365,10 +394,11 @@ export class ManagedGmailMailboxClient {
             name,
             mimeType: a.mimeType,
             size: a.size as number,
+            // An older Cloud sends no `supported`; apply its rule here.
             supported:
               typeof a.supported === "boolean"
                 ? a.supported
-                : REVIEWABLE_TYPES.includes(a.mimeType),
+                : reviewable(name, a.mimeType, a.size as number),
           };
         })
       : [];
@@ -628,11 +658,7 @@ export class ManagedGmailMailboxClient {
       `${INBOX_V1}/draft?${new URLSearchParams({ grantId, draftId, content: "1" })}`,
       signal,
     );
-    if (
-      data.id !== draftId ||
-      typeof data.providerDigest !== "string" ||
-      !/^[a-f0-9]{64}$/.test(data.providerDigest)
-    )
+    if (data.id !== draftId || !isDigest(data.providerDigest))
       throw this.invalid();
     const content = this.object(data.content),
       list = (value: unknown) => {
@@ -708,11 +734,7 @@ export class ManagedGmailMailboxClient {
       `${INBOX_V1}/draft?${new URLSearchParams({ grantId, draftId })}`,
       signal,
     );
-    if (
-      data.id !== draftId ||
-      typeof data.providerDigest !== "string" ||
-      !/[a-f0-9]{64}/.test(data.providerDigest)
-    )
+    if (data.id !== draftId || !isDigest(data.providerDigest))
       throw this.invalid();
     return {
       draftId,
@@ -727,8 +749,7 @@ export class ManagedGmailMailboxClient {
       data.requestId !== requestId ||
       !OPERATION_KINDS.includes(String(data.kind)) ||
       !RECEIPT_STATES.includes(String(data.state)) ||
-      typeof data.reviewDigest !== "string" ||
-      !/^[a-f0-9]{64}$/.test(data.reviewDigest)
+      !isDigest(data.reviewDigest)
     )
       throw this.invalid();
     const providerResult =
@@ -753,8 +774,10 @@ export class ManagedGmailMailboxClient {
     proposal: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<{ receipt: GmailInboxReceipt; review: ObjectValue }> {
+    const body = { grantId, requestId, proposal };
     const data = await this.call(`${INBOX_V1}/operations`, signal, {
-      body: { grantId, requestId, proposal },
+      body,
+      timeoutMs: operationTimeout(PREPARE_TIMEOUT_MS, body),
     });
     if (data.version !== 1 || data.providerExactlyOnce !== false)
       throw this.invalid();
@@ -776,13 +799,31 @@ export class ManagedGmailMailboxClient {
     proposal: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<GmailInboxReceipt> {
+    const body = { grantId, reviewDigest, proposal };
     const data = await this.call(
       `${INBOX_V1}/operations/${encodeURIComponent(requestId)}/dispatch`,
       signal,
-      {
-        body: { grantId, reviewDigest, proposal },
-        timeoutMs: DISPATCH_TIMEOUT_MS,
-      },
+      { body, timeoutMs: operationTimeout(DISPATCH_TIMEOUT_MS, body) },
+    );
+    if (data.version !== 1 || data.providerExactlyOnce !== false)
+      throw this.invalid();
+    return this.gmailInboxReceipt(data.receipt, requestId);
+  }
+
+  /**
+   * Discards a request Cloud never dispatched. Cloud answers with the current
+   * receipt: rejected with code `cancelled` when it was discarded, unchanged
+   * when it was already dispatched. An older Cloud answers 404.
+   */
+  async gmailCancelOperation(
+    grantId: string,
+    requestId: string,
+    signal: AbortSignal,
+  ): Promise<GmailInboxReceipt> {
+    const data = await this.call(
+      `${INBOX_V1}/operations/${encodeURIComponent(requestId)}/cancel`,
+      signal,
+      { body: { grantId } },
     );
     if (data.version !== 1 || data.providerExactlyOnce !== false)
       throw this.invalid();

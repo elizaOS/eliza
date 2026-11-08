@@ -317,6 +317,43 @@ describe("Gmail label payload authority", () => {
     expect(result.bodyHtml).toBe("<p>Owned HTML body</p>");
     expect(result.authenticationResults).toEqual([]);
   });
+  test("read marks each attachment reviewable with the thread route's name, type and size rule", async () => {
+    installGmail({ "": { ids: [] } });
+    const provider = globalThis.fetch;
+    const file = (partId: string, filename: string, mimeType: string, size: number) => ({
+      partId,
+      filename,
+      mimeType,
+      body: { attachmentId: `att-${partId}`, size },
+    });
+    globalThis.fetch = mock(async (input, init) => {
+      if (new URL(String(input)).searchParams.get("format") !== "full")
+        return provider(input, init);
+      const full = message("m1");
+      return Response.json({
+        ...full,
+        payload: {
+          ...full.payload,
+          mimeType: "multipart/mixed",
+          body: { size: 0 },
+          parts: [
+            { ...full.payload, partId: "0" },
+            file("1", "invoice.pdf", "application/pdf", 1024),
+            file("2", "large.pdf", "application/pdf", 8 * 1024 * 1024),
+            file("3", "invoice", "application/pdf", 1024),
+            file("4", "notes.zip", "application/zip", 1024),
+          ],
+        },
+      });
+    }) as unknown as typeof fetch;
+    const result = await readManagedGoogleGmailMessage({ ...SEARCH, messageId: "m1" });
+    expect(result.attachments?.map((row) => [row.filename, row.supported])).toEqual([
+      ["invoice.pdf", true],
+      ["large.pdf", false],
+      ["invoice", false],
+      ["notes.zip", false],
+    ]);
+  });
   test("read returns every Authentication-Results value, unparsed and in header order", async () => {
     // The sender-written value is on top, and it would sort after the other value.
     authenticationHeaders = [

@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { sha256Hex } from "../../src/mailbox/digest.ts";
+import { INBOX_DISPATCH_SETTLE_MS } from "../../src/mailbox/operation-journal.ts";
 import {
   createMailReviewController,
   type MailReviewBinding,
@@ -48,7 +49,12 @@ function fixture(
   const dispatched: Bag[] = [];
   const toasts: string[] = [];
   let state = { outcome, publishes: 0 };
-  const hooks: { prepareGate?: Promise<void>; failReads?: boolean } = {};
+  const hooks: {
+    prepareGate?: Promise<void>;
+    failReads?: boolean;
+    dispatchError?: unknown;
+    time?: number;
+  } = {};
   const client: MailReviewClient = {
     gmailInboxCapabilities: async () => ({ ...caps, ...granted }),
     gmailDraft: async (_grant, draftId) => ({
@@ -75,6 +81,7 @@ function fixture(
       return { receipt, review };
     },
     async gmailDispatchOperation(_grant, requestId, reviewDigest, proposal) {
+      if (hooks.dispatchError) throw hooks.dispatchError;
       dispatched.push(proposal);
       const kind = proposal.kind as GmailInboxReceipt["kind"];
       const receipt: GmailInboxReceipt = {
@@ -97,6 +104,18 @@ function fixture(
       const receipt = receipts.get(requestId);
       if (!receipt) throw new Error("unknown");
       return receipt;
+    },
+    async gmailCancelOperation(_grant, requestId) {
+      const receipt = receipts.get(requestId);
+      if (!receipt) throw new Error("unknown");
+      if (receipt.state !== "prepared") return receipt;
+      const cancelled: GmailInboxReceipt = {
+        ...receipt,
+        state: "rejected",
+        rejectionCode: "cancelled",
+      };
+      receipts.set(requestId, cancelled);
+      return cancelled;
     },
   };
   let current: MailReviewBinding | null = {
@@ -132,6 +151,7 @@ function fixture(
       return () => (t += 1000);
     })(),
     defer: (task) => task(),
+    clock: () => hooks.time ?? Date.now(),
   });
   return {
     controller,
@@ -203,9 +223,48 @@ describe("createMailReviewController", () => {
     expect(view.status).toMatch(/Delivery outcome is unknown/);
     expect(view.canConfirm).toBe(false);
     expect(view.canClear).toBe(false);
+    expect(view.canDiscard).toBe(false);
+    expect(view.canAcknowledge).toBe(true);
+    expect(view.acknowledgeNote).toBe(
+      "This email may have been sent. Check Sent in Gmail before trying again.",
+    );
     view.confirm();
     await settle();
     expect(f.dispatched).toHaveLength(1);
+    // The owner closes it after checking Gmail; nothing is sent again.
+    f.controller.render().provider.acknowledge();
+    await settle();
+    expect(f.controller.render().providerReview).toBe(false);
+    expect(f.controller.chips((label) => label)).toEqual([]);
+    expect(f.dispatched).toHaveLength(1);
+  });
+
+  it("offers Discard only for a dispatch Cloud never claimed, after its timeout", async () => {
+    const f = fixture();
+    const composerEmail = { draftId: "d", proposal: email() };
+    f.controller.setComposer(() => composerEmail);
+    await f.controller.bind("grant");
+    await f.controller.prepare(email(), { draftId: "d" });
+    let view = f.controller.render().provider;
+    expect(view.canDiscard).toBe(false);
+    expect(view.canAcknowledge).toBe(false);
+    f.hooks.dispatchError = new Error("Connection timed out");
+    view.confirm();
+    await settle();
+    view = f.controller.render().provider;
+    expect(view.canConfirm).toBe(false);
+    expect(view.canDiscard).toBe(false);
+    expect(view.canAcknowledge).toBe(false);
+    f.hooks.time = Date.now() + INBOX_DISPATCH_SETTLE_MS;
+    view = f.controller.render().provider;
+    expect(view.canDiscard).toBe(true);
+    expect(view.discardLabel).toBe("Discard this request");
+    view.discard();
+    await settle();
+    expect(f.toasts.at(-1)).toBe("Request discarded. No mail was sent.");
+    expect(f.controller.render().providerReview).toBe(false);
+    expect(f.controller.chips((label) => label)).toEqual([]);
+    expect(f.dispatched).toEqual([]);
   });
 
   it("offers a reviewed Undo after a confirmed trash", async () => {

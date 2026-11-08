@@ -18,6 +18,7 @@ import {
   type ComposerEmail,
   composerContent,
   composerKind,
+  discardableDispatch,
   InboxOperation,
   type InboxOperationClient,
   type InboxOperationRecord,
@@ -70,6 +71,8 @@ export interface MailReviewControllerOptions {
   reviewAttachment: MailAttachmentReviewer;
   /** Monotonic clock for the double-tap guard. Defaults to performance.now(). */
   now?(): number;
+  /** Wall clock for the age of a started dispatch. Defaults to Date.now(). */
+  clock?(): number;
   /** Schedules the discard of a review whose composer email changed. Defaults to queueMicrotask. */
   defer?(task: () => void): void;
 }
@@ -105,6 +108,7 @@ export function createMailReviewController(
   const { publish, toast } = options;
   const disabled = () => options.disabled?.() === true;
   const now = options.now ?? (() => performance.now());
+  const clock = options.clock ?? (() => Date.now());
   const defer = options.defer ?? ((task: () => void) => queueMicrotask(task));
   let editor:
     | ((
@@ -715,6 +719,33 @@ export function createMailReviewController(
           record?.phase === "review" ||
           record?.phase === "preparing" ||
           ["succeeded", "rejected"].includes(receiptState || ""),
+        // A request Cloud never received, long after its dispatch started.
+        canDiscard: !busy && discardableDispatch(record, clock()),
+        discardLabel: "Discard this request",
+        discard: () =>
+          void run(async (owned, check) => {
+            await owned.discard(clock());
+            check();
+            if (owned.snapshot()) return;
+            visible = false;
+            toast(
+              sending
+                ? "Request discarded. No mail was sent."
+                : "Request discarded. Nothing was changed.",
+            );
+          }),
+        // Cloud settled the outcome as unknown; the owner can close it after checking Gmail.
+        canAcknowledge: !busy && receiptState === "outcome-unknown",
+        acknowledgeNote: sending
+          ? "This email may have been sent. Check Sent in Gmail before trying again."
+          : "This change may have been made. Check Gmail before trying again.",
+        acknowledgeLabel: "I checked Gmail, close this",
+        acknowledge: () =>
+          void run(async (owned, check) => {
+            await owned.acknowledge();
+            check();
+            if (!owned.snapshot()) visible = false;
+          }),
         close: () => {
           visible = false;
           publish();

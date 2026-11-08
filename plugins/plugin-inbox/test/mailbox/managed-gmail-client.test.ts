@@ -210,6 +210,157 @@ describe("ManagedGmailMailboxClient", () => {
     ).rejects.toThrow("invalid-response");
   });
 
+  it("opens a long newsletter, inspecting at most 200 link rows", async () => {
+    const { client } = fixture({
+      "/gmail/read?": () => ({
+        message,
+        bodyText: "Body",
+        links: Array.from({ length: 250 }, (_, i) => ({
+          href: `https://example.org/${i % 120}`,
+          text: `L${i}`,
+        })),
+      }),
+    });
+    const read = await client.gmailRead("grant", "m1", signal());
+    expect(read.links).toHaveLength(50);
+    expect(read.links[49]?.href).toBe("https://example.org/49");
+    // 70 distinct links past the first 50 in the inspected rows, plus 50 uninspected rows.
+    expect(read.omittedLinks).toBe(70 + 50);
+    expect(
+      client.mailLinks([{ href: "https://example.org/x", text: "x" }]),
+    ).toHaveLength(1);
+  });
+
+  it("offers an attachment for review only with Cloud's name, type and size rule", async () => {
+    const pdf = (filename: string, size: number, supported?: boolean) => ({
+      partId: filename,
+      filename,
+      mimeType: "application/pdf",
+      size,
+      ...(supported === undefined ? {} : { supported }),
+    });
+    const { client } = fixture({
+      "/gmail/read?": () => ({
+        message,
+        bodyText: "Body",
+        attachments: [
+          pdf("small.pdf", 1024),
+          pdf("large.pdf", 8 * 1024 * 1024),
+          pdf("invoice", 1024),
+          pdf("cloud-says-no.pdf", 1024, false),
+          { partId: "x", filename: "x.pdf", mimeType: "constructor", size: 1 },
+        ],
+      }),
+    });
+    const read = await client.gmailRead("grant", "m1", signal());
+    expect(read.attachments.map((a) => [a.name, a.supported])).toEqual([
+      ["small.pdf", true],
+      ["large.pdf", false],
+      ["invoice", false],
+      ["cloud-says-no.pdf", false],
+      ["x.pdf", false],
+    ]);
+  });
+
+  it("accepts only an exact 64-character provider draft digest", async () => {
+    let providerDigest = `${"a".repeat(64)}b`;
+    const { client } = fixture({
+      "/draft?": () => ({ id: "d1", messageId: "m1", providerDigest }),
+    });
+    await expect(client.gmailDraft("grant", "d1", signal())).rejects.toThrow(
+      "invalid-response",
+    );
+    providerDigest = "a".repeat(64);
+    expect(
+      (await client.gmailDraft("grant", "d1", signal())).providerDigest,
+    ).toBe(providerDigest);
+  });
+
+  it("scales prepare and dispatch timeouts with the uploaded body, up to 120 s", async () => {
+    const digest = "a".repeat(64),
+      id = "00000000-0000-4000-8000-000000000001";
+    const receipt = {
+      requestId: id,
+      kind: "send",
+      state: "prepared",
+      reviewDigest: digest,
+      providerResult: null,
+      rejectionCode: null,
+    };
+    const { client, sent } = fixture({
+      "/dispatch": () => ({ version: 1, providerExactlyOnce: false, receipt }),
+      "/operations": () => ({
+        version: 1,
+        providerExactlyOnce: false,
+        receipt,
+        review: {},
+      }),
+    });
+    const proposal = (bytes: number) => ({
+      kind: "send",
+      attachments: [{ dataBase64: "A".repeat(bytes) }],
+    });
+    await client.gmailPrepareOperation("grant", id, proposal(0), signal());
+    await client.gmailPrepareOperation(
+      "grant",
+      id,
+      proposal(2 * 1024 * 1024),
+      signal(),
+    );
+    await client.gmailDispatchOperation(
+      "grant",
+      id,
+      digest,
+      proposal(2 * 1024 * 1024),
+      signal(),
+    );
+    await client.gmailDispatchOperation(
+      "grant",
+      id,
+      digest,
+      proposal(7 * 1024 * 1024),
+      signal(),
+    );
+    const [small, prepare, dispatch, capped] = sent.map(
+      (row) => row.timeoutMs as number,
+    );
+    expect(small).toBeGreaterThanOrEqual(30_000);
+    expect(small).toBeLessThan(30_100);
+    // 2 MiB at 32 KiB/s is 64 s on top of the base.
+    expect(prepare).toBeGreaterThanOrEqual(94_000);
+    expect(prepare).toBeLessThan(94_100);
+    expect(dispatch).toBeGreaterThanOrEqual(109_000);
+    expect(dispatch).toBeLessThan(109_100);
+    expect(capped).toBe(120_000);
+  });
+
+  it("cancels a request through Cloud and reads back its receipt", async () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const { client, sent } = fixture({
+      "/cancel": () => ({
+        version: 1,
+        providerExactlyOnce: false,
+        receipt: {
+          requestId: id,
+          kind: "send",
+          state: "rejected",
+          reviewDigest: "a".repeat(64),
+          providerResult: null,
+          rejectionCode: "cancelled",
+        },
+      }),
+    });
+    const receipt = await client.gmailCancelOperation("grant", id, signal());
+    expect(receipt).toMatchObject({
+      state: "rejected",
+      rejectionCode: "cancelled",
+    });
+    expect(sent[0]).toMatchObject({
+      path: `/api/v1/eliza/google/gmail/inbox-v1/operations/${id}/cancel`,
+      body: { grantId: "grant" },
+    });
+  });
+
   it("validates receipts and dispatches with the longer timeout", async () => {
     const digest = "a".repeat(64);
     const receipt = (state: string, providerResult: unknown) => ({
@@ -234,7 +385,8 @@ describe("ManagedGmailMailboxClient", () => {
       (await client.gmailDispatchOperation("grant", id, digest, {}, signal()))
         .state,
     ).toBe("succeeded");
-    expect(sent[0]?.timeoutMs).toBe(45000);
+    expect(sent[0]?.timeoutMs).toBeGreaterThanOrEqual(45000);
+    expect(sent[0]?.timeoutMs).toBeLessThan(45100);
     result = null;
     await expect(
       client.gmailDispatchOperation("grant", id, digest, {}, signal()),

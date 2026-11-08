@@ -141,6 +141,17 @@ export function createInboxOperationRoutes(dependencies: InboxOperationRouteDepe
     });
     return context.json({ version: 1, receipt, providerExactlyOnce: false });
   });
+  // Discards a request that was never dispatched; a claimed or finished request is returned unchanged.
+  app.post("/operations/:requestId/cancel", async (context) => {
+    const identity = await dependencies.authenticate(context),
+      body = await input(context, ["grantId"]),
+      owner = { ...identity, grantId: id(body.grantId) };
+    return context.json({
+      version: 1,
+      receipt: await dependencies.receipts.cancel(owner, id(context.req.param("requestId"))),
+      providerExactlyOnce: false,
+    });
+  });
   app.get("/operations/:requestId", async (context) => {
     const identity = await dependencies.authenticate(context),
       owner = { ...identity, grantId: id(context.req.query("grantId")) };

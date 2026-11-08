@@ -7,8 +7,16 @@
  * dispatch: an uncertain outcome stays uncertain until the canonical receipt is
  * read back. No recovery path in this module dispatches an effect.
  *
- * The record layout and storage key (`inbox-operation:v1:<sha256([owner, grant])>`)
- * are installed-data identifiers; hosts keep existing records readable.
+ * The owner has three exits from an unresolved dispatch, none of which sends:
+ * a dispatch Cloud refused before claiming it returns to review; a request
+ * Cloud still reports as never claimed can be discarded (Cloud cancels it, so a
+ * late dispatch is refused); and an outcome Cloud has settled as unknown can be
+ * acknowledged, which frees the slot and keeps its request id in a short
+ * history that a new request id never reuses.
+ *
+ * The record layout and storage keys (`inbox-operation:v1:<sha256([owner, grant])>`
+ * and `inbox-operation-acknowledged:v1:<same>`) are installed-data identifiers;
+ * hosts keep existing records readable.
  */
 import {
   checkOutgoingAttachments,
@@ -16,7 +24,8 @@ import {
   type OutgoingMailAttachment,
   outgoingAttachmentLimits,
 } from "./attachments.ts";
-import { sha256Hex } from "./digest.ts";
+import { isDigest, sha256Hex } from "./digest.ts";
+import { MANAGED_PROTOCOL_ERROR_NAMES } from "./failures.ts";
 import type { GmailInboxReceipt } from "./types.ts";
 
 type Bag = Record<string, unknown>;
@@ -51,6 +60,8 @@ export interface InboxOperationRecord {
    * content.
    */
   composer?: { draftId: string };
+  /** Wall-clock milliseconds when the dispatch was started. Absent on older records. */
+  dispatchStartedAt?: number;
 }
 
 /** Operations reviewed from the composer. */
@@ -143,6 +154,12 @@ export interface InboxOperationClient {
     request: string,
     signal: AbortSignal,
   ): Promise<GmailInboxReceipt>;
+  /** Discards a request Cloud never dispatched. Absent on an older host client. */
+  gmailCancelOperation?(
+    grant: string,
+    request: string,
+    signal: AbortSignal,
+  ): Promise<GmailInboxReceipt>;
 }
 
 export interface InboxOperationDependencies {
@@ -176,6 +193,72 @@ const sameSend = (saved: GmailInboxReceipt, receipt: GmailInboxReceipt) =>
 
 const PHASES = ["preparing", "review", "dispatching", "observed"];
 
+/** How long a started dispatch can still be answered: the longest dispatch timeout. */
+export const INBOX_DISPATCH_SETTLE_MS = 120_000;
+/** Acknowledged unknown outcomes kept per owner and grant; the oldest is dropped. */
+export const INBOX_ACKNOWLEDGED_LIMIT = 20;
+
+const UNRESOLVED =
+  "Outcome is unresolved. Check the existing receipt; do not repeat this message.";
+
+/**
+ * A dispatch Cloud still reports as never claimed, after any reply to it could
+ * have arrived. The owner may discard it; Cloud then refuses a late dispatch.
+ */
+export const discardableDispatch = (
+  record: Pick<
+    InboxOperationRecord,
+    "phase" | "receipt" | "dispatchStartedAt"
+  > | null,
+  now = Date.now(),
+): boolean =>
+  record?.phase === "dispatching" &&
+  record.receipt?.state === "prepared" &&
+  (record.dispatchStartedAt === undefined ||
+    now - record.dispatchStartedAt >= INBOX_DISPATCH_SETTLE_MS);
+
+/**
+ * Cloud's own answer refusing a request: a 4xx with Cloud's `{ error }` body,
+ * not a bare status from a gateway or proxy on the way.
+ */
+function cloudRefusal(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const failure = error as {
+    name?: unknown;
+    code?: unknown;
+    status?: unknown;
+    data?: unknown;
+  };
+  const data = failure.data as { error?: unknown } | null | undefined;
+  return (
+    typeof failure.name === "string" &&
+    MANAGED_PROTOCOL_ERROR_NAMES.includes(failure.name) &&
+    failure.code === "http" &&
+    typeof failure.status === "number" &&
+    failure.status >= 400 &&
+    failure.status < 500 &&
+    !!data &&
+    typeof data === "object" &&
+    typeof data.error === "string"
+  );
+}
+
+const httpStatus = (error: unknown): unknown =>
+  error && typeof error === "object"
+    ? (error as { status?: unknown }).status
+    : undefined;
+
+/** A dispatch that ran out of time may still have reached Gmail. */
+const timedOut = (error: unknown): boolean =>
+  error instanceof Error &&
+  error.name !== "AbortError" &&
+  /timed out|timeout/i.test(error.message);
+
+interface AcknowledgedHistory {
+  version: 1;
+  requestIds: string[];
+}
+
 /** Storage key of the journal for one owner and grant. */
 export async function inboxOperationKey(
   owner: string,
@@ -183,6 +266,23 @@ export async function inboxOperationKey(
 ): Promise<string> {
   return `inbox-operation:v1:${await sha256Hex(JSON.stringify([owner, grantId]))}`;
 }
+
+/** Storage key of the acknowledged unknown outcomes for one owner and grant. */
+export async function inboxAcknowledgedKey(
+  owner: string,
+  grantId: string,
+): Promise<string> {
+  return `inbox-operation-acknowledged:v1:${await sha256Hex(JSON.stringify([owner, grantId]))}`;
+}
+
+const validHistory = (value: unknown): value is AcknowledgedHistory =>
+  !!value &&
+  typeof value === "object" &&
+  (value as AcknowledgedHistory).version === 1 &&
+  Array.isArray((value as AcknowledgedHistory).requestIds) &&
+  (value as AcknowledgedHistory).requestIds.every(
+    (id) => typeof id === "string" && !!id,
+  );
 
 function validRecord(
   value: InboxOperationRecord,
@@ -214,6 +314,11 @@ function validRecord(
     if (!composer || typeof composer.draftId !== "string" || !composer.draftId)
       return false;
   }
+  if (
+    value.dispatchStartedAt !== undefined &&
+    !Number.isFinite(value.dispatchStartedAt)
+  )
+    return false;
   return true;
 }
 
@@ -360,11 +465,16 @@ export class InboxOperation {
         source && typeof source.draftId === "string" && source.draftId
           ? source.draftId
           : null;
+      // An acknowledged request id is never minted again.
+      const acknowledged = (await this.acknowledged()).requestIds;
+      this.check();
+      let requestId = crypto.randomUUID();
+      while (acknowledged.includes(requestId)) requestId = crypto.randomUUID();
       await this.save({
         version: 1,
         owner: this.deps.owner,
         grantId: this.deps.grantId,
-        requestId: crypto.randomUUID(),
+        requestId,
         proposal: clean,
         phase: "preparing",
         review: null,
@@ -485,8 +595,7 @@ export class InboxOperation {
           (row: Bag) =>
             typeof row.name !== "string" ||
             typeof row.size !== "number" ||
-            typeof row.sha256 !== "string" ||
-            !/^[a-f0-9]{64}$/.test(row.sha256),
+            !isDigest(row.sha256),
         )
       )
         throw new Error("Server changed the forwarded attachments");
@@ -537,19 +646,160 @@ export class InboxOperation {
         if (binding !== "bound") throw new Error(reviewBindingRefusal[binding]);
       }
       // Durable before the single network attempt. A lost write reply cannot cause dispatch.
-      await this.save({ ...record, phase: "dispatching" });
+      await this.save({
+        ...record,
+        phase: "dispatching",
+        dispatchStartedAt: Date.now(),
+      });
       this.check();
-      const receipt = await this.deps.client.gmailDispatchOperation(
-        record.grantId,
-        record.requestId,
-        record.receipt.reviewDigest,
-        record.proposal,
-        this.controller.signal,
-      );
+      let receipt: GmailInboxReceipt;
+      try {
+        receipt = await this.deps.client.gmailDispatchOperation(
+          record.grantId,
+          record.requestId,
+          record.receipt.reviewDigest,
+          record.proposal,
+          this.controller.signal,
+        );
+      } catch (error) {
+        this.check();
+        await this.failedDispatch(error);
+        return this.snapshot();
+      }
       this.check();
       await this.observe(receipt);
       return this.snapshot();
     });
+  }
+
+  /**
+   * A dispatch that failed is resolved by reading its receipt once, never by
+   * sending again. Cloud's own 4xx refusal with the request still unclaimed
+   * returns it to review, so a later Confirm dispatches the same reviewed
+   * request. Any other failure stays dispatching until the receipt settles.
+   */
+  private async failedDispatch(error: unknown): Promise<void> {
+    const record = this.record as InboxOperationRecord;
+    const unresolved = timedOut(error)
+      ? new Error(
+          "Gmail did not answer in time, so the outcome is not known yet. Check the saved receipt; do not repeat this.",
+        )
+      : error;
+    let receipt: GmailInboxReceipt;
+    try {
+      receipt = await this.deps.client.gmailOperation(
+        record.grantId,
+        record.requestId,
+        this.controller.signal,
+      );
+    } catch {
+      this.check();
+      throw unresolved;
+    }
+    this.check();
+    if (receipt.state === "prepared" && cloudRefusal(error)) {
+      await this.observe(receipt);
+      const { dispatchStartedAt: _started, ...rest } = this
+        .record as InboxOperationRecord;
+      await this.save({ ...rest, phase: "review" });
+      throw error;
+    }
+    await this.observe(receipt);
+    if (receipt.state === "prepared") throw unresolved;
+  }
+
+  /**
+   * Discards a dispatch Cloud never claimed. Cloud cancels the request, so a
+   * dispatch still on its way is refused; the slot is freed only when Cloud
+   * reports the request cancelled. Anything else keeps the record as it is.
+   */
+  async discard(now = Date.now()): Promise<InboxOperationRecord | null> {
+    return this.exclusive(async () => {
+      const record = this.record;
+      if (!record || !discardableDispatch(record, now))
+        throw new Error(
+          "Only a request Gmail has not received can be discarded.",
+        );
+      const client = this.deps.client;
+      if (typeof client.gmailCancelOperation !== "function")
+        throw new Error(UNRESOLVED);
+      let receipt: GmailInboxReceipt;
+      try {
+        receipt = await client.gmailCancelOperation(
+          record.grantId,
+          record.requestId,
+          this.controller.signal,
+        );
+      } catch (error) {
+        this.check();
+        // An older Cloud has no cancel: keep the request and today's advice.
+        if (httpStatus(error) === 404) throw new Error(UNRESOLVED);
+        throw error;
+      }
+      this.check();
+      await this.observe(receipt);
+      if (receipt.state === "rejected" && receipt.rejectionCode === "cancelled")
+        await this.save(null);
+      return this.snapshot();
+    });
+  }
+
+  /**
+   * The owner acknowledges an outcome Cloud has settled as unknown: the
+   * request may have been carried out. Its request id is kept in a capped
+   * history and the slot is freed. While Cloud can still settle the request
+   * (prepared or dispatched) this is refused.
+   */
+  async acknowledge(): Promise<void> {
+    return this.exclusive(async () => {
+      const record = this.record;
+      if (!record) return;
+      const receipt = await this.deps.client.gmailOperation(
+        record.grantId,
+        record.requestId,
+        this.controller.signal,
+      );
+      this.check();
+      await this.observe(receipt);
+      if (receipt.state === "succeeded" || receipt.state === "rejected") return;
+      if (receipt.state !== "outcome-unknown")
+        throw new Error(
+          "Gmail is still settling this request. Check the saved receipt again in a few minutes; do not repeat it.",
+        );
+      await this.remember(record.requestId);
+      await this.save(null);
+    });
+  }
+
+  private async acknowledged(): Promise<AcknowledgedHistory> {
+    const value = await this.deps.store.read<AcknowledgedHistory>(
+      await inboxAcknowledgedKey(this.deps.owner, this.deps.grantId),
+    );
+    return validHistory(value) ? value : { version: 1, requestIds: [] };
+  }
+
+  /** Appends one request id, newest last, dropping the oldest past the limit. */
+  private async remember(requestId: string): Promise<void> {
+    const key = await inboxAcknowledgedKey(this.deps.owner, this.deps.grantId);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const stored = await this.deps.store.read<AcknowledgedHistory>(key);
+      this.check();
+      const ids = validHistory(stored) ? stored.requestIds : [];
+      const next: AcknowledgedHistory = {
+        version: 1,
+        requestIds: [...ids.filter((id) => id !== requestId), requestId].slice(
+          -INBOX_ACKNOWLEDGED_LIMIT,
+        ),
+      };
+      if (
+        (await this.deps.store.compareExchange(key, stored, next)).status ===
+        "saved"
+      )
+        return;
+    }
+    throw new Error(
+      "The acknowledgement could not be saved. Check the saved receipt and try again.",
+    );
   }
 
   private async observe(receipt: GmailInboxReceipt) {
@@ -602,9 +852,7 @@ export class InboxOperation {
         !["review", "preparing"].includes(this.record.phase) &&
         !["succeeded", "rejected"].includes(this.record.receipt?.state || "")
       )
-        throw new Error(
-          "Outcome is unresolved. Check the existing receipt; do not repeat this message.",
-        );
+        throw new Error(UNRESOLVED);
       await this.save(null);
     });
   }

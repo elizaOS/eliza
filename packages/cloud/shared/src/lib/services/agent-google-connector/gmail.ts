@@ -15,6 +15,7 @@ import {
 } from "../../utils/gmail-mime-text";
 import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
+import { readableAttachment } from "./inbox-provider";
 import {
   AgentGoogleConnectorError,
   fail,
@@ -824,7 +825,11 @@ export async function readManagedGoogleGmailMessage(args: {
     bodyHtmlStatus: htmlView.status,
     links: parsed.payload ? extractGmailHtmlLinks(parsed.payload) : [],
     authenticationResults: readAuthenticationResults(parsed.payload?.headers),
-    attachments: gmailAttachmentParts(parsed.payload).map((part) => part.descriptor),
+    // The same rule as the inbox-v1 thread route, so a client never offers a review Cloud refuses.
+    attachments: gmailAttachmentParts(parsed.payload).map(({ descriptor }) => ({
+      ...descriptor,
+      supported: readableAttachment(descriptor.filename, descriptor.mimeType, descriptor.size),
+    })),
   };
 }
 

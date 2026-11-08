@@ -867,6 +867,116 @@ test("read-state migration widens only the kind allowlist and keeps existing rec
   }
 });
 
+test("cancel discards only a never-dispatched request, and a dispatch after it is refused", async () => {
+  const scratch = new PGlite();
+  try {
+    await scratch.exec(
+      "CREATE TABLE organizations(id uuid PRIMARY KEY);CREATE TABLE users(id uuid PRIMARY KEY);",
+    );
+    await scratch.query("INSERT INTO organizations VALUES ($1)", [org]);
+    await scratch.query("INSERT INTO users VALUES ($1)", [user]);
+    const migration = (name: string) =>
+      scratch.exec(
+        readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), "utf8"),
+      );
+    for (const name of [
+      "0509_managed_gmail_operation_receipts.sql",
+      "0535_managed_gmail_read_state_operations.sql",
+    ])
+      await migration(name);
+    const run = async (query: SQL) => {
+      const prepared = dialect.sqlToQuery(query);
+      return { rows: (await scratch.query(prepared.sql, prepared.params)).rows as any[] };
+    };
+    const scratchReceipts = new InboxReceipts(run),
+      owner = { organizationId: org, userId: user, grantId: grant },
+      digest = "a".repeat(64),
+      earlier = crypto.randomUUID();
+    // Before the migration a prepared receipt cannot be cancelled.
+    await scratchReceipts.prepare(owner, earlier, "send", digest);
+    await expect(scratchReceipts.cancel(owner, earlier)).rejects.toThrow();
+    expect((await scratchReceipts.get(owner, earlier)).state).toBe("prepared");
+    await migration("0558_managed_gmail_receipt_cancel.sql");
+    // Existing receipts are kept and the earlier one can now be cancelled.
+    expect((await scratchReceipts.cancel(owner, earlier)).state).toBe("rejected");
+    let performed = 0;
+    const routes = createInboxOperationRoutes({
+      receipts: scratchReceipts,
+      async authenticate() {
+        return { organizationId: org, userId: user };
+      },
+      async review() {
+        return {
+          kind: "send",
+          digest,
+          review: {},
+          perform: async () => {
+            performed++;
+            return { messageId: "synthetic-message" };
+          },
+        };
+      },
+    });
+    const post = (path: string, body: unknown) =>
+      routes.request("http://fixture" + path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const cancelled = crypto.randomUUID(),
+      proposal = { kind: "send" };
+    await post("/operations", { grantId: grant, requestId: cancelled, proposal });
+    const discard = (await (
+      await post(`/operations/${cancelled}/cancel`, { grantId: grant })
+    ).json()) as any;
+    expect(discard.receipt).toMatchObject({
+      state: "rejected",
+      rejectionCode: "cancelled",
+      dispatchedAt: null,
+    });
+    expect(discard.receipt.finishedAt).not.toBeNull();
+    // A delayed dispatch after the cancel never reaches the provider.
+    const late = (await (
+      await post(`/operations/${cancelled}/dispatch`, {
+        grantId: grant,
+        reviewDigest: digest,
+        proposal,
+      })
+    ).json()) as any;
+    expect(late.receipt).toMatchObject({ state: "rejected", rejectionCode: "cancelled" });
+    expect(performed).toBe(0);
+    // A dispatched request is untouched by cancel.
+    const sent = crypto.randomUUID();
+    await post("/operations", { grantId: grant, requestId: sent, proposal });
+    await post(`/operations/${sent}/dispatch`, { grantId: grant, reviewDigest: digest, proposal });
+    expect(performed).toBe(1);
+    const after = (await (
+      await post(`/operations/${sent}/cancel`, { grantId: grant })
+    ).json()) as any;
+    expect(after.receipt).toMatchObject({ state: "succeeded", rejectionCode: null });
+    // Unknown request, bad body and an attempt to revive a cancelled row are refused.
+    expect(
+      (await post(`/operations/${crypto.randomUUID()}/cancel`, { grantId: grant })).status,
+    ).toBe(404);
+    expect((await post(`/operations/${sent}/cancel`, {})).status).toBe(400);
+    await expect(
+      run(
+        sql`UPDATE managed_gmail_operation_receipts SET state='dispatched',rejection_code=NULL,finished_at=NULL,dispatched_at=now() WHERE request_id=${cancelled}`,
+      ),
+    ).rejects.toThrow();
+    // Only 'cancelled' may skip dispatch; another rejection still needs dispatched_at.
+    const other = crypto.randomUUID();
+    await scratchReceipts.prepare(owner, other, "send", digest);
+    await expect(
+      run(
+        sql`UPDATE managed_gmail_operation_receipts SET state='rejected',rejection_code='403',finished_at=now() WHERE request_id=${other}`,
+      ),
+    ).rejects.toThrow();
+  } finally {
+    await scratch.close();
+  }
+});
+
 test("reviewed mark-read and mark-unread over a closed transport: review digest, stale, scope, request body, readback and receipts", async () => {
   const { InboxGoogleProvider, inboxDigest } = await import("./inbox-provider");
   const owner = { organizationId: org, userId: user, grantId: grant };

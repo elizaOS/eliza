@@ -198,10 +198,14 @@ function hrefAttribute(attributes: string): string | null {
   return null;
 }
 
+/** Distinct links returned for one message; a long newsletter stops here. */
+export const MAX_GMAIL_HTML_LINKS = 200;
+
 /**
  * Anchors (`<a href>`) from the message's text/html parts, in document order, deduplicated by
- * destination. Only absolute http(s) links without embedded credentials are returned; the anchor
- * text is reduced to plain text so clients can show both what the email says and where it goes.
+ * destination, at most MAX_GMAIL_HTML_LINKS. Only absolute http(s) links without embedded
+ * credentials are returned; the anchor text is reduced to plain text so clients can show both what
+ * the email says and where it goes.
  */
 export function extractGmailHtmlLinks(
   payload: GmailPayloadPart | null | undefined,
@@ -211,14 +215,19 @@ export function extractGmailHtmlLinks(
   const links: GmailMessageLink[] = [];
   const seen = new Set<string>();
   walk(payload, (part) => {
-    if (part.mimeType?.toLowerCase() !== "text/html" || typeof part.body?.data !== "string") return;
+    if (
+      links.length >= MAX_GMAIL_HTML_LINKS ||
+      part.mimeType?.toLowerCase() !== "text/html" ||
+      typeof part.body?.data !== "string"
+    )
+      return;
     forEachAnchor(decode(part), (attributes, inner) => {
       const href = safeGmailLinkHref(hrefAttribute(attributes) ?? "");
       if (href && !seen.has(href)) {
         seen.add(href);
         links.push({ href, text: linkText(inner) || new URL(href).hostname });
       }
-      return true;
+      return links.length < MAX_GMAIL_HTML_LINKS;
     });
   });
   return links;

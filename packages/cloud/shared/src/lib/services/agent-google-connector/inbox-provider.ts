@@ -207,6 +207,15 @@ function supportedAttachment(name: string, mime: unknown) {
     !!attachmentTypes[mime]?.test(name)
   );
 }
+/** Whether an incoming attachment can be opened for review: a supported name and type within 5 MiB. */
+export function readableAttachment(name: string, mime: unknown, size: unknown): boolean {
+  return (
+    supportedAttachment(name, mime) &&
+    typeof size === "number" &&
+    size >= 0 &&
+    size <= attachmentLimit
+  );
+}
 function attachmentParts(payload: Record<string, unknown>) {
   const result: Record<string, unknown>[] = [];
   let visited = 0;
@@ -412,11 +421,7 @@ export class InboxGoogleProvider {
             name,
             mimeType: part.mimeType,
             size: body.size,
-            supported:
-              supportedAttachment(name, part.mimeType) &&
-              typeof body.size === "number" &&
-              body.size >= 0 &&
-              body.size <= attachmentLimit,
+            supported: readableAttachment(name, part.mimeType, body.size),
           };
         }),
       };

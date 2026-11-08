@@ -92,6 +92,17 @@ export class InboxReceipts {
     );
     return result.rows.length === 1;
   }
+  /**
+   * Discards a request that was never dispatched: one atomic move from prepared to
+   * rejected('cancelled'). A claimed request is left as it is, and a cancelled one
+   * can never be claimed, so a dispatch that races this has exactly one winner.
+   */
+  async cancel(owner: InboxOwner, requestId: string): Promise<InboxReceipt> {
+    await this.database(
+      sql`UPDATE managed_gmail_operation_receipts SET state='rejected',rejection_code='cancelled',finished_at=now() WHERE ${this.scope(owner, requestId)} AND state='prepared' RETURNING request_id`,
+    );
+    return this.get(owner, requestId);
+  }
   async finish(
     owner: InboxOwner,
     requestId: string,

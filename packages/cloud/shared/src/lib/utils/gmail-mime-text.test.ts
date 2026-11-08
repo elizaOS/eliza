@@ -6,6 +6,7 @@ import {
   gmailHasAttachmentsHint,
   gmailPartCharset,
   gmailSearchIncludesTrash,
+  MAX_GMAIL_HTML_LINKS,
   safeGmailLinkHref,
 } from "./gmail-mime-text";
 
@@ -58,6 +59,23 @@ test("complete link lists retain every supported destination; malformed hrefs ar
   expect(safeGmailLinkHref(`https://example.org/${"a".repeat(2100)}`)).toBeNull();
   expect(safeGmailLinkHref("https://")).toBeNull();
   expect(safeGmailLinkHref("data:text/html,x")).toBeNull();
+});
+
+test("a long newsletter stops at 200 distinct links, across HTML parts", () => {
+  const anchors = (from: number, count: number) =>
+    Array.from(
+      { length: count },
+      (_, i) => `<a href="https://e.example.org/${from + i}">${from + i}</a>`,
+    ).join("");
+  const links = extractGmailHtmlLinks({
+    mimeType: "multipart/alternative",
+    parts: [
+      part("text/html", anchors(0, 150) + anchors(0, 10)),
+      part("text/html", anchors(150, 150)),
+    ],
+  });
+  expect(links).toHaveLength(MAX_GMAIL_HTML_LINKS);
+  expect(links.at(-1)?.href).toBe("https://e.example.org/199");
 });
 
 test("only a real href attribute counts: data-href and quoted text are ignored", () => {

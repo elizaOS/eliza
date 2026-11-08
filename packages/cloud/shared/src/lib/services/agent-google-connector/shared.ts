@@ -109,7 +109,8 @@ export interface ManagedGoogleGmailMessage {
 }
 
 export interface ManagedGoogleGmailReadResult {
-  attachments?: GoogleGmailAttachment[];
+  /** `supported`: the attachment can be opened for review (supported name and type, within 5 MiB). */
+  attachments?: Array<GoogleGmailAttachment & { supported?: boolean }>;
   message: ManagedGoogleGmailMessage;
   bodyText: string;
   bodyHtml: string | null;
