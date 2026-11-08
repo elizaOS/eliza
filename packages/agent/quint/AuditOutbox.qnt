@@ -29,9 +29,7 @@ module AuditOutbox {
     rows: int -> List[int],
     previousRows: int -> List[int],
     crashed: bool,
-    operation: str,
-    argument: int,
-    outcome: str,
+    afterCrash: bool,
   }
   var s: State
   pure def entrySet(values: List[int]): Set[int] =
@@ -48,7 +46,7 @@ module AuditOutbox {
       acknowledgedRequiredFailure: ids.mapBy(_ => false),
       acknowledgedDurability: ids.mapBy(_ => false),
       attachment: sinks.mapBy(_ => "absent"), batch: sinks.mapBy(_ => Set()),
-      rows: rows, previousRows: rows, crashed: false, operation: "init", argument: 0, outcome: "none",
+      rows: rows, previousRows: rows, crashed: false, afterCrash: false,
     }
   }
   action init = {
@@ -69,7 +67,7 @@ module AuditOutbox {
       recorded: s.recorded.append(id),
       outbox: if (held) s.outbox.append(id) else s.outbox,
       queue: if (held) s.queue else s.queue.append(id),
-      previousRows: s.rows, operation: "record", argument: id, outcome: "none",
+      previousRows: s.rows, afterCrash: false,
     },
   }
 
@@ -84,7 +82,7 @@ module AuditOutbox {
       queue: s.queue.concat(moved),
       attachment: s.attachment.set(sink, if (moved.length() == 0) "resolved" else "pending"),
       batch: s.batch.set(sink, entrySet(moved)),
-      previousRows: s.rows, operation: "attach", argument: sink, outcome: "none",
+      previousRows: s.rows, afterCrash: false,
     },
   }
 
@@ -95,7 +93,8 @@ module AuditOutbox {
     s' = {
       ...s,
       attachment: s.attachment.set(sink, if (failed) "rejected" else "resolved"),
-      previousRows: s.rows, operation: "attachment-settled", argument: sink, outcome: "none",
+      batch: s.batch.set(sink, Set()),
+      previousRows: s.rows, afterCrash: false,
     },
   }
 
@@ -107,7 +106,7 @@ module AuditOutbox {
       stage: s.stage.set(s.queue.head(), "delivering"),
       sinkOrder: s.attached, sinkIndex: 0,
       requiredFailed: false, durableSucceeded: false,
-      previousRows: s.rows, operation: "delivery-start", argument: s.queue.head(), outcome: "none",
+      previousRows: s.rows, afterCrash: false,
     },
   }
 
@@ -117,13 +116,16 @@ module AuditOutbox {
     val sink = s.sinkOrder.nth(s.sinkIndex)
     val successful = outcome == "ok"
     val committed = s.durable.contains(sink) and outcome != "fail-before"
+    val committedRows = if (committed)
+      s.rows.set(sink, s.rows.get(sink).append(s.current))
+      else s.rows
     s' = {
       ...s,
-      rows: if (committed) s.rows.set(sink, s.rows.get(sink).append(s.current)) else s.rows,
+      rows: committedRows,
       requiredFailed: s.requiredFailed or (not(successful) and s.required.contains(sink)),
       durableSucceeded: s.durableSucceeded or (successful and s.durable.contains(sink)),
       sinkIndex: s.sinkIndex + 1,
-      previousRows: s.rows, operation: "append", argument: sink, outcome: outcome,
+      previousRows: committedRows, afterCrash: false,
     },
   }
   action appendAnyOutcome = {
@@ -138,18 +140,24 @@ module AuditOutbox {
       (not(s.requiresDurable) or s.durableSucceeded)
     s' = {
       ...s,
-      stage: s.stage.set(s.current, if (accepted) "resolved" else "rejected"),
-      acknowledgedRequiredFailure: s.acknowledgedRequiredFailure.set(s.current, s.requiredFailed),
-      acknowledgedDurability: s.acknowledgedDurability.set(s.current, s.durableSucceeded),
+      stage: s.stage.set(s.current,
+        if (accepted) "resolved" else "rejected"),
+      acknowledgedRequiredFailure:
+        s.acknowledgedRequiredFailure.set(s.current, s.requiredFailed),
+      acknowledgedDurability:
+        s.acknowledgedDurability.set(s.current, s.durableSucceeded),
       current: 0, sinkOrder: [], sinkIndex: 0,
-      previousRows: s.rows, operation: "delivery-settled", argument: s.current, outcome: "none",
+      requiredFailed: false, durableSucceeded: false,
+      previousRows: s.rows, afterCrash: false,
     },
   }
 
   // Caller, feed/query, subscriber and sink views do not own the queued entry.
   action mutateView(id: int): bool = all {
     s.owner.get(id) != 0,
-    s' = { ...s, view: s.view.set(id, 2), previousRows: s.rows, operation: "mutate-view", argument: id, outcome: "none" },
+    s' = {
+      ...s, view: s.view.set(id, 2), previousRows: s.rows, afterCrash: false,
+    },
   }
 
   action crash = all {
@@ -159,10 +167,14 @@ module AuditOutbox {
       stage: ids.mapBy(id =>
         if (Set("outbox", "queued", "delivering").contains(s.stage.get(id))) "lost"
         else s.stage.get(id)),
-      attachment: sinks.mapBy(sink => if (s.attachment.get(sink) == "pending") "lost" else s.attachment.get(sink)),
+      attachment: sinks.mapBy(sink =>
+        if (s.attachment.get(sink) == "pending") "lost"
+        else s.attachment.get(sink)),
       attached: [], outbox: [], queue: [], current: 0,
       sinkOrder: [], sinkIndex: 0, crashed: true,
-      previousRows: s.rows, operation: "crash", argument: 0, outcome: "none",
+      requiredFailed: false, durableSucceeded: false,
+      batch: sinks.mapBy(_ => Set()),
+      previousRows: s.rows, afterCrash: true,
     },
   }
 
@@ -195,7 +207,7 @@ module AuditOutbox {
   val SinkOrderIsRecordOrder = sinks.forall(sink =>
     s.rows.get(sink) == s.recorded.select(id => entrySet(s.rows.get(sink)).contains(id)))
   val CrashPreservesCommittedRows =
-    (s.operation == "crash").implies(s.rows == s.previousRows)
+    s.afterCrash.implies(s.rows == s.previousRows)
   val OneDeliveryAtATime = ids.filter(id => s.stage.get(id) == "delivering").size() <= 1
   val invariant = TypeOK and CapturedFactsStayOwned and ResolvedMeetsRequirements and
     CommittedRowsWereRecorded and SinkOrderIsRecordOrder and
