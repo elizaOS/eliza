@@ -863,6 +863,20 @@ jobs:
     name: Quint state and implementation checks
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    services:
+      quint-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa_quint
+          POSTGRES_DB: quint_protocol
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       RUN_TURBO_CONCURRENCY: "1"
     steps:
@@ -930,6 +944,8 @@ jobs:
         run: bun run build:core
       - name: Verify Quint models and real transitions
         if: steps.changes.outputs.run == 'true'
+        env:
+          INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
         run: bun run test:quint
       - name: Upload Quint evidence
         if: always() && steps.changes.outputs.run == 'true'
