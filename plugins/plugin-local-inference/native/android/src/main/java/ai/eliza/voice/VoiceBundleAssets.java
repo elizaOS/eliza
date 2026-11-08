@@ -143,9 +143,12 @@ public final class VoiceBundleAssets {
         boolean verified = stamp.isFile() && Arrays.equals(read(new FileInputStream(stamp), 1 << 20), manifestBytes);
         try {
             JSONArray files = manifest.getJSONArray("files");
+            java.util.Set<File> kept = new java.util.HashSet<>();
+            kept.add(stamp);
             for (int i = 0; i < files.length(); i++) {
                 JSONObject entry = files.getJSONObject(i);
                 File target = resolve(root, entry.getString("path"));
+                kept.add(target);
                 long bytes = entry.getLong("bytes");
                 // A matching stamp means every file was hashed after the last copy.
                 if (verified && target.length() == bytes) continue;
@@ -161,12 +164,18 @@ public final class VoiceBundleAssets {
             for (java.util.Map.Entry<String, String> voice : voices(manifest).entrySet()) {
                 voices.put(voice.getKey(), resolve(root, voice.getValue()));
             }
-            return new Installation(
+            Installation installation = new Installation(
                     root,
                     resolve(root, manifest.getString("model")),
                     resolve(root, manifest.getString("lexicon")),
                     espeak.isEmpty() ? null : resolve(root, espeak),
                     voices);
+            kept.add(installation.model);
+            kept.add(installation.lexicon);
+            kept.addAll(voices.values());
+            // Only after the stamp names this manifest: an interrupted update never deletes files still in use.
+            sweep(root, root, kept);
+            return installation;
         } catch (org.json.JSONException error) {
             throw new IOException("Invalid voice bundle manifest", error);
         }
@@ -183,6 +192,26 @@ public final class VoiceBundleAssets {
         return file;
     }
 
+    /** Deletes regular files under root that the installed manifest no longer lists, and stale partial copies. */
+    private static void sweep(File root, File directory, java.util.Set<File> kept) throws IOException {
+        File[] children = directory.listFiles();
+        if (children == null) return;
+        String base = root.getCanonicalPath() + File.separator;
+        for (File child : children) {
+            if (java.nio.file.Files.isSymbolicLink(child.toPath())) continue;
+            String path = child.getCanonicalPath();
+            if (!path.startsWith(base)) continue;
+            File file;
+            try {
+                file = resolve(root, path.substring(base.length()).replace(File.separatorChar, '/'));
+            } catch (IOException outside) {
+                continue;
+            }
+            if (file.isDirectory()) sweep(root, file, kept);
+            else if (file.isFile() && !kept.contains(file)) file.delete();
+        }
+    }
+
     private static void copy(Context context, String relative, File target, long bytes, String sha)
             throws IOException {
         File parent = target.getParentFile();
@@ -197,6 +226,9 @@ public final class VoiceBundleAssets {
                 if (total > bytes) throw new IOException("Voice asset larger than manifest: " + relative);
                 out.write(block, 0, n);
             }
+        } catch (IOException | RuntimeException error) {
+            partial.delete();
+            throw error;
         }
         if (total != bytes || !sha.equals(sha256(partial))) {
             partial.delete();

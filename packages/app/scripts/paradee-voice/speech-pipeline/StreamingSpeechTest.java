@@ -175,9 +175,13 @@ public final class StreamingSpeechTest {
   check(focus.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.NONE,"regain while unducked does nothing");
   check(focus.changed(SpeechAudioFocusPolicy.Event.LOSS_TRANSIENT)==SpeechAudioFocusPolicy.Action.STOP&&!focus.held(),"transient loss stops and clears");
   check(focus.changed(SpeechAudioFocusPolicy.Event.GAIN)==SpeechAudioFocusPolicy.Action.NONE,"a stopped utterance never resumes on regain");
+  check(focus.released(),"the transiently displaced request is abandoned");
+  check(!focus.released(),"an abandoned request is not abandoned twice");
+  check(!focus.granted(false)&&!focus.released(),"a denied request is never abandoned");
   focus.granted(true);
   check(focus.changed(SpeechAudioFocusPolicy.Event.LOSS)==SpeechAudioFocusPolicy.Action.STOP,"permanent loss stops");
-  focus.granted(true);focus.released();check(!focus.held(),"released after speech");
+  check(focus.released(),"a permanently lost request is abandoned too");
+  focus.granted(true);check(focus.released()&&!focus.held(),"released after speech");
   for(SpeechAudioFocusPolicy.Mode mode:SpeechAudioFocusPolicy.Mode.values()){
    boolean call=mode!=SpeechAudioFocusPolicy.Mode.NORMAL&&mode!=SpeechAudioFocusPolicy.Mode.OTHER;
    check(SpeechAudioFocusPolicy.callActive(mode)==call,"call mode "+mode);
