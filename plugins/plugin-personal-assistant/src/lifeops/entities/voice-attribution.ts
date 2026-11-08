@@ -33,6 +33,13 @@ import type { SELF_ENTITY_ID } from "./types.js";
 // scoped flag groups such as `(?-i:...)`.
 const NAME_TOKEN_PATTERN = "(?!I['’](?:m|ve|ll|d)\\b)[A-Z][A-Za-z'.-]{1,40}";
 const NAME_PATTERN = `${NAME_TOKEN_PATTERN}(?:\\s+${NAME_TOKEN_PATTERN}){0,2}`;
+// The name and organization classes keep `.` for initials and abbreviations
+// ("J. R. Smith", "Dr. Smith", "U.S. Navy"), so a capture can run into the
+// next sentence of a punctuated transcript ("I'm Jill. Nice to meet you." →
+// "Jill. Nice"). A period before a capitalized word ends the sentence unless
+// it closes an initial or a title.
+const SENTENCE_BREAK =
+  /(?<!(?:^|[\s.])(?:[A-Z]|Mr|Mrs|Ms|Dr|Prof|St|Mt))\.\s+(?=[A-Z])/;
 // A curly apostrophe is outside the name class, so "Jill’s" ends the name
 // at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
@@ -60,7 +67,9 @@ export function extractSelfNameClaim(
   for (const pattern of NAME_CLAIM_PATTERNS) {
     const m = pattern.exec(text);
     if (m?.[1]) {
-      const cleaned = m[1].replace(/[.,;:!?]+$/, "").trim();
+      const cleaned = (m[1].split(SENTENCE_BREAK)[0] ?? "")
+        .replace(/[.,;:!?]+$/, "")
+        .trim();
       // The name class includes `'`, so "Jill's" is captured whole. A token
       // ending in `'s` is a possessive, not the speaker's name.
       const possessive = cleaned
@@ -182,7 +191,11 @@ export function extractKinClaim(
   for (const { pattern, nameGroup, labelGroup } of KIN_CLAIM_PATTERNS) {
     const m = pattern.exec(text);
     if (m?.[nameGroup] && m[labelGroup]) {
-      const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
+      // The name ends where the claim starts ("is my wife", ", my wife"), so
+      // it is in the last sentence ("This is Jill. Jill is my wife." → "Jill").
+      const name = (m[nameGroup].split(SENTENCE_BREAK).at(-1) ?? "")
+        .replace(/[.,;:!?]+$/, "")
+        .trim();
       const label = m[labelGroup].toLowerCase();
       const nameTokens = name.split(/\s+/);
       if (
@@ -245,7 +258,8 @@ const ORG_TOKEN_STOPWORDS = new Set([
 ]);
 
 function cleanOrganization(raw: string): string | null {
-  let cleaned = raw
+  // "I work at Google. It's great." names "Google".
+  let cleaned = (raw.split(SENTENCE_BREAK)[0] ?? "")
     .replace(/[.,;:!?]+$/, "")
     .replace(/\s+/g, " ")
     .trim();

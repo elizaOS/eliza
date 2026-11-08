@@ -250,6 +250,21 @@ describe("extractSelfNameClaim", () => {
     expect(extractSelfNameClaim("This is Jill's Birthday")).toBeNull();
     expect(extractSelfNameClaim("I’m Jill’s friend")).toBeNull();
   });
+
+  it("ends the name at a sentence period", () => {
+    // Punctuated transcripts put a period after the name; the next sentence
+    // is not part of it.
+    expect(extractSelfNameClaim("Hi, I'm Jill. Nice to meet you.")).toBe(
+      "Jill",
+    );
+    expect(extractSelfNameClaim("My name is Jill. What's yours?")).toBe("Jill");
+    expect(extractSelfNameClaim("This is Dr. Smith. Nice to meet you.")).toBe(
+      "Dr. Smith",
+    );
+    // An initial or a title keeps its period.
+    expect(extractSelfNameClaim("I'm J. R. Smith")).toBe("J. R. Smith");
+    expect(extractSelfNameClaim("This is Dr. Smith")).toBe("Dr. Smith");
+  });
 });
 
 describe("extractKinClaim", () => {
@@ -312,6 +327,14 @@ describe("extractKinClaim", () => {
     expect(claim?.name).toBe("Jill");
     expect(claim?.label).toBe("wife");
   });
+
+  it("takes the name from the sentence that makes the claim", () => {
+    const claim = extractKinClaim("This is Jill. Jill is my wife.");
+    expect(claim?.name).toBe("Jill");
+    expect(claim?.label).toBe("wife");
+    expect(extractKinClaim("Hi. Bob is my husband")?.name).toBe("Bob");
+    expect(extractKinClaim("Dr. Jones is my wife")?.name).toBe("Dr. Jones");
+  });
 });
 
 describe("extractSelfAffiliationClaim", () => {
@@ -348,6 +371,34 @@ describe("extractSelfAffiliationClaim", () => {
     expect(
       extractSelfAffiliationClaim("I am John from accounting today"),
     ).toEqual({ name: "John", organization: "accounting" });
+  });
+
+  it("ends the organization at a sentence period", () => {
+    expect(
+      extractSelfAffiliationClaim("I work at Google. It's great.")
+        ?.organization,
+    ).toBe("Google");
+    expect(
+      extractSelfAffiliationClaim(
+        "Hi, I'm Maya from Payroll. Can you help me?",
+      ),
+    ).toEqual({ name: "Maya", organization: "Payroll" });
+    expect(
+      extractSelfAffiliationClaim(
+        "I'm John from accounting. Nice to meet you.",
+      ),
+    ).toEqual({ name: "John", organization: "accounting" });
+    // An abbreviation inside the organization keeps its period.
+    expect(
+      extractSelfAffiliationClaim("I work at St. Jude Hospital")?.organization,
+    ).toBe("St. Jude Hospital");
+    expect(
+      extractSelfAffiliationClaim("I work for the U.S. Navy")?.organization,
+    ).toBe("U.S. Navy");
+    expect(
+      extractSelfAffiliationClaim("I work at the Dept. of Health")
+        ?.organization,
+    ).toBe("Dept. of Health");
   });
 
   it("rejects non-affiliation phrasing", () => {
