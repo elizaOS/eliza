@@ -112,4 +112,3 @@ module provisioning_execution {
     .then(tick).then(tick).then(recover).then(claim).then(remoteCompletes(1)).then(rejectStaleAdapter(1))
     .expect(jobSafety and workloadSafety)
 }
-
