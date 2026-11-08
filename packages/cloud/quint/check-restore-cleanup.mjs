@@ -69,7 +69,7 @@ assert.deepEqual(
     "a node replacement after remote proof cannot consume the replacement node's capacity",
     "terminal cleanup rotates permanent quarantines so later recoverable attempts are not starved",
   ].sort(),
-  "Required meter checks were not all executed",
+  "Required cleanup checks were not all executed",
 );
 await writeFile(
   path.join(output, "results.json"),
