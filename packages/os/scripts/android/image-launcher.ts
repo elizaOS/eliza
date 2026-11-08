@@ -502,7 +502,7 @@ export function verifyStagedLauncher(
       directory,
       assistantRole
         ? "provisioning must assign only the assistant and Autofill"
-        : "provisioning must assign only Autofill for a brand without the assistant role",
+        : "provisioning must assign only Autofill",
     );
   const home = fs.readFileSync(
     at("provisioning/preferred-apps/launcher-home.xml"),
