@@ -14,13 +14,16 @@
  */
 
 import type { MmsSendResult } from "./mms-send.ts";
-import type {
-  MmsReviewProblem,
-  SmsMessage,
-  SmsThread,
-  TelephonyAccessKind,
-  TelephonyClient,
-  TelephonyStatus,
+import {
+  type IncompleteSmsMessage,
+  type IncompleteSmsThread,
+  isIncompleteSmsRow,
+  type MmsReviewProblem,
+  type SmsMessage,
+  type SmsThread,
+  type TelephonyAccessKind,
+  type TelephonyClient,
+  type TelephonyStatus,
 } from "./native-telephony.ts";
 import type { SmsSendResult } from "./sms-send.ts";
 
@@ -38,8 +41,9 @@ export type SmsSessionClient = Pick<
 
 export interface SmsSessionState {
   receipts: SmsSendResult[];
-  rows: SmsMessage[];
-  threads: SmsThread[];
+  /** Incomplete rows carry no content: offer to open them in the system messaging app. */
+  rows: (SmsMessage | IncompleteSmsMessage)[];
+  threads: (SmsThread | IncompleteSmsThread)[];
   thread: string | null;
   status: TelephonyStatus | null;
   next: string | null;
@@ -143,12 +147,15 @@ export function createSmsSession(
 
   function markShown(
     thread: string,
-    rows: SmsMessage[],
+    rows: (SmsMessage | IncompleteSmsMessage)[],
     status: TelephonyStatus,
   ) {
     if (
       !status.roles?.sms?.held ||
-      !rows.some((row) => row.direction === "incoming" && !row.read)
+      !rows.some(
+        (row) =>
+          !isIncompleteSmsRow(row) && row.direction === "incoming" && !row.read,
+      )
     )
       return;
     const through = Math.max(...rows.map((row) => row.date));

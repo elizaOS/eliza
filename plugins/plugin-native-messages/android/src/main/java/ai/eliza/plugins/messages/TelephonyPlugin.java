@@ -241,7 +241,19 @@ public abstract class TelephonyPlugin extends Plugin {
   if (getPermissionState(access) == PermissionState.GRANTED) { call.resolve(statusObject()); return; }
   launch(call, () -> requestPermissionForAlias(access, call, "accessResult"));
  }
- @PermissionCallback private void accessResult(PluginCall call) { invalidateReads(); if (!refused(call)) call.resolve(statusObject()); }
+ /**
+  * Answers a permission or role request. Android delivers the answer before the activity resumes, so
+  * the foreground gate would refuse a grant that worked. Until the host is unlocked in front again the
+  * answer holds only permission and role state: the SIM list reads as not yet read.
+  */
+ private void answer(PluginCall call) {
+  if (call == null) return;
+  if (!admitted() || closed) { call.reject(unavailableMessage(), "unavailable"); return; }
+  JSObject value = statusObject();
+  if (!unlockedForeground()) { value.put("subscriptions", JSONObject.NULL); value.put("defaultSmsSubscriptionId", JSONObject.NULL); }
+  call.resolve(value);
+ }
+ @PermissionCallback private void accessResult(PluginCall call) { invalidateReads(); answer(call); }
 
  /** Opens Android's role dialog for the dialer or SMS role. The user decides; the result is re-read. */
  @PluginMethod public void requestRole(PluginCall call) {
@@ -255,7 +267,7 @@ public abstract class TelephonyPlugin extends Plugin {
   if (!eligibleFor(role)) { call.reject("This app cannot hold this role in this build. Your current app keeps it.", "not-eligible"); return; }
   launch(call, () -> startActivityForResult(call, roles.createRequestRoleIntent(role), "roleResult"));
  }
- @ActivityCallback private void roleResult(PluginCall call, ActivityResult result) { if (!refused(call)) call.resolve(statusObject()); }
+ @ActivityCallback private void roleResult(PluginCall call, ActivityResult result) { answer(call); }
 
  /** One bounded provider read on the reader thread, published only if nothing changed meanwhile. */
  protected interface Read { JSObject read(android.os.CancellationSignal cancel) throws Exception; }
@@ -393,7 +405,7 @@ public abstract class TelephonyPlugin extends Plugin {
    to.append(number);
   }
   Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", to.toString(), null)).putExtra("sms_body", body);
-  open(call, intent, "sms", "Your messaging app is open with the reviewed text. Send it there; nothing has been sent.");
+  open(call, intent, "sms", "Text is ready in your messaging app. Nothing has been sent.");
  }
 
  // ---- SMS/MMS provider reads -------------------------------------------------------------------
@@ -556,14 +568,15 @@ public abstract class TelephonyPlugin extends Plugin {
   catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
   catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
   if (existing != null) { call.resolve(SmsTelephony.result(existing)); return; }
-  if (review != null) { call.reject("Another message is waiting for review", "busy"); return; }
+  if (review != null) { notAttempted(call, operationId, "busy"); return; }
   final long now = System.currentTimeMillis(), boot = SmsTelephony.boot(getContext());
   String blocked = sendBlocker(subscriptionId);
   if (blocked != null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
   final ArrayList<String> parts;
   try { parts = SmsTelephony.manager(getContext(), subscriptionId).divideMessage(body); }
   catch (RuntimeException unavailable) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
-  if (parts == null || parts.isEmpty() || parts.size() > SmsSendJournal.MAX_PARTS_PER_RECIPIENT) { call.reject("This text is too long to send as SMS. Shorten it and review again.", "too-long"); return; }
+  // Too long for SMS: refused before any platform call and recorded as denied, like the other refusals.
+  if (parts == null || parts.isEmpty() || parts.size() > SmsSendJournal.MAX_PARTS_PER_RECIPIENT) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
   SubscriptionInfo sim = activeSubscription(subscriptionId);
   if (sim == null) { decide(call, journal, operationId, recipients, body, subscriptionId, "denied", now, boot); return; }
   StringBuilder message = new StringBuilder();
@@ -605,7 +618,18 @@ public abstract class TelephonyPlugin extends Plugin {
    // An overlay must not be able to steer the owner's Send tap.
    android.widget.Button send = review.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
    if (send != null) send.setFilterTouchesWhenObscured(true);
-  } catch (RuntimeException gone) { review = null; reviewCall = null; reviewCancelled = null; call.reject(CLOSED); }
+  } catch (RuntimeException gone) { review = null; reviewCall = null; reviewCancelled = null; notAttempted(call, operationId, "closed"); }
+ }
+ /**
+  * Nothing was recorded or sent, so the same operation ID may be reviewed again: another review is
+  * open ("busy"), or the review dialog could not be shown ("closed").
+  */
+ private static void notAttempted(PluginCall call, String operationId, String reason) {
+  JSObject result = new JSObject();
+  result.put("kind", "sms-send-not-attempted");
+  result.put("operationId", operationId);
+  result.put("reason", reason);
+  call.resolve(result);
  }
  private void decide(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, String decision, long now, long boot) {
   try { call.resolve(SmsTelephony.result(journal.decide(operationId, recipients, body, subscriptionId, decision, now, boot))); }
