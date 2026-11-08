@@ -1,0 +1,98 @@
+name: Review candidate and audit open repairs
+on:
+  push:
+    branches: ['copilot/fix-350450408-1440217645-36eef3f4-91a2-4723-b0b7-872e5b817e41']
+    paths: ['.github/workflows/review-open-repairs.yml']
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: write
+concurrency:
+  group: valhalla-open-repair-review
+  cancel-in-progress: false
+jobs:
+  review:
+    if: github.repository == 'TokenJunction/eliza-valhalla' && github.ref == 'refs/heads/copilot/fix-350450408-1440217645-36eef3f4-91a2-4723-b0b7-872e5b817e41'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Initialize review directory on the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/existing-v38-candidate"
+          echo "REVIEW_DIR=$RUNNER_TEMP/existing-v38-candidate" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          ref: 2f27398e6e2b921f2e3d9a72fb782997f7716325
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: v38-lockfile-candidate
+          run-id: 42410849995
+          repository: TokenJunction/eliza-valhalla
+          github-token: ${{ github.token }}
+          path: ${{ env.REVIEW_DIR }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.2'
+          no-cache: true
+      - name: Inspect the existing artifact without regenerating or installing dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/inspect-existing-lock.mjs" <<'JS'
+          import fs from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {isDeepStrictEqual} from 'node:util';
+          const expected='c08a6a43ab009d2248d7bf3b62d18e1f291f3c5e6afbbc38099943bb1dc8f8b6';
+          export function inspect(beforeText,candidateBytes,diff,expectedHash=expected){
+            const actual=createHash('sha256').update(candidateBytes).digest('hex');
+            if(actual!==expectedHash)throw Error('Candidate hash does not match the recorded artifact');
+            const before=Bun.JSONC.parse(beforeText),after=Bun.JSONC.parse(candidateBytes.toString('utf8'));
+            const changed_sections=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(key=>!isDeepStrictEqual(before[key],after[key]));
+            const packageKeys=[...new Set([...Object.keys(before.packages||{}),...Object.keys(after.packages||{})])];
+            const changedPackages=packageKeys.filter(key=>!isDeepStrictEqual(before.packages?.[key],after.packages?.[key]));
+            let redactions=0;
+            const clean=diff.replace(/https?:\/\/[^\s"'<>]+/g,value=>{try{const u=new URL(value);let changed=false;if(u.username||u.password){u.username='';u.password='';changed=true;}for(const key of [...u.searchParams.keys()])if(/token|secret|password|signature|auth|credential|key/i.test(key)){u.searchParams.set(key,'REDACTED');changed=true;}if(changed){redactions++;return u.href;}return value;}catch{return value;}}).replace(/\b(?:npm_|ghp_|github_pat_|sk-)[A-Za-z0-9_]{16,}/g,()=>{redactions++;return '[REDACTED-CREDENTIAL]';});
+            if(Buffer.byteLength(clean)>50000)throw Error('Diff exceeds bounded comment size; no truncated diff posted');
+            return {candidate_sha256:actual,changed_lines:diff.split('\n').filter(line=>/^[+-]/.test(line)&&!/^---|^\+\+\+/.test(line)).length,changed_sections,guard_would_reject_sections:changed_sections.filter(key=>key!=='workspaces'),changed_package_count:changedPackages.length,changed_packages:changedPackages.slice(0,100),package_list_truncated:changedPackages.length>100,redactions,diff:clean};
+          }
+          if(process.argv[2]==='--run'){
+            const original=fs.readFileSync('bun.lock','utf8');
+            const root=process.env.REVIEW_DIR;
+            const report=inspect(original,fs.readFileSync(root+'/bun.lock'),fs.readFileSync(root+'/repair.diff','utf8'));
+            fs.writeFileSync(root+'/review.json',JSON.stringify(report,null,2));
+          }
+          JS
+          bun "$RUNNER_TEMP/inspect-existing-lock.mjs" --run
+      - name: Publish candidate diff and open-repair check inventory to PR 31
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs=require('node:fs'),path=require('node:path');
+            const owner='TokenJunction',repo='eliza-valhalla',fence=String.fromCharCode(96).repeat(4);
+            if(context.repo.owner!==owner||context.repo.repo!==repo)throw Error('Unexpected repository');
+            const filename=path.join(process.env.REVIEW_DIR,'review.json');
+            if(fs.existsSync(filename)){
+              const result=JSON.parse(fs.readFileSync(filename,'utf8'));
+              const {diff,...summary}=result;
+              const text=JSON.stringify(summary,null,2);
+              await github.rest.issues.createComment({owner,repo,issue_number:31,body:['Review of the existing, uncommitted lockfile candidate from run 42410849995. No regeneration, commit, merge or deployment performed.',result.redactions?'Credential-bearing text was redacted; this is not an unredacted patch.':'The following diff is complete and unmodified.',fence+'json',text,fence,fence+'diff',diff,fence].join('\n')});
+            }else{
+              await github.rest.issues.createComment({owner,repo,issue_number:31,body:'Candidate artifact review could not complete. No patch or guard-rejection cause is inferred. Inspect '+context.serverUrl+'/'+owner+'/'+repo+'/actions/runs/'+context.runId});
+            }
+            const prs=await github.rest.pulls.list({owner,repo,state:'open',per_page:100});
+            const issues=await github.rest.issues.listForRepo({owner,repo,state:'open',per_page:100});
+            const audit={scope:'Read-only snapshot of recorded checks, not new test execution or deployment clearance',source_run:context.runId,pr_list_may_be_truncated:prs.data.length===100,issue_list_may_be_truncated:issues.data.length===100,issues:issues.data.filter(x=>!x.pull_request).map(x=>({number:x.number,title:x.title})),pull_requests:[]};
+            for(const pr of prs.data){
+              const row={number:pr.number,title:pr.title,draft:pr.draft,head:pr.head.sha,base:pr.base.ref};
+              try{const checks=await github.rest.checks.listForRef({owner,repo,ref:pr.head.sha,filter:'latest',per_page:100});row.checks=checks.data.check_runs.map(c=>({name:c.name,status:c.status,conclusion:c.conclusion,html_url:c.html_url}));row.checks_may_be_truncated=checks.data.total_count>100;}catch{row.checks_unavailable=true;}
+              audit.pull_requests.push(row);
+            }
+            const rendered=JSON.stringify(audit,null,2);
+            if(Buffer.byteLength(rendered)>55000)throw Error('Audit exceeds bounded comment size; inspect workflow summary');
+            await core.summary.addHeading('Open repair audit').addCodeBlock(rendered,'json').write();
+            await github.rest.issues.createComment({owner,repo,issue_number:31,body:['Open repair inventory. Missing, failed, skipped or successful checks do not by themselves authorize merging or deploying.',fence+'json',rendered,fence].join('\n')});

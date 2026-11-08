@@ -1,0 +1,104 @@
+name: Generate bounded V38 lockfile candidate
+on:
+  push:
+    branches: ['copilot/fix-350450408-1440217645-36eef3f4-91a2-4723-b0b7-872e5b817e41']
+    paths: ['.github/workflows/v38-lockfile-candidate.yml']
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: v38-lockfile-candidate
+  cancel-in-progress: false
+jobs:
+  candidate:
+    if: github.repository == 'TokenJunction/eliza-valhalla' && github.ref == 'refs/heads/copilot/fix-350450408-1440217645-36eef3f4-91a2-4723-b0b7-872e5b817e41'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check expected starting revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = f2397611d4c850ec63a3eede6c7aac04bd6ec574
+          test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/v38-lockfile-candidate.yml
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '24.15.0'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.2'
+          no-cache: true
+      - name: Regenerate candidate without lifecycle scripts
+        id: regenerate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(bun --version)" = 1.4.2
+          test "$(node --version)" = v24.15.0
+          dir="$RUNNER_TEMP/v38-lockfile-candidate"
+          mkdir -p "$dir"
+          cp bun.lock "$RUNNER_TEMP/v38-lockfile-original"
+          bun install --lockfile-only --ignore-scripts
+          cp bun.lock "$dir/bun.lock"
+          git diff -- bun.lock > "$dir/repair.diff"
+      - name: Reject unrelated dependency or manifest changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/guard-v38-lock.mjs" <<'JS'
+          import fs from 'node:fs';
+          import {isDeepStrictEqual} from 'node:util';
+          const before=Bun.JSONC.parse(fs.readFileSync(process.argv[2],'utf8'));
+          const after=Bun.JSONC.parse(fs.readFileSync(process.argv[3],'utf8'));
+          for(const key of new Set([...Object.keys(before),...Object.keys(after)])){
+            if(key!=='workspaces'&&!isDeepStrictEqual(before[key],after[key]))throw Error('Non-workspace lockfile change requires separate review: '+key);
+          }
+          console.log('Guard passed: resolved packages and non-workspace lock metadata are unchanged.');
+          JS
+          bun "$RUNNER_TEMP/guard-v38-lock.mjs" "$RUNNER_TEMP/v38-lockfile-original" bun.lock
+          changes="$(git diff --name-only HEAD)"
+          test -z "$changes" || test "$changes" = bun.lock
+      - name: Verify frozen install and foundation tests
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum bun.lock > "$RUNNER_TEMP/v38-frozen.sha256"
+          bun install --frozen-lockfile --ignore-scripts
+          sha256sum --check "$RUNNER_TEMP/v38-frozen.sha256"
+          node --test src/services/v38/foundation.test.mjs
+          changes="$(git diff --name-only HEAD)"
+          test -z "$changes" || test "$changes" = bun.lock
+      - name: Retain candidate and exact diff for review
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: v38-lockfile-candidate
+          path: ${{ runner.temp }}/v38-lockfile-candidate
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Report actual repair results to PR 31
+        if: always()
+        env:
+          REGENERATE_RESULT: ${{ steps.regenerate.outcome }}
+          GUARD_RESULT: ${{ steps.guard.outcome }}
+          VERIFY_RESULT: ${{ steps.verify.outcome }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
+            const dir=path.join(process.env.RUNNER_TEMP,'v38-lockfile-candidate');
+            const candidate=path.join(dir,'bun.lock'),diff=path.join(dir,'repair.diff');
+            const report={scope:'Candidate generation only; no automatic commit, merge or deployment',branch:context.ref.replace('refs/heads/',''),source_commit:context.sha,regenerate:process.env.REGENERATE_RESULT,guard:process.env.GUARD_RESULT,frozen_install_and_tests:process.env.VERIFY_RESULT,full_repository_ci:'Not run by this bounded repair job',artifact:'v38-lockfile-candidate',run_url:context.serverUrl+'/TokenJunction/eliza-valhalla/actions/runs/'+context.runId};
+            if(fs.existsSync(candidate)){const bytes=fs.readFileSync(candidate);report.candidate_sha256=createHash('sha256').update(bytes).digest('hex');report.candidate_bytes=bytes.length;}
+            if(fs.existsSync(diff)){const text=fs.readFileSync(diff,'utf8');report.changed_lines=text.split('\n').filter(line=>/^[+-]/.test(line)&&!/^---|^\+\+\+/.test(line)).length;}
+            report.validated_candidate=report.regenerate==='success'&&report.guard==='success'&&report.frozen_install_and_tests==='success'&&report.changed_lines>0;
+            const rendered=JSON.stringify(report,null,2),fence=String.fromCharCode(96,96,96);
+            await core.summary.addHeading('V38 lockfile candidate').addCodeBlock(rendered,'json').write();
+            await github.rest.issues.createComment({owner:'TokenJunction',repo:'eliza-valhalla',issue_number:31,body:['V38 lockfile candidate receipt. No generated file has been committed or deployed.','',fence+'json',rendered,fence].join('\n')});
