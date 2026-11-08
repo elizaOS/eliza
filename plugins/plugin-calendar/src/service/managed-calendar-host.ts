@@ -314,6 +314,9 @@ export async function calendarAgentWrite(
         signal,
       ),
     );
+  // Cloud's feed trims free text; the sync snapshot keeps it as written.
+  const text = (value: unknown) =>
+    typeof value === "string" ? value.trim() : value;
   async function materialize(snapshot: LinkedCalendarProviderSnapshot) {
     const semantic = snapshot.event;
     if (
@@ -336,9 +339,46 @@ export async function calendarAgentWrite(
       },
       signal,
     );
-    const event = feed.events.find(
-      (row) => row.externalId === snapshot.eventId,
-    );
+    // The feed expands series (singleEvents), so a series master is read back
+    // through its first instance in the window, or from Cloud's own snapshot
+    // when the rule skips the master's start.
+    const series = (semantic.recurrence?.length ?? 0) > 0;
+    const row =
+      feed.events.find((row) => row.externalId === snapshot.eventId) ??
+      (series
+        ? feed.events.find(
+            (row) => row.metadata.recurringEventId === snapshot.eventId,
+          )
+        : undefined);
+    const instance = !!row && row.externalId !== snapshot.eventId;
+    const event =
+      row ??
+      (series
+        ? {
+            externalId: snapshot.eventId,
+            calendarId,
+            title: semantic.title,
+            description: semantic.description,
+            location: semantic.location,
+            status: "confirmed",
+            startAt: semantic.startAt,
+            endAt: semantic.endAt,
+            isAllDay: semantic.isAllDay,
+            timezone: semantic.timeZone,
+            htmlLink: null,
+            conferenceLink: null,
+            organizer: null,
+            attendees: semantic.attendees.map((a) => ({
+              email: a.email,
+              displayName: null,
+              responseStatus: null,
+              self: false,
+              organizer: false,
+              optional: a.optional === true,
+            })),
+            metadata: {} as Record<string, unknown>,
+          }
+        : undefined);
     const attendees = (
       value: readonly { email?: string | null; optional?: boolean }[],
     ) =>
@@ -352,23 +392,29 @@ export async function calendarAgentWrite(
       );
     if (
       !event ||
-      (event.metadata.etag !== undefined &&
+      (!instance &&
+        event.metadata.etag !== undefined &&
         event.metadata.etag !== null &&
         event.metadata.etag !== snapshot.etag) ||
       event.title !== semantic.title ||
-      event.description !== semantic.description ||
-      event.location !== semantic.location ||
+      text(event.description) !== text(semantic.description) ||
+      text(event.location) !== text(semantic.location) ||
       event.isAllDay !== semantic.isAllDay ||
       Date.parse(event.startAt) !== Date.parse(semantic.startAt) ||
       Date.parse(event.endAt) !== Date.parse(semantic.endAt) ||
       attendees(event.attendees) !== attendees(semantic.attendees)
     )
       throw Error("The exact Calendar revision could not be read back");
+    const { recurringEventId: _instanceOf, ...metadata } = event.metadata;
     return {
       ...event,
-      metadata: { ...event.metadata, etag: snapshot.etag },
+      externalId: snapshot.eventId,
+      metadata: {
+        ...(instance ? metadata : event.metadata),
+        etag: snapshot.etag,
+      },
       ...(semantic.recurrence ? { recurrence: semantic.recurrence } : {}),
-      id: `${source}:${event.externalId}`,
+      id: `${source}:${snapshot.eventId}`,
       agentId: "",
       provider: "google",
       side: "owner",
@@ -454,6 +500,17 @@ export async function calendarAgentWrite(
       endsAtMs?: number;
     };
   const allDay = patch.allDay ?? null;
+  const moved = patch.startsAtMs != null || patch.endsAtMs != null;
+  const isAllDay = allDay ? true : moved ? false : (old?.isAllDay ?? false);
+  // An all-day event carries dates, never a zone. Moving one to timed needs
+  // both bounds and the owner's zone; UTC would shift the owner's day.
+  if (
+    !allDay &&
+    moved &&
+    old?.isAllDay &&
+    (patch.startsAtMs == null || patch.endsAtMs == null || !patch.timeZone)
+  )
+    throw Error("Review this all-day event in Calendar");
   const changed = <K extends keyof LinkedCalendarSemanticEvent>(
     key: K,
     fallback: LinkedCalendarSemanticEvent[K] | undefined,
@@ -477,12 +534,8 @@ export async function calendarAgentWrite(
       : patch.endsAtMs != null
         ? new Date(patch.endsAtMs).toISOString()
         : old?.endAt,
-    isAllDay: allDay
-      ? true
-      : patch.startsAtMs != null || patch.endsAtMs != null
-        ? false
-        : (old?.isAllDay ?? false),
-    timeZone: allDay ? null : changed("timeZone", old?.timeZone ?? "UTC"),
+    isAllDay,
+    timeZone: isAllDay ? null : changed("timeZone", old?.timeZone ?? "UTC"),
     attendees: attendees.map((a) =>
       typeof a === "string"
         ? { email: a, optional: false }
@@ -527,7 +580,7 @@ export async function calendarAgentWrite(
     );
   if (
     ["title", "description", "location", "isAllDay", "timeZone"].some(
-      (key) => written[key] !== event[key as keyof typeof event],
+      (key) => text(written[key]) !== text(event[key as keyof typeof event]),
     ) ||
     Date.parse(String(written.startAt)) !== Date.parse(event.startAt) ||
     Date.parse(String(written.endAt)) !== Date.parse(event.endAt) ||

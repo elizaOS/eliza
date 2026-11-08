@@ -56,6 +56,9 @@ const record = (v: unknown): v is Record<string, unknown> =>
 const scoped = (v: unknown): v is string =>
   typeof v === "string" && /^alpha-google:[a-f0-9]{64}$/.test(v);
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+// 2^6 slices at most: a 60-day window reaches the one-day floor.
+const FEED_SPLIT_DEPTH = 6;
 const MANAGED_CALENDAR_BROKER_GRANT_ID = "alpha-google:broker";
 
 function diagnosticCode(value: unknown): value is ReadDiagnostic["code"] {
@@ -369,74 +372,144 @@ export function createManagedCalendarRead(
           : summary;
       }) as LifeOpsCalendarSummary[];
     },
-    async feed(
-      calendar: LifeOpsCalendarSummary,
-      timeMin: string,
-      timeMax: string,
-      timeZone: string,
-      agentId: string,
-      signal?: AbortSignal,
-    ): Promise<LifeOpsCalendarFeed> {
-      const attempt: ReadAttempt = { operation: "feed", httpStatus: null };
-      if (!scoped(calendar.grantId))
-        throw fail(attempt, "REQUEST_SOURCE_INVALID");
-      const { feed } = await call(
-        {
-          operation: "feed",
-          grantId: calendar.grantId,
-          calendarId: calendar.calendarId,
-          timeMin,
-          timeMax,
-          timeZone,
-        },
-        attempt,
+    feed,
+  };
+  /** A window whose body exceeds the transport cap is read in halves down to
+   * one day, so one busy month never hides the whole source. */
+  async function feed(
+    calendar: LifeOpsCalendarSummary,
+    timeMin: string,
+    timeMax: string,
+    timeZone: string,
+    agentId: string,
+    signal?: AbortSignal,
+    depth = 0,
+  ): Promise<LifeOpsCalendarFeed> {
+    try {
+      return await feedWindow(
+        calendar,
+        timeMin,
+        timeMax,
+        timeZone,
+        agentId,
         signal,
       );
+    } catch (error) {
+      const start = Date.parse(timeMin),
+        end = Date.parse(timeMax);
       if (
-        !record(feed) ||
-        feed.calendarId !== calendar.calendarId ||
-        feed.state !== "complete" ||
-        feed.source !== "synced" ||
-        feed.timeMin !== timeMin ||
-        feed.timeMax !== timeMax ||
-        !Array.isArray(feed.events) ||
-        !Array.isArray(feed.sources) ||
-        feed.sources.length !== 1 ||
-        typeof feed.syncedAt !== "string" ||
-        !Number.isFinite(Date.parse(feed.syncedAt))
+        managedCalendarReadDiagnostic(error)?.code !== "BODY_LIMIT" ||
+        depth >= FEED_SPLIT_DEPTH ||
+        !(end - start > DAY_MS)
       )
-        throw fail(attempt, "FEED_SCHEMA_INVALID");
-      const health = feed.sources[0];
-      if (
-        !record(health) ||
-        !record(health.key) ||
-        health.key.grantId !== calendar.grantId ||
-        health.key.calendarId !== calendar.calendarId ||
-        health.key.side !== "owner" ||
-        health.key.provider !== "google" ||
-        health.status !== "fresh"
-      )
-        throw fail(attempt, "SOURCE_HEALTH_INVALID");
-      for (const event of feed.events)
-        if (
-          !record(event) ||
-          event.provider !== "google" ||
-          event.side !== "owner" ||
-          event.grantId !== calendar.grantId ||
-          event.calendarId !== calendar.calendarId ||
-          typeof event.id !== "string" ||
-          typeof event.title !== "string" ||
-          typeof event.startAt !== "string" ||
-          typeof event.endAt !== "string" ||
-          !Number.isFinite(Date.parse(event.startAt)) ||
-          !Number.isFinite(Date.parse(event.endAt))
-        )
-          throw fail(attempt, "EVENT_SCHEMA_INVALID");
-      const result = feed as unknown as LifeOpsCalendarFeed;
+        throw error;
+      const middle = new Date(
+        start + Math.ceil((end - start) / 2),
+      ).toISOString();
+      const first = await feed(
+        calendar,
+        timeMin,
+        middle,
+        timeZone,
+        agentId,
+        signal,
+        depth + 1,
+      );
+      const second = await feed(
+        calendar,
+        middle,
+        timeMax,
+        timeZone,
+        agentId,
+        signal,
+        depth + 1,
+      );
+      // An event that crosses the split is returned by both halves.
+      const events = new Map(
+        [...first.events, ...second.events].map((event) => [event.id, event]),
+      );
       return {
-        ...result,
-        events: result.events.map((event) => ({ ...event, agentId })),
+        ...first,
+        timeMin,
+        timeMax,
+        events: [...events.values()].sort(
+          (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
+        ),
+        syncedAt:
+          Date.parse(String(second.syncedAt)) <
+          Date.parse(String(first.syncedAt))
+            ? second.syncedAt
+            : first.syncedAt,
       };
-    },
-  };
+    }
+  }
+  async function feedWindow(
+    calendar: LifeOpsCalendarSummary,
+    timeMin: string,
+    timeMax: string,
+    timeZone: string,
+    agentId: string,
+    signal?: AbortSignal,
+  ): Promise<LifeOpsCalendarFeed> {
+    const attempt: ReadAttempt = { operation: "feed", httpStatus: null };
+    if (!scoped(calendar.grantId))
+      throw fail(attempt, "REQUEST_SOURCE_INVALID");
+    const { feed } = await call(
+      {
+        operation: "feed",
+        grantId: calendar.grantId,
+        calendarId: calendar.calendarId,
+        timeMin,
+        timeMax,
+        timeZone,
+      },
+      attempt,
+      signal,
+    );
+    if (
+      !record(feed) ||
+      feed.calendarId !== calendar.calendarId ||
+      feed.state !== "complete" ||
+      feed.source !== "synced" ||
+      feed.timeMin !== timeMin ||
+      feed.timeMax !== timeMax ||
+      !Array.isArray(feed.events) ||
+      !Array.isArray(feed.sources) ||
+      feed.sources.length !== 1 ||
+      typeof feed.syncedAt !== "string" ||
+      !Number.isFinite(Date.parse(feed.syncedAt))
+    )
+      throw fail(attempt, "FEED_SCHEMA_INVALID");
+    const health = feed.sources[0];
+    if (
+      !record(health) ||
+      !record(health.key) ||
+      health.key.grantId !== calendar.grantId ||
+      health.key.calendarId !== calendar.calendarId ||
+      health.key.side !== "owner" ||
+      health.key.provider !== "google" ||
+      health.status !== "fresh"
+    )
+      throw fail(attempt, "SOURCE_HEALTH_INVALID");
+    for (const event of feed.events)
+      if (
+        !record(event) ||
+        event.provider !== "google" ||
+        event.side !== "owner" ||
+        event.grantId !== calendar.grantId ||
+        event.calendarId !== calendar.calendarId ||
+        typeof event.id !== "string" ||
+        typeof event.title !== "string" ||
+        typeof event.startAt !== "string" ||
+        typeof event.endAt !== "string" ||
+        !Number.isFinite(Date.parse(event.startAt)) ||
+        !Number.isFinite(Date.parse(event.endAt))
+      )
+        throw fail(attempt, "EVENT_SCHEMA_INVALID");
+    const result = feed as unknown as LifeOpsCalendarFeed;
+    return {
+      ...result,
+      events: result.events.map((event) => ({ ...event, agentId })),
+    };
+  }
 }
