@@ -78,6 +78,68 @@ describe("tokenizer loading", () => {
     expect(loadedEncodingNames()).toEqual(["o200k_base"]);
   });
 
+  it("shares a pending import and retries its rejection without evicting another encoding", () => {
+    // Fail one resolution at the dynamic-import boundary. Both successful
+    // encoders still come from the real rank modules in a fresh process.
+    const probe = `
+      import assert from "node:assert/strict";
+      import { registerHooks } from "node:module";
+      const { loadEncoder, loadedEncodingNames } = await import("./utils/tokenization.ts");
+      const failedImport = new Error("one rank import is unavailable");
+      let attempts = 0;
+      const hooks = registerHooks({
+        resolve(specifier, context, nextResolve) {
+          if (specifier === "gpt-tokenizer/encoding/cl100k_base" && ++attempts === 1) {
+            throw failedImport;
+          }
+          return nextResolve(specifier, context);
+        },
+      });
+      try {
+        const retained = loadEncoder("o200k_base");
+        const first = loadEncoder("cl100k_base");
+        const shared = loadEncoder("cl100k_base");
+        assert.equal(shared, first);
+        assert.notEqual(first, retained);
+        assert.deepEqual(loadedEncodingNames(), ["o200k_base", "cl100k_base"]);
+        const rejected = await Promise.allSettled([first, shared]);
+        for (const result of rejected) {
+          assert.equal(result.status, "rejected");
+          assert.equal(result.reason, failedImport);
+        }
+        assert.deepEqual(loadedEncodingNames(), ["o200k_base"]);
+        assert.equal(loadEncoder("o200k_base"), retained);
+        const retry = loadEncoder("cl100k_base");
+        assert.notEqual(retry, first);
+        assert.equal(loadEncoder("cl100k_base"), retry);
+        const [retryEncoder, retainedEncoder] = await Promise.all([retry, retained]);
+        assert.notEqual(retryEncoder, retainedEncoder);
+        const text = "First failure, then the original encoding.";
+        assert.equal(retryEncoder.decode(retryEncoder.encode(text)), text);
+        assert.equal(retainedEncoder.decode(retainedEncoder.encode(text)), text);
+        assert.deepEqual(loadedEncodingNames(), ["o200k_base", "cl100k_base"]);
+        assert.equal(attempts, 2);
+        console.log(JSON.stringify({ attempts, sharedRejections: rejected.length }));
+      } finally {
+        hooks.deregister();
+      }
+    `;
+    const stdout = execFileSync(
+      "node",
+      ["--conditions=eliza-source", "--import", "tsx", "--input-type=module", "--eval", probe],
+      {
+        cwd: pluginRoot,
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, NODE_ENV: "test" },
+      }
+    );
+    expect(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}")).toEqual({
+      attempts: 2,
+      sharedRejections: 2,
+    });
+  }, 65_000);
+
   it("keeps the fallback encodings for model names outside the registry", () => {
     expect(resolveTokenizerEncodingName("custom-4o-mini-next")).toBe("o200k_base");
     expect(resolveTokenizerEncodingName("custom-model")).toBe("cl100k_base");
