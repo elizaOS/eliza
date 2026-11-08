@@ -28,11 +28,13 @@ async function hydrateSeoProviderCall(call: SeoProviderCall): Promise<SeoProvide
       storage: call.request_payload_storage,
       key: call.request_payload_key,
       inlineValue: call.request_payload ?? null,
+      strict: true,
     }),
     hydrateJsonField<Record<string, unknown>>({
       storage: call.response_payload_storage,
       key: call.response_payload_key,
       inlineValue: call.response_payload ?? null,
+      strict: true,
     }),
   ]);
 
