@@ -9,6 +9,7 @@ import {
 import {
   type CSSProperties,
   type HTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -104,6 +105,44 @@ function placeMenu(menu: HTMLDivElement | null) {
     return;
   }
   menu.scrollIntoView({ block: "nearest" });
+}
+/** Keep the menu in view, then focus its first enabled command. */
+function focusMenu(menu: HTMLDivElement | null) {
+  placeMenu(menu);
+  if (menu && !menu.contains(document.activeElement))
+    menu
+      .querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus();
+}
+function menuKeys(
+  event: ReactKeyboardEvent<HTMLDivElement>,
+  close: () => void,
+) {
+  const items = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(
+      '[role="menuitem"]:not(:disabled)',
+    ),
+  ];
+  if (event.key === "Tab") {
+    close();
+    return;
+  }
+  if (
+    !items.length ||
+    !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
+  )
+    return;
+  event.preventDefault();
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const next =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (at + 1) % items.length
+          : (at - 1 + items.length) % items.length;
+  items[next].focus();
 }
 const menuItem: CSSProperties = {
   display: "flex",
@@ -202,8 +241,32 @@ export function InstalledAppsGridDrawer({
     swallow.current = "";
     return !held;
   };
+  const scope = useRef<HTMLDivElement>(null),
+    opened = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = opened.current;
+    opened.current = menu;
+    if (!previous || menu !== null) return;
+    const root = scope.current,
+      active = document.activeElement;
+    // A newly opened menu or deliberately moved focus owns its destination.
+    if (
+      !root?.isConnected ||
+      document.hidden ||
+      (active &&
+        active !== document.body &&
+        (!root.contains(active) || !active.closest("[data-launcher-menu]")))
+    )
+      return;
+    root
+      .querySelector<HTMLElement>(
+        `[data-launcher-app="${CSS.escape(previous)}"] > button`,
+      )
+      ?.focus();
+  }, [menu]);
   return (
     <div
+      ref={scope}
       role="dialog"
       aria-modal="true"
       aria-label="Apps"
@@ -432,7 +495,8 @@ export function InstalledAppsGridDrawer({
                     role="menu"
                     aria-label={app.label}
                     data-launcher-menu=""
-                    ref={placeMenu}
+                    ref={focusMenu}
+                    onKeyDown={(event) => menuKeys(event, () => onMenu(null))}
                     style={{
                       position: "absolute",
                       top: 72,
@@ -450,6 +514,7 @@ export function InstalledAppsGridDrawer({
                     <button
                       type="button"
                       role="menuitem"
+                      tabIndex={-1}
                       disabled={onHome}
                       onClick={() => {
                         onMenu(null);
@@ -464,6 +529,7 @@ export function InstalledAppsGridDrawer({
                       <button
                         type="button"
                         role="menuitem"
+                        tabIndex={-1}
                         onClick={() => {
                           onMenu(null);
                           onAppInfo(target);
