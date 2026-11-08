@@ -528,6 +528,9 @@ export interface Log {
 	createdAt: Date;
 }
 
+/** The fields of a log that retention planning reads; no body. */
+export type LogInventoryRow = Pick<Log, "id" | "roomId" | "createdAt">;
+
 export type RunStatus = "started" | "completed" | "timeout" | "error";
 
 /**
@@ -1427,6 +1430,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]>;
+
+	/**
+	 * Lists every log this agent can read with only its id, room and creation
+	 * time, in getLogs order (newest first, then id descending).
+	 *
+	 * WHY: Retention plans over the whole logs table. Reading full rows held
+	 * every prompt and response in memory at once on each sweep.
+	 *
+	 * @param params.excludeTypes Log types left out of the inventory.
+	 */
+	getLogInventory(params: {
+		excludeTypes?: readonly string[];
+	}): Promise<LogInventoryRow[]>;
 
 	// ── Log CRUD (batch-only) ────────────────────────────────────────────
 	// WHY batch-only: a single agent turn can produce multiple log entries

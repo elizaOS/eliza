@@ -1,0 +1,571 @@
+{
+  "scope": "Finite protocol models; implementation refinement and whole-backend coverage remain incomplete.",
+  "models": [
+    {
+      "id": "billing-reservations",
+      "file": "billing_reservations.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/credits.ts",
+        "packages/cloud/shared/src/lib/utils/credit-reservation.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One organization and reservation, integer money units, balance 5, hold 1..3, actual cost 0..8.",
+        "A transition abstracts a committed database transaction; failures before commit roll back.",
+        "Does not prove numeric rounding, SQL isolation, provider outcomes, or TypeScript refinement."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "billing-sweep",
+      "file": "billing_sweep.qnt",
+      "sources": ["packages/cloud/shared/src/lib/services/credits.ts"],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Four rows in a total timestamp/ID order, two initially fail, and the run budget can visit all four.",
+        "The cursor advances after every selected row and resets for the next cron invocation.",
+        "Does not prove progress under an unbounded backlog, continuous insertion, or unfair scheduling."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "authorization-intents",
+      "file": "authorization_intents.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/oauth-intents.ts",
+        "packages/cloud/shared/src/lib/services/approval-requests.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Intended contract only; implementation conformance is pending private review.",
+        "Two concurrent callers, two tenants, bounded clock, and atomic decision/receipt commit.",
+        "Proof validity abstracts cryptographic checks; no cryptographic or implementation proof is claimed."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "agent-lifecycle",
+      "file": "agent_lifecycle.qnt",
+      "sources": ["packages/cloud/services/agent-server/src/agent-manager.ts"],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One agent projection; initialize, stop and publication acknowledge independently.",
+        "Failures may repeat forever; no availability or eventual recovery assumption.",
+        "Capacity, actual runtime cleanup and cross-agent effects require implementation tests."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "operator-routing",
+      "file": "operator_routing.qnt",
+      "sources": [
+        "packages/cloud/services/operator/capabilities/redis.ts",
+        "packages/cloud/services/operator/capabilities/reconciler.ts",
+        "packages/cloud/services/operator/capabilities/deployment-status.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two server owners and one agent; compare-and-delete is atomic.",
+        "Status writes may fail between Redis and Kubernetes; reconcile and watch writes serialize per server.",
+        "Does not prove Redis availability, Kubernetes watch delivery, or eventual convergence.",
+        "Single controller per server name. Same-name pod/incarnation ownership and process-restart fencing are excluded."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "inference-budget",
+      "file": "inference_budget.qnt",
+      "sources": [
+        "packages/cloud/api/src/inference-admission-budget.ts",
+        "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two installed grants of two units, two immutable request IDs, maximum reservation 1..3, costs 0..3, clock 0..4.",
+        "Transactions are atomic; request identifiers and cancellation capabilities are unique.",
+        "Provider execution, grant minting/refill, SQL reconciliation and implementation refinement are excluded."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "a2a-task-store",
+      "file": "a2a_task_store.qnt",
+      "sources": [
+        "packages/cloud/api/src/a2a-task-state.ts",
+        "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
+        "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
+        "Arbitrary unconditional replacement, the Redis backend, semantic task status transitions and implementation refinement are excluded.",
+        "A foreign read closes the abstract import phase, conservatively earlier than implementation; this restricts import interleavings.",
+        "History is set-valued in this model; ordering, multiplicity, and byte fidelity are not proved."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "agent-routing",
+      "file": "agent_routing.qnt",
+      "sources": [
+        "packages/cloud/services/agent-server/src/agent-routing.ts",
+        "packages/cloud/services/agent-server/src/agent-manager.ts",
+        "packages/cloud/services/_common/src/redis-ownership.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One manager serializes snapshots, local retirement and close. Redis writes and ownership-checked cleanup acknowledge separately.",
+        "Replacement ownership appears only after local release; live cross-server stale writers, Redis expiry, actor generations and process crashes are outside this model.",
+        "Does not establish TypeScript refinement or unbounded progress."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "shutdown-sequence",
+      "file": "shutdown_sequence.qnt",
+      "sources": [
+        "packages/cloud/services/agent-server/src/agent-shutdown.ts",
+        "packages/cloud/services/agent-server/src/index.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One absolute deadline and three ordered shutdown phases; each operation may acknowledge, reject or stall.",
+        "The bounded clock abstracts elapsed monotonic scheduling; a disconnected terminal state denotes failed teardown, not proof that runtime effects completed.",
+        "No fairness, operating-system process termination or cleanup of remote provider effects is proved."
+      ],
+      "maxSteps": 25
+    },
+    {
+      "id": "payment-delivery",
+      "file": "payment_delivery.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/payment-request-settlement.ts",
+        "packages/cloud/shared/src/db/schemas/payment-requests.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One payment, two provider events, two workers, eight clock ticks, bounded attempts.",
+        "The final lease check and transport start form one abstract action; arbitrary process suspension between those operations is excluded.",
+        "Late in-flight and duplicate deliveries are allowed. No receiver-side exactly-once, HMAC, SSRF or database/network atomicity proof is claimed."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "subscription-commands",
+      "file": "subscription_commands.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/app-billing-command-runtime.ts",
+        "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
+        "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One immutable command and scope, two workers, three lease generations, nine clock ticks, two subscription revisions.",
+        "Only committed database actions are modeled; interrupted transactions stutter.",
+        "Provider payload validation, decimal arithmetic, external idempotency and special cancellation/import authority are excluded."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "auto-topup-lock-order",
+      "file": "auto_topup_lock_order.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/auto-top-up-attempts.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two transactions contend for one organization and one attempt in a consistent row-lock order.",
+        "Models row-lock acquisition and release only; money, provider effects, triggers, fairness and unbounded database executions are excluded."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "container-monitor",
+      "file": "container_monitor.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/containers.ts",
+        "packages/cloud/shared/src/lib/services/containers/hetzner-client/client.ts",
+        "packages/cloud/shared/src/db/migrations/0558_container_placement_revision.sql"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One logical container, two row incarnations, one restart, one newer deployment, placement metadata A-to-B-to-A and one bookkeeping update.",
+        "The original created_at database text identifies a row; malicious reuse of both its UUID and exact timestamp is excluded.",
+        "Migration0558 advances the canonical lifecycle revision for all typed Hetzner placement fields; funded restart advances it even when already deploying. Full metadata equality alone does not prove absence of ABA.",
+        "Database CAS is atomic. Provider health truth, physical node replacement outside retained identity, transport reliability, liveness and TypeScript refinement are not proved."
+      ],
+      "maxSteps": 35
+    },
+    {
+      "id": "app-container-publication",
+      "file": "app_container_publication.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/app-container-store.ts",
+        "packages/cloud/shared/src/lib/services/app-container-store-queries.ts",
+        "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+        "packages/cloud/shared/src/lib/services/container-retirement.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One tenant projection, two app generations/row incarnations, one metadata change and atomic publication CAS.",
+        "Original database timestamp text identifies the row; privileged reuse of both UUID and exact timestamp is excluded. Publication retains original tenant/app generation across provider I/O.",
+        "Retirement and publication serialize at the database write. Stale cleanup can release only the original row/generation slot.",
+        "Provider truth, physical node reincarnation, later ingress publication, unbounded liveness and TypeScript refinement remain unproved.",
+        "Job-lease revocation without a changed app generation is outside this model. The separate provisioning-execution model and runtime gate do not establish model composition."
+      ],
+      "maxSteps": 35
+    },
+    {
+      "id": "provisioning-execution",
+      "file": "provisioning_execution.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+        "packages/cloud/shared/src/lib/services/app-container-store.ts",
+        "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+        "packages/cloud/shared/src/node/provisioning-worker.ts",
+        "packages/cloud/shared/src/db/repositories/jobs.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One durable job, two execution generations and a clock bounded to six ticks. The same app generation may survive job recovery.",
+        "Job, lease and dependent-resource locks serialize a committed write; lease time is rechecked after the resource lock. No TypeScript or SQL isolation refinement is proved.",
+        "Provider dispatch and completion remain external. A lease timeout or cancellation does not prove remote quiescence; an explicit witness retains overlapping old and new provider calls.",
+        "No fairness, eventual completion, provider-side fencing, or cross-job routing ownership is proved."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "checkout-credit-settlement",
+      "file": "checkout_credit_settlement.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+        "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+        "packages/cloud/api/stripe/create-checkout-session/route.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
+        "Transactions and receipt publication are atomic. Provider idempotency is assumed within the original retained window; the separate clock model does not establish compositional refinement.",
+        "Cryptography, arbitrary decimals, SQL isolation, unbounded provider/network delay and TypeScript refinement are not proved."
+      ],
+      "maxSteps": 45
+    },
+    {
+      "id": "checkout-retry-clock",
+      "file": "checkout_retry_clock.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+        "packages/cloud/api/src/checkout-reconciliation.ts",
+        "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Independent database and application clocks each range over 0, 22, 44 and 66 hours; up to three create attempts.",
+        "Only primary database time authorizes a new dispatch. The first dispatch time is immutable; audit updates do not restart the retry window.",
+        "This is a bounded time-gate model, not a proof of provider key retention, network arrival time, remote exactly-once behavior or implementation refinement."
+      ],
+      "maxSteps": 35
+    },
+    {
+      "id": "sse-segmentation",
+      "file": "sse_segmentation.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/inference-passthrough.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two fixed line grammars, chunks of one to three atoms, and explicit EOF or abort.",
+        "Atoms abstract complete JSON payloads; this checks segmentation and terminal behavior, not arbitrary JSON, UTF-8 decoding, provider usage, billing or TypeScript refinement.",
+        "Runtime tests separately exercise full payload bytes, Unicode, CRLF, usage receipts and cancellation."
+      ],
+      "maxSteps": 25
+    },
+    {
+      "id": "vast-worker-supervision",
+      "file": "vast_worker_supervision.qnt",
+      "sources": [
+        "packages/cloud/services/vast-pyworker/observability.py",
+        "packages/cloud/services/vast-pyworker/onstart-vllm.sh",
+        "packages/training/scripts/inference/heartbeat.py"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two observer attempts, one kernel flock, one heartbeat thread per owner, one persisted history bit.",
+        "All persistent writers run in one process. Graceful shutdown joins the heartbeat before releasing the lock; process death ends every thread before kernel release.",
+        "Scheduling fairness, exact metric bytes, disk failures, GPU readiness and Python refinement are not proved."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "exact-restore-recovery",
+      "file": "exact_restore_recovery.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+        "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
+        "packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One fixed terminal restore and immutable S0 attempt, one counted slot, two concurrent trusted coordinator turns and two node occurrences.",
+        "One-shot Docker creation may finish after lease expiry and tombstone. Exact ID or producer quiescence is required before proof.",
+        "Database settlement is atomic. Provider receipt validity, SSH authentication, cryptographic digests and immutable source authority are assumptions exercised separately by integration tests.",
+        "The original operation never leaves failed_terminal; unavailable node or daemon proof retains quarantine. No liveness, arbitrary backlog fairness or TypeScript refinement is proved."
+      ],
+      "maxSteps": 35
+    },
+    {
+      "id": "restore-cleanup-rotation",
+      "file": "restore_cleanup_rotation.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+        "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Three fixed terminal operations, page size two, and two completed cycles; two operations lack proof permanently and the third can settle.",
+        "Row locks select distinct operations and the database clock places selected operations after existing unselected work before remote I/O.",
+        "No unbounded backlog, new arrivals, worker availability, general liveness or implementation refinement is proved."
+      ],
+      "maxSteps": 20
+    }
+  ],
+  "pendingDomains": [
+    {
+      "id": "inference-admission",
+      "paths": [
+        "api/src/inference-admission",
+        "shared/src/lib/services/inference-admission",
+        "admission-worker/"
+      ],
+      "obligations": [
+        "quota and balance fences",
+        "lease recovery",
+        "policy generations",
+        "namespace continuity"
+      ]
+    },
+    {
+      "id": "inference-streaming",
+      "paths": [
+        "shared/src/lib/services/proxy/",
+        "api/v1/chat/",
+        "api/v1/responses/"
+      ],
+      "obligations": [
+        "disconnect and timeout",
+        "provider ambiguity",
+        "exact usage settlement",
+        "bounded buffering"
+      ]
+    },
+    {
+      "id": "speech-sessions",
+      "paths": ["api/src/", "api/v1/voice/", "speech-worker/"],
+      "obligations": [
+        "session expiry and revocation",
+        "turn cancellation",
+        "audio stream backpressure",
+        "accounting recovery"
+      ]
+    },
+    {
+      "id": "a2a-tasks",
+      "paths": [
+        "api/src/a2a-task-state",
+        "shared/src/lib/services/a2a-task",
+        "shared/src/lib/services/cloudflare-a2a"
+      ],
+      "obligations": [
+        "terminal states",
+        "concurrent artifact append",
+        "cancellation",
+        "TTL and ownership"
+      ]
+    },
+    {
+      "id": "payments-and-subscriptions",
+      "paths": [
+        "shared/src/lib/services/payment",
+        "shared/src/lib/services/subscription",
+        "shared/src/lib/services/auto-top-up",
+        "shared/src/db/repositories/subscription"
+      ],
+      "obligations": [
+        "provider ambiguity",
+        "idempotent webhooks",
+        "generation fencing",
+        "durable effect receipts"
+      ]
+    },
+    {
+      "id": "app-billing",
+      "paths": [
+        "shared/src/lib/services/app-billing",
+        "shared/src/lib/services/app-charge",
+        "shared/src/db/repositories/app-billing"
+      ],
+      "obligations": [
+        "allowance allocation",
+        "settlement",
+        "refunds",
+        "outbox delivery"
+      ]
+    },
+    {
+      "id": "crypto-and-payouts",
+      "paths": [
+        "shared/src/lib/services/crypto",
+        "shared/src/lib/services/payout",
+        "shared/src/lib/services/token-redemption",
+        "shared/src/lib/services/direct-wallet"
+      ],
+      "obligations": [
+        "confirmation and reorg",
+        "replay",
+        "partial failure",
+        "ledger conservation"
+      ]
+    },
+    {
+      "id": "account-lifecycle",
+      "paths": [
+        "shared/src/lib/services/account-",
+        "shared/src/lib/services/pii-"
+      ],
+      "obligations": [
+        "deletion fences",
+        "provider cleanup receipts",
+        "revocation",
+        "retention"
+      ]
+    },
+    {
+      "id": "identity-and-pairing",
+      "paths": [
+        "shared/src/lib/services/pairing",
+        "shared/src/lib/services/remote-",
+        "api/v1/auth/",
+        "shared/src/lib/auth/"
+      ],
+      "obligations": [
+        "single-use grant",
+        "expiry",
+        "generation and sequence fences",
+        "reissue and acknowledgment"
+      ]
+    },
+    {
+      "id": "container-lifecycle",
+      "paths": [
+        "shared/src/lib/services/container",
+        "shared/src/lib/services/hetzner",
+        "services/container-control-plane/"
+      ],
+      "obligations": [
+        "provision and retirement",
+        "health probe races",
+        "lease ownership",
+        "provider deletion proof"
+      ]
+    },
+    {
+      "id": "agent-activation-and-restore",
+      "paths": [
+        "shared/src/lib/services/agent-backup",
+        "shared/src/lib/services/agent-compute",
+        "shared/src/db/repositories/agent-sandbox"
+      ],
+      "obligations": [
+        "immutable restore source",
+        "activation attestation",
+        "replacement generations",
+        "cleanup proof"
+      ]
+    },
+    {
+      "id": "app-deployment",
+      "paths": [
+        "shared/src/lib/services/app-deploy",
+        "shared/src/lib/services/apps-deploy",
+        "shared/src/db/repositories/app-frontend"
+      ],
+      "obligations": [
+        "upload and finalize",
+        "single active deployment",
+        "rollback",
+        "ingress publication"
+      ]
+    },
+    {
+      "id": "jobs-and-schedulers",
+      "paths": [
+        "shared/src/lib/services/provisioning",
+        "services/coding-remote-runner/",
+        "api/cron/"
+      ],
+      "obligations": [
+        "claim and lease expiry",
+        "retry budget",
+        "cancellation quiescence",
+        "generation fencing"
+      ]
+    },
+    {
+      "id": "messaging-and-connections",
+      "paths": [
+        "services/gateway-",
+        "shared/src/lib/services/agent-google",
+        "shared/src/lib/services/managed-account"
+      ],
+      "obligations": [
+        "deduplication",
+        "ordering",
+        "refresh and reconnect",
+        "delivery receipts"
+      ]
+    },
+    {
+      "id": "domains-and-storage",
+      "paths": [
+        "shared/src/lib/services/domain",
+        "api/v1/documents/",
+        "shared/src/lib/storage/"
+      ],
+      "obligations": [
+        "purchase and DNS verification",
+        "upload commit",
+        "content address authority",
+        "cleanup"
+      ]
+    },
+    {
+      "id": "routing-and-rate-policy",
+      "paths": [
+        "routing/",
+        "shared/src/lib/rate",
+        "shared/src/lib/cache/",
+        "api/v1/maps/"
+      ],
+      "obligations": [
+        "entitlement epochs",
+        "cache invalidation",
+        "health and failover",
+        "distributed counters"
+      ]
+    },
+    {
+      "id": "agent-routing-authority",
+      "paths": [
+        "services/agent-server/src/agent-manager.ts",
+        "services/operator/capabilities/"
+      ],
+      "obligations": [
+        "per-incarnation publication fencing",
+        "cross-server reassignment authority",
+        "stale live writer exclusion",
+        "same-name pod cleanup ownership"
+      ]
+    }
+  ]
+}

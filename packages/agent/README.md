@@ -7,6 +7,13 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
+Native hosts that rotate `ELIZA_HOST_CONTEXT_REVISION` can expose the latest
+owner chat's timing through the existing authenticated `GET /api/status`.
+`nativeInferenceTiming` contains fixed stage durations and a validated trace ID,
+not conversation text or raw spans. It is absent for non-owner requests, retired
+host bindings and hosts without that revision contract. Status reads do not
+query the log store. A newer turn prevents an older callback from replacing it.
+
 `build:mobile --target=android` compacts syntax and whitespace while keeping
 identifier names. Its `plugins-manifest.json` records each npm package that
 contributes emitted bytes, the package metadata hash, and the final bundle hash.
@@ -105,6 +112,13 @@ matching `cancel-read-completion` route retires the completion. Deploy the addit
 `0006_device_read_completion` migration without resetting existing approvals.
 
 ## Development
+
+Run `bun run --cwd packages/agent test:formal` with Java 21 available to check
+the Quint models in `formal/`. It runs scenarios, seeded simulation, exhaustive
+finite-state safety checks and negative controls. Results and raw logs go to
+`test-results/agent-quint/`. Model comments state the source mapping and
+assumptions; these checks complement the real host tests and do not prove
+equivalence with the implementation or external systems.
 
 Install dependencies with `bun install` at the repository root. Run from that root:
 
