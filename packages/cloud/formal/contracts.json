@@ -233,6 +233,38 @@
         "No fairness, eventual completion, provider-side fencing, or cross-job routing ownership is proved."
       ],
       "maxSteps": 40
+    },
+    {
+      "id": "checkout-credit-settlement",
+      "file": "checkout_credit_settlement.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+        "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+        "packages/cloud/api/stripe/create-checkout-session/route.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
+        "Transactions and receipt publication are atomic. Provider idempotency is assumed within the original retained window; the separate clock model does not establish compositional refinement.",
+        "Cryptography, arbitrary decimals, SQL isolation, unbounded provider/network delay and TypeScript refinement are not proved."
+      ],
+      "maxSteps": 45
+    },
+    {
+      "id": "checkout-retry-clock",
+      "file": "checkout_retry_clock.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+        "packages/cloud/api/src/checkout-reconciliation.ts",
+        "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Independent database and application clocks each range over 0, 22, 44 and 66 hours; up to three create attempts.",
+        "Only primary database time authorizes a new dispatch. The first dispatch time is immutable; audit updates do not restart the retry window.",
+        "This is a bounded time-gate model, not a proof of provider key retention, network arrival time, remote exactly-once behavior or implementation refinement."
+      ],
+      "maxSteps": 35
     }
   ],
   "pendingDomains": [
