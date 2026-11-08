@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "plugins/plugin-openai/utils/tokenization.ts",
+    "plugins/plugin-openai/models/tokenizer.ts",
+    "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One module instance, two representative encodings, two load attempts per encoding, and four one-shot callers. Map admission and promise capture are synchronous.",
+      "The failure cleanup reaction is registered before the promise is returned. A caller can join before cleanup, but rejection observation follows that reaction. Successful entries persist for the module lifetime.",
+      "The model separates caller observations from import outcomes. Exact rank bytes, module-loader caching, runtime model configuration, process restart and unbounded requests are outside its state space."
+    ],
+    "progress": "A waiting caller settles when its physical import and enabled promise reactions eventually run. It may receive a rejection. No wall-clock or guaranteed load-success claim."
+  },
+  "cases": [
+    {
+      "name": "per-encoding-cache",
+      "main": "OpenAITokenizerCache",
+      "init": "init",
+      "step": "step",
+      "invariants": ["CacheCoherent", "CallersOwnTheirPromise", "ReceiptsMatchLoad"],
+      "temporal": ["CallersSettle", "UnfairCallersSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallersSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each enabled import outcome eventually arrives, possibly as a rejection.",
+            "The event loop eventually runs each continuously enabled rejection cleanup and caller observation."
+          ]
+        },
+        {
+          "property": "UnfairCallersSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No import-completion or event-loop fairness is assumed. A pending import can remain unresolved."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "plugins/plugin-openai/quint/check-tokenizer-cache.mjs"
+}

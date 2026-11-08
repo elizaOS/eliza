@@ -64,7 +64,10 @@ async function current() {
   );
   return result.rows[0];
 }
-async function observe(response: string, whilePending: () => Promise<void> = async () => {}) {
+async function observe(
+  response: string | Error,
+  whilePending: () => Promise<void> = async () => {},
+) {
   const started = Promise.withResolvers<void>();
   const reply = Promise.withResolvers<string>();
   const client = new Client();
@@ -79,7 +82,8 @@ async function observe(response: string, whilePending: () => Promise<void> = asy
   try {
     await whilePending();
   } finally {
-    reply.resolve(response);
+    if (response instanceof Error) reply.reject(response);
+    else reply.resolve(response);
   }
   return await pending;
 }
@@ -94,6 +98,20 @@ describe("container deployment health observation", () => {
   test("records a current stopped-runtime observation", async () => {
     expect(await observe("exited")).toEqual({ checked: 1, running: 0, failed: 1 });
     expect((await current())?.status).toBe("failed");
+  });
+  test("a starting runtime leaves the current deployment pending", async () => {
+    expect(await observe("starting")).toEqual({ checked: 1, running: 0, failed: 0 });
+    expect((await current())?.status).toBe("deploying");
+    expect((await current())?.last_health_check).toBeNull();
+  });
+  test("a failed health request leaves the current deployment pending", async () => {
+    expect(await observe(new Error("controlled health transport failure"))).toEqual({
+      checked: 1,
+      running: 0,
+      failed: 0,
+    });
+    expect((await current())?.status).toBe("deploying");
+    expect((await current())?.last_health_check).toBeNull();
   });
   test("a pending retirement cannot be undone by an older healthy probe", async () => {
     const result = await observe("healthy", async () => {

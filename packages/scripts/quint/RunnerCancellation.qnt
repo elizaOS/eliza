@@ -64,3 +64,75 @@ module RunnerCancellation {
     .then(start).then(launch).then(cancel).then(inventory)
     .expect(CancelledNeverPasses and s.checker)
 }
+
+// One enclosing deadline owner and the direct Quint controller. A clock tick
+// dispatches each due cleanup before the outer owner's later deadline. External
+// suspension beyond that allowance is an explicit operating-system boundary.
+module NestedRunnerCancellation {
+  var nested: {
+    phase: str, controller: bool, worker: bool, checker: bool,
+    pendingSpawn: bool, outerRemaining: int, innerRemaining: int,
+  }
+  action initNested = nested' = {
+    phase: "running", controller: true, worker: true, checker: false,
+    pendingSpawn: false, outerRemaining: 10, innerRemaining: 3,
+  }
+  action initEqualGrace = nested' = {
+    phase: "running", controller: true, worker: true, checker: false,
+    pendingSpawn: false, outerRemaining: 10, innerRemaining: 10,
+  }
+  action requestLaunch = all {
+    nested.phase == "running", not(nested.checker),
+    nested' = { ...nested, pendingSpawn: true },
+  }
+  action launch = all {
+    nested.pendingSpawn, nested.worker,
+    nested' = { ...nested, pendingSpawn: false, checker: true },
+  }
+  action cancelNested = all {
+    nested.phase == "running", nested' = { ...nested, phase: "cancelling" },
+  }
+  action workerExitsFirst = all {
+    nested.phase == "cancelling", nested.worker,
+    nested' = { ...nested, worker: false, pendingSpawn: false },
+  }
+  action cleanupTick = all {
+    nested.phase == "cancelling", nested.outerRemaining > 0,
+    val outer = nested.outerRemaining - 1
+    val inner = if (nested.innerRemaining > 0) nested.innerRemaining - 1 else 0
+    nested' = if (outer == 0) {
+      ...nested, outerRemaining: 0, innerRemaining: inner,
+      phase: "done", controller: false,
+    } else if (inner == 0) {
+      ...nested, outerRemaining: outer, innerRemaining: 0,
+      worker: false, checker: false, pendingSpawn: false,
+    } else { ...nested, outerRemaining: outer, innerRemaining: inner },
+  }
+  action reapNested = all {
+    nested.phase == "cancelling", not(nested.worker or nested.checker),
+    nested' = { ...nested, phase: "done", controller: false, pendingSpawn: false },
+  }
+  action nestedStep = any {
+    requestLaunch, launch, cancelNested, workerExitsFirst,
+    cleanupTick, reapNested, nested' = nested,
+  }
+  val NoChildAfterControllerClose = nested.controller or
+    not(nested.worker or nested.checker or nested.pendingSpawn)
+  val NestedBounds = nested.outerRemaining >= 0 and nested.outerRemaining <= 10
+    and nested.innerRemaining >= 0 and nested.innerRemaining <= 3
+  temporal NestedCleanup = (cleanupTick.weakFair(nested) and reapNested.weakFair(nested)).implies(
+    (nested.phase == "cancelling").leadsTo(nested.phase == "done"))
+
+  run lateSpawnIsStillOwnedTest = initNested.then(requestLaunch).then(cancelNested)
+    .then(launch).then(cleanupTick).then(cleanupTick).then(cleanupTick)
+    .then(reapNested).expect(NoChildAfterControllerClose)
+  run exitedWorkerDoesNotEndCheckerOwnershipTest = initNested.then(requestLaunch)
+    .then(launch).then(cancelNested).then(workerExitsFirst)
+    .then(cleanupTick).then(cleanupTick).then(cleanupTick).then(reapNested)
+    .expect(NoChildAfterControllerClose)
+  run equalNestedGraceCanLeaveOrphanTest = initEqualGrace.then(requestLaunch)
+    .then(launch).then(cancelNested)
+    .then(cleanupTick).then(cleanupTick).then(cleanupTick).then(cleanupTick).then(cleanupTick)
+    .then(cleanupTick).then(cleanupTick).then(cleanupTick).then(cleanupTick).then(cleanupTick)
+    .expect(not(NoChildAfterControllerClose))
+}

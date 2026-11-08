@@ -1473,6 +1473,7 @@ jobs:
       - billing-payment-replay-e2e
       - subscription-authority-postgres
       - paradee-stream-contract
+      - quint
     runs-on: ubuntu-24.04
     steps:
       - name: Require every admission lane
@@ -1484,6 +1485,7 @@ jobs:
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
             paradee-stream-contract=${{ needs.paradee-stream-contract.result }}
+            quint=${{ needs.quint.result }}
         run: |
           set -euo pipefail
           for pair in $RESULTS; do

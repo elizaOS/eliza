@@ -6,7 +6,8 @@
 // Target integers abstract full JSONB equality. Placement changes increment the
 // canonical revision; bookkeeping changes do not. A distinct original created_at
 // value identifies each row incarnation; malicious reuse of that timestamp is excluded.
-// No provider health truth, SSH reliability, liveness or SQL refinement is claimed.
+// Pending probe completion requires a fair response/error continuation. Provider
+// health truth, SSH reliability and SQL refinement remain outside this model.
 module container_monitor {
   type State = {
     status: str,
@@ -50,7 +51,7 @@ module container_monitor {
     s.status == "deploying", s.revision == 0,
     s' = s.with("revision", 1).with("target", 1)
   }
-  // Migration 0560 advances the canonical revision for placement fields.
+  // Migration 0558 advances the canonical revision for placement fields.
   action replaceTargetMetadata = all {
     s.status == "deploying", s.metadataMoves == 0,
     s' = s.with("target", 1).with("revision", s.revision + 1).with("metadataMoves", 1)
@@ -81,19 +82,32 @@ module container_monitor {
       .with("status", if (sameDeployment) result else s.status)
       .with("revision", if (sameDeployment) s.revision + 1 else s.revision)
   }
+  // Starting/unknown provider status and a rejected health request both leave
+  // the row unchanged while completing this observation attempt.
+  action finishWithoutUpdate = all {
+    s.probePending, s' = s.with("probePending", false)
+  }
+  action finishObservation = any {
+    { nondet result = Set("running", "failed").oneOf(); finishProbe(result) },
+    finishWithoutUpdate
+  }
   action idle = s' = s
-  action step = {
-    nondet result = Set("running", "failed").oneOf()
-    any { sample, retire, delete, newerDeployment, replaceTargetMetadata, restoreTargetMetadata, replaceBookkeepingMetadata, restart, recreateRow, finishProbe(result), idle }
+  action step = any {
+    sample, retire, delete, newerDeployment, replaceTargetMetadata, restoreTargetMetadata,
+    replaceBookkeepingMetadata, restart, recreateRow, finishObservation, idle
   }
   val safety = all {
     not(s.staleWrite),
     s.terminal implies s.status == "deleted",
     s.deleteJob implies s.status == "deleting"
   }
+  temporal PendingObservationCompletes = finishObservation.weakFair(s) implies
+    always(s.probePending implies eventually(not(s.probePending)))
 
   run currentProbeAppliesTest = init.then(sample).then(finishProbe("running"))
     .expect(s.status == "running" and safety)
+  run pendingProviderLeavesDeploymentTest = init.then(sample).then(finishWithoutUpdate)
+    .expect(s.status == "deploying" and not(s.probePending) and safety)
   run retirementWinsTest = init.then(sample).then(retire).then(finishProbe("running"))
     .expect(s.status == "deleting" and safety)
   run deletionWinsTest = init.then(sample).then(retire).then(delete).then(finishProbe("running"))

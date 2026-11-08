@@ -41,7 +41,10 @@
         "RotatedGrantIsRetained",
         "QueueRereadsCurrentRecord",
         "StalePolicyCommitThrows",
-        "ReplacementResultUsesCurrentCredential"
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
       ],
       "temporal": ["CallsSettle"],
       "maxSteps": 40,
@@ -80,7 +83,10 @@
         "RotatedGrantIsRetained",
         "QueueRereadsCurrentRecord",
         "StalePolicyCommitThrows",
-        "ReplacementResultUsesCurrentCredential"
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
       ],
       "temporal": ["CallsSettle"],
       "maxSteps": 40,
@@ -119,7 +125,10 @@
         "RotatedGrantIsRetained",
         "QueueRereadsCurrentRecord",
         "StalePolicyCommitThrows",
-        "ReplacementResultUsesCurrentCredential"
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
       ],
       "temporal": ["CallsSettle"],
       "maxSteps": 40,
@@ -158,7 +167,10 @@
         "RotatedGrantIsRetained",
         "QueueRereadsCurrentRecord",
         "StalePolicyCommitThrows",
-        "ReplacementResultUsesCurrentCredential"
+        "ReplacementResultUsesCurrentCredential",
+        "SuccessfulOutcomeOwnsGeneration",
+        "RejectedGrantKeepsCapturedGeneration",
+        "CommitReceiptMatchesDecision"
       ],
       "temporal": ["CallsSettle"],
       "maxSteps": 40,
