@@ -114,6 +114,15 @@ import {
   validateNotesResult,
 } from "./notes-contract.ts";
 import {
+  describeNotesOrganizeOperation,
+  isNotesOrganizeOperation,
+  NOTES_ORGANIZE_CAPABILITY,
+  NOTES_ORGANIZE_DIRECT_TYPES,
+  type NotesOrganizeOperation,
+  notesOrganizeContextAllowed,
+  validateNotesOrganizeOperation,
+} from "./notes-organize-contract.ts";
+import {
   type NotesQueryResult,
   validateNotesQueryResult,
 } from "./notes-query-result.ts";
@@ -223,6 +232,7 @@ export type DeviceOperation =
   | ClockHandoffOperation
   | MapsOperation
   | LibraryAgentOperation
+  | NotesOrganizeOperation
   | ReminderOperation
   | NotesOperation
   | NativeNotesQueryOperation
@@ -494,6 +504,7 @@ export function validateDeviceOperation(
   if (isClockHandoffOperation(p)) return validateClockHandoffDispatch(p);
   if (isMapsOperation(p)) return validateMapsOperation(p);
   if (isLibraryOperation(p)) return validateLibraryOperation(p);
+  if (isNotesOrganizeOperation(p)) return validateNotesOrganizeOperation(p);
   if (isReminderOperation(p)) return validateReminderOperation(p);
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
@@ -774,6 +785,15 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     assertClockHandoffTimeZone(operation, context.timeZone);
   if (isMapsOperation(operation)) assertMapsContext(operation, context, ports);
   if (isLibraryOperation(operation)) assertLibraryContext(context);
+  if (
+    isNotesOrganizeOperation(operation) &&
+    !notesOrganizeContextAllowed(context, operation)
+  )
+    throw new ContextNotice(
+      operation.type === "notes_record"
+        ? "Open Notes to record a voice note."
+        : "Open Home or Notes to review this Notes action.",
+    );
   if (isReminderOperation(operation)) assertReminderContext(operation, context);
   if (isNativeNotesQuery(operation)) assertNotesQueryContext(context);
   if (isNotesOperation(operation)) assertNotesContext(operation, context);
@@ -1233,6 +1253,11 @@ export class DeviceActionCoordinator<
     if (isLibraryOperation(op) && !this.capability(PHOTO_LIBRARY_CAPABILITY))
       throw Error("Device library access was not negotiated with this agent");
     if (
+      isNotesOrganizeOperation(op) &&
+      !this.capability(NOTES_ORGANIZE_CAPABILITY)
+    )
+      throw Error("Notes folders were not negotiated with this agent");
+    if (
       isForegroundReviewOperation(op) &&
       (!foregroundReviewOperationAvailable(op, this.credential.capabilities) ||
         !this.ports.executeForeground)
@@ -1407,6 +1432,8 @@ export class DeviceActionCoordinator<
       };
     if (isLibraryOperation(op))
       return { ...base, ...describeLibraryOperation(op, this.profile.appName) };
+    if (isNotesOrganizeOperation(op))
+      return { ...base, ...describeNotesOrganizeOperation(op) };
     const notesDestination =
       (op.type === "notes_delete" || op.type === "notes_update") &&
       !context.sensitive &&
@@ -1576,6 +1603,7 @@ export class DeviceActionCoordinator<
       "browser_navigate",
       "camera_capture_photo",
       "photo_library_select",
+      ...NOTES_ORGANIZE_DIRECT_TYPES,
     ];
     const results: DeviceOperationReceipt[] = [];
     for (const [proposalId, entry] of [...this.proposals]) {
@@ -2060,7 +2088,12 @@ export class DeviceActionCoordinator<
           op.type !== "calendar_read_next"
         )
           committedChanges.push("calendar");
-        if (isNotesOperation(op)) committedChanges.push("notes");
+        if (
+          isNotesOperation(op) ||
+          (isNotesOrganizeOperation(op) &&
+            !NOTES_ORGANIZE_DIRECT_TYPES.includes(op.type))
+        )
+          committedChanges.push("notes");
         if (
           isReminderOperation(op) ||
           isReminderCreate(op) ||

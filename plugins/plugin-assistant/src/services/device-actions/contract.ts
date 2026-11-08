@@ -36,6 +36,12 @@ import {
   validateNotesOperation,
 } from "./notes-contract.ts";
 import {
+  isNotesOrganizeType,
+  NOTES_ORGANIZE_CAPABILITY,
+  type NotesOrganizeOperation,
+  validateNotesOrganizeOperation,
+} from "./notes-organize-contract.ts";
+import {
   PHONE_DIAL_CAPABILITY,
   type PhoneDialOperation,
   validatePhoneDial,
@@ -95,6 +101,7 @@ export type DeviceOperation =
   | MapsOperation
   | ReminderOperation
   | NotesOperation
+  | NotesOrganizeOperation
   | NativeNotesQueryOperation
   | CalendarOperation
   | ForegroundReviewOperation
@@ -126,6 +133,11 @@ export function deviceOperationSupportedByCapabilities(
   if (type === "notes_query")
     return (
       capabilities?.includes(NOTES_QUERY_CAPABILITY) === true &&
+      capabilities.includes("notes.local-record.v1")
+    );
+  if (isNotesOrganizeType(type))
+    return (
+      capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
   if (type === "clock_alarm")
@@ -241,6 +253,18 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         return validateNotesOperation(p);
       } catch {
         throw new DeviceActionError("Invalid Notes operation");
+      }
+    case "notes_filter":
+    case "notes_move":
+    case "notes_folder_create":
+    case "notes_restore":
+    case "notes_record":
+      try {
+        return validateNotesOrganizeOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Notes operation: ${(error as Error).message}`,
+        );
       }
     case "calendar_create_local":
     case "calendar_read_next":

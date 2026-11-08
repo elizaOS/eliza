@@ -259,6 +259,11 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "reminder_create":
     case "open_view":
     case "browser_navigate":
+    case "notes_filter":
+    case "notes_move":
+    case "notes_folder_create":
+    case "notes_restore":
+    case "notes_record":
     case "post_notification":
     case "speak_text":
       return false;

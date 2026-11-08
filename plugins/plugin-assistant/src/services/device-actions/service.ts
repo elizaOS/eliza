@@ -120,6 +120,11 @@ import {
   validateNotesOperation,
   validateNotesResult,
 } from "./notes-contract.ts";
+import {
+  isNotesOrganizeOperation,
+  NOTES_ORGANIZE_CAPABILITY,
+  NOTES_ORGANIZE_TYPES,
+} from "./notes-organize-contract.ts";
 import { notesDeleteAfterReadPlan } from "./notes-delete-continuation.ts";
 import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
@@ -606,6 +611,7 @@ export function deviceAppRecordOperationAvailable(
   if (typeof type !== "string") return false;
   const domain =
     isNotesOperation(operation) ||
+    isNotesOrganizeOperation(operation) ||
     isNativeNotesQuery({ type }) ||
     [
       "create_note",
@@ -1758,6 +1764,7 @@ export class DeviceActionService {
           CALENDAR_AGENDA_CAPABILITY,
           "notes.local-record.v1",
           NOTES_QUERY_CAPABILITY,
+          NOTES_ORGANIZE_CAPABILITY,
           NOTES_SEARCH_CAPABILITY,
           CALENDAR_AVAILABILITY_CAPABILITY,
           NAMED_TARGET_CAPABILITY,
@@ -2057,6 +2064,7 @@ export class DeviceActionService {
         "notes_query",
         "notes_update",
         "notes_delete",
+        ...NOTES_ORGANIZE_TYPES,
         "create_reminder",
         "reminder_create",
         "reminder_read_selected",
@@ -2503,6 +2511,7 @@ export class DeviceActionService {
         if (
           (isCameraCapture(operation) ||
             isNativeNotesQuery(operation) ||
+            isNotesOrganizeOperation(operation) ||
             isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||
             operation.type === "calendar_read_next") &&

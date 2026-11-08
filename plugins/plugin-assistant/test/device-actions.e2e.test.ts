@@ -1449,6 +1449,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "calendar.agenda-read.v1",
           "calendar.named-read.v1",
           "notes.query.v1",
+          "notes.organize.v1",
           "reminders.local-record.v2",
           "reminders.create.v1",
           "clock.handoff.v2",
