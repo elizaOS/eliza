@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 import java.util.function.BooleanSupplier;
 import org.json.JSONObject;
 
-/** A private, bounded AAC window of one explicitly selected saved note. Never accepts paths. */
+/** A private, bounded AAC window of one explicitly selected retained recording. Never accepts paths. */
 public final class RecordingWindow implements AutoCloseable {
  public final File file;
  public boolean empty;
@@ -23,11 +23,11 @@ public final class RecordingWindow implements AutoCloseable {
   JSONObject value=store.describe(audioId);
   if(!ownerId.equals(value.getString(ownerField))||!audioId.equals(value.getString("audioId"))||value.has("deletedAt")||value.getLong("durationMs")!=duration)throw new IOException("Recording changed");
  }
- public static RecordingWindow open(RecordingStore store,File cache,String ownerField,String recordingId,String noteId,Long offset,Long duration,BooleanSupplier cancelled)throws Exception{
-  String audioId=RecordingStore.id(recordingId),ownerId=RecordingStore.id(noteId);
+ public static RecordingWindow open(RecordingStore store,File cache,String ownerField,String recordingId,String owner,Long offset,Long duration,BooleanSupplier cancelled)throws Exception{
+  String audioId=RecordingStore.id(recordingId),ownerId=RecordingStore.id(owner);
   if(ownerField==null||!ownerField.matches("[A-Za-z][A-Za-z0-9]{0,63}"))throw new IOException("Invalid recording owner field");
   if(offset==null||duration==null||duration<=0||offset<0||offset>=duration||offset%25000!=0||duration>9007199254740991L)throw new IOException("Invalid recording window");
-  File temporary=File.createTempFile("alpha-note-stt-",".m4a",cache);
+  File temporary=File.createTempFile("eliza-recording-window-",".m4a",cache);
   RecordingWindow selected=new RecordingWindow(temporary,store,ownerField,audioId,ownerId,duration);
   try{
    selected.check();File original=store.playable(audioId);
