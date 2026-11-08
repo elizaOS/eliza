@@ -192,7 +192,7 @@ test("arbitrary failures cannot satisfy expected temporal counterexamples", () =
   assert.equal(
     classifyTemporalOutcome(
       0,
-      "Starting model checking, but no completed result",
+      "Model checking completed. No error has been found.",
     ),
     "checker-error",
   );
@@ -311,6 +311,81 @@ test("the shared runner records positive liveness and expected unfair schedules 
     new Set(report.results.map((item: { log: string }) => item.log)).size,
     report.results.length,
   );
+});
+
+test("TLC state and action properties retain their checked outcomes", async () => {
+  const directory = fixture({
+    ...checkedFiles,
+    "packages/scripts/quint/tlc.json":
+      '{"maxHeap":"-Xmx512M","stackSize":"-Xss8m","workers":2}',
+    [`${example}.qnt`]: `module Example {
+      var state: int
+      action init = state' = 0
+      action step = state' = 1
+      val Safe = state == 0 or state == 1
+      temporal StateProperty = always(state == 0 or state == 1)
+      temporal ActionProperty = always((next(state) >= state).orKeep(state))
+      temporal ViolatedProperty = always(state == 0)
+    }`,
+    [`${example}.cases.json`]: JSON.stringify({
+      sources: [stateSource],
+      cases: [
+        {
+          ...modelCase,
+          name: "state-and-action-properties",
+          temporal: ["StateProperty", "ActionProperty"],
+          temporalChecks: ["StateProperty", "ActionProperty"].map(
+            (property) => ({
+              property,
+              expect: "holds",
+              assumptions: [
+                "No fairness is required for these safety properties",
+              ],
+            }),
+          ),
+        },
+        {
+          ...modelCase,
+          name: "violated-state-property",
+          temporal: ["ViolatedProperty"],
+          temporalChecks: [
+            {
+              property: "ViolatedProperty",
+              expect: "holds",
+              assumptions: [
+                "Intentionally false safety property exercises the checker result",
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const output = path.join(directory, "test-results/quint");
+  await assert.rejects(main([], directory, output), /Quint checks failed/);
+  const report = JSON.parse(
+    readFileSync(path.join(output, "verification.json"), "utf8"),
+  );
+  const positive = report.results.find(
+    (item: { key: string; command: string[] }) =>
+      item.key.endsWith("#state-and-action-properties") &&
+      item.command[0] === "verify",
+  );
+  const negative = report.results.find(
+    (item: { key: string; command: string[] }) =>
+      item.key.endsWith("#violated-state-property") &&
+      item.command[0] === "verify",
+  );
+  assert.equal(positive.exitCode, 0);
+  assert.equal(positive.matchedExpectation, true);
+  assert.equal(positive.observedTemporalOutcome, "holds");
+  const log = readFileSync(path.join(output, positive.log), "utf8");
+  assert.doesNotMatch(log, /Checking (?:\d+ branches of )?temporal properties/);
+  assert.match(log, /Model checking completed\. No error has been found\./);
+  assert.notEqual(negative.exitCode, 0);
+  assert.equal(negative.matchedExpectation, false);
+  assert.equal(negative.observedTemporalOutcome, "checker-error");
+  assert.equal(report.completed, false);
 });
 
 test("a missing temporal definition fails the shared runner rather than becoming a negative success", async () => {

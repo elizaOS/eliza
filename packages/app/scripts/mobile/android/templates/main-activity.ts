@@ -137,6 +137,7 @@ import ${androidPackage}.BuildConfig;
 // renderer-death recovery and the stopped-page pause.
 public class MainActivity extends ElizaBridgeActivity {
 ${launcherConstants}
+    private Intent initialDeepLinkIntent;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // The launch theme's postSplashScreenTheme is applied only when the
@@ -149,7 +150,8 @@ ${launcherConstants}
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
-        DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        initialDeepLinkIntent = getIntent();
+        DeepLinkBufferPlugin.captureIntent(this, initialDeepLinkIntent);
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
         // Native Eliza Cloud sign-in (email code, SMS code, native Google).
@@ -180,7 +182,8 @@ ${navigationBarPolicy}
 
     @Override
     protected void onNewIntent(Intent intent) {
-        DeepLinkBufferPlugin.captureIntent(this, intent);
+        if (intent != initialDeepLinkIntent) DeepLinkBufferPlugin.captureIntent(this, intent);
+        initialDeepLinkIntent = null;
         super.onNewIntent(intent);
     }
 ${launcherMethods}

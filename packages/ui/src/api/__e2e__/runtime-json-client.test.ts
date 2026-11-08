@@ -216,3 +216,115 @@ describe("runtime JSON client native status reuse", () => {
     expect(calls.sent).toHaveLength(1);
   });
 });
+
+describe("runtime JSON client generation ownership", () => {
+  it("fences a refresh between readiness and the first native dispatch", async () => {
+    const { bridge, calls } = runtime();
+    const api = client(bridge, true);
+    const status = bridge.status;
+    let refresh: Promise<void> | undefined;
+    bridge.status = () => {
+      const response = status();
+      if (calls.status === 1) {
+        queueMicrotask(() => queueMicrotask(() => queueMicrotask(() => {
+          refresh = api.refreshNativeAccount();
+        })));
+      }
+      return response;
+    };
+    await expect(api.request("/old", { text: "old account" })).rejects.toThrow("account changed");
+    expect(refresh).toBeDefined();
+    await refresh;
+    expect(calls.sent).toEqual([]);
+  });
+
+  it("fences a refresh between retry readiness and native redispatch", async () => {
+    const { bridge, calls } = runtime([
+      { status: 200, data: {} },
+      notReady(),
+    ]);
+    const api = client(bridge, true);
+    await api.request("/warm");
+    const status = bridge.status;
+    let refresh: Promise<void> | undefined;
+    bridge.status = () => {
+      const response = status();
+      if (calls.status === 2) {
+        queueMicrotask(() => queueMicrotask(() => queueMicrotask(() => {
+          refresh = api.refreshNativeAccount();
+        })));
+      }
+      return response;
+    };
+    await expect(api.request("/old", { text: "old account" })).rejects.toThrow("account changed");
+    expect(refresh).toBeDefined();
+    await refresh;
+    // The original NOT_READY attempt was explicitly undispatched. It may not
+    // be resubmitted to the generation that refresh just admitted.
+    expect(calls.sent).toEqual([undefined, { text: "old account" }]);
+  });
+
+  it("keeps the current running cache when an old response returns 503", async () => {
+    const { bridge, calls } = runtime();
+    const request = bridge.request;
+    let completeOld!: (response: RuntimeJsonResponse) => void;
+    bridge.request = (input) => {
+      if (input.path !== "/old") return request(input);
+      calls.sent.push(input.body);
+      return new Promise((resolve) => { completeOld = resolve; });
+    };
+    const api = client(bridge, true);
+    await api.request("/warm");
+    const old = api.request("/old");
+    const rejected = expect(old).rejects.toThrow("account changed");
+    await api.refreshNativeAccount();
+    await api.request("/new");
+    const probes = calls.status;
+    completeOld({ status: 503, data: {} });
+    await rejected;
+    await api.request("/later");
+    expect(calls.status).toBe(probes);
+  });
+
+  it("keeps the current refresh receipt when an older refresh fails", async () => {
+    const { bridge, calls } = runtime();
+    let rejectOld!: (error: Error) => void;
+    bridge.restart = () => {
+      calls.restart++;
+      if (calls.restart === 1) {
+        return new Promise((_resolve, reject) => { rejectOld = reject; });
+      }
+      return Promise.resolve({ available: true, state: "running" });
+    };
+    const api = client(bridge, true);
+    const old = api.refreshNativeAccount();
+    const rejected = expect(old).rejects.toThrow("old restart failed");
+    await expect.poll(() => calls.restart).toBe(1);
+    await api.refreshNativeAccount();
+    await api.request("/new");
+    const probes = calls.status;
+    rejectOld(new Error("old restart failed"));
+    await rejected;
+    await api.request("/later");
+    expect(calls.status).toBe(probes);
+  });
+  it("recovers only after the host explicitly retries a failed refresh", async () => {
+    const { bridge, calls } = runtime();
+    let fail = true;
+    bridge.restart = async () => {
+      calls.restart++;
+      if (fail) throw new Error("restart failed");
+      return { available: true, state: "running" };
+    };
+    const api = client(bridge, true);
+    await expect(api.refreshNativeAccount()).rejects.toThrow("restart failed");
+    await expect(api.request("/blocked")).rejects.toThrow("restart failed");
+    expect(calls.sent).toHaveLength(0);
+    fail = false;
+    await api.refreshNativeAccount();
+    await expect(api.request("/recovered")).resolves.toEqual({ ok: true });
+    expect(calls.restart).toBe(2);
+    expect(calls.sent).toHaveLength(1);
+  });
+
+});

@@ -17,7 +17,8 @@ The root package pins Quint 0.33.1. Install with `bun install`. Full checking
 requires Java 21. Reports and counterexamples go to `test-results/quint/`.
 See the [model workflow](../../scripts/quint/README.md).
 
-CLI and mobile authentication conformance require a real PostgreSQL database. Set
+CLI and mobile authentication, job execution and container authority conformance
+require a real PostgreSQL database. Set
 `INFERENCE_POLICY_TEST_POSTGRES_URL` to an existing isolated loopback database
 with a `qa_*` role, or start a dedicated local container.
 

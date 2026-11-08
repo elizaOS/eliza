@@ -74,6 +74,8 @@ module app_container_publication {
     s.placement implies originalAuthority,
     not(originalAuthority) implies s.slotHeld
   }
+  temporal PendingPublicationCompletes = publish.weakFair(s) implies
+    always((s.captured and not(s.completed)) implies eventually(s.completed))
   run retirementBeforeCommitWinsTest = init.then(capture).then(retire).then(publish)
     .expect(s.rejected and s.deleteMarker and safety)
   run retirementAfterCommitKeepsOwnershipTest = init.then(capture).then(publish).then(retire)
@@ -101,4 +103,120 @@ module app_container_publication {
     .expect(not(safety))
   run splitMetadataWindowDetectedTest = init.then(capture).then(oldStatusWrite).then(retire)
     .then(oldMetadataWrite).expect(not(safety))
+}
+
+// The job-owned path adds withMutation's job -> lease -> resource lock order.
+// The original module above retains the optional, non-job publication path.
+// Authority is checked after the resource wait. Once admitted, the same SQL
+// transaction protects its mutation until commit, even if the clock advances.
+module app_container_publication_owned {
+  import app_container_publication.*
+  type OwnedState = {
+    phase: str, currentGeneration: int, currentOwner: int, jobStatus: str,
+    requestedOwner: int, identityMatches: bool, now: int, expiry: int,
+    resourceHeldElsewhere: bool, admitted: bool, admittedAt: int,
+    admittedExpiry: int, admittedGeneration: int, admittedOwner: int
+  }
+  var a: OwnedState
+  action initOwnedAs(owner: int, matchingIdentity: bool): bool = all {
+    init,
+    a' = {phase: "idle", currentGeneration: 1, currentOwner: 1, jobStatus: "running",
+      requestedOwner: owner, identityMatches: matchingIdentity, now: 0, expiry: 2,
+      resourceHeldElsewhere: false, admitted: false, admittedAt: 0,
+      admittedExpiry: 0, admittedGeneration: 0, admittedOwner: 0}
+  }
+  action ownedInit = {
+    nondet owner = Set(1, 2).oneOf()
+    nondet identity = Set(true, false).oneOf()
+    initOwnedAs(owner, identity)
+  }
+  val jobLocked = Set("job_locked", "resource_locked", "admitted", "captured").contains(a.phase)
+  val resourceLocked = Set("resource_locked", "admitted", "captured").contains(a.phase)
+  val liveAuthority = a.identityMatches and a.currentGeneration == 1 and
+    a.currentOwner == a.requestedOwner and a.jobStatus == "running" and a.now < a.expiry
+  action beginOwned = all {
+    a.phase == "idle", s' = s,
+    a' = {...a, phase: if (a.identityMatches) "job_locked" else "done"}
+  }
+  action lockOwnedResource = all {
+    a.phase == "job_locked", not(a.resourceHeldElsewhere), s' = s,
+    a' = {...a, phase: "resource_locked"}
+  }
+  action admitOwned = all {
+    a.phase == "resource_locked", s' = s,
+    a' = if (liveAuthority) {...a, phase: "admitted", admitted: true,
+      admittedAt: a.now, admittedExpiry: a.expiry,
+      admittedGeneration: a.currentGeneration, admittedOwner: a.currentOwner}
+      else {...a, phase: "done"}
+  }
+  action captureOwned = all {
+    a.phase == "admitted", capture, a' = {...a, phase: "captured"}
+  }
+  action publishOwned = all {
+    a.phase == "captured", publish, a' = {...a, phase: "done"}
+  }
+  action failOwned = all {
+    jobLocked, s' = s, a' = {...a, phase: "done"}
+  }
+  action ownedClock = all {
+    a.now < 6, s' = s, a' = {...a, now: a.now + 1}
+  }
+  action renewOwned = all {
+    not(jobLocked), a.jobStatus == "running", s' = s,
+    a' = {...a, expiry: a.now + 2}
+  }
+  action cancelOwned = all {
+    not(jobLocked), a.jobStatus == "running", a.now < a.expiry, s' = s,
+    a' = {...a, jobStatus: "cancelled", currentOwner: 0}
+  }
+  action takeoverOwned = all {
+    not(jobLocked), a.jobStatus == "running", a.currentGeneration == 1, a.now >= a.expiry + 1, s' = s,
+    a' = {...a, currentGeneration: 2, currentOwner: 2, jobStatus: "running", expiry: a.now + 2}
+  }
+  action holdExternalResource = all {
+    not(resourceLocked), not(a.resourceHeldElsewhere), s' = s,
+    a' = {...a, resourceHeldElsewhere: true}
+  }
+  action releaseExternalResource = all {
+    a.resourceHeldElsewhere, s' = s, a' = {...a, resourceHeldElsewhere: false}
+  }
+  action externalContainerStep = all {
+    not(resourceLocked), any {retire, delete, supersedeGeneration, replaceRow, mutateMetadata},
+    a' = a
+  }
+  action finishOwnedStep = any {
+    lockOwnedResource, admitOwned, captureOwned, publishOwned, failOwned
+  }
+  action ownedStep = any {
+    beginOwned, finishOwnedStep, ownedClock, renewOwned, cancelOwned, takeoverOwned,
+    holdExternalResource, releaseExternalResource, externalContainerStep,
+    all {s' = s, a' = a}
+  }
+  val ownedSafety = safety and (a.admitted implies all {
+    a.admittedGeneration == 1, a.admittedOwner == a.requestedOwner,
+    a.identityMatches, a.admittedAt < a.admittedExpiry
+  }) and (s.placement implies a.admitted)
+  temporal PendingOwnedMutationCompletes = finishOwnedStep.weakFair(a) implies
+    always(jobLocked implies eventually(a.phase == "done"))
+
+  run cancelledJobCannotPublishUnchangedAppGenerationTest = initOwnedAs(1, true)
+    .then(cancelOwned).then(beginOwned).then(lockOwnedResource).then(admitOwned)
+    .expect(a.phase == "done" and not(s.placement) and ownedSafety)
+  run resourceWaitRechecksLeaseTest = initOwnedAs(1, true).then(holdExternalResource)
+    .then(beginOwned).then(ownedClock).then(ownedClock).then(releaseExternalResource)
+    .then(lockOwnedResource).then(admitOwned)
+    .expect(a.phase == "done" and not(s.placement) and ownedSafety)
+  run admittedTransactionKeepsItsAuthorityTest = initOwnedAs(1, true).then(beginOwned)
+    .then(lockOwnedResource).then(admitOwned).then(ownedClock).then(ownedClock)
+    .then(captureOwned).then(publishOwned)
+    .expect(s.status == "running" and a.now >= a.expiry and ownedSafety)
+  run replacedJobCannotPublishSameAppGenerationTest = initOwnedAs(1, true)
+    .then(ownedClock).then(ownedClock).then(ownedClock).then(takeoverOwned)
+    .then(beginOwned).then(lockOwnedResource).then(admitOwned)
+    .expect(a.phase == "done" and s.generation == 0 and not(s.placement) and ownedSafety)
+  run differentOwnerCannotPublishTest = initOwnedAs(2, true).then(beginOwned)
+    .then(lockOwnedResource).then(admitOwned)
+    .expect(a.phase == "done" and not(s.placement) and ownedSafety)
+  run differentTenantCannotPublishTest = initOwnedAs(1, false).then(beginOwned)
+    .expect(a.phase == "done" and not(s.placement) and ownedSafety)
 }
