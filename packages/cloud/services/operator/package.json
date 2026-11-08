@@ -1,6 +1,5 @@
 {
   "name": "@elizaos/operator",
-  "private": true,
   "version": "0.0.1",
   "private": true,
   "description": "elizaOS Server Operator",

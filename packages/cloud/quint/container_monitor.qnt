@@ -50,7 +50,7 @@ module container_monitor {
     s.status == "deploying", s.revision == 0,
     s' = s.with("revision", 1).with("target", 1)
   }
-  // Migration 0558 advances the canonical revision for placement fields.
+  // Migration 0560 advances the canonical revision for placement fields.
   action replaceTargetMetadata = all {
     s.status == "deploying", s.metadataMoves == 0,
     s' = s.with("target", 1).with("revision", s.revision + 1).with("metadataMoves", 1)
