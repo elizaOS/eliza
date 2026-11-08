@@ -1789,5 +1789,29 @@
       "Fair continuation of outstanding storage operations gives a terminal result; success, availability, cleanup after lost receipts and elapsed deadlines are not promised.",
       "Ten real PGlite service/repository cases plus five real PostgreSQL cases. Four PG tests observe row-lock wait chains across separate connections; the fifth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement."
     ]
+  },
+  {
+    "id": "cloud-protocol-trajectory-object-retention",
+    "model": "packages/cloud/quint/trajectory_object_retention.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/llm-trajectory.ts",
+      "packages/cloud/shared/src/lib/services/trajectory-object-storage.ts",
+      "packages/cloud/shared/src/lib/services/llm-trajectory-purge.ts",
+      "packages/cloud/shared/src/lib/config/llm-trajectory-policy.ts",
+      "packages/cloud/shared/src/db/client.ts",
+      "packages/cloud/shared/src/db/schemas/llm-trajectories.ts",
+      "packages/cloud/shared/src/lib/services/llm-trajectory.pglite.test.ts",
+      "packages/cloud/quint/check-trajectory-object-retention.mjs",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One private trajectory payload and one SQL row. SQL insertion may commit even when the caller receives an error. Error-only cleanup is not authorized by that observation.",
+      "The object store acknowledges complete encrypted bytes before insertion. Payload encryption, tenant authorization, SQL/TypeScript refinement and live object-store guarantees are outside this finite projection.",
+      "Failed and ambiguous writes retain their objects. Existing row-based retention can remove expired rows and their objects; unreferenced object discovery, crash orphan GC, concurrent retention writers and account-deletion implementation are not proved here.",
+      "Real PGlite tests inject acknowledgement loss after the actual INSERT commits and prove the complete training export survives. Encryption uses the existing coordinate-checking test double; the separate cryptographic suite owns AES-GCM correctness.",
+      "A started log operation settles under weak fairness of provider and SQL continuations. Success, retry availability, retention scheduling and orphan cleanup are not guaranteed."
+    ]
   }
 ]
