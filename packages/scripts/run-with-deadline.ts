@@ -4,6 +4,7 @@
  * when the deadline passes. Exists for test suites that can wedge instead of
  * exiting (leaked handles keep a runner's event loop alive after the last
  * test): a bounded failure with output beats holding a CI job to its cap.
+ * SIGINT and SIGTERM drain the process group and return 130 and 143.
  * Exit codes: the child's own code on normal completion, 124 on deadline,
  * 127 when the command cannot start, and 2 on usage errors. On Windows, 1 can
  * be the child's own status or a supervisor failure, including cleanup that
@@ -178,11 +179,12 @@ function main(argv) {
   };
 
   let timedOut = false;
+  let interruptedSignal: NodeJS.Signals | null = null;
   let timeoutDone = false;
   let closeResult = null;
   const finish = () => {
     if (!closeResult) return;
-    if (timedOut) {
+    if (timedOut || interruptedSignal) {
       // A SIGTERM'd group leader can close before its descendants. If the
       // group is already gone, settle immediately; otherwise keep the wrapper
       // alive for the escalation path below.
@@ -190,9 +192,35 @@ function main(argv) {
         timeoutDone = true;
       }
       if (!timeoutDone) return;
-      process.exit(124);
+      process.exit(
+        interruptedSignal === "SIGINT" ? 130 : interruptedSignal ? 143 : 124,
+      );
     }
     process.exit(closeResult.code ?? (closeResult.signal ? 1 : 0));
+  };
+  const terminateGroup = (signal: NodeJS.Signals) => {
+    killGroup(signal);
+    if (isWindows) return;
+    void (async () => {
+      const gracefullyReaped =
+        await waitForProcessGroupGone(TERMINATION_GRACE_MS);
+      if (!gracefullyReaped) {
+        console.error(
+          `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
+        );
+        killGroup("SIGKILL");
+        const reaped = await waitForProcessGroupGone(
+          PROCESS_GROUP_REAP_TIMEOUT_MS,
+        );
+        if (!reaped) {
+          console.error(
+            `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
+          );
+        }
+      }
+      timeoutDone = true;
+      finish();
+    })();
   };
   if (isWindows) {
     timer = setTimeout(
@@ -222,35 +250,17 @@ function main(argv) {
       console.error(
         `[run-with-deadline] wall-clock deadline of ${deadlineMs}ms exceeded; killing "${command}" process group`,
       );
-      killGroup("SIGTERM");
-      void (async () => {
-        const gracefullyReaped =
-          await waitForProcessGroupGone(TERMINATION_GRACE_MS);
-        if (gracefullyReaped) {
-          timeoutDone = true;
-          finish();
-          return;
-        }
-        console.error(
-          `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
-        );
-        killGroup("SIGKILL");
-        const reaped = await waitForProcessGroupGone(
-          PROCESS_GROUP_REAP_TIMEOUT_MS,
-        );
-        if (!reaped) {
-          console.error(
-            `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
-          );
-        }
-        timeoutDone = true;
-        finish();
-      })();
+      terminateGroup("SIGTERM");
     }, deadlineMs);
   }
 
-  for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.on(signal, () => killGroup(signal));
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      if (timedOut || interruptedSignal) return;
+      interruptedSignal = signal;
+      clearTimeout(timer);
+      terminateGroup(signal);
+    });
   }
 
   child.on("error", (error) => {

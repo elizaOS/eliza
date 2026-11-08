@@ -4,7 +4,7 @@ The cloud **agent-server**: an Elysia HTTP service that hosts live Eliza agent r
 
 Lifecycle mutations serialize per agent. Starting and stopping runtimes do not
 accept work; failed cleanup retains ownership for retry. Routing publication
-and retirement serialize separately. See the bounded [protocol models](../../formal/README.md).
+and retirement serialize separately. See the bounded [protocol models](../../quint/README.md).
 
 Install workspace dependencies with `bun install` at the repository root.
 

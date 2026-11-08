@@ -1,0 +1,31 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/app-container-store.ts",
+    "packages/cloud/shared/src/lib/services/app-container-store-queries.ts",
+    "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+    "packages/cloud/shared/src/lib/services/container-retirement.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One tenant projection, two app generations/row incarnations, one metadata change and atomic publication CAS.",
+      "Original database timestamp text identifies the row; privileged reuse of both UUID and exact timestamp is excluded. Publication retains original tenant/app generation across provider I/O.",
+      "Retirement and publication serialize at the database write. Stale cleanup can release only the original row/generation slot.",
+      "Provider truth, physical node reincarnation, later ingress publication, unbounded liveness and TypeScript refinement remain unproved.",
+      "Job-lease revocation without a changed app generation is outside this model. The separate provisioning-execution model and runtime gate do not establish model composition."
+    ],
+    "progress": "No temporal or fairness claim. Repeated failure and stuttering remain permitted."
+  },
+  "cases": [
+    {
+      "name": "app-container-publication",
+      "main": "app_container_publication",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

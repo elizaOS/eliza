@@ -39,7 +39,21 @@ jobs:
     name: Quality
     if: needs.preflight.outputs.source == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
+    services:
+      quint-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa_quint
+          POSTGRES_DB: quint_protocol
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
@@ -69,25 +83,30 @@ jobs:
         run: bun run verify
       - name: Formatting
         run: bun run format:check
-      - name: Setup Java for TLC
+      - name: Setup Java for Quint verification
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: "21"
-      - name: TLA+ models of core protocols
-        run: bun run --cwd packages/core test:tla
-      - name: Exhaustive cloud protocol models
-        if: needs.preflight.outputs.cloud == 'true'
-        timeout-minutes: 15
-        run: bun run verify:cloud:formal
-      - name: Upload cloud protocol verification
-        if: always() && needs.preflight.outputs.cloud == 'true'
+      - name: Setup Go for native Quint conformance
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: packages/os/native/ota-trust/go.mod
+          cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - name: Quint application state models
+        env:
+          INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
+        run: bun run test:quint
+      - name: Upload Quint verification evidence
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: cloud-protocol-verification
-          path: test-results/cloud-formal
-          retention-days: 14
-          if-no-files-found: warn
+          name: quint-verification
+          path: |
+            test-results/quint/
+            test-results/quint-*/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Prompt secret scan
         run: node packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract

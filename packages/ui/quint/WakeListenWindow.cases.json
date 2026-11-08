@@ -1,0 +1,17 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "WakeListenWindow",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/ui/src/voice/wake-listen-window.ts"],
+  "conformance": "packages/scripts/quint/check-application.ts",
+  "bounds": "Time inputs 0..12, idle timeout 3, safety cap 8, backward ticks allowed."
+}

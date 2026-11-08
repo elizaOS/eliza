@@ -275,7 +275,7 @@ export class RuntimeServiceLifecycle {
 		}
 		// A plugin unload may have withdrawn every class of this type while
 		// these starts ran; a type with no classes keeps no status
-		// (tla/ServiceLifecycle.tla, NoStatusWithoutClasses).
+		// (quint/ServiceLifecycle.qnt, NoStatusWithoutClasses).
 		if (this.host.serviceTypes().get(key)?.length) {
 			this.host.serviceRegistrationStatus().set(key, "failed");
 		} else {

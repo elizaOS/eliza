@@ -79,7 +79,7 @@ logger.info("Agent-server listening", {
 
 process.once("SIGTERM", async () => {
   logger.info("SIGTERM received, draining...");
-  const deadline = Date.now() + 55_000;
+  const deadline = performance.now() + 55_000;
   const redis = getRedis();
   const failed = await shutdownBeforeDeadline(
     {

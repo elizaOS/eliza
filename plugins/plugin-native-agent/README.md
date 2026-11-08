@@ -33,6 +33,9 @@ commit stays fenced, and stale release cannot clear a newer request. The retaine
 The host binds the exact session, installed APK digest and executing APK digest. Pending
 confirmation and storage failures keep the fence; only an exact successor or proven
 ended baseline attempt releases it. Hosts configure admission before Android providers start.
+The source-linked [Quint journal model](quint/UpdateJournal.qnt) preserves the
+portable reference transitions. Its checker compares all 11,581 journal cases
+with real Java codec results. Bounds and remaining gaps are in the case manifest.
 File-based primitives require Android API 26 or newer. Run their portable JVM
 crash/recovery tests with JDK 21 and `bun run --cwd plugins/plugin-native-agent test:native-host`.
 

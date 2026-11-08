@@ -1979,6 +1979,7 @@ export class JobsRepository {
           completed_at: exhausted ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
+          // Preserve the stored timestamp exactly when the retry budget ends.
           scheduled_for: exhausted
             ? sql`${jobs.scheduled_for}`
             : sql`clock_timestamp() + (${delayMs} * INTERVAL '1 millisecond')`,

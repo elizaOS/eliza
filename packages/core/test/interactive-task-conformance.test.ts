@@ -436,16 +436,16 @@ describe("interactive task reducer conformance", () => {
 		// default timeouts are far shorter, and a loaded CI host is slower still.
 	}, 180_000);
 
-	it("has the reachable graph of tla/InteractiveTask.tla, which TLC checks", () => {
-		// The TLA+ module is the model of record: scripts/check-tla.ts writes its
-		// TLC state graph to this file and model-checks the stored invariants.
-		const tla = JSON.parse(
+	it("has the reachable graph of quint/InteractiveTask.qnt, which Quint checks", () => {
+		// The Quint successor relation is the model of record.
+		// scripts/quint-interactive-task-graph.ts derives and checks this graph.
+		const quint = JSON.parse(
 			readFileSync(
-				new URL("../tla/InteractiveTask.reducer.graph.json", import.meta.url),
+				new URL("../quint/InteractiveTask.reducer.graph.json", import.meta.url),
 				"utf8",
 			),
 		) as { states: unknown[]; initial: number[]; next: number[][] };
-		const asTla = (s: State) =>
+		const asQuint = (s: State) =>
 			JSON.stringify({
 				auth: s.auth,
 				extended: s.extended,
@@ -454,7 +454,7 @@ describe("interactive task reducer conformance", () => {
 				scopeB: s.scopeB,
 				status: s.status,
 			});
-		const index = new Map(tla.states.map((s, i) => [JSON.stringify(s), i]));
+		const index = new Map(quint.states.map((s, i) => [JSON.stringify(s), i]));
 		const start: State = {
 			status: "active",
 			auth: "active",
@@ -466,27 +466,27 @@ describe("interactive task reducer conformance", () => {
 		};
 		const successors = new Map<string, Set<string>>();
 		const queue = [start];
-		successors.set(asTla(start), new Set());
+		successors.set(asQuint(start), new Set());
 		while (queue.length) {
 			const s = queue.shift() as State;
-			const from = asTla(s);
+			const from = asQuint(s);
 			for (const e of ALPHABET) {
 				const next = step(s, e)?.s;
-				if (!next || asTla(next) === from) continue;
-				successors.get(from)?.add(asTla(next));
-				if (!successors.has(asTla(next))) {
-					successors.set(asTla(next), new Set());
+				if (!next || asQuint(next) === from) continue;
+				successors.get(from)?.add(asQuint(next));
+				if (!successors.has(asQuint(next))) {
+					successors.set(asQuint(next), new Set());
 					queue.push(next);
 				}
 			}
 		}
-		expect(tla.initial.map((i) => JSON.stringify(tla.states[i]))).toEqual([
-			asTla(start),
+		expect(quint.initial.map((i) => JSON.stringify(quint.states[i]))).toEqual([
+			asQuint(start),
 		]);
 		expect([...successors.keys()].sort()).toEqual([...index.keys()].sort());
 		for (const [from, to] of successors) {
-			const expected = (tla.next[index.get(from) as number] ?? []).map((i) =>
-				JSON.stringify(tla.states[i]),
+			const expected = (quint.next[index.get(from) as number] ?? []).map((i) =>
+				JSON.stringify(quint.states[i]),
 			);
 			expect([...to].sort(), from).toEqual(expected.sort());
 		}

@@ -2294,6 +2294,20 @@ export class RuntimeModelDispatch {
 					modelType === ModelType.TEXT_EMBEDDING ||
 					modelType === ModelType.TEXT_EMBEDDING_BATCH
 				) {
+					// Provenance is attached to returned vectors. Preserve frozen provider
+					// arrays by marking an extensible copy with the same numeric values.
+					const writable = (value: unknown): unknown => {
+						if (!Array.isArray(value) || Object.isExtensible(value))
+							return value;
+						const copy = [...value];
+						copyEmbeddingVectorSpace(value, copy);
+						return copy;
+					};
+					resultRef.current =
+						modelType === ModelType.TEXT_EMBEDDING_BATCH &&
+						Array.isArray(resultRef.current)
+							? resultRef.current.map(writable)
+							: writable(resultRef.current);
 					await this.host.validateEmbeddingOutput(
 						String(modelType),
 						params,

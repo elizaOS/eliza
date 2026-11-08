@@ -44,6 +44,7 @@ initialization. Live model checks are opt-in (`test:e2e`, `*.live.test.ts`).
 ```bash
 bun run --cwd packages/core build
 bun run --cwd packages/core test
+bun run --cwd packages/core test:quint
 bun run --cwd packages/core typecheck
 bun run --cwd packages/core lint:check
 ```

@@ -1,0 +1,55 @@
+/** Exercises evidence retention, source binding and CLI process ownership. */
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../lib/test-output.ts";
+
+const root = fileURLToPath(new URL("../../../", import.meta.url));
+const model = path.join(root, "packages/scripts/quint/RunnerCancellation.qnt");
+if (
+  process.argv.length > 3 ||
+  (process.argv[2] && path.resolve(root, process.argv[2]) !== model)
+) {
+  throw new Error("Runner cancellation conformance requires its own model");
+}
+const outputRoot = testOutputPath("quint-runner-cancellation");
+mkdirSync(outputRoot, { recursive: true });
+const report = path.join(
+  mkdtempSync(path.join(outputRoot, "run-")),
+  "node-test.tap",
+);
+const result = spawnSync(
+  process.execPath,
+  [
+    path.join(root, "packages/scripts/run-with-deadline.ts"),
+    "120000",
+    "--",
+    process.execPath,
+    "--test",
+    "--test-reporter=tap",
+    path.join(root, "packages/scripts/check-quint.node.test.ts"),
+  ],
+  { cwd: root, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+);
+const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+writeFileSync(report, output);
+if (
+  result.error ||
+  result.signal ||
+  result.status !== 0 ||
+  !/^ok \d+ - CLI cancellation reaps checker descendants and retains incomplete evidence$/m.test(
+    output,
+  ) ||
+  !/^ok \d+ - child cancellation stops later cases and remains visible in evidence$/m.test(
+    output,
+  ) ||
+  !/^# tests 21$/m.test(output) ||
+  !/^# pass 21$/m.test(output) ||
+  !/^# fail 0$/m.test(output) ||
+  !/^# skipped 0$/m.test(output) ||
+  !/^# cancelled 0$/m.test(output)
+) {
+  throw new Error(`Runner cancellation conformance failed. Report ${report}`);
+}
+console.log(`Runner cancellation conformance passed. Report ${report}`);

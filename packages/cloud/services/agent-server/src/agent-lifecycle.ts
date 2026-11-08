@@ -21,7 +21,7 @@ export class AgentMutationQueue {
   }
 }
 
-/** Observe queued work without extending the pod's shutdown deadline. */
+/** Observe queued work until an absolute performance.now() deadline. */
 export async function settleBeforeDeadline(
   work: Promise<unknown>,
   deadline: number,
@@ -33,7 +33,7 @@ export async function settleBeforeDeadline(
       new Promise<false>((resolve) => {
         timer = setTimeout(
           () => resolve(false),
-          Math.max(0, deadline - Date.now()),
+          Math.max(0, deadline - performance.now()),
         );
       }),
     ]);

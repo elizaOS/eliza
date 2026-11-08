@@ -6,6 +6,7 @@ import {
   request as httpRequest,
   type Server,
 } from "node:http";
+import type { Socket } from "node:net";
 import { Readable } from "node:stream";
 import type { AccessContext, UUID } from "@elizaos/core";
 import {
@@ -54,6 +55,7 @@ it("drains a rejected chunked body before reusing its connection", async () => {
     },
   });
   const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  const sockets = new Set<Socket>();
   const send = async (chunks: Iterable<string> | AsyncIterable<string>) => {
     const reply = Promise.withResolvers<{ status: number; body: unknown }>();
     const outgoing = httpRequest(
@@ -77,6 +79,7 @@ it("drains a rejected chunked body before reusing its connection", async () => {
         })().catch(reply.reject);
       },
     );
+    outgoing.once("socket", (socket: Socket) => sockets.add(socket));
     outgoing.once("error", reply.reject);
     const written = once(outgoing, "finish");
     Readable.from(chunks).pipe(outgoing);
@@ -101,6 +104,7 @@ it("drains a rejected chunked body before reusing its connection", async () => {
       body: { accepted: true },
     });
     expect(admitted).toBe(1);
+    expect(sockets.size).toBe(1);
   } finally {
     agent.destroy();
   }

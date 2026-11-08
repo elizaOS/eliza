@@ -733,7 +733,7 @@ export class AgentManager {
   async drain() {
     this._draining = true;
     this.stopHeartbeat();
-    const deadline = Date.now() + 50_000;
+    const deadline = performance.now() + 50_000;
     const failures: unknown[] = [];
     let timedOut = false;
     try {
@@ -745,9 +745,9 @@ export class AgentManager {
       failures.push(error);
     }
 
-    while (this.inFlight > 0 && Date.now() < deadline) {
+    while (this.inFlight > 0 && performance.now() < deadline) {
       await new Promise((r) =>
-        setTimeout(r, Math.min(200, Math.max(0, deadline - Date.now()))),
+        setTimeout(r, Math.min(200, Math.max(0, deadline - performance.now()))),
       );
     }
     if (this.inFlight > 0) timedOut = true;

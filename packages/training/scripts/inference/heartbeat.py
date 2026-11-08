@@ -45,6 +45,7 @@ from threading import Event
 import urllib.error
 import urllib.request
 from pathlib import Path
+from threading import Event
 
 logging.basicConfig(
     level=logging.INFO,

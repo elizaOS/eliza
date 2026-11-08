@@ -2,11 +2,8 @@
 
 A [Pepr](https://pepr.dev) Kubernetes operator that manages `Server` (`servers.eliza.ai`, `v1alpha1`) custom resources in the `eliza-agents` namespace.
 
-This workspace builds Pepr and Helm deployment artifacts. It is not published
-to npm.
-
 Status writes and finalization serialize per Server. Route cleanup checks the
-current owner before deletion. See the bounded [protocol models](../../formal/README.md).
+current owner before deletion. See the bounded [protocol models](../../quint/README.md).
 
 Install workspace dependencies with `bun install` at the repository root.
 
