@@ -216,7 +216,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  protected final void cancelSpeech(String requestId){SpeechRequestGate.Request request=gate.get(requestId);if(request!=null)request.cancel();if(Objects.equals(playbackRequestId,requestId)){clearPlayback();notifyListeners("playbackFailed",new JSObject());}}
  /** True while a clip, a streamed utterance or a request holds the speaker. */
  protected final boolean speakerBusy(){return playbackFile!=null||streamPlayback!=null||!gate.idle();}
- @PluginMethod public void cancel(PluginCall call){SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
+ @PluginMethod public void cancel(PluginCall call){main.post(this::closeOutputWarmup);SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
 
  // ---- Recording drafts ----------------------------------------------------------------------
 
@@ -249,7 +249,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   main.postDelayed(timeout,REQUEST_TIMEOUT_MS);
   if(drain==SpeechRequestGate.Drain.JOINED)return;
   main.post(()->{
-   try{capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
+   try{closeOutputWarmup();capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
    // Never wait on the UI thread. The serial worker barrier follows cancelled work and its cleanup.
    submitWork(()->main.post(()->finishDrain(true,destroyed?"Voice unavailable":null)),()->finishDrain(false,"Voice cancellation is unavailable"));
   });
@@ -268,9 +268,14 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  // Local CPU execution has no dependency on an account, URL, or host process. The status resolves
  // only when the native pair loads, every bundle file verifies and a context opens. A build without
  // the voice bundle answers "unavailable" without loading any native library.
- /** A voice turn was sent: wake the speech output while the reply is produced. Advisory; a phone call skips it. */
+ /**
+  * A foreground voice turn was sent: wake the speech output while the reply is produced. Advisory;
+  * skipped during a call, in the background or while the speaker is in use. The warm-up is bounded
+  * (SpeechOutputWarmup.LIMIT_NS) and closed by the first reply samples, any playback start or
+  * clear (stop, pause, a published clip), cancel, recording cancellation, a call and destroy.
+  */
  @PluginMethod public void warmSpeechOutput(PluginCall call){main.post(()->{
-  if(!destroyed&&(focus==null||!focus.callActive())){closeOutputWarmup();outputWarmup=new SpeechOutputWarmup(LocalSpeechEngine.STREAM_RATE);}
+  if(!destroyed&&speechForeground&&(focus==null||!focus.callActive())&&!speakerBusy()){closeOutputWarmup();outputWarmup=new SpeechOutputWarmup(LocalSpeechEngine.STREAM_RATE);}
   call.resolve();
  });}
  /** Main thread. */
@@ -420,7 +425,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   }
  }
  /** Clears unplayed speech and tells the renderer why. */
- private void stopSpeechFor(String reason){String previous=playbackId;if(previous==null)return;clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",previous);event.put("reason",reason);notifyListeners("playbackStopped",event);}
+ private void stopSpeechFor(String reason){closeOutputWarmup();String previous=playbackId;if(previous==null)return;clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",previous);event.put("reason",reason);notifyListeners("playbackStopped",event);}
  /** The audio mode entered a call (Android 12+ watcher): stop speech and assistant capture honestly. */
  private void callStarted(){if(destroyed)return;stopSpeechFor(SpeechAudioFocusPolicy.CALL_ACTIVE);stopCaptureForCall();}
  private void stopCaptureForCall(){
@@ -428,7 +433,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(capture!=null)capture.stopAutomatically();
  }
  private void clearPlayback(){clearPlayback(true);}
- private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
+ private void clearPlayback(boolean stopped){closeOutputWarmup();String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
 
  // ---- Voice-turn latency --------------------------------------------------------------------
