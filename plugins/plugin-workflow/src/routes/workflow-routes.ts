@@ -678,6 +678,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       isRecord(error.response) &&
       [
         'HOSTED_SOURCE_NOT_SAVED',
+        'HOSTED_DIGEST_NOT_ADMITTED',
         'WORKFLOW_VERSION_NOT_ADMITTED',
         'WORKFLOW_METADATA_NOT_APPLIED',
         'WORKFLOW_TYPED_NOT_APPLIED',

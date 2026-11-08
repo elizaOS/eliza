@@ -164,9 +164,9 @@ export function isMissedOccurrenceExecution(
 
 /**
  * The settlement of a scheduled occurrence that this service recorded without
- * running anything (`missed` or `overlap`), or undefined for an execution that
- * ran. Same rule as the client run list (`@elizaos/contracts/workflow-client`,
- * UI `workflowRunNotRun`): a typed or hosted admission records itself in the
+ * running anything (`missed`, `overlap`, or a hosted digest's `unavailable`),
+ * or undefined for an execution that ran. Same rule as the client run list
+ * (`@elizaos/contracts/workflow-client`, UI `workflowRunNotRun`): a typed or hosted admission records itself in the
  * run input, and a generic schedule's missed occurrence carries the
  * engine-written `missedOccurrenceAt`. Output shape alone never counts.
  */
@@ -177,11 +177,13 @@ export function notRunOccurrence(
   >
 ): WorkflowOccurrenceNotRun | undefined {
   if (!execution.finished || execution.status !== 'finished') return undefined;
-  const settled = workflowOccurrenceNotRun(execution.output);
+  const [typed, hosted] = [
+    execution.input?.[TYPED_SCHEDULE_INPUT],
+    execution.input?.hostedDigest,
+  ].map((value) => !!value && typeof value === 'object' && !Array.isArray(value));
+  const settled = workflowOccurrenceNotRun(execution.output, hosted);
   if (!settled) return undefined;
-  const admitted = [execution.input?.[TYPED_SCHEDULE_INPUT], execution.input?.hostedDigest].some(
-    (value) => !!value && typeof value === 'object' && !Array.isArray(value)
-  );
+  const admitted = typed || hosted;
   return admitted || (settled.status === 'missed' && isMissedOccurrenceExecution(execution))
     ? settled
     : undefined;
@@ -1979,7 +1981,11 @@ export class EmbeddedWorkflowService extends Service {
           spec.sourceId !== dossier.sourceId ||
           spec.sourceRevision !== dossier.sourceRevision
         )
-          throw new WorkflowApiError('Hosted digests require their reviewed admission path', 409);
+          throw new WorkflowApiError('Hosted digests require their reviewed admission path', 409, {
+            code: 'HOSTED_DIGEST_NOT_ADMITTED',
+            workflowId: id,
+            submissionId,
+          });
       } else if (dossier) throw new WorkflowApiError('Dossier definition unavailable', 409);
       requireMutable(workflow);
       const [prior] = await tx
@@ -2119,7 +2125,10 @@ export class EmbeddedWorkflowService extends Service {
       }
       if (workflow.metadata?.[HOSTED_SPEC]) {
         if (validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC]))).manualOnly)
-          throw new WorkflowApiError('Dossiers require explicit owner submission', 409);
+          throw new WorkflowApiError('Dossiers require explicit owner submission', 409, {
+            code: 'HOSTED_DIGEST_NOT_ADMITTED',
+            workflowId: workflow.id,
+          });
         const context = digestRecord(options.triggerData ?? options.input),
           scheduledAt = context.scheduledAtMs;
         if (
@@ -2129,7 +2138,14 @@ export class EmbeddedWorkflowService extends Service {
           scheduledAt > Date.now() + 1000 ||
           context.workflowVersionId !== workflow.versionId
         )
-          throw new WorkflowApiError('Digest requires its exact current scheduled occurrence', 409);
+          throw new WorkflowApiError(
+            'Digest requires its exact current scheduled occurrence',
+            409,
+            {
+              code: 'HOSTED_DIGEST_NOT_ADMITTED',
+              workflowId: workflow.id,
+            }
+          );
         options = {
           ...options,
           idempotencyKey: `hosted:${workflow.id}:${workflow.versionId}:${scheduledAt}`,
