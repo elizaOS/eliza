@@ -22,11 +22,16 @@ public final class DataResetTest {
     }
 
     public static void main(String[] args) throws Exception {
+        // Child process for the cross-process lock check: holds the record lock while it bumps the count.
+        if (args.length == 3 && args[0].equals("hold")) { holdAndBump(new File(args[1]), new File(args[2])); return; }
         authorization();
         copy();
         builder();
         coordinator(new File(args[0]), new File(args[1]));
         dispatchOrdering(new File(args[0]));
+        interrupted(new File(args[0]));
+        revocation(new File(args[0]));
+        crossProcessLock(new File(args[0]));
         System.out.println("PASS data reset authorization, copy, admission, bounded recovery and dispatch ordering");
     }
 
@@ -122,6 +127,8 @@ public final class DataResetTest {
             check(order.equals(List.of("before", "listener", "clear")), "host work, then listener, then Android: " + order);
             check(budgets[0] == DataReset.STARTUP_BEFORE_DISPATCH_MS, "startup budget");
             check(reset.pending(app), "fixture Android does not erase");
+            // Each mode is its own launch history; an accepted clear that left data is covered below.
+            new File(data, "reset-example.failures").delete();
         }
         check(ActivityManager.calls == 3, "three clears");
 
@@ -135,6 +142,10 @@ public final class DataResetTest {
         check(Context.recoveries == 25, "recovery shown each visible launch");
         check(SenseListenerClient.calls == DataReset.AUTOMATIC_ATTEMPTS, "bounded automatic attempts: " + SenseListenerClient.calls);
         check(ActivityManager.calls == clears && reset.pending(app), "fail closed");
+        // An exhausted start runs no host work: it does not wait on the network before stopping.
+        order.clear();
+        stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "deferred");
+        check(!order.contains("before"), "deferred start skips host work: " + order);
         // A user's retry is a fresh attempt and still fails closed.
         check(reset.attempt(app, System.currentTimeMillis()) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "retry");
         check(SenseListenerClient.calls == DataReset.AUTOMATIC_ATTEMPTS + 1 && ActivityManager.calls == clears, "retry is fresh, no clear");
@@ -178,8 +189,10 @@ public final class DataResetTest {
             android.os.Build.VERSION.SDK_INT = (Integer) start[3];
             ActivityManager.startsFail = (Boolean) start[4];
             int shown = Context.recoveries;
+            order.clear();
             stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "background start resumed");
             check(Context.recoveries == shown + ((Boolean) start[2] ? 1 : 0), "visibility of start " + start[1] + " sdk " + start[3]);
+            check(order.contains("before") == (Boolean) start[2], "host work only on a visible start: " + order);
             check(reset.pending(app) && ActivityManager.calls == clears, "fail closed");
             failures.delete();
         }
@@ -248,6 +261,7 @@ public final class DataResetTest {
         DataReset hanging = DataReset.builder("reset-example", Recovery.class).beforeDispatch((context, timeoutMs) -> {
             try { release.await(10, TimeUnit.SECONDS); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
         }).build();
+        hanging.record(app);
         Main slow = new Main();
         hanging.dispatchAfterBeforeDispatch(app, 1000, slow);
         stops(slow.delayed.get(0), "deadline dispatch");
@@ -264,5 +278,136 @@ public final class DataResetTest {
         boolean[] ran = {false};
         DataReset.builder("reset-example", Recovery.class).beforeDispatch((context, timeoutMs) -> ran[0] = true).build().runBeforeDispatch(app, 1000);
         check(!ran[0], "host work requires a durable confirmed reset");
+    }
+
+    static long[] count(File failures) throws Exception {
+        String[] parts = new String(Files.readAllBytes(failures.toPath())).trim().split(":");
+        return new long[] {Long.parseLong(parts[0]), Long.parseLong(parts[1])};
+    }
+
+    /** An attempt is counted before it starts, so dying mid-attempt cannot loop. */
+    static void interrupted(File data) throws Exception {
+        Context.data = data;
+        Context app = new Context();
+        for (File file : data.listFiles()) file.delete();
+        DataReset reset = DataReset.builder("reset-example", Recovery.class).build();
+        File failures = new File(data, "reset-example.failures");
+        reset.record(app);
+        // The listener call kills the process: the record already says an attempt started.
+        SenseListenerClient.acknowledged = true; ActivityManager.mode = 0;
+        boolean[] seen = {false};
+        SenseListenerClient.onReset = () -> {
+            try { seen[0] = new String(Files.readAllBytes(failures.toPath())).endsWith(":OPEN"); } catch (Exception e) { throw new AssertionError(e); }
+            throw new android.os.Process.Exit();
+        };
+        try { reset.attempt(app, System.currentTimeMillis()); throw new AssertionError("process died"); } catch (android.os.Process.Exit died) { /* expected */ }
+        SenseListenerClient.onReset = () -> {};
+        check(seen[0] && count(failures)[0] == 1, "counted before the listener call");
+        // The next start counts it as a failure, attempts nothing and shows recovery.
+        int calls = SenseListenerClient.calls, shown = Context.recoveries;
+        stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "interrupted");
+        check(SenseListenerClient.calls == calls && Context.recoveries == shown + 1, "start after an interrupted attempt defers");
+        check(reset.failureState(app)[0] == 1 && reset.lastFailure(app) == null && !new String(Files.readAllBytes(failures.toPath())).contains("OPEN"), "interrupted attempt closed: one failure");
+        // The budget still applies to later starts.
+        stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "resumed");
+        check(SenseListenerClient.calls == calls + 1, "next start attempts again");
+        // An accepted clear whose deletion did not finish leaves the record OPEN; the next start defers.
+        check(new String(Files.readAllBytes(failures.toPath())).endsWith(":OPEN") && count(failures)[0] == 2, "dispatched stays open");
+        stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "clear did not finish");
+        check(SenseListenerClient.calls == calls + 1 && reset.pending(app), "unfinished clear defers to recovery");
+        // Records from earlier builds still parse.
+        long now = System.currentTimeMillis();
+        Files.write(failures.toPath(), ("2:" + now).getBytes());
+        check(reset.failureState(app)[0] == 2 && reset.lastFailure(app) == null, "two-part legacy record");
+        Files.write(failures.toPath(), ("1:" + now + ":ANDROID_REFUSED").getBytes());
+        check(reset.failureState(app)[0] == 1 && reset.lastFailure(app) == DataReset.Outcome.ANDROID_REFUSED, "three-part legacy record");
+        // The listener step throwing is the listener's failure, not Android's.
+        SenseListenerClient.failure = new IllegalStateException("binder died");
+        int clears = ActivityManager.calls;
+        check(reset.attempt(app, now) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "listener exception");
+        SenseListenerClient.failure = null;
+        check(ActivityManager.calls == clears && reset.lastFailure(app) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "recorded as the listener's");
+        for (File file : data.listFiles()) file.delete();
+    }
+
+    /** Pre-dispatch work stops once answered, and the recovery retry runs it within its budget. */
+    static void revocation(File data) throws Exception {
+        Context.data = data;
+        Context app = new Context();
+        for (File file : data.listFiles()) file.delete();
+        List<String> order = new ArrayList<>();
+        boolean[] reachable = {false};
+        DataReset reset = DataReset.builder("reset-example", Recovery.class)
+                .beforeDispatchAnswered((context, timeoutMs) -> { synchronized (order) { order.add("revoke"); } return reachable[0]; })
+                .build();
+        SenseListenerClient.onReset = () -> { synchronized (order) { order.add("listener"); } };
+        ActivityManager.onClear = () -> { synchronized (order) { order.add("clear"); } };
+        SenseListenerClient.acknowledged = false;
+        reset.record(app);
+        // Offline: no answer, so the user's retry asks again; reachable: revoked before the clear.
+        reset.attemptWithRevocation(app, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
+        check(order.equals(List.of("revoke", "listener")) && !reset.revocationAnswered(app), "offline retry: " + order);
+        order.clear(); reachable[0] = true; SenseListenerClient.acknowledged = true; ActivityManager.mode = 1;
+        reset.attemptWithRevocation(app, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
+        check(order.equals(List.of("revoke", "listener", "clear")) && reset.revocationAnswered(app), "retry revokes before clearing: " + order);
+        // Answered once: later starts and retries do not send the key again.
+        order.clear(); new File(data, "reset-example.failures").delete();
+        stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "startup");
+        reset.attemptWithRevocation(app, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
+        check(order.equals(List.of("listener", "clear", "listener", "clear")), "answered revocation is not repeated: " + order);
+        // A new confirmation asks again.
+        reset.record(app);
+        check(!reset.revocationAnswered(app), "new confirmation clears the answer");
+        // A step that never returns cannot hold the retry past its budget.
+        CountDownLatch release = new CountDownLatch(1);
+        DataReset hanging = DataReset.builder("reset-example", Recovery.class).beforeDispatch((context, timeoutMs) -> {
+            try { release.await(30, TimeUnit.SECONDS); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        }).build();
+        long started = System.nanoTime();
+        hanging.attemptWithRevocation(app, System.currentTimeMillis(), 300);
+        check((System.nanoTime() - started) / 1_000_000L < 5_000, "retry never hangs");
+        release.countDown();
+        SenseListenerClient.onReset = () -> {}; ActivityManager.onClear = () -> {}; ActivityManager.mode = 0;
+        for (File file : data.listFiles()) file.delete();
+    }
+
+    static void holdAndBump(File lock, File failures) throws Exception {
+        try (java.io.RandomAccessFile file = new java.io.RandomAccessFile(lock, "rw"); java.nio.channels.FileLock held = file.getChannel().lock()) {
+            long[] state = count(failures);
+            System.out.println("locked");
+            System.out.flush();
+            new java.io.BufferedReader(new java.io.InputStreamReader(System.in)).readLine();
+            Files.write(failures.toPath(), ((state[0] + 1) + ":" + state[1] + ":ANDROID_REFUSED").getBytes());
+        }
+    }
+
+    /** Another process's update in progress holds this one off, so the count never goes back. */
+    static void crossProcessLock(File data) throws Exception {
+        Context.data = data;
+        Context app = new Context();
+        for (File file : data.listFiles()) file.delete();
+        DataReset reset = DataReset.builder("reset-example", Recovery.class).build();
+        reset.record(app);
+        File failures = new File(data, "reset-example.failures");
+        long first = System.currentTimeMillis();
+        Files.write(failures.toPath(), ("1:" + first + ":LISTENER_UNACKNOWLEDGED").getBytes());
+        Process other = new ProcessBuilder(ProcessHandle.current().info().command().orElse("java"), "-cp", System.getProperty("java.class.path"),
+                DataResetTest.class.getName(), "hold", new File(data, "reset-example.lock").getPath(), failures.getPath()).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+        try {
+            check("locked".equals(new java.io.BufferedReader(new java.io.InputStreamReader(other.getInputStream())).readLine()), "other process holds the lock");
+            SenseListenerClient.acknowledged = false;
+            Thread attempt = new Thread(() -> reset.attempt(app, first + 1));
+            attempt.start();
+            attempt.join(300);
+            check(attempt.isAlive(), "attempt waits for the other process");
+            other.getOutputStream().write('\n');
+            other.getOutputStream().flush();
+            attempt.join(10_000);
+            check(!attempt.isAlive() && other.waitFor(10, TimeUnit.SECONDS) && other.exitValue() == 0, "both finished");
+            check(count(failures)[0] == 3 && count(failures)[1] == first, "both attempts counted: " + new String(Files.readAllBytes(failures.toPath())));
+        } finally {
+            other.destroyForcibly();
+            for (File file : data.listFiles()) file.delete();
+        }
     }
 }

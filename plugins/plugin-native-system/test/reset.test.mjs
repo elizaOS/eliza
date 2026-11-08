@@ -41,7 +41,7 @@ const stubs = {
   "android/system/Os.java":
     "package android.system; public class Os {public static java.io.FileDescriptor open(String path,int flags,int mode){return new java.io.FileDescriptor();}public static void fsync(java.io.FileDescriptor fd){}public static void close(java.io.FileDescriptor fd){}}",
   "ai/eliza/plugins/system/SenseListenerClient.java":
-    "package ai.eliza.plugins.system; public final class SenseListenerClient {public static boolean acknowledged=true;public static int calls;public static Runnable onReset=()->{};public SenseListenerClient(android.content.Context context){}public boolean resetForData(){calls++;onReset.run();return acknowledged;}}",
+    "package ai.eliza.plugins.system; public final class SenseListenerClient {public static boolean acknowledged=true;public static int calls;public static RuntimeException failure;public static Runnable onReset=()->{};public SenseListenerClient(android.content.Context context){}public boolean resetForData(){calls++;onReset.run();if(failure!=null)throw failure;return acknowledged;}}",
 };
 
 test("reset coordinator: fresh authorization, bounded fail-closed admission and single dispatch", () => {

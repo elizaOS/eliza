@@ -114,7 +114,9 @@ public abstract class DataResetRecoveryActivity extends Activity {
         final Context context = getApplicationContext();
         final DataReset reset = reset();
         Thread attempt = new Thread(() -> {
-            DataReset.Outcome outcome = reset.attempt(context, System.currentTimeMillis());
+            // Asks Cloud (or the host's other pre-dispatch step) first unless it already answered,
+            // within a bounded budget, so a retry never hangs and never skips a reachable revocation.
+            DataReset.Outcome outcome = reset.attemptWithRevocation(context, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
             boolean controllable = new SenseListenerClient(context).available();
             boolean pending = reset.pending(context);
             main.post(() -> {

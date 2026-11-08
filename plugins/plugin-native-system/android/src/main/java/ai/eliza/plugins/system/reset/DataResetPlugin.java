@@ -112,20 +112,22 @@ public abstract class DataResetPlugin extends Plugin {
         authenticationCall = null;
         DataReset reset = reset();
         Context context = getContext().getApplicationContext();
+        final Handler main = new Handler(Looper.getMainLooper());
+        DataReset.Scheduler scheduler = new DataReset.Scheduler() {
+            @Override public void post(Runnable task) { main.post(task); }
+            @Override public void postDelayed(Runnable task, long delayMs) { main.postDelayed(task, delayMs); }
+        };
         try {
             reset.record(context);
         } catch (Exception failure) {
             result(call, "unavailable", text.prepareFailed);
-            if (reset.pending(context)) reset.dispatchAndExit(context);
+            // The marker landed though a later step failed: the confirmed reset still revokes first.
+            if (reset.pending(context)) reset.dispatchAfterBeforeDispatch(context, DataReset.INTERACTIVE_DEADLINE_MS, scheduler);
             return;
         }
         // Recorded first: whatever happens below, the next launch completes the reset.
         showProgress(text);
-        final Handler main = new Handler(Looper.getMainLooper());
-        reset.dispatchAfterBeforeDispatch(context, DataReset.INTERACTIVE_DEADLINE_MS, new DataReset.Scheduler() {
-            @Override public void post(Runnable task) { main.post(task); }
-            @Override public void postDelayed(Runnable task, long delayMs) { main.postDelayed(task, delayMs); }
-        });
+        reset.dispatchAfterBeforeDispatch(context, DataReset.INTERACTIVE_DEADLINE_MS, scheduler);
     }
 
     /** Keep the confirmed reset visible until Android dispatches it. */
