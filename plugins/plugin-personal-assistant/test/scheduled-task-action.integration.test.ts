@@ -214,6 +214,29 @@ describe("SCHEDULED_TASK action", () => {
     expect(secondTask?.state.status).toBe("scheduled");
     expect(secondTask?.idempotencyKey).not.toBe(idempotencyKey);
     expect(receipt(second).outcome).toBe("applied");
+
+    // A retry of that same key while the new task is live is a duplicate,
+    // even when the planner rewords the instructions.
+    const retry = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "remind me to take the trash out"),
+      undefined,
+      {
+        parameters: {
+          ...parameters,
+          promptInstructions: "take the trash out to the curb",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(retry?.data).toMatchObject({
+      deduplicated: true,
+      dedupeCause: "idempotency_key",
+    });
+    expect(
+      (retry?.data as { task?: ScheduledTask } | undefined)?.task?.taskId,
+    ).toBe(secondTask?.taskId);
   });
 
   it("reads an offset-free once time in the message's time zone, not the host's", async () => {

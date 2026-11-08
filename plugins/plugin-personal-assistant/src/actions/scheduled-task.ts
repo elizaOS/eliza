@@ -1279,21 +1279,35 @@ async function handleCreate(
   );
   const normalizedInstructions = promptInstructions.toLowerCase();
   const triggerKey = stableTriggerKey(trigger);
-  const keyMatch = effectiveIdempotencyKey
-    ? allTasks.find(
-        (candidate) =>
-          candidate.idempotencyKey === effectiveIdempotencyKey &&
-          sameDeliveryBinding(candidate),
-      )
-    : undefined;
   // A reused key on a task that already ran is a new request, not a retry.
   // The runner's own key index also returns terminal rows, so the new task
-  // gets a fresh key suffixed with its creation time.
-  const previousRun =
-    keyMatch && TERMINAL_TASK_STATUSES.has(keyMatch.state.status)
-      ? keyMatch
-      : undefined;
-  const idempotencyDuplicate = previousRun ? undefined : keyMatch;
+  // gets a fresh key suffixed with its creation time; a later retry of the
+  // same key matches that suffixed task while it is still live.
+  const keyMatches = effectiveIdempotencyKey
+    ? allTasks.filter(
+        (candidate) =>
+          (candidate.idempotencyKey === effectiveIdempotencyKey ||
+            (candidate.idempotencyKey?.startsWith(
+              `${effectiveIdempotencyKey}:`,
+            ) === true &&
+              Number.isFinite(
+                Date.parse(
+                  candidate.idempotencyKey.slice(
+                    effectiveIdempotencyKey.length + 1,
+                  ),
+                ),
+              ))) &&
+          sameDeliveryBinding(candidate),
+      )
+    : [];
+  const idempotencyDuplicate = keyMatches.find(
+    (candidate) => !TERMINAL_TASK_STATUSES.has(candidate.state.status),
+  );
+  const previousRun = idempotencyDuplicate
+    ? undefined
+    : keyMatches.find(
+        (candidate) => candidate.idempotencyKey === effectiveIdempotencyKey,
+      );
   const scheduleIdempotencyKey =
     previousRun && effectiveIdempotencyKey
       ? `${effectiveIdempotencyKey}:${new Date().toISOString()}`

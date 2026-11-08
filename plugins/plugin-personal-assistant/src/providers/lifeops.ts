@@ -742,7 +742,7 @@ export const lifeOpsProvider: Provider = {
         "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
         "Confirm reminders and scheduling by naming the thing and the time ('I'll remind you the morning of the 27th'); never mention trigger kinds or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
         "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
-        "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile. Its full fields are listed below only on a turn routed to stored personal facts (memory context); otherwise only the name is shown, and an unshown field is not missing. If a field is not n/a, treat it as known instead of saying it is missing.",
+        "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile below; fields other than name are listed only on memory-context turns. If a field is not n/a, treat it as known instead of saying it is missing.",
         "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
       ];
       const profileTurn = getActiveRoutingContextsForTurn(state, message).some(
