@@ -132,8 +132,11 @@ type StoredPoolAccount = LinkedAccountConfig & {
 interface AccountMutationOptions {
   providerId?: PoolProviderId;
   expectedCredentialGeneration?: string;
+  expectedHealth?: Pick<LinkedAccountConfig, "health" | "healthDetail">;
 }
-function accountGeneration(account: LinkedAccountConfig): string | undefined {
+export function accountGeneration(
+  account: LinkedAccountConfig,
+): string | undefined {
   return (account as StoredPoolAccount)[POOL_CREDENTIAL_GENERATION];
 }
 function matchesExpectedGeneration(
@@ -609,9 +612,7 @@ export class AccountPool {
       errorCode?: string;
       model?: string;
     },
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -620,6 +621,8 @@ export class AccountPool {
     );
     if (!account) return;
     recordUsageEntry(account.providerId, account.id, result);
+    if (!matchesExpectedGeneration(account, opts?.expectedCredentialGeneration))
+      return;
     const next: LinkedAccountConfig = {
       ...account,
       lastUsedAt: Date.now(),
@@ -930,7 +933,9 @@ export class AccountPool {
     );
     if (
       !account ||
-      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration)
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration) ||
+      (opts?.expectedHealth !== undefined &&
+        healthSignature(account) !== healthSignature(opts.expectedHealth))
     )
       return;
     if (isAccountExpired(account)) {
@@ -946,7 +951,13 @@ export class AccountPool {
         health: "ok",
         ...(account.healthDetail ? { healthDetail: undefined } : {}),
       },
-      { patch: (current) => healthVerdict(current, "ok") },
+      {
+        patch: (current) =>
+          opts?.expectedHealth !== undefined &&
+          healthSignature(current) !== healthSignature(opts.expectedHealth)
+            ? undefined
+            : healthVerdict(current, "ok"),
+      },
     );
   }
   async markUsagePrimed(
@@ -1004,7 +1015,9 @@ function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
  * re-probed `lastChecked` — is detected and its verdict is preserved instead of
  * being overwritten by the probe's stale "ok" assumption.
  */
-function healthSignature(account: LinkedAccountConfig): string {
+function healthSignature(
+  account: Pick<LinkedAccountConfig, "health" | "healthDetail">,
+): string {
   return JSON.stringify({
     health: account.health,
     healthDetail: account.healthDetail ?? null,

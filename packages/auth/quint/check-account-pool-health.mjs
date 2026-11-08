@@ -113,7 +113,7 @@ await writeFile(
       limitations: [
         "Actual vendor adapters use loopback HTTP responses and private encrypted files. No real vendor account is contacted.",
         "Named scenario conformance covers observable boundaries and controlled races, not every internal schedule in the finite model.",
-        "Unbranded injected pools retain legacy omitted-guard behavior. Broker lease receipts and timer ownership remain separate protocols.",
+        "Unbranded injected pools retain legacy omitted-guard behavior. AccountPoolBroker models broker leases separately. Timer ownership remains outside both models.",
       ],
     },
     null,
