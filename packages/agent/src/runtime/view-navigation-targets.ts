@@ -35,6 +35,18 @@ export function viewNavigationDestination(view: { id: string; label: string }) {
   };
 }
 
+/** An enrolled device's view profile narrows destinations by id or alias; no profile keeps all. */
+export function viewEnabledByProfile(
+  view: { id: string },
+  enabled: readonly string[] | undefined,
+): boolean {
+  return (
+    !enabled ||
+    enabled.includes(view.id) ||
+    viewNavigationAliases(view).some((alias) => enabled.includes(alias))
+  );
+}
+
 /** Hosted availability or a registry-owned native counterpart; a delivery marker adds no view. */
 export function viewNavigationAvailable(
   view: { available?: boolean; nativeOs?: boolean },
