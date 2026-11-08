@@ -64,6 +64,8 @@ module app_teardown_authority {
     .then(dispatchContainer).then(containerAbsent).then(confirmContainer).then(quiesceContainer)
     .then(beginFinalize).then(finishFinalize(1)).then(settle).then(cleanup)
     .expect(safety and s.complete and not(s.objects))
+  run acknowledgedReplayTest = init.then(admit).then(acknowledgeRevocation)
+    .then(replay).then(replay).expect(safety and s.revoked)
   run responseLossRecoveryTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(dispatchDatabase)
     .then(databaseAbsent).then(dispatchDatabase).then(confirmDatabase)
     .expect(safety and s.capacity == 1 and s.releases == 1)

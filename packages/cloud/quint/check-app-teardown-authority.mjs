@@ -65,6 +65,7 @@ const suites = [
       "a job target changed after full restoration cannot pass final quiescence",
       "suppressed GitHub completion receipt retains an explicit operator recovery state",
       "the real apps worker completes the API's original deletion job before success replay",
+      "completed deletion replay does not depend on the current revocation gate",
       "suppressed database placement write rolls back capacity release",
       "suppressed database receipt write rolls back capacity release",
     ],

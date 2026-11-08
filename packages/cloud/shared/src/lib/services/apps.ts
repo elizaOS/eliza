@@ -606,6 +606,11 @@ export class AppsService {
   }): Promise<AppDeletionProgress | undefined> {
     const admission = await appDeletionOperations.admit(input);
     if (!admission) return undefined;
+    // The original receipt already includes successful gate delivery and cache
+    // invalidation. Replaying it must not depend on current external services.
+    if (admission.job.result?.revocationsConfirmed === true) {
+      return appDeletionProgress(admission.job);
+    }
     await revokeAppKeys(admission.revokedKeys);
     if (admission.app) {
       await this.invalidateCache(

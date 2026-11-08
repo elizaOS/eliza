@@ -851,3 +851,51 @@ test("the real apps worker completes the API's original deletion job before succ
       .status,
   ).toBe(200);
 });
+
+test("completed deletion replay does not depend on the current revocation gate", async () => {
+  const key = randomUUID();
+  await dbWrite
+    .insert(schema.apiKeys)
+    .values({
+      id: key,
+      name: "mobile",
+      key_hash: key,
+      key_prefix: "eliza_mobile_",
+      user_id: userId,
+      organization_id: organizationId,
+      source_app_id: appId,
+    });
+  const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+  let unavailable = false,
+    deliveries = 0;
+  const run = <T>(operation: () => Promise<T>) =>
+    runWithCloudBindingsAsync(
+      {
+        DATABASE_URL: "pglite://memory",
+        TEST_DATABASE_URL: "pglite://memory",
+        NODE_ENV: "test",
+        MOCK_REDIS: "1",
+        INFERENCE_ADMISSION_GATES: {
+          getByName: () => ({
+            fetch: async () => {
+              deliveries++;
+              return unavailable
+                ? new Response("unavailable", { status: 503 })
+                : Response.json({ committed: true });
+            },
+          }),
+        },
+      },
+      operation,
+    );
+  const original = await run(() => appsService.requestDeletion(request()));
+  const root = await claim("app_delete");
+  await executeAppDeletion(root);
+  await settle(root);
+  unavailable = true;
+  await expect(run(() => appsService.requestDeletion(request()))).resolves.toMatchObject({
+    state: "completed",
+    jobId: original!.jobId,
+  });
+  expect(deliveries).toBe(1);
+});
