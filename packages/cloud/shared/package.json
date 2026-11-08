@@ -631,6 +631,7 @@
     "./lib/services/x": "./src/lib/services/x.ts",
     "./lib/services/x402-facilitator": "./src/lib/services/x402-facilitator.ts",
     "./lib/services/x402-payment-requests": "./src/lib/services/x402-payment-requests.ts",
+    "./lib/services/x402-settlement-reconciler": "./src/lib/services/x402-settlement-reconciler.ts",
     "./lib/session": "./src/lib/session.ts",
     "./lib/signup-credits": "./src/lib/signup-credits.ts",
     "./lib/steward-sync": "./src/lib/steward-sync.ts",

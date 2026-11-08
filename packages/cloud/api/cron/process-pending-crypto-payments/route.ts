@@ -5,7 +5,8 @@
  * wallet returned a tx hash but the user-driven confirm step never landed
  * (browser closed, network drop, transient confirm failure). The cron polls
  * each broadcast tx on-chain and either confirms it, leaves it pending, or
- * marks it `failed_chain`. Runs every minute.
+ * marks it `failed_chain`. It also credits x402 top-ups that settled but
+ * were not credited in their request. Runs every minute.
  *
  * POST is protected by CRON_SECRET; GET is an unauthenticated health probe.
  */
@@ -13,6 +14,7 @@
 import { requireCronSecret } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { directWalletPaymentsService } from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { reconcileX402SettlementIntents } from "@elizaos/cloud-shared/lib/services/x402-settlement-reconciler";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -26,11 +28,12 @@ app.get("/", (c) =>
 app.post("/", async (c) => {
   try {
     requireCronSecret(c);
-    const [stats, sweeps] = await Promise.all([
+    const [stats, sweeps, x402Topups] = await Promise.all([
       directWalletPaymentsService.processBroadcastBatch(c.env),
       directWalletPaymentsService.drainSweepOutbox(c.env),
+      reconcileX402SettlementIntents(),
     ]);
-    return c.json({ success: true, ...stats, sweeps });
+    return c.json({ success: true, ...stats, sweeps, x402Topups });
   } catch (error) {
     // error-policy:J1 cron is the transport boundary for durable crypto
     // verification and sweep recovery and returns retryable failure.

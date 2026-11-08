@@ -323,18 +323,35 @@ test("a facilitator rejection releases the claim so the payer can retry", async 
   expect(facilitator).toHaveBeenCalledTimes(2);
 });
 
-test("a facilitator error with an unknown outcome keeps the claim so a retry cannot pay twice", async () => {
+test("a facilitator error after broadcast keeps the claim so a retry cannot pay twice", async () => {
   const { payment } = await openRequest();
-  const facilitator = spyOn(x402FacilitatorService, "settle").mockRejectedValue(
-    new Error("receipt timeout"),
-  );
+  const facilitator = spyOn(
+    x402FacilitatorService,
+    "settle",
+  ).mockImplementation(async (_payload, _requirements, options) => {
+    await options?.onBroadcast?.({
+      transaction: `0x${"ef".repeat(32)}`,
+      network: "base",
+    });
+    throw new Error("receipt timeout");
+  });
+  const confirm = spyOn(
+    x402FacilitatorService,
+    "confirmSettlement",
+  ).mockResolvedValue({
+    success: false,
+    pending: true,
+    transaction: `0x${"ef".repeat(32)}`,
+    network: "base",
+    errorReason: "settlement_unconfirmed",
+  } as Settlement);
 
   await expect(
     x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
   ).rejects.toMatchObject({ status: 402 });
   await expect(
     x402PaymentRequestsService.settle(payment, paymentPayload("0x02")),
-  ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
+  ).rejects.toMatchObject({ status: 202, code: "settlement_pending" });
 
   // A wall-clock deadline passing cannot authorize a second transfer.
   await pg().query(
@@ -343,9 +360,10 @@ test("a facilitator error with an unknown outcome keeps the claim so a retry can
   );
   await expect(
     x402PaymentRequestsService.settle(payment, paymentPayload("0x03")),
-  ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
+  ).rejects.toMatchObject({ status: 202, code: "settlement_pending" });
   expect(await cryptoPaymentsRepository.markAsExpired(payment)).toBeUndefined();
   expect(facilitator).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledTimes(2);
   expect(await settleClaim(payment)).not.toBeNull();
 });
 

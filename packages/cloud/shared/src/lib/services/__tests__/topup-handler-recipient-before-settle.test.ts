@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { privateKeyToAccount } from "viem/accounts";
 
 process.env.NODE_ENV = "test";
@@ -12,6 +12,12 @@ const { referralsService } = await import("../referrals");
 const { usersService } = await import("../users");
 const walletSignup = await import("../wallet-signup");
 const { cryptoPaymentsRepository } = await import("../../../db/repositories/crypto-payments");
+const { x402SettlementIntentsRepository } = await import(
+  "../../../db/repositories/x402-settlement-intents"
+);
+const { reconcileX402SettlementIntents } = await import("../x402-settlement-reconciler");
+
+type Intent = Awaited<ReturnType<typeof x402SettlementIntentsRepository.open>>;
 
 type Settlement = Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
 
@@ -49,9 +55,78 @@ function stubSettlement() {
   } as Settlement);
 }
 
+let intents: Map<string, Intent>;
+
+/** An in-memory stand-in for the x402_settlement_intents table. */
+beforeEach(() => {
+  intents = new Map();
+  const repo = x402SettlementIntentsRepository;
+  const byId = (id: string) => [...intents.values()].find((row) => row.id === id);
+  const touch = (id: string, patch: Partial<Intent>) => {
+    const row = byId(id);
+    if (row) Object.assign(row, patch, { updated_at: new Date() });
+    return row;
+  };
+  spyOn(repo, "open").mockImplementation(async (params) => {
+    const key = `${params.network}:${params.payer.toLowerCase()}:${params.nonce.toLowerCase()}`;
+    const existing = intents.get(key);
+    if (existing) return existing;
+    const now = new Date();
+    const row: Intent = {
+      id: crypto.randomUUID(),
+      network: params.network,
+      payer: params.payer.toLowerCase(),
+      nonce: params.nonce.toLowerCase(),
+      status: "pending",
+      wallet_address: params.walletAddress.toLowerCase(),
+      amount_usd: params.amountUsd.toFixed(2),
+      transaction: null,
+      credit_key: null,
+      source_id: null,
+      organization_id: null,
+      last_error: null,
+      settled_at: null,
+      credited_at: null,
+      created_at: now,
+      updated_at: now,
+    };
+    intents.set(key, row);
+    return row;
+  });
+  spyOn(repo, "recordBroadcast").mockImplementation(async (id, transaction) => {
+    touch(id, { transaction });
+  });
+  spyOn(repo, "markSettled").mockImplementation(async (id, params) => {
+    const row = byId(id)!;
+    if (row.status !== "pending") return row;
+    return touch(id, {
+      status: "settled",
+      transaction: params.transaction,
+      credit_key: params.creditKey,
+      source_id: params.sourceId,
+      settled_at: new Date(),
+    })!;
+  });
+  spyOn(repo, "markCredited").mockImplementation(async (id, organizationId) => {
+    if (byId(id)?.status === "settled") {
+      touch(id, { status: "credited", organization_id: organizationId, credited_at: new Date() });
+    }
+  });
+  spyOn(repo, "recordError").mockImplementation(async (id, message) => {
+    touch(id, { last_error: message });
+  });
+  spyOn(repo, "listSettledBefore").mockImplementation(async (before, limit) =>
+    [...intents.values()]
+      .filter((row) => row.status === "settled" && row.updated_at < before)
+      .slice(0, limit),
+  );
+});
+
 afterEach(() => {
   mock.restore();
 });
+
+const later = () => new Date(Date.now() + 60 * 60 * 1000);
 
 test("an expired wallet signature is rejected before the payment is settled", async () => {
   const settle = stubSettlement();
@@ -300,12 +375,16 @@ test("a signed request credits the signer's organization and ignores a different
   });
 });
 
-test("an account lookup failure after settlement is reported as 503", async () => {
+test("an account lookup failure after settlement leaves a settled intent that the cron credits once", async () => {
   const settle = stubSettlement();
-  spyOn(usersService, "getByWalletAddressWithOrganization").mockRejectedValue(
+  const lookup = spyOn(usersService, "getByWalletAddressWithOrganization").mockRejectedValue(
     new Error("database connection refused"),
   );
-  const addCredits = spyOn(creditsService, "addCredits");
+  const addCredits = spyOn(creditsService, "addCredits").mockResolvedValue({
+    transaction: { id: "credit-tx-late" },
+    newBalance: 10,
+  } as never);
+  spyOn(referralsService, "calculateRevenueSplits").mockResolvedValue({ splits: [] } as never);
 
   const response = await topup(
     new Request("https://cloud.test/api/v1/topup/10", {
@@ -315,17 +394,103 @@ test("an account lookup failure after settlement is reported as 503", async () =
     }),
   );
 
-  expect({
-    status: response.status,
-    body: await response.json(),
-    settleCalls: settle.mock.calls.length,
-    addCreditsCalls: addCredits.mock.calls.length,
-  }).toEqual({
-    status: 503,
-    body: { error: "database connection refused" },
-    settleCalls: 1,
-    addCreditsCalls: 0,
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    code: "x402_credit_pending",
+    transaction: `0x${"ab".repeat(32)}`,
   });
+  expect(settle.mock.calls.length).toBe(1);
+  expect(addCredits).not.toHaveBeenCalled();
+  const [intent] = [...intents.values()];
+  expect(intent).toMatchObject({
+    status: "settled",
+    wallet_address: account.address.toLowerCase(),
+    credit_key: `x402:eip155:8453:0x${"ab".repeat(32)}`,
+    last_error: "database connection refused",
+  });
+
+  // Too recent: the cron leaves it to the request that settled it.
+  expect(await reconcileX402SettlementIntents()).toEqual({ credited: 0, failed: 0 });
+
+  lookup.mockRestore();
+  spyOn(walletSignup, "findOrCreateUserByWalletAddress").mockResolvedValue({
+    user: {
+      id: "30000000-0000-4000-8000-000000000011",
+      organization_id: "30000000-0000-4000-8000-000000000012",
+    },
+  } as never);
+  expect(await reconcileX402SettlementIntents({ now: later() })).toEqual({
+    credited: 1,
+    failed: 0,
+  });
+  expect(await reconcileX402SettlementIntents({ now: later() })).toEqual({
+    credited: 0,
+    failed: 0,
+  });
+  expect(addCredits.mock.calls.length).toBe(1);
+  expect(addCredits.mock.calls[0]?.[0]).toMatchObject({
+    organizationId: "30000000-0000-4000-8000-000000000012",
+    amount: 10,
+    stripePaymentIntentId: `x402:eip155:8453:0x${"ab".repeat(32)}`,
+  });
+  expect(intent?.status).toBe("credited");
+});
+
+test("a retry of a settled but uncredited top-up credits it without settling again", async () => {
+  const settle = stubSettlement();
+  const findOrCreate = spyOn(walletSignup, "findOrCreateUserByWalletAddress").mockRejectedValueOnce(
+    new Error("database connection refused"),
+  );
+  const addCredits = spyOn(creditsService, "addCredits").mockResolvedValue({
+    transaction: { id: "credit-tx-retry" },
+    newBalance: 10,
+  } as never);
+  spyOn(referralsService, "calculateRevenueSplits").mockResolvedValue({ splits: [] } as never);
+
+  expect((await unsignedTopup(account.address)).status).toBe(503);
+  findOrCreate.mockResolvedValue({
+    user: {
+      id: "30000000-0000-4000-8000-000000000013",
+      organization_id: "30000000-0000-4000-8000-000000000014",
+    },
+  } as never);
+  const retry = await unsignedTopup(account.address);
+
+  expect(retry.status).toBe(200);
+  expect(settle.mock.calls.length).toBe(1);
+  expect(addCredits.mock.calls.length).toBe(1);
+  expect([...intents.values()][0]?.status).toBe("credited");
+});
+
+test("the same authorization cannot be redirected to another wallet", async () => {
+  const settle = stubSettlement();
+  spyOn(walletSignup, "findOrCreateUserByWalletAddress").mockRejectedValue(
+    new Error("database connection refused"),
+  );
+
+  expect((await unsignedTopup(account.address)).status).toBe(503);
+  const redirected = await unsignedTopup("0x00000000000000000000000000000000000000dd");
+
+  expect(redirected.status).toBe(409);
+  expect(await redirected.json()).toMatchObject({ code: "payment_in_use" });
+  expect(settle.mock.calls.length).toBe(1);
+});
+
+test("an unsigned top-up opens no account before the payment settles", async () => {
+  const settle = spyOn(x402FacilitatorService, "settle").mockResolvedValue({
+    success: false,
+    transaction: "",
+    network: "eip155:8453",
+    errorReason: "invalid_signature",
+  } as Settlement);
+  const findOrCreate = spyOn(walletSignup, "findOrCreateUserByWalletAddress");
+
+  const response = await unsignedTopup(account.address);
+
+  expect(response.status).toBe(402);
+  expect(settle.mock.calls.length).toBe(1);
+  expect(findOrCreate).not.toHaveBeenCalled();
+  expect([...intents.values()][0]?.status).toBe("pending");
 });
 
 function stubCredit(walletUser: { id: string; organization_id: string }) {
@@ -408,6 +573,49 @@ test("a signed request applies the referral without an app owner from the reques
 
   expect(response.status).toBe(200);
   expect(applyReferral.mock.calls).toEqual([[walletUser.id, organizationId, "FRIEND"]]);
+});
+
+test("a referral that throws does not block the credit", async () => {
+  stubSettlement();
+  const organizationId = "30000000-0000-4000-8000-000000000015";
+  const walletUser = {
+    id: "30000000-0000-4000-8000-000000000016",
+    organization_id: organizationId,
+    wallet_address: account.address,
+    is_active: true,
+    organization: { id: organizationId, is_active: true },
+  };
+  stubCredit(walletUser);
+  spyOn(cache, "isAvailable").mockReturnValue(true);
+  spyOn(cache, "setIfNotExists").mockResolvedValue(true);
+  spyOn(cache, "get").mockResolvedValue(walletUser as never);
+  spyOn(referralsService, "applyReferralCode").mockRejectedValue(new Error("referrals down"));
+  const rawBody = JSON.stringify({ ref: "FRIEND" });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`\n${rawBody}`));
+  const payloadHash = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const timestamp = Date.now();
+  const signature = await account.signMessage({
+    message: `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: /api/v1/topup/10\nPayload-SHA256: ${payloadHash}`,
+  });
+
+  const response = await topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "X-PAYMENT": paymentHeader,
+        "X-Wallet-Address": account.address,
+        "X-Timestamp": String(timestamp),
+        "X-Wallet-Signature": signature,
+      },
+      body: rawBody,
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  expect(creditsService.addCredits).toHaveBeenCalledTimes(1);
+  expect([...intents.values()][0]?.status).toBe("credited");
 });
 
 const pendingHash = `0x${"cd".repeat(32)}`;

@@ -24,7 +24,7 @@ import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
 import { redeemableEarningsService } from "./redeemable-earnings";
-import { x402FacilitatorService } from "./x402-facilitator";
+import { malformedPaymentField, x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const KIND = "x402_payment_request";
@@ -364,7 +364,8 @@ function isDecodedPaymentPayload(
     typeof value.accepted.asset === "string" &&
     typeof value.accepted.amount === "string" &&
     typeof value.accepted.payTo === "string" &&
-    (hasEvmSignature || hasSvmTransaction)
+    (hasEvmSignature || hasSvmTransaction) &&
+    malformedPaymentField(value) === undefined
   );
 }
 
@@ -823,19 +824,24 @@ class X402PaymentRequestsService {
     }
 
     const paymentId = payment.id;
+    let transferSent = false;
     let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
     try {
       settlement = await x402FacilitatorService.settle(paymentPayload, requirements, {
         onBroadcast: async (sent) => {
+          transferSent = true;
           await cryptoPaymentsRepository.recordSettlementBroadcast(paymentId, sent);
         },
       });
     } catch (error) {
-      // The transfer may have been broadcast; keep its claim until reconciled.
       logger.error("[x402-payment-requests] settlement error", {
         paymentRequestId: paymentId,
+        transferSent,
         error: error instanceof Error ? error.message : String(error),
       });
+      // Nothing was sent, so the request stays payable. A broadcast transfer
+      // keeps its claim until its receipt is read.
+      if (!transferSent) await cryptoPaymentsRepository.releaseSettlementClaim(paymentId);
       throw new X402PaymentRequestError("x402 settlement failed", 402, "settlement_failed");
     }
     if (settlement.pending) {

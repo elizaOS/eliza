@@ -5,17 +5,23 @@
  */
 import { isAddress } from "viem";
 import { cryptoPaymentsRepository } from "../../db/repositories/crypto-payments";
+import {
+  type X402SettlementIntent,
+  x402SettlementIntentsRepository,
+} from "../../db/repositories/x402-settlement-intents";
 import { verifyWalletSignature } from "../auth/wallet-auth";
 import { getStripeProductMessages } from "../stripe-products/messages";
-import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
-import { creditsService } from "./credits";
 import { CRYPTO_REFUND_POLICY } from "./crypto-payment-refunds";
-import { redeemableEarningsService } from "./redeemable-earnings";
 import { referralsService } from "./referrals";
-import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
+import {
+  creditX402SettlementIntent,
+  payX402RevenueSplits,
+  resolveX402TopupRecipient,
+  type X402TopupRecipient,
+} from "./x402-settlement-reconciler";
 import { x402TopupPaymentId } from "./x402-topup-identity";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
@@ -73,7 +79,8 @@ interface PaymentPayload {
   };
   payload: {
     signature: string;
-    authorization: PaymentAuthorization;
+    authorization?: PaymentAuthorization;
+    paymentPermit?: { buyer?: string; meta?: { nonce?: string } };
   };
 }
 
@@ -108,11 +115,9 @@ interface PaymentRequirementBundle {
   extensions?: PaymentRequiredExtensions;
 }
 
-interface TopupRecipient {
-  user: UserWithOrganization;
-  organizationId: string;
-  walletAddress: string;
-}
+type TopupRecipient = X402TopupRecipient;
+
+type SettledPayment = { transaction: string; network: string; payer?: string };
 
 /**
  * Resolve topup recipient from wallet signature headers (if present).
@@ -139,17 +144,17 @@ async function getSignedTopupRecipient(
   };
 }
 
-async function getBodyTopupRecipient(walletAddress: string): Promise<TopupRecipient> {
-  // No `walletProven`: this branch is the one with NO wallet signature — the
-  // address came out of the request body, so the account it opens must not
-  // claim the wallet was verified.
-  const { user } = await findOrCreateUserByWalletAddress(walletAddress);
-
-  return {
-    user,
-    organizationId: user.organization_id!,
-    walletAddress,
-  };
+/** The payer and authorization nonce that identify one x402 payment. */
+function paymentIdentity(payload: PaymentPayload): { payer: string; nonce: string } | null {
+  const authorization = payload.payload?.authorization;
+  if (typeof authorization?.from === "string" && typeof authorization.nonce === "string") {
+    return { payer: authorization.from, nonce: authorization.nonce };
+  }
+  const permit = payload.payload?.paymentPermit;
+  if (typeof permit?.buyer === "string" && typeof permit.meta?.nonce === "string") {
+    return { payer: permit.buyer, nonce: permit.meta.nonce };
+  }
+  return null;
 }
 
 export interface CreateTopupHandlerOptions {
@@ -475,6 +480,76 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       const msg = e instanceof Error ? e.message : String(e);
       return Response.json({ error: msg }, { status: 401 });
     }
+    const identity = paymentIdentity(paymentPayload);
+    if (!identity) {
+      return Response.json(
+        {
+          success: false,
+          error: "X-PAYMENT has no payer authorization",
+          code: "invalid_x_payment",
+        },
+        { status: 400 },
+      );
+    }
+    const recipientWallet = signedRecipient?.walletAddress ?? body.walletAddress!;
+    const ref =
+      new URL(req.url).searchParams.get("ref") ||
+      new URL(req.url).searchParams.get("referral_code") ||
+      body.ref ||
+      body.referral_code;
+
+    // Recorded before settlement, so a transfer that settles is credited even
+    // when this request fails after it.
+    let intent: X402SettlementIntent;
+    try {
+      intent = await x402SettlementIntentsRepository.open({
+        network: requirements.network,
+        ...identity,
+        walletAddress: recipientWallet,
+        amountUsd: amount,
+      });
+    } catch (error) {
+      // error-policy:J1 nothing is settled without a durable record.
+      logger.error("[x402] Recording the top-up intent failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return Response.json(
+        {
+          success: false,
+          error: "Payment could not be started. Nothing was charged; try again.",
+          code: "x402_intent_unavailable",
+        },
+        { status: 503 },
+      );
+    }
+    if (
+      intent.wallet_address !== recipientWallet.toLowerCase() ||
+      Number(intent.amount_usd) !== amount
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error: "This payment authorization is already used for another top-up",
+          code: "payment_in_use",
+        },
+        { status: 409 },
+      );
+    }
+    // A retry of a payment that already settled finishes its credit.
+    if (intent.status !== "pending" && intent.transaction) {
+      return creditTopup({
+        intent,
+        signedRecipient,
+        walletAddress: recipientWallet,
+        ref,
+        settlement: {
+          transaction: intent.transaction,
+          network: intent.network,
+          payer: intent.payer,
+        },
+      });
+    }
+
     const pendingTransaction = req.headers.get("X-PAYMENT-TRANSACTION")?.trim();
     let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
     if (pendingTransaction) {
@@ -482,14 +557,19 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
         transaction: pendingTransaction,
         paymentPayload,
         requirements,
-        walletAddress: signedRecipient?.walletAddress ?? body.walletAddress,
+        walletAddress: recipientWallet,
       });
       if (confirmation instanceof Response) return confirmation;
       settlement = confirmation;
     } else {
+      const intentId = intent.id;
       settlement = await x402FacilitatorService.settle(
         paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
         requirements as Parameters<typeof x402FacilitatorService.settle>[1],
+        {
+          onBroadcast: (sent) =>
+            x402SettlementIntentsRepository.recordBroadcast(intentId, sent.transaction),
+        },
       );
     }
     if (settlement.pending && settlement.errorReason === "settlement_unconfirmed") {
@@ -508,112 +588,149 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       );
     }
 
-    let recipient = signedRecipient;
-    if (!recipient) {
-      try {
-        recipient = await getBodyTopupRecipient(body.walletAddress!);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return Response.json({ error: msg }, { status: 503 });
-      }
+    const paymentId = x402TopupPaymentId(settlement, paymentPayload.payload.authorization ?? {});
+    const settled = {
+      transaction: settlement.transaction,
+      creditKey: `x402:${settlement.network}:${paymentId}`,
+      sourceId: getSourceId(recipientWallet, paymentId),
+    };
+    try {
+      intent = await x402SettlementIntentsRepository.markSettled(intent.id, settled);
+    } catch (error) {
+      // error-policy:J1 the funds moved; credit now and leave the row (which
+      // holds the broadcast hash) for review rather than failing the payer.
+      logger.error("[x402] Marking the top-up settled failed; crediting anyway", {
+        intentId: intent.id,
+        transaction: settlement.transaction,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      intent = {
+        ...intent,
+        status: "settled",
+        transaction: settled.transaction,
+        credit_key: settled.creditKey,
+        source_id: settled.sourceId,
+      };
     }
 
-    const { user, organizationId, walletAddress } = recipient;
-    const ref =
-      new URL(req.url).searchParams.get("ref") ||
-      new URL(req.url).searchParams.get("referral_code") ||
-      body.ref ||
-      body.referral_code;
+    return creditTopup({
+      intent,
+      signedRecipient,
+      walletAddress: recipientWallet,
+      ref,
+      settlement,
+    });
+  };
+}
+
+/**
+ * Credits a settled top-up and answers the request. A failure here leaves
+ * the intent settled, and the crypto cron finishes it.
+ */
+async function creditTopup(params: {
+  intent: X402SettlementIntent;
+  signedRecipient: TopupRecipient | null;
+  walletAddress: string;
+  ref: string | null | undefined;
+  settlement: SettledPayment;
+}): Promise<Response> {
+  const { intent, signedRecipient, ref, settlement } = params;
+  const amount = Number(intent.amount_usd);
+
+  let recipient: TopupRecipient;
+  let creditResult: Awaited<ReturnType<typeof creditX402SettlementIntent>>;
+  try {
+    recipient = signedRecipient ?? (await resolveX402TopupRecipient(params.walletAddress));
 
     // A referral binds the recipient's future purchases to a revenue split for
     // good, so only the recipient may accept one: the unsigned branch credits a
     // wallet named in the body, which anyone can name. The app owner share is
-    // never taken from the request.
-    if (ref && user && signedRecipient) {
-      const result = await referralsService.applyReferralCode(user.id, organizationId, ref);
-      if (result.success) {
-        logger.info(`[x402] Successfully applied referral code ${ref} to user ${user.id}`);
+    // never taken from the request. It never blocks the credit.
+    if (ref && signedRecipient) {
+      try {
+        const result = await referralsService.applyReferralCode(
+          recipient.user.id,
+          recipient.organizationId,
+          ref,
+        );
+        if (result.success) {
+          logger.info(
+            `[x402] Successfully applied referral code ${ref} to user ${recipient.user.id}`,
+          );
+        }
+      } catch (error) {
+        // error-policy:J1 a referral is optional; the paid credit is not.
+        logger.warn("[x402] Applying the referral code failed", {
+          userId: recipient.user.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
-    const settlementPaymentId = x402TopupPaymentId(
-      settlement,
-      paymentPayload.payload.authorization,
+    creditResult = await creditX402SettlementIntent(intent, recipient);
+  } catch (error) {
+    // error-policy:J1 the payment settled; the cron credits this intent.
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("[x402] Crediting a settled top-up failed", {
+      intentId: intent.id,
+      transaction: settlement.transaction,
+      error: message,
+    });
+    await x402SettlementIntentsRepository.recordError(intent.id, message).catch(() => undefined);
+    return Response.json(
+      {
+        success: false,
+        pending: true,
+        error: "Payment received. The credit is delayed and will be added automatically.",
+        code: "x402_credit_pending",
+        transaction: settlement.transaction,
+        network: settlement.network,
+      },
+      { status: 503 },
     );
-    const idempotencyId = `x402:${settlement.network}:${settlementPaymentId}`;
-    const creditResult = await creditsService.addCredits({
-      organizationId,
+  }
+
+  const { organizationId, walletAddress } = recipient;
+  logger.info(`Topped up ${walletAddress} with $${amount} via x402`, {
+    organizationId,
+    transactionId: creditResult.transaction.id,
+    settlementTransaction: settlement.transaction,
+  });
+
+  try {
+    await payX402RevenueSplits(intent, recipient);
+    await x402SettlementIntentsRepository.markCredited(intent.id, organizationId);
+  } catch (error) {
+    // error-policy:J1 the buyer is credited; the cron retries the splits.
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("[x402] Revenue splits for a top-up failed", {
+      intentId: intent.id,
+      error: message,
+    });
+    await x402SettlementIntentsRepository.recordError(intent.id, message).catch(() => undefined);
+  }
+
+  return Response.json(
+    {
+      success: true,
       amount,
-      description: `x402 wallet top-up: $${amount}`,
-      stripePaymentIntentId: idempotencyId,
-      metadata: {
-        payment_method: "x402",
+      walletAddress,
+      organizationId,
+      transactionId: creditResult.transaction.id,
+      newBalance: creditResult.newBalance,
+      payment: {
+        method: "x402",
         network: settlement.network,
         transaction: settlement.transaction,
         payer: settlement.payer,
-        wallet_address: walletAddress,
-        amount_usd: amount,
       },
-    });
-    logger.info(`Topped up ${walletAddress} with $${amount} via x402`, {
-      organizationId,
-      transactionId: creditResult.transaction.id,
-      settlementTransaction: settlement.transaction,
-    });
-
-    if (user) {
-      const { splits } = await referralsService.calculateRevenueSplits(user.id, amount);
-      if (splits.length > 0) {
-        logger.info(`[x402] Processing revenue splits for $${amount} purchase by user ${user.id}`);
-        const paymentId = settlementPaymentId;
-        const sourceIdBase = getSourceId(walletAddress, paymentId);
-        for (const split of splits) {
-          if (split.amount <= 0) continue;
-          const source =
-            split.role === "app_owner" ? "app_owner_revenue_share" : "creator_revenue_share";
-          await redeemableEarningsService.addEarnings({
-            userId: split.userId,
-            amount: split.amount,
-            source,
-            sourceId: `x402_crypto_split_${sourceIdBase}:${split.userId}`,
-            dedupeBySourceId: true,
-            description: `${split.role === "app_owner" ? "App Owner" : "Creator"} revenue share (${((split.amount / amount) * 100).toFixed(0)}%) for $${amount} crypto topup`,
-            metadata: {
-              buyer_user_id: user.id,
-              buyer_org_id: organizationId,
-              role: split.role,
-              payment_method: "x402",
-            },
-          });
-          logger.info(
-            `[x402] Credited split: $${split.amount.toFixed(2)} to ${split.role} (${split.userId})`,
-          );
-        }
-      }
-    }
-
-    return Response.json(
-      {
-        success: true,
-        amount,
-        walletAddress,
-        organizationId,
-        transactionId: creditResult.transaction.id,
-        newBalance: creditResult.newBalance,
-        payment: {
-          method: "x402",
-          network: settlement.network,
-          transaction: settlement.transaction,
-          payer: settlement.payer,
-        },
-        message: `Successfully topped up $${amount}`,
+      message: `Successfully topped up $${amount}`,
+    },
+    {
+      headers: {
+        "X-PAYMENT-RESPONSE": Buffer.from(JSON.stringify(settlement)).toString("base64"),
+        "X-PAYMENT-STATUS": "settled",
       },
-      {
-        headers: {
-          "X-PAYMENT-RESPONSE": Buffer.from(JSON.stringify(settlement)).toString("base64"),
-          "X-PAYMENT-STATUS": "settled",
-        },
-      },
-    );
-  };
+    },
+  );
 }

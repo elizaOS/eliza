@@ -216,3 +216,4 @@ export * from "./vertex-tuning-jobs";
 export * from "./voice-imprints";
 export * from "./web-push-subscriptions";
 export * from "./webhook-events";
+export * from "./x402-settlement-intents";

@@ -145,6 +145,55 @@ function sanitizeUpstreamReason(reason: unknown, fallback: string): string {
   return typeof reason === "string" && X402_REASON_CODE_PATTERN.test(reason) ? reason : fallback;
 }
 
+const UINT_STRING = /^(?:[0-9]{1,78}|0x[0-9a-fA-F]{1,64})$/;
+const BYTES32_HEX = /^0x[0-9a-fA-F]{64}$/;
+
+function isUintField(value: unknown): boolean {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0;
+  return typeof value === "string" && UINT_STRING.test(value);
+}
+
+function fieldRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * Names the first numeric field of a decoded X-PAYMENT that is not an
+ * unsigned integer, or returns undefined when every one is well formed. Each
+ * of these fields is later passed to BigInt, which throws on anything else.
+ */
+export function malformedPaymentField(paymentPayload: unknown): string | undefined {
+  const root = fieldRecord(paymentPayload);
+  if (!isUintField(fieldRecord(root?.accepted)?.amount)) return "accepted.amount";
+  const payload = fieldRecord(root?.payload);
+  const authorization = fieldRecord(payload?.authorization);
+  if (authorization) {
+    for (const key of ["value", "validBefore"] as const) {
+      if (!isUintField(authorization[key])) return `authorization.${key}`;
+    }
+    if (authorization.validAfter !== undefined && !isUintField(authorization.validAfter)) {
+      return "authorization.validAfter";
+    }
+    if (typeof authorization.nonce !== "string" || !BYTES32_HEX.test(authorization.nonce)) {
+      return "authorization.nonce";
+    }
+  }
+  const permit = fieldRecord(payload?.paymentPermit);
+  if (permit) {
+    const meta = fieldRecord(permit.meta);
+    for (const key of ["nonce", "validAfter", "validBefore"] as const) {
+      if (!isUintField(meta?.[key])) return `paymentPermit.meta.${key}`;
+    }
+    if (!isUintField(fieldRecord(permit.payment)?.payAmount)) {
+      return "paymentPermit.payment.payAmount";
+    }
+    if (!isUintField(fieldRecord(permit.fee)?.feeAmount)) return "paymentPermit.fee.feeAmount";
+  }
+  return undefined;
+}
+
 /** Settlement result */
 export interface SettleResult {
   success: boolean;
@@ -776,6 +825,25 @@ class X402FacilitatorService {
    * 6. Payer has sufficient USDC balance
    */
   async verify(
+    paymentPayload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<VerifyResult> {
+    const malformed = malformedPaymentField(paymentPayload);
+    if (malformed || !isUintField(paymentRequirements?.amount)) {
+      return { isValid: false, invalidReason: "invalid_payment_payload" };
+    }
+    try {
+      return await this.verifyPayment(paymentPayload, paymentRequirements);
+    } catch (err) {
+      // error-policy:J1 nothing is broadcast during verification, so any
+      // throw is a plain rejection the payer may retry.
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[x402-facilitator] Verification failed: ${msg}`);
+      return { isValid: false, invalidReason: "verification_failed" };
+    }
+  }
+
+  private async verifyPayment(
     paymentPayload: PaymentPayload,
     paymentRequirements: PaymentRequirements,
   ): Promise<VerifyResult> {
