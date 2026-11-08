@@ -149,6 +149,10 @@ const memory = () => {
     mapsUnavailableMessage({ configured: false, error: "" }),
     /Connect a Maps provider/,
   );
+  assert.equal(
+    mapsUnavailableMessage({ configured: false, error: "" }, "Sign in."),
+    "Sign in.",
+  );
   maps.retireCloudMaps();
   assert.equal(
     mapsUnavailableMessage(maps.cloudMapsDiagnostics()),

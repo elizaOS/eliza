@@ -261,11 +261,17 @@ export type MapsDiagnostics = Readonly<{
 /**
  * Why Maps cannot search or route. A Cloud Maps start that failed keeps its own
  * message (sign in, plan, offline, not deployed); only a host without any Maps
- * provider is told to connect one.
+ * provider is told to connect one, or gets the host's `unconfiguredText`.
  */
-export function mapsUnavailableMessage(diagnostics?: MapsDiagnostics): string {
+export function mapsUnavailableMessage(
+  diagnostics?: MapsDiagnostics,
+  unconfiguredText?: string,
+): string {
   if (!diagnostics?.configured)
-    return "Connect a Maps provider to search places and plan routes.";
+    return (
+      unconfiguredText ||
+      "Connect a Maps provider to search places and plan routes."
+    );
   if (diagnostics.error)
     return diagnostics.message || "Cloud Maps could not start.";
   return "Maps is not ready yet.";

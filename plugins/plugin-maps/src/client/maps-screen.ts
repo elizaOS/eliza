@@ -117,6 +117,8 @@ export interface MapsScreenHost {
   now?(): number;
   /** Copy for the location panel when access is denied. */
   deniedLocationHelp?: string;
+  /** Copy shown when no Maps provider is connected; defaults to asking the user to connect one. */
+  unconfiguredText?: string;
   /** Publishes the selected place, route or search as the agent's context. */
   publishContext?(
     kind: "map-place" | "map-route" | "map-search",
@@ -824,6 +826,7 @@ export class MapsScreenController {
     if (!item || !snapshot) return;
     if (snapshot.provider.status === "unconfigured") {
       this.message =
+        this.host.unconfiguredText ||
         "Connect a Maps provider to plan a route. No route has been calculated.";
     } else {
       this.directions = true;
@@ -1225,9 +1228,9 @@ export class MapsScreenController {
       snapshot.originSearch.phase !== "loading"
         ? this.message
         : "") ||
-      snapshot.route.error?.message ||
+      this.failureText(snapshot.route.error) ||
       this.message ||
-      error?.message ||
+      this.failureText(error) ||
       (pending ? "Finding location…" : mapText);
     const isPlace = !!selected && !this.directions && !this.navigating;
     const isResults =
@@ -1370,7 +1373,9 @@ export class MapsScreenController {
             ? "Saved on this device"
             : selected.origin === "location"
               ? "Device location"
-              : "Coordinates") +
+              : selected.origin === "provider"
+                ? "Place"
+                : "Coordinates") +
           (detail?.phone ? ` · Phone ${detail.phone}` : ""),
         address: detail?.address || coordLabel(selected.coordinate),
         ...(detail?.openingHours ? { hours: detail.openingHours } : {}),
@@ -1393,7 +1398,7 @@ export class MapsScreenController {
             : "No route",
         meta: route
           ? `${(route.distanceMeters / 1000).toFixed(1)} km · no live traffic`
-          : "Regional route",
+          : "",
         via: route
           ? (snapshot.originLabel ? `From ${snapshot.originLabel} · ` : "") +
             (route.steps[0]?.instruction || "")
@@ -1719,6 +1724,15 @@ export class MapsScreenController {
       selection.value.providerId === item.providerId
       ? selection.value
       : undefined;
+  }
+
+  /** A failure's text, with the host's copy for a missing Maps provider. */
+  private failureText(error: MapsFailure | null | undefined): string {
+    if (!error) return "";
+    return (
+      (error.code === "unconfigured" && this.host.unconfiguredText) ||
+      error.message
+    );
   }
 
   private mapsAppText(): string {
