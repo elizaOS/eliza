@@ -61,7 +61,13 @@ public final class CloudConnectionPolicy {
           "/api/v1/eliza/google/calendar/feed",
           "/api/v1/eliza/google/gmail/search",
           "/api/v1/eliza/google/gmail/read");
-  private static final String MAPS_DATA = "/api/v1/maps/(geocode|reverse|places/search|places/details|routes)";
+  private static final String MAPS_DATA = "/api/v1/maps/(geocode|reverse|places/search|places/details|routes|tiles/viewport)";
+  public static boolean mapsTilePath(String path) {
+    if (path == null || !path.matches("/api/v1/maps/tiles/(0|[1-9][0-9]?)/(0|[1-9][0-9]{0,6})/(0|[1-9][0-9]{0,6})")) return false;
+    String[] parts = path.split("/");
+    int zoom = Integer.parseInt(parts[5]), x = Integer.parseInt(parts[6]), y = Integer.parseInt(parts[7]);
+    return zoom <= 22 && x < (1 << zoom) && y < (1 << zoom);
+  }
   private static Set<String> setOf(String... values) {
     return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(values)));
   }
@@ -111,6 +117,7 @@ public final class CloudConnectionPolicy {
     // Eliza Cloud Maps: queries and coordinates travel only in a JSON body; capabilities is a bare read.
     if ("POST".equals(method) && path.matches(MAPS_DATA)) return query == null && hasBody;
     if ("/api/v1/maps/capabilities".equals(path)) return "GET".equals(method) && query == null && !hasBody;
+    if (mapsTilePath(path)) return "GET".equals(method) && query == null && !hasBody;
     // Subscription code redemption carries its code and idempotency key in the JSON body only.
     if ("POST".equals(method) && "/api/v1/subscription/redeem".equals(path)) return query == null && hasBody;
     if ("POST".equals(method))
@@ -181,9 +188,8 @@ public final class CloudConnectionPolicy {
     return "idempotency-key".equals(name)
         && value != null
         && value.matches("[A-Za-z0-9_-]{1,128}")
-        && "POST".equals(method)
         && path != null
-        && path.matches(MAPS_DATA);
+        && (("POST".equals(method) && path.matches(MAPS_DATA)) || ("GET".equals(method) && mapsTilePath(path)));
   }
 
   /**
