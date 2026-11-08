@@ -646,7 +646,10 @@ export function useCloudState({
         cloudStatus = snapshot.status;
         prefetchedCloudCredits = snapshot.credits;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError")
+        if (
+          !nativeReadIsCurrent() ||
+          (error instanceof DOMException && error.name === "AbortError")
+        )
           return lastElizaCloudPollConnectedRef.current;
         setElizaCloudStatusUnavailable(true);
         if (intent === "session-verification") throw error;
