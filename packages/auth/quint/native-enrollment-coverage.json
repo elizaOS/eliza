@@ -263,17 +263,25 @@
   },
   {
     "id": "auth.OAuthAndEnrollmentAuthority",
-    "model": null,
+    "model": "packages/auth/quint/OAuthAppLinkRedemption.qnt",
     "sources": [
+      "packages/auth/src/server/api/routes/auth.ts",
       "packages/auth/src/auth/oauth-flow.ts",
       "packages/auth/src/server/auth/oauth.ts",
       "packages/auth/src/server/auth/agent-enroll.ts",
       "packages/auth/src/server/api/services/oauth-link-pkce.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "SingleMatchingLockOwner",
+      "RejectedBindingDoesNotSpend",
+      "AtMostOneSuccessfulRedemption",
+      "SuccessRequiresLiveConsume",
+      "ResultUsesIssuedLane"
+    ],
+    "status": "partial",
     "limitations": [
-      "OAuth state/PKCE and redirect binding, single-use enrollment claims, identity-link ownership and session/token issuance require protocol models beyond AuthStorePublication atomic storage. External provider cryptography and remote service semantics need explicit assumptions."
+      "OAuthAppLinkRedemption covers verifier, redirect, tenant and policy validation before consumption of an issued App Link sign-in code. The result is either the issued session or the issued MFA challenge. This scope relies on the atomic storage primitives covered by AuthStorePublication.",
+      "Generic OAuth issuance and callback state, account-link token consume and native cancellation, single-use agent enrollment claims, identity linking and downstream session and token lifecycle remain open. External provider cryptography and remote service behavior require separate assumptions."
     ]
   },
   {
