@@ -128,7 +128,15 @@ function fixtureServer(
     if (path.endsWith("/decision")) {
       if (server.decisionOutage) throw Error("Synthetic outage");
       const target = data.decision === "approve" ? "approved" : "rejected";
-      if (server.state !== target && server.state !== "pending")
+      const unclaimedApproval =
+        target === "rejected" &&
+        server.state === "approved" &&
+        !server.attemptId;
+      if (
+        server.state !== target &&
+        server.state !== "pending" &&
+        !unclaimedApproval
+      )
         throw Error("Proposal is no longer pending");
       server.state = target;
     }
@@ -669,6 +677,22 @@ describe("DeviceActionCoordinator", () => {
       expect(server.state).toBe("done");
       expect(effects).toBe(1);
     }
+  });
+
+  it("rejects a re-shown approval whose claim never arrived", async () => {
+    const { server, request } = fixtureServer(note);
+    const actions = coordinator(request, memoryJournal().journal, async () => ({
+      status: "succeeded",
+      summary: "Saved",
+    }));
+    await actions.pending(notesContext, signal());
+    server.claimOutage = true;
+    await actions.approve("proposal", notesContext, signal());
+    expect(server.state).toBe("approved");
+    const [card] = await actions.pending(notesContext, signal());
+    expect(card?.id).toBe("proposal");
+    await actions.reject("proposal", signal());
+    expect(server.state).toBe("rejected");
   });
 
   it("applies the product view admission policy", () => {

@@ -1543,11 +1543,12 @@ export class DeviceActionCoordinator<
       .filter((item) => item.pending)
       .map((item) => item.error);
     // The reason stays in `failures` for diagnostics; the owner sees a plain notice.
-    for (let i = 0; i < failures.length; i++)
-      items.push({
+    items.push(
+      ...failures.map(() => ({
         proposal: null,
         notice: "This action isn't available on this phone.",
-      });
+      })),
+    );
     return { items, failures };
   }
   /** Reviewable proposals plus owner-visible notices for pending ones that do not fit this screen. */
@@ -2267,7 +2268,11 @@ export class DeviceActionCoordinator<
   }
   async reject(proposalId: string, signal: AbortSignal): Promise<void> {
     const p = (await this.list(signal)).find((item) => item.id === proposalId);
-    if (!p || p.state !== "pending")
+    // A re-shown approval whose claim never arrived can still be closed.
+    if (
+      !p ||
+      !(p.state === "pending" || (p.state === "approved" && !p.attemptId))
+    )
       throw new Error("This proposal can no longer be rejected");
     await this.mutation(p, "decision", { decision: "reject" }, signal);
     this.proposals.delete(proposalId);
@@ -2372,7 +2377,11 @@ export class DeviceActionCoordinator<
     signal.throwIfAborted();
     return results;
   }
-  /** Each entry names the owner resolutions `reconcile` accepts for it now. */
+  /**
+   * Each entry names the owner resolutions it can take now. An SMS, dial or
+   * Clock handoff offers only what its saved evidence allows; other actions
+   * may still need exact saved receipts in `reconcile`.
+   */
   async history(signal: AbortSignal) {
     const proposals = await this.list(signal),
       local = await this.journal.list({ scope: this.scope });
