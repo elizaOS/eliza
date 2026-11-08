@@ -26,8 +26,9 @@
  * and pops, so `enqueue` and `drain` refuse it instead of degrading.
  *
  * Backed by the same shared `cache` client, so it follows the same
- * adapter selection (Upstash REST in cloud, native Redis or embedded
- * Wadis locally) and circuit-breaker behavior. Stripe deliveries do not use
+ * adapter selection and circuit-breaker behavior. A Worker with a CACHE_KV
+ * binding gets KV, which this queue refuses; elsewhere it is native Redis,
+ * Upstash REST, or embedded Wadis locally. Stripe deliveries do not use
  * this queue; they are an outbox on webhook_events (stripe-delivery-outbox).
  */
 
@@ -255,13 +256,15 @@ async function drainClaimed<T>(
       });
     }
   };
-  const parse = (raw: string): Envelope<T> | null => {
+  const parse = (raw: unknown): Envelope<T> | null => {
+    // A client that JSON-parses replies hands back the envelope as an object.
+    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
     try {
-      return JSON.parse(raw) as Envelope<T>;
+      return JSON.parse(text) as Envelope<T>;
     } catch (parseError) {
       logger.error(`[Queue] Dropping unparseable envelope from ${queueKey}`, {
         error: parseError instanceof Error ? parseError.message : String(parseError),
-        sample: truncateWellFormed(toWellFormedUnicode(raw), 200),
+        sample: truncateWellFormed(toWellFormedUnicode(String(text)), 200),
       });
       stats.failed++;
       return null;

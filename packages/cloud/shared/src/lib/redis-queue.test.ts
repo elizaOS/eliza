@@ -23,6 +23,9 @@ Object.assign(process.env, fixtureEnvironment);
 type QueueModule = typeof import("./redis-queue");
 type CacheModule = typeof import("./cache/client");
 
+type UpstashAdapterModule = typeof import("./cache/adapters/upstash-redis-adapter");
+type MemoryAdapterModule = typeof import("./cache/adapters/memory-cache-adapter");
+
 let queue: QueueModule;
 let cache: CacheModule["cache"];
 
@@ -188,4 +191,68 @@ test("settled deliveries leave the processing list empty", async () => {
   expect(await cache.listQueue(`${key}:processing`)).toEqual([]);
   expect(await queue.queueLength(key)).toBe(1);
   expect(await queue.queueLength(`${key}:dlq`)).toBe(1);
+});
+
+/**
+ * The Upstash REST client JSON-parses replies by default, so an envelope read
+ * back from a list arrives as an object. Before the adapter re-stringified it,
+ * parse() threw on the object outside its try and every later drain re-read
+ * the same entry from the processing list, so the queue stalled for good.
+ */
+test("a client that JSON-parses list replies does not wedge the queue", async () => {
+  const { UpstashRedisAdapter }: UpstashAdapterModule = await import(
+    "./cache/adapters/upstash-redis-adapter"
+  );
+  const { MemoryCacheAdapter }: MemoryAdapterModule = await import(
+    "./cache/adapters/memory-cache-adapter"
+  );
+  const store = new MemoryCacheAdapter();
+  const deserialize = (value: string | null): unknown => {
+    if (value === null) return null;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  };
+  // Upstash-shaped: list reads come back deserialized, everything else as stored.
+  const upstash = {
+    get: (key: string) => store.get(key),
+    set: (key: string, value: string, options?: { nx?: boolean; px?: number }) =>
+      store.set(key, value, options),
+    del: (...keys: string[]) => store.del(...keys),
+    pexpire: (key: string, ttlMs: number) => store.pexpire(key, ttlMs),
+    llen: (key: string) => store.llen(key),
+    lpush: (key: string, ...values: string[]) => store.lpush(key, ...values),
+    lrem: (key: string, count: number, value: string) => store.lrem(key, count, value),
+    rpop: async (key: string) => deserialize(await store.rpop(key)),
+    lmove: async (source: string, destination: string) =>
+      deserialize(await store.rpoplpush(source, destination)),
+    lrange: async (key: string, start: number, stop: number) =>
+      (await store.lrange(key, start, stop)).map(deserialize),
+  };
+  const adapter = new UpstashRedisAdapter(upstash as never);
+  const clientSpy = spyOn(
+    cache as unknown as { getRedisClient: () => Promise<unknown> },
+    "getRedisClient",
+  ).mockResolvedValue(adapter);
+  try {
+    const key = queueKey();
+    await queue.enqueue<Delivery>(key, { id: "evt_claimed" });
+    // A delivery an earlier drain claimed and never settled.
+    await cache.pushQueueHead(
+      `${key}:processing`,
+      JSON.stringify({ body: { id: "evt_abandoned" }, attempts: 0, enqueuedAt: Date.now() }),
+    );
+
+    const first = await drainOnce(key);
+    expect(first).toEqual([{ id: "evt_claimed", attempts: 0 }]);
+    expect(await cache.listQueue(`${key}:processing`)).toEqual([]);
+
+    const second = await drainOnce(key);
+    expect(second).toEqual([{ id: "evt_abandoned", attempts: 1 }]);
+    expect(await queue.queueLength(key)).toBe(0);
+  } finally {
+    clientSpy.mockRestore();
+  }
 });

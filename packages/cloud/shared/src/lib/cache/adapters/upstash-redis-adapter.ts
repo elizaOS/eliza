@@ -1,6 +1,10 @@
 /**
  * CacheRedisClient adapter over the Upstash REST Redis client, for environments
  * that reach Redis over HTTP rather than a raw socket.
+ *
+ * The Upstash client JSON-parses replies by default, so a list entry holding a
+ * JSON envelope comes back as an object. List reads re-stringify it, as
+ * SocketRedisAdapter does, so queue callers always get the stored text.
  */
 
 import type { Redis as UpstashRedis } from "@upstash/redis";
@@ -62,23 +66,26 @@ export class UpstashRedisAdapter implements CacheRedisClient {
     return this.client.lpush(key, ...values);
   }
 
-  rpop(key: string): Promise<string | null> {
-    return this.client.rpop<string>(key) as Promise<string | null>;
+  async rpop(key: string): Promise<string | null> {
+    const v = await this.client.rpop<unknown>(key);
+    return v === null ? null : typeof v === "string" ? v : JSON.stringify(v);
   }
 
   llen(key: string): Promise<number> {
     return this.client.llen(key);
   }
 
-  rpoplpush(source: string, destination: string): Promise<string | null> {
-    return this.client.lmove<string | null>(source, destination, "right", "left");
+  async rpoplpush(source: string, destination: string): Promise<string | null> {
+    const v = await this.client.lmove<unknown>(source, destination, "right", "left");
+    return v === null ? null : typeof v === "string" ? v : JSON.stringify(v);
   }
 
   lrem(key: string, count: number, value: string): Promise<number> {
     return this.client.lrem(key, count, value);
   }
 
-  lrange(key: string, start: number, stop: number): Promise<string[]> {
-    return this.client.lrange<string>(key, start, stop);
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    const values = await this.client.lrange<unknown>(key, start, stop);
+    return values.map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
   }
 }
