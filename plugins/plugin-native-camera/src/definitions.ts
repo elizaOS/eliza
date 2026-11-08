@@ -43,14 +43,29 @@ export interface CameraPreviewOptions {
 }
 
 export interface CameraPreviewResult {
+  /** Requested preview size. */
   width: number;
   height: number;
   deviceId: string;
+  /** Preview size the camera actually bound, upright. Android only. */
+  previewSize?: CameraResolution;
+  /**
+   * Photo size the camera actually bound, upright. Android picks the largest
+   * size the bound stream combination allows, which can be below the sensor
+   * maximum on LIMITED hardware while video capture is bound. Android only.
+   */
+  captureSize?: CameraResolution;
 }
 
 export interface PhotoCaptureOptions {
   quality?: number;
   format?: "jpeg" | "png" | "webp";
+  /**
+   * Output size. Omitted dimensions keep the captured size. Photos are
+   * captured at full resolution and returned as base64 over the bridge, so
+   * a full-size photo costs several megabytes of memory per call; set these
+   * to downscale when that matters.
+   */
   width?: number;
   height?: number;
   saveToGallery?: boolean;

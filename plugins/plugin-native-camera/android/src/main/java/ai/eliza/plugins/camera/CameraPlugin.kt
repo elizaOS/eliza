@@ -34,6 +34,7 @@ import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -280,10 +281,17 @@ class CameraPlugin : Plugin() {
                             it.setSurfaceProvider(previewView?.surfaceProvider)
                         }
 
+                    // Photos use the largest size the bound stream combination allows,
+                    // not the preview size. switchCamera rebinds this same use case.
+                    val captureSelector = ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                        .build()
+
                     // Build ImageCapture with flash mode from current settings.
                     imageCapture = ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                        .setResolutionSelector(resolutionSelector)
+                        .setResolutionSelector(captureSelector)
                         .setFlashMode(flashModeFromSetting(currentSettings["flash"] as? String ?: "off"))
                         .build()
 
@@ -309,6 +317,7 @@ class CameraPlugin : Plugin() {
                                 put("width", width)
                                 put("height", height)
                                 put("deviceId", if (direction == "front") "front" else "back")
+                                putBoundSizes(this)
                             })
                         }
                     }, { error -> failPreview(call, error) })
@@ -321,6 +330,19 @@ class CameraPlugin : Plugin() {
             // error-policy:J1 synchronous provider/setup failures settle the owning bridge call.
             failPreview(call, error)
         }
+    }
+
+    /** Report the sizes CameraX bound, upright, rather than the requested size. */
+    private fun putBoundSizes(result: JSObject) {
+        fun upright(info: ResolutionInfo?): JSObject? = info?.let {
+            val turned = it.rotationDegrees % 180 != 0
+            JSObject().apply {
+                put("width", if (turned) it.resolution.height else it.resolution.width)
+                put("height", if (turned) it.resolution.width else it.resolution.height)
+            }
+        }
+        upright(preview?.resolutionInfo)?.let { result.put("previewSize", it) }
+        upright(imageCapture?.resolutionInfo)?.let { result.put("captureSize", it) }
     }
 
     private fun failPreview(call: PluginCall, error: Exception) {
@@ -460,6 +482,7 @@ class CameraPlugin : Plugin() {
                         put("width", currentPreviewWidth)
                         put("height", currentPreviewHeight)
                         put("deviceId", direction)
+                        putBoundSizes(this)
                     })
                     finishCameraSwitch()
                 }, { error ->
