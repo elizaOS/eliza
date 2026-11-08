@@ -741,7 +741,9 @@ export class VoiceAssistantSession {
       closed: false,
       done: false,
       text: "",
-      ...(Number.isFinite(at) ? { startedAt: at } : {}),
+      ...(Number.isFinite(at)
+        ? { startedAt: Math.min(at, this.clock.now()) }
+        : {}),
       ...(response ? { tentative: response } : {}),
     };
     this.segments.push(segment);
