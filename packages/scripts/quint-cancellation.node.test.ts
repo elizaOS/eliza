@@ -66,6 +66,7 @@ async function runNestedCancellation(
     "check-quint.ts",
     "run-with-deadline.ts",
     "lib/test-output.ts",
+    "lib/quint-shards.ts",
   ]) {
     const content = readFileSync(path.join(scriptRoot, file), "utf8");
     write(`packages/scripts/${file}`, content);

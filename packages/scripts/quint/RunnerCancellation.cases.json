@@ -1,6 +1,7 @@
 {
   "sources": [
     "packages/scripts/check-quint.ts",
+    "packages/scripts/lib/quint-shards.ts",
     "packages/scripts/run-with-deadline.ts",
     "packages/scripts/check-quint.node.test.ts",
     "packages/scripts/quint-cancellation.node.test.ts"
