@@ -11,7 +11,8 @@
     "Two once-started callers, each selecting append, replacement or deletion. One exclusive lease with one token per caller; any number of modeled expirations before callers settle. One task and its listing index.",
     "The primary task mutation and lease-token comparison are one Redis command. Listing zadd/expire/zrem remain separate operations with possible failure and lag. Index repair, pagination completeness and tenant/index migration are outside this instance.",
     "Real implementation checks use a single loopback Redis server and explicit synchronous memory backend. Redis Cluster cross-slot support, failover, acknowledged-write durability, unknown transport outcomes, arbitrary concurrent clients, task semantic policy and downstream provider effects remain outside this proof.",
-    "Conformance executes eight named real-store scenarios. It is not a generated-trace refinement proof. Foreign read/update/delete refusal is tested but cross-tenant noninterference across all methods is not proved."
+    "Conformance executes eleven named real-store scenarios. It is not a generated-trace refinement proof. Foreign read/update/delete refusal is tested but cross-tenant noninterference across all methods is not proved.",
+    "Separate index instance covers one task ID, two organizations, attempted foreign replacement, and legal reuse after deletion with a stale original index. Listing rechecks each retained entry's organization before publication."
   ],
   "cases": [
     {
@@ -31,6 +32,25 @@
         }
       ],
       "maxSteps": 35,
+      "samples": 1000
+    },
+    {
+      "name": "stale-organization-index",
+      "main": "RedisTaskIndex",
+      "init": "initIndex",
+      "step": "indexStep",
+      "invariants": ["NoForeignPublication", "NoForeignOverwrite"],
+      "temporal": ["IndexAttemptSettles"],
+      "temporalChecks": [
+        {
+          "property": "IndexAttemptSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the separate listing-index attempt, which can succeed or fail. One global task ID can be reassigned to a second organization while its original index entry remains."
+          ]
+        }
+      ],
+      "maxSteps": 15,
       "samples": 1000
     }
   ]

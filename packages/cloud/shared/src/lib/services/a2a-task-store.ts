@@ -61,6 +61,8 @@ const LOCK_RETRY_MAX_MS = 200;
 
 const SET_IF_LOCKED = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+local current = redis.call('GET', KEYS[2])
+if current and cjson.decode(current).organizationId ~= ARGV[4] then return 0 end
 redis.call('SETEX', KEYS[2], ARGV[2], ARGV[3])
 return 1
 `;
@@ -156,20 +158,28 @@ class A2ATaskStoreService {
     const serialized = JSON.stringify(entry);
     let written: boolean;
     if (client instanceof MockSocketRedis) {
-      written = await client.setexIfLocked(lockKey, token, key, TASK_TTL_SECONDS, serialized);
+      written = await client.setexIfLocked(
+        lockKey,
+        token,
+        key,
+        TASK_TTL_SECONDS,
+        serialized,
+        (current) =>
+          current === null || JSON.parse(current).organizationId === entry.organizationId,
+      );
     } else if (supportsRedisEval(client)) {
       written =
         (await client.eval(
           SET_IF_LOCKED,
           [lockKey, key],
-          [token, TASK_TTL_SECONDS, serialized],
+          [token, TASK_TTL_SECONDS, serialized, entry.organizationId],
         )) === 1;
     } else {
       throw new ElizaError("[A2A TaskStore] Atomic Redis mutations are unavailable", {
         code: "A2A_TASK_STORE_ATOMIC_UNAVAILABLE",
       });
     }
-    if (!written) throw this.lostLock(taskId);
+    if (!written) throw this.mutationConflict(taskId);
 
     // Listing is a separate index. Failure is returned to the caller
     // even when the primary task mutation has already committed.
@@ -179,11 +189,14 @@ class A2ATaskStoreService {
     logger.debug("[A2A TaskStore] Task stored in Redis", { taskId });
   }
 
-  private lostLock(taskId: string): ElizaError {
-    return new ElizaError(`[A2A TaskStore] Task lease expired before mutation for ${taskId}`, {
-      code: "A2A_TASK_STORE_LOCK_LOST",
-      context: { taskId },
-    });
+  private mutationConflict(taskId: string): ElizaError {
+    return new ElizaError(
+      `[A2A TaskStore] Task mutation lost its lease or organization authority for ${taskId}`,
+      {
+        code: "A2A_TASK_STORE_WRITE_CONFLICT",
+        context: { taskId },
+      },
+    );
   }
 
   private async deleteWithLock(taskId: string, token: string, key: string): Promise<boolean> {
@@ -274,7 +287,7 @@ class A2ATaskStoreService {
       const existing = await this.get(taskId, organizationId);
       if (!existing) return false;
       if (!(await this.deleteWithLock(taskId, token, `${TASK_KEY_PREFIX}${taskId}`))) {
-        throw this.lostLock(taskId);
+        throw this.mutationConflict(taskId);
       }
       const client = getRedisClient();
       await client.zrem(`${TASK_ORG_INDEX_PREFIX}${organizationId}`, taskId);
@@ -309,7 +322,7 @@ class A2ATaskStoreService {
     for (const value of values) {
       if (value) {
         const entry: TaskStoreEntry = typeof value === "string" ? JSON.parse(value) : value;
-        entries.push(entry);
+        if (entry.organizationId === organizationId) entries.push(entry);
       }
     }
 

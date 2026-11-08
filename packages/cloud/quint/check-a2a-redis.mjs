@@ -36,6 +36,9 @@ const expected = [
   "foreign update and delete cannot change the task",
   "index failure reports the uncertain write and preserves full task data",
   "explicit memory backend applies the same atomic token comparisons",
+  "delete index failure reports uncertainty and retains a stale member",
+  "an old organization index cannot disclose a replacement owner",
+  "a supplied task ID cannot replace another organization's live task",
 ].sort();
 const report = path.join(directory, "junit.xml");
 const child = spawnSync(

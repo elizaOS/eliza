@@ -29,6 +29,7 @@ interface IoRedisLike {
     key: string,
     seconds: number,
     value: string,
+    condition?: (current: string | null) => boolean,
   ): Promise<boolean>;
   delIfLocked?(lockKey: string, token: string, key: string): Promise<boolean>;
   getdel(key: string): Promise<string | null>;
@@ -142,9 +143,12 @@ class InMemoryRedis implements IoRedisLike {
     key: string,
     seconds: number,
     value: string,
+    condition?: (current: string | null) => boolean,
   ): Promise<boolean> {
     const lock = this.read(lockKey);
     if (lock?.kind !== "string" || lock.value !== token) return false;
+    const current = this.read(key);
+    if (condition && !condition(current?.kind === "string" ? current.value : null)) return false;
     GLOBAL_STORE.set(key, { kind: "string", value, expireAt: nowMs() + seconds * 1000 });
     return true;
   }
@@ -445,11 +449,12 @@ export class MockSocketRedis {
     key: string,
     seconds: number,
     value: unknown,
+    condition?: (current: string | null) => boolean,
   ): Promise<boolean> {
     if (!this.client.setexIfLocked) {
       throw new TypeError("The supplied mock client does not support atomic lock mutations");
     }
-    return this.client.setexIfLocked(lockKey, token, key, seconds, serializeArg(value));
+    return this.client.setexIfLocked(lockKey, token, key, seconds, serializeArg(value), condition);
   }
 
   async delIfLocked(lockKey: string, token: string, key: string): Promise<boolean> {

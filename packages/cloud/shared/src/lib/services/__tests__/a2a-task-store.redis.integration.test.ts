@@ -14,6 +14,7 @@ const original = {
   del: SocketRedis.prototype.del,
   eval: SocketRedis.prototype.eval,
   zadd: SocketRedis.prototype.zadd,
+  zrem: SocketRedis.prototype.zrem,
 };
 let store: typeof import("../a2a-task-store")["a2aTaskStoreService"];
 let control: SocketRedis;
@@ -86,7 +87,7 @@ function pauseWrite(id: string) {
 async function expire(id: string) {
   const key = `${prefix}:a2a:task-lock:${id}`;
   expect(await control.pexpire(key, 0)).toBe(1);
-  expect(await control.get(key)).toBeNull();
+  expect(await control.get<string>(key)).toBeNull();
 }
 
 redisSuite("A2A real Redis lease ownership", () => {
@@ -115,6 +116,7 @@ redisSuite("A2A real Redis lease ownership", () => {
     SocketRedis.prototype.del = original.del;
     SocketRedis.prototype.eval = original.eval;
     SocketRedis.prototype.zadd = original.zadd;
+    SocketRedis.prototype.zrem = original.zrem;
     await control.del(...keys);
     keys.clear();
   });
@@ -136,7 +138,7 @@ redisSuite("A2A real Redis lease ownership", () => {
     await expire(t.id);
     await store.update(t.id, t.organizationId, append("new"));
     gate.release();
-    expect((await old).code).toBe("A2A_TASK_STORE_LOCK_LOST");
+    expect((await old).code).toBe("A2A_TASK_STORE_WRITE_CONFLICT");
     expect((await store.get(t.id, t.organizationId))?.task.history).toEqual(
       append("new")(t.entry).task.history,
     );
@@ -150,7 +152,7 @@ redisSuite("A2A real Redis lease ownership", () => {
     await expire(t.id);
     await store.set(t.id, append("new")(t.entry));
     gate.release();
-    expect((await old).code).toBe("A2A_TASK_STORE_LOCK_LOST");
+    expect((await old).code).toBe("A2A_TASK_STORE_WRITE_CONFLICT");
     expect((await store.get(t.id, t.organizationId))?.task.history).toEqual(
       append("new")(t.entry).task.history,
     );
@@ -183,7 +185,7 @@ redisSuite("A2A real Redis lease ownership", () => {
     expect(await control.set(lock, "successor", { nx: true, px: 5000 })).toBe("OK");
     gate.release();
     await writing;
-    expect(await control.get(lock)).toBe("successor");
+    expect(await control.get<string>(lock)).toBe("successor");
   }, 15000);
 
   test("an expired delete cannot remove a recreated task", async () => {
@@ -211,7 +213,7 @@ redisSuite("A2A real Redis lease ownership", () => {
     await expire(t.id);
     await store.set(t.id, append("replacement")(t.entry));
     gate.release();
-    expect((await deletion).code).toBe("A2A_TASK_STORE_LOCK_LOST");
+    expect((await deletion).code).toBe("A2A_TASK_STORE_WRITE_CONFLICT");
     expect((await store.get(t.id, t.organizationId))?.task.history).toEqual(
       append("replacement")(t.entry).task.history,
     );
@@ -262,6 +264,48 @@ redisSuite("A2A real Redis lease ownership", () => {
     );
   });
 
+  test("delete index failure reports uncertainty and retains a stale member", async () => {
+    const t = task();
+    await store.set(t.id, t.entry);
+    SocketRedis.prototype.zrem = async () => {
+      throw new Error("injected removal failure");
+    };
+    await expect(store.delete(t.id, t.organizationId)).rejects.toThrow("injected removal failure");
+    expect(await store.get(t.id, t.organizationId)).toBeNull();
+    expect(await control.zrange(`a2a:org:${t.organizationId}`, 0, -1)).toEqual([t.id]);
+  });
+
+  test("an old organization index cannot disclose a replacement owner", async () => {
+    const t = task();
+    const replacement = task();
+    await store.set(t.id, t.entry);
+    SocketRedis.prototype.zrem = async () => {
+      throw new Error("retained legacy index");
+    };
+    await expect(store.delete(t.id, t.organizationId)).rejects.toThrow("retained legacy index");
+    SocketRedis.prototype.zrem = original.zrem;
+    await store.set(t.id, {
+      ...append("foreign-only")(t.entry),
+      organizationId: replacement.organizationId,
+    });
+    expect(await store.listByOrganization(t.organizationId)).toEqual([]);
+    expect((await store.listByOrganization(replacement.organizationId))[0]?.organizationId).toBe(
+      replacement.organizationId,
+    );
+  });
+
+  test("a supplied task ID cannot replace another organization's live task", async () => {
+    const t = task();
+    const other = task();
+    await store.set(t.id, t.entry);
+    const outcome = await store
+      .set(t.id, { ...t.entry, organizationId: other.organizationId })
+      .catch((error) => error);
+    expect(outcome?.code).toBe("A2A_TASK_STORE_WRITE_CONFLICT");
+    expect(await store.get(t.id, t.organizationId)).toEqual(t.entry);
+    expect(await store.get(t.id, other.organizationId)).toBeNull();
+  });
+
   test("explicit memory backend applies the same atomic token comparisons", async () => {
     const memory = new MockSocketRedis();
     const id = randomUUID();
@@ -271,9 +315,20 @@ redisSuite("A2A real Redis lease ownership", () => {
     await memory.set(lock, "new", { nx: true, px: 5000 });
     expect(await memory.setexIfLocked(lock, "old", id, 60, "stale")).toBe(false);
     expect(await memory.delIfLocked(lock, "old", lock)).toBe(false);
-    expect(await memory.get(lock)).toBe("new");
+    expect(await memory.get<string>(lock)).toBe("new");
     expect(await memory.setexIfLocked(lock, "new", id, 60, "current")).toBe(true);
-    expect(await memory.get(id)).toBe("current");
+    expect(await memory.get<string>(id)).toBe("current");
+    expect(
+      await memory.setexIfLocked(
+        lock,
+        "new",
+        id,
+        60,
+        "foreign",
+        (current) => current === "different-owner",
+      ),
+    ).toBe(false);
+    expect(await memory.get<string>(id)).toBe("current");
     expect(await memory.delIfLocked(lock, "new", id)).toBe(true);
     expect(await memory.delIfLocked(lock, "new", lock)).toBe(true);
   });
