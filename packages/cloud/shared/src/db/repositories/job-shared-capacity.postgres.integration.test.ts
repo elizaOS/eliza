@@ -339,6 +339,54 @@ async function claim(type: string, organizationId: string, limit = 5) {
     ).toEqual([{ execution_generation: persisted.execution_generation, owner_id: owner }]);
   });
 
+  test("queue eligibility keeps transaction time after an advisory lock wait", async () => {
+    const organizationId = randomUUID();
+    const job = await seed(sharedTypes[0], organizationId);
+    await setup.query(
+      "UPDATE jobs SET scheduled_for=clock_timestamp()+interval '1 hour' WHERE id=$1",
+      [job.id],
+    );
+    await locker.query("BEGIN");
+    await locker.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended('eliza:image-change-capacity:v1',0))",
+    );
+    const pending = claim(sharedTypes[0], organizationId);
+    let waiting = false;
+    let dueAfterStart = false;
+    try {
+      const deadline = Date.now() + 8_000;
+      while (!waiting && Date.now() < deadline) {
+        const result = await setup.query(
+          "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND wait_event='advisory') AS waiting",
+          [applicationName],
+        );
+        waiting = result.rows[0].waiting;
+        if (!waiting) await Bun.sleep(10);
+      }
+      // The transaction is already waiting. Move the fixture deadline just
+      // beyond its start, then cross it on the real database clock.
+      await setup.query(
+        "UPDATE jobs SET scheduled_for=clock_timestamp()+interval '100 milliseconds' WHERE id=$1",
+        [job.id],
+      );
+      await setup.query("SELECT pg_sleep(0.2)");
+      const relation = await setup.query(
+        `SELECT bool_and(j.scheduled_for > a.xact_start AND j.scheduled_for < clock_timestamp()) AS crossed
+         FROM jobs j CROSS JOIN pg_stat_activity a
+         WHERE j.id=$1 AND a.application_name=$2 AND a.wait_event='advisory'`,
+        [job.id, applicationName],
+      );
+      dueAfterStart = relation.rows[0].crossed === true;
+    } finally {
+      await locker.query("ROLLBACK");
+    }
+    const oldTransaction = await pending;
+    expect(waiting).toBe(true);
+    expect(dueAfterStart).toBe(true);
+    expect(oldTransaction).toEqual([]);
+    expect((await claim(sharedTypes[0], organizationId)).map((row) => row.id)).toEqual([job.id]);
+  }, 30_000);
+
   test("invalid shared capacity inputs return empty without changing the queue", async () => {
     const organizationId = randomUUID();
     const job = await seed(sharedTypes[0], organizationId);
