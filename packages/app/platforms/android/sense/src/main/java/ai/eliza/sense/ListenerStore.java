@@ -35,7 +35,7 @@ final class ListenerStore {
   try { saved = edit.commit(); } catch (RuntimeException failure) { saved = false; }
   if (!saved) {
    storageFailed = true; processConsent = false; Listener.epoch.invalidate();
-   context.stopService(new android.content.Intent(context, ListeningService.class));
+   context.stopService(new android.content.Intent().setComponent(SenseConfig.component(context, "ListeningService")));
   }
   return saved;
  }
@@ -91,7 +91,7 @@ final class ListenerStore {
   boolean saved;
   try{saved=prefs.edit().clear().commit();}catch(RuntimeException failure){saved=false;}
   storageFailed=!saved;
-  context.stopService(new android.content.Intent(context,ListeningService.class));
+  context.stopService(new android.content.Intent().setComponent(SenseConfig.component(context,"ListeningService")));
   return saved;
   }
  }
