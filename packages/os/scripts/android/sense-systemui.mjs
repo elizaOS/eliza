@@ -118,11 +118,14 @@ export function prepareListenerSystemui(source, output, bundle = "chip") {
       `${JSON.stringify(after, null, 2)}\n`,
     );
     fs.mkdirSync(output); // Exclusive destination; existing source cannot be overwritten.
-    fs.cpSync(temporary, output, {
-      recursive: true,
-      force: false,
-      errorOnExist: true,
-    });
+    // Copy the entries into the new directory. Node 26 rejects copying a directory onto an
+    // existing one with errorOnExist, even the empty one created above for exclusivity.
+    for (const entry of fs.readdirSync(temporary))
+      fs.cpSync(path.join(temporary, entry), path.join(output, entry), {
+        recursive: true,
+        force: false,
+        errorOnExist: true,
+      });
     return after;
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
