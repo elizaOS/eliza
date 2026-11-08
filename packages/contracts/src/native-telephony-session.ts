@@ -150,15 +150,16 @@ export function createSmsSession(
     rows: (SmsMessage | IncompleteSmsMessage)[],
     status: TelephonyStatus,
   ) {
+    // An incomplete row's content was never shown, so it never moves the read mark.
+    const shown = rows.filter(
+      (row): row is SmsMessage => !isIncompleteSmsRow(row),
+    );
     if (
       !status.roles?.sms?.held ||
-      !rows.some(
-        (row) =>
-          !isIncompleteSmsRow(row) && row.direction === "incoming" && !row.read,
-      )
+      !shown.some((row) => row.direction === "incoming" && !row.read)
     )
       return;
-    const through = Math.max(...rows.map((row) => row.date));
+    const through = Math.max(...shown.map((row) => row.date));
     if (Number.isSafeInteger(through) && through > 0)
       void Promise.resolve()
         .then(() => client.markThreadRead(thread, through))

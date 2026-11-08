@@ -76,9 +76,12 @@ public final class SmsProviderReaderTest {
 
  @Before public void providers() {
   tables.clear();
-  ProviderInfo info = new ProviderInfo();
-  info.authority = "sms;mms;mms-sms";
-  Robolectric.buildContentProvider(Provider.class).create(info);
+  // One registration per authority: the rows are shared through the static tables.
+  for (String authority : new String[] { "sms", "mms", "mms-sms" }) {
+   ProviderInfo info = new ProviderInfo();
+   info.authority = authority;
+   Robolectric.buildContentProvider(Provider.class).create(info);
+  }
  }
  static void sms(long id, long thread, long date, String body) {
   add("sms", row("_id", id, "thread_id", thread, "address", "+15555550100", "body", body, "date", date, "type", SmsRecords.INBOX, "status", -1, "read", 1, "sub_id", 1));
