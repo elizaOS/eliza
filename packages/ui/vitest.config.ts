@@ -280,6 +280,7 @@ export default defineConfig({
       "src/utils/value-formatting.test.ts",
       "src/components/permissions/permission-walkthrough.test.ts",
       "src/components/permissions/use-permission-priming.test.tsx",
+      "src/components/pages/BrowserWorkspaceView.security.test.tsx",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 900_000,
