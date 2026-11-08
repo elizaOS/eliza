@@ -114,7 +114,7 @@ public abstract class DataResetRecoveryActivity extends Activity {
                 if (telecom != null) system = telecom.getSystemDialerPackage();
             }
             List<String> packages = new ArrayList<>();
-            for (ResolveInfo info : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_DIAL), 0)) {
+            for (ResolveInfo info : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_DIAL), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)) {
                 if (info.activityInfo != null && info.activityInfo.exported) packages.add(info.activityInfo.packageName);
             }
             int choice = DataReset.recoveryDialer(getPackageName(), system, packages);

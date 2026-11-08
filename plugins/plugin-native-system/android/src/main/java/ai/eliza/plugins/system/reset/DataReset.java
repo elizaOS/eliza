@@ -341,12 +341,16 @@ public final class DataReset {
 
     /**
      * Replaces the open attempt's field with {@code outcome}, or drops it when {@code outcome} is
-     * null. Keeps whatever count another process wrote meanwhile, so the count never goes back.
+     * null and the record is still open. Keeps whatever count another process wrote meanwhile, so
+     * the count never goes back.
      */
     private void close(Context context, long[] opened, Outcome outcome) {
         try {
             locked(context, () -> {
                 if (!pending(context)) return;
+                // Another process may have closed it with its outcome since this start read OPEN.
+                String[] parts = failureRecord(context);
+                if (outcome == null && (parts == null || parts.length != 3 || !OPEN.equals(parts[2]))) return;
                 long[] state = failureState(context);
                 if (state[1] < 0) {
                     if (opened == null) return;
