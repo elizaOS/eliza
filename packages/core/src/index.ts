@@ -267,9 +267,6 @@ export * from "./runtime/trajectory-recorder";
 export { withSemanticStageFanOut } from "./runtime/trajectory-semantic-stage-sink.ts";
 export * from "./runtime/turn-controller";
 export {
-	type CallModelWithValidationOptions,
-	type CallModelWithValidationResult,
-	callModelWithValidation,
 	DEFAULT_REMOTE_REROLL_BUDGET,
 	getProviderForModelType,
 	type ParseAndValidateResult,
@@ -447,7 +444,6 @@ export * from "./services/agent-event-bridge";
 export * from "./services/approval";
 export * from "./services/channel-topics";
 export { EmbeddingGenerationService } from "./services/embedding.ts";
-export * from "./services/hook";
 export * from "./services/notification";
 export * from "./services/pairing";
 export { PiiScrubService } from "./services/pii-scrub.ts";

@@ -189,7 +189,8 @@ export async function dispatchViewActionHandoff(
  * `dispatchViewActionHandoff` would throw `VIEW_HANDOFF_CURRENT_VIEW_HTTP_FAILED`
  * on the missing endpoint and the navigation would never fire. The shared
  * runtime already resolved the target deterministically and stamped it into the
- * summary (`values.viewId` plus optional path/subview), so the client trusts it
+ * summary (`values.viewId` plus optional path/subview) with the agent's
+ * `resolveExplicitRegisteredViewRequest`, so the client trusts it
  * and dispatches the navigate event straight through. Registry-owned views are
  * resolved by id; host-owned views carry their canonical path so web and native
  * shells land on the same destination without a server call.

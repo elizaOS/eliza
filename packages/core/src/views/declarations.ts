@@ -1,4 +1,4 @@
-import type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
+import type { ViewDeclaration } from "../types/plugin.js";
 
 /** View declaration types carried by plugins; host presentation policies live in shared. */
 
@@ -128,9 +128,7 @@ export function dedupeModalities(
 	return MODALITY_ORDER.filter((m) => seen.has(m));
 }
 
-/** Collapses host view declarations while preserving their runtime interaction handlers. */
-
-export type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
+export type { ViewDeclaration } from "../types/plugin.js";
 
 /**
  * The surfaces a view declaration renders on: the explicit `modalities` list
@@ -143,33 +141,4 @@ export function getViewModalities(
 		return dedupeModalities(view.modalities);
 	}
 	return [view.viewType ?? "gui"];
-}
-
-/**
- * Collapse view declarations to one entry per `id`, unioning the surfaces each
- * declaration supports. The "gui" declaration (clean label, no surface suffix)
- * is preferred as the canonical base. This is the single source the view
- * catalog and modality hosts use so a view appears once with modality badges
- * instead of one duplicate row per future surface variant.
- */
-export function collapseViewDeclarations(
-	views: readonly ViewDeclaration[],
-): CollapsedView[] {
-	const order: string[] = [];
-	const byId = new Map<string, CollapsedView>();
-	for (const view of views) {
-		const mods = getViewModalities(view);
-		const existing = byId.get(view.id);
-		if (!existing) {
-			order.push(view.id);
-			byId.set(view.id, { ...view, modalities: mods });
-			continue;
-		}
-		const merged = dedupeModalities([...existing.modalities, ...mods]);
-		const isGui = (view.viewType ?? "gui") === "gui";
-		const baseWasGui = (existing.viewType ?? "gui") === "gui";
-		const base = isGui && !baseWasGui ? view : existing;
-		byId.set(view.id, { ...base, modalities: merged });
-	}
-	return order.map((id) => byId.get(id) as CollapsedView);
 }

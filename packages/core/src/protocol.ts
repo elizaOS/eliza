@@ -322,7 +322,6 @@ export {
 } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing-integration";
 export * from "./services/post-delivery-task-tracker";
-export * from "./services/runtime-capability-service";
 export * from "./services/trajectory-export.ts";
 export * from "./services/trajectory-json.ts";
 export {
@@ -417,7 +416,6 @@ export * from "./types/effects.js";
 export * from "./types/environment.js";
 export * from "./types/evaluator.js";
 export * from "./types/events.js";
-export * from "./types/hook.js";
 export * from "./types/identity.js";
 export * from "./types/interactions.js";
 export * from "./types/long-term-memory.ts";
@@ -585,7 +583,6 @@ export * from "./utils/union-find.ts";
 export { uuidFromString, validateUuid } from "./utils/uuid.js";
 export { createCompletedActionNavigationState } from "./views/completed-action-navigation.ts";
 export {
-	collapseViewDeclarations,
 	dedupeModalities,
 	type EnabledViewKinds,
 	getViewModalities,
@@ -601,7 +598,6 @@ export {
 	type ViewType,
 } from "./views/declarations.js";
 export * from "./views/host-external-contract.js";
-export * from "./views/shared-nav-targets.js";
 export {
 	IMMERSIVE_WALLPAPER_SURFACE,
 	resolveSurfaceBackgroundPolicy,
@@ -614,6 +610,5 @@ export {
 	findViewActionHandoff,
 	type ViewActionHandoff,
 } from "./views/view-action-handoff.ts";
-export * from "./views/view-command-matcher.js";
 export * from "./views/view-interact-protocol.js";
 export * from "./voice-cancellation-token.js";

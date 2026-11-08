@@ -1,12 +1,10 @@
 /**
- * Generic plugin data-store contract: a small adapter-agnostic CRUD + schema-
- * registration interface so plugins can persist custom tables (goals, todos, …)
- * without casting `runtime.db` to Drizzle types. Works across SQL and in-memory
- * adapters; deliberately not a full ORM (no joins/subqueries).
+ * Experimental, unimplemented plugin data-store contract: a small
+ * adapter-agnostic CRUD + schema-registration interface for plugin-owned tables.
+ * No database adapter or runtime implements `getPluginStore` yet, so plugins
+ * cannot rely on it; it is not a full ORM (no joins/subqueries).
  */
 import type { UUID } from "./primitives";
-
-/** Adapter-neutral plugin schema registration and CRUD. Plugins depend on this contract rather than concrete SQL adapters. */
 
 // Schema Definition Types
 
@@ -125,13 +123,8 @@ export interface PluginQueryOptions {
  * Generic CRUD interface for plugin data access
  *
  * WHY generic: Each plugin defines its own types. The store operates on
- * Record<string, unknown> and lets plugins cast to their types.
- *
- * USAGE:
- * ```typescript
- * const store = runtime.getPluginStore('goals');
- * const goals = await store.query<Goal>('goals', { agentId: runtime.agentId });
- * ```
+ * Record<string, unknown> and lets plugins cast to their types. Unimplemented:
+ * no adapter returns one yet.
  */
 export interface IPluginStore {
 	/**

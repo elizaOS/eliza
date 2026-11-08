@@ -1,14 +1,8 @@
-/** Parses and schema-validates model output, with up to two repair retries. Explicit validation settings and provider locality control admission; VALIDATION_LEVEL caps the retry budget. */
+/** Schema-validation helpers for JSON model output: a single parse-and-validate pass, the failure error type, and the VALIDATION_LEVEL reroll ceiling. */
 
 import { type JsonSchema, validateSchema } from "../actions/validate-tool-args";
-import type {
-	GenerateTextParams,
-	ModelHandler,
-	ModelTypeName,
-	TextGenerationModelType,
-} from "../types/model";
+import type { ModelHandler, ModelTypeName } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
-import { isLocalProvider } from "./action-model-routing";
 import { parseJsonObject } from "./json-output";
 
 /**
@@ -19,8 +13,6 @@ export const DEFAULT_REMOTE_REROLL_BUDGET = 2;
 
 /**
  * The single-attempt outcome shape returned by {@link parseAndValidate}.
- * Surfaced for callers that want to wire the parse + validate pass without
- * the retry loop (e.g. unit tests, single-shot diagnostics).
  */
 export interface ParseAndValidateResult {
 	valid: boolean;
@@ -73,10 +65,10 @@ export function parseAndValidate(
 }
 
 /**
- * Thrown by {@link callModelWithValidation} after the reroll budget is
- * exhausted without producing a schema-valid response. Carries the last
- * model output (raw + parsed) and the schema-path of the first failed
- * argument so the caller can log a useful diagnosis.
+ * Thrown by callers after their reroll budget is exhausted without producing
+ * a schema-valid response. Carries the last model output (raw + parsed) and
+ * the schema-path of the first failed argument so the caller can log a useful
+ * diagnosis.
  */
 export class SchemaValidationFailedError extends Error {
 	/** Last raw model response received before giving up. */
@@ -120,10 +112,6 @@ export class SchemaValidationFailedError extends Error {
  * Returns `undefined` when:
  * - no handler is registered for the type, or
  * - the runtime is a mock without a `models` map.
- *
- * Used by {@link callModelWithValidation} to detect local providers (which
- * already guarantee a valid response via grammar enforcement and so skip the
- * validation reroll entirely).
  */
 export function getProviderForModelType(
 	runtime: IAgentRuntime,
@@ -137,27 +125,6 @@ export function getProviderForModelType(
 	// sorted on register, first wins.
 	const first = entries[0];
 	return first?.provider;
-}
-
-/**
- * Resolve whether this call should validate-before-return.
- *
- * Priority (later wins):
- * 1. Default: true (validate on the remote path).
- * 2. If the resolved provider is local, flip to false (grammar already
- * enforces validity).
- * 3. Explicit `validateBeforeReturn` from the caller overrides everything.
- * Local callers passing `false` is the canonical way to opt out.
- */
-function shouldValidate(
-	runtime: IAgentRuntime,
-	modelType: ModelTypeName | string,
-	explicit: boolean | undefined,
-): boolean {
-	if (explicit !== undefined) return explicit;
-	const provider = getProviderForModelType(runtime, modelType);
-	if (provider && isLocalProvider(provider)) return false;
-	return true;
 }
 
 /**
@@ -196,148 +163,10 @@ export function rerollBudgetCeilingFromSetting(
 }
 
 /**
- * Options for {@link callModelWithValidation}. The wrapper is text-generation
- * focused — it expects a string response from `useModel` and parses it as
- * JSON — so the parameter shape mirrors text-model calls.
- */
-export interface CallModelWithValidationOptions {
-	/** Model type to dispatch to — passed straight through to `useModel`. */
-	modelType: TextGenerationModelType | ModelTypeName | string;
-	/** Model params — passed straight through to `useModel`. */
-	params: GenerateTextParams;
-	/** Optional provider hint — passed straight through to `useModel`. */
-	provider?: string;
-	/**
-	 * JSON Schema the parsed response must satisfy when `validateBeforeReturn`
-	 * is true. The same shape produced by `actionToJsonSchema` /
-	 * `normalizeActionJsonSchema`.
-	 */
-	schema: JsonSchema;
-	/**
-	 * Whether to validate the parsed response against {@link schema} and
-	 * reroll on failure. Default: auto-detect (true for remote providers,
-	 * false for local). Local callers should pass `false` explicitly.
-	 */
-	validateBeforeReturn?: boolean;
-	/**
-	 * Maximum number of rerolls. Default {@link DEFAULT_REMOTE_REROLL_BUDGET}
-	 * (= 2 rerolls, 3 total attempts). Capped by `VALIDATION_LEVEL` when the
-	 * user setting yields a stricter ceiling — the EFFECTIVE budget is
-	 * `min(maxRerolls ?? default, VALIDATION_LEVEL cap)`.
-	 */
-	maxRerolls?: number;
-}
-
-export interface CallModelWithValidationResult {
-	/** The raw model response that passed validation. */
-	rawResponse: string;
-	/** The parsed-and-validated response object. */
-	parsed: Record<string, unknown>;
-	/** Number of model calls actually issued (1 = first-shot success). */
-	attempts: number;
-}
-
-/**
- * Call `useModel` with schema-validation-aware retry semantics.
- *
- * See module docstring for the overall contract. The short version:
- *
- * - Remote provider (default): parse + validate. On failure, reroll up to
- * `maxRerolls` times (default 2). After exhausting the budget, throws
- * {@link SchemaValidationFailedError}.
- *
- * - Local provider: skip validation + reroll entirely (grammar at the
- * sampler already guarantees a valid response).
- *
- * - Caller can force either behaviour via `validateBeforeReturn`.
- *
- * - `VALIDATION_LEVEL` from runtime settings caps the reroll budget.
- *
- * Surrounding flow (planner-loop) treats no-actions as a terminal turn, so a
- * thrown error here ends the turn cleanly — see the catch-site in
- * planner-loop for the conversion to a recorded failure.
- */
-export async function callModelWithValidation(
-	runtime: IAgentRuntime,
-	options: CallModelWithValidationOptions,
-): Promise<CallModelWithValidationResult> {
-	const validate = shouldValidate(
-		runtime,
-		options.modelType,
-		options.validateBeforeReturn,
-	);
-	const requestedBudget = options.maxRerolls ?? DEFAULT_REMOTE_REROLL_BUDGET;
-	const ceiling = rerollBudgetCeilingFromSetting(runtime);
-	const effectiveBudget =
-		ceiling !== undefined
-			? Math.min(requestedBudget, ceiling)
-			: requestedBudget;
-	const maxAttempts = effectiveBudget + 1;
-
-	let lastRaw = "";
-	let lastParsed: Record<string, unknown> | null = null;
-	let lastErrors: string[] = [];
-	let lastSchemaPath: string | undefined;
-	let attempts = 0;
-
-	while (attempts < maxAttempts) {
-		attempts++;
-		// Cast through unknown: the runtime's overloaded `useModel` signature
-		// requires a concrete TextGenerationModelType to land on the
-		// `Promise<string>` branch. Callers using the wrapper for text-JSON
-		// schemas can pass any model-type literal that resolves to text, but
-		// the type system can't see that across the generic boundary.
-		const result = (await (
-			runtime.useModel as (
-				modelType: string,
-				params: GenerateTextParams,
-				provider?: string,
-			) => Promise<unknown>
-		)(String(options.modelType), options.params, options.provider)) as unknown;
-		lastRaw = typeof result === "string" ? result : String(result ?? "");
-
-		// Local / opted-out path: parse best-effort but don't reroll.
-		// We still try to surface a parsed object to the caller for symmetry,
-		// but a parse failure here is the caller's problem to handle, not
-		// ours.
-		if (!validate) {
-			const parsed = parseJsonObject<Record<string, unknown>>(lastRaw);
-			return {
-				rawResponse: lastRaw,
-				parsed: parsed ?? {},
-				attempts,
-			};
-		}
-
-		const validation = parseAndValidate(lastRaw, options.schema);
-		if (validation.valid && validation.parsed) {
-			return {
-				rawResponse: lastRaw,
-				parsed: validation.parsed,
-				attempts,
-			};
-		}
-
-		lastParsed = validation.parsed;
-		lastErrors = validation.errors;
-		lastSchemaPath = validation.failedSchemaPath;
-	}
-
-	throw new SchemaValidationFailedError({
-		lastRawResponse: lastRaw,
-		lastParsedResponse: lastParsed,
-		errors: lastErrors,
-		schemaPath: lastSchemaPath,
-		attempts,
-		maxAttempts,
-	});
-}
-
-/**
  * Extract the first `Argument '<path>'...` path token from an error string
  * produced by {@link validateSchema}. Best-effort: returns `undefined` when
  * the prefix is absent (e.g. for the bare "Missing required argument 'x'"
- * shape). Used solely to populate {@link SchemaValidationFailedError.schemaPath}.
+ * shape). Used to populate {@link ParseAndValidateResult.failedSchemaPath}.
  */
 function extractFirstPath(error: string | undefined): string | undefined {
 	if (!error) return undefined;

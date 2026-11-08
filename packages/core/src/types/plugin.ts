@@ -430,12 +430,6 @@ export type ViewPlatform =
 
 export type { ViewModality, ViewType } from "../views/declarations.js";
 
-/** A logical view: one entry per `id`, with every surface it renders on. */
-export interface CollapsedView extends ViewDeclaration {
-	/** Union of the surfaces this view renders on (across same-id declarations). */
-	modalities: ViewModality[];
-}
-
 /**
  * Retained panel options for a future spatial overlay adapter.
  * All fields are optional and should be interpreted by that adapter.
@@ -824,9 +818,7 @@ export interface PluginOwnership {
 export type PluginMode = "direct" | "remote";
 
 /**
- * High-level role of a remote-mode plugin. Used to classify the plugin and
- * to inform the `RuntimeCapabilityService` whether to surface the plugin as
- * a capability provider.
+ * High-level role of a remote-mode plugin, used to classify the plugin.
  */
 export type RemotePluginRole =
 	| "capability"
