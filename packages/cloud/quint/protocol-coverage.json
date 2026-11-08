@@ -1813,5 +1813,34 @@
       "Real PGlite tests inject acknowledgement loss after the actual INSERT commits and prove the complete training export survives. Encryption uses the existing coordinate-checking test double; the separate cryptographic suite owns AES-GCM correctness.",
       "A started log operation settles under weak fairness of provider and SQL continuations. Success, retry availability, retention scheduling and orphan cleanup are not guaranteed."
     ]
+  },
+  {
+    "id": "cloud-protocol-app-frontend-deletion",
+    "model": "packages/cloud/quint/app_frontend_deletion.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/db/schemas/apps.ts",
+      "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/lib/services/apps.ts",
+      "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+      "packages/cloud/api/v1/hosted-frontend/serve/[[...path]]/route.ts",
+      "packages/cloud/api/v1/apps/[id]/route.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.pglite.test.ts",
+      "packages/cloud/quint/check-app-frontend-deletion.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/scripts/run-with-deadline.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.postgres.integration.test.ts",
+      "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One app, two immutable published deployment identities, reversible app deactivation/reactivation and one final deletion request with rollback, acknowledged commit or lost acknowledgement.",
+      "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows; a missing parent rejects activation.",
+      "Six real PGlite service/repository/public-serving cases: actual SQL-trigger rejection, normal reactivation during teardown, acknowledged cascade before object deletion, committed-but-lost deletion reply, 1002 retained manifests, and publication after deactivation. Controlled object storage and the user-database cleanup seam avoid live provider effects. PGlite does not prove independent-connection PostgreSQL contention. Two real PostgreSQL cases observe independent-session parent-lock blocking, including a queued third activation. An earlier uncommitted unordered snapshot control reproduces PostgreSQL 40P01.",
+      "No general TypeScript refinement, live R2 proof, arbitrary object counts, account authorization, account deletion, cache consistency, pending object uploads, crash orphan collection or concurrency of unrelated teardown providers. Database/container/GitHub teardown still has a separate app lifecycle authority gap; this repair only protects frontend objects. SQL acknowledgement loss and failed object deletes may leave orphans; no automatic recovery owner is introduced. The separate lock projection covers two fixed existing deployment rows and three one-shot operations only, not unbounded deadlock freedom. All participating workers must run the guarded protocol; mixed older writers are excluded until coordinated rollout completes.",
+      "A pending SQL operation settles under weak fairness of its continuation; acknowledged cleanup settles under weak fairness of cleanup. No provider availability, successful deletion, orphan cleanup or elapsed deadline guarantee."
+    ]
   }
 ]

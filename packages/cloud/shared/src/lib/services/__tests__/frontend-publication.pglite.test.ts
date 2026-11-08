@@ -26,6 +26,8 @@ let beforeDelete: (() => Promise<void>) | undefined;
 const spies: Array<{ mockRestore(): void }> = [];
 
 beforeAll(async () => {
+  await dbWrite.execute("CREATE TABLE apps(id uuid PRIMARY KEY)");
+  await dbWrite.execute(`INSERT INTO apps(id) VALUES('${app.id}')`);
   for (const statement of await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ appFrontendDeployments }),

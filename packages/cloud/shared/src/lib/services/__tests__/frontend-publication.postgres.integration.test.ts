@@ -56,6 +56,7 @@ async function makeScope() {
   await control.connect();
   await observer.connect();
   await control.query(`CREATE SCHEMA ${schema}; SET search_path TO ${schema},pg_catalog,public`);
+  await control.query("CREATE TABLE apps(id uuid PRIMARY KEY)");
   for (const statement of await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ appFrontendDeployments }),
@@ -163,6 +164,7 @@ async function contend<T, U>(
 }
 
 async function uploading(scope: Scope, appId: string) {
+  await scope.control.query("INSERT INTO apps(id) VALUES($1) ON CONFLICT DO NOTHING", [appId]);
   const row = await scope.run(() => repository.create({ appId, r2Prefix: "fixture/" }));
   const result = await scope.run(() => repository.beginUpload(row.id));
   if (!result) throw new Error("Fixture upload did not start");
@@ -309,6 +311,7 @@ async function rowStatus(scope: Scope, id: string) {
     async () =>
       inScope(async (scope) => {
         const app = { id: randomUUID(), organization_id: randomUUID() };
+        await scope.control.query("INSERT INTO apps(id) VALUES($1)", [app.id]);
         const files = [
           { path: "index.html", content: "<html>complete site</html>" },
           { path: "asset.txt", content: "complete asset" },

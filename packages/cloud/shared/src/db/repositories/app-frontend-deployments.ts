@@ -15,6 +15,7 @@ import {
   type FrontendBuildMeta,
   type FrontendManifest,
 } from "../schemas/app-frontend-deployments";
+import { apps } from "../schemas/apps";
 
 /** True when an error is a unique-violation on the (app_id, version) index. */
 function isVersionRaceConflict(error: unknown): boolean {
@@ -170,6 +171,15 @@ export class AppFrontendDeploymentsRepository {
 
   private async activateOrRollBack(appId: string, id: string): Promise<AppFrontendDeployment> {
     return await dbWrite.transaction(async (tx) => {
+      // Share final app deletion's parent lock before touching deployments.
+      // A mutable active-first ordering alone is insufficient when another
+      // activation changes the active row while a deletion snapshot waits.
+      const [app] = await tx
+        .select({ id: apps.id })
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .for("update");
+      if (!app) throw new DeploymentNotPromotable();
       await tx
         .update(appFrontendDeployments)
         .set({ status: "superseded", updated_at: new Date() })
