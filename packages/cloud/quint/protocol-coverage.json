@@ -841,20 +841,20 @@
   },
   {
     "id": "cloud-flow-domain-lifecycle",
-    "model": null,
+    "model": "packages/cloud/quint/DomainPurchaseAttempt.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/domain-purchase-attempts.ts",
-      "packages/cloud/api/cron/reconcile-domain-purchases/route.ts"
+      "packages/cloud/api/cron/reconcile-domain-purchases/route.ts",
+      "packages/cloud/api/v1/apps/[id]/domains/buy/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite domain lifecycle model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Purchase identity is idempotent | DNS proof precedes publication | Unknown provider outcomes are reconciled",
-      "Abstract states: available, quoted, purchasing, purchased, verifying, active, renewing, expired, failed"
+      "One already created nonlegacy attempt retains a fixed organization, app, domain, request digest and registration term. Quote values and exact receipt bindings are projected. The SQL suite checks the real tenant, term and amount constraints.",
+      "The model checks one retained row from quote through registrar authorization, read-only reconciliation and refund or local assignment. It covers one registrar-start permit. Physical dispatch timing, identity validation of Cloudflare responses, and provider settlement semantics remain external.",
+      "The start result may record an accepted registration response. A recovery read requires active registration or definitive failure to settle. Ambiguous responses, a stalled worker and lookup errors keep the attached charge and allow a later status-only claim.",
+      "Debit creation before charge attachment, legacy orphaned debits, new attempt creation after erasure, and existing same-tenant managed domain recovery are outside this projection. The charged pre-start refund transition assumes a verified foreign domain conflict.",
+      "Refund ledger creation and its attachment are separate steps. Managed domain persistence and terminal publication are also separate steps. Their exact SQL bindings are tested against PGlite. Real Cloudflare calls, DNS verification, renewal, zone setup, and cron batch scheduling are separate coverage."
     ]
   },
   {
