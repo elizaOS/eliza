@@ -2602,6 +2602,12 @@ public class ElizaAgentService extends Service {
                     + " is gone with no journaled exit; relaunching instead of trusting the stamp.");
             }
 
+            // A redelivered start may have kept "running"; the agent it described is gone.
+            if ("running".equals(currentStatus)) {
+                currentStatus = "starting";
+                updateNotification();
+            }
+
             String abi = resolveRuntimeAbi();
             final String canonicalStateDir;
             final String canonicalAppDataDir;
