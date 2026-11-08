@@ -710,6 +710,9 @@ export interface ProcessAccountDeletionResult {
   progressed: number;
   reconciling: number;
   actionRequired: number;
+  /** Requests waiting on a phase the backup-catalog lane owns. */
+  deferredToOtherLane: number;
+  oldestDeferredAgeMs: number | null;
 }
 
 export interface ProcessAccountDeletionResources {
@@ -877,6 +880,8 @@ export async function processDueAccountDeletions(
     completed: saga.completed,
     progressed: saga.progressed,
     reconciling: saga.reconciling,
+    deferredToOtherLane: saga.deferredToOtherLane,
+    oldestDeferredAgeMs: saga.oldestDeferredAgeMs,
     actionRequired:
       saga.actionRequired +
       activationActionRequired +
