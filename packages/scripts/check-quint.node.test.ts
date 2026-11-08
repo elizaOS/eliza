@@ -192,7 +192,7 @@ test("arbitrary failures cannot satisfy expected temporal counterexamples", () =
   assert.equal(
     classifyTemporalOutcome(
       0,
-      "Model checking completed. No error has been found.",
+      "Starting model checking, but no completed result",
     ),
     "checker-error",
   );
@@ -232,6 +232,7 @@ test("the shared runner records positive liveness and expected unfair schedules 
       temporal UnfairProgress = eventually(state == 1)
       temporal FairProgress = advance.weakFair(state) implies eventually(state == 1)
       temporal FairSinks = advance.weakFair(state) implies eventually(always(state == 1))
+      temporal StableOnceReached = always((state == 1 implies next(state) == 1).orKeep(state))
     }`,
     [`${example}.cases.json`]: JSON.stringify({
       sources: [stateSource],
@@ -259,6 +260,18 @@ test("the shared runner records positive liveness and expected unfair schedules 
             },
           ],
         },
+        {
+          ...modelCase,
+          name: "transition-safety",
+          temporal: ["StableOnceReached"],
+          temporalChecks: [
+            {
+              property: "StableOnceReached",
+              expect: "holds",
+              assumptions: ["No scheduler fairness"],
+            },
+          ],
+        },
       ],
     }),
   });
@@ -277,12 +290,17 @@ test("the shared runner records positive liveness and expected unfair schedules 
       (item: { observedTemporalOutcome: string }) =>
         item.observedTemporalOutcome,
     ),
-    ["holds", "counterexample"],
+    ["holds", "counterexample", "holds"],
   );
   assert.deepEqual(temporal[0].temporalProperties, [
     "FairProgress",
     "FairSinks",
   ]);
+  assert.deepEqual(temporal[2].temporalProperties, ["StableOnceReached"]);
+  assert.doesNotMatch(
+    readFileSync(path.join(output, temporal[2].log), "utf8"),
+    /Checking (?:\d+ branches of )?temporal properties/,
+  );
   assert(
     temporal.every(
       (item: { matchedExpectation: boolean; temporalAssumptions: string[] }) =>
