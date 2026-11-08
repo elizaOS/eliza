@@ -776,7 +776,7 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "In-process callback listeners are not modeled as durable transport.",
+      "The OAuth callback route creates a private process-local bus without a recorder or a registered subscriber. Its OAuth intent SQL settlement and the independent Stripe durable outbox have separate models.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Durable recording precedes terminal acknowledgement | Retry retains original event identity | Cross-process observers have a defined delivery mechanism",
       "Abstract states: subscribed, recorded, published, acknowledged, timed-out, failed"
@@ -1008,20 +1008,20 @@
   },
   {
     "id": "cloud-flow-cloud-object-mutations",
-    "model": null,
+    "model": "packages/cloud/quint/NativeStoragePutRecovery.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/org-storage-mutations.ts",
-      "packages/cloud/shared/src/db/schemas/org-storage-mutations.ts"
+      "packages/cloud/shared/src/db/schemas/org-storage-mutations.ts",
+      "packages/cloud/shared/src/lib/services/storage/native-storage-put.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite object-mutation model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Object mutation is tied to immutable content identity | Commit and index updates preserve ownership | Recovery never silently drops an acknowledged object",
-      "Abstract states: prepared, uploading, committed, deleting, deleted, failed"
+      "One immutable tenant and operation identity, one positive-priced PUT and its exact provider generation. Quota and credit amounts are projected into ownership states. Cross-tenant authorization, digest validation, funding arithmetic, other writers, deletion, and GC remain separate.",
+      "SQL transitions are atomic and check current lease token equality. Claim expiry and grace comparisons are strict. The first absence quarantine uses the timestamp captured for the reconciliation claim. Recovery after a provider attempt requires a fresh claim and a second strong absence result.",
+      "A claim and its possible provider dispatch are compressed into one step. A strong HEAD result reports presence of the exact generation with valid integrity metadata. A failed probe or interrupted worker can leave the lease, quota, and credit held.",
+      "A late provider write can create an unpublished orphan after a refund. The catalog and terminal receipt stay fenced. Provider orphan cleanup, exact-retry attachment to an already claimed row, provider I/O durations, and database availability remain outside the model.",
+      "The PGlite suite exercises actual repository transactions, including races and terminal replay. It uses no R2 bucket. The projected HEAD and late provider behavior are checked by Quint scenarios."
     ]
   },
   {
