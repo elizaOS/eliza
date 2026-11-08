@@ -91,6 +91,7 @@ public final class BrowserHttpAuthOriginTest {
   eq("https://example.com:8443", origin(engine("https://example.com:8443/a", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com:8443/a", 7)), "port comes from the engine's request, not WebView's bare host");
   eq("https://example.com:8443", origin(engine("https://example.com:8443/a", "Admin", true, true, 7), tab("example.com:8443", "Admin", "https://example.com:8443/a", 7)), "explicit WebView port agrees");
   eq("https://example.com", origin(engine("https://Example.com:443/a", "Admin", true, true, 7), tab("example.com:443", "Admin", "https://example.com/a", 7)), "default port normalised");
+  eq("https://example.com", origin(engine("https://example.com/a|b?q={x}", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com/a|b?q={x}", 7)), "unescaped path and query keep the origin");
   // Wrong origin.
   eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://example.com/a", "Admin", true, true, 7), tab("example.com:8443", "Admin", "https://example.com/a", 7)), "WebView port contradicts the engine");
   eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://example.com/a", "Admin", true, true, 7), tab("accounts.example.com", "Admin", "https://example.com/a", 7)), "subdomain is a different binding");

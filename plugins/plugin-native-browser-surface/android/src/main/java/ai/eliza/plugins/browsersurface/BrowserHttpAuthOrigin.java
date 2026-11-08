@@ -1,7 +1,6 @@
 package ai.eliza.plugins.browsersurface;
 
 import java.net.URI;
-import java.util.Locale;
 
 /**
  * The exact origin a browser HTTP authentication prompt may be filled or saved for.
@@ -191,22 +190,6 @@ public final class BrowserHttpAuthOrigin {
 
   /** Exact {@code scheme://host[:port]} of an http(s) URL without user info, default port omitted, or null. */
   public static String requestOrigin(String url) {
-    if (url == null || url.isEmpty() || url.length() > 4096)
-      return null;
-    URI uri;
-    try {
-      uri = new URI(url);
-    } catch (Exception invalid) {
-      return null;
-    }
-    String scheme = uri.getScheme() == null ? null : uri.getScheme().toLowerCase(Locale.ROOT);
-    String host = uri.getHost();
-    if (!("https".equals(scheme) || "http".equals(scheme)) || host == null || host.isEmpty()
-        || uri.getRawUserInfo() != null)
-      return null;
-    int port = uri.getPort();
-    boolean defaultPort = port == -1 || ("https".equals(scheme) && port == 443)
-        || ("http".equals(scheme) && port == 80);
-    return scheme + "://" + host.toLowerCase(Locale.ROOT) + (defaultPort ? "" : ":" + port);
+    return url == null || url.length() > 4096 ? null : BrowserWebOrigin.of(url);
   }
 }

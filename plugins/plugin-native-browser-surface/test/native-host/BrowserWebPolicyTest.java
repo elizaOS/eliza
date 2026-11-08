@@ -53,6 +53,21 @@ public final class BrowserWebPolicyTest {
     equal(null, BrowserWebOrigin.of("https:///nohost"), "no host");
     equal(null, BrowserWebOrigin.of("https://example.com/\nx"), "control characters");
     equal(null, BrowserWebOrigin.of(null), "null");
+    // Chromium reports these unescaped; only the scheme and authority decide the origin.
+    for (String url : new String[] {"https://a.com/?q=a|b", "https://a.com/a|b", "https://a.com/?f={x}",
+        "https://a.com/?d=50%", "https://a.com/?q=a^b", "https://a.com/a[1]", "https://a.com?x@y",
+        "https://a.com#@b.com", "https://A.com:443?sub=auth0|123", "HTTPS://a.com"})
+      equal("https://a.com", BrowserWebOrigin.of(url), "WebView address " + url);
+    for (String url : new String[] {"https://u@a.com/", "https://@a.com/", "https://a.com\\@b.com/",
+        "https://a.com\\b", "https://a.com/\tx", "https://a.com/ x", "https://a.com/\0",
+        "https://a.com/\u00a0", "https://a.com:70000/", "https://a.com:99999999999/", "https://a.com:x/",
+        "https://a.com:-1/", "https://a.com:80:80/", "https://[::1/", "https://[::1]x/", "https://a_b%2e.com/",
+        "https://:443/", "https:a.com", "https:/a.com", "//a.com/", "a.com"})
+      equal(null, BrowserWebOrigin.of(url), "refused " + url);
+    equal("https://[::1]", BrowserWebOrigin.of("https://[::1]:443/?q=a|b"), "IPv6 default port elided");
+    equal("http://[::1]:8080", BrowserWebOrigin.of("http://[::1]:8080"), "IPv6 explicit port");
+    equal("http://a.com", BrowserWebOrigin.of("http://a.com:80?x"), "http default port elided");
+    equal("https://a.com:80", BrowserWebOrigin.of("https://a.com:80/"), "non-default port kept");
     char[] longPath = new char[BrowserWebOrigin.MAX_URL];
     Arrays.fill(longPath, 'a');
     equal(null, BrowserWebOrigin.of("https://example.com/" + new String(longPath)),
