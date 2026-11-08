@@ -63,7 +63,9 @@
     "sources": [
       "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
       "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
-      "packages/cloud/api/stripe/create-checkout-session/route.ts"
+      "packages/cloud/api/stripe/create-checkout-session/route.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/test-support/stripe-checkout-test-schema.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -71,7 +73,7 @@
       "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
       "Transactions and receipt publication are atomic. Provider idempotency is assumed within the original retained window; the separate clock model does not establish compositional refinement.",
       "Cryptography, arbitrary decimals, SQL isolation, unbounded provider/network delay and TypeScript refinement are not proved.",
-      "No temporal or fairness claim. Real implementation conformance is being integrated separately."
+      "No temporal or fairness claim. The conformance hook requires every named real PGlite route/service/migration check, with authentication and remote Stripe as controlled boundaries. General trace equivalence and model composition remain unproved."
     ]
   },
   {
@@ -80,7 +82,10 @@
     "sources": [
       "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
       "packages/cloud/api/src/checkout-reconciliation.ts",
-      "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql"
+      "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql",
+      "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+      "packages/cloud/shared/src/db/migrations/stripe-checkout-provider-started-at.test.ts",
+      "packages/cloud/api/stripe/create-checkout-session/route.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -88,7 +93,7 @@
       "Independent database and application clocks each range over 0, 22, 44 and 66 hours; up to three create attempts.",
       "Only primary database time authorizes a new dispatch. The first dispatch time is immutable; audit updates do not restart the retry window.",
       "This is a bounded time-gate model, not a proof of provider key retention, network arrival time, remote exactly-once behavior or implementation refinement.",
-      "No temporal or fairness claim. Real implementation conformance is being integrated separately."
+      "No temporal or fairness claim. The conformance hook requires every named real PGlite route/service/migration check, with authentication and remote Stripe as controlled boundaries. General trace equivalence and model composition remain unproved."
     ]
   }
 ]
