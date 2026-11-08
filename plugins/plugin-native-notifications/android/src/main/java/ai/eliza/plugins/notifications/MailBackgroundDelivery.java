@@ -166,7 +166,10 @@ public final class MailBackgroundDelivery {
    return false;
   }catch(HttpFailure error){
    synchronized(host.lock()){guard.check();
-    if(error.status==401||error.status==403||error.status==409){engine(binding).failure("grant-unavailable");poster.cancelAll();return true;}
+    if(error.status==401){engine(binding).failure("grant-unavailable");poster.cancelAll();return true;}
+    // verify() just passed, so a 403/409 here is usually Cloud mapping a transient token failure. Retry, and
+    // only report the grant unavailable after consecutive refusals; shown notices time out on their own.
+    if(error.status==403||error.status==409)return engine(binding).authFailure()>=MailHistoryReconciliation.MAXIMUM_AUTH_FAILURES;
     if(error.status==404||error.status==405||error.status==501){engine(binding).failure("unsupported");return true;}
     engine(binding).failure("retrying");}
    return false;
