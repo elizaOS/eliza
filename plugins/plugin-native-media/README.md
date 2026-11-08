@@ -103,8 +103,9 @@ Selected documents:
 
 - `SelectedDocuments` – opaque capabilities for documents chosen in Android's picker. Renderers
   hold random selection IDs, never content URIs. Only grants Android offered are persisted; a
-  revoked grant is forgotten and reported, never repaired. Bounded UTF-8 text reads, local PDF
-  page previews, provider rename, sharing and opening.
+  revoked grant is forgotten and reported, never repaired. Bounded UTF-8 text reads, PDF page
+  previews (up to 20 MiB, rendered only by the host's `IsolatedPdfRenderService`; without one,
+  previews are refused), provider rename, sharing and opening.
 - `SourceReferences` / `SourceReferenceStore` – durable source links for saved items. A link is
   kept while Android holds the document's persisted read grant; a grant stays while any saved or
   restorable item names it and is released with the last one. A link no item names yet (for
@@ -174,7 +175,8 @@ bridge.setWebViewClient(playback);
 SourceReferenceStore links =
     new SourceReferenceStore(context, "myapp-source-references", "myapp-source-reference-times");
 SelectedDocuments documents =
-    new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains);
+    new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains,
+        MyPdfService.class);
 DocumentFolderTree folders =
     new DocumentFolderTree(context, "myapp-files-tree", uri -> documents.authorize(uri, 0));
 ReviewedFileHandoff handoff = new ReviewedFileHandoff(
