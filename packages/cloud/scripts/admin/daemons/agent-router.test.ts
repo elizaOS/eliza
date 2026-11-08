@@ -64,15 +64,19 @@ function agentHandler(req: IncomingMessage, res: ServerResponse): void {
   }
   if (path === "/hang") return;
   if (path === "/body") {
-    void readBody(req).then((body) => {
-      res.setHeader("content-type", "application/json");
-      res.end(
-        JSON.stringify({
-          length: body.length,
-          sha256: createHash("sha256").update(body).digest("hex"),
-        }),
-      );
-    });
+    void readBody(req).then(
+      (body) => {
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            length: body.length,
+            contentLength: req.headers["content-length"] ?? null,
+            sha256: createHash("sha256").update(body).digest("hex"),
+          }),
+        );
+      },
+      () => {},
+    ); // the router aborts an over-cap upload mid-stream
     return;
   }
   if (path === "/gzip") {
@@ -246,8 +250,23 @@ describe("agent router", () => {
     expect(response.status).toBe(200);
     expect((await response.json()) as unknown).toEqual({
       length: body.length,
+      contentLength: `${body.length}`,
       sha256: createHash("sha256").update(body).digest("hex"),
     });
+  });
+
+  it("streams a chunked POST body and caps it without a content-length", async () => {
+    const chunked = (size: number) =>
+      rawRequest(
+        routerPort,
+        `POST /body HTTP/1.1\r\nHost: ${AGENT_HOST}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n${size.toString(16)}\r\n${"a".repeat(size)}\r\n0\r\n\r\n`,
+      );
+    const small = await chunked(1024);
+    expect(statusOf(small)).toBe(200);
+    expect(small).toContain(
+      createHash("sha256").update("a".repeat(1024)).digest("hex"),
+    );
+    expect(statusOf(await chunked(MAX_BODY_BYTES + 1))).toBe(413);
   });
 
   it("rejects a body over the cap with 413", async () => {

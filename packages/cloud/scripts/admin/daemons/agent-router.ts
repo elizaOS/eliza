@@ -119,6 +119,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   "proxy-authorization",
   "te",
   "trailer",
+  "transfer-encoding",
   "upgrade",
 ]);
 
@@ -569,6 +570,8 @@ async function proxyAgentRequest(
     if (Number.isFinite(declared) && declared > context.maxBodyBytes) {
       return requestBodyTooLargeResponse(origin);
     }
+    // Keep a declared length so the agent sees the same framing as before.
+    if (Number.isFinite(declared)) headers.set("content-length", `${declared}`);
     // Non-idempotent requests are never retried, so the body streams straight
     // through instead of being buffered.
     body = limitBodyStream(
@@ -848,6 +851,9 @@ async function relayAgentUpgrade(
   readiness: RouterReadinessState,
   context: RouterRequestContext,
 ): Promise<void> {
+  // Node drops its own socket error handler on upgrade; a reset during the
+  // routing lookup must not become an uncaught exception.
+  socket.on("error", () => socket.destroy());
   const url = parseRequestTarget(req.url);
   if (!url) return rejectUpgrade(socket, 400);
   const agentId = extractAgentIdFromHost(getEffectiveHost(req));
@@ -906,7 +912,7 @@ async function relayAgentUpgrade(
   upstream.once("close", () => {
     if (connected) socket.destroy();
   });
-  socket.on("error", destroyBoth);
+  socket.on("error", () => upstream.destroy());
   socket.once("close", () => upstream.destroy());
 }
 
@@ -1014,15 +1020,21 @@ export async function startAgentRouter(
   stopActiveWarmup = stopWarmup;
   startedServer.once("close", stopWarmup);
 
+  let attemptPending = false;
   const runWarmupAttempt = (): Promise<void> => {
+    attemptPending = true;
     const attempt = Promise.resolve().then(warmRoutingDependencies);
     // A late success of an attempt that already timed out still counts.
-    attempt.then(
-      () => {
-        readiness.status = "ready";
-      },
-      () => {},
-    );
+    attempt
+      .then(
+        () => {
+          readiness.status = "ready";
+        },
+        () => {},
+      )
+      .finally(() => {
+        attemptPending = false;
+      });
     return withTimeout(attempt, warmupTimeoutMs);
   };
 
@@ -1030,6 +1042,11 @@ export async function startAgentRouter(
     if (warmupStopped || readiness.status === "ready") return;
     retryTimer = setTimeout(() => {
       if (warmupStopped || readiness.status === "ready") return;
+      // One attempt at a time: a timed-out attempt may still be running.
+      if (attemptPending) {
+        retryWarmup(delayMs);
+        return;
+      }
       runWarmupAttempt().then(
         () => {},
         async (cause) => {
