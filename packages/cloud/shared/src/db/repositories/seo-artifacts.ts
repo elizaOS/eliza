@@ -28,6 +28,7 @@ async function hydrateSeoArtifact(artifact: SeoArtifact): Promise<SeoArtifact> {
     storage: artifact.data_storage,
     key: artifact.data_key,
     inlineValue: artifact.data,
+    strict: true,
   });
 
   return { ...artifact, data: data ?? {} };
