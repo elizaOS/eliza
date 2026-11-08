@@ -300,7 +300,14 @@ export class MapsScreenController {
   private offRoute = false;
   private rerouting = false;
   private navSession = 0;
+  private navTitle = "";
   private backgroundRunning = false;
+  /** A screen-off start is in flight for the current navigation session. */
+  private backgroundStarting = false;
+  /** The current session already retried its screen-off start (or must not). */
+  private backgroundRetried = false;
+  /** The place the directions sheet was last opened for; its origin is kept on reopen. */
+  private directionsFor?: MapsScreenSelection;
   private query = "";
   private searching = false;
   private message = "";
@@ -397,10 +404,14 @@ export class MapsScreenController {
       this.host.discardHandoff?.();
       this.eventQuery = "";
       this.mapsAppAvailable = undefined;
+      // The new controller has no results or origin; the query text stays on the base sheet.
+      this.searching = false;
+      this.originText = "";
     }
     this.mapState = "loading";
     this.host.released?.();
     this.directions = false;
+    this.directionsFor = undefined;
     this.originMode = false;
     void this.stopGuidance().catch(() => {});
     this.host.clearContext?.();
@@ -807,7 +818,8 @@ export class MapsScreenController {
     this.locating = true;
     if (!this.directions) this.selected = undefined;
     this.searching = false;
-    void controller.locate();
+    // Outside directions a fix only shows where the device is; it is not a route origin.
+    void controller.locate(this.directions);
     this.invalidate();
   }
 
@@ -848,6 +860,13 @@ export class MapsScreenController {
         "Connect a Maps provider to plan a route. No route has been calculated.";
     } else {
       this.directions = true;
+      // A different place starts with no origin; the user chooses it on this sheet.
+      if (this.directionsFor !== item) {
+        this.directionsFor = item;
+        this.originText = "";
+        this.originMode = false;
+        this.ensure().clearOrigin();
+      }
       this.message = "Search a place or enter coordinates.";
       if (
         item.origin !== "provider" &&
@@ -927,7 +946,9 @@ export class MapsScreenController {
     }
     controller.setMode(mode);
     this.message = "";
-    if (this.state?.origin) void controller.planRoute();
+    // Only an origin the sheet shows is planned from.
+    if (this.directions && this.state?.origin && this.originText.trim())
+      void controller.planRoute();
   }
 
   /** The user's choice among the provider's offered routes; nothing is requested again. */
@@ -975,39 +996,11 @@ export class MapsScreenController {
     this.navRouteId = route.id;
     this.resetStepping();
     this.backgroundRunning = false;
+    this.backgroundRetried = false;
     const session = ++this.navSession;
+    this.navTitle = `Route to ${selected.label}`;
     this.message = "Waiting for GPS…";
-    void this.host.background
-      .start(`Route to ${selected.label}`, "Waiting for location", (reason) => {
-        if (session !== this.navSession || !this.navigating) return;
-        this.lifecycle.backgroundStops++;
-        // Only the notification's Stop is the user ending navigation. A refused or
-        // system-ended service drops back to foreground-only guidance.
-        if (reason === "notification") {
-          this.message = "Navigation stopped from the notification.";
-          this.end();
-          return;
-        }
-        this.backgroundRunning = false;
-        this.message =
-          "Screen-off guidance is unavailable. Foreground guidance only.";
-        if (!this.host.active()) this.release();
-        else this.invalidate();
-      })
-      .then((running) => {
-        if (session !== this.navSession || !this.navigating || this.arrived) {
-          // A later Start owns the same port. Only retire this completion when
-          // navigation ended or this is still the session that reached arrival.
-          if (running && (!this.navigating || session === this.navSession))
-            void this.host.background.stop();
-          return;
-        }
-        this.backgroundRunning = running;
-        if (running && !this.navFix)
-          this.message =
-            "Waiting for GPS… Guidance continues with the screen off.";
-        this.invalidate();
-      });
+    this.startBackground(session);
     const locationFailed = (error: unknown) => {
       if (session !== this.navSession || !this.navigating || this.arrived)
         return;
@@ -1549,6 +1542,8 @@ export class MapsScreenController {
         };
       else {
         this.originText = coordLabel(position.coordinate);
+        // A request started before Directions opened read the fix without making it the origin.
+        if (!next.origin) this.controller?.setOrigin(position.coordinate);
         void this.controller?.planRoute();
       }
       this.searching = false;
@@ -1574,6 +1569,16 @@ export class MapsScreenController {
       this.invalidate();
       return;
     }
+    // A start refused before location was granted (the prompt Start showed, or a later
+    // grant) is retried once on the first fix this session accepts.
+    if (
+      !this.backgroundRunning &&
+      !this.backgroundStarting &&
+      !this.backgroundRetried
+    ) {
+      this.backgroundRetried = true;
+      this.startBackground(this.navSession);
+    }
     if (this.rerouting || !current) {
       this.navFix = fix;
       this.invalidate();
@@ -1587,14 +1592,8 @@ export class MapsScreenController {
     this.navFix = fix;
     this.arrived =
       greatCircle(fix.coordinate, current.to) < 25 && fix.accuracyMeters <= 30;
-    if (this.arrived) {
-      this.host.voice.pause();
-      this.message = "Destination reached.";
-      this.offRoute = false;
-      void this.host.navigationLocation.stop();
-      void this.host.background.stop();
-      this.backgroundRunning = false;
-    } else {
+    if (this.arrived) this.arrive();
+    else {
       const nearest = distanceToRoute(fix.coordinate, current.geometry);
       this.offRoute = nearest > Math.max(75, fix.accuracyMeters * 2);
       const last = current.steps.length - 1;
@@ -1616,6 +1615,19 @@ export class MapsScreenController {
       this.catchUp(progress, fix, current);
       const reading = atStep(progress, current.steps, this.navStep);
       this.navReading = { routeId: current.id, progress: reading };
+      // The route can end on the road short of an off-road destination: the last step
+      // with little route left is arrival too.
+      if (
+        this.navStep === last &&
+        !this.offRoute &&
+        reading.remainingMeters < 30 &&
+        fix.accuracyMeters <= 30
+      ) {
+        this.arrived = true;
+        this.arrive();
+        this.invalidate();
+        return;
+      }
       const guidance = guidanceView(reading, undefined, current.mode);
       this.message = this.offRoute ? "Off route." : "";
       if (this.offRoute) {
@@ -1669,6 +1681,53 @@ export class MapsScreenController {
     if (passed > this.navStep && this.navPassed !== undefined)
       this.navStep = Math.max(this.navStep, Math.min(passed, this.navPassed));
     this.navPassed = passed > this.navStep ? passed : undefined;
+  }
+
+  /** Screen-off session for this navigation; foreground guidance never waits for it. */
+  private startBackground(session: number): void {
+    this.backgroundStarting = true;
+    void this.host.background
+      .start(this.navTitle, "Waiting for location", (reason) => {
+        if (session !== this.navSession || !this.navigating) return;
+        this.lifecycle.backgroundStops++;
+        // Only the notification's Stop is the user ending navigation. A refused or
+        // system-ended service drops back to foreground-only guidance.
+        if (reason === "notification") {
+          this.message = "Navigation stopped from the notification.";
+          this.end();
+          return;
+        }
+        this.backgroundRunning = false;
+        this.backgroundRetried = true;
+        this.message =
+          "Screen-off guidance is unavailable. Foreground guidance only.";
+        if (!this.host.active()) this.release();
+        else this.invalidate();
+      })
+      .then((running) => {
+        if (session === this.navSession) this.backgroundStarting = false;
+        if (session !== this.navSession || !this.navigating || this.arrived) {
+          // A later Start owns the same port. Only retire this completion when
+          // navigation ended or this is still the session that reached arrival.
+          if (running && (!this.navigating || session === this.navSession))
+            void this.host.background.stop();
+          return;
+        }
+        this.backgroundRunning = running;
+        if (running && !this.navFix)
+          this.message =
+            "Waiting for GPS… Guidance continues with the screen off.";
+        this.invalidate();
+      });
+  }
+
+  private arrive(): void {
+    this.host.voice.pause();
+    this.message = "Destination reached.";
+    this.offRoute = false;
+    void this.host.navigationLocation.stop();
+    void this.host.background.stop();
+    this.backgroundRunning = false;
   }
 
   private resetStepping(): void {

@@ -1044,3 +1044,123 @@ test("a coordinate place shown by the agent can be saved", async () => {
   assert.equal(view.place?.saved, true);
   assert.equal(view.place?.meta, "Coordinates");
 });
+
+test("the last step arrives where the route ends short of an off-road destination", async () => {
+  // The provider snaps the route end to the road about 55 m short of the place.
+  const roadEnd = { latitude: 43.7395, longitude: 7.42 };
+  const f = fixture({
+    background: true,
+    shape: (from) => ({
+      geometry: [from, roadEnd],
+      steps: [
+        {
+          instruction: "Head north",
+          coordinate: from,
+          distanceMeters: 1045,
+          maneuver: "depart",
+        },
+        {
+          instruction: "Arrive",
+          coordinate: roadEnd,
+          distanceMeters: 0,
+          maneuver: "arrive",
+        },
+      ],
+    }),
+  });
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.emit(f.fix({ coordinate: roadEnd, accuracyMeters: 5 }));
+    assert.equal(f.screen.view().navigation?.arrived, false);
+    f.advance(1000);
+    f.emit(f.fix({ coordinate: roadEnd, accuracyMeters: 5 }));
+    const view = f.screen.view();
+    assert.equal(view.navigation?.arrived, true);
+    assert.equal(view.status.text, "Destination reached.");
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a screen-off start refused before the location grant is retried on the first fix", async () => {
+  const options = { background: false };
+  const f = fixture(options);
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    assert.equal(f.screen.view().navigation?.background, false);
+    options.background = true;
+    f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+    await settle();
+    assert.equal(f.screen.view().navigation?.background, true);
+    f.advance(1000);
+    f.emit(f.fix({ coordinate: { latitude: 43.733, longitude: 7.42 } }));
+    await settle();
+    assert.deepEqual(
+      f.calls.background.filter((call) => call[0] === "start"),
+      [
+        ["start", "Route to Destination"],
+        ["start", "Route to Destination"],
+      ],
+    );
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a location fix outside directions is not an origin; a mode change plans only from a shown one", async () => {
+  const f = fixture();
+  f.setDeviceFix(f.fix({ coordinate: ORIGIN }));
+  f.screen.locate();
+  await settle();
+  assert.equal(f.screen.view().status.locationBusy, false);
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections();
+  assert.equal(f.screen.view().directions?.originText, "");
+  f.screen.setMode("walk");
+  await settle();
+  assert.deepEqual(f.calls.routes, []);
+  assert.equal(f.screen.view().directions?.routeReady, false);
+});
+
+test("directions keep their origin for the same place and start empty for another", async () => {
+  const f = fixture();
+  await planned(f);
+  assert.equal(f.screen.back(), true);
+  f.screen.openDirections();
+  let view = f.screen.view();
+  assert.equal(view.directions?.routeReady, true);
+  assert.equal(
+    view.directions?.originText,
+    `${ORIGIN.latitude}, ${ORIGIN.longitude}`,
+  );
+  f.screen.back();
+  f.screen.back();
+  f.screen.setQuery("43.7397, 7.4276");
+  f.screen.submit();
+  f.screen.openDirections();
+  view = f.screen.view();
+  assert.equal(view.mode, "directions");
+  assert.equal(view.directions?.originText, "");
+  assert.equal(view.directions?.routeReady, false);
+});
+
+test("leaving Maps drops the open search; the query text stays on the map", async () => {
+  const f = fixture();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  assert.equal(f.screen.view().mode, "results");
+  f.screen.release();
+  f.screen.ensure();
+  const view = f.screen.view();
+  assert.equal(view.mode, "base");
+  assert.equal(view.query, "Destination");
+});

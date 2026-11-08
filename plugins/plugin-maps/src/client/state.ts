@@ -414,7 +414,8 @@ export class MapsController {
     this.invalidateRoute();
     this.update({ mode });
   }
-  async locate() {
+  /** One device fix; with `asOrigin` false it updates `position` and leaves the origin. */
+  async locate(asOrigin = true) {
     clearTimeout(this.locateTimer);
     const timer = setTimeout(() => {
       if (this.locateTimer !== timer) return;
@@ -446,11 +447,19 @@ export class MapsController {
         true,
         (position) => {
           if (!this.active || this.locateTimer !== timer) return;
-          this.useOrigin(position.coordinate, undefined, {
-            phase: "ready",
+          const ready = {
+            phase: "ready" as const,
             value: position,
             error: null,
-          });
+          };
+          if (asOrigin) {
+            this.useOrigin(position.coordinate, undefined, ready);
+            return;
+          }
+          clearTimeout(timer);
+          this.locateTimer = undefined;
+          void this.nativeLocation.stop().catch(() => {});
+          this.update({ position: ready });
         },
         failed,
       );
