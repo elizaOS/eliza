@@ -464,7 +464,7 @@ export function createCloudMaps(
       configure({ status: "unconfigured" });
     }
   };
-  const diagnostic = { configured: false, error: "" };
+  const diagnostic = { configured: false, error: "", message: "" };
   async function call(
     request: CloudMapsRequest,
     route: CloudMapsRoute,
@@ -570,6 +570,7 @@ export function createCloudMaps(
     uninstall();
     diagnostic.configured = true;
     diagnostic.error = "";
+    diagnostic.message = "";
     try {
       const captured = captureRequest();
       const request: CloudMapsRequest = async (route, signal, body) => {
@@ -679,7 +680,9 @@ export function createCloudMaps(
       coverage = undefined;
       tileFetch = undefined;
       viewportRequest = undefined;
-      diagnostic.error = cloudMapsFailure(error, signal, serviceLimit).code;
+      const refused = cloudMapsFailure(error, signal, serviceLimit);
+      diagnostic.error = refused.code;
+      diagnostic.message = refused.message;
     }
   }
   return {
@@ -690,6 +693,7 @@ export function createCloudMaps(
       tileFetch = undefined;
       viewportRequest = undefined;
       diagnostic.error = "unauthorized";
+      diagnostic.message = "Sign in to Cloud to use Maps.";
       uninstall();
     },
     cloudMapsCoverage: () => coverage,

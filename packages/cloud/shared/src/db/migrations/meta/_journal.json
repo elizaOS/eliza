@@ -3711,6 +3711,13 @@
       "when": 1796083200176,
       "tag": "0559_stripe_checkout_provider_started_at",
       "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1796083200179,
+      "tag": "0561_evm_sweep_nonce_authority",
+      "breakpoints": true
     }
   ]
 }
