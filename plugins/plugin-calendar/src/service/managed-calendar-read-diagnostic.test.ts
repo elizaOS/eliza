@@ -936,3 +936,65 @@ describe("owner-only managed Calendar read diagnostics", () => {
     );
   });
 });
+
+it("admits larger managed feeds while keeping feed and source response bounds", async () => {
+  const grantId = `alpha-google:${"b".repeat(64)}`;
+  const calendar = {
+    ...managedCalendarPlaceholder(),
+    grantId,
+    connectorAccountId: grantId,
+    calendarId: "primary",
+  };
+  const feed = {
+    calendarId: "primary",
+    state: "complete",
+    source: "synced",
+    timeMin: WINDOW.timeMin,
+    timeMax: WINDOW.timeMax,
+    events: [],
+    sources: [
+      {
+        key: {
+          provider: "google",
+          side: "owner",
+          grantId,
+          calendarId: "primary",
+        },
+        status: "fresh",
+      },
+    ],
+    syncedAt: "2026-10-31T19:00:00.000Z",
+  };
+  const response = (bytes: number) =>
+    Response.json({ feed, calendars: [], padding: "x".repeat(bytes) });
+  const admitted = responseSource(() => response(300 * 1024));
+  await expect(
+    admitted.reader.feed(
+      calendar,
+      WINDOW.timeMin,
+      WINDOW.timeMax,
+      WINDOW.timeZone,
+      "fixture-agent",
+    ),
+  ).resolves.toMatchObject({ calendarId: "primary", events: [] });
+  const oversized = responseSource(() => response(512 * 1024));
+  expect(
+    managedCalendarReadDiagnostic(
+      await rejected(() =>
+        oversized.reader.feed(
+          calendar,
+          WINDOW.timeMin,
+          WINDOW.timeMax,
+          WINDOW.timeZone,
+          "fixture-agent",
+        ),
+      ),
+    ),
+  ).toMatchObject({ operation: "feed", code: "BODY_LIMIT" });
+  const sources = responseSource(() => response(300 * 1024));
+  expect(
+    managedCalendarReadDiagnostic(
+      await rejected(() => sources.reader.sources()),
+    ),
+  ).toMatchObject({ operation: "sources", code: "BODY_LIMIT" });
+});

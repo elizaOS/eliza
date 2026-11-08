@@ -60,7 +60,7 @@ import org.json.JSONObject;
  * <p>Bridge methods: recording start/stop/cancel/metrics, {@code transcribeLocalRecording},
  * {@code synthesizeLocal}, {@code play}/{@code stopPlayback}, {@code cancel}, live capture status and
  * start/stop with {@code liveCaptureFrames}/{@code liveCaptureEnded}/{@code liveCaptureTranscript}
- * events, {@code localSpeechStatus}/{@code releaseLocalSpeech}, {@code nativeVoiceTiming},
+ * events, {@code warmSpeechOutput}, {@code localSpeechStatus}/{@code releaseLocalSpeech}, {@code nativeVoiceTiming},
  * {@code markVoiceTurn} and {@code clearNativeVoiceTiming}.
  */
 public abstract class LocalSpeechBridgePlugin extends Plugin {
@@ -89,6 +89,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private PluginCall preparingPlayback;
  // The streamed local utterance (main thread, like player) and assistant-speech audio focus.
  private StreamingSpeechPlayback streamPlayback;
+ /** Silence that keeps the speech output awake between a sent voice turn and its first reply samples (main thread). */
+ private SpeechOutputWarmup outputWarmup;
  private SpeechAudioFocus focus;
  private volatile boolean destroyed;
  private volatile boolean speechForeground=true;
@@ -149,7 +151,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
  @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
-  destroyed=true;gate.destroy();main.post(()->{if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
+  destroyed=true;gate.destroy();main.post(()->{closeOutputWarmup();if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
   if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);
   submitWork(localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();
  }
@@ -214,7 +216,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  protected final void cancelSpeech(String requestId){SpeechRequestGate.Request request=gate.get(requestId);if(request!=null)request.cancel();if(Objects.equals(playbackRequestId,requestId)){clearPlayback();notifyListeners("playbackFailed",new JSObject());}}
  /** True while a clip, a streamed utterance or a request holds the speaker. */
  protected final boolean speakerBusy(){return playbackFile!=null||streamPlayback!=null||!gate.idle();}
- @PluginMethod public void cancel(PluginCall call){SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
+ @PluginMethod public void cancel(PluginCall call){main.post(this::closeOutputWarmup);SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
 
  // ---- Recording drafts ----------------------------------------------------------------------
 
@@ -247,7 +249,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   main.postDelayed(timeout,REQUEST_TIMEOUT_MS);
   if(drain==SpeechRequestGate.Drain.JOINED)return;
   main.post(()->{
-   try{capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
+   try{closeOutputWarmup();capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
    // Never wait on the UI thread. The serial worker barrier follows cancelled work and its cleanup.
    submitWork(()->main.post(()->finishDrain(true,destroyed?"Voice unavailable":null)),()->finishDrain(false,"Voice cancellation is unavailable"));
   });
@@ -266,6 +268,18 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  // Local CPU execution has no dependency on an account, URL, or host process. The status resolves
  // only when the native pair loads, every bundle file verifies and a context opens. A build without
  // the voice bundle answers "unavailable" without loading any native library.
+ /**
+  * A foreground voice turn was sent: wake the speech output while the reply is produced. Advisory;
+  * skipped during a call, in the background or while the speaker is in use. The warm-up is bounded
+  * (SpeechOutputWarmup.LIMIT_NS) and closed by the first reply samples, any playback start or
+  * clear (stop, pause, a published clip), cancel, recording cancellation, a call and destroy.
+  */
+ @PluginMethod public void warmSpeechOutput(PluginCall call){main.post(()->{
+  if(!destroyed&&speechForeground&&(focus==null||!focus.callActive())&&!speakerBusy()){closeOutputWarmup();outputWarmup=new SpeechOutputWarmup(LocalSpeechEngine.STREAM_RATE);}
+  call.resolve();
+ });}
+ /** Main thread. */
+ private void closeOutputWarmup(){if(outputWarmup!=null){outputWarmup.close();outputWarmup=null;}}
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
   localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();engine.prepare();return null;});
   if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","fused-paradee-asr");request.result=out;
@@ -314,16 +328,23 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   request.keepEngine=true;
   final String id=UUID.randomUUID().toString();
   final StreamingSpeechPlayback[] self=new StreamingSpeechPlayback[1];
-  final StreamingSpeechPlayback playback=new StreamingSpeechPlayback(STREAM_CAPACITY,LocalSpeechEngine.STREAM_RATE,VoiceLatencyProbe.AUDIBLE_LEVEL,()->AudioTrackSpeechOutput.open(LocalSpeechEngine.STREAM_RATE),streamListener(id,reply?trial:null,self),System::nanoTime);
+  final StreamingSpeechPlayback.Listener listener=streamListener(id,reply?trial:null,self);
+  // The first PCM mark is the first write to the track, not the end of that (blocking) write.
+  final StreamingSpeechPlayback playback=new StreamingSpeechPlayback(STREAM_CAPACITY,LocalSpeechEngine.STREAM_RATE,VoiceLatencyProbe.AUDIBLE_LEVEL,()->new FirstWriteSpeechOutput(AudioTrackSpeechOutput.open(LocalSpeechEngine.STREAM_RATE),()->listener.firstFrame(System.nanoTime())),listener,System::nanoTime);
   self[0]=playback;
   // Cancelling the request also wakes a synthesis callback blocked on the full queue.
   final Runnable nativeCancel=request.cancelNative;
   request.cancelNative=()->{playback.stop();if(nativeCancel!=null)nativeCancel.run();};
   final String[] refused={null};
+  // The synthesized lead-in silence (about 300 ms) is dropped before playback; a short pre-roll stays.
+  final SpeechLeadTrim trim=new SpeechLeadTrim(VoiceLatencyProbe.AUDIBLE_LEVEL,LocalSpeechEngine.STREAM_RATE/33);
   try{
-   engine.synthesizeStream(text,()->request.cancelled||destroyed||playback.stopped(),(samples,complete)->{
+   engine.synthesizeStream(text,()->request.cancelled||destroyed||playback.stopped(),(raw,complete)->{
     if(request.cancelled||destroyed)return false;
+    final float[] samples=trim.next(raw);
+    if(samples.length==0&&!complete)return !playback.stopped();
     if(!request.resolvedEarly){
+     main.post(this::closeOutputWarmup);
      if(reply){VoiceLatencyProbe.TRIALS.mark(trial,"tts-ready",System.nanoTime());if(localEngine.loads()!=loadsBefore)VoiceLatencyProbe.TRIALS.engineLoaded(trial,"tts-load");}
      refused[0]=publishStream(call,request,playback,id,reply,trial);
      if(refused[0]!=null){Arrays.fill(samples,0);return false;}
@@ -404,7 +425,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   }
  }
  /** Clears unplayed speech and tells the renderer why. */
- private void stopSpeechFor(String reason){String previous=playbackId;if(previous==null)return;clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",previous);event.put("reason",reason);notifyListeners("playbackStopped",event);}
+ private void stopSpeechFor(String reason){closeOutputWarmup();String previous=playbackId;if(previous==null)return;clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",previous);event.put("reason",reason);notifyListeners("playbackStopped",event);}
  /** The audio mode entered a call (Android 12+ watcher): stop speech and assistant capture honestly. */
  private void callStarted(){if(destroyed)return;stopSpeechFor(SpeechAudioFocusPolicy.CALL_ACTIVE);stopCaptureForCall();}
  private void stopCaptureForCall(){
@@ -412,7 +433,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(capture!=null)capture.stopAutomatically();
  }
  private void clearPlayback(){clearPlayback(true);}
- private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
+ private void clearPlayback(boolean stopped){closeOutputWarmup();String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
 
  // ---- Voice-turn latency --------------------------------------------------------------------

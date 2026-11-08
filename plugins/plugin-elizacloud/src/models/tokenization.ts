@@ -1,12 +1,12 @@
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 import { ModelType } from "@elizaos/core";
-import { encodingForModel } from "js-tiktoken";
+import { getEncodingNameForModel, Tiktoken } from "js-tiktoken/lite";
 import { type DetokenizeTextParams } from "@elizaos/core";
 import { type IAgentRuntime } from "@elizaos/core";
 import { type ModelTypeName } from "@elizaos/core";
 import { type ProcessEnvLike } from "@elizaos/core";
-import { type TiktokenModel } from "js-tiktoken";
 import { type TokenizeTextParams } from "@elizaos/core";
+import { type TiktokenBPE, type TiktokenEncoding, type TiktokenModel } from "js-tiktoken/lite";
 function getProcessEnv(): ProcessEnvLike {
     if (typeof process === "undefined") {
         return {};
@@ -25,23 +25,76 @@ function tiktokenCandidates(modelName: string): string[] {
     const baseVariant = providerless.split(":")[0] || providerless;
     return [modelName, providerless, baseVariant, "gpt-4o"];
 }
-function getEncodingForConfiguredModel(modelName: string) {
+export function resolveTokenizerEncodingName(modelName: string): TiktokenEncoding {
     for (const candidate of tiktokenCandidates(modelName)) {
         try {
-            return encodingForModel(candidate as TiktokenModel);
+            return getEncodingNameForModel(candidate as TiktokenModel);
         }
         catch {
             // Try the next compatible tokenizer name.
         }
     }
-    return encodingForModel("gpt-4o" as TiktokenModel);
+    return getEncodingNameForModel("gpt-4o");
+}
+// Each rank table loads on first use; the root `js-tiktoken` entry would
+// inline all six of them at import time.
+const rankLoaders: Record<TiktokenEncoding, () => Promise<{ default: TiktokenBPE }>> = {
+    cl100k_base: () => import("js-tiktoken/ranks/cl100k_base"),
+    o200k_base: () => import("js-tiktoken/ranks/o200k_base"),
+    gpt2: () => import("js-tiktoken/ranks/gpt2"),
+    r50k_base: () => import("js-tiktoken/ranks/r50k_base"),
+    p50k_base: () => import("js-tiktoken/ranks/p50k_base"),
+    p50k_edit: () => import("js-tiktoken/ranks/p50k_edit"),
+};
+// A built Tiktoken holds about 69 MB of heap for o200k_base (measured under
+// Node; the rank module itself is 2.4 MB and stays in the module cache).
+// Keep at most one encoder, and only while calls keep coming: it is dropped
+// after ENCODER_IDLE_MS without a call, so one tokenizer request does not pin
+// the parsed table for the life of the process.
+export const ENCODER_IDLE_MS = 30_000;
+let cached: { encoding: TiktokenEncoding; encoder: Promise<Tiktoken> } | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+function releaseEncoder(): void {
+    if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+    }
+    cached = null;
+}
+function scheduleRelease(): void {
+    if (idleTimer) {
+        clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(releaseEncoder, ENCODER_IDLE_MS);
+    (idleTimer as { unref?: () => void }).unref?.();
+}
+export function loadTokenizerEncoding(encoding: TiktokenEncoding): Promise<Tiktoken> {
+    if (cached?.encoding !== encoding) {
+        const encoder = rankLoaders[encoding]().then((ranks) => new Tiktoken(ranks.default));
+        const entry = { encoding, encoder };
+        // A failed load is not cached, so the next call can try again.
+        encoder.catch(() => {
+            if (cached === entry) {
+                releaseEncoder();
+            }
+        });
+        cached = entry;
+    }
+    scheduleRelease();
+    return cached.encoder;
+}
+/** The encoding whose encoder is held right now, if any, for tests and diagnostics. */
+export function loadedTokenizerEncodings(): TiktokenEncoding[] {
+    return cached ? [cached.encoding] : [];
+}
+function encoderFor(model: ModelTypeName): Promise<Tiktoken> {
+    return loadTokenizerEncoding(resolveTokenizerEncodingName(getConfiguredTokenizerModel(model)));
 }
 async function tokenizeText(model: ModelTypeName, prompt: string): Promise<number[]> {
-    const tokens = getEncodingForConfiguredModel(getConfiguredTokenizerModel(model)).encode(prompt);
-    return tokens;
+    return (await encoderFor(model)).encode(prompt);
 }
 async function detokenizeText(model: ModelTypeName, tokens: number[]): Promise<string> {
-    return getEncodingForConfiguredModel(getConfiguredTokenizerModel(model)).decode(tokens);
+    return (await encoderFor(model)).decode(tokens);
 }
 export async function handleTokenizerEncode(_runtime: IAgentRuntime, { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams): Promise<number[]> {
     return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);

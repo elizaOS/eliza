@@ -362,6 +362,119 @@
         "The model checks this finite lock order and includes the reversed-order deadlock witness. It does not establish fairness, database implementation refinement or freedom from unrelated lock cycles."
       ],
       "maxSteps": 20
+    },
+    {
+      "id": "speech-host-cutover",
+      "file": "speech_host_cutover.qnt",
+      "sources": [
+        "packages/cloud/speech-worker/wrangler.toml",
+        "packages/cloud/speech-worker/README.md",
+        "packages/cloud/api/wrangler.toml",
+        "packages/cloud/api/v1/voice/speech/route.ts",
+        "packages/cloud/api/src/speech-relay-coordinator.ts",
+        ".github/workflows/cloud-cf-release.yml",
+        "packages/cloud/scripts/speech-host-cutover-admission.mjs",
+        "packages/cloud/scripts/speech-host-cutover-admission.test.ts",
+        "packages/cloud/api/__tests__/speech-relay-worker.test.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two namespaces and one old session plus one already-admitted preparation. The real binding switch retains the old namespace but does not route old session IDs to it.",
+        "The target namespace must first exist through operator host-only provisioning; missing target blocks activation. The release gate checks live admission freeze, exact source/namespace identity and decision-time attestation expiry twice. Drain is human-trusted evidence, not measured by the gate. The proved step assumes that claim is true, includes all in-flight preparations, and admission remains quiesced until the switch; excluded false-claim and thaw witnesses violate safety.",
+        "Provider closure and terminal accounting are separate abstract acknowledgements. Namespace retention and receipt ordering do not prove eventual retirement, Cloudflare propagation, rollout readiness, live latency or TypeScript refinement. Real Workerd tests demonstrate the old-session routing boundary; metadata and shell tests exercise the release gate."
+      ],
+      "maxSteps": 20
+    },
+    {
+      "id": "native-access-coalescing",
+      "file": "native_access_coalescing.qnt",
+      "sources": [
+        "packages/cloud/sdk/native-host/cloud-services.mjs",
+        "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+        "packages/agent/native-host/gateway.mjs",
+        "packages/agent/native-host/gateway.e2e.test.mjs",
+        "packages/host/native-host/gateway-bootstrap.mjs",
+        "packages/host/native-host/gateway-bootstrap.test.mjs",
+        "packages/cloud/formal/conformance/native-access.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
+        "A revision change prevents joining an older read. Existing callers may still receive an older revision; only generation fences returned data.",
+        "The model checks shared-read identity, conditional finalizer cleanup and account-generation rejection. Native gateway and provider response classification are exercised by the conformance hook, not proved by this model.",
+        "Provider state can change within one network round trip. No network fairness, permission freshness beyond that window, JavaScript refinement or external-system liveness is proved.",
+        "A shared 20-second AbortSignal deadline covers fetch and body parsing. Its callback must be scheduled and the transport must honor abort; timeout settles as unavailable, never as authorization success. Timer fairness and wall-clock delivery are not proved."
+      ],
+      "maxSteps": 25,
+      "conformance": "packages/cloud/formal/conformance/native-access.ts"
+    },
+    {
+      "id": "native-gateway-admission",
+      "file": "native_gateway_admission.qnt",
+      "sources": [
+        "packages/agent/native-host/gateway.mjs",
+        "packages/agent/native-host/gateway.e2e.test.mjs",
+        "packages/host/native-host/gateway-bootstrap.mjs",
+        "packages/host/native-host/gateway-bootstrap.test.mjs",
+        "packages/cloud/formal/conformance/native-access.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One request, two owner identities, epochs 0..2; inference and owner reads acknowledge independently.",
+        "Matches source admission timing: requestEpoch is captured after inference readiness. A reset during inference discards the memo and reads current ownership again.",
+        "Dispatch and reply separately recheck current ownership. Upstream conversation-ID allocation, credential-provider truth, task presentation, streaming and process shutdown are outside this model."
+      ],
+      "maxSteps": 25,
+      "conformance": "packages/cloud/formal/conformance/native-access.ts"
+    },
+    {
+      "id": "tokenizer-cache",
+      "file": "tokenizer_cache.qnt",
+      "sources": [
+        "plugins/plugin-elizacloud/src/models/tokenization.ts",
+        "plugins/plugin-elizacloud/__tests__/lazy-tokenizer.test.ts",
+        "plugins/plugin-openai/utils/tokenization.ts",
+        "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts",
+        "packages/cloud/formal/conformance/tokenizer-cache.ts",
+        "packages/scripts/vitest/source-aliases.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/agent/src/api/server-boot-graph.test.ts",
+        "packages/agent/src/api/model-config-routes.ts",
+        "packages/agent/src/api/todo-cutover-import.ts",
+        "plugins/plugin-openai/build.ts",
+        "plugins/plugin-wallet/build.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
+        "Each caller retains its own load promise. Replacing the cached encoding does not replace an existing caller's result; failure clears only the matching cache entry.",
+        "Timer cancellation and callbacks follow a single JavaScript event loop. Rank-module contents, exact BPE output and idle-release behavior are checked by the real implementation conformance hook. The hook also checks the real API-server import graph.",
+        "The OpenAI per-encoding persistent cache is regression-tested by the hook but is not represented by the one-slot model. No GC reclamation deadline, network/scheduler fairness or TypeScript refinement is proved."
+      ],
+      "maxSteps": 20,
+      "conformance": "packages/cloud/formal/conformance/tokenizer-cache.ts"
+    },
+    {
+      "id": "job-time-authority",
+      "file": "job_time_authority.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/jobs.ts",
+        "packages/cloud/shared/src/db/repositories/job-timestamp-fence.ts",
+        "packages/cloud/shared/src/db/schemas/jobs.ts",
+        "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+        "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
+        "packages/cloud/formal/conformance/job-time.ts",
+        "packages/scripts/lib/junit-summary.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One durable job, two execution generations, two retries, database clock0..6, application and database timezone offsets -2/0/2, and a two-tick delay/lease.",
+        "Committed job and lease writes are atomic. Original generation, owner and snapshot/payload fences remain required; decoded millisecond timestamps alone are not ABA authority.",
+        "Raw claim timestamps use the same column decoder as typed reads. Job timestamp-without-timezone comparison values are bound as UTC text; database-local SQL clock expressions own relative schedules.",
+        "Renewal waits may outlive their transaction-start lease. The new expiry is sampled after acquiring the job row; another generation cannot be overwritten.",
+        "No scheduler fairness, eventual execution, provider quiescence, unbounded clock behavior, DST transition semantics or TypeScript/SQL refinement is proved. Real PostgreSQL tests separately cover process and database timezone matrices and lock waits."
+      ],
+      "maxSteps": 35
     }
   ],
   "pendingDomains": [

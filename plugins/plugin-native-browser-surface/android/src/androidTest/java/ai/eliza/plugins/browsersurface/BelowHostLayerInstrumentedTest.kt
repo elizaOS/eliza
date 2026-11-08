@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -243,6 +244,33 @@ class BelowHostLayerInstrumentedTest {
         assertTrue(capture.getPixel(50, 50) != Color.TRANSPARENT)
         assertTrue(capture.getPixel(0, 0) != Color.TRANSPARENT)
         assertEquals(Color.TRANSPARENT, capture.getPixel(10, 50))
+    }
+
+    @Test
+    fun newHostRectsMoveBelowHostInputWithoutARedraw() {
+        fun drawnLayout(layer: SurfaceLayer) = OccludingSurfaceLayout(context, layer).apply {
+            addView(View(context), FrameLayout.LayoutParams(100, 100))
+            hostRectsReceived = true
+            val exact = View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+            measure(exact, exact)
+            layout(0, 0, 100, 100)
+            draw(Canvas(Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)))
+        }
+        val moved = listOf(RoundedOcclusionRect(0f, 0f, 40f, 40f, 0f))
+
+        // Above-host occlusions are holes in the drawing, so new ones redraw the page.
+        val above = drawnLayout(SurfaceLayer.ABOVE_HOST)
+        assertFalse(above.isDirty)
+        above.setOcclusions(moved)
+        assertTrue(above.isDirty)
+
+        // Below the host they only route input (and mask captures), so nothing is redrawn.
+        val below = drawnLayout(SurfaceLayer.BELOW_HOST)
+        assertTrue(below.pageOwns(20f, 20f))
+        below.setOcclusions(moved)
+        assertFalse(below.isDirty)
+        assertFalse(below.pageOwns(20f, 20f))
+        assertTrue(below.pageOwns(60f, 60f))
     }
 
     /** A surface as the plugin would add it: appended when above-host, at the branch's index when below-host. */
