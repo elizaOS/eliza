@@ -104,12 +104,21 @@
   },
   {
     "id": "auth.NativeSignInAttemptOwnership",
-    "model": null,
-    "sources": ["packages/auth/src/auth/native-cloud-sign-in.ts"],
-    "invariants": [],
-    "status": "unmodeled",
+    "model": "packages/ui/quint/NativeSignInBroker.qnt",
+    "sources": [
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/ui/src/android-cloud/native-cloud-sign-in.ts",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in.test.ts"
+    ],
+    "invariants": [
+      "OneOpenRequest",
+      "ReturnUsesMatchingOwner",
+      "CancelledOrRetiredCannotSettle"
+    ],
+    "status": "partial",
     "limitations": [
-      "Native attempt/request-id ownership, credential write-intent reservation, scoped cancellation, replacement-attempt fencing and browser pending restoration require a separate model. NativeEnrollmentRecovery covers the private host durable receipt after issuance."
+      "Two successive renderer requests, two deployments and two ports. A retired activation can reply after a successor acquires the broker. The native and storage boundaries are controlled in implementation checks.",
+      "Native attempt/request-id ownership, credential write-intent reservation, partial host activation effects, and browser pending restoration remain open. NativeEnrollmentRecovery covers the private host durable receipt after issuance."
     ]
   },
   {
