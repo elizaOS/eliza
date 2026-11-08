@@ -12,6 +12,7 @@ import {
   InboxContractError,
   inboxErrorResponse,
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-receipts";
+import { AgentGoogleConnectorError } from "@elizaos/cloud-shared/lib/services/agent-google-connector/shared";
 import type {
   AppContext,
   AppEnv,
@@ -36,11 +37,20 @@ async function selected(context: AppContext) {
     throw new InboxContractError(400, "Explicit grant UUID required");
   return { ...user, grantId };
 }
+/** A Google token refresh failure keeps its reconnect status; its raw reason stays server-side. */
+function unknownFailure(error: Error, context: AppContext) {
+  if (error instanceof AgentGoogleConnectorError && error.status === 409)
+    return context.json(
+      { error: "Reconnect Google to keep using Gmail.", code: "reauth_required" },
+      409,
+    );
+  return failureResponse(context, error);
+}
 app.onError((error, context) => {
   const known = inboxErrorResponse(error);
   return known
     ? context.json(known.body, known.status)
-    : failureResponse(context, error);
+    : unknownFailure(error, context);
 });
 app.get("/capabilities", async (context) =>
   context.json(
@@ -100,7 +110,7 @@ app.route(
     authenticate: (context) => identity(context as AppContext),
     review: (owner, proposal, requestId) =>
       managedInboxProvider.review(owner, proposal, requestId),
-    onError: (error, context) => failureResponse(context as AppContext, error),
+    onError: (error, context) => unknownFailure(error, context as AppContext),
   }),
 );
 export default app;
