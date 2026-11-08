@@ -1466,6 +1466,19 @@ describe("receipts the server can no longer take as uploaded", () => {
     }
   });
 
+  it("leaves a failed deletion the server already holds for the owner", async () => {
+    const f = await seeded(
+      calendarDelete,
+      { status: "failed", summary: "Not deleted" },
+      "reconciliation_required",
+    );
+    f.server.providerReceipt = { outcome: "failed", operationId: "operation" };
+    const r = recording(f.request);
+    await coordinator(r.request, f.journal, noEffect).syncReceipts(signal());
+    expect(posts(r.calls).map(([suffix]) => suffix)).toEqual(["receipt"]);
+    expect(f.server.state).toBe("reconciliation_required");
+  });
+
   it("does not settle a failed non-deletion from an uncertain receipt", async () => {
     const f = await seeded(
       note,

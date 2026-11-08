@@ -2561,9 +2561,13 @@ export class DeviceActionCoordinator<
     // The server holds an uncertain receipt. Exact native evidence recovered
     // since (a delivered reminder or notification, a deletion that ran or was
     // undone) settles it; a plain receipt would conflict with the stored one.
+    // Only an uploaded unknown is settled as not applied; a failed receipt
+    // the server already holds stays for the owner.
     const deletion =
-      p.operation.type === "calendar_delete" ||
-      p.operation.type === "reminder_cancel";
+      (p.operation.type === "calendar_delete" ||
+        p.operation.type === "reminder_cancel") &&
+      (p.providerReceipt as { outcome?: unknown } | undefined)?.outcome ===
+        "unknown";
     const applied =
       entry.status === "succeeded" &&
       (((isReminderOperation(p.operation) || isReminderCreate(p.operation)) &&
