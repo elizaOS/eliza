@@ -82,15 +82,56 @@ describe("url-ingest response charset", () => {
   });
 });
 
+describe("url-ingest MIME classification", () => {
+  function serve(body: BodyInit, contentType: string) {
+    __setDocumentUrlFetchImplForTests(
+      async () =>
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": contentType },
+        }),
+    );
+  }
+
+  it("stores an Excel workbook as base64 binary", async () => {
+    const bytes = Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1]);
+    serve(bytes, "application/vnd.ms-excel");
+    const doc = await fetchDocumentFromUrl("https://example.com/report.xls");
+    expect(doc.contentType).toBe("binary");
+    expect(doc.contentEncoding).toBe("base64");
+    expect(Buffer.from(doc.content, "base64")).toEqual(Buffer.from(bytes));
+  });
+
+  it("ingests an HTML login page served at a .pdf URL as HTML", async () => {
+    serve("<html><body><p>Please sign in</p></body></html>", "text/html");
+    const doc = await fetchDocumentFromUrl("https://example.com/paper.pdf");
+    expect(doc.contentType).toBe("html");
+    expect(doc.contentEncoding).toBe("utf8");
+    expect(doc.filename).toBe("paper.html");
+    expect(doc.content).toBe("Please sign in");
+  });
+
+  it("rejects audio with a clear message", async () => {
+    serve(Uint8Array.from([0xff, 0xfb]), "audio/mpeg");
+    await expect(
+      fetchDocumentFromUrl("https://example.com/song.mp3"),
+    ).rejects.toThrow("Can't import audio/mpeg files from a URL");
+  });
+});
+
 describe("url-ingest body deadline", () => {
   let server: http.Server;
   let port: number;
+  let stallClosed: Promise<void>;
 
   beforeEach(async () => {
     __setDocumentUrlBodyDeadlinesForTests({ idleMs: 300, totalMs: 3_000 });
     server = http.createServer((req, res) => {
       res.writeHead(200, { "content-type": "text/plain" });
       if (req.url === "/stall") {
+        stallClosed = new Promise((resolve) =>
+          req.socket.once("close", resolve),
+        );
         res.write("partial");
         return;
       }
@@ -135,6 +176,8 @@ describe("url-ingest body deadline", () => {
       fetchDocumentFromUrl("https://example.com/stall"),
     ).rejects.toThrow(/stalled/);
     expect(Date.now() - started).toBeLessThan(2_000);
+    // The client tore the socket down rather than leaving it open.
+    await stallClosed;
   });
 
   it("keeps a slow body alive while bytes keep arriving", async () => {

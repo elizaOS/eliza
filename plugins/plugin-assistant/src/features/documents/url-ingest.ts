@@ -27,6 +27,7 @@ import {
 } from "@elizaos/core";
 import { decodeBasicHtmlEntities } from "../../utils/html-entities.ts";
 import { decodeHttpText } from "../../utils/http-text.ts";
+import { isBinaryContentType, normalizeDocumentContentType } from "./utils.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -559,6 +560,8 @@ export interface FetchedDocumentUrl {
   contentType: FetchedDocumentUrlKind;
   /** Underlying MIME type from the response headers (or synthesised for transcripts). */
   mimeType: string;
+  /** How `content` is encoded: base64 for binary, utf8 otherwise. */
+  contentEncoding: "utf8" | "base64";
 }
 
 export interface FetchDocumentFromUrlOptions {
@@ -566,19 +569,32 @@ export interface FetchDocumentFromUrlOptions {
   includeImageDescriptions?: boolean;
 }
 
-function classifyMimeType(mimeType: string): FetchedDocumentUrlKind {
-  const normalized = mimeType.toLowerCase();
-  if (
-    normalized.startsWith("application/octet-stream") ||
-    normalized.startsWith("application/pdf") ||
-    normalized.startsWith("application/msword") ||
-    normalized.startsWith("application/vnd.openxmlformats-officedocument") ||
-    normalized.startsWith("image/")
-  ) {
-    return "binary";
+const UNSUPPORTED_URL_MIME_PREFIXES = [
+  "audio/",
+  "video/",
+  "application/zip",
+  "application/x-zip-compressed",
+];
+
+// Same binary/text split the document service applies on store, so a payload
+// is never base64-encoded as text or decoded from base64 when it is text.
+function classifyMimeType(
+  mimeType: string,
+  filename: string,
+): FetchedDocumentUrlKind {
+  const essence = normalizeDocumentContentType(mimeType);
+  if (UNSUPPORTED_URL_MIME_PREFIXES.some((type) => essence.startsWith(type))) {
+    throw new Error(`Can't import ${essence} files from a URL`);
   }
-  if (normalized.startsWith("text/html")) return "html";
-  return "text";
+  if (essence === "text/html") return "html";
+  return isBinaryContentType(mimeType, filename) ? "binary" : "text";
+}
+
+// A text response keeps a name the document service reads as text: a ".pdf"
+// URL that served an HTML login page is stored as ".html", not as a PDF.
+function textFilename(filename: string, kind: FetchedDocumentUrlKind): string {
+  if (!/\.pdf$/i.test(filename)) return filename;
+  return filename.replace(/\.pdf$/i, kind === "html" ? ".html" : ".txt");
 }
 
 function htmlToPlainText(value: string): string {
@@ -623,6 +639,7 @@ export async function fetchDocumentFromUrl(
       content: transcript,
       contentType: "transcript",
       mimeType: "text/plain",
+      contentEncoding: "utf8",
     };
   }
 
@@ -657,12 +674,19 @@ export async function fetchDocumentFromUrl(
     filename = lastSegment;
   }
 
+  let kind: FetchedDocumentUrlKind;
+  try {
+    kind = classifyMimeType(mimeType, filename);
+  } catch (error) {
+    // error-policy:J2 Release the unread body before reporting the
+    // unsupported type.
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
   const buffer = await readResponseBodyWithLimit(
     response,
     MAX_URL_IMPORT_BYTES,
   );
-
-  const kind = classifyMimeType(mimeType);
 
   if (kind === "binary") {
     const base64 = Buffer.from(buffer).toString("base64");
@@ -671,14 +695,16 @@ export async function fetchDocumentFromUrl(
       content: base64,
       contentType: "binary",
       mimeType,
+      contentEncoding: "base64",
     };
   }
 
   const text = decodeHttpText(buffer, mimeType);
   return {
-    filename,
+    filename: textFilename(filename, kind),
     content: kind === "html" ? htmlToPlainText(text) : text,
     contentType: kind,
     mimeType,
+    contentEncoding: "utf8",
   };
 }
