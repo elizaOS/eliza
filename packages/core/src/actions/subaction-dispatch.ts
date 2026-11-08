@@ -57,7 +57,9 @@ export function readSubaction<TSubaction extends string>(
 		const aliased = aliases[normalized];
 		if (aliased) return aliased;
 		if (allowed.has(normalized)) return normalized as TSubaction;
-		return undefined;
+		// An unrecognized value under one discriminator key must not hide a
+		// valid subaction under an alias key: models emit the discriminator
+		// under different keys, so keep looking.
 	}
 
 	return options.defaultValue;
