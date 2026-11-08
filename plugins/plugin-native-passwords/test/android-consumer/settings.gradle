@@ -1,9 +1,0 @@
-pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-rootProject.name = 'password-consumer'
-include ':elizaos-capacitor-passwords', ':elizaos-capacitor-passwords-transfer', ':elizaos-capacitor-secure-store-nativeonly', ':host', ':fixture', ':capacitor-android'
-project(':elizaos-capacitor-passwords').projectDir = file('../../android')
-project(':elizaos-capacitor-passwords-transfer').projectDir = file('../../android-transfer')
-project(':elizaos-capacitor-secure-store-nativeonly').projectDir = file('../../../plugin-native-secure-store/android-nativeonly')
-def capacitor = System.getenv('CAPACITOR_ANDROID_DIR')
-if (!capacitor) throw new GradleException('Set CAPACITOR_ANDROID_DIR to the real Capacitor Android module')
-project(':capacitor-android').projectDir = file(capacitor)

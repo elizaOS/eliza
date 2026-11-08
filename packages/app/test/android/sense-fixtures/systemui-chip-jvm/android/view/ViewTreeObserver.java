@@ -1,1 +1,0 @@
-package android.view; public class ViewTreeObserver {public interface OnPreDrawListener {boolean onPreDraw();} public void removeOnPreDrawListener(OnPreDrawListener listener){} public void addOnPreDrawListener(OnPreDrawListener listener){}}

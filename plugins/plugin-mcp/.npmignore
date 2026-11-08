@@ -1,8 +1,0 @@
-src/
-tsconfig.json
-vitest.config.ts
-biome.json
-commintlint.config.js
-.prettierrc
-.prettierignore
-.husky/

@@ -1,4 +1,0 @@
-Your files are doubly safe!
-Their names and their contents have been... transformed.
-It's all quite basic, really. Base64 was my tool of choice.
-Good luck finding the originals in /app/sensitive_data/.

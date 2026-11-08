@@ -1,5 +1,0 @@
--keepattributes SourceFile,LineNumberTable
--keep class ai.tokenjunction.valhalla.MainActivity { *; }
--keep class ai.tokenjunction.valhalla.CompanionService { *; }
--keep class com.google.android.gms.ads.** { *; }
--dontwarn com.google.android.gms.**

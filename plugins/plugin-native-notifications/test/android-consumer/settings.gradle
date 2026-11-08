@@ -1,4 +1,0 @@
-pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-rootProject.name = 'notification-mirror-consumer'
-include ':mirror', ':host', ':fixture'
-project(':mirror').projectDir = file('../../android')

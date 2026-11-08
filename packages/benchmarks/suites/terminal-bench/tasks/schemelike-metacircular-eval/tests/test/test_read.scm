@@ -1,6 +1,0 @@
-(display "Reading")
-(newline)
-(display (read))
-(newline)
-(display "Done")
-(newline)

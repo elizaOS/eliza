@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-exec /usr/lib/elizaos/bin/eliza-desktop "$@"

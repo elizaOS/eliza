@@ -1,3 +1,0 @@
-enable elizaos-session.target
-enable elizaos-agent.service
-enable elizaos-desktop.service

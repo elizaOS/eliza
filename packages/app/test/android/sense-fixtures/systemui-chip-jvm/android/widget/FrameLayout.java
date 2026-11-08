@@ -1,1 +1,0 @@
-package android.widget; public class FrameLayout extends android.view.ViewGroup {public FrameLayout(android.content.Context c){super(c);} public static class LayoutParams {public static final int WRAP_CONTENT=-2;public int topMargin,leftMargin,rightMargin,bottomMargin;public LayoutParams(int w,int h,int gravity){}}}

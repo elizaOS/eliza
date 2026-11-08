@@ -1,4 +1,0 @@
-# Publish this file as https://YOUR-DOMAIN/app-ads.txt
-# Replace pub-XXXXXXXXXXXXXXXX with the publisher ID from your AdMob account.
-# f08c47fec0942fa0 is Google's app-ads.txt certification authority. Do not change it.
-google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0

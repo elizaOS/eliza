@@ -1,6 +1,0 @@
-FROM vulhub/spring-messaging:5.0.4
-
-COPY ./task-deps/server-secret1.txt /server/secret1.txt
-COPY ./task-deps/server-secret2.txt /server/secret2.txt
-
-RUN chmod 644 /server/secret1.txt /server/secret2.txt

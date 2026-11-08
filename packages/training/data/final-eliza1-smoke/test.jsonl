@@ -1,2 +1,0 @@
-{"messages":[{"content":"Give a held-out synthetic test response.","role":"user"},{"content":"This is a held-out synthetic test response for deterministic evaluation plumbing.","role":"assistant"}]}
-{"messages":[{"content":"You are a held-out synthetic test assistant.","role":"system"},{"content":"What does the manifest verify?","role":"user"},{"content":"The manifest verifies the generator, source, transforms, and emitted split bytes.","role":"assistant"}]}
