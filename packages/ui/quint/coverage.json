@@ -280,5 +280,31 @@
       "Message values, overlay lineage/retirement arithmetic, cache eviction and prefetch tokens, active sends, runtime reset, pagination, arbitrary callback exceptions and anchor rendering are outside this instance.",
       "The outer useChatCallbacks selection/fallback and final ChatOverlay anchor/notification settlement still need a composed model. This model covers the loader-owned nested 404 list boundary only."
     ]
+  },
+  {
+    "id": "NativeSignInController",
+    "model": "packages/ui/quint/NativeSignInController.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/AndroidNativeCloudSignInView.tsx",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "DispatchOwnsRequest",
+      "CancellationKeepsItsFence",
+      "ScopedReceiptPreservesForeignAttempt",
+      "AuthenticationUsesDispatchedRequest",
+      "VerificationUsesDisplayedAttempt",
+      "ActivationOwnsStoredOutcome"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The retirement case covers two controller mounts, two unique dispatch IDs and one native slot. It covers delayed host admission, scoped cancellation, lost acknowledgement, explicit cleanup retry and successor isolation.",
+      "The outcome case covers one dispatch, distinct native and credential identities, legacy direct replies, correlated retained outcomes and one retry of the stored account activation.",
+      "Sixteen named checks exercise the controller and canonical broker handoff with controlled native ports. The Android Java bridge and generated model traces require separate conformance.",
+      "In-place resend and native provider admission, asynchronous MFA resume interleavings, readiness and listener setup, startup recovery, native credential persistence and composed or unbounded histories remain open."
+    ]
   }
 ]
