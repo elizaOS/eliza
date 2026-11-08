@@ -630,14 +630,6 @@ export async function handleMiscRoutes(
             );
             return;
           }
-          if (runTimedOut) {
-            error(
-              res,
-              "Terminal execution timed out; no partial result was returned.",
-              504,
-            );
-            return;
-          }
           if (!capturedTerminalOutputIsSafe(stdout, stderr)) {
             emitTerminalEvent({
               type: "terminal-output",

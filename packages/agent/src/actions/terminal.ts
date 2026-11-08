@@ -349,17 +349,6 @@ function normalizeCapturedRun(
     );
   }
 
-  if (value.timedOut) {
-    throw new ElizaError(
-      "Terminal response timed out before complete output was proven",
-      {
-        code: "TERMINAL_OUTPUT_INCOMPLETE",
-        context: { acceptance: "accepted", runId },
-        severity: "fatal",
-      },
-    );
-  }
-
   return {
     command,
     runId,
@@ -385,7 +374,7 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     `Command: ${result.command}`,
     `Exit code: ${result.exitCode}`,
     result.timedOut
-      ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}`
+      ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}; output below is incomplete`
       : "Timed out: no",
     "",
     "STDOUT:",
@@ -431,11 +420,6 @@ function terminalAttachmentReadView(
 /** @internal Exported for deterministic boundary tests. */
 export function completeOutputBlock(content: string): string {
   return formatOutputBlock(content.trimEnd());
-}
-
-/** @internal Exported for deterministic boundary tests. */
-export function normalizeTerminalOutput(text: string): string {
-  return text;
 }
 
 async function createCommandOutputAttachment(
@@ -837,11 +821,6 @@ export const terminalAction: Action = {
       stdout: redactCapturedTerminalText(runtime, rawRun.stdout),
       stderr: redactCapturedTerminalText(runtime, rawRun.stderr),
     };
-    const completeRun = {
-      ...capturedRun,
-      stdout: normalizeTerminalOutput(capturedRun.stdout),
-      stderr: normalizeTerminalOutput(capturedRun.stderr),
-    };
     const outputAttachment = await createCommandOutputAttachment(
       runtime,
       message,
@@ -878,7 +857,7 @@ export const terminalAction: Action = {
           }),
       data: {
         actionName: TERMINAL_ACTION_NAME,
-        ...completeRun,
+        ...capturedRun,
         outputAttachment: outputAttachment?.attachment,
         outputAttachmentMemoryId: outputAttachment?.memoryId,
         suppressVisibleCallback: true,
