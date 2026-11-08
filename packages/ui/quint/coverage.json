@@ -329,5 +329,26 @@
       "The ordered case relies on same-scope start admission preceding cancellation acknowledgement. The reordered case shows an expected looping late-admission counterexample without that condition.",
       "Six named checks exercise the real controller with controlled native ports. Native device scheduling, transport restart, credential storage, asynchronous MFA and more than two uncertain dispatches remain open."
     ]
+  },
+  {
+    "id": "CloudSessionProjection",
+    "model": "packages/ui/quint/CloudSessionProjection.qnt",
+    "sources": [
+      "packages/ui/src/state/useCloudState.ts",
+      "packages/ui/src/app/native-cloud-session.ts",
+      "packages/ui/src/components/settings/CloudOverviewSection.tsx",
+      "packages/ui/src/state/__e2e__/native-cloud-session.test.tsx"
+    ],
+    "invariants": [
+      "NoStaleReadPublication",
+      "NoStaleSignOutPublication",
+      "SuppressedAccountIsCleared"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two port identities, two replacements, two reads, two serial sign-out attempts and one teardown. The proof covers current read success or failure, late replies, sign-out refusal and acknowledgement, and host reply fairness.",
+      "The mounted implementation suite controls the native port and runs the actual account hook. A delayed regular read error reproduces the before-fix availability regression.",
+      "Web and remote verification, explicit activation and event delivery, native credential persistence, poll interval scheduling and unbounded histories remain separate."
+    ]
   }
 ]

@@ -32,6 +32,33 @@ describe("native account within the common Cloud state owner", () => {
     await act(async () => { answer(snapshot("retired-owner")); });
     expect(result.current.elizaCloudUserId).toBe("replacement-owner");
   });
+  it("does not mark a verified replacement account unavailable when the previous read rejects", async () => {
+    let fail!: (error: Error) => void;
+    const previous = port(
+      () => new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    const next = port(async () => ({
+      status: { connected: false, enabled: true },
+      credits: null,
+    }));
+    const { result, rerender } = renderHook(
+      ({ native }) => useCloudState({ ...params, nativeCloudSession: native }),
+      { initialProps: { native: previous } },
+    );
+    await waitFor(() => expect(previous.read).toHaveBeenCalled());
+    rerender({ native: next });
+    await waitFor(() => expect(result.current.elizaCloudEnabled).toBe(true));
+    expect(result.current.elizaCloudStatusUnavailable).toBe(false);
+
+    await act(async () => {
+      fail(new Error("previous account read failed"));
+    });
+
+    expect(result.current.elizaCloudStatusUnavailable).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+  });
   it("retains account state when native retirement refuses and clears it only after acknowledgement", async () => {
     const native = port();
     const { result } = renderHook(() => useCloudState({ ...params, nativeCloudSession: native }));
