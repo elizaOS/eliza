@@ -65,7 +65,7 @@ export interface ProcessAccountDeletionSagaResult {
   progressed: number;
   reconciling: number;
   actionRequired: number;
-  /** Requests whose head phase belongs to another lane (spools, secondary_backups). */
+  /** Requests whose head phase another lane owns. */
   deferredToOtherLane: number;
   /** How long the oldest of those has waited at its head phase; null when none. */
   oldestDeferredAgeMs: number | null;
