@@ -20,8 +20,9 @@ import com.getcapacitor.annotation.ActivityCallback;
  * dialog and Android's credential result can record a reset.
  *
  * <p>Results are {@code {status, message}}: {@code cancelled} or {@code unavailable} when nothing
- * was reset. A confirmed reset never resolves as completed: Android stops the process, and an
- * unfinished reset opens the host's recovery activity instead.
+ * was reset, including when a same-signer listener is installed but cannot acknowledge. A
+ * confirmed reset never resolves as completed: Android stops the process, and an unfinished reset
+ * opens the host's recovery activity instead.
  *
  * <p>Hosts subclass this with their own {@code @CapacitorPlugin(name=...)} (the annotation is not
  * inherited), return their shared {@link DataReset} and, optionally, product copy.
@@ -118,7 +119,12 @@ public abstract class DataResetPlugin extends Plugin {
             @Override public void postDelayed(Runnable task, long delayMs) { main.postDelayed(task, delayMs); }
         };
         try {
-            reset.record(context);
+            // A same-signer listener that is off or ungranted would hold the reset closed in
+            // recovery; refuse now, while nothing has been recorded.
+            if (!reset.recordIfListenerReachable(context)) {
+                result(call, "unavailable", text.listenerOff);
+                return;
+            }
         } catch (Exception failure) {
             result(call, "unavailable", text.prepareFailed);
             // The marker landed though a later step failed: the confirmed reset still revokes first.

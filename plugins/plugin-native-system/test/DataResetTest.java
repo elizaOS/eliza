@@ -27,7 +27,9 @@ public final class DataResetTest {
         authorization();
         copy();
         builder();
+        dialer();
         coordinator(new File(args[0]), new File(args[1]));
+        listenerPreflight(new File(args[0]));
         dispatchOrdering(new File(args[0]));
         interrupted(new File(args[0]));
         revocation(new File(args[0]));
@@ -53,29 +55,66 @@ public final class DataResetTest {
         check(text.disclosure.contains("There is no backup or undo"), "no backup disclosed");
         check(text.disclosure.contains("are not deleted or cancelled") && text.disclosure.contains("Other apps are not reset"), "scope disclosed");
         check(text.noScreenLock.equals("Set a device screen lock in Android before resetting Example data."), "lock");
-        String absent = text.recoveryBody(null, false, false), pending = text.recoveryBody(null, true, true), unreachable = text.recoveryBody(null, true, false);
-        check(absent.contains("Android has not accepted") && !absent.contains("listener's settings"), "android reason");
-        check(pending.contains("confirmation has not arrived") && pending.contains("open the listener's settings"), "listener pending reason");
-        check(unreachable.contains("cannot reach the listener's controls") && !unreachable.contains("open the listener's settings"), "unreachable reason");
+        // Without a recorded failure the cause is unknown, never inferred from the listener.
+        String unknown = text.recoveryBody(null, true, true), unknownOff = text.recoveryBody(null, false, true);
+        for (String body : new String[] {unknown, unknownOff}) {
+            check(body.contains("was not recorded") && !body.contains("listener") && !body.contains("Android has not accepted"), "unknown cause");
+        }
         // The recorded outcome wins over the listener's current state.
         String refused = text.recoveryBody(DataReset.Outcome.ANDROID_REFUSED, true, true);
         check(refused.contains("Android has not accepted") && !refused.contains("confirmation has not arrived") && !refused.contains("listener's settings"), "refused after acknowledgement");
         String unacknowledged = text.recoveryBody(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, true, true);
         check(unacknowledged.contains("confirmation has not arrived") && unacknowledged.contains("open the listener's settings"), "recorded listener reason");
-        check(text.recoveryBody(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, true, false).contains("cannot reach the listener's controls"), "recorded, now unreachable");
-        for (String body : new String[] {absent, pending, unreachable, refused, unacknowledged}) {
+        String unreachable = text.recoveryBody(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, false, true);
+        check(unreachable.contains("cannot reach the listener's controls") && !unreachable.contains("open the listener's settings"), "recorded, now unreachable");
+        // A retry that Android refused after the listener was repaired names Android, not the listener.
+        String retriedRefused = text.recoveryBody(DataReset.Outcome.ANDROID_REFUSED, true, true);
+        check(retriedRefused.contains("Android has not accepted") && !retriedRefused.contains("listener"), "retry outcome names Android");
+        for (String body : new String[] {unknown, unknownOff, refused, unacknowledged, unreachable}) {
             check(body.contains("has not been deleted yet") && body.endsWith("Phone and Android Settings remain available."), "never claims deletion");
             check(!body.matches("(?is).*(reset (is )?complete|data (was|has been) deleted\\.).*"), "no completion claim");
         }
+        // No dialer outside this app: the body does not promise Phone.
+        String noPhone = text.recoveryBody(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, true, false);
+        check(!noPhone.contains("Phone") && noPhone.endsWith("Android Settings remains available."), "no Phone promise without a dialer");
+        check(text.listenerOff.contains("nothing was reset"), "listener refusal says nothing was reset");
         check(text.retryResult(DataReset.Outcome.ANDROID_REFUSED, true).startsWith("Android did not accept"), "refused");
         check(text.retryResult(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, true).startsWith("The listener still has not confirmed"), "pending");
         check(text.retryResult(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, false).startsWith("The listener could not be reached"), "unreachable");
         check(text.retryResult(DataReset.Outcome.DISPATCHED, false).equals("Android is deleting Example's data. Example will close."), "dispatched");
         DataResetCopy custom = DataResetCopy.forProduct("Example").disclosure("Custom.").progressMessage("Signing out...").recoveryRemoteNote("(Remote note.)").build();
-        check(custom.disclosure.equals("Custom.") && custom.progressMessage.equals("Signing out...") && custom.recoveryBody(null, false, false).contains("deleted yet. (Remote note.)\n\n"), "overrides");
+        check(custom.disclosure.equals("Custom.") && custom.progressMessage.equals("Signing out...") && custom.recoveryBody(null, false, true).contains("deleted yet. (Remote note.)\n\n"), "overrides");
         for (String invalid : new String[] {null, "", "   ", "x".repeat(61)}) {
             try { DataResetCopy.forProduct(invalid); throw new AssertionError("invalid product " + invalid); } catch (IllegalArgumentException expected) { /* rejected */ }
         }
+    }
+
+    static void dialer() {
+        String self = "fixture.example";
+        check(DataReset.recoveryDialer(self, "com.android.dialer", List.of(self, "other.dialer", "com.android.dialer")) == 2, "system dialer preferred");
+        check(DataReset.recoveryDialer(self, self, List.of(self, "other.dialer")) == 1, "this app as system dialer is skipped");
+        check(DataReset.recoveryDialer(self, null, List.of(self, "other.dialer")) == 1, "another handler");
+        check(DataReset.recoveryDialer(self, self, List.of(self)) == -1, "only this app: no Phone button");
+        check(DataReset.recoveryDialer(self, null, List.of()) == -1, "no handler");
+    }
+
+    /** A same-signer listener that is off or ungranted refuses before anything is recorded. */
+    static void listenerPreflight(File data) throws Exception {
+        Context.data = data;
+        Context app = new Context();
+        DataReset reset = DataReset.builder("reset-preflight", Recovery.class).build();
+        SenseListenerClient.blocks = true;
+        int listener = SenseListenerClient.calls, clears = ActivityManager.calls;
+        try {
+            check(!reset.recordIfListenerReachable(app), "unreachable listener refuses");
+            check(!reset.pending(app) && !new File(data, "reset-preflight.pending").exists(), "no marker written");
+            check(SenseListenerClient.calls == listener && ActivityManager.calls == clears, "nothing attempted");
+        } finally {
+            SenseListenerClient.blocks = false;
+        }
+        check(reset.recordIfListenerReachable(app) && reset.pending(app), "reachable listener records");
+        new File(data, "reset-preflight.pending").delete();
+        check(!reset.pending(app), "cleaned up");
     }
 
     static void builder() {

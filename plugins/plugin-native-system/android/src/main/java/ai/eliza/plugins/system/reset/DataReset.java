@@ -208,6 +208,33 @@ public final class DataReset {
         });
     }
 
+    /**
+     * Records the confirmed request unless a same-signer listener is installed but cannot answer
+     * ({@link SenseListenerClient#blocksReset}). Then it writes nothing and returns false: the reset
+     * would only stop at the listener, and the app would stay closed in recovery.
+     */
+    public boolean recordIfListenerReachable(Context context) throws Exception {
+        if (new SenseListenerClient(context).blocksReset()) return false;
+        record(context);
+        return true;
+    }
+
+    /**
+     * Which ACTION_DIAL handler recovery opens: the system dialer when it is another package, else
+     * the first other handler, else -1. Never this package: its dial pad starts the main process,
+     * which admission turns back into recovery or an unrequested attempt.
+     */
+    public static int recoveryDialer(String self, String systemDialer, java.util.List<String> handlers) {
+        int other = -1;
+        for (int i = 0; i < handlers.size(); i++) {
+            String handler = handlers.get(i);
+            if (handler == null || handler.equals(self)) continue;
+            if (handler.equals(systemDialer)) return i;
+            if (other < 0) other = i;
+        }
+        return other;
+    }
+
     /** True once {@link AnsweredBeforeDispatch} reported an answer for the pending reset. */
     public boolean revocationAnswered(Context context) {
         return exists(answered(context));
