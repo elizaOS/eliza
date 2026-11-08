@@ -250,7 +250,7 @@ export function freeName(
 /** Folders first, then the chosen order. Date and size are newest/largest first. */
 export function sortEntries<
   T extends Pick<StorageEntry, "name" | "directory" | "modified" | "size">,
->(entries: readonly T[], mode: SortMode): T[] {
+>(entries: readonly T[], mode: SortMode, reverse = false): T[] {
   const byName = (a: T, b: T) =>
     a.name.localeCompare(b.name, undefined, {
       numeric: true,
@@ -259,7 +259,7 @@ export function sortEntries<
   return [...entries].sort(
     (a, b) =>
       Number(b.directory) - Number(a.directory) ||
-      (a.directory && b.directory
+      (reverse ? -1 : 1) * (a.directory && b.directory
         ? byName(a, b)
         : mode === "date"
           ? b.modified - a.modified || byName(a, b)

@@ -1063,6 +1063,24 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     const granted = access === "granted";
     // Browse (no search box and no Recents: the agent filters, decision F2).
     const primary = volumes.find((v) => v.primary) ?? volumes[0];
+    const rootFolder: Extract<Place, { kind: "folder" }> = { kind: "folder", path: "" };
+    const newFolder = () => {
+      if (!granted || busy || !primary) return;
+      const target = place.kind === "folder" ? place : rootFolder;
+      if (place.kind !== "folder") go(target);
+      dialogTrigger = null;
+      dialog = { kind: "name", op: "create", path: target.path, value: "", ...onVolume(target.volume) };
+      currentApi.set({ menu: false });
+    };
+    out.toolbar = {
+      ready: granted && !busy && !!primary && place.kind !== "trash",
+      canCreate: place.kind === "browse" || place.kind === "folder",
+      newFolder,
+      sort: () => { if (place.kind === "browse") go(rootFolder); currentApi.set({ menu: true }); },
+      toggleView: () => { if (place.kind === "browse") go(rootFolder); currentApi.set({ grid: !state.grid }); },
+      viewLabel: state.grid ? "List view" : "Grid view",
+      viewIcon: state.grid ? ICONS.rows : ICONS.grid,
+    };
     out.notSearching = true;
     out.searching = false;
     out.hasQuery = false;
@@ -1085,6 +1103,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         }
         void reload();
       },
+      allFiles: () => go(rootFolder),
+      allFilesIcon: ICONS.folder,
       cats: CATEGORIES.map(({ id, label }) => ({
         name: label,
         d: ICONS[id],
@@ -1211,7 +1231,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           tap: () => go({ kind: "folder", path: group.folder }),
         }));
       } else
-        items = sortEntries(entries, sort).map((entry) =>
+        items = sortEntries(entries, sort, state.sortReverse === true).map((entry) =>
           entryRow(
             entry,
             at.kind === "category" && at.category !== "downloads",
@@ -1261,38 +1281,17 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         moreD: ICONS.more,
         menuRows: [
           ...(["name", "date", "size"] as SortMode[]).map((mode) => ({
-            label: "Sort by " + SORT_LABELS[mode].toLowerCase(),
+            label: SORT_LABELS[mode] + (sort === mode ? " · " + (mode === "name" ? (state.sortReverse ? "Z–A" : "A–Z") : mode === "date" ? (state.sortReverse ? "Oldest first" : "Newest first") : (state.sortReverse ? "Smallest first" : "Largest first")) : ""),
             d: ICONS.sort,
             on: sort === mode,
-            go: () => currentApi.set({ menu: false, sort: mode }),
+            go: () => currentApi.set({ menu: false, sort: mode, sortReverse: sort === mode ? !state.sortReverse : false }),
           })),
           {
-            label: state.grid ? "List" : "Grid",
-            d: state.grid ? ICONS.rows : ICONS.grid,
-            on: false,
-            go: () => currentApi.set({ menu: false, grid: !state.grid }),
+            label: "Reverse order",
+            d: ICONS.sort,
+            on: state.sortReverse === true,
+            go: () => currentApi.set({ menu: false, sortReverse: !state.sortReverse }),
           },
-          ...(at.kind === "folder"
-            ? [
-                {
-                  label: "New folder",
-                  d: ICONS.folder,
-                  on: false,
-                  go: (event: Event) => {
-                    dialogTrigger = null;
-                    void event;
-                    dialog = {
-                      kind: "name",
-                      op: "create",
-                      path: at.path,
-                      value: "",
-                      ...onVolume(at.volume),
-                    };
-                    currentApi.set({ menu: false });
-                  },
-                },
-              ]
-            : []),
           ...(listed && items.length
             ? [
                 {
