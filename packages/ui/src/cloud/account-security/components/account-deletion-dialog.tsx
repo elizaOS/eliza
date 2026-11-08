@@ -14,7 +14,10 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { TextLink } from "../../../components/ui/text-link";
+import { useSessionAuth } from "../../lib/use-session-auth";
 import {
+  AccountDeletionClientError,
+  abandonAccountDeletion,
   endLocalSessionAfterDeletion,
   submitAccountDeletion,
 } from "../data/account-deletion-client";
@@ -33,6 +36,9 @@ export function AccountDeletionDialog({
   const [serverAccepted, setServerAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signInAgain, setSignInAgain] = useState(false);
+  // Set when the request was saved but its activation was not confirmed.
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const session = useSessionAuth();
 
   const submit = async () => {
     setSubmitting(true);
@@ -40,7 +46,12 @@ export function AccountDeletionDialog({
     setSignInAgain(false);
     let accepted: Awaited<ReturnType<typeof submitAccountDeletion>>;
     try {
-      accepted = await submitAccountDeletion();
+      accepted = await submitAccountDeletion(
+        session.user
+          ? { id: session.user.id, label: session.user.email || null }
+          : null,
+      );
+      setPendingRequestId(null);
       setServerAccepted(true);
     } catch (cause) {
       // error-policy:J4 request failure remains visibly distinct and leaves
@@ -49,6 +60,12 @@ export function AccountDeletionDialog({
         setSignInAgain(true);
         setSubmitting(false);
         return;
+      }
+      if (
+        cause instanceof AccountDeletionClientError &&
+        cause.code === "ACCOUNT_DELETION_ACTIVATION_PENDING"
+      ) {
+        setPendingRequestId(cause.requestId);
       }
       setError(
         cause instanceof Error
@@ -127,7 +144,7 @@ export function AccountDeletionDialog({
           {error ? (
             <p className="text-sm text-danger" role="alert">
               {error}{" "}
-              {serverAccepted ? (
+              {serverAccepted || pendingRequestId ? (
                 <TextLink href="/account-deletion">
                   Continue to deletion status
                 </TextLink>
@@ -135,7 +152,20 @@ export function AccountDeletionDialog({
             </p>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>
+            <AlertDialogCancel
+              disabled={submitting}
+              onClick={() => {
+                if (!pendingRequestId) return;
+                try {
+                  abandonAccountDeletion(pendingRequestId);
+                  setPendingRequestId(null);
+                  setError(null);
+                } catch {
+                  // error-policy:J6 a request that stays saved is still shown
+                  // on the account-deletion page with Finish and Keep options.
+                }
+              }}
+            >
               Keep account
             </AlertDialogCancel>
             <Button
@@ -148,7 +178,9 @@ export function AccountDeletionDialog({
                 ? "Deletion scheduled"
                 : submitting
                   ? "Scheduling…"
-                  : "Delete account"}
+                  : pendingRequestId
+                    ? "Finish deletion"
+                    : "Delete account"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
