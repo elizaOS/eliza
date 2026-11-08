@@ -47,6 +47,12 @@ import {
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
 import {
+  isPhotosViewType,
+  type PhotosViewOperation,
+  photosViewCapabilityAvailable,
+  validatePhotosViewOperation,
+} from "./photos-view-contract.ts";
+import {
   type ReminderOperation,
   validateReminderOperation,
 } from "./reminder-contract.ts";
@@ -111,6 +117,7 @@ export type DeviceOperation =
   | NotesOrganizeOperation
   | NativeNotesQueryOperation
   | CalendarOperation
+  | PhotosViewOperation
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
@@ -149,6 +156,8 @@ export function deviceOperationSupportedByCapabilities(
       capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (isPhotosViewType(type))
+    return photosViewCapabilityAvailable(capabilities);
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -273,6 +282,17 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch (error) {
         throw new DeviceActionError(
           `Invalid Notes operation: ${(error as Error).message}`,
+        );
+      }
+    case "photos_filter":
+    case "photos_open":
+    case "photos_album_create":
+    case "photos_share":
+      try {
+        return validatePhotosViewOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Photos operation: ${(error as Error).message}`,
         );
       }
     case "calendar_create_local":

@@ -147,6 +147,17 @@ import {
   validateFilesOperation,
 } from "./files-browser-contract.ts";
 import {
+  describePhotosViewOperation,
+  isPhotosViewOperation,
+  PHOTOS_VIEW_DIRECT_TYPES,
+  type PhotosViewOperation,
+  type PhotosViewResult,
+  photosViewCapabilityAvailable,
+  photosViewContextAllowed,
+  validatePhotosViewOperation,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
+import {
   isReminderOperation,
   type ReminderOperation,
   type ReminderResult,
@@ -245,6 +256,7 @@ export type DeviceOperation =
   | LibraryAgentOperation
   | NotesOrganizeOperation
   | FilesAgentOperation
+  | PhotosViewOperation
   | ReminderOperation
   | NotesOperation
   | NativeNotesQueryOperation
@@ -336,7 +348,7 @@ export interface DeviceExecutionResult {
   reminderResult?: ReminderResult | ReminderCreateResult;
   mapsResult?: MapsResult;
   clockResult?: ClockHandoffResult;
-  photoLibraryResult?: LibraryAgentResult;
+  photoLibraryResult?: LibraryAgentResult | PhotosViewResult;
   cameraResult?: CameraCaptureResult;
   smsResult?: SmsSendResult;
   dialResult?: PhoneDialResult;
@@ -518,6 +530,7 @@ export function validateDeviceOperation(
   if (isLibraryOperation(p)) return validateLibraryOperation(p);
   if (isNotesOrganizeOperation(p)) return validateNotesOrganizeOperation(p);
   if (isFilesOperation(p)) return validateFilesOperation(p);
+  if (isPhotosViewOperation(p)) return validatePhotosViewOperation(p);
   if (isReminderOperation(p)) return validateReminderOperation(p);
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
@@ -813,6 +826,12 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
         ? "Unlock the phone to review this action."
         : "Open Files to review this action.",
     );
+  if (isPhotosViewOperation(operation) && !photosViewContextAllowed(context))
+    throw new ContextNotice(
+      context.sensitive
+        ? "Unlock the phone to review this action."
+        : "Open Photos to review this action.",
+    );
   if (isReminderOperation(operation)) assertReminderContext(operation, context);
   if (isNativeNotesQuery(operation)) assertNotesQueryContext(context);
   if (isNotesOperation(operation)) assertNotesContext(operation, context);
@@ -835,7 +854,7 @@ export function proposalContextNotice<C extends DeviceContextEnvelope>(
     if (isMapsOperation(operation))
       return "Open the selected place or route in Maps to review this action.";
     if (isLibraryOperation(operation))
-      return "Open Photos > Device library to review this action.";
+      return "Open Photos to review this action.";
     if (isReminderOperation(operation))
       return "Open the selected reminder in Calendar to review this action.";
     if (isNativeNotesQuery(operation))
@@ -1285,6 +1304,11 @@ export class DeviceActionCoordinator<
     )
       throw Error("Notes folders were not negotiated with this agent");
     if (
+      isPhotosViewOperation(op) &&
+      !photosViewCapabilityAvailable(this.credential.capabilities)
+    )
+      throw Error("Photos actions were not negotiated with this agent");
+    if (
       isForegroundReviewOperation(op) &&
       (!foregroundReviewOperationAvailable(op, this.credential.capabilities) ||
         !this.ports.executeForeground)
@@ -1462,6 +1486,11 @@ export class DeviceActionCoordinator<
     if (isNotesOrganizeOperation(op))
       return { ...base, ...describeNotesOrganizeOperation(op) };
     if (isFilesOperation(op)) return { ...base, ...describeFilesOperation(op) };
+    if (isPhotosViewOperation(op))
+      return {
+        ...base,
+        ...describePhotosViewOperation(op, this.profile.appName),
+      };
     const notesDestination =
       (op.type === "notes_delete" || op.type === "notes_update") &&
       !context.sensitive &&
@@ -1660,6 +1689,7 @@ export class DeviceActionCoordinator<
       "photo_library_select",
       ...NOTES_ORGANIZE_DIRECT_TYPES,
       ...FILES_DIRECT_TYPES,
+      ...PHOTOS_VIEW_DIRECT_TYPES,
     ];
     const results: DeviceOperationReceipt[] = [];
     for (const [proposalId, entry] of [...this.proposals]) {
@@ -1890,13 +1920,12 @@ export class DeviceActionCoordinator<
         throw Error("Unconfirmed camera capture cannot return a saved photo");
     } else if (result.cameraResult !== undefined)
       throw Error("Unexpected camera result");
-    let photoLibraryResult: LibraryAgentResult | undefined;
-    if (isLibraryOperation(op)) {
+    let photoLibraryResult: LibraryAgentResult | PhotosViewResult | undefined;
+    if (isLibraryOperation(op) || isPhotosViewOperation(op)) {
       if (result.status === "succeeded")
-        photoLibraryResult = validateLibraryResult(
-          op,
-          result.photoLibraryResult,
-        );
+        photoLibraryResult = isPhotosViewOperation(op)
+          ? validatePhotosViewResult(op, result.photoLibraryResult)
+          : validateLibraryResult(op, result.photoLibraryResult);
       else if (result.photoLibraryResult !== undefined)
         throw Error("Failed library action cannot return content");
     } else if (result.photoLibraryResult !== undefined)
@@ -2867,9 +2896,12 @@ export class DeviceActionCoordinator<
   private async savedLibraryResult(
     p: DeviceProposal,
     summary: DeviceJournalEntry,
-  ): Promise<LibraryAgentResult | undefined> {
+  ): Promise<LibraryAgentResult | PhotosViewResult | undefined> {
     const op = p.operation;
-    if (!isLibraryOperation(op) || summary.status !== "succeeded")
+    if (
+      !(isLibraryOperation(op) || isPhotosViewOperation(op)) ||
+      summary.status !== "succeeded"
+    )
       return undefined;
     const entry = await this.savedEntry(
       p,
@@ -2877,7 +2909,9 @@ export class DeviceActionCoordinator<
       "No exact saved library receipt; the library will not be read again",
       { succeeded: true },
     );
-    return validateLibraryResult(op, entry.result?.photoLibraryResult);
+    return isPhotosViewOperation(op)
+      ? validatePhotosViewResult(op, entry.result?.photoLibraryResult)
+      : validateLibraryResult(op, entry.result?.photoLibraryResult);
   }
   private async savedCalendarResult(
     p: DeviceProposal,
@@ -3040,7 +3074,11 @@ export class DeviceActionCoordinator<
         "Applied camera capture requires its exact saved photo receipt",
       );
     const photoLibraryResult = await saved(() => this.savedLibraryResult(p, e));
-    if (applied && isLibraryOperation(op) && !photoLibraryResult)
+    if (
+      applied &&
+      (isLibraryOperation(op) || isPhotosViewOperation(op)) &&
+      !photoLibraryResult
+    )
       throw Error("Applied library action requires its exact saved receipt");
     const readResult = await saved(() => this.savedReadResult(p, e));
     const calendarResult = await saved(() => this.savedCalendarResult(p, e));
@@ -3122,7 +3160,7 @@ type TypedResults = {
   clockResult?: ClockHandoffResult;
   mapsResult?: MapsResult;
   cameraResult?: CameraCaptureResult;
-  photoLibraryResult?: LibraryAgentResult;
+  photoLibraryResult?: LibraryAgentResult | PhotosViewResult;
   readResult?: WorkflowReadResult;
   calendarResult?: CalendarResult;
   notesResult?: NotesResult | NotesQueryResult;

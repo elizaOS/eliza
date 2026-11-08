@@ -127,6 +127,14 @@ import {
   NOTES_ORGANIZE_TYPES,
 } from "./notes-organize-contract.ts";
 import { notesDeleteAfterReadPlan } from "./notes-delete-continuation.ts";
+import { PHOTO_LIBRARY_CAPABILITY } from "./photo-library-contract.ts";
+import {
+  isPhotosViewOperation,
+  PHOTOS_VIEW_CAPABILITY,
+  PHOTOS_VIEW_TYPES,
+  photosViewCapabilityAvailable,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
 import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
@@ -1780,6 +1788,8 @@ export class DeviceActionService {
           SMS_SEND_CAPABILITY,
           PHONE_DIAL_CAPABILITY,
           CONTACT_LOOKUP_CAPABILITY,
+          PHOTO_LIBRARY_CAPABILITY,
+          PHOTOS_VIEW_CAPABILITY,
         ],
       };
     });
@@ -2083,6 +2093,7 @@ export class DeviceActionService {
         "calendar_read_selected",
         "calendar_update",
         "calendar_delete",
+        ...PHOTOS_VIEW_TYPES,
         ...FOREGROUND_REVIEW_TYPES,
       ].includes(validated.type)
     )
@@ -2514,6 +2525,7 @@ export class DeviceActionService {
           (isCameraCapture(operation) ||
             isNativeNotesQuery(operation) ||
             isNotesOrganizeOperation(operation) ||
+            isPhotosViewOperation(operation) ||
             isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||
             operation.type === "calendar_read_next") &&
@@ -2588,6 +2600,11 @@ export class DeviceActionService {
       !c.capabilities?.includes(NOTES_CAPABILITY)
     )
       throw new DeviceActionError("Notes capability unavailable");
+    if (
+      isPhotosViewOperation(payload.operation) &&
+      !photosViewCapabilityAvailable(c.capabilities)
+    )
+      throw new DeviceActionError("Photos capability unavailable");
     if (
       isCalendarOperation(payload.operation) &&
       !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -2742,6 +2759,11 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
+      if (
+        isPhotosViewOperation(payload.operation) &&
+        !photosViewCapabilityAvailable(c.capabilities)
+      )
+        throw new DeviceActionError("Photos capability unavailable");
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range" ||
@@ -2887,6 +2909,18 @@ export class DeviceActionService {
           throw new DeviceActionError("Invalid Notes receipt");
         }
       } else if (
+        isPhotosViewOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validatePhotosViewResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Photos receipt");
+        }
+      } else if (
         isCalendarOperation(payload.operation) &&
         receipt.outcome === "applied"
       ) {
@@ -3025,6 +3059,11 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
+      if (
+        isPhotosViewOperation(payload.operation) &&
+        !photosViewCapabilityAvailable(c.capabilities)
+      )
+        throw new DeviceActionError("Photos capability unavailable");
       if (isSmsSend(payload.operation)) {
         if (receipt.operationId !== request.execution?.providerIdempotencyKey)
           throw new DeviceActionError(
@@ -3164,6 +3203,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Notes receipt");
+        }
+      } else if (
+        isPhotosViewOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validatePhotosViewResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Photos receipt");
         }
       } else if (
         isCalendarOperation(payload.operation) &&

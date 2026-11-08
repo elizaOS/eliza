@@ -17,6 +17,11 @@ import {
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
 import {
+  isPhotosViewOperation,
+  type PhotosViewOperation,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
+import {
   isSmsSend,
   smsBindingText,
   validateSmsResult,
@@ -114,6 +119,25 @@ export function deviceActionEffectReceipts(
             id: provider.operationId,
             committedAt: request.updatedAt.toISOString(),
           },
+        }),
+      ];
+    }
+    if (isPhotosViewOperation(operation)) {
+      // Filter and open change only what Photos shows. An album or share result proves only
+      // that the owner review opened in Photos; neither is proof of a created album or a share.
+      validatePhotosViewResult(operation, provider.result);
+      return [
+        normalizeEffectReceipt({
+          ...base,
+          receiptId: execution.attemptId,
+          operation: "device." + operation.type,
+          resource: { kind: "device.operation", id: provider.operationId },
+          idempotency: {
+            key: execution.providerIdempotencyKey,
+            replayed: false,
+          },
+          outcome: "noop",
+          reason: photosViewReceiptReason(operation),
         }),
       ];
     }
@@ -220,6 +244,18 @@ export function deviceApprovalPersistenceReceipt(
   });
 }
 
+function photosViewReceiptReason(operation: PhotosViewOperation): string {
+  switch (operation.type) {
+    case "photos_filter":
+    case "photos_open":
+      return "Changed only what Photos shows; no media was changed or shared.";
+    case "photos_album_create":
+      return "Opened the album review in Photos; no album exists until the owner confirms it there.";
+    case "photos_share":
+      return "Opened the share review in Photos; nothing leaves the phone until the owner confirms there and picks a target in Android's share sheet.";
+  }
+}
+
 /** Exhaustive closed operation union: new operations require explicit classification. */
 function deviceOperationIsRead(operation: DeviceOperation): boolean {
   switch (operation.type) {
@@ -237,6 +273,14 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
       return true;
     case "calendar_named":
       return operation.action === "read";
+    // View state only: no data change (receipts are built by photosViewReceiptReason).
+    case "photos_filter":
+    case "photos_open":
+      return true;
+    // A data change and an outward share, each opened as an owner review.
+    case "photos_album_create":
+    case "photos_share":
+      return false;
     case "notes_named":
     case "reminder_named":
     case "notes_update":
