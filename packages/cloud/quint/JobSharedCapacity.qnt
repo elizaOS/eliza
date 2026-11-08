@@ -24,7 +24,7 @@ module JobSharedCapacity {
   // 5 committed awaiting hydration,6 returned,7 failed.
   pure val emptyCall = {phase: 0, jobType: 0, organization: 0, requested: 0,
     observed: 0, limit: 0, eligible: Set(), selected: Set(), returned: Set()}
-  action initialize(running: int): bool = s' = {
+  pure def initialState(running: int): State = {
     status: Jobs.mapBy(j => if (j <= running) 1 else 0),
     generation: Jobs.mapBy(j => if (j <= running) 1 else 0),
     leaseGeneration: Jobs.mapBy(j => if (j <= running) 1 else 0),
@@ -33,9 +33,9 @@ module JobSharedCapacity {
     lockOwner: 0, externalLocked: 0, futureDue: false,
     initialRunning: running, capacityViolation: false
   }
-  action emptyInit = initialize(0)
-  action occupiedInit = initialize(2)
-  action overfullInit = initialize(4)
+  action emptyInit = s' = initialState(0)
+  action occupiedInit = s' = initialState(2)
+  action overfullInit = s' = initialState(4)
   val runningJobs = Jobs.filter(j => s.status.get(j) == 1)
   def budget(requested: int, observed: int): int =
     if (observed >= 3) 0 else if (requested < 3 - observed) requested else 3 - observed
