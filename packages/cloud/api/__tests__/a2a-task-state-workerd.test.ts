@@ -286,7 +286,7 @@ describe("Cloudflare A2A tasks through the existing service", () => {
           taskId: original.task.id,
           entry: original,
           score: 1,
-          expiresAt: Date.now() + 1000,
+          expiresAt: Date.now() + 60_000,
         },
       ],
     });
@@ -297,7 +297,14 @@ describe("Cloudflare A2A tasks through the existing service", () => {
       entry: TaskStoreEntry;
       version: string;
     };
-    await Bun.sleep(1100);
+    expect(stale).not.toBeNull();
+    // Install an expired stored deadline after obtaining the original receipt.
+    // This checks the real expiry/CAS path without racing host scheduling.
+    await ok({
+      operation: "expire-fixture",
+      organization: organizationId,
+      taskId: original.task.id,
+    });
     expect(
       await rawOk(organizationId, {
         ...input,

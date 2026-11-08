@@ -16,6 +16,15 @@ export class A2ATaskState extends ProductionA2ATaskState {
     super(fixtureState);
   }
   override async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === "/fixture-expire") {
+      const { taskId } = (await request.json()) as { taskId: string };
+      this.fixtureState.storage.sql.exec(
+        "UPDATE tasks SET expires_at=? WHERE id=?",
+        Date.now() - 1,
+        taskId,
+      );
+      return Response.json(true);
+    }
     if (new URL(request.url).pathname === "/fixture-imports")
       return Response.json(
         this.fixtureState.storage.sql.exec("SELECT * FROM imports").toArray(),
@@ -38,6 +47,17 @@ export default {
       };
       try {
         switch (input.operation) {
+          case "expire-fixture": {
+            if (!env.A2A_TASK_STATE) throw new Error("Missing fixture binding");
+            const owner = `a2a-v1:${createHash("sha256").update(input.organization).digest("hex")}`;
+            return env.A2A_TASK_STATE.getByName(owner).fetch(
+              "https://a2a-state.internal/fixture-expire",
+              {
+                method: "POST",
+                body: JSON.stringify({ taskId: input.taskId }),
+              },
+            );
+          }
           case "raw": {
             if (!env.A2A_TASK_STATE) throw new Error("Missing fixture binding");
             const owner = `a2a-v1:${createHash("sha256").update(input.organization).digest("hex")}`;
