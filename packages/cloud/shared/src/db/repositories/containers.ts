@@ -458,13 +458,15 @@ export class ContainersRepository {
     expected?: Pick<Container, "status" | "lifecycle_revision" | "metadata" | "created_at"> & {
       createdAtSnapshot: string;
     },
+    transaction?: DbTransaction,
   ): Promise<Container | null> {
+    const database = transaction ?? dbWrite;
     let updateData = data;
     if (hasDeploymentLogUpdate(data)) {
       const existing = expected
         ? { id, organization_id: organizationId, created_at: expected.created_at }
         : (
-            await dbWrite
+            await database
               .select()
               .from(containers)
               .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
@@ -474,7 +476,7 @@ export class ContainersRepository {
       updateData = await prepareContainerUpdatePayload(data, existing);
     }
 
-    const [updated] = await dbWrite
+    const [updated] = await database
       .update(containers)
       .set({
         ...updateData,
@@ -852,8 +854,13 @@ export class ContainersRepository {
    *
    * @returns true if THIS call released the slot, false if it was already released.
    */
-  async tryReleaseNodeSlot(id: string, organizationId: string, nodeId: string): Promise<boolean> {
-    return dbWrite.transaction(async (tx) => {
+  async tryReleaseNodeSlot(
+    id: string,
+    organizationId: string,
+    nodeId: string,
+    transaction?: DbTransaction,
+  ): Promise<boolean> {
+    const release = async (tx: DbTransaction) => {
       const [marked] = await tx
         .update(containers)
         .set({
@@ -880,7 +887,8 @@ export class ContainersRepository {
         .where(eq(dockerNodes.node_id, nodeId));
 
       return true;
-    });
+    };
+    return transaction ? release(transaction) : dbWrite.transaction(release);
   }
 
   /**

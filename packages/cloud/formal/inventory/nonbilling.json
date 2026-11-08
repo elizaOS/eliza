@@ -451,7 +451,11 @@
       "sources": [
         "packages/cloud/shared/src/lib/services/containers.ts",
         "packages/cloud/shared/src/db/repositories/containers.ts",
-        "packages/cloud/services/container-control-plane/src/index.ts"
+        "packages/cloud/services/container-control-plane/src/index.ts",
+        "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+        "packages/cloud/shared/src/lib/services/app-container-store.ts",
+        "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+        "packages/cloud/shared/src/node/provisioning-worker.ts"
       ],
       "states": [
         "queued",
@@ -471,15 +475,17 @@
       ],
       "assumptions": [
         "One container, two original-row identities, bounded placement changes and one restart are modeled.",
-        "The canonical revision advances on placement changes; exact database timestamp text distinguishes row identity. Provider truth and transport reliability remain assumptions."
+        "The canonical revision advances on placement changes; exact database timestamp text distinguishes row identity. Provider truth and transport reliability remain assumptions.",
+        "The separate execution model has one job and two execution generations. It treats the job/lease/resource write as atomic and does not establish composition with provider-side effects."
       ],
-      "models": ["container_monitor.qnt"],
+      "models": ["container_monitor.qnt", "provisioning_execution.qnt"],
       "coverage": "partial-bounded-model",
       "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "Only asynchronous health observations and lifecycle/placement/row ABA fences are modeled; provider creation and deletion remain open.",
-        "Verify implementation transitions and failure paths against the formal contract."
+        "Health observations and job-owned publication are modeled; provider creation/deletion quiescence and cross-job routing remain open.",
+        "Verify implementation transitions and failure paths against the formal contract.",
+        "The execution model checks same-transaction job/lease/resource publication authority. Remote cancellation, delayed mutable-name provider effects and cross-job routing ownership remain unproved."
       ]
     },
     {
@@ -721,7 +727,7 @@
       "remainingWork": [
         "Only container placement publication and stale cleanup identity are modeled; build, ingress and complete deployment flow remain open.",
         "Verify implementation transitions and failure paths against the formal contract.",
-        "Fence app publication against job-lease revocation within the same app generation."
+        "Verify composition between the separate job-execution and app-generation publication models; retain provider-quiescence and cross-job routing gaps."
       ]
     },
     {

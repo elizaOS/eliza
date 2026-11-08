@@ -211,9 +211,28 @@
         "Original database timestamp text identifies the row; privileged reuse of both UUID and exact timestamp is excluded. Publication retains original tenant/app generation across provider I/O.",
         "Retirement and publication serialize at the database write. Stale cleanup can release only the original row/generation slot.",
         "Provider truth, physical node reincarnation, later ingress publication, unbounded liveness and TypeScript refinement remain unproved.",
-        "Job-lease revocation without a changed app generation is outside this model; execution-lease fencing requires separate integration."
+        "Job-lease revocation without a changed app generation is outside this model. The separate provisioning-execution model and runtime gate do not establish model composition."
       ],
       "maxSteps": 35
+    },
+    {
+      "id": "provisioning-execution",
+      "file": "provisioning_execution.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+        "packages/cloud/shared/src/lib/services/app-container-store.ts",
+        "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+        "packages/cloud/shared/src/node/provisioning-worker.ts",
+        "packages/cloud/shared/src/db/repositories/jobs.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One durable job, two execution generations and a clock bounded to six ticks. The same app generation may survive job recovery.",
+        "Job, lease and dependent-resource locks serialize a committed write; lease time is rechecked after the resource lock. No TypeScript or SQL isolation refinement is proved.",
+        "Provider dispatch and completion remain external. A lease timeout or cancellation does not prove remote quiescence; an explicit witness retains overlapping old and new provider calls.",
+        "No fairness, eventual completion, provider-side fencing, or cross-job routing ownership is proved."
+      ],
+      "maxSteps": 40
     }
   ],
   "pendingDomains": [
