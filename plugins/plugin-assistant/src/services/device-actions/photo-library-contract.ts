@@ -66,6 +66,8 @@ export const LIBRARY_LIMITS = Object.freeze({
   query: 80,
   kept: 2000,
   thumbnailsKept: 240,
+  /** One native page (PhotoLibraryAccess.PAGE); agent search has no cursor past it. */
+  search: 24,
 });
 export const LIBRARY_ID = /^lib:([iv]):([1-9][0-9]{0,18}):([0-9]{1,19})$/;
 const PERMITTED_ID = /^m:([a-zA-Z0-9_-]{1,80}):([iv]):([1-9][0-9]{0,18})$/;
@@ -689,7 +691,7 @@ export function validateLibraryOperation(
       !(
         Number.isInteger(op.limit) &&
         (op.limit as number) >= 1 &&
-        (op.limit as number) <= 50
+        (op.limit as number) <= LIBRARY_LIMITS.search
       )
     )
       throw Error("Invalid library limit");
@@ -822,7 +824,7 @@ export function modelItem(
 export function modelSearchResult(
   page: LibraryPage,
   revisions: LibraryRevisions,
-  limit = 50,
+  limit: number = LIBRARY_LIMITS.search,
 ): { scope: LibraryScope; items: LibraryModelItem[]; more: boolean } {
   return {
     scope: page.scope.scope,
@@ -901,7 +903,7 @@ export function validateLibraryResult(
     if (
       !["full", "partial", "selected"].includes(String(row.scope)) ||
       !Array.isArray(row.items) ||
-      row.items.length > (op.limit ?? 50) ||
+      row.items.length > (op.limit ?? LIBRARY_LIMITS.search) ||
       typeof row.more !== "boolean"
     )
       throw Error("Invalid library search result");

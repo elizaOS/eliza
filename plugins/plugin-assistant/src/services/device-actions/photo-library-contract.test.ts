@@ -131,6 +131,12 @@ describe("photo library contract", () => {
     expect(() =>
       validateLibraryOperation({ type: "photo_library_search", from: -1 }),
     ).toThrow("Invalid library date");
+    expect(
+      validateLibraryOperation({ type: "photo_library_search", limit: 24 }),
+    ).toEqual({ type: "photo_library_search", limit: 24 });
+    expect(() =>
+      validateLibraryOperation({ type: "photo_library_search", limit: 25 }),
+    ).toThrow("Invalid library limit");
   });
 
   it("gives a model opaque revisions and no names, sizes or locations", () => {

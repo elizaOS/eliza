@@ -42,6 +42,8 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   private PermittedMediaCatalog catalog;
   private PermittedMediaReview review;
   private volatile boolean destroyed, watching;
+  /** What the library view last asked of watch; a pause stops watching, resume restores it. */
+  private volatile boolean watchRequested;
 
   private PhotosPlugin photos() {
     PluginHandle handle = getBridge().getPlugin(photosPluginName());
@@ -160,7 +162,8 @@ public abstract class DeviceLibraryPlugin extends Plugin {
 
   @PluginMethod
   public void watch(PluginCall call) {
-    watching = call.getBoolean("active", false) && !destroyed;
+    watchRequested = call.getBoolean("active", false);
+    watching = watchRequested && !destroyed;
     catalog.watch("library", watching);
     JSObject out = new JSObject();
     out.put("active", watching);
@@ -282,11 +285,14 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   }
 
   // Posted so the Photos plugin's own handleOnResume (plugin order is unspecified) has restored
-  // foreground first.
+  // foreground first. The watch the library view asked for before the pause is restored.
   @Override
   protected void handleOnResume() {
     new Handler(Looper.getMainLooper()).post(() -> {
-      if (!destroyed) notifyListeners("scopeChanged", scopeResult());
+      if (destroyed) return;
+      watching = watchRequested;
+      if (catalog != null) catalog.watch("library", watching);
+      notifyListeners("scopeChanged", scopeResult());
     });
   }
 
