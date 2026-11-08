@@ -49,7 +49,7 @@ function statusInstruction(request: AccountDeletionStatusDto): string {
     case "pending_activation":
       return "No account access has been disabled yet. This browser must retain and acknowledge the recovery package before fencing begins.";
     case "reserved":
-      return "Account access is disabled while the portable export is prepared.";
+      return "Account access is disabled. You can download your data or cancel before the recovery window expires.";
     case "recovery":
       return "Account access is disabled. Download the export or cancel before the recovery window expires.";
     case "canceling":

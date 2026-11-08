@@ -86,10 +86,10 @@ export function AccountDeletionDialog({
               After this browser securely saves your recovery access, account
               access is disabled and your Steward identity and associated Eliza
               Cloud data enter a 30-day recovery window before irreversible
-              deletion. You can download the export when it is ready or cancel
-              from the account-deletion page during that window. Limited
-              transaction, fraud, tax, or security records may be retained when
-              legally required.
+              deletion. During that window you can cancel, or download an
+              optional data export, from the account-deletion page. No export is
+              made unless you start one. Limited transaction, fraud, tax, or
+              security records may be retained when legally required.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label
