@@ -661,7 +661,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
     expect(started).toEqual([["Port Hercule", "walk"]]);
   });
 
-  it("returns the directions link when the phone is not ready or does not say", async () => {
+  it("returns the directions link when the phone is not ready, refuses or does not say", async () => {
     for (const available of [false, undefined]) {
       const service = new MapsService(undefined, store([]));
       const { device, started } = phone(available);
@@ -672,6 +672,19 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       });
       expect(started).toEqual([]);
     }
+    const refusing = new MapsService(undefined, store([]));
+    const { device, started } = phone(true);
+    device.available = async () => {
+      throw new MapsError("The phone is not available.", {
+        code: "MAPS_DEVICE_UNAVAILABLE",
+      });
+    };
+    refusing.registerDeviceNavigation(device);
+    expect(await run(refusing, destination)).toMatchObject({
+      success: true,
+      data: { handoff: { kind: "navigate" } },
+    });
+    expect(started).toEqual([]);
     expect(
       await run(new MapsService(undefined, store([])), destination),
     ).toMatchObject({ success: true, data: { handoff: { kind: "navigate" } } });

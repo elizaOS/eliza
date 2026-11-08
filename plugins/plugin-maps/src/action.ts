@@ -557,14 +557,14 @@ function deviceResult(
 async function availableDevice(
   service: MapsService,
 ): Promise<MapsDeviceNavigation | null> {
-  let device: MapsDeviceNavigation;
   try {
-    device = service.requireDeviceNavigation();
+    const device = service.requireDeviceNavigation();
+    return (await device.available?.()) === true ? device : null;
   } catch (error) {
+    // A typed refusal from the owner or its probe means "use the link".
     if (error instanceof MapsError) return null;
     throw error;
   }
-  return (await device.available?.()) === true ? device : null;
 }
 
 async function execute(
