@@ -40,6 +40,9 @@ for (const name of [
   "malformed Google returns are refused before any exchange",
   "Steward's failure link ends the attempt without an exchange",
   "Google attempts expire with Steward's authorize state and on cancel",
+  "a second factor from the Google exchange finishes in-app through MFA",
+  "Google MFA retry uses the current private challenge and cancellation fences grant dispatch",
+  "Google MFA refuses an expired challenge at its exact deadline",
 ]) {
   assert(
     maintained.stdout
