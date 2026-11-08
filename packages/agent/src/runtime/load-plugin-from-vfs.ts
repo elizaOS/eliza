@@ -1,9 +1,10 @@
 /**
  * Runtime (un)loader for plugins sourced from a project's virtual filesystem:
  * given a VFS entry it optionally compiles the TS/TSX with `PluginCompiler`,
- * imports the emitted JS (cache-busted so a recompile hot-reloads), and
- * registers the plugin with the runtime, then supports unload-by-name and tracks
- * the loaded set — exposing a host-path-free view for the public API. Also the
+ * imports the emitted JS (cache-busted so a recompile is re-read), and
+ * registers the plugin with the runtime. A name that is already registered is
+ * refused, so callers unload before loading new code. Supports unload-by-name
+ * and tracks the loaded set — exposing a host-path-free view for the public API. Also the
  * home of `extractPlugin`, the shared module→Plugin resolver reused by the
  * on-disk directory loader.
  */
@@ -47,11 +48,23 @@ export interface LoadedVfsPluginView {
 
 const loadedPlugins = new Map<string, LoadedVfsPlugin>();
 
+export class VfsPluginLoadError extends Error {
+  constructor(
+    message: string,
+    readonly code: "PLUGIN_ALREADY_LOADED",
+  ) {
+    super(message);
+    this.name = "VfsPluginLoadError";
+  }
+}
+
 /**
  * Compile (optional) → import → register a plugin sourced from a VFS.
  *
  * The compiled JS is dynamically imported via `pathToFileURL` with a cache-bust
- * query so callers can hot-reload by recompiling the same VFS path.
+ * query so a recompile is re-read. The runtime skips a name it already has, so
+ * that case throws `PLUGIN_ALREADY_LOADED` and leaves the old plugin in place;
+ * callers unload first to load new code.
  */
 export async function loadPluginFromVfs(
   options: LoadPluginFromVfsOptions,
@@ -91,6 +104,13 @@ export async function loadPluginFromVfs(
   if (!plugin) {
     throw new Error(
       `loadPluginFromVfs: no valid plugin export in ${importPath} (expected default export with a string \`name\`, or a named \`plugin\` export)`,
+    );
+  }
+
+  if (runtime.plugins?.some((existing) => existing.name === plugin.name)) {
+    throw new VfsPluginLoadError(
+      `Plugin "${plugin.name}" is already loaded. Unload it before loading new code.`,
+      "PLUGIN_ALREADY_LOADED",
     );
   }
 

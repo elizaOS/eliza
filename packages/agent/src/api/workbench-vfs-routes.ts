@@ -33,6 +33,7 @@ import {
   getLoadedVfsPluginViews,
   loadPluginFromVfs,
   unloadPluginFromVfs,
+  VfsPluginLoadError,
 } from "../runtime/load-plugin-from-vfs.ts";
 import {
   createPluginCompiler,
@@ -536,6 +537,10 @@ function sendVfsError(ctx: WorkbenchRouteContext, err: unknown): void {
                 ? 504
                 : 500;
     ctx.error(ctx.res, err.message, status);
+    return;
+  }
+  if (err instanceof VfsPluginLoadError) {
+    ctx.error(ctx.res, err.message, 409);
     return;
   }
   ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
