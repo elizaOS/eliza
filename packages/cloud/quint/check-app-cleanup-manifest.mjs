@@ -74,6 +74,19 @@ const suites = [
     file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-pending.test.tsx",
     names: [
       "bulk deleting rows stay visible with pending status and disabled mutations until exact HTTP receipts complete",
+      "settings disable save and key regeneration while the original deletion receipt is pending",
+      "a second row cannot replace an active deletion batch and duplicate confirmation sends only one request",
+      "a list refetch cannot hide pending cleanup rows before their original receipt",
+      "a late deletion receipt after an authority switch cannot publish into the next session",
+      "a completed batch cannot run its delayed cache refresh after an authority change",
+    ],
+  },
+  {
+    name: "ui-page",
+    file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-page.test.tsx",
+    names: [
+      "the actual page retains pending rows through an empty scoped refetch and drops them at an organization switch",
+      "the actual page removes a confirmed deletion from its authenticated cache despite a stale list response",
     ],
   },
 ];
@@ -86,7 +99,7 @@ for (const suite of suites) {
       "180000",
       "--",
       "bun",
-      ...(suite.name === "ui"
+      ...(suite.name.startsWith("ui")
         ? [
             "x",
             "vitest",
@@ -110,7 +123,7 @@ for (const suite of suites) {
           ]),
     ],
     {
-      cwd: suite.name === "ui" ? path.join(root, "packages/ui") : root,
+      cwd: suite.name.startsWith("ui") ? path.join(root, "packages/ui") : root,
       env: {
         ...process.env,
         APP_DELETION_TEST_POSTGRES_URL: postgres,
@@ -149,5 +162,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `App frontend deletion conformance passed twenty-three PGlite, ten PostgreSQL and one UI case. Evidence ${directory}`,
+  `App frontend deletion conformance passed twenty-three PGlite, ten PostgreSQL and eight UI cases. Evidence ${directory}`,
 );

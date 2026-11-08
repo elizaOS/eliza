@@ -1933,7 +1933,14 @@
       "packages/ui/src/cloud/applications/components/apps-table.tsx",
       "packages/ui/src/cloud-ui/components/data-list/apps-list-view.tsx",
       "packages/ui/src/cloud/applications/lib/app-deletion-client.ts",
-      "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-pending.test.tsx"
+      "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-pending.test.tsx",
+      "packages/ui/src/cloud/applications/components/app-settings.tsx",
+      "packages/ui/src/cloud/applications/ApplicationsPage.tsx",
+      "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-fixture.ts",
+      "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-page.test.tsx",
+      "packages/ui/src/cloud/lib/auth-query.ts",
+      "packages/ui/src/cloud/lib/use-session-auth.ts",
+      "packages/ui/src/cloud/organization/data/use-organization.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -1944,7 +1951,8 @@
       "Progress requires eventual provider/SQL availability, retained original queue, fair scheduling, and a successful acknowledged attempt before bounded no-progress retries exhaust. This safety model does not prove temporal liveness. Forward progress resets the bounded retry counter; one invocation handles at most 64 objects.",
       "Complete plans intentionally remain inline and immutable in job.data, with small independently updated result receipts. Physical PostgreSQL write-cost measurements are experimental evidence, not a worst-case bound.",
       "Upload execution requires actual original-writer quiescence. Pending unstarted rows can retire; legacy ambiguous or unknown-PUT rows block and need operator reconciliation. No time-based quiescence or general upload recovery is claimed.",
-      "One UI row projection; actual two-row React/HTTP conformance retains pending rows and disables conflicting actions until confirmed completion."
+      "One UI row projection; actual two-row React/HTTP conformance retains pending rows and disables conflicting actions until confirmed completion.",
+      "Pending display belongs to one mounted user/organization scope. Auth changes retire that local display without cancelling the server job; no cross-session UI or query-cache publication is allowed."
     ]
   }
 ]

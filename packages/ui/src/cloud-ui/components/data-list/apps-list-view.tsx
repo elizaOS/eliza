@@ -42,6 +42,7 @@ export interface AppsListViewProps {
   apps: AppsListItem[];
   deletingId?: string | null;
   deletingIds?: ReadonlySet<string>;
+  deleteDisabled?: boolean;
   renderAppLink: (props: AppsListLinkRenderProps) => ReactNode;
   onCopyUrl?: (app: AppsListItem) => void;
   onDeleteApp?: (app: AppsListItem) => void;
@@ -77,6 +78,7 @@ export function AppsListView({
   apps,
   deletingId,
   deletingIds,
+  deleteDisabled = false,
   renderAppLink,
   onCopyUrl,
   onDeleteApp,
@@ -206,7 +208,7 @@ export function AppsListView({
                     {
                       label: "Delete App",
                       icon: isDeleting ? Loader2 : Trash2,
-                      disabled: isDeleting,
+                      disabled: isDeleting || deleteDisabled,
                       className:
                         "cursor-pointer bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 [&_svg]:text-destructive data-[disabled]:opacity-60",
                       onSelect: () => onDeleteApp?.(app),

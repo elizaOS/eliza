@@ -387,7 +387,7 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isLoading}>
+        <Button onClick={handleSave} disabled={isLoading || isDeleting}>
           {isLoading ? (
             <>
               <Loader2 className="size-4 mr-2 animate-spin" />
@@ -431,7 +431,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   variant="destructive"
                   size="sm"
                   className="shrink-0"
-                  disabled={isRegenerating}
+                  disabled={isRegenerating || isDeleting}
                 >
                   {isRegenerating ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -465,6 +465,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
+                    disabled={isDeleting}
                     className="bg-destructive-solid text-destructive-fg hover:bg-destructive-solid-hover"
                   >
                     {t("cloud.appSettings.regenerateApiKey", {

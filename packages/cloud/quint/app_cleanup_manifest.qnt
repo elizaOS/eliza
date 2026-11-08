@@ -112,22 +112,51 @@ module app_cleanup_uploads {
 
 // One projected row; bulk operations apply the same local deleting set to each row.
 module app_cleanup_ui {
-  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool }
+  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool, authorized: bool, resync: bool }
   var s: State
-  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false}
+  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false,authorized:true,resync:false}
   action begin = all {s.row,not(s.deleting),s'={...s,deleting:true,label:"Deleting",actions:false}}
   action pollPending = all {s.deleting,not(s.receipt),s'=s}
-  action receiveReceipt = all {s.deleting,s'={...s,receipt:true}}
-  action publishComplete = all {s.receipt,s'={...s,deleting:false,row:false,toast:true}}
-  action step = any {begin,pollPending,receiveReceipt,publishComplete,s'=s}
+  action receiveReceipt = all {s.deleting,s.authorized,s'={...s,receipt:true}}
+  action publishComplete = all {s.receipt,s.authorized,s'={...s,deleting:false,row:false,toast:true,resync:true}}
+  action refreshMissing = all {s.deleting,s'=s}
+  action authoritySwitch = s'={...s,authorized:false,deleting:false,row:false,actions:false,toast:false,resync:false}
+  action delayedRefresh = all {s.resync,s.authorized,s'={...s,resync:false}}
+  action step = any {begin,pollPending,refreshMissing,authoritySwitch,receiveReceipt,publishComplete,delayedRefresh,s'=s}
   val safety = all {
     s.deleting implies (s.row and s.label == "Deleting" and not(s.actions)),
-    not(s.row) implies s.receipt,
-    s.toast implies s.receipt,
+    (not(s.row) and s.authorized) implies s.receipt,
+    s.toast implies (s.receipt and s.authorized),
+    s.resync implies s.authorized,
   }
-  run pendingRowThenReceiptTest = init.then(begin).then(pollPending).then(receiveReceipt).then(publishComplete).expect(safety and s.toast and not(s.row))
+  run pendingRowThenReceiptTest = init.then(begin).then(pollPending).then(refreshMissing).then(receiveReceipt).then(publishComplete).expect(safety and s.toast and not(s.row))
+  run authoritySwitchRetiresOldUiTest = init.then(begin).then(authoritySwitch).expect(safety and not(s.toast))
+  action unsafeLateToast = s'={...s,receipt:true,toast:true}
+  run retiredAuthorityToastWitnessTest = init.then(begin).then(authoritySwitch).then(unsafeLateToast).expect(not(safety))
+  run completedOwnerRetiresTimerTest = init.then(begin).then(receiveReceipt).then(publishComplete).then(authoritySwitch).expect(safety and not(s.resync))
+  action unsafeStaleTimer = s'={...s,resync:true}
+  run staleRefreshWitnessTest = init.then(begin).then(receiveReceipt).then(publishComplete).then(authoritySwitch).then(unsafeStaleTimer).expect(not(safety))
   action unsafeActiveBadge = all {s.deleting,s'={...s,label:"Active"}}
   run oldActiveBadgeWitnessTest = init.then(begin).then(unsafeActiveBadge).expect(not(safety))
   action unsafeEarlyRemoval = all {s.deleting,s'={...s,row:false,deleting:false,toast:true}}
   run earlyRemovalWitnessTest = init.then(begin).then(unsafeEarlyRemoval).expect(not(safety))
+}
+
+// Two local batches compete for one UI admission slot. Closing a dialog is not
+// permission for another batch to overwrite the first batch's pending rows.
+module app_cleanup_batches {
+  type State = { owner: int, running: Set[int], pending: Set[int], finished: Set[int] }
+  var s: State
+  action init = s'={owner:-1,running:Set(),pending:Set(),finished:Set()}
+  action admit(id) = all {s.owner == -1,not(s.finished.contains(id)),
+    s'={...s,owner:id,running:Set(id),pending:Set(id)}}
+  action finish(id) = all {s.owner == id,s.running.contains(id),
+    s'={...s,owner:-1,running:Set(),pending:Set(),finished:s.finished.union(Set(id))}}
+  action step = {nondet id=Set(0,1).oneOf() any {admit(id),finish(id),s'=s}}
+  val safety = all {s.running == s.pending,s.running.size() <= 1,
+    s.owner == -1 implies s.running == Set()}
+  run serialBatchOwnershipTest = init.then(admit(0)).then(finish(0)).then(admit(1)).then(finish(1))
+    .expect(safety and s.finished == Set(0,1))
+  action oldOverlappingAdmission = s'={...s,owner:1,running:s.running.union(Set(1)),pending:Set(1)}
+  run replacedPendingOwnerWitnessTest = init.then(admit(0)).then(oldOverlappingAdmission).expect(not(safety))
 }

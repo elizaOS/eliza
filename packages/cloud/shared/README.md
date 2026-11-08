@@ -415,3 +415,5 @@ is not writer quiescence. The generation belongs to one original writer; recover
 must not share it with a writer that can still issue PUTs. Recovery requires the original storage binding and
 immutable keys. Legacy
 version-1 roots retain their prior best-effort semantics and possible orphan debt.
+Apply the migration before updating all upload/deletion writers; mixed old writers
+do not provide the new cleanup protocol.
