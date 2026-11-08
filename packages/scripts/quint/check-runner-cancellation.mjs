@@ -57,8 +57,8 @@ if (
   !/^ok \d+ - an implementation conformance failure fails the shared run$/m.test(
     output,
   ) ||
-  !/^# tests 24$/m.test(output) ||
-  !/^# pass 24$/m.test(output) ||
+  !/^# tests 25$/m.test(output) ||
+  !/^# pass 25$/m.test(output) ||
   !/^# fail 0$/m.test(output) ||
   !/^# skipped 0$/m.test(output) ||
   !/^# cancelled 0$/m.test(output)

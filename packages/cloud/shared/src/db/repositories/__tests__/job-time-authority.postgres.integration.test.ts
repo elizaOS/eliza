@@ -259,15 +259,18 @@ async function remainingDelay(control: Client, id: string) {
             await Bun.sleep(10);
           }
           expect(ready).toBe(true);
+          const {
+            rows: [{ released_at: releasedAt }],
+          } = await control.query("SELECT clock_timestamp()::text AS released_at");
           await control.query("ROLLBACK");
           expect(await renewal).toBe("renewed");
           const {
-            rows: [{ live }],
+            rows: [{ starts_after_wait: startsAfterWait }],
           } = await control.query(
-            "SELECT expires_at>clock_timestamp() AS live FROM job_execution_leases WHERE job_id=$1",
-            [id],
+            "SELECT expires_at >= $2::timestamptz + interval '1 second' AS starts_after_wait FROM job_execution_leases WHERE job_id=$1",
+            [id, releasedAt],
           );
-          expect(live).toBe(true);
+          expect(startsAfterWait).toBe(true);
         } finally {
           await control.query("ROLLBACK");
           await renewal;
