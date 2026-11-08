@@ -59,9 +59,8 @@ module AccountPoolHealth {
     a.detail == c.detail,
     a.until == c.until,
   }
-  // No action reads a completed call's captured pre-resolution/full-snapshot
-  // record. Erase that dead local only; keep its outcome, receipt and usage
-  // acknowledgement, plus the baseline fields read by transition invariants.
+  // Transition checks still read the receipt and health baseline of the call
+  // that just finished. Keep those inputs until FinishTransition checks them.
   pure def FinishCall(state: State, id: int): State = {
     ...state,
     calls: state.calls.set(id, {
@@ -75,6 +74,18 @@ module AccountPoolHealth {
       },
     }),
   }
+  // No enabled action reads a completed call's inputs. Preserve the exact
+  // outcome and response after evaluating the checks on the committing edge.
+  pure def ProjectCompletedCall(state: State, id: int): State = {
+    val call = state.calls.get(id)
+    if (call.phase == "done") {
+      ...state,
+      calls: state.calls.set(id, {
+        ...EmptyCall, phase: "done", outcome: call.outcome,
+        response: call.response, confirmedUsage: call.confirmedUsage,
+      }),
+    } else state
+  }
   pure def SetAccount(state: State, id: int, account: Account, operation: str, expected: int): State = {
     ...state, before: state.accounts, accounts: state.accounts.set(id, account),
     last: operation, lastAccount: id, expected: expected, eventTime: state.now,
@@ -83,7 +94,10 @@ module AccountPoolHealth {
   action Start(id: int, accountId: int): bool = all {
     s.calls.get(id).phase == "idle",
     s' = {...s, calls: s.calls.set(id, {
-      ...EmptyCall, account: accountId, captured: s.accounts.get(accountId), phase: "resolve",
+      ...EmptyCall, account: accountId, phase: "resolve",
+      // Resolution reads only the starting generation. CaptureSnapshot
+      // separately retains the entire record for explicit metadata writes.
+      captured: { ...Missing, generation: s.accounts.get(accountId).generation },
     })},
   }
   // Once resolution succeeds, only its receipt and later usage baseline remain
@@ -102,7 +116,7 @@ module AccountPoolHealth {
     }
     all {
       call.phase == "resolve",
-      s' = if (not(Present(selected))) FinishCall(s, id) else {
+      s' = if (not(Present(selected))) FinishCall(s, id).ProjectCompletedCall(id) else {
         ...updatedState, nextGeneration: s.nextGeneration + (if (rotates) 1 else 0), lastCall: id,
         last: if (rotates) "rotate" else "resolve-success", lastAccount: call.account,
         calls: updatedState.calls.set(id, {...call, phase: "ready", captured: Missing, receipt: selected.generation}),
@@ -135,7 +149,7 @@ module AccountPoolHealth {
     all {
       call.phase == "ready",
       s' = if (not(Present(current)) or current.generation != call.receipt) {
-        FinishCall(s, id)
+        FinishCall(s, id).ProjectCompletedCall(id)
       } else if (Expired(current, s.now)) {
         {...s, calls: s.calls.set(id, {...call, phase: "expiry"})}
       } else {
@@ -370,7 +384,7 @@ module AccountPoolHealth {
       "RotatedReceiptIsCurrent" -> CheckRotatedReceiptIsCurrent(t)
     )
     {
-      ...t,
+      ...ProjectCompletedCall(t, t.lastCall),
       violations: t.violations.union(checks.keys().filter(name => not(checks.get(name)))),
       before: Accounts.mapBy(_ => Missing), last: "none", lastAccount: 1,
       lastCall: 1, expected: 0, eventTime: 0,
