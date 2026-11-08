@@ -448,30 +448,54 @@ export class ContainersRepository {
 
   /**
    * Updates an existing container.
+   * An observed snapshot fences asynchronous results against lifecycle or
+   * target changes. A lost comparison returns null and leaves the newer row intact.
    */
   async update(
     id: string,
     organizationId: string,
     data: Partial<NewContainer>,
+    expected?: Pick<Container, "status" | "lifecycle_revision" | "metadata" | "created_at"> & {
+      createdAtSnapshot: string;
+    },
+    transaction?: DbTransaction,
   ): Promise<Container | null> {
+    const database = transaction ?? dbWrite;
     let updateData = data;
     if (hasDeploymentLogUpdate(data)) {
-      const [existing] = await dbWrite
-        .select()
-        .from(containers)
-        .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
-        .limit(1);
+      const existing = expected
+        ? { id, organization_id: organizationId, created_at: expected.created_at }
+        : (
+            await database
+              .select()
+              .from(containers)
+              .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+              .limit(1)
+          )[0];
       if (!existing) return null;
       updateData = await prepareContainerUpdatePayload(data, existing);
     }
 
-    const [updated] = await dbWrite
+    const [updated] = await database
       .update(containers)
       .set({
         ...updateData,
         updated_at: new Date(),
       })
-      .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+      .where(
+        and(
+          eq(containers.id, id),
+          eq(containers.organization_id, organizationId),
+          ...(expected
+            ? [
+                eq(containers.status, expected.status),
+                eq(containers.lifecycle_revision, expected.lifecycle_revision),
+                eq(containers.metadata, expected.metadata),
+                sql`to_char(${containers.created_at}, 'YYYY-MM-DD HH24:MI:SS.US') = ${expected.createdAtSnapshot}`,
+              ]
+            : []),
+        ),
+      )
       .returning();
 
     return updated ? await hydrateContainerDeploymentLog(updated) : null;
@@ -648,6 +672,7 @@ export class ContainersRepository {
         .update(containers)
         .set({
           status: "deploying",
+          lifecycle_revision: sql`${containers.lifecycle_revision} + 1`,
           billing_status: "active",
           shutdown_warning_sent_at: null,
           scheduled_shutdown_at: null,
@@ -829,8 +854,13 @@ export class ContainersRepository {
    *
    * @returns true if THIS call released the slot, false if it was already released.
    */
-  async tryReleaseNodeSlot(id: string, organizationId: string, nodeId: string): Promise<boolean> {
-    return dbWrite.transaction(async (tx) => {
+  async tryReleaseNodeSlot(
+    id: string,
+    organizationId: string,
+    nodeId: string,
+    transaction?: DbTransaction,
+  ): Promise<boolean> {
+    const release = async (tx: DbTransaction) => {
       const [marked] = await tx
         .update(containers)
         .set({
@@ -857,7 +887,8 @@ export class ContainersRepository {
         .where(eq(dockerNodes.node_id, nodeId));
 
       return true;
-    });
+    };
+    return transaction ? release(transaction) : dbWrite.transaction(release);
   }
 
   /**

@@ -22,6 +22,7 @@ import {
   metadataForDeploymentGeneration,
 } from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import type { JobExecutionAuthority } from "../../lib/services/job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -49,6 +50,7 @@ import { appDomains } from "../schemas/app-domains";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { materializeAppBillingAccounts } from "./app-billing-accounts";
+import { assertJobExecutionAuthority, lockJobExecutionAuthority } from "./job-execution-authority";
 
 interface AppCacheFenceIdentity {
   appId?: string;
@@ -743,6 +745,7 @@ export class AppsRepository {
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
     const generationFilter = generation
       ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
@@ -754,11 +757,38 @@ export class AppsRepository {
       generation && data.metadata
         ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
         : data;
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({ ...nextData, updated_at: new Date() })
-      .where(and(eq(apps.id, id), generationFilter, statusFilter))
-      .returning();
+    const write = async (database: typeof dbWrite | DbTransaction) => {
+      const [updated] = await database
+        .update(apps)
+        .set({ ...nextData, updated_at: new Date() })
+        .where(
+          and(
+            eq(apps.id, id),
+            generationFilter,
+            statusFilter,
+            executionAuthority
+              ? eq(apps.organization_id, executionAuthority.organizationId)
+              : undefined,
+          ),
+        )
+        .returning();
+      return updated;
+    };
+    const updated = executionAuthority
+      ? await dbWrite.transaction(async (tx) => {
+          await lockJobExecutionAuthority(tx, executionAuthority);
+          await tx
+            .select({ id: apps.id })
+            .from(apps)
+            .where(
+              and(eq(apps.id, id), eq(apps.organization_id, executionAuthority.organizationId)),
+            )
+            .for("update")
+            .limit(1);
+          await assertJobExecutionAuthority(tx, executionAuthority);
+          return write(tx);
+        })
+      : await write(dbWrite);
 
     if (updated) {
       await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);

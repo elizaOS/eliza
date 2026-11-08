@@ -97,6 +97,53 @@ function listContainersFromBinary(binary: string, prefix: string): string[] {
   }
 }
 
+/** Only a successful complete inventory can turn an uncertain removal into success. */
+function confirmContainerAbsent(
+  binary: string,
+  engine: "docker" | "apple-container",
+  id: string,
+): boolean {
+  if (!id) return false;
+  try {
+    const output = execFileSync(
+      binary,
+      engine === "docker"
+        ? ["ps", "--all", "--no-trunc", "--format", "{{.ID}}\t{{.Names}}"]
+        : ["list", "--all", "--quiet"],
+      {
+        encoding: "utf8",
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: hostEngineEnv(),
+      },
+    );
+    return output
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .every((line) => {
+        if (engine === "apple-container") {
+          const candidate = line.trim();
+          return (
+            /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(candidate) && candidate !== id
+          );
+        }
+        const fields = line.split("\t");
+        if (
+          fields.length !== 2 ||
+          !/^[a-f0-9]{64}$/.test(fields[0] ?? "") ||
+          !fields[1]
+        )
+          return false;
+        // Docker also accepts unique ID prefixes and container names.
+        return !fields[0].startsWith(id) && fields[1] !== id;
+      });
+  } catch {
+    // error-policy:J4 An unavailable/invalid inventory never proves absence;
+    // the caller retains and reports the original removal error.
+    return false;
+  }
+}
+
 function checkHealthWithBinary(binary: string, id: string): Promise<boolean> {
   try {
     const result = execFileSync(binary, ["exec", id, "echo", "healthy"], {
@@ -453,8 +500,13 @@ export class DockerEngine implements ISandboxEngine {
         env: hostEngineEnv(),
       });
     } catch (error) {
-      // error-policy:J6 teardown continues so callers can remove remaining resources.
-      logger.debug({ error, id }, "[SandboxEngine] Docker removal failed");
+      if (confirmContainerAbsent(this.requiredBinary(), "docker", id)) return;
+      // error-policy:J2 The owner must retain this resource and retry failed cleanup.
+      throw new ElizaError("Docker container removal was not confirmed", {
+        code: "SANDBOX_CONTAINER_REMOVE_FAILED",
+        cause: error,
+        context: { engine: "docker", containerId: id },
+      });
     }
   }
 
@@ -643,11 +695,14 @@ export class AppleContainerEngine implements ISandboxEngine {
         env: hostEngineEnv(),
       });
     } catch (error) {
-      // error-policy:J6 teardown continues so callers can remove remaining resources.
-      logger.debug(
-        { error, id },
-        "[SandboxEngine] Apple container removal failed",
-      );
+      if (confirmContainerAbsent(this.requiredBinary(), "apple-container", id))
+        return;
+      // error-policy:J2 The owner must retain this resource and retry failed cleanup.
+      throw new ElizaError("Apple container removal was not confirmed", {
+        code: "SANDBOX_CONTAINER_REMOVE_FAILED",
+        cause: error,
+        context: { engine: "apple-container", containerId: id },
+      });
     }
   }
 
