@@ -3,12 +3,12 @@
 module frontend_publication {
   type State = { row: str, objects: bool, upload: str, finalize: str,
     client: str, retire: str, cleanupPermit: bool, deletePermit: bool,
-    otherActive: bool }
+    otherActive: bool, wasPublished: bool }
   var s: State
   pure val published = Set("ready", "active", "superseded")
   action init = s' = { row: "pending", objects: false, upload: "idle",
     finalize: "idle", client: "working", retire: "idle", cleanupPermit: false,
-    deletePermit: false, otherActive: true }
+    deletePermit: false, otherActive: true, wasPublished: false }
   action beginUpload = all { s.row == "pending", s.upload == "idle",
     s' = { ...s, row: "uploading", upload: "pending" } }
   action finishPut(fails, accepted) = all { s.upload == "pending",
@@ -23,7 +23,8 @@ module frontend_publication {
   action finishFinalize(commits) = all { s.finalize == "pending",
     val applies = commits and s.row == "uploading"
     s' = { ...s, row: if (applies) "ready" else s.row,
-      finalize: if (applies) "committed" else "rejected" } }
+      finalize: if (applies) "committed" else "rejected",
+      wasPublished: s.wasPublished or applies } }
   action receiveFinalize = all { s.client == "working",
     Set("committed", "rejected").contains(s.finalize),
     s' = { ...s, client: if (s.finalize == "committed") "success" else "failed" } }
@@ -55,6 +56,7 @@ module frontend_publication {
     finish, activate, activatePrevious, deleteInactive(false), deleteInactive(true), s' = s }
   val safety = all {
     published.contains(s.row) implies s.objects,
+    s.wasPublished implies (published.contains(s.row) or s.row == "deleted"),
     s.cleanupPermit implies Set("failed", "deleted").contains(s.row),
     s.deletePermit implies s.row == "deleted",
     s.row == "active" implies not(s.otherActive),
@@ -90,5 +92,8 @@ module frontend_publication {
   action oldErrorCleanup = s' = { ...s, row: "failed", objects: false }
   run oldCleanupWitnessTest = init.then(beginUpload).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(activate).then(oldErrorCleanup)
+    .expect(not(safety))
+  run oldReadyCleanupWitnessTest = init.then(beginUpload).then(finishPut(false, true))
+    .then(startFinalize).then(finishFinalize(true)).then(oldErrorCleanup)
     .expect(not(safety))
 }
