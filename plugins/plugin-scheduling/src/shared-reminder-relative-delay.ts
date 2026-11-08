@@ -201,6 +201,8 @@ const DURATION_CONTINUATION_PATTERN = new RegExp(
   "i",
 );
 const HALF_CONTINUATION_PATTERN = /^\s*(?:and|plus)\s+(?:a\s+)?half\b/i;
+/** The unit a trailing "half an hour" / "half a minute" names. */
+const HALF_NAMED_UNIT_PATTERN = /^\s*(?:a|an)\s+(seconds?|minutes?|hours?)\b/i;
 const COMMAND_SEPARATOR = "(?:[,.;:!?—–-]+|…)";
 
 const IMMEDIATE_REVISION_PATTERN = new RegExp(
@@ -223,8 +225,19 @@ function extendDuration(text: string, candidate: DelayCandidate): void {
         candidate.invalidComposition = true;
         break;
       }
-      candidate.terms.push({ rawNumber: "0.5", unit: previous.unit });
-      candidate.end = cursor + half[0].length;
+      // A named unit after "half" owns the half ("1 hour and half an hour"
+      // is 90 minutes, "1 hour and half a minute" is 60.5). Without it the
+      // half is half of the previous term ("an hour and a half"). Either
+      // way the named unit is consumed here: leaving it for the next pass
+      // would add it again as a whole unit (150 minutes for the first form).
+      const namedUnit = text
+        .slice(cursor + half[0].length)
+        .match(HALF_NAMED_UNIT_PATTERN);
+      const halfUnit = namedUnit
+        ? (namedUnit[1].toLowerCase() as keyof typeof UNIT_MILLISECONDS)
+        : previous.unit;
+      candidate.terms.push({ rawNumber: "0.5", unit: halfUnit });
+      candidate.end = cursor + half[0].length + (namedUnit?.[0].length ?? 0);
       cursor = candidate.end;
       continue;
     }
