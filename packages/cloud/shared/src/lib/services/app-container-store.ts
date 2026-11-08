@@ -6,8 +6,13 @@
  */
 
 import { and, eq, ne, sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import type { dbWrite } from "../../db/helpers";
 import type { containersRepository } from "../../db/repositories/containers";
+import {
+  assertJobExecutionAuthority,
+  lockJobExecutionAuthority,
+} from "../../db/repositories/job-execution-authority";
 import { containers, TERMINAL_CONTAINER_STATUS } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
 import {
@@ -25,6 +30,7 @@ import {
 import { deploymentGenerationFromMetadata } from "./app-deployment-generation";
 import { deriveAppPublicUrl } from "./app-url";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
+import { type JobExecutionAuthority, StaleJobExecutionError } from "./job-execution-authority";
 
 export type { ProjectableContainerRow } from "./app-container-store-queries";
 
@@ -51,6 +57,7 @@ export interface ContainerRepoAppContainerStoreDeps {
   writeDatabase: AppContainerWriteDatabase;
   repository: AppContainerStoreRepository;
   errorFactory: (message: string, options: AppContainerStoreErrorOptions) => Error;
+  executionAuthority?: JobExecutionAuthority;
 }
 
 /**
@@ -107,6 +114,33 @@ export function mergeHostPlacementMetadata(
 export class ContainerRepoAppContainerStore implements AppContainerStore {
   constructor(private readonly deps: ContainerRepoAppContainerStoreDeps) {}
 
+  /** Serialize a dependent mutation with claim recovery, then check the live
+   * lease after the resource lock. No provider call runs in this transaction. */
+  private async withMutation<T>(
+    containerId: string,
+    mutation: (database: AppContainerWriteDatabase, tx?: DbTransaction) => Promise<T>,
+  ): Promise<T> {
+    const authority = this.deps.executionAuthority;
+    if (!authority) return mutation(this.deps.writeDatabase);
+    return this.deps.writeDatabase.transaction(async (tx) => {
+      await lockJobExecutionAuthority(tx, authority);
+      const [resource] = await tx
+        .select({ id: containers.id })
+        .from(containers)
+        .where(
+          and(
+            eq(containers.id, containerId),
+            eq(containers.organization_id, authority.organizationId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!resource) throw new StaleJobExecutionError(authority.jobId);
+      await assertJobExecutionAuthority(tx, authority);
+      return mutation(tx, tx);
+    });
+  }
+
   async getById(containerId: string): Promise<AppContainerRow | null> {
     // The executor only has the container id (from the job payload), but the
     // repo's findById is org-scoped. Read by primary key directly to recover the
@@ -138,24 +172,26 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     organizationId: string,
     nodeId: string,
   ): Promise<AppContainerNodeSlotClaim> {
-    return claimAppContainerNodeSlot(
-      this.deps.writeDatabase,
-      containerId,
-      organizationId,
-      nodeId,
-      () =>
-        this.deps.errorFactory(`Docker node ${nodeId} has no available app-container slot`, {
-          code: "APP_CONTAINER_NODE_CAPACITY_UNAVAILABLE",
-          context: { containerId, organizationId, nodeId },
-          severity: "ephemeral",
-        }),
-      (existing) =>
-        this.deps.errorFactory(`App container ${containerId} has a conflicting node-slot claim`, {
-          code: "APP_CONTAINER_NODE_SLOT_CONFLICT",
-          context: { containerId, organizationId, requestedNodeId: nodeId, existing },
-          severity: "fatal",
-        }),
-    );
+    return this.withMutation(containerId, async (database) => {
+      return claimAppContainerNodeSlot(
+        database,
+        containerId,
+        organizationId,
+        nodeId,
+        () =>
+          this.deps.errorFactory(`Docker node ${nodeId} has no available app-container slot`, {
+            code: "APP_CONTAINER_NODE_CAPACITY_UNAVAILABLE",
+            context: { containerId, organizationId, nodeId },
+            severity: "ephemeral",
+          }),
+        (existing) =>
+          this.deps.errorFactory(`App container ${containerId} has a conflicting node-slot claim`, {
+            code: "APP_CONTAINER_NODE_SLOT_CONFLICT",
+            context: { containerId, organizationId, requestedNodeId: nodeId, existing },
+            severity: "fatal",
+          }),
+      );
+    });
   }
 
   async rollbackNodeSlotClaim(
@@ -164,20 +200,23 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     nodeId: string,
     authority?: AppContainerPublicationAuthority,
   ): Promise<boolean> {
-    return rollbackAppContainerNodeSlotClaim(
-      this.deps.writeDatabase,
-      containerId,
-      organizationId,
-      nodeId,
-      authority,
-    );
+    return this.withMutation(containerId, async (database) => {
+      return rollbackAppContainerNodeSlotClaim(
+        database,
+        containerId,
+        organizationId,
+        nodeId,
+        authority,
+      );
+    });
   }
 
   private async readPublicationRow(
     containerId: string,
     authority: AppContainerPublicationAuthority,
+    database: AppContainerReadDatabase = this.deps.writeDatabase,
   ) {
-    const [row] = await this.deps.writeDatabase
+    const [row] = await database
       .select({
         organization_id: containers.organization_id,
         status: containers.status,
@@ -216,66 +255,71 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
     authority: AppContainerPublicationAuthority,
   ): Promise<void> {
-    const row = await this.readPublicationRow(containerId, authority);
-    if (!row) {
-      throw this.deps.errorFactory(
-        `App container ${containerId} disappeared before it became running`,
-        {
-          code: "APP_CONTAINER_ROW_MISSING",
-          context: { containerId, transition: "running" },
-          severity: "fatal",
-        },
-      );
-    }
-    const stale = () =>
-      this.deps.errorFactory(
-        `App container ${containerId} reached a retired or changed generation before it became running`,
-        {
-          code: "APP_CONTAINER_PUBLICATION_STALE",
-          context: {
-            containerId,
-            organizationId: authority.organizationId,
-            deploymentGeneration: authority.deploymentGeneration,
-            transition: "running",
+    return this.withMutation(containerId, async (database, tx) => {
+      const row = await this.readPublicationRow(containerId, authority, database);
+      if (!row) {
+        throw this.deps.errorFactory(
+          `App container ${containerId} disappeared before it became running`,
+          {
+            code: "APP_CONTAINER_ROW_MISSING",
+            context: { containerId, transition: "running" },
+            severity: "fatal",
           },
-          severity: "ephemeral",
+        );
+      }
+      const stale = () =>
+        this.deps.errorFactory(
+          `App container ${containerId} reached a retired or changed generation before it became running`,
+          {
+            code: "APP_CONTAINER_PUBLICATION_STALE",
+            context: {
+              containerId,
+              organizationId: authority.organizationId,
+              deploymentGeneration: authority.deploymentGeneration,
+              transition: "running",
+            },
+            severity: "ephemeral",
+          },
+        );
+      if (!this.publicationMatches(row, authority)) throw stale();
+      const endpoint = deriveAppPublicUrl(containerId);
+      // Status, placement and publication timestamp have one linearization point.
+      // The canonical CAS rechecks the original row, revision and complete metadata;
+      // a concurrent retirement or generation change owns the row if it wins first.
+      const published = await this.deps.repository.update(
+        containerId,
+        authority.organizationId,
+        {
+          status: "running",
+          metadata: mergeHostPlacementMetadata(row.metadata, info),
+          last_deployed_at: new Date(),
+          ...(endpoint
+            ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url }
+            : {}),
         },
+        row,
+        tx,
       );
-    if (!this.publicationMatches(row, authority)) throw stale();
-    const endpoint = deriveAppPublicUrl(containerId);
-    // Status, placement and publication timestamp have one linearization point.
-    // The canonical CAS rechecks the original row, revision and complete metadata;
-    // a concurrent retirement or generation change owns the row if it wins first.
-    const published = await this.deps.repository.update(
-      containerId,
-      authority.organizationId,
-      {
-        status: "running",
-        metadata: mergeHostPlacementMetadata(row.metadata, info),
-        last_deployed_at: new Date(),
-        ...(endpoint
-          ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url }
-          : {}),
-      },
-      row,
-    );
-    if (!published) throw stale();
+      if (!published) throw stale();
+    });
   }
 
   async markDeleted(containerId: string, organizationId: string, nodeId?: string): Promise<void> {
-    // Terminal "deleted" — the daemon has actually removed the container, so the
-    // row must reach a state that does NOT count toward the per-org container
-    // quota. `checkQuota`/`createWithQuotaCheck` exclude only `deleting`/`deleted`;
-    // a `stopped` row would keep leaking quota across redeploys (the daemon never
-    // reuses this row — each deploy creates a fresh one). App containers carry no
-    // `volume_path`, so the active_project_volume_unique index never applies here.
-    if (nodeId) {
-      await this.deps.repository.tryReleaseNodeSlot(containerId, organizationId, nodeId);
-    }
-    await this.deps.writeDatabase
-      .update(containers)
-      .set({ status: "deleted", error_message: null, updated_at: new Date() })
-      .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
+    return this.withMutation(containerId, async (database, tx) => {
+      // Terminal "deleted" — the daemon has actually removed the container, so the
+      // row must reach a state that does NOT count toward the per-org container
+      // quota. `checkQuota`/`createWithQuotaCheck` exclude only `deleting`/`deleted`;
+      // a `stopped` row would keep leaking quota across redeploys (the daemon never
+      // reuses this row — each deploy creates a fresh one). App containers carry no
+      // `volume_path`, so the active_project_volume_unique index never applies here.
+      if (nodeId) {
+        await this.deps.repository.tryReleaseNodeSlot(containerId, organizationId, nodeId, tx);
+      }
+      await database
+        .update(containers)
+        .set({ status: "deleted", error_message: null, updated_at: new Date() })
+        .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
+    });
   }
 
   private async markOwnedFailure(
@@ -284,28 +328,31 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     status: "failed" | "cleanup_required",
     authority: AppContainerPublicationAuthority,
   ): Promise<void> {
-    const row = await this.readPublicationRow(containerId, authority);
-    if (!row || !this.publicationMatches(row, authority)) {
-      logger.info("[AppContainerStore] newer lifecycle owns failure publication", {
+    return this.withMutation(containerId, async (database, tx) => {
+      const row = await this.readPublicationRow(containerId, authority, database);
+      if (!row || !this.publicationMatches(row, authority)) {
+        logger.info("[AppContainerStore] newer lifecycle owns failure publication", {
+          containerId,
+          deploymentGeneration: authority.deploymentGeneration,
+          status,
+        });
+        return;
+      }
+      const written = await this.deps.repository.update(
         containerId,
-        deploymentGeneration: authority.deploymentGeneration,
-        status,
-      });
-      return;
-    }
-    const written = await this.deps.repository.update(
-      containerId,
-      authority.organizationId,
-      { status, error_message: error },
-      row,
-    );
-    if (!written) {
-      logger.info("[AppContainerStore] newer lifecycle won failure publication", {
-        containerId,
-        deploymentGeneration: authority.deploymentGeneration,
-        status,
-      });
-    }
+        authority.organizationId,
+        { status, error_message: error },
+        row,
+        tx,
+      );
+      if (!written) {
+        logger.info("[AppContainerStore] newer lifecycle won failure publication", {
+          containerId,
+          deploymentGeneration: authority.deploymentGeneration,
+          status,
+        });
+      }
+    });
   }
 
   async markError(
@@ -314,7 +361,18 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     authority?: AppContainerPublicationAuthority,
   ): Promise<void> {
     if (authority) return this.markOwnedFailure(containerId, error, "failed", authority);
-    await this.deps.repository.updateStatus(containerId, "failed", error);
+    if (!this.deps.executionAuthority) {
+      await this.deps.repository.updateStatus(containerId, "failed", error);
+      return;
+    }
+    return this.withMutation(containerId, async (database) => {
+      await database
+        .update(containers)
+        .set({ status: "failed", error_message: error, updated_at: new Date() })
+        .where(
+          and(eq(containers.id, containerId), ne(containers.status, TERMINAL_CONTAINER_STATUS)),
+        );
+    });
   }
 
   async markCleanupRequired(
@@ -323,9 +381,13 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     authority?: AppContainerPublicationAuthority,
   ): Promise<void> {
     if (authority) return this.markOwnedFailure(containerId, error, "cleanup_required", authority);
-    await this.deps.writeDatabase
-      .update(containers)
-      .set({ status: "cleanup_required", error_message: error, updated_at: new Date() })
-      .where(and(eq(containers.id, containerId), ne(containers.status, TERMINAL_CONTAINER_STATUS)));
+    return this.withMutation(containerId, async (database) => {
+      await database
+        .update(containers)
+        .set({ status: "cleanup_required", error_message: error, updated_at: new Date() })
+        .where(
+          and(eq(containers.id, containerId), ne(containers.status, TERMINAL_CONTAINER_STATUS)),
+        );
+    });
   }
 }

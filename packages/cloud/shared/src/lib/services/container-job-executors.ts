@@ -28,6 +28,7 @@ import {
   readContainerUpgradeJobData,
 } from "./container-jobs-data";
 import { buildContainerProvisionInput } from "./container-provider-input";
+import { StaleJobExecutionError } from "./job-execution-authority";
 
 /** The fields an executor needs from an app container row. */
 export interface AppContainerRow {
@@ -84,6 +85,8 @@ export interface AppContainerStore {
 }
 
 export interface ContainerExecutorDeps {
+  /** Preflight authority for new provider effects; not proof of remote quiescence. */
+  assertExecutionCurrent?: () => Promise<void>;
   provider: AppContainerProvider;
   store: AppContainerStore;
   /** Rejects stale app-container work before provider or app-state mutation. */
@@ -165,6 +168,8 @@ async function settleFailedProvision(
   containerId: string,
   failure: unknown,
 ): Promise<never> {
+  // A delayed provider error is not authority to delete the successor by name.
+  await deps.assertExecutionCurrent?.();
   const nodeId = deps.provider.targetNodeId;
   const failureMessage = failure instanceof Error ? failure.message : String(failure);
   try {
@@ -217,17 +222,26 @@ async function discardStaleProvision(
   deps: ContainerExecutorDeps,
   row: AppContainerRow,
   result: Awaited<ReturnType<AppContainerProvider["provision"]>>,
+  executionLost = false,
 ): Promise<void> {
   try {
     await deps.provider.deletePrimaryById(result.containerId);
   } catch (cleanupError) {
     const cleanupMessage =
       cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
-    await deps.store.markCleanupRequired(
-      row.id,
-      `Stale deployment primary cleanup unproven: ${cleanupMessage}`,
-      publicationAuthority(row),
-    );
+    if (!executionLost) {
+      await deps.store.markCleanupRequired(
+        row.id,
+        `Stale deployment primary cleanup unproven: ${cleanupMessage}`,
+        publicationAuthority(row),
+      );
+    }
+    logger.error("[ContainerExecutor] stale primary cleanup remains unproven", {
+      containerId: row.id,
+      hostContainerId: result.containerId,
+      executionLost,
+      cleanupError: cleanupMessage,
+    });
     throw new ElizaError(`Could not discard stale app deployment container ${row.id}`, {
       code: "APP_DEPLOYMENT_STALE_CLEANUP_UNPROVEN",
       context: {
@@ -239,6 +253,9 @@ async function discardStaleProvision(
       severity: "fatal",
     });
   }
+  // The successor owns the shared slot/row. Only the old immutable provider ID
+  // belongs to this late result; no dependent database mutation is authorized.
+  if (executionLost) return;
   const rolledBack = await deps.store.rollbackNodeSlotClaim(
     row.id,
     row.organizationId,
@@ -308,12 +325,14 @@ export async function executeContainerProvision(
   // span is allowed to flip the row to `failed`.
   let result: Awaited<ReturnType<typeof deps.provider.provision>>;
   try {
+    await deps.assertExecutionCurrent?.();
     result = await deps.provider.provision({
       appId: row.appId,
       containerName: row.containerName,
       input,
     });
   } catch (error) {
+    if (error instanceof StaleJobExecutionError) throw error;
     // error-policy:J2 cleanup and slot-accounting context is added by settleFailedProvision.
     return settleFailedProvision(deps, row, containerId, error);
   }
@@ -355,6 +374,10 @@ export async function executeContainerProvision(
       publicationAuthority(row),
     );
   } catch (error) {
+    if (error instanceof StaleJobExecutionError) {
+      await discardStaleProvision(deps, row, result, true);
+      throw error;
+    }
     if (isStalePublication(error)) {
       await discardStaleProvision(deps, row, result);
       logger.info("[ContainerExecutor] discarded superseded container publication", {
@@ -390,6 +413,7 @@ export async function executeContainerProvision(
             return [] as string[];
           })
         : [];
+      await deps.assertExecutionCurrent?.();
       await deps.onRouteAdded({
         hostname: endpoint.hostname,
         extraHostnames,
@@ -486,7 +510,9 @@ export async function executeContainerDelete(
       try {
         // A redeploy's new generation shares this app's DB ambassador; keep it
         // while another row of the app is on the node.
-        if (row.nodeId && (await deps.store.hasOtherAppContainerOnNode(row))) {
+        const hasSuccessor = row.nodeId && (await deps.store.hasOtherAppContainerOnNode(row));
+        await deps.assertExecutionCurrent?.();
+        if (hasSuccessor) {
           await deps.provider.deletePrimaryById(row.hostContainerId);
         } else {
           await deps.provider.deleteById(row.hostContainerId, row.containerName);
@@ -518,6 +544,7 @@ export async function executeContainerDelete(
     // the container delete above and a 404 route delete are both idempotent.
     const endpoint = deriveAppPublicUrl(id);
     if (endpoint && deps.onRouteRemoved) {
+      await deps.assertExecutionCurrent?.();
       await deps.onRouteRemoved({ hostname: endpoint.hostname });
     }
     await deps.store.markDeleted(id, organizationId, row?.nodeId);
@@ -566,6 +593,7 @@ export async function executeContainerRestart(
 ): Promise<void> {
   const { containerId } = readContainerRestartJobData(job);
   const row = await requireRow(deps.store, containerId);
+  await deps.assertExecutionCurrent?.();
   await deps.provider.restart(row.containerName);
 }
 
@@ -575,6 +603,7 @@ export async function executeContainerLogs(
 ): Promise<string> {
   const data = readContainerLogsJobData(job);
   const row = await requireRow(deps.store, data.containerId);
+  await deps.assertExecutionCurrent?.();
   return deps.provider.logs(row.containerName, data.tail);
 }
 
@@ -589,6 +618,7 @@ export async function executeContainerUpgrade(
 ): Promise<void> {
   const data = readContainerUpgradeJobData(job);
   const row = await requireRow(deps.store, data.containerId);
+  await deps.assertExecutionCurrent?.();
   await deps.provider.delete(row.containerName).catch(() => {
     // old container may already be gone; provisioning replaces it regardless
   });
@@ -603,6 +633,7 @@ export async function executeContainerUpgrade(
   });
   let result: Awaited<ReturnType<AppContainerProvider["provision"]>> | undefined;
   try {
+    await deps.assertExecutionCurrent?.();
     result = await deps.provider.provision({
       appId: row.appId,
       containerName: row.containerName,
@@ -618,6 +649,10 @@ export async function executeContainerUpgrade(
       publicationAuthority(row),
     );
   } catch (error) {
+    if (result && error instanceof StaleJobExecutionError) {
+      await discardStaleProvision(deps, row, result, true);
+      throw error;
+    }
     if (result && isStalePublication(error)) {
       await discardStaleProvision(deps, row, result);
       return;
