@@ -221,6 +221,8 @@ public final class BrowserLoginFields {
   private BrowserFieldOrigin.Deferred deferred;
   private JavaScriptReplyProxy deferredProxy;
   private int base = 0;
+  /** When the bound fields last reported an accepted submit (uptime ms), or 0. */
+  private long submittedAt;
 
   private BrowserLoginFields(WebView web, Host host, BrowserAutofillExtras extras) {
     this.web = web;
@@ -292,6 +294,7 @@ public final class BrowserLoginFields {
         if (report.username != 0)
           manager.notifyValueChanged(anchor, base + 1, AutofillValue.forText(report.usernameValue));
         manager.notifyValueChanged(anchor, base + 2, AutofillValue.forText(report.passwordValue));
+        submittedAt = android.os.SystemClock.uptimeMillis();
     }
   }
 
@@ -384,6 +387,7 @@ public final class BrowserLoginFields {
    * AutofillManager#cancel}; a committed session needs nothing more.
    */
   public void revoke(boolean exit) {
+    submittedAt = 0;
     BrowserFieldOrigin.Binding old = binding;
     BrowserFieldOrigin.Report focused = focus;
     binding = null;
@@ -395,6 +399,16 @@ public final class BrowserLoginFields {
     AutofillManager manager = manager();
     if (exit && manager != null)
       manager.notifyViewExited(anchor, focusedId(focused == null ? old.fields : focused));
+  }
+
+  /**
+   * Whether the bound fields reported a submit within the last {@code millis}. A sign-in that
+   * stays on the same document (history.pushState after an in-page request) then ends the
+   * framework session with commit, like one that navigates.
+   */
+  public boolean submittedWithin(long millis) {
+    return binding != null && submittedAt != 0
+        && android.os.SystemClock.uptimeMillis() - submittedAt <= millis;
   }
 
   public void close() {

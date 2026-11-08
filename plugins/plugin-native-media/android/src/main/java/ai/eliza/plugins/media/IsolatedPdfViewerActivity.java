@@ -146,7 +146,7 @@ public abstract class IsolatedPdfViewerActivity extends Activity {
     if (source == null)
       return;
     int token = ++generation;
-    status.setText("Opening PDF in isolated viewer…");
+    status.setText("Opening PDF…");
     connection = new ServiceConnection() {
       @Override public void onServiceConnected(ComponentName name, IBinder binder) {
         if (!started || token != generation)
@@ -156,11 +156,11 @@ public abstract class IsolatedPdfViewerActivity extends Activity {
       }
       @Override public void onServiceDisconnected(ComponentName name) {
         if (token == generation)
-          fail("PDF renderer stopped. Close and reopen to retry.");
+          fail("PDF viewer stopped. Reopen it to try again.");
       }
       @Override public void onBindingDied(ComponentName name) {
         if (token == generation)
-          fail("PDF renderer stopped. Close and reopen to retry.");
+          fail("PDF viewer stopped. Reopen it to try again.");
       }
       @Override public void onNullBinding(ComponentName name) {
         if (token == generation)

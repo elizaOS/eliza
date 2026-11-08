@@ -216,6 +216,61 @@ describe("BrowserTabSession", () => {
     expect(JSON.stringify(selection)).not.toContain("example.test");
   });
 
+  it("attaches the native host once, before creating any tab", async () => {
+    const calls: string[] = [];
+    let release: () => void = () => {};
+    let fail = true;
+    const host = {
+      attach: (options: { session: string }) => {
+        calls.push(`attach:${options.session}`);
+        if (fail) {
+          fail = false;
+          return Promise.reject(new Error("Expired browser session"));
+        }
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+    };
+    const tabs = new BrowserTabSession({ session: S });
+    // A refused attach (a replaced document still held the host) is retried.
+    await expect(tabs.attach(host)).rejects.toThrow("Expired");
+    const attaching = tabs.attach(host);
+    expect(tabs.attach(host)).toBe(attaching);
+    const created = tabs.ensure("t1", false, async () => {
+      calls.push("create");
+    });
+    await Promise.resolve();
+    expect(calls).toEqual([`attach:${S}`, `attach:${S}`]);
+    release();
+    await created;
+    expect(calls).toEqual([`attach:${S}`, `attach:${S}`, "create"]);
+    // The next document attaches its own session; the ended one never attaches again.
+    tabs.dispose();
+    await expect(tabs.attach(host)).rejects.toThrow("Browser closed");
+    const next = new BrowserTabSession({ session: "session-2" });
+    fail = false;
+    const attached = next.attach(host);
+    await Promise.resolve();
+    release();
+    await attached;
+    expect(calls.at(-1)).toBe("attach:session-2");
+  });
+
+  it("moves the document revision on a same-document address change", async () => {
+    const tabs = await session();
+    tabs.applyState(committed());
+    const before = tabs.pageBinding("t1");
+    // history.pushState: same native navigation, new address, still committed.
+    const change = tabs.applyState(
+      committed({ url: "https://example.test/b" }),
+    );
+    expect(change?.revisionChanged).toBe(true);
+    expect(change?.committedPage).toBe(true);
+    expect(tabs.current(before, "t1")).toBe(false);
+    expect(tabs.pageBinding("t1")?.url).toBe("https://example.test/b");
+  });
+
   it("validates tab ids like the native host", () => {
     expect(validBrowserTabId(newBrowserTabId())).toBe(true);
     expect(validBrowserTabId("a".repeat(81))).toBe(false);

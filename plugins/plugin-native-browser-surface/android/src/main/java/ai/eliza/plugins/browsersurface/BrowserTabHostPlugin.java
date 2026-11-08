@@ -136,7 +136,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private Tab fullscreenTab;
  private WebChromeClient.CustomViewCallback customCallback;
  private OnBackPressedCallback fullscreenBack;
- private void cancelFile() { ValueCallback<Uri[]> callback=fileCallback;fileCallback=null;fileTab=null;if(callback!=null)callback.onReceiveValue(null); }
+ private void cancelFile() { ValueCallback<Uri[]> callback=fileCallback;fileCallback=null;fileTab=null;pickerOutstanding=false;if(callback!=null)callback.onReceiveValue(null); }
  @Override public void load() {
   BrowserTabHostConfig identity=config();namespace=freshNamespace();
   reading=new BrowserReviewedReading(getActivity(),this::cancelReadingSpeech,identity.allowLoopback);
@@ -150,6 +150,9 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   bookmarks=openBookmarkStore(getActivity());
   sessionStore=openSessionStore(getActivity());
   profileRetirement=getContext().getSharedPreferences(identity.retiredProfilePreferences,0);
+  // Set before any create() can run; cleared once the unfinished deletion completes or gives up.
+  boolean pendingClear=profileRetirement.contains(PERSISTENT_CLEAR)&&WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)&&WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA);
+  if(pendingClear)clearing=true;
   // Capacitor constructs plugins before Builder.create replaces its listener
   // list. Register on the next main-loop turn so that replacement cannot erase
   // this callback. No renderer/native browser requests run during construction.
@@ -179,12 +182,15 @@ public abstract class BrowserTabHostPlugin extends Plugin {
     if(!ProfileStore.getInstance().getAllProfileNames().contains(name))profileRetirement.edit().remove(name).apply();
    } catch(Exception unavailable) { profileRetirement.edit().putString(name,"pending").apply(); }
   }
- }); }
+ });
+  // Queued after the profile cleanup above, before any renderer request can build a normal tab.
+  if(pendingClear)navigationHandler.post(()->finishPendingClear(0));
+ }
 
  /** Kept separate from dispatch so resolver changes cannot bypass page/owner checks. */
  private java.util.function.Function<Intent,java.util.List<android.content.pm.ResolveInfo>> externalBrowserResolver =
   intent->getContext().getPackageManager().queryIntentActivities(intent,android.content.pm.PackageManager.MATCH_DEFAULT_ONLY|android.content.pm.PackageManager.GET_RESOLVED_FILTER);
- private static class Tab { BrowserReadingWorld readingWorld; BrowserBlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserBlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; /** Address onPageStarted reported for the current cross-document load; reset when another load begins. */ String startedUrl = ""; WebView web; FrameLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, autofillEnabled; /** A cross-document load started and has not committed: doUpdateVisitedHistory is then that load's, not a same-document move. */ boolean started; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -303,7 +309,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(!startedCallback)t.authAttempts=0;
   if(t.readingWorld!=null&&!startedCallback)t.readingWorld.invalidate();
   t.navigation++;if(fileTab==t)cancelFile();
-  clearTimeout(t); t.loading=true; t.committed=false; t.error=""; t.httpStatus=0; t.finishedUrl="";
+  clearTimeout(t); t.loading=true; t.committed=false; t.started=false; t.startedUrl=""; t.error=""; t.httpStatus=0; t.finishedUrl="";
   t.web.setVisibility(View.INVISIBLE); t.message.setText("Loading website…"); t.message.setVisibility(View.VISIBLE);
   t.timeout=()->{if(t.loading&&!t.dead)fail(t,"This page is taking too long. Check your connection, then reload from the menu.");};
   navigationHandler.postDelayed(t.timeout,30000);
@@ -353,6 +359,12 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   try { Uri u = Uri.parse(value); return ("https".equalsIgnoreCase(u.getScheme()) || "http".equalsIgnoreCase(u.getScheme())) && u.getHost() != null && u.getUserInfo() == null && !value.contains("\n") && !value.contains("\r"); } catch (Exception e) { return false; }
  }
  private void fail(Tab t, String message) { finishAuthSave(t,null); disableAutofill(t); clearTimeout(t); t.error = message; t.loading = false; t.committed = false; t.web.stopLoading(); t.web.setVisibility(View.INVISIBLE); t.message.setText(message); t.message.setVisibility(View.VISIBLE); emit(t); }
+ /** An unlisted scheme on the main frame. A shown page stays (a tapped link says why); a tab
+  * without a committed page fails as before. */
+ private void unsupportedLink(Tab t,boolean gesture) {
+  if(!t.committed||t.lastCommittedUrl.isEmpty()){fail(t,"This address type is not supported.");return;}
+  if(gesture)notice(t,"This link type is not supported.");
+ }
  private JSObject state(Tab t) { JSObject s = new JSObject(); s.put("session", session); s.put("id", t.id); s.put("sequence", ++sequence); s.put("navigation", String.valueOf(t.navigation)); s.put("url", t.url); s.put("title", t.dead ? "" : t.web.getTitle()); s.put("loading", t.loading); s.put("committed", t.committed); s.put("httpStatus", t.httpStatus); s.put("progress", t.dead ? 0 : t.web.getProgress()); s.put("canBack", !t.dead && t.web.canGoBack()); s.put("canForward", !t.dead && t.web.canGoForward()); s.put("error", t.error); s.put("private", t.priv); return s; }
  private void emit(Tab t) { if (tabs.get(t.id) == t) notifyListeners("stateChanged", state(t)); }
  /**
@@ -361,23 +373,56 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   * dialog would throw on the main thread and end the process); every such call is rejected.
   */
  private boolean closed(PluginCall call){if(!destroyed)return false;call.reject("Browser closed");return true;}
- private void run(PluginCall call, java.util.function.Consumer<Tab> action) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session, call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t = tabs.get(call.getString("id")); if (t == null || t.dead) { call.reject("Browser tab is unavailable"); return; } try { action.accept(t); call.resolve(state(t)); } catch (Exception e) { call.reject("Browser operation failed"); } }); }
+ private void run(PluginCall call, java.util.function.Consumer<Tab> action) { run(call,false,action); }
+ /** With {@code revive}, a tab whose renderer stopped is rebuilt first (see revive()). */
+ private void run(PluginCall call, boolean revive, java.util.function.Consumer<Tab> action) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session, call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t = tabs.get(call.getString("id"));
+  if (revive && t != null && t.dead) { if (!revivable(t)) { call.reject("This tab stopped. Open a new tab."); return; } try { t = revive(t); } catch (Exception e) { call.reject("This tab stopped. Open a new tab."); return; } }
+  if (t == null || t.dead) { call.reject("Browser tab is unavailable"); return; } try { action.accept(t); call.resolve(state(t)); } catch (Exception e) { call.reject("Browser operation failed"); } }); }
  @PluginMethod public void create(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return;
   String requested = call.getString("session"), id = call.getString("id");
   if (requested == null || !BrowserTabHostConfig.validTabId(id)) { call.reject("Invalid browser identity"); return; }
-  if (session != null && !session.equals(requested)) { call.reject("Expired browser session"); return; }
-  session = requested;
+  if (!adopt(requested)) { call.reject("Expired browser session"); return; }
   boolean priv = Boolean.TRUE.equals(call.getBoolean("private", false));
-  if (tabs.containsKey(id)) { Tab existing = tabs.get(id); if (existing.priv != priv) { call.reject("Browser tab identity changed"); return; } call.resolve(state(existing)); return; }
+  if (tabs.containsKey(id)) { Tab existing = tabs.get(id); if (existing.priv != priv) { call.reject("Browser tab identity changed"); return; }
+   if (existing.dead) {
+    if (!revivable(existing)) { call.reject("This tab stopped. Open a new tab."); return; }
+    try { Tab t = revive(existing); if (safe(t.url)) { loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(t.url); t.web.loadUrl(t.url); } call.resolve(state(t)); }
+    catch (Exception e) { call.reject("This tab stopped. Open a new tab."); }
+    return;
+   }
+   call.resolve(state(existing)); return; }
   if (tabs.size() >= config().maxTabs) { call.reject("Close a tab before opening another"); return; }
   if (clearing && !priv) { call.reject("Browsing data is being cleared. Try again in a moment."); return; }
   if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) || !WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_VIEW_RENDERER)) { call.reject("This Android WebView does not support isolated browser profiles"); return; }
   // Normal tabs keep their data by decision P-04, so only private tabs depend on
   // secure profile-scoped deletion when they close.
   if (priv && !WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) { call.reject("Private tabs need an Android System WebView that can securely delete their data. Update Android System WebView to use private tabs."); return; }
-  try { Tab created=build(id, priv, priv ? config().privateProfile(namespace, id) : config().persistentProfile); passkeyNotice(created); call.resolve(state(created)); }
+  try { Tab created=build(id, priv, priv ? config().privateProfile(namespace, id) : config().persistentProfile); passkeyNotice(created);
+   if (clearFailed && !priv) { clearFailed=false; notice(created,"Website data from your last clear could not be removed. Clear browsing data again."); }
+   call.resolve(state(created)); }
   catch (Exception e) { call.reject("Could not create an isolated browser tab"); }
  }); }
+ /** A tab whose renderer stopped may be rebuilt while it is still listed; a private tab only while
+  * its private profile was never retired, so a closed private session is never brought back. */
+ private boolean revivable(Tab t) {
+  if(destroyed||!t.dead||tabs.get(t.id)!=t||(clearing&&!t.priv))return false;
+  return !t.priv||!retiredProfiles.containsKey(t.profile);
+ }
+ /** Rebuilds a tab whose renderer stopped: same id, profile and place on screen, no page yet.
+  * {@code url} is its last committed page, which the caller loads (Reload) or replaces. */
+ private Tab revive(Tab dead) throws Exception {
+  ViewGroup.LayoutParams place=dead.frame.getLayoutParams();
+  // build() lists the new tab only on success; until then the dead tab keeps its profile in use.
+  Tab t=build(dead.id,dead.priv,dead.profile);
+  t.opener=dead.opener;t.navigation=dead.navigation;t.url=dead.lastCommittedUrl.isEmpty()?dead.url:dead.lastCommittedUrl;
+  if(dead.capture!=null)dead.capture.close();
+  if(downloads!=null)downloads.cancelReview(dead.id);
+  if(dead.frame.getParent()!=null)((ViewGroup)dead.frame.getParent()).removeView(dead.frame);
+  if(place!=null)t.frame.setLayoutParams(place);
+  t.web.setVisibility(View.INVISIBLE);t.message.setText(dead.error);t.message.setVisibility(View.VISIBLE);
+  t.frame.setVisibility(!paused&&Objects.equals(presentedId,t.id)?View.VISIBLE:View.GONE);
+  return t;
+ }
  /** One child WebView in the given browser-only profile. Pop-ups pass their
   * opener's profile so a site's sign-in window shares its session. */
  private Tab build(String id, boolean priv, String profileName) throws Exception {
@@ -414,27 +459,56 @@ public abstract class BrowserTabHostPlugin extends Plugin {
      String target = r.getUrl().toString();
      // mailto/tel/intent/market belong to other apps. The current page stays.
      if (BrowserExternalHandoff.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
-     if (!safe(target)) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; }
+     // Another unlisted scheme (zoommtg:, a custom app link): a shown page stays.
+     if (!safe(target)) { if (r.isForMainFrame()) unsupportedLink(t, r.hasGesture()); return true; }
      if (r.isForMainFrame()) t.pendingMain=target;
      return false;
     }
     @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) { if (r.isForMainFrame()) t.pendingMain=r.getUrl().toString(); if (r.isForMainFrame() && !safe(r.getUrl().toString())) return new WebResourceResponse("text/plain","UTF-8",new java.io.ByteArrayInputStream(new byte[0])); return null; }
-    @Override public void onPageStarted(WebView v, String url, Bitmap icon) { if (!safe(url)) { fail(t,"This address type is not supported."); return; } t.url=url; if(t.readingWorld!=null)t.readingWorld.pageStarted(url); loading(t,true); emit(t); }
+    @Override public void onPageStarted(WebView v, String url, Bitmap icon) { if (!safe(url)) { fail(t,"This address type is not supported."); return; } t.url=url; if(t.readingWorld!=null)t.readingWorld.pageStarted(url); loading(t,true); t.started=true; t.startedUrl=url; emit(t); }
     @Override public void onPageCommitVisible(WebView v, String url) {
-     if (!t.error.isEmpty() || !url.equals(v.getUrl())) return;
-     if (WebViewCompat.getWebViewRenderProcess(v) == null) { fail(t,"Isolated browser renderer is unavailable."); return; }
-     clearTimeout(t); t.lastCommittedUrl=url; t.committed=true; t.loading=!(url.equals(t.finishedUrl) || v.getProgress()==100); t.url=url; t.message.setVisibility(View.GONE); t.web.setVisibility(View.VISIBLE); finishAuthSave(t,url); syncAutofill(t); emit(t);
+     if (!t.error.isEmpty()) return;
+     // A page may rewrite its own address (history.replaceState in its head) before first paint.
+     String shown = BrowserDocumentCommit.committedUrl(url, v.getUrl(), t.startedUrl, t.pendingMain);
+     if (shown == null || !safe(shown)) return;
+     if (WebViewCompat.getWebViewRenderProcess(v) == null) { fail(t,"This tab stopped. Open a new tab."); return; }
+     clearTimeout(t); t.started=false; t.lastCommittedUrl=shown; t.committed=true; t.loading=!(url.equals(t.finishedUrl) || v.getProgress()==100); t.url=shown; t.message.setVisibility(View.GONE); t.web.setVisibility(View.VISIBLE); finishAuthSave(t,shown); syncAutofill(t); emit(t);
     }
-    @Override public void onPageFinished(WebView v, String url) { if (!t.error.isEmpty() || !safe(url) || !url.equals(t.url)) return; t.finishedUrl=url; if(t.committed) { clearTimeout(t); t.loading=false; syncAutofill(t); emit(t); } }
+    @Override public void onPageFinished(WebView v, String url) {
+     if (!t.error.isEmpty() || !safe(url)) return;
+     String shown = BrowserDocumentCommit.committedUrl(url, v.getUrl(), t.startedUrl, t.pendingMain);
+     if (shown == null || !(url.equals(t.url) || shown.equals(t.url))) return;
+     t.finishedUrl=url; if(t.committed) { clearTimeout(t); t.loading=false; syncAutofill(t); emit(t); }
+    }
+    /** pushState, a #fragment and Back/Forward between such entries commit no new document. */
+    @Override public void doUpdateVisitedHistory(WebView v, String url, boolean isReload) {
+     if (tabs.get(t.id)!=t || !BrowserDocumentCommit.sameDocument(url, v.getUrl(), isReload, t.started, t.dead, t.error, t.lastCommittedUrl) || !safe(url)) return;
+     // A sign-in that stays on its document ends the framework session with commit, like one that navigates.
+     boolean submitted=t.autofillEnabled&&!paused&&Objects.equals(presentedId,t.id)&&t.fields!=null&&t.fields.submittedWithin(10000);
+     clearTimeout(t); t.committed=true; t.loading=false; t.url=url; t.lastCommittedUrl=url;
+     t.message.setVisibility(View.GONE); t.web.setVisibility(View.VISIBLE); clearFind(t);
+     if(submitted)commitAutofill(t);
+     syncAutofill(t); emit(t);
+    }
     @Override public void onReceivedHttpAuthRequest(WebView v, HttpAuthHandler handler, String host, String realm) { httpAuth(t,handler,host,realm); }
-    @Override public void onReceivedSslError(WebView v, SslErrorHandler handler, SslError error) { handler.cancel(); fail(t,"Secure connection failed. The certificate was not accepted."); }
+    @Override public void onReceivedSslError(WebView v, SslErrorHandler handler, SslError error) {
+     // Never proceed. A refused image or script of a shown page leaves that page in place.
+     handler.cancel();
+     if (BrowserDocumentCommit.mainResource(error.getUrl(), t.pendingMain, t.url, t.committed)) fail(t,"Secure connection failed. The certificate was not accepted.");
+    }
     @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) { if (r.isForMainFrame()) { if (config().debugLogging) android.util.Log.w(config().logTag, "Main-frame network failure code=" + e.getErrorCode()); fail(t,"Page could not load. Check the address and connection, then reload."); } }
     @Override public void onReceivedHttpError(WebView v, WebResourceRequest r, WebResourceResponse response) {
      // An HTTP response is still a document: preserve the site's explanation,
      // retry links and traffic challenges. Transport/TLS failures remain fatal.
      if (r.isForMainFrame()) { t.httpStatus=response.getStatusCode(); emit(t); }
     }
-    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
+    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) {
+     finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true;
+     if(siteDialogTab==t)dismissSiteDialogs(); if(fullscreenTab==t)exitFullscreen(true); if(fileTab==t)cancelFile();
+     t.loading=false; t.committed=false; t.started=false; t.error="This tab stopped. Reload to open the page again."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE);
+     // A dead tab reports no history, title or progress (see state()).
+     emit(t); return true;
+    }
    });
    t.web.setWebChromeClient(new WebChromeClient() {
     @Override public void onProgressChanged(WebView v,int p) { if(p==100 && t.committed && t.error.isEmpty()) t.loading=false; syncAutofill(t); emit(t); }
@@ -479,7 +553,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
     if(paused||t.dead||!Objects.equals(presentedId,t.id)||tabs.get(t.id)!=t)return;
     finishAuthSave(t,null);disableAutofill(t);clearTimeout(t);t.loading=false;
     if(!t.lastCommittedUrl.isEmpty()&&Objects.equals(t.lastCommittedUrl,t.web.getUrl())){
-     t.url=t.lastCommittedUrl;t.committed=true;t.web.setVisibility(View.VISIBLE);t.message.setVisibility(View.GONE);
+     t.url=t.lastCommittedUrl;t.committed=true;t.started=false;t.web.setVisibility(View.VISIBLE);t.message.setVisibility(View.GONE);
     }else {t.committed=false;t.web.setVisibility(View.INVISIBLE);t.message.setText("Download requested. Enter an address to continue browsing.");t.message.setVisibility(View.VISIBLE);}
     long revision=t.navigation;
     java.util.function.BooleanSupplier current=()->!paused&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(presentedId,t.id);
@@ -501,7 +575,17 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  // ---- Site prompts: permissions, HTTP authentication, camera choice -------------
  private boolean promptable(Tab t){return !paused&&!destroyed&&!t.dead&&tabs.get(t.id)==t&&Objects.equals(presentedId,t.id)&&t.error.isEmpty();}
  private void showSiteDialog(Tab t,AlertDialog dialog,Runnable cancel){
-  dismissSiteDialogs();siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;siteDialogRevoke=null;
+  // Settle the open prompt's request now: its dismiss listener runs later and is stale by then,
+  // so a replaced file chooser or permission request would otherwise never be answered.
+  AlertDialog previous=siteDialog;Runnable previousCancel=siteDialogCancel;
+  if(previous!=null){
+   revokeSiteDialogAutofill();
+   if(siteDialogAutofill){AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.cancel();}
+   siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;
+   previous.dismiss();
+   if(previousCancel!=null)previousCancel.run();
+  }
+  siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;siteDialogRevoke=null;
   for(Tab tab:tabs.values())disableAutofill(tab);
   dialog.setOnDismissListener(d->{if(siteDialog!=dialog)return;revokeSiteDialogAutofill();Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();
    // The overlay is gone: the presented tab may become fillable again.
@@ -810,8 +894,13 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void tabClosed(String id){JSObject event=new JSObject();event.put("session",session);event.put("id",id);notifyListeners("tabClosed",event);}
  /** Close a pop-up after its callback returns; a WebView is not destroyed inside its own callback. */
  private void closePopup(Tab t){navigationHandler.post(()->{if(tabs.get(t.id)!=t)return;tabs.remove(t.id);dispose(t);tabClosed(t.id);});}
- @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
- @PluginMethod public void command(PluginCall call) { run(call,t -> { String expected=call.getString("navigation");if(expected!=null&&(paused||!getActivity().hasWindowFocus()||siteDialog!=null||!expected.equals(String.valueOf(t.navigation))))throw new IllegalStateException("Browser foreground or document changed"); String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
+ @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,true,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
+ @PluginMethod public void command(PluginCall call) { run(call,"reload".equals(call.getString("command")),t -> { String expected=call.getString("navigation");if(expected!=null&&(paused||!getActivity().hasWindowFocus()||siteDialog!=null||!expected.equals(String.valueOf(t.navigation))))throw new IllegalStateException("Browser foreground or document changed"); String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {
+     // A rebuilt tab has no document yet: load its last page.
+     String again=t.web.getUrl();
+     if(again==null){if(!safe(t.url))throw new IllegalStateException();loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.url);t.web.loadUrl(t.url);}
+     else{loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(again);t.web.reload();}
+    } else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;t.started=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
  @PluginMethod public void present(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return;
   if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; }
   String nextId=call.getString("id");
@@ -822,9 +911,29 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  }); }
  private boolean bookmarkSession(PluginCall call) {
   String requested=call.getString("session");
-  if(requested==null||requested.isEmpty()||requested.length()>100||(session!=null&&!session.equals(requested))){call.reject("Expired browser session");return false;}
+  if(requested==null||requested.length()>100||!adopt(requested)){call.reject("Expired browser session");return false;}
+  return true;
+ }
+ /** Set by the first attach(): from then on only attach() names the session, for every later document. */
+ private boolean attachRequired;
+ /** Whether a call from session {@code requested} may proceed. Before any attach(), the first
+  * caller's session is adopted (hosts that predate attach); after it, only an exact match. */
+ private boolean adopt(String requested) {
+  if(requested==null||requested.isEmpty())return false;
+  if(session!=null)return session.equals(requested);
+  if(attachRequired)return false;
   session=requested;return true;
  }
+ /** Binds this host to the calling document's session. Call it once, before anything else, from
+  * each new host document: afterwards a call from a replaced document is refused instead of
+  * adopting the session the reset left empty. */
+ @PluginMethod public void attach(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
+  String requested=call.getString("session");
+  if(requested==null||requested.isEmpty()||requested.length()>100){call.reject("Invalid browser session");return;}
+  if(session!=null&&!session.equals(requested)){call.reject("Expired browser session");return;}
+  if(session==null&&!tabs.isEmpty())resetHostDocument();
+  session=requested;attachRequired=true;call.resolve();
+ }); }
  private JSObject bookmarkResult(ArrayList<String> urls) { JSObject result=new JSObject();JSArray list=new JSArray();for(String url:urls)list.put(url);result.put("urls",list);return result; }
  @PluginMethod public void bookmarks(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!bookmarkSession(call))return;
@@ -857,21 +966,46 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(!bookmarkSession(call))return;
   if(clearing){call.reject("Browsing data is already being cleared.");return;}
   if(!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)||!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)){call.reject("This Android WebView cannot clear browser data. Update Android System WebView.");return;}
+  // Durable before any tab closes: if the process ends mid-clear, the next start finishes it
+  // before a normal tab can load (see finishPendingClear).
+  profileRetirement.edit().putString(PERSISTENT_CLEAR,"pending").commit();
   clearing=true;JSArray closed=new JSArray();
   for(Tab tab:new ArrayList<>(tabs.values()))if(!tab.priv){tabs.remove(tab.id);dispose(tab);closed.put(tab.id);tabClosed(tab.id);}
   try{sessionStore.clear();sessionStore.clearPermissions();downloads.clearHistory();}catch(Exception unavailable){clearing=false;call.reject("Browsing history could not be cleared.");return;}
   // WebView.destroy posts native destruction; clear after those tasks.
-  navigationHandler.post(()->{
-   try{
-    androidx.webkit.Profile profile=ProfileStore.getInstance().getOrCreateProfile(config().persistentProfile);
-    CookieManager cookies=profile.getCookieManager();
-    cookies.removeAllCookies(removed->{
-     try{WebStorageCompat.deleteBrowsingData(profile.getWebStorage(),()->{cookies.flush();clearing=false;JSObject result=new JSObject();result.put("closed",closed);call.resolve(result);});}
-     catch(Exception unavailable){clearing=false;call.reject("Website data could not be cleared.");}
-    });
-   }catch(Exception unavailable){clearing=false;call.reject("Website data could not be cleared.");}
-  });
+  navigationHandler.post(()->deletePersistentData(done->{
+   clearing=false;
+   if(!done){call.reject("Website data could not be cleared.");return;}
+   JSObject result=new JSObject();result.put("closed",closed);call.resolve(result);
+  }));
  }); }
+ /** Retirement preference key of a Clear browsing data that has not finished deleting. */
+ private static final String PERSISTENT_CLEAR="persistent-clear";
+ /** Startup attempts at an unfinished clear before normal tabs open again (it is retried next start). */
+ private static final int CLEAR_ATTEMPTS=3;
+ private boolean clearFailed;
+ /** Deletes the persistent profile's cookies and site storage, then removes the pending-clear
+  * marker. {@code done} gets false when the engine refused; the marker then stays. */
+ private void deletePersistentData(java.util.function.Consumer<Boolean> done) {
+  try{
+   androidx.webkit.Profile profile=ProfileStore.getInstance().getOrCreateProfile(config().persistentProfile);
+   CookieManager cookies=profile.getCookieManager();
+   cookies.removeAllCookies(removed->{
+    try{WebStorageCompat.deleteBrowsingData(profile.getWebStorage(),()->{cookies.flush();profileRetirement.edit().remove(PERSISTENT_CLEAR).commit();done.accept(true);});}
+    catch(Exception unavailable){done.accept(false);}
+   });
+  }catch(Exception unavailable){done.accept(false);}
+ }
+ /** A Clear browsing data the process did not finish: delete before any normal tab is built. */
+ private void finishPendingClear(int attempt) {
+  if(destroyed){clearing=false;return;}
+  deletePersistentData(done->{
+   if(done){clearing=false;return;}
+   if(attempt+1<CLEAR_ATTEMPTS){navigationHandler.postDelayed(()->finishPendingClear(attempt+1),1000L*(attempt+1));return;}
+   // Never block normal tabs for good: say so once and try again at the next start.
+   clearing=false;clearFailed=true;
+  });
+ }
  /** Cookies and storage for the selected tab's site (registrable domain) only. */
  @PluginMethod public void clearSiteData(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;
   if(!Objects.equals(session,call.getString("session"))){call.reject("Expired browser session");return;}
@@ -932,7 +1066,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   for(Tab tab:tabs.values())disableAutofill(tab);
   try{getActivity().startActivity(chooser);call.resolve();}catch(RuntimeException unavailable){call.reject("The other browser could not be opened. Your page remains in "+config().hostName+".");}
  }); }
- @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;String requested=call.getString("session");if(requested==null||(session!=null&&!Objects.equals(session,requested))){call.reject("Expired browser session");return;}session=requested;for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
+ @PluginMethod public void downloads(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;if(!adopt(call.getString("session"))){call.reject("Expired browser session");return;}for(Tab tab:tabs.values())disableAutofill(tab);downloads.show();call.resolve();}); }
  /** Whether website password fill can work in this browser (no secrets, no tab state). */
  @PluginMethod public void loginFillStatus(PluginCall call) { JSObject result=new JSObject(); boolean available=BrowserLoginFields.supported(); result.put("available",available); if(!available)result.put("reason",BrowserFieldOrigin.UNSUPPORTED); call.resolve(result); }
  @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }

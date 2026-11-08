@@ -117,6 +117,12 @@ export interface BrowserSavedState {
 
 /** The Capacitor API of an Android `BrowserTabHostPlugin` subclass. */
 export interface BrowserTabHostPlugin {
+  /**
+   * Binds the native host to this document's session. After a host has seen
+   * one `attach`, every call must carry the attached session exactly, so a
+   * call from a replaced document is refused instead of adopting the session.
+   */
+  attach(options: { session: string }): Promise<void>;
   create(options: {
     session: string;
     id: string;
@@ -276,6 +282,7 @@ export class BrowserTabSession {
   private readonly tabs = new Map<string, BrowserTabInfo>();
   private readonly revisions = new Map<string, number>();
   private readonly privateTabs = new Set<string>();
+  private attachment: Promise<void> | undefined;
   private disposed = false;
 
   constructor(options: BrowserTabSessionOptions = {}) {
@@ -297,6 +304,24 @@ export class BrowserTabSession {
   }
 
   /**
+   * Binds the native host to this session, once; a failed attach is retried by
+   * the next call. Await it before any other native call of this session:
+   * `ensure` waits for it when it was started.
+   */
+  attach(host: Pick<BrowserTabHostPlugin, "attach">): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error("Browser closed"));
+    if (this.attachment) return this.attachment;
+    const attachment = Promise.resolve()
+      .then(() => host.attach({ session: this.session }))
+      .then(() => undefined);
+    attachment.catch(() => {
+      if (this.attachment === attachment) this.attachment = undefined;
+    });
+    this.attachment = attachment;
+    return attachment;
+  }
+
+  /**
    * The native creation of tab `id`, started once. A failed creation is
    * forgotten so a later call can retry; private-ness is fixed at creation.
    */
@@ -312,7 +337,8 @@ export class BrowserTabSession {
     if (this.created.size >= this.maxTabs)
       return Promise.reject(new Error("Close a tab before opening another."));
     if (privateTab) this.privateTabs.add(id);
-    const creation = create().catch((error: unknown) => {
+    const attached = this.attachment ?? Promise.resolve();
+    const creation = attached.then(create).catch((error: unknown) => {
       if (this.created.get(id) === creation) {
         this.created.delete(id);
         this.privateTabs.delete(id);
