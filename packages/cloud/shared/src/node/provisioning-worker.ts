@@ -2524,7 +2524,17 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       case JOB_TYPES.CONTAINER_UPGRADE:
       case JOB_TYPES.CONTAINER_LOGS:
         await this.assertExecutionMutationLease(job);
-        await dispatchContainerJob(job, getContainerExecutorDeps());
+        await dispatchContainerJob(
+          job,
+          getContainerExecutorDeps(
+            Object.freeze({
+              jobId: job.id,
+              organizationId: job.organization_id,
+              executionGeneration: job.execution_generation!,
+              executionOwnerId: this.executionOwnerId,
+            }),
+          ),
+        );
         await this.settleClaimedExecution(job, "completed", {
           completed_at: new Date(),
         });
