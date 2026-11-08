@@ -38,7 +38,11 @@ const NESTED_BUILD_DEPENDENCIES: Record<string, string> = {
   "@noble/hashes/sha2.js": "../../../core/node_modules/@noble/hashes/sha2.js",
 };
 
-type GreetingDrain = { greetings: Array<{ leaseId: string }> };
+type GreetingReplies = {
+  "enqueue-greeting": { success: boolean };
+  "drain-greetings": { greetings: Array<{ leaseId: string }> };
+  "ack-greetings": { acknowledged: number };
+};
 
 describe("onboarding coordinator error integration", () => {
   let miniflare: Miniflare;
@@ -207,14 +211,17 @@ describe("onboarding coordinator error integration", () => {
       "ONBOARDING_SESSIONS",
     );
     const stub = namespace.getByName(`proactive-greetings:${name}`);
-    return async <Reply = unknown>(path: string, body: unknown) => {
+    return async <Name extends keyof GreetingReplies>(
+      path: Name,
+      body: unknown,
+    ): Promise<GreetingReplies[Name]> => {
       const response = await stub.fetch(`https://onboarding.internal/${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
       expect(response.status).toBe(200);
-      return (await response.json()) as Reply;
+      return (await response.json()) as GreetingReplies[Name];
     };
   }
 
@@ -300,8 +307,8 @@ describe("onboarding coordinator error integration", () => {
     await queue("enqueue-greeting", original);
     await queue("enqueue-greeting", { ...original, message: "Duplicate" });
     const replies = await Promise.all([
-      queue<GreetingDrain>("drain-greetings", { limit: 1 }),
-      queue<GreetingDrain>("drain-greetings", { limit: 1 }),
+      queue("drain-greetings", { limit: 1 }),
+      queue("drain-greetings", { limit: 1 }),
     ]);
     const claims = replies.flatMap((reply) => reply.greetings);
     expect(claims).toHaveLength(1);
@@ -324,7 +331,7 @@ describe("onboarding coordinator error integration", () => {
       await queue("ack-greetings", { acknowledgements: [acknowledgement] }),
     ).toEqual({ acknowledged: 0 });
     await queue("enqueue-greeting", { ...original, deliveryNonce: "new" });
-    const next = await queue<GreetingDrain>("drain-greetings", {});
+    const next = await queue("drain-greetings", {});
     expect(next.greetings).toEqual([
       expect.objectContaining({ deliveryNonce: "new" }),
     ]);
@@ -349,7 +356,7 @@ describe("onboarding coordinator error integration", () => {
       sessionId: "platform:queue-expired",
       createdAt: new Date(now - 16 * 60_000).toISOString(),
     });
-    const reply = await queue<GreetingDrain>("drain-greetings", {});
+    const reply = await queue("drain-greetings", {});
     expect(reply.greetings).toHaveLength(1);
     const [claim] = reply.greetings;
     expect(claim).toMatchObject(original);
