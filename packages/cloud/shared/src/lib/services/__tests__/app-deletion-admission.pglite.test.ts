@@ -170,3 +170,48 @@ test("an inconsistent ordinary app key cannot revoke another organization's cred
   expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   expect((await dbWrite.select().from(apiKeys))[0]?.is_active).toBe(true);
 });
+
+for (const target of ["credential", "grant"] as const)
+  test(`suppressed ${target} retirement rolls back deletion admission`, async () => {
+    const key = randomUUID();
+    await dbWrite.insert(apiKeys).values({
+      id: key,
+      name: "mobile",
+      key_hash: key,
+      key_prefix: "eliza_mobile_",
+      organization_id: organizationId,
+      user_id: userId,
+      source_app_id: appId,
+    });
+    if (target === "grant")
+      await dbWrite.insert(mobileAppAuthGrants).values({
+        code_hash: randomUUID(),
+        app_id: appId,
+        client_id: "fixture",
+        user_id: userId,
+        organization_id: organizationId,
+        environment: "staging",
+        redirect_uri: "ai.eliza.test:/return",
+        state_hash: "state",
+        code_challenge: "challenge",
+        code_challenge_method: "S256",
+        scopes: ["inference"],
+        expires_at: new Date(Date.now() + 60_000),
+      });
+    const table = target === "credential" ? "api_keys" : "mobile_app_auth_grants";
+    const event = target === "credential" ? "UPDATE" : "DELETE";
+    await getPgliteClientForTests().exec(
+      `CREATE FUNCTION suppress_retirement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$; CREATE TRIGGER suppress_retirement BEFORE ${event} ON ${table} FOR EACH ROW EXECUTE FUNCTION suppress_retirement();`,
+    );
+    try {
+      await expect(appDeletionOperations.admit(request())).rejects.toMatchObject({
+        code: "APP_DELETION_REVOCATION_UNCONFIRMED",
+      });
+    } finally {
+      await getPgliteClientForTests().exec(
+        `DROP TRIGGER suppress_retirement ON ${table}; DROP FUNCTION suppress_retirement();`,
+      );
+    }
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+    expect((await appsRepository.findByIdForWrite(appId))?.is_active).toBe(true);
+  });

@@ -622,7 +622,7 @@ export class JobsRepository {
           sql`(${jobs.status} IN ('pending','in_progress') OR (${jobs.execution_generation} IS NOT NULL AND ${jobs.execution_quiesced_at} IS NULL))`,
         ),
       );
-    return Promise.all(rows.map((job) => hydrateJob(job)));
+    return Promise.all(rows.map((job) => hydrateJob(job, { strict: true })));
   }
 
   /**

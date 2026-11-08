@@ -51,7 +51,10 @@ import {
   formatAppCacheInvalidationError,
 } from "../lib/services/app-cache-invalidation-job";
 import { executeAppDeletion } from "../lib/services/app-deletion";
-import { AppDeletionRecoveryPendingError } from "../lib/services/app-deletion-authority";
+import {
+  AppDeletionOperatorRecoveryRequiredError,
+  AppDeletionRecoveryPendingError,
+} from "../lib/services/app-deletion-authority";
 import {
   dispatchAppDeletionContainer,
   readOriginalDeletionContainer,
@@ -1675,6 +1678,16 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
         ? retryableTransportError.durableErrorText
         : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
+
+    if (safeErrorKind(err, AppDeletionOperatorRecoveryRequiredError)) {
+      const current = await jobsRepository.findByIdForWrite(job.id);
+      if (!current || current.execution_generation !== job.execution_generation) return false;
+      const outcome = await this.retryOwnedWrite(job, "retain-operator-reconciliation", () =>
+        jobsRepository.rejectClaimedExecution(current, errorMsg, this.executionOwnerId),
+      );
+      if (result && (outcome === "rejected" || outcome === "already-terminal")) result.failed++;
+      return outcome === "rejected" || outcome === "already-terminal";
+    }
 
     if (safeErrorKind(err, RejectedAgentExecutionError)) {
       const outcome = await this.retryOwnedWrite(job, "reject-agent-execution", () =>

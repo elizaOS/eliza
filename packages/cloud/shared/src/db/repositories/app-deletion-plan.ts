@@ -26,6 +26,10 @@ export async function prepareAppDeletionPlan(
     authority.organizationId,
   );
   return withAppDeletionExecution(authority, async (tx, context) => {
+    if (context.job.result?.revocationsConfirmed !== true)
+      throw new AppDeletionRecoveryPendingError(
+        "Original credential revocation delivery is not confirmed",
+      );
     const saved = readAppDeletionPlan(context.job.result);
     if (saved) return saved;
     if (!context.app)
@@ -187,10 +191,11 @@ export async function prepareAppDeletionPlan(
       });
     }
     await assertJobExecutionAuthority(tx, authority);
-    await tx
+    const [published] = await tx
       .update(jobs)
       .set({
         result: {
+          ...context.job.result,
           appId: context.data.appId,
           deletionJobId: context.job.id,
           deletionPlan: plan,
@@ -201,7 +206,10 @@ export async function prepareAppDeletionPlan(
         result_key: null,
         updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
       })
-      .where(eq(jobs.id, context.job.id));
+      .where(eq(jobs.id, context.job.id))
+      .returning({ id: jobs.id });
+    if (!published)
+      throw new AppDeletionRecoveryPendingError("Original resource plan was not persisted");
     return plan;
   });
 }

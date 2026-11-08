@@ -614,7 +614,11 @@ export class AppsService {
         admission.app.slug,
       );
     }
-    return appDeletionProgress(admission.job);
+    const confirmed = await appDeletionOperations.confirmRevocations(
+      admission.job.id,
+      input.organizationId,
+    );
+    return appDeletionProgress(confirmed);
   }
 
   async assertNotDeleting(id: string): Promise<void> {

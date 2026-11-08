@@ -1,21 +1,22 @@
 // One irreversible app deletion; one database and one container. Provider
 // identity is fixed. Remote absence is distinct from a local completion receipt.
 module app_teardown_authority {
-  type State = { app: bool, active: bool, admitted: bool, plan: bool,
+  type State = { app: bool, active: bool, admitted: bool, revoked: bool, plan: bool,
     lease: bool, database: bool, container: bool, dbStarted: bool, containerStarted: bool,
     dbReceipt: bool, containerReceipt: bool, dbQuiescent: bool, containerQuiescent: bool,
     releases: int, capacity: int, finalizing: bool, rootReceipt: bool,
     complete: bool, objects: bool, cleanupPermit: bool, unsafeDispatch: bool }
   var s: State
-  action init = s' = { app: true, active: true, admitted: false, plan: false,
+  action init = s' = { app: true, active: true, admitted: false, revoked: false, plan: false,
     lease: true, database: true, container: true, dbStarted: false, containerStarted: false,
     dbReceipt: false, containerReceipt: false, dbQuiescent: false, containerQuiescent: false,
     releases: 0, capacity: 2, finalizing: false, rootReceipt: false,
     complete: false, objects: true, cleanupPermit: false, unsafeDispatch: false }
   action admit = all { not(s.admitted), s.app, s' = { ...s, admitted: true, active: false } }
+  action acknowledgeRevocation = all { s.admitted, s' = { ...s, revoked: true } }
   action replay = all { s.admitted, s' = s }
   action reactivate = all { not(s.admitted), s.app, s' = { ...s, active: true } }
-  action prepare = all { s.admitted, s.app, s.lease, not(s.plan), s' = { ...s, plan: true } }
+  action prepare = all { s.admitted, s.revoked, s.app, s.lease, not(s.plan), s' = { ...s, plan: true } }
   action loseLease = all { s.lease, s' = { ...s, lease: false } }
   action recoverLease = all { not(s.lease), s' = { ...s, lease: true } }
   action dispatchDatabase = all { s.plan, s.lease, not(s.dbReceipt), s' = { ...s, dbStarted: true } }
@@ -41,12 +42,13 @@ module app_teardown_authority {
   action finish = { nondet mode = 0.to(2).oneOf() finishFinalize(mode) }
   action settle = all { s.lease, s.rootReceipt, s' = { ...s, complete: true } }
   action cleanup = all { s.cleanupPermit, s' = { ...s, objects: false } }
-  action step = any { admit, replay, reactivate, prepare, loseLease, recoverLease,
+  action step = any { admit, acknowledgeRevocation, replay, reactivate, prepare, loseLease, recoverLease,
     dispatchDatabase, databaseAbsent, confirmDatabase, quiesceDatabase,
     dispatchContainer, containerAbsent, confirmContainer, quiesceContainer,
     beginFinalize, finish, settle, cleanup, s' = s }
   val safety = all {
     s.admitted implies not(s.active),
+    (s.dbStarted or s.containerStarted) implies s.revoked,
     not(s.app) implies (s.rootReceipt and ready and not(s.database) and not(s.container)),
     s.complete implies s.rootReceipt,
     s.dbReceipt implies not(s.database),
@@ -57,33 +59,35 @@ module app_teardown_authority {
   }
   temporal FinalWriteSettles = finish.weakFair(s) implies
     always(s.finalizing implies eventually(not(s.finalizing)))
-  run completeTest = init.then(admit).then(prepare).then(dispatchDatabase)
+  run completeTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(dispatchDatabase)
     .then(databaseAbsent).then(confirmDatabase).then(quiesceDatabase)
     .then(dispatchContainer).then(containerAbsent).then(confirmContainer).then(quiesceContainer)
     .then(beginFinalize).then(finishFinalize(1)).then(settle).then(cleanup)
     .expect(safety and s.complete and not(s.objects))
-  run responseLossRecoveryTest = init.then(admit).then(prepare).then(dispatchDatabase)
+  run responseLossRecoveryTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(dispatchDatabase)
     .then(databaseAbsent).then(dispatchDatabase).then(confirmDatabase)
     .expect(safety and s.capacity == 1 and s.releases == 1)
-  run receiptWaitTest = init.then(admit).then(prepare).then(dispatchDatabase).then(databaseAbsent)
+  run receiptWaitTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(dispatchDatabase).then(databaseAbsent)
     .expect(safety and s.app and not(s.dbReceipt) and s.capacity == 2)
-  run staleLeaseBlocksDispatchTest = init.then(admit).then(prepare).then(loseLease)
+  run staleLeaseBlocksDispatchTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(loseLease)
     .expect(safety and not(s.dbStarted) and not(s.containerStarted))
-  run lostFinalReplyTest = init.then(admit).then(prepare).then(dispatchDatabase).then(databaseAbsent)
+  run lostFinalReplyTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(dispatchDatabase).then(databaseAbsent)
     .then(confirmDatabase).then(quiesceDatabase).then(dispatchContainer).then(containerAbsent)
     .then(confirmContainer).then(quiesceContainer).then(beginFinalize).then(finishFinalize(2))
     .then(settle).expect(safety and s.complete and s.objects and not(s.cleanupPermit))
+  action unsafeUnacknowledgedPlan = s' = { ...s, plan: true }
+  run revocationDeliveryRequiredWitnessTest = init.then(admit).then(unsafeUnacknowledgedPlan).then(dispatchDatabase).expect(not(safety))
   action unsafeReactivate = s' = { ...s, active: true }
   action unsafeCascade = s' = { ...s, app: false }
   action unsafeSecondRelease = s' = { ...s, releases: s.releases + 1, capacity: s.capacity - 1 }
   action unsafeStaleDispatch = s' = { ...s, dbStarted: true, unsafeDispatch: not(s.lease) }
   run reversibleFenceWitnessTest = init.then(admit).then(unsafeReactivate).expect(not(safety))
-  run dispatchIsNotCompletionWitnessTest = init.then(admit).then(prepare)
+  run dispatchIsNotCompletionWitnessTest = init.then(admit).then(acknowledgeRevocation).then(prepare)
     .then(dispatchDatabase).then(unsafeCascade).expect(not(safety))
-  run existenceCheckDoubleReleaseWitnessTest = init.then(admit).then(prepare)
+  run existenceCheckDoubleReleaseWitnessTest = init.then(admit).then(acknowledgeRevocation).then(prepare)
     .then(dispatchDatabase).then(databaseAbsent).then(confirmDatabase).then(unsafeSecondRelease)
     .expect(not(safety) and s.releases == 2)
-  run expiredLeaseWitnessTest = init.then(admit).then(prepare).then(loseLease)
+  run expiredLeaseWitnessTest = init.then(admit).then(acknowledgeRevocation).then(prepare).then(loseLease)
     .then(unsafeStaleDispatch).expect(not(safety))
 }
 
@@ -129,4 +133,21 @@ module app_teardown_repository {
   action unsafeInferAbsent = s' = { ...s, ready: true }
   run unknownRepeatWitnessTest = init.then(pin).then(reserve).then(send).then(unsafeRepeat).expect(not(safety))
   run absenceIsNotReceiptWitnessTest = init.then(pin).then(reserve).then(send).then(effect).then(unsafeInferAbsent).expect(not(safety))
+}
+
+// One fully restored competing job. Its exact revision must still match when
+// finalization holds the app lock; missing or changed payload is unavailable.
+module app_teardown_quiescence {
+  type State = { revision: int, own: bool, observed: int, observedOwn: bool, full: bool, deleted: bool }
+  var s: State
+  action init = s' = { revision: 0, own: false, observed: -1, observedOwn: true, full: false, deleted: false }
+  action restore = s' = { ...s, observed: s.revision, observedOwn: s.own, full: true }
+  action changeTarget = all { s.revision == 0, not(s.deleted), s' = { ...s, revision: 1, own: true } }
+  action finalize = all { s.full, s.observed == s.revision, not(s.observedOwn), s' = { ...s, deleted: true } }
+  action step = any { restore, changeTarget, finalize, s' = s }
+  val safety = s.deleted implies not(s.own)
+  run otherAppProgressTest = init.then(restore).then(finalize).expect(safety and s.deleted)
+  run changedTargetBlocksTest = init.then(restore).then(changeTarget).then(restore).expect(safety and not(s.deleted))
+  action unsafeFinalizeStale = all { s.full, not(s.observedOwn), s' = { ...s, deleted: true } }
+  run staleTargetWitnessTest = init.then(restore).then(changeTarget).then(unsafeFinalizeStale).expect(not(safety))
 }

@@ -405,3 +405,6 @@ record confirmed, quiescent outcomes before final cascade. Unknown legacy target
 remain pending. The job stores no database URI; placement stays in `app_databases`.
 Migration 0566 normalizes future naive job-clock defaults to UTC without rewriting
 historical timestamps whose original timezone is unknown.
+The final app-deletion receipt does not prove orphan-object collection. Frontend
+cleanup after an acknowledged cascade is still best effort; retaining complete
+manifests for a durable post-cascade cleanup owner remains separate work.

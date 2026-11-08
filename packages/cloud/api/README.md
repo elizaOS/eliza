@@ -724,3 +724,8 @@ Poll the existing jobs endpoint and require its matching app-deletion receipt be
 removing the app from local state. Cancelling a client wait does not cancel teardown.
 The original deletion fence remains in place after a failed or uncertain provider
 operation; retries read the same job and cannot change its repository-deletion option.
+A missing GitHub deletion acknowledgement reports `operator_reconciliation_required`.
+It does not repeat the DELETE or accept a 404 as success. Escalate the original job
+and repository ID to an operator; this release has no automatic evidence-import
+endpoint. Independent original provider evidence is required before an operator
+can reconcile that receipt. The app and its deletion fence remain retained.

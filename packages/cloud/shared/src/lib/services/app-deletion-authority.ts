@@ -10,6 +10,7 @@ export interface AppDeletionJobData {
   appId: string;
   organizationId: string;
   deleteGitHubRepo: boolean;
+  revokedKeys: Array<{ id: string; organizationId: string }>;
 }
 
 export interface AppDeletionChildIdentity {
@@ -119,11 +120,21 @@ export class AppDeletionRecoveryPendingError extends ElizaError {
   }
 }
 
+export class AppDeletionOperatorRecoveryRequiredError extends ElizaError {
+  constructor() {
+    super("Original repository deletion requires operator reconciliation; do not dispatch again", {
+      code: "APP_DELETION_OPERATOR_RECONCILIATION_REQUIRED",
+      severity: "ephemeral",
+    });
+  }
+}
+
 export interface AppDeletionProgress {
   state: "pending" | "completed";
   jobId: string;
   appId: string;
   status: string;
+  phase: "teardown" | "operator_reconciliation_required";
 }
 
 export function appDeletionProgress(job: {
@@ -153,6 +164,10 @@ export function appDeletionProgress(job: {
     jobId: job.id,
     appId: data.appId,
     status: job.status,
+    phase:
+      result?.operatorReconciliationRequired === true
+        ? "operator_reconciliation_required"
+        : "teardown",
   };
 }
 
@@ -185,10 +200,27 @@ export function readAppDeletionJobData(value: unknown): AppDeletionJobData {
       code: "APP_DELETION_IDENTITY_INVALID",
     });
   }
+  if (
+    !Array.isArray(data.revokedKeys) ||
+    data.revokedKeys.some(
+      (key) =>
+        !key ||
+        typeof key !== "object" ||
+        typeof key.id !== "string" ||
+        !uuid.test(key.id) ||
+        typeof key.organizationId !== "string" ||
+        !uuid.test(key.organizationId),
+    )
+  ) {
+    throw new ElizaError("App deletion has no original credential revocation targets", {
+      code: "APP_DELETION_IDENTITY_INVALID",
+    });
+  }
   return {
     version: 1,
     appId: data.appId,
     organizationId: data.organizationId,
     deleteGitHubRepo: data.deleteGitHubRepo,
+    revokedKeys: data.revokedKeys as AppDeletionJobData["revokedKeys"],
   };
 }

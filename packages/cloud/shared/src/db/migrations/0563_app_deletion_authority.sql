@@ -50,6 +50,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'original app deletion job identity is immutable' USING ERRCODE = '23514';
   END IF;
+  IF OLD.type = 'app_delete' AND OLD.result->>'revocationsConfirmed' = 'true' AND NEW.result->>'revocationsConfirmed' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'app revocation receipt is immutable' USING ERRCODE = '23514'; END IF;
   IF OLD.type = 'app_delete' AND OLD.result ? 'deletionPlan' AND (
     NEW.result->'deletionPlan' IS DISTINCT FROM OLD.result->'deletionPlan'
     OR NEW.result->'originalGitHubRepo' IS DISTINCT FROM OLD.result->'originalGitHubRepo'

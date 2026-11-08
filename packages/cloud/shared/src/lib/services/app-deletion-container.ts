@@ -88,7 +88,7 @@ export async function dispatchAppDeletionContainer(
       throw new AppDeletionRecoveryPendingError(
         "Original container removal has no terminal receipt",
       );
-    await tx
+    const [confirmed] = await tx
       .update(jobs)
       .set({
         result: {
@@ -103,6 +103,9 @@ export async function dispatchAppDeletionContainer(
         result_key: null,
         updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
       })
-      .where(eq(jobs.id, context.job.id));
+      .where(eq(jobs.id, context.job.id))
+      .returning({ id: jobs.id });
+    if (!confirmed)
+      throw new AppDeletionRecoveryPendingError("Container deletion receipt was not persisted");
   });
 }

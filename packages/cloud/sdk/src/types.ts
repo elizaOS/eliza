@@ -942,6 +942,7 @@ export type DeleteAppResponse = {
   jobId: string;
   status: string;
   message: string;
+  phase: "teardown" | "operator_reconciliation_required";
 } & (
   | { success: true; state: "completed" }
   | { success: false; state: "pending" }

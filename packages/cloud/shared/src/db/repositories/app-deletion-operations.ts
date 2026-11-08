@@ -72,7 +72,11 @@ async function lookupOriginal(tx: DbTransaction, input: AdmissionInput) {
     }
     return {
       app,
-      original: { app, job: original[0], revokedKeys: [] } satisfies AppDeletionAdmission,
+      original: {
+        app,
+        job: original[0],
+        revokedKeys: data.revokedKeys,
+      } satisfies AppDeletionAdmission,
     };
   }
   if (app?.deletion_job_id)
@@ -171,6 +175,7 @@ export const appDeletionOperations = {
                 appId: input.appId,
                 organizationId: input.organizationId,
                 deleteGitHubRepo: input.deleteGitHubRepo,
+                revokedKeys: keys.map(({ id, organizationId }) => ({ id, organizationId })),
               },
             });
             const [job] = await tx
@@ -195,12 +200,24 @@ export const appDeletionOperations = {
               })
               .where(and(eq(apps.id, input.appId), eq(apps.organization_id, input.organizationId)))
               .returning();
-            if (!fenced)
+            if (!fenced || fenced.is_active || fenced.deletion_job_id !== job.id)
               throw new ElizaError("App deletion authority was not persisted", {
                 code: "APP_DELETION_FENCE_NOT_PERSISTED",
               });
-            await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, input.appId));
-            await tx
+            const grants = await tx
+              .select({ id: mobileAppAuthGrants.id })
+              .from(mobileAppAuthGrants)
+              .where(eq(mobileAppAuthGrants.app_id, input.appId))
+              .for("update");
+            const removedGrants = await tx
+              .delete(mobileAppAuthGrants)
+              .where(eq(mobileAppAuthGrants.app_id, input.appId))
+              .returning({ id: mobileAppAuthGrants.id });
+            if (removedGrants.length !== grants.length)
+              throw new ElizaError("App grant retirement was not persisted", {
+                code: "APP_DELETION_REVOCATION_UNCONFIRMED",
+              });
+            const revoked = await tx
               .update(apiKeys)
               .set({
                 is_active: false,
@@ -217,7 +234,24 @@ export const appDeletionOperations = {
                   eq(apiKeys.source_app_id, input.appId),
                   app.api_key_id ? eq(apiKeys.id, app.api_key_id) : undefined,
                 ),
-              );
+              )
+              .returning();
+            if (
+              revoked.length !== keys.length ||
+              revoked.some(
+                (key) =>
+                  key.is_active ||
+                  key.deleted_at === null ||
+                  key.key_ciphertext !== null ||
+                  key.key_nonce !== null ||
+                  key.key_auth_tag !== null ||
+                  key.key_kms_key_id !== null ||
+                  key.key_kms_key_version !== null,
+              )
+            )
+              throw new ElizaError("App credential retirement was not persisted", {
+                code: "APP_DELETION_REVOCATION_UNCONFIRMED",
+              });
             return {
               app: fenced,
               job,
@@ -233,5 +267,47 @@ export const appDeletionOperations = {
       "App credentials changed during deletion admission; retry the same request",
       { code: "APP_DELETION_ADMISSION_CHANGED" },
     );
+  },
+
+  /** Original idempotent revocation delivery may retry without a policy permit.
+   * Lock job before app, matching execution and finalization. */
+  async confirmRevocations(jobId: string, organizationId: string): Promise<Job> {
+    return dbWrite.transaction(async (tx) => {
+      const [job] = await tx
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.id, jobId), eq(jobs.organization_id, organizationId)))
+        .for("update");
+      if (!job || job.type !== APP_DELETION_JOB_TYPE)
+        throw new ElizaError("Original app deletion job is missing", {
+          code: "APP_DELETION_IDENTITY_MISSING",
+        });
+      const data = readAppDeletionJobData(job.data);
+      if (job.result?.appDeleted === true || job.result?.revocationsConfirmed === true) return job;
+      const [app] = await tx
+        .select()
+        .from(apps)
+        .where(and(eq(apps.id, data.appId), eq(apps.organization_id, organizationId)))
+        .for("update");
+      if (!app || app.is_active || app.deletion_job_id !== job.id)
+        throw new ElizaError("Original app deletion fence changed", {
+          code: "APP_DELETION_IDENTITY_CONFLICT",
+        });
+      const [confirmed] = await tx
+        .update(jobs)
+        .set({
+          result: { ...job.result, revocationsConfirmed: true },
+          result_storage: "inline",
+          result_key: null,
+          updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
+        })
+        .where(eq(jobs.id, job.id))
+        .returning();
+      if (!confirmed)
+        throw new ElizaError("App revocation acknowledgement was not stored", {
+          code: "APP_DELETION_REVOCATION_UNCONFIRMED",
+        });
+      return confirmed;
+    });
   },
 };

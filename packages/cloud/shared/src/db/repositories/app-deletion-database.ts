@@ -90,7 +90,7 @@ export async function confirmDeletionDatabase(authority: JobExecutionAuthority):
         "Original database capacity receipt is unavailable",
       );
     await assertJobExecutionAuthority(tx, authority);
-    await tx
+    const [cleared] = await tx
       .update(appDatabases)
       .set({
         tenant_db_cluster_id: null,
@@ -99,8 +99,13 @@ export async function confirmDeletionDatabase(authority: JobExecutionAuthority):
         user_database_error: null,
         updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
       })
-      .where(eq(appDatabases.id, database.id));
-    await tx
+      .where(eq(appDatabases.id, database.id))
+      .returning();
+    if (!cleared || cleared.tenant_db_cluster_id !== null || cleared.user_database_uri !== null)
+      throw new AppDeletionRecoveryPendingError(
+        "Original database placement release was not persisted",
+      );
+    const [confirmed] = await tx
       .update(jobs)
       .set({
         result: {
@@ -115,6 +120,9 @@ export async function confirmDeletionDatabase(authority: JobExecutionAuthority):
         result_key: null,
         updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
       })
-      .where(eq(jobs.id, context.job.id));
+      .where(eq(jobs.id, context.job.id))
+      .returning({ id: jobs.id });
+    if (!confirmed)
+      throw new AppDeletionRecoveryPendingError("Database deletion receipt was not persisted");
   });
 }

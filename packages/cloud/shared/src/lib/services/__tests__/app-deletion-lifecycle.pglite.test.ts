@@ -82,7 +82,7 @@ async function settle(authority: JobExecutionAuthority) {
   await jobsRepository.settleExecution(job, "completed", undefined, authority.executionOwnerId);
 }
 async function start() {
-  await appDeletionOperations.admit(request());
+  await appsService.requestDeletion(request());
   return claim("app_delete");
 }
 async function addDatabase() {
@@ -218,11 +218,30 @@ test("foreign and invalid DELETE requests cannot create a root or revoke the app
 });
 
 test("public job status and failure receipts never expose the retained database URI", async () => {
+  const foreignOrg = randomUUID(),
+    foreignKey = randomUUID();
+  await dbWrite
+    .insert(schema.apiKeys)
+    .values({
+      id: foreignKey,
+      name: "foreign mobile",
+      key_hash: foreignKey,
+      key_prefix: "eliza_mobile_",
+      user_id: randomUUID(),
+      organization_id: foreignOrg,
+      source_app_id: appId,
+    });
   await addDatabase();
   const root = await start();
   await expect(executeAppDeletion(root)).rejects.toMatchObject({
     code: "APP_DELETION_RECOVERY_PENDING",
   });
+  const rootStatus = await router.request(`/api/v1/jobs/${root.jobId}`);
+  expect(rootStatus.status).toBe(200);
+  const publicRoot = await rootStatus.text();
+  expect(publicRoot).not.toContain(foreignOrg);
+  expect(publicRoot).not.toContain(foreignKey);
+  expect(publicRoot).not.toContain("revokedKeys");
   const child = (await dbWrite.select().from(jobs)).find(
     (row) => row.type === "app_db_deprovision",
   )!;
@@ -450,11 +469,13 @@ test("a GitHub dispatch with an unknown outcome is never repeated or treated as 
     throw new Error("controlled unknown repository result");
   });
   spies.push(remove);
-  await appDeletionOperations.admit({ ...request(), deleteGitHubRepo: true });
+  await appsService.requestDeletion({ ...request(), deleteGitHubRepo: true });
   const root = await claim("app_delete");
-  await expect(executeAppDeletion(root)).rejects.toThrow("controlled unknown");
   await expect(executeAppDeletion(root)).rejects.toMatchObject({
-    code: "APP_DELETION_RECOVERY_PENDING",
+    code: "APP_DELETION_OPERATOR_RECONCILIATION_REQUIRED",
+  });
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_OPERATOR_RECONCILIATION_REQUIRED",
   });
   expect(remove).toHaveBeenCalledTimes(1);
   expect((await appsRepository.findByIdForWrite(appId))?.is_active).toBe(false);
@@ -485,4 +506,350 @@ test("a legacy deleted container status is not accepted without original provide
   });
   expect((await appsRepository.findByIdForWrite(appId))?.deletion_job_id).toBe(root.jobId);
   expect(providerCalls).toEqual([]);
+});
+
+async function suppressUpdate(table: string, condition: string, operation: () => Promise<void>) {
+  await getPgliteClientForTests().exec(
+    `CREATE FUNCTION suppress_deletion_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF ${condition} THEN RETURN NULL; END IF; RETURN NEW; END $$; CREATE TRIGGER suppress_deletion_write BEFORE UPDATE ON ${table} FOR EACH ROW EXECUTE FUNCTION suppress_deletion_write();`,
+  );
+  try {
+    await operation();
+  } finally {
+    await getPgliteClientForTests().exec(
+      `DROP TRIGGER suppress_deletion_write ON ${table}; DROP FUNCTION suppress_deletion_write();`,
+    );
+  }
+}
+
+test("suppressed resource-plan publication rolls back child creation before dispatch", async () => {
+  await addDatabase();
+  const root = await start();
+  await suppressUpdate("jobs", "NEW.result ? 'deletionPlan'", async () => {
+    await expect(executeAppDeletion(root)).rejects.toMatchObject({
+      code: "APP_DELETION_RECOVERY_PENDING",
+    });
+  });
+  expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+  expect(providerCalls).toEqual([]);
+});
+
+test("suppressed GitHub dispatch publication cannot authorize a provider DELETE", async () => {
+  await dbWrite
+    .update(apps)
+    .set({ github_repo: "original-owner/original-repo" })
+    .where(eq(apps.id, appId));
+  spies.push(
+    spyOn(githubReposService, "observeAppRepoForDeletion").mockResolvedValue({
+      owner: "original-owner",
+      name: "original-repo",
+      id: 123,
+    }),
+  );
+  const remove = spyOn(githubReposService, "deleteObservedAppRepo").mockResolvedValue(undefined);
+  spies.push(remove);
+  await appsService.requestDeletion({ ...request(), deleteGitHubRepo: true });
+  const root = await claim("app_delete");
+  await suppressUpdate("jobs", "NEW.result->'githubDeletion'->>'dispatched' = 'true'", async () => {
+    await expect(executeAppDeletion(root)).rejects.toMatchObject({
+      code: "APP_DELETION_RECOVERY_PENDING",
+    });
+  });
+  expect(remove).not.toHaveBeenCalled();
+  expect(
+    (await jobsRepository.findByIdForWrite(root.jobId))?.result?.githubDeletion,
+  ).toBeUndefined();
+});
+
+for (const target of ["placement", "receipt"] as const)
+  test(`suppressed database ${target} write rolls back capacity release`, async () => {
+    const cluster = await addDatabase();
+    provider(cluster);
+    const root = await start();
+    await expect(executeAppDeletion(root)).rejects.toMatchObject({
+      code: "APP_DELETION_RECOVERY_PENDING",
+    });
+    const child = await claim("app_db_deprovision");
+    await suppressUpdate(
+      target === "placement" ? "app_databases" : "jobs",
+      target === "placement"
+        ? "NEW.user_database_uri IS NULL"
+        : "NEW.result->>'appDeletionConfirmed' = 'true'",
+      async () => {
+        await expect(dispatchAppDeletionDatabase(child)).rejects.toMatchObject({
+          code: "APP_DELETION_RECOVERY_PENDING",
+        });
+      },
+    );
+    expect(await count()).toBe(2);
+    expect((await dbWrite.select().from(appDatabases))[0]?.tenant_db_cluster_id).toBe(cluster);
+    expect(
+      (await jobsRepository.findByIdForWrite(child.jobId))?.result?.appDeletionConfirmed,
+    ).not.toBe(true);
+  });
+
+test("suppressed final completion receipt retains the original app", async () => {
+  const root = await start();
+  await suppressUpdate("jobs", "NEW.result->>'appDeleted' = 'true'", async () => {
+    await expect(executeAppDeletion(root)).rejects.toMatchObject({
+      code: "APP_DELETION_COMPLETION_UNCONFIRMED",
+    });
+  });
+  expect((await appsRepository.findByIdForWrite(appId))?.deletion_job_id).toBe(root.jobId);
+});
+
+test("failed revocation delivery blocks teardown and original replay retries the same targets", async () => {
+  const key = randomUUID();
+  await dbWrite.insert(schema.apiKeys).values({
+    id: key,
+    name: "mobile",
+    key_hash: key,
+    key_prefix: "eliza_mobile_",
+    user_id: userId,
+    organization_id: organizationId,
+    source_app_id: appId,
+  });
+  const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+  let fail = true;
+  const deliveries: string[] = [];
+  const run = <T>(operation: () => Promise<T>) =>
+    runWithCloudBindingsAsync(
+      {
+        DATABASE_URL: "pglite://memory",
+        TEST_DATABASE_URL: "pglite://memory",
+        NODE_ENV: "test",
+        MOCK_REDIS: "1",
+        INFERENCE_ADMISSION_GATES: {
+          getByName: () => ({
+            fetch: async (request: Request) => {
+              const body = (await request.json()) as { credentialId: string };
+              deliveries.push(body.credentialId);
+              return fail
+                ? new Response("unavailable", { status: 503 })
+                : Response.json({ committed: true });
+            },
+          }),
+        },
+      },
+      operation,
+    );
+  await expect(run(() => appsService.requestDeletion(request()))).rejects.toMatchObject({
+    code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+  });
+  const root = await claim("app_delete");
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  fail = false;
+  expect((await run(() => appsService.requestDeletion(request())))?.jobId).toBe(root.jobId);
+  expect(deliveries).toEqual([key, key]);
+  await executeAppDeletion(root);
+  expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+});
+
+test("a complete credential list above the normal offload ceiling remains replayable inline", async () => {
+  const keys = Array.from({ length: 11_000 }, () => {
+    const id = randomUUID();
+    return {
+      id,
+      name: "mobile",
+      key_hash: id,
+      key_prefix: "eliza_mobile_",
+      user_id: userId,
+      organization_id: organizationId,
+      source_app_id: appId,
+    };
+  });
+  for (let offset = 0; offset < keys.length; offset += 200)
+    await dbWrite.insert(schema.apiKeys).values(keys.slice(offset, offset + 200));
+  const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+  const { setRuntimeR2Bucket } = await import("../../storage/r2-runtime-binding");
+  let puts = 0,
+    deliveries = 0;
+  setRuntimeR2Bucket({
+    put: async () => {
+      puts++;
+      throw new Error("Authority must not be offloaded");
+    },
+    get: async () => null,
+    delete: async () => {},
+  });
+  try {
+    await runWithCloudBindingsAsync(
+      {
+        DATABASE_URL: "pglite://memory",
+        TEST_DATABASE_URL: "pglite://memory",
+        NODE_ENV: "test",
+        MOCK_REDIS: "1",
+        SQL_HEAVY_PAYLOAD_STORAGE: "r2",
+        SQL_HEAVY_PAYLOAD_MIN_BYTES: "1024",
+        INFERENCE_ADMISSION_GATES: {
+          getByName: () => ({
+            fetch: async () => {
+              deliveries++;
+              return Response.json({ committed: true });
+            },
+          }),
+        },
+      },
+      async () => {
+        const admitted = await appDeletionOperations.admit(request());
+        expect(admitted?.job.data_storage).toBe("inline");
+        expect(Buffer.byteLength(JSON.stringify(admitted?.job.data))).toBeGreaterThan(1_048_576);
+        const replay = await appDeletionOperations.admit(request());
+        expect(replay?.revokedKeys.map((key) => key.id).sort()).toEqual(
+          keys.map((key) => key.id).sort(),
+        );
+        expect((await appsService.requestDeletion(request()))?.jobId).toBe(admitted?.job.id);
+        expect(deliveries).toBe(keys.length);
+        expect(puts).toBe(0);
+        expect(
+          (await jobsRepository.findByIdForWrite(admitted!.job.id))?.result?.revocationsConfirmed,
+        ).toBe(true);
+      },
+    );
+  } finally {
+    setRuntimeR2Bucket(null);
+  }
+}, 120_000);
+
+test("a known other-app offloaded job does not block original app teardown", async () => {
+  const { setRuntimeR2Bucket } = await import("../../storage/r2-runtime-binding");
+  const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+  const { prepareJobInsertData } = await import("../../../db/repositories/jobs");
+  const values = new Map<string, string>();
+  let reads = 0;
+  setRuntimeR2Bucket({
+    put: async (key, body) => {
+      const value = await new Response(body as BodyInit).text();
+      values.set(key, value);
+      return { etag: key, size: value.length };
+    },
+    get: async (key) => {
+      reads++;
+      const value = values.get(key);
+      return value === undefined
+        ? null
+        : {
+            text: async () => value,
+            arrayBuffer: async () => new TextEncoder().encode(value).buffer,
+          };
+    },
+    delete: async (key) => {
+      values.delete(key);
+    },
+  });
+  try {
+    await runWithCloudBindingsAsync(
+      {
+        DATABASE_URL: "pglite://memory",
+        TEST_DATABASE_URL: "pglite://memory",
+        NODE_ENV: "test",
+        MOCK_REDIS: "1",
+        SQL_HEAVY_PAYLOAD_STORAGE: "r2",
+        SQL_HEAVY_PAYLOAD_MIN_BYTES: "1024",
+      },
+      async () => {
+        const otherApp = randomUUID();
+        await dbWrite.insert(apps).values({
+          id: otherApp,
+          organization_id: organizationId,
+          name: "Other",
+          slug: otherApp,
+          app_url: "https://other.example",
+        });
+        const other = await prepareJobInsertData({
+          type: "app_deploy",
+          organization_id: organizationId,
+          data: { appId: otherApp, completePayload: "x".repeat(2048) },
+        });
+        expect(other.data_storage).toBe("r2");
+        await dbWrite.insert(jobs).values(other);
+        const root = await start();
+        await executeAppDeletion(root);
+        expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+        expect(await appsRepository.findByIdForWrite(otherApp)).toBeDefined();
+        expect(reads).toBeGreaterThan(0);
+      },
+    );
+  } finally {
+    setRuntimeR2Bucket(null);
+  }
+});
+
+test("a job target changed after full restoration cannot pass final quiescence", async () => {
+  const { prepareAppDeletionPlan } = await import("../../../db/repositories/app-deletion-plan");
+  const { restoreAppDeletionQuiescence } = await import(
+    "../../../db/repositories/app-deletion-quiescence"
+  );
+  const { withAppDeletionExecution } = await import(
+    "../../../db/repositories/app-deletion-execution"
+  );
+  const { assertAppDeletionReady } = await import(
+    "../../../db/repositories/app-deletion-finalization"
+  );
+  const other = randomUUID();
+  await dbWrite.insert(jobs).values({
+    id: other,
+    type: "app_deploy",
+    organization_id: organizationId,
+    data: { appId: randomUUID() },
+  });
+  const root = await start();
+  await prepareAppDeletionPlan(root);
+  const observed = await restoreAppDeletionQuiescence(organizationId);
+  await dbWrite
+    .update(jobs)
+    .set({ data: { appId }, updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'` })
+    .where(eq(jobs.id, other));
+  await expect(
+    withAppDeletionExecution(root, (tx, context) => assertAppDeletionReady(tx, context, observed)),
+  ).rejects.toMatchObject({ code: "APP_DELETION_RECOVERY_PENDING" });
+  expect(await appsRepository.findByIdForWrite(appId)).toBeDefined();
+});
+
+test("suppressed GitHub completion receipt retains an explicit operator recovery state", async () => {
+  await dbWrite
+    .update(apps)
+    .set({ github_repo: "original-owner/original-repo" })
+    .where(eq(apps.id, appId));
+  spies.push(
+    spyOn(githubReposService, "observeAppRepoForDeletion").mockResolvedValue({
+      owner: "original-owner",
+      name: "original-repo",
+      id: 123,
+    }),
+  );
+  const remove = spyOn(githubReposService, "deleteObservedAppRepo").mockResolvedValue(undefined);
+  spies.push(remove);
+  await appsService.requestDeletion({ ...request(), deleteGitHubRepo: true });
+  const root = await claim("app_delete");
+  await suppressUpdate("jobs", "NEW.result->'githubDeletion'->>'confirmed' = 'true'", async () => {
+    await expect(executeAppDeletion(root)).rejects.toMatchObject({
+      code: "APP_DELETION_OPERATOR_RECONCILIATION_REQUIRED",
+    });
+  });
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect(
+    (await jobsRepository.findByIdForWrite(root.jobId))?.result?.operatorReconciliationRequired,
+  ).toBe(true);
+  expect(await appsRepository.findByIdForWrite(appId)).toBeDefined();
+});
+
+test("the real apps worker completes the API's original deletion job before success replay", async () => {
+  const { ProvisioningJobService } = await import("../../../node/provisioning-worker");
+  const response = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+    method: "DELETE",
+  });
+  expect(response.status).toBe(202);
+  const body = await response.json();
+  const service = new ProvisioningJobService();
+  await service.processPendingJobs(1, { jobTypes: ["app_delete"] });
+  const job = await jobsRepository.findByIdForWrite(body.jobId);
+  expect(job?.status).toBe("completed");
+  expect(job?.result?.appDeleted).toBe(true);
+  expect(job?.execution_quiesced_at).toBeInstanceOf(Date);
+  expect(
+    (await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, { method: "DELETE" }))
+      .status,
+  ).toBe(200);
 });

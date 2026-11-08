@@ -41,14 +41,15 @@
     "packages/scripts/lib/test-output.ts",
     "packages/cloud/shared/src/lib/api/cloud-worker-errors.ts",
     "packages/cloud/api/test/e2e/group-i-apps-lifecycle.test.ts",
-    "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql"
+    "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
+    "packages/cloud/shared/src/db/repositories/app-deletion-quiescence.ts"
   ],
   "conformance": "packages/cloud/quint/check-app-teardown-authority.mjs",
   "bounds": {
     "domain": "One irreversible app deletion, one original database, one original container, one fixed provider identity per resource, two organizations/credential identities in a separate admission projection, and one GitHub deletion. Capacity starts at two with one other tenant preserved.",
-    "atomicity": "Existing jobs own root and deterministic child identities. Admission, credential revocation and permanent app fence commit together. Stable preflight/recheck acquires users and enrolled organization permits before the app. Children recheck the original lease and app/row identity after locks. Database capacity, original placement retirement and child receipt commit together. Final cascade requires immutable completed/quiescent child receipts. Only acknowledged final SQL grants artifact cleanup.",
+    "atomicity": "Existing jobs own root and deterministic child identities. Admission, credential revocation and permanent app fence commit together. Stable preflight/recheck acquires users and enrolled organization permits before the app. Children recheck the original lease and app/row identity after locks. Database capacity, original placement retirement and child receipt commit together. Final cascade requires immutable completed/quiescent child receipts. Only acknowledged final SQL grants artifact cleanup. Original nonsecret revocation targets are forced inline; complete delivery and cache acknowledgement are durable prerequisites of provider dispatch. Critical SQL publications check returned rows and fail transactionally on suppression. Competing jobs are fully restored outside app locks and their raw data/storage identity and exact microsecond revision are rechecked before finalization.",
     "conformance": "Real PGlite migration, route, admission, child resource and capacity tests; separate PostgreSQL connections prove queued cross-organization issuance/revocation ordering and post-lock lease expiry under UTC, America/New_York and Asia/Kathmandu. UI transport tests verify pending/terminal/cancellation outcomes. Provider operations and authenticated route principal are controlled local seams; no live infrastructure or credentials are used.",
-    "gaps": "Finite protocol projection, not TypeScript refinement or unbounded deadlock freedom. Existing original job leases and process quiescence assumptions remain. No live provider/finality proof, all account-deletion phases, arbitrary writers or orphan GC. Legacy missing placement/host identity remains recovery-pending. GitHub only supports owner/name deletion: external rename/reuse between the last matching-ID read and DELETE is excluded. Unknown GitHub dispatches remain pending and are never repeated; no 404 is accepted as a deletion receipt. Mixed older deployed writers require coordinated rollout. Client cancellation stops only polling; bounded worker retries may require operator recovery without lifting the permanent fence.",
+    "gaps": "Finite protocol projection, not TypeScript refinement or unbounded deadlock freedom. Existing original job leases and process quiescence assumptions remain. No live provider/finality proof, all account-deletion phases, arbitrary writers or orphan GC. Legacy missing placement/host identity remains recovery-pending. GitHub only supports owner/name deletion: external rename/reuse between the last matching-ID read and DELETE is excluded. Unknown GitHub dispatches remain pending and are never repeated; no 404 is accepted as a deletion receipt. Mixed older deployed writers require coordinated rollout. Client cancellation stops only polling; bounded worker retries may require operator recovery without lifting the permanent fence. Existing post-cascade object cleanup remains best effort; appDeleted does not prove removal of every orphan object. Retained manifests and a durable object cleanup owner remain a separate follow-up. Known other-app offloaded jobs do not block; unknown or concurrently changed payloads remain unavailable.",
     "progress": "Only a started final SQL continuation is weakly fair. No eventual deletion, successful provider request, retry availability, bounded wall time or recovery after an ambiguous external effect is promised."
   },
   "cases": [
@@ -91,6 +92,17 @@
       "invariants": ["safety"],
       "temporal": [],
       "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    },
+    {
+      "name": "app-teardown-quiescence-revisions",
+      "main": "app_teardown_quiescence",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 15,
       "samples": 1000,
       "deadlock": false
     }

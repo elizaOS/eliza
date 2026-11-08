@@ -61,6 +61,7 @@ import {
   withAppDeletionExecution,
 } from "./app-deletion-execution";
 import { assertAppDeletionReady, removeAppDeletionMetadata } from "./app-deletion-finalization";
+import { restoreAppDeletionQuiescence } from "./app-deletion-quiescence";
 import { assertJobExecutionAuthority, lockJobExecutionAuthority } from "./job-execution-authority";
 
 interface AppCacheFenceIdentity {
@@ -1016,6 +1017,9 @@ export class AppsRepository {
     authority?: JobExecutionAuthority,
   ): Promise<AppDeletionReceipt | undefined> {
     /* global-scope: by-id final delete; AppsService calls this only after owned revocation/teardown. */
+    const quiescence = authority
+      ? await restoreAppDeletionQuiescence(authority.organizationId)
+      : [];
     const finalize = async (tx: DbTransaction, context?: AppDeletionExecutionContext) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) return undefined;
@@ -1024,7 +1028,9 @@ export class AppsRepository {
         (!context || context.job.id !== existing.deletion_job_id || context.data.appId !== id)
       )
         throw new AppDeletionInProgressError(id, existing.deletion_job_id);
-      const confirmedChildIds = context ? await assertAppDeletionReady(tx, context) : undefined;
+      const confirmedChildIds = context
+        ? await assertAppDeletionReady(tx, context, quiescence)
+        : undefined;
 
       const [grant] = await tx
         .select({ id: mobileAppAuthGrants.id })
@@ -1066,7 +1072,7 @@ export class AppsRepository {
       if (context) {
         await removeAppDeletionMetadata(tx, id);
         await assertJobExecutionAuthority(tx, authority!);
-        await tx
+        const [receipt] = await tx
           .update(jobs)
           .set({
             result: {
@@ -1080,7 +1086,12 @@ export class AppsRepository {
             result_key: null,
             updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
           })
-          .where(eq(jobs.id, context.job.id));
+          .where(eq(jobs.id, context.job.id))
+          .returning({ id: jobs.id });
+        if (!receipt)
+          throw new ElizaError("App deletion completion receipt was not persisted", {
+            code: "APP_DELETION_COMPLETION_UNCONFIRMED",
+          });
       }
       const [removed] = await tx.delete(apps).where(eq(apps.id, id)).returning();
       if (!removed) {
