@@ -56,7 +56,7 @@ public final class PhotoLibraryAccess {
    * Writes the agent album's scope answer into {@code out}: the catalog's overall scope and the
    * per-kind access ({@code full}, {@code selected} or {@code denied}), whether each kind is fully
    * granted, whether Android can offer "select more" (14+) and edits to other apps' media (11+),
-   * whether the profile is locked and the catalog's cursor identity.
+   * whether the profile is locked and the catalog's {@link PermittedMediaCatalog#scopeVersion}.
    */
   public static JSONObject scope(JSONObject access, int sdk, boolean locked, String version,
       JSONObject out) throws JSONException {

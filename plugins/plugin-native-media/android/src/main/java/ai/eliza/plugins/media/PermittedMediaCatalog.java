@@ -214,6 +214,40 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     if (!expected.equals(snapshot(volumes)) || !volumes.equals(volumes()))
       throw new IllegalStateException("Photo access or library changed; refresh Photos");
   }
+  /**
+   * The published scope version: the granted access and each volume's MediaStore version only. It
+   * holds across pause, resume and screen-off (which bump the epoch) and across ordinary library
+   * edits (reported as library changes), and changes when the grant or a volume's database does.
+   * Under a selected-items grant the chosen rows are the grant, so their IDs are part of it.
+   */
+  public String scopeVersion() throws Exception {
+    JSObject access = access();
+    StringBuilder value = new StringBuilder(access.toString());
+    for (String volume : volumes()) {
+      value.append('|').append(volume).append('=').append(version(volume));
+      for (boolean video : new boolean[] {false, true}) {
+        if (!"selected".equals(access.getString(video ? "videos" : "images")))
+          continue;
+        Bundle args = new Bundle();
+        args.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {"_id"});
+        value.append(video ? "|v" : "|i");
+        try (Cursor rows = query(volume, video, args, new String[] {"_id"})) {
+          if (rows == null)
+            throw new IllegalStateException("Media provider unavailable");
+          while (rows.moveToNext()) value.append(',').append(rows.getLong(0));
+        }
+      }
+    }
+    byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(
+        value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    return Base64.encodeToString(digest, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+  }
+  /** A {@code next} cursor that is unknown, expired, or from before an access or library change. */
+  public static final class StaleCursor extends IllegalStateException {
+    StaleCursor() {
+      super("Photo page expired; load the first page again");
+    }
+  }
   public static final class Fence {
     final List<String> volumes;
     final String snapshot;
@@ -377,7 +411,7 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       if (page == null || page.until < SystemClock.elapsedRealtime()
           || !page.snapshot.equals(snapshot) || !page.query.equals(search)
           || !page.kind.equals(pageKind))
-        throw new IllegalStateException("Photo page expired; refresh Photos");
+        throw new StaleCursor();
       bucketIndex = page.bucket;
       before = page.before;
     }
