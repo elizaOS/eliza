@@ -982,12 +982,17 @@ class CameraPlugin : Plugin() {
         val epoch = previewEpoch
         fun previewStopped(cause: Exception) {
             if (cause !== error) error.addSuppressed(cause)
+            // The host stopped the preview meanwhile; that stop already settled the start.
+            if (previewEpoch != epoch) {
+                finishRecording(session, null, error)
+                return
+            }
             if (recordingSession === session) finishRecording(session, null, error, "PREVIEW_STOPPED")
             else notifyListeners("error", JSObject().apply {
                 put("code", "PREVIEW_STOPPED")
                 put("message", error.message)
             })
-            if (previewEpoch == epoch) stopPreviewInternal()
+            stopPreviewInternal()
         }
         try {
             val provider = requireNotNull(cameraProvider) { "Camera provider is unavailable" }
