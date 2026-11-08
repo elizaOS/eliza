@@ -82,3 +82,16 @@ export function parseAdCampaignsAllocatedTotal(value: string | number | null | u
   }
   return parseAdCampaignsNumeric(value, "credits_allocated total");
 }
+
+/**
+ * Parse one campaign's own stored `credits_allocated` NUMERIC read. Unlike the
+ * allocated total, a single campaign row always carries an allocation, so an
+ * empty or missing value is corrupt here and fails closed like any other
+ * non-parseable value.
+ */
+export function parseAdCampaignCreditsAllocated(value: string | number | null | undefined): number {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    throw new Error("Unable to read ad-campaign credits_allocated: value is empty or missing");
+  }
+  return parseAdCampaignsNumeric(value, "credits_allocated");
+}

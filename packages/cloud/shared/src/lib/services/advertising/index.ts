@@ -17,6 +17,7 @@ import {
 } from "../../../db/repositories";
 import {
   parseAdAccountSpendCapCredits,
+  parseAdCampaignCreditsAllocated,
   parseAdCampaignSpendCapCredits,
 } from "../../../db/repositories/ad-campaigns-spend-cap-numeric";
 import { adCampaigns } from "../../../db/schemas/ad-campaigns";
@@ -1318,7 +1319,7 @@ class AdvertisingService {
     if (input.spendCapCredits !== undefined) {
       this.assertCampaignSpendCapAllowsAllocation({
         spendCapCredits: requestedCampaignSpendCap,
-        newCampaignCredits: Number(campaign.credits_allocated),
+        newCampaignCredits: parseAdCampaignCreditsAllocated(campaign.credits_allocated),
       });
     }
 
@@ -1416,7 +1417,12 @@ class AdvertisingService {
         newCampaignCredits: newCreditsAllocated,
         excludeCampaignId: campaignId,
       });
-      budgetCreditDelta = newCreditsAllocated - parseFloat(campaign.credits_allocated);
+      // Parse the stored allocation through the fail-closed NUMERIC boundary:
+      // a corrupt value ('NaN'::numeric) must refuse the update here, before
+      // any debit or provider call, instead of producing a NaN delta that
+      // skips the charge and lets the fall-through rewrite the allocation.
+      budgetCreditDelta =
+        newCreditsAllocated - parseAdCampaignCreditsAllocated(campaign.credits_allocated);
       if (budgetCreditDelta > 0) {
         const debit = await creditsService.deductCredits({
           organizationId,
@@ -1477,7 +1483,7 @@ class AdvertisingService {
       // credits_allocated stays == newBudget*markup (never clamp the STORED
       // allocation) so the markup derived at delete (allocated/budget) stays
       // correct — only the REFUND is clamped.
-      const oldAllocated = parseFloat(campaign.credits_allocated);
+      const oldAllocated = parseAdCampaignCreditsAllocated(campaign.credits_allocated);
       const spentCredits = await this.computeCreditsSpent(campaign);
       const freed = oldAllocated - newCreditsAllocated;
       const unused = Math.max(0, oldAllocated - spentCredits);
