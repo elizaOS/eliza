@@ -70,6 +70,11 @@ const LOCAL_INFERENCE_PRIORITY = 0;
 const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600000;
 const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
+// A registered device that sends nothing (not even a pong) for this many
+// heartbeat intervals is treated as gone: its socket is closed and its
+// outstanding requests fail now instead of at the 10-minute RPC deadline.
+const MAX_MISSED_HEARTBEATS = 3;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 /**
  * Constant-time pairing-token comparison (W1-011). Callers fail closed when
@@ -447,6 +452,7 @@ class MobileDeviceBridge {
   private loadTimeoutMs: number = DEFAULT_LOAD_TIMEOUT_MS;
   private generateTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
   private embedTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
+  private heartbeatIntervalMs: number = DEFAULT_HEARTBEAT_INTERVAL_MS;
   status(): MobileDeviceBridgeStatus {
     const devices = [...this.devices.values()].map((device) => ({
       deviceId: device.deviceId,
@@ -495,6 +501,10 @@ class MobileDeviceBridge {
     this.embedTimeoutMs = resolveTimeoutMs(
       "ELIZA_DEVICE_EMBED_TIMEOUT_MS",
       DEFAULT_CALL_TIMEOUT_MS,
+    );
+    this.heartbeatIntervalMs = resolveTimeoutMs(
+      "ELIZA_DEVICE_HEARTBEAT_INTERVAL_MS",
+      DEFAULT_HEARTBEAT_INTERVAL_MS,
     );
     const serverCloseHandler = () => {
       // error-policy:J6 the server close is already committed; transport
@@ -574,6 +584,7 @@ class MobileDeviceBridge {
       return;
     }
     let registeredDeviceId: string | null = null;
+    let missedHeartbeats = 0;
     socket.on("message", (raw) => {
       let msg: DeviceOutbound;
       try {
@@ -583,6 +594,7 @@ class MobileDeviceBridge {
         logger.warn("[mobile-device-bridge] Ignoring non-JSON frame");
         return;
       }
+      missedHeartbeats = 0;
       if (!registeredDeviceId) {
         if (msg.type !== "register") {
           socket.close(4002, "must-register-first");
@@ -629,6 +641,12 @@ class MobileDeviceBridge {
       const current = this.devices.get(registeredDeviceId);
       if (current?.socket === socket) {
         this.devices.delete(registeredDeviceId);
+        this.rejectDevicePending(
+          registeredDeviceId,
+          new Error(
+            `DEVICE_DISCONNECTED: device ${registeredDeviceId} disconnected`,
+          ),
+        );
         logger.info(
           `[mobile-device-bridge] Device disconnected: ${registeredDeviceId}`,
         );
@@ -639,12 +657,18 @@ class MobileDeviceBridge {
     });
     const heartbeat = setInterval(() => {
       if (!registeredDeviceId || socket.readyState !== WsCtor.OPEN) return;
+      if (missedHeartbeats >= MAX_MISSED_HEARTBEATS) {
+        clearInterval(heartbeat);
+        this.evictUnresponsiveDevice(registeredDeviceId, socket);
+        return;
+      }
+      missedHeartbeats += 1;
       try {
         socket.send(JSON.stringify({ type: "ping", at: Date.now() }));
       } catch {
         clearInterval(heartbeat);
       }
-    }, 15000);
+    }, this.heartbeatIntervalMs);
     if (typeof heartbeat === "object" && "unref" in heartbeat) {
       (
         heartbeat as {
@@ -741,6 +765,51 @@ class MobileDeviceBridge {
   }
   private primaryDevice(): ConnectedDevice | null {
     return this.devices.values().next().value ?? null;
+  }
+  private evictUnresponsiveDevice(
+    deviceId: string,
+    socket: MinimalWebSocket,
+  ): void {
+    logger.warn(
+      `[mobile-device-bridge] Closing device ${deviceId}: no reply to ${MAX_MISSED_HEARTBEATS} heartbeats`,
+    );
+    if (this.devices.get(deviceId)?.socket === socket) {
+      this.devices.delete(deviceId);
+      this.rejectDevicePending(
+        deviceId,
+        new Error(
+          `DEVICE_DISCONNECTED: device ${deviceId} stopped answering heartbeats`,
+        ),
+      );
+    }
+    try {
+      if (socket.terminate) socket.terminate();
+      else socket.close(4008, "heartbeat-timeout");
+    } catch (error) {
+      // error-policy:J6 the device is already evicted and its requests
+      // rejected; a failed transport close only leaves a dead socket behind.
+      logger.warn(
+        "[mobile-device-bridge] Failed to close unresponsive device socket:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  private rejectDevicePending(deviceId: string, error: Error): void {
+    const maps: Map<string, Pending<never>>[] = [
+      this.pendingLoads,
+      this.pendingUnloads,
+      this.pendingGenerates,
+      this.pendingEmbeds,
+      this.pendingFormatChats,
+    ] as Map<string, Pending<never>>[];
+    for (const pending of maps) {
+      for (const [correlationId, item] of pending) {
+        if (item.routedDeviceId !== deviceId) continue;
+        clearTimeout(item.timeout);
+        pending.delete(correlationId);
+        item.reject(error);
+      }
+    }
   }
   private rejectPending<T>(
     pending: Map<string, Pending<T>>,
