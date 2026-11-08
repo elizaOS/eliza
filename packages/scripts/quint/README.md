@@ -10,6 +10,7 @@ unknown selections and missing source paths fail the runner.
 bun run test:quint                       # exhaustive finite-state verification
 bun run test:quint --simulate            # deterministic simulation only
 bun run test:quint Serialise             # one specification
+bun run test:quint --shard=1/4            # one deterministic partition
 bun run test:quint --inventory           # source candidates and model links
 bun run test:quint --inventory --require-complete
 ```
@@ -45,3 +46,11 @@ uses source patterns as review candidates. A source link alone does not prove
 implementation conformance or complete coverage. Keep known gaps in package
 coverage manifests and provide real implementation checks with every state
 change, as required by [PRD.md](../../../PRD.md#state-correctness).
+
+PR checks run four disjoint partitions. The required Quint check validates
+all four reports against the current source, including every case, invariant,
+temporal check and implementation hook. Missing or interrupted reports fail.
+Shard reports use `test-results/quint/shard-N-of-4/`. Run local partitions in
+separate worktrees when their implementation checks build shared artifacts.
+Those independent local results retain their original absolute checkout paths;
+the aggregate validator requires the same checkout path, as used by CI jobs.
