@@ -2,18 +2,20 @@
 /**
  * Chat send recovery: an app pause detaches the stream without stopping the
  * agent, restored text merges with what the user typed since, unmount keeps
- * queued text, a live turn is never offered back as a draft, and ordinary
- * `#`/`$` messages reach the agent.
+ * queued text, a live turn is never offered back as a draft, ordinary
+ * `#`/`$` messages reach the agent, and a stale turn's workflow handoff does
+ * not navigate.
  */
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { useRef, useState } from "react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api/client";
 import type {
   Conversation,
   ConversationMessage,
 } from "../../api/client-types-chat";
-import { APP_PAUSE_EVENT } from "../../events";
+import { VISUALIZE_WORKFLOW_EVENT } from "../../components/pages/workflow-graph-events";
+import { APP_PAUSE_EVENT, NAVIGATE_VIEW_EVENT } from "../../events";
 import { sentUserTurnPresent } from "../chat-send-failures";
 import {
   readChatDraft,
@@ -340,4 +342,65 @@ it("sends ordinary # and $ messages to the agent", async () => {
     expect(remember).toHaveBeenCalledWith("the gate code is blue"),
   );
   expect(server.sent).toHaveLength(2);
+});
+
+describe("workflow action handoff", () => {
+  const workflowResult = {
+    agentName: "Eliza",
+    text: "Started your morning digest.",
+    completed: true,
+    actionResults: [
+      { actionName: "WORKFLOW", success: true, values: { workflowId: "wf-1" } },
+    ],
+  } as unknown as StreamResult;
+
+  function listen() {
+    const seen: string[] = [];
+    const record = (event: Event) => seen.push(event.type);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, record);
+    window.addEventListener(VISUALIZE_WORKFLOW_EVENT, record);
+    return {
+      seen,
+      stop: () => {
+        window.removeEventListener(NAVIGATE_VIEW_EVENT, record);
+        window.removeEventListener(VISUALIZE_WORKFLOW_EVENT, record);
+      },
+    };
+  }
+
+  it("opens the workflow when the turn is still current", async () => {
+    const server = mockServer(new Set(["run my morning digest"]));
+    const events = listen();
+    render(<Harness />);
+    await send("run my morning digest");
+    await waitFor(() => expect(server.held).toHaveLength(1));
+    await act(async () => {
+      server.held[0].resolve(workflowResult);
+    });
+    await waitFor(() =>
+      expect(events.seen).toEqual([
+        NAVIGATE_VIEW_EVENT,
+        VISUALIZE_WORKFLOW_EVENT,
+      ]),
+    );
+    events.stop();
+  });
+
+  it("does not navigate when the agent changed while the turn ran", async () => {
+    const server = mockServer(new Set(["run my morning digest"]));
+    const baseUrl = vi
+      .spyOn(client, "getBaseUrl")
+      .mockReturnValue("http://agent-a.test");
+    const events = listen();
+    render(<Harness />);
+    await send("run my morning digest");
+    await waitFor(() => expect(server.held).toHaveLength(1));
+    baseUrl.mockReturnValue("http://agent-b.test");
+    await act(async () => {
+      server.held[0].resolve(workflowResult);
+    });
+    await waitFor(() => expect(listPendingChatTurns("conv-1")).toHaveLength(0));
+    expect(events.seen).toEqual([]);
+    events.stop();
+  });
 });

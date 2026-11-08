@@ -137,23 +137,33 @@ export {
   UNDELIVERED_TURN_NOTICE,
 } from "./chat-send-failures";
 
+/**
+ * The completed-action handoff of one turn. Calling it opens the turn's VIEWS
+ * destination; `isCurrent` is the one guard every navigating handoff of the
+ * turn passes: the turn is still current, the agent base URL is unchanged and
+ * no newer navigation happened since the turn started.
+ */
+type CompletedViewHandoff = ((
+  actionResults: ChatActionResultSummary[] | undefined,
+) => boolean) & { isCurrent: () => boolean };
+
 function createCompletedViewHandoff(
   isTurnCurrent: () => boolean,
   showFailure: (message: string) => void,
-): (actionResults: ChatActionResultSummary[] | undefined) => boolean {
+): CompletedViewHandoff {
   const sourceBase = client.getBaseUrl();
   const isNavigationCurrent = captureCompletedActionNavigationFence();
+  const isCurrent = () =>
+    isTurnCurrent() &&
+    client.getBaseUrl() === sourceBase &&
+    isNavigationCurrent();
   let fallbackHandoffId: string | undefined;
-  return (actionResults) => {
+  const handoffView = (
+    actionResults: ChatActionResultSummary[] | undefined,
+  ): boolean => {
     const viewHandoff = findViewActionHandoff(actionResults);
     if (!viewHandoff) return false;
-    if (
-      !isTurnCurrent() ||
-      client.getBaseUrl() !== sourceBase ||
-      !isNavigationCurrent()
-    ) {
-      return true;
-    }
+    if (!isCurrent()) return true;
     try {
       // Preserve server IDs for WS dedupe. Browser receipts without an ID share
       // a request-local one across reply_ready and done. An unhandled early
@@ -186,10 +196,11 @@ function createCompletedViewHandoff(
     }
     return true;
   };
+  return Object.assign(handoffView, { isCurrent });
 }
 async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
-  handoffView: ReturnType<typeof createCompletedViewHandoff>,
+  handoffView: CompletedViewHandoff,
 ): Promise<void> {
   const successfulActions =
     actionResults?.filter((result) => result.success) ?? [];
@@ -206,6 +217,9 @@ async function handoffCompletedAction(
       "agent",
     );
   }
+  // A stale turn navigates nowhere: the user moved on, or the deep link would
+  // name a workflow or page of a previous agent.
+  if (!handoffView.isCurrent()) return;
   if (handoffView(actionResults)) return;
   if (dispatchDoorDashHumanHandoff(actionResults)) return;
   dispatchWorkflowActionHandoff(actionResults);
