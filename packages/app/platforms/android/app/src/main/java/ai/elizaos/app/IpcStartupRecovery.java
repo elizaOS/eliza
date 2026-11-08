@@ -118,10 +118,10 @@ final class IpcStartupRecovery implements Closeable {
                 else throw refused("unexpected IPC entry");
                 StructStat stat=owned(entry,kind,0600);if(kind==OsConstants.S_IFREG && stat.st_size>4096)throw refused("oversized IPC metadata");observed.put(name,stat.st_dev+":"+stat.st_ino);
             }
-            // At the limit the oldest well-formed record moves to a bounded reviewed archive.
-            // A malformed or changing record set still refuses; the newest record is never touched.
-            if(quarantines>=RETAINED_LIMIT)rotateOldestRetained();
             if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000); // live detached child, launcher or unrelated same-UID process blocks recovery
+            // After every process gate, the oldest well-formed records move to a bounded reviewed archive.
+            // A malformed or changing record set still refuses; the newest record is never touched.
+            for(;quarantines>=RETAINED_LIMIT;quarantines--)rotateOldestRetained();
             for(File entry:entries){StructStat stat=Os.lstat(entry.getPath());if(!observed.get(entry.getName()).equals(stat.st_dev+":"+stat.st_ino))throw refused("IPC entry replaced");}
             File[] again=ipc.listFiles();if(again==null || again.length!=entries.length)throw refused("IPC entries changed");
             StructStat current=owned(ipc,OsConstants.S_IFDIR,0700);if(current.st_dev!=directory.st_dev || current.st_ino!=directory.st_ino)throw refused("IPC directory replaced");
