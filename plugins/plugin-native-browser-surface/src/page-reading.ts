@@ -20,8 +20,22 @@ export const READING_UNSUPPORTED_MESSAGE =
 export const SENSITIVE_READING_MESSAGE =
   "This page may contain credentials or verification codes. Open a different page.";
 
-const sensitive =
-  /(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|passphrase|passcode|credential|vault|one[\s-]*time[\s-]*(?:password|code)|verification[\s-]*code|security[\s-]*code|authentication[\s-]*code|recovery[\s-]*(?:code|key|phrase)|backup[\s-]*(?:code|key)|seed[\s-]*phrase|secret[\s-]*key|private[\s-]*key|authenticator|two[\s-]*factor|multi[\s-]*factor|sign[\s-]*in|log[\s-]*in|\botp\b|\bmfa\b|\b2fa\b)/i;
+/**
+ * Credential words. Sign-in, log-in and vault stand alone, so "designing",
+ * "blog in" and "dialog-inner" read as prose; `_` and digits still separate
+ * them ("login_form", "btn-login2"). `BrowserPageReading.EXTRACT` holds the
+ * same pattern, which the test checks.
+ */
+export const sensitiveReadingPattern =
+  /(?:api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|password|passphrase|passcode|credential|(?<![a-z])vaults?(?![a-z])|one[\s-]*time[\s-]*(?:password|code)|verification[\s-]*code|security[\s-]*code|authentication[\s-]*code|recovery[\s-]*(?:code|key|phrase)|backup[\s-]*(?:code|key)|seed[\s-]*phrase|secret[\s-]*key|private[\s-]*key|authenticator|two[\s-]*factor|multi[\s-]*factor|(?<![a-z])sign[\s-]*in(?![a-z])|(?<![a-z])log[\s-]*in(?![a-z])|\botp\b|\bmfa\b|\b2fa\b)/i;
+/** camelCase as separate words, so `signInButton` reads as "sign In Button". */
+export const readingWords = (value: string) =>
+  value
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2");
+const sensitive = (value: string) =>
+  sensitiveReadingPattern.test(value) ||
+  sensitiveReadingPattern.test(readingWords(value));
 const passwordServices = [
   "pass.proton.me",
   "account.proton.me",
@@ -44,7 +58,7 @@ const normalize = (value: string) =>
 /** Credential prose or an unlabelled six-to-eight digit code. */
 export function sensitiveReadingText(text: string): boolean {
   const value = normalize(text);
-  return sensitive.test(value) || /(?:^|\D)\d{6,8}(?:\D|$)/.test(value);
+  return sensitive(value) || /(?:^|\D)\d{6,8}(?:\D|$)/.test(value);
 }
 
 /**
@@ -151,7 +165,7 @@ export function sensitiveReadingDocument(root: Node): boolean {
         if (
           value.length > 1024 ||
           characters > 65536 ||
-          sensitive.test(normalize(value))
+          sensitive(normalize(value))
         )
           return true;
       }

@@ -78,7 +78,9 @@ public final class BrowserPageReading {
     // Scan the whole document for credential inputs before selecting an article:
     // a password or one-time-code field anywhere refuses the page.
     const deny=()=>({blocked:true});
-    const sensitive=/(?:api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passphrase|passcode|credential|vault|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|sign[\\s-]*in|log[\\s-]*in|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
+    const sensitive=/(?:api[\\s_-]*key|access[\\s_-]*token|refresh[\\s_-]*token|password|passphrase|passcode|credential|(?<![a-z])vaults?(?![a-z])|one[\\s-]*time[\\s-]*(?:password|code)|verification[\\s-]*code|security[\\s-]*code|authentication[\\s-]*code|recovery[\\s-]*(?:code|key|phrase)|backup[\\s-]*(?:code|key)|seed[\\s-]*phrase|secret[\\s-]*key|private[\\s-]*key|authenticator|two[\\s-]*factor|multi[\\s-]*factor|(?<![a-z])sign[\\s-]*in(?![a-z])|(?<![a-z])log[\\s-]*in(?![a-z])|\\botp\\b|\\bmfa\\b|\\b2fa\\b)/i;
+    const words=value=>value.replace(/([a-z\\d])([A-Z])/g,'$1 $2').replace(/([A-Z])([A-Z][a-z])/g,'$1 $2');
+    const flagged=value=>sensitive.test(value)||sensitive.test(words(value));
     const field=/(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa)(?:$|[^a-z0-9])|password|passcode|one[\\s_-]*time|verification[\\s_-]*code|security[\\s_-]*code|auth(?:entication)?[\\s_-]*code/i;
     const normalize=value=>value.normalize('NFKC').replace(/[\\u200B-\\u200D\\uFEFF]/g,'');
     const skipped=['SCRIPT','STYLE','NOSCRIPT','TEMPLATE'];
@@ -105,7 +107,7 @@ public final class BrowserPageReading {
       if(skipped.includes(n.tagName.toUpperCase())||chrome.includes(n.tagName.toUpperCase())||n.getAttribute('role')==='navigation')continue;
       for(const attr of ['type','autocomplete','id','name','class','aria-label','title','placeholder']){
        const value=n.getAttribute(attr)||'';characters+=value.length;
-       if(value.length>1024||characters>65536||sensitive.test(normalize(value)))return deny();
+       if(value.length>1024||characters>65536||flagged(normalize(value)))return deny();
       }
      }else if(n.nodeType===3){
       // No input values, cookies, storage, form data or frame documents are read.
@@ -117,7 +119,7 @@ public final class BrowserPageReading {
     }
     // Unlabelled short authentication-like numbers are ambiguous. Reject rather
     // than assuming that a visible code is harmless prose. Years remain usable.
-    if(sensitive.test(scanText))return deny();
+    if(flagged(scanText))return deny();
     if(/(?:^|\\D)\\d{6,8}(?:\\D|$)/.test(scanText))return deny();
 
     const blocked='script,style,noscript,template,form,input,textarea,select,option,button,iframe,frame,object,embed,nav,header,footer,[contenteditable]:not([contenteditable="false"]),[hidden],[aria-hidden="true"],[role="navigation"],[role="textbox"],[role="button"]';

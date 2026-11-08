@@ -1,4 +1,5 @@
 /** Page reading: credential refusal, the capability probe and the page-question excerpt rule. */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,8 +7,10 @@ import {
   ISOLATED_WORLD_UNAVAILABLE,
   pageQuestionExcerpt,
   pageQuestionReading,
+  readingWords,
   SENSITIVE_PAGE,
   sensitiveReadingDocument,
+  sensitiveReadingPattern,
   sensitiveReadingText,
   sensitiveReadingUrl,
 } from "./page-reading";
@@ -25,6 +28,76 @@ describe("credential refusal", () => {
     ])
       expect(sensitiveReadingText(text), text).toBe(true);
     expect(sensitiveReadingText("A garden journal from 2027.")).toBe(false);
+  });
+
+  const prose = [
+    "signing the bill",
+    "designing a kitchen",
+    "assigning blame",
+    "the best blog in town",
+    "Vaulted ceilings",
+    "catalog index",
+  ];
+  const credentialWords = [
+    "Sign in",
+    "log-in",
+    "Bitwarden vault",
+    "Your Vaults",
+  ];
+  const element = (
+    tagName: string,
+    attributes: Record<string, string>,
+    children: Node[] = [],
+  ) =>
+    ({
+      nodeType: 1,
+      tagName,
+      getAttribute: (name: string) => attributes[name] ?? null,
+      childNodes: children,
+    }) as unknown as Node;
+
+  it("reads sign-in, log-in and vault only as whole words", () => {
+    for (const text of prose)
+      expect(sensitiveReadingText(text), text).toBe(false);
+    for (const text of credentialWords)
+      expect(sensitiveReadingText(text), text).toBe(true);
+    const attributes = (value: string) =>
+      sensitiveReadingDocument(
+        element("ARTICLE", {}, [element("DIV", { id: value, class: value })]),
+      );
+    expect(attributes("dialog-inner")).toBe(false);
+    expect(attributes("catalog-index")).toBe(false);
+    for (const value of [
+      "signInButton",
+      "login_form",
+      "btn-login2",
+      "SSOLogin",
+      "vaultList",
+    ])
+      expect(attributes(value), value).toBe(true);
+  });
+
+  it("matches the Android extraction script", () => {
+    const script = readFileSync(
+      new URL(
+        "../android/src/main/java/ai/eliza/plugins/browsersurface/BrowserPageReading.java",
+        import.meta.url,
+      ),
+      "utf8",
+    ).replace(/\\\\/g, "\\");
+    const line = (name: string) =>
+      script.match(new RegExp(`^\\s*const ${name}=(.*);$`, "m"))?.[1] ?? "";
+    expect(line("sensitive")).toBe(sensitiveReadingPattern.toString());
+    const flagged = new Function(
+      `const sensitive=${line("sensitive")};const words=${line("words")};return ${line("flagged")};`,
+    )() as (value: string) => boolean;
+    for (const value of [...prose, "dialog-inner", "SSOLogin", "signInButton"])
+      expect(readingWords(value)).toBe(
+        new Function(`return ${line("words")}`)()(value),
+      );
+    for (const value of prose) expect(flagged(value), value).toBe(false);
+    for (const value of [...credentialWords, "signInButton", "login_form"])
+      expect(flagged(value), value).toBe(true);
   });
 
   it("refuses password services, credential routes and unparseable addresses", () => {
