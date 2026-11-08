@@ -62,7 +62,8 @@ BEGIN
      OR (OLD.result->'githubDeletion'->>'dispatched' = 'true' AND NEW.result->'githubDeletion'->>'dispatched' IS DISTINCT FROM 'true')
      OR (OLD.result->'githubDeletion'->>'confirmed' = 'true' AND NEW.result->'githubDeletion'->>'confirmed' IS DISTINCT FROM 'true'))
   THEN RAISE EXCEPTION 'original repository deletion identity is immutable' USING ERRCODE = '23514'; END IF;
-  IF (OLD.result->>'appDeletionConfirmed' = 'true' OR OLD.result->>'appDeleted' = 'true') AND
+  IF (OLD.type = 'app_delete' OR (OLD.type IN ('app_db_deprovision', 'container_delete') AND OLD.data ? 'appDeletionJobId'))
+    AND (OLD.result->>'appDeletionConfirmed' = 'true' OR OLD.result->>'appDeleted' = 'true') AND
     (NEW.result IS DISTINCT FROM OLD.result OR NEW.result_storage IS DISTINCT FROM OLD.result_storage OR NEW.result_key IS DISTINCT FROM OLD.result_key
      OR (OLD.status = 'completed' AND NEW.status <> 'completed'))
   THEN RAISE EXCEPTION 'app deletion completion receipt is immutable' USING ERRCODE = '23514'; END IF;

@@ -854,17 +854,15 @@ test("the real apps worker completes the API's original deletion job before succ
 
 test("completed deletion replay does not depend on the current revocation gate", async () => {
   const key = randomUUID();
-  await dbWrite
-    .insert(schema.apiKeys)
-    .values({
-      id: key,
-      name: "mobile",
-      key_hash: key,
-      key_prefix: "eliza_mobile_",
-      user_id: userId,
-      organization_id: organizationId,
-      source_app_id: appId,
-    });
+  await dbWrite.insert(schema.apiKeys).values({
+    id: key,
+    name: "mobile",
+    key_hash: key,
+    key_prefix: "eliza_mobile_",
+    user_id: userId,
+    organization_id: organizationId,
+    source_app_id: appId,
+  });
   const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
   let unavailable = false,
     deliveries = 0;
@@ -898,4 +896,21 @@ test("completed deletion replay does not depend on the current revocation gate",
     jobId: original!.jobId,
   });
   expect(deliveries).toBe(1);
+});
+
+test("app deletion receipt guards do not freeze unrelated job result fields", async () => {
+  const id = randomUUID();
+  await dbWrite.insert(jobs).values({
+    id,
+    type: "other_job",
+    organization_id: organizationId,
+    data: {},
+    result: { appDeleted: true },
+  });
+  const [updated] = await dbWrite
+    .update(jobs)
+    .set({ result: { appDeleted: false, ordinaryResult: "updated" } })
+    .where(eq(jobs.id, id))
+    .returning();
+  expect(updated?.result).toEqual({ appDeleted: false, ordinaryResult: "updated" });
 });

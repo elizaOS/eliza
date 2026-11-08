@@ -66,6 +66,7 @@ const suites = [
       "suppressed GitHub completion receipt retains an explicit operator recovery state",
       "the real apps worker completes the API's original deletion job before success replay",
       "completed deletion replay does not depend on the current revocation gate",
+      "app deletion receipt guards do not freeze unrelated job result fields",
       "suppressed database placement write rolls back capacity release",
       "suppressed database receipt write rolls back capacity release",
     ],
