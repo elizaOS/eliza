@@ -35,6 +35,7 @@ import {
   validateDevicePayload,
 } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
+import { isDirectRequestOperationType } from "./direct-request-types.ts";
 import {
   DEVICE_APPROVAL_REVIEW_TEXT,
   deviceActionEffectReceipts,
@@ -1134,6 +1135,13 @@ export const proposeDeviceAction: Action = {
       request.state === "pending" &&
       operation.type === "browser_navigate" &&
       payload.requestMessageId !== undefined;
+    // Other direct-eligible types may run without review or wait for it,
+    // depending on a phone preference this service cannot see.
+    const requestedDirect =
+      request.state === "pending" &&
+      operation.type !== "browser_navigate" &&
+      isDirectRequestOperationType(operation.type) &&
+      payload.requestMessageId !== undefined;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -1148,9 +1156,11 @@ export const proposeDeviceAction: Action = {
           }
         : requestedBrowserOpen
           ? { userFacingText: `Opening ${new URL(operation.url).host}.` }
-          : request.state === "pending"
-            ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
-            : {}),
+          : requestedDirect
+            ? { userFacingText: "Sent to your phone. It isn’t confirmed yet." }
+            : request.state === "pending"
+              ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
+              : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."
         : requestedBrowserOpen

@@ -89,6 +89,7 @@ import {
   validateClockHandoffDispatch,
 } from "./clock-handoff.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
+import { isDirectRequestOperationType } from "./direct-request-types.ts";
 import {
   type ForegroundReviewOperation,
   type ForegroundReviewResult,
@@ -1023,6 +1024,8 @@ export interface DeviceActionCoordinatorPorts<
   /** The agent negotiated reviewed reminder creation. */
   reminderCreate?: boolean;
   profile: DeviceActionClientProfile<C, R>;
+  /** Records detail the owner should not see, such as a refused proposal's validation error. */
+  reportProblem?(error: Error): void;
 }
 type ExecutionResult = DeviceExecutionResult & {
   foregroundResult?: ForegroundReviewResult;
@@ -1531,11 +1534,15 @@ export class DeviceActionCoordinator<
     const failures = invalid
       .filter((item) => item.pending)
       .map((item) => item.error);
-    for (const error of failures)
+    for (const error of failures) {
+      // The validation detail is for the problem log, not the owner. The
+      // proposal did not parse, so even its action type is untrusted.
+      this.ports.reportProblem?.(error);
       items.push({
         proposal: null,
-        notice: `An agent action could not be shown on this phone. ${error.message.slice(0, 300)}`,
+        notice: "This phone action could not be prepared.",
       });
+    }
     return { items, failures };
   }
   /** Reviewable proposals plus owner-visible notices for pending ones that do not fit this screen. */
@@ -1570,18 +1577,11 @@ export class DeviceActionCoordinator<
     operationType?: ReviewableDeviceOperation["type"],
     proof?: CurrentDeviceActionRequest,
   ): Promise<DeviceOperationReceipt[]> {
-    const directTypes: readonly ReviewableDeviceOperation["type"][] = [
-      "create_note",
-      "open_view",
-      "browser_navigate",
-      "camera_capture_photo",
-      "photo_library_select",
-    ];
     const results: DeviceOperationReceipt[] = [];
     for (const [proposalId, entry] of [...this.proposals]) {
       if (
         results.length >= 4 ||
-        !directTypes.includes(entry.proposal.operation.type) ||
+        !isDirectRequestOperationType(entry.proposal.operation.type) ||
         entry.proposal.workflow ||
         entry.proposal.requestMessageId !== messageId ||
         (operationType !== undefined &&
@@ -1717,9 +1717,12 @@ export class DeviceActionCoordinator<
     body: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<DeviceProposal> {
+    // Only an upload that carries the read location needs the selection it was read from.
+    const outcome = object(body.receipt ?? body.resolution ?? {});
     if (
       isMapsOperation(p.operation) &&
       (suffix === "receipt" || suffix === "reconciliation") &&
+      outcome.result !== undefined &&
       !this.profile.mapsSelectionCurrent(p.operation.target)
     )
       throw Error("Maps selection changed before upload");
@@ -2536,25 +2539,55 @@ export class DeviceActionCoordinator<
       (p.state !== "executing" && p.state !== "reconciliation_required")
     )
       return;
-    const saved = await this.savedResults(p, entry);
+    // A Maps read from an earlier session was never delivered to the agent,
+    // and its location is never uploaded late: report it failed with no result.
     if (
-      p.state === "reconciliation_required" &&
+      isMapsOperation(p.operation) &&
+      entry.status === "succeeded" &&
+      entry.record.sessionId !== this.session.sessionId
+    ) {
+      await this.mutation(
+        p,
+        "receipt",
+        {
+          attemptId: entry.attemptId,
+          receipt: { outcome: "failed", operationId: entry.operationId },
+        },
+        signal,
+      );
+      return;
+    }
+    const saved = await this.savedResults(p, entry);
+    // The server holds an uncertain receipt. Exact native evidence recovered
+    // since (a delivered reminder or notification, a deletion that ran or was
+    // undone) settles it; a plain receipt would conflict with the stored one.
+    const deletion =
+      p.operation.type === "calendar_delete" ||
+      p.operation.type === "reminder_cancel";
+    const applied =
       entry.status === "succeeded" &&
       (((isReminderOperation(p.operation) || isReminderCreate(p.operation)) &&
         saved.reminderResult) ||
-        p.operation.type === "post_notification")
+        (isCalendarOperation(p.operation) && saved.calendarResult) ||
+        p.operation.type === "post_notification");
+    if (
+      p.state === "reconciliation_required" &&
+      (applied || (deletion && entry.status === "failed"))
     ) {
+      const result = saved.reminderResult ?? saved.calendarResult;
       await this.mutation(
         p,
         "reconciliation",
         {
           attemptId: entry.attemptId,
-          resolution: {
-            confirmed: true,
-            outcome: "applied",
-            operationId: entry.operationId,
-            ...(saved.reminderResult ? { result: saved.reminderResult } : {}),
-          },
+          resolution: applied
+            ? {
+                confirmed: true,
+                outcome: "applied",
+                operationId: entry.operationId,
+                ...(result ? { result } : {}),
+              }
+            : { confirmed: true, outcome: "not_applied" },
         },
         signal,
       );

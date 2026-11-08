@@ -105,6 +105,10 @@ async function fixture() {
     direct = false,
     destination = "https://example.com/dashboard",
     custody = "current",
+    operation: Record<string, unknown> = {
+      type: "browser_navigate",
+      url: destination,
+    },
   ) {
     let current = true;
     return withOwnerDeviceActionTurn(
@@ -169,7 +173,7 @@ async function fixture() {
         )!;
         const options = {
           parameters: {
-            operation: { type: "browser_navigate", url: destination },
+            operation,
             operationKey: randomUUID(),
             reason: "Planner claims browser needed for Calendar",
           },
@@ -335,6 +339,37 @@ it.each([false, true])(
         ).rows,
       ).toEqual([{ count: 1 }]);
       expect(f.decide).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([false, true])(
+  "words a direct-eligible view neutrally only when bound to the request, direct=%s",
+  async (direct) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(
+        "open my calendar",
+        false,
+        direct,
+        undefined,
+        "current",
+        { type: "open_view", view: "calendar" },
+      );
+      // The phone may run it directly or hold it for review, a preference
+      // this service cannot see, so the reply claims neither. The planner
+      // pause still applies.
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: direct
+          ? "Sent to your phone. It isn’t confirmed yet."
+          : DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { awaitingUserInput: true, approvalRequired: true },
+      });
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        true,
+      );
     } finally {
       await f.pg.close();
     }

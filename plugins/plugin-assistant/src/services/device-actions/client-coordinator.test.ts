@@ -455,7 +455,14 @@ describe("DeviceActionCoordinator", () => {
     );
     expect(review).toHaveLength(1);
     expect(review[0].proposal).toBeNull();
-    expect(review[0].notice).toMatch(/Camera capture was not negotiated/);
+    expect(review[0].notice).toBe("This phone action could not be prepared.");
+    // Callers still get the detail when nothing else is reviewable.
+    await expect(
+      actions.pending(
+        { view: "camera", revision: 1, sensitive: false },
+        signal(),
+      ),
+    ).rejects.toThrow(/Camera capture was not negotiated/);
   });
 
   it("applies the product view admission policy", () => {
@@ -1327,5 +1334,224 @@ describe("shared phone and reminder-read parity", () => {
       result: readResult,
     });
     expect(reads).toBe(1);
+  });
+});
+
+describe("receipts the server can no longer take as uploaded", () => {
+  const calendarTarget = {
+    sourceId: "calendar-1",
+    sourceRevision: "d".repeat(64),
+    eventId: "event-1",
+    revision: "e".repeat(64),
+  };
+  const calendarDelete = { type: "calendar_delete", target: calendarTarget };
+  const deleted = {
+    version: 1,
+    kind: "calendar_delete",
+    sourceId: "calendar-1",
+    eventId: "event-1",
+    revision: "e".repeat(64),
+  };
+  const mapsRead = {
+    type: "maps_read_selected",
+    target: {
+      kind: "map-place",
+      id: "maps_12345678-1234-4123-8123-123456789abc",
+      revision: "1",
+    },
+  };
+  /** A terminal journal entry from an earlier approve, with its receipt state on the server. */
+  async function seeded(
+    operation: Record<string, unknown>,
+    entry: Partial<DeviceJournalEntry>,
+    serverState: "executing" | "reconciliation_required",
+  ) {
+    const fixture = fixtureServer(operation);
+    fixture.server.state = serverState;
+    fixture.server.attemptId = "attempt";
+    if (serverState === "reconciliation_required")
+      fixture.server.providerReceipt = {
+        outcome: "unknown",
+        operationId: "operation",
+      };
+    const { entries, journal } = memoryJournal();
+    entries.set("proposal", {
+      scope,
+      proposalId: "proposal",
+      operationId: "operation",
+      operationHash: await actionScope(JSON.stringify(operation)),
+      attemptId: "attempt",
+      phase: "terminal",
+      summary: "",
+      record: {
+        digest,
+        ownerId: session.ownerId,
+        agentId: session.agentId,
+        origin: session.origin,
+        installationId: credential.installationId,
+        enrollmentId: credential.enrollmentId,
+        sessionId: session.sessionId,
+      },
+      ...entry,
+    } as DeviceJournalEntry);
+    return { ...fixture, entries, journal };
+  }
+  const posts = (calls: Array<[string, unknown]>) =>
+    calls.map(([path, body]) => [path.split("/").at(-1), body]);
+  function recording(
+    request: (p: string, b: unknown, s: AbortSignal) => Promise<unknown>,
+  ) {
+    const calls: Array<[string, unknown]> = [];
+    return {
+      calls,
+      request: async (path: string, body: unknown, s: AbortSignal) => {
+        if (body !== undefined) calls.push([path, body]);
+        return request(path, body, s);
+      },
+    };
+  }
+  const noEffect: DeviceExecutor = async () => {
+    throw Error("No device effect in a receipt sweep");
+  };
+
+  it("reconciles a queued calendar deletion that ran or was undone instead of conflicting", async () => {
+    for (const recovered of ["succeeded", "failed"] as const) {
+      const f = await seeded(
+        calendarDelete,
+        { status: "unknown", summary: "Deleting in 10 seconds" },
+        "reconciliation_required",
+      );
+      // The native journal settles the queued deletion once its window ends.
+      f.journal.recoverDeletion = async () => {
+        const entry = f.entries.get("proposal") as DeviceJournalEntry;
+        Object.assign(
+          entry,
+          recovered === "succeeded"
+            ? {
+                status: "succeeded",
+                summary: "Deleted",
+                result: { operationId: "operation", calendarResult: deleted },
+              }
+            : { status: "failed", summary: "Undone" },
+        );
+        return { entry };
+      };
+      const r = recording(f.request);
+      const actions = coordinator(r.request, f.journal, noEffect);
+      await actions.syncReceipts(signal());
+      expect(posts(r.calls)).toEqual([
+        [
+          "reconciliation",
+          {
+            digest,
+            attemptId: "attempt",
+            resolution:
+              recovered === "succeeded"
+                ? {
+                    confirmed: true,
+                    outcome: "applied",
+                    operationId: "operation",
+                    result: deleted,
+                  }
+                : { confirmed: true, outcome: "not_applied" },
+          },
+        ],
+      ]);
+      expect(f.server.state).toBe(
+        recovered === "succeeded" ? "done" : "retryable",
+      );
+      // A settled proposal takes no further upload.
+      await actions.syncReceipts(signal());
+      expect(r.calls).toHaveLength(1);
+    }
+  });
+
+  it("does not settle a failed non-deletion from an uncertain receipt", async () => {
+    const f = await seeded(
+      note,
+      { status: "failed", summary: "Not saved" },
+      "reconciliation_required",
+    );
+    const r = recording(f.request);
+    await expect(
+      coordinator(r.request, f.journal, noEffect).syncReceipts(signal()),
+    ).rejects.toThrow(/Receipt conflicts/);
+    expect(posts(r.calls).map(([suffix]) => suffix)).toEqual(["receipt"]);
+    expect(f.server.state).toBe("reconciliation_required");
+  });
+
+  it("reports a Maps read from an earlier session as failed, with no location", async () => {
+    const f = await seeded(
+      mapsRead,
+      {
+        status: "succeeded",
+        summary: "Read the selected place",
+        result: { operationId: "operation", mapsResult: { kind: "stale" } },
+      },
+      "executing",
+    );
+    const entry = f.entries.get("proposal") as DeviceJournalEntry;
+    entry.record.sessionId = "earlier-session";
+    const r = recording(f.request);
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities: ["maps.selected-read.v1"] },
+      scope,
+      request: r.request,
+      journal: f.journal,
+      execute: noEffect,
+      profile,
+    });
+    // Resolves even though the Maps selection is gone (profile says false).
+    await actions.syncReceipts(signal());
+    expect(posts(r.calls)).toEqual([
+      [
+        "receipt",
+        {
+          digest,
+          attemptId: "attempt",
+          receipt: { outcome: "failed", operationId: "operation" },
+        },
+      ],
+    ]);
+    expect(f.server.state).toBe("reconciliation_required");
+    // The identical replay is accepted, and the owner can record not applied.
+    await actions.syncReceipts(signal());
+    await actions.reconcile("proposal", "not_applied", signal());
+    expect(f.server.state).toBe("retryable");
+  });
+
+  it("shows a constant notice for a refused proposal and logs the detail", async () => {
+    const fixture = fixtureServer(note);
+    const problems: Error[] = [];
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential,
+      scope,
+      request: async (path, body, s) => {
+        const response = (await fixture.request(path, body, s)) as {
+          proposals?: Array<Record<string, unknown>>;
+        };
+        if (response.proposals)
+          response.proposals.push({
+            ...response.proposals[0],
+            id: "malformed",
+            digest: "not-a-digest",
+          });
+        return response;
+      },
+      journal: memoryJournal().journal,
+      execute: noEffect,
+      profile,
+      reportProblem: (error) => problems.push(error),
+    });
+    const items = await actions.pendingReview(notesContext, signal());
+    expect(items[1]).toEqual({
+      proposal: null,
+      notice: "This phone action could not be prepared.",
+    });
+    expect(problems.map((error) => error.message)).toEqual([
+      "Invalid action expiry or digest",
+    ]);
   });
 });
