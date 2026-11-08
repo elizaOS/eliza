@@ -479,7 +479,9 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  }
  @PermissionCallback private void liveMicrophonePermission(PluginCall call){
   LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());
-  if(destroyed||ticket==null||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  if(destroyed||ticket==null||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  // A call that started while the prompt was open refuses with its code.
+  if(!live.current(ticket)){live.refuse(ticket,refusal(call));return;}
   if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}
   // The result can arrive before the activity resumes: the capture then starts on resume.
   if(!speechForeground){rejectResumedLive();resumedLiveCall=call;resumedLiveTicket=ticket;return;}
@@ -491,7 +493,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private void resumeLive(){
   PluginCall call=resumedLiveCall;LiveCaptureAdmission.Ticket ticket=resumedLiveTicket;resumedLiveCall=null;resumedLiveTicket=null;
   if(call==null)return;
-  if(destroyed||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  if(destroyed||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  if(!live.current(ticket)){live.refuse(ticket,refusal(call));return;}
   startLive(call,ticket);
  }
  private void rejectResumedLive(){PluginCall call=resumedLiveCall;resumedLiveCall=null;resumedLiveTicket=null;if(call!=null)call.reject(LiveCaptureController.CANCELLED);}
@@ -502,6 +505,13 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
    public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.resolve(new JSObject().put("captureId",id).put("sampleRate",sampleRate).put("echoCancelled",echoCancelled).put("nativeAsr",piped));}
    public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}
   });
+ }
+ /** Reports a refusal of a reservation that never started. */
+ private static LiveCaptureController.Started refusal(PluginCall call){
+  return new LiveCaptureController.Started(){
+   public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.reject(LiveCaptureController.CANCELLED);}
+   public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}
+  };
  }
  @PluginMethod public void stopLiveCapture(PluginCall call){
   live.stop(call.getString("captureId",""),Boolean.TRUE.equals(call.getBoolean("discard",false)),call.getData().optDouble("cutoffMs",System.currentTimeMillis()),

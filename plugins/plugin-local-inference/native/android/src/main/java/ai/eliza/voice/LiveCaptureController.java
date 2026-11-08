@@ -84,6 +84,8 @@ public final class LiveCaptureController {
  public LiveCaptureAdmission.Ticket reserve(String id,long epoch){return admission.begin(id,epoch);}
  /** False once the reservation was stopped, replaced or cancelled (for example after a permission prompt). */
  public boolean current(LiveCaptureAdmission.Ticket ticket){return admission.current(ticket);}
+ /** Refuses a reservation that is no longer current: interrupted (its reason) or cancelled. */
+ public void refuse(LiveCaptureAdmission.Ticket ticket,Started result){refuse(ticket,new Startup(),result);}
 
  /**
   * Starts the reserved capture on the capture worker. With a {@code route}, VAD segments go to the
@@ -114,6 +116,8 @@ public final class LiveCaptureController {
     if(pipe!=null){
      pipes.put(id,pipe);
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
+     // An interrupt before the pipe was published could not close it: stop waiting for the agent.
+     if(!admission.current(ticket))throw new IllegalStateException(CANCELLED);
      if(!pipe.ready().get(PIPE_READY_MS,TimeUnit.MILLISECONDS))throw new IllegalStateException("Agent voice session unavailable");
     }
    }catch(Exception unavailable){

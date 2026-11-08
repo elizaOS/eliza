@@ -142,6 +142,10 @@ public final class LiveCaptureControllerTest {
    check(LiveCaptureController.SESSION_UNAVAILABLE.equals(warmFailed.refused)&&"TRANSPORT".equals(warmFailed.code),"warm failure names the transport: "+warmFailed.refused+"/"+warmFailed.code);
    check(host.events.stream().noneMatch(e->e.startsWith("transcript:")||e.startsWith("mic:")),"no transcript or microphone for a failed warm-up");
 
+   // A call while the prompt is open refuses the grant with the call-active code.
+   LiveCaptureAdmission.Ticket callPrompt=controller.reserve(A,9);controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
+   Result promptCall=new Result();controller.refuse(callPrompt,promptCall);
+   check(LiveCaptureController.INTERRUPTED.equals(promptCall.refused)&&SpeechAudioFocusPolicy.CALL_ACTIVE.equals(promptCall.code),"call during the prompt refused as call-active: "+promptCall.refused);
    // A pause while the reservation waits on its permission prompt keeps it; the grant then starts.
    host.events.clear();LiveCaptureAdmission.Ticket prompted=controller.reserve(B,8);
    controller.pause(List.of(prompted));check(controller.current(prompted),"reservation survives the prompt's pause");
