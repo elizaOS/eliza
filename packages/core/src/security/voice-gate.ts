@@ -21,7 +21,7 @@ import { readReminderPresentation } from "../types/reminder-presentation";
  * values are never disturbed.
  *
  * Same model seam as the scheduled-dispatch renderer and the failure-reply
- * path — `runWithTrajectoryPurpose` + `runtime.useModel` — but on ModelType
+ * path — a purpose-tagged trajectory context + `runtime.useModel` — but on ModelType
  * TEXT_SMALL with a per-agent input-hash cache, because this runs on every
  * outbound literal and must stay cheap. It diverges from the dispatch
  * renderer's fail-fast in one deliberate way (V1 below): the gate is a cosmetic
@@ -31,7 +31,10 @@ import { readReminderPresentation } from "../types/reminder-presentation";
  * the outage flagged.
  */
 
-import { runWithTrajectoryPurpose } from "../trajectory-context.ts";
+import {
+	getTrajectoryContextManager,
+	type TrajectoryContext,
+} from "../trajectory-context.ts";
 import { readActionReplyFailure } from "../types/action-reply.ts";
 import { ModelType } from "../types/model.ts";
 import type { Content } from "../types/primitives.ts";
@@ -202,9 +205,19 @@ export async function ensureAgentVoice(
 		"escalation" in content.metadata &&
 		content.metadata.escalation === true;
 	let rephrased = "";
+	// A gate-owned context: with secret or PII swap on, useModel mints the swap
+	// sessions onto it, so the rewrite can be restored here. The model only ever
+	// saw placeholders and surrogates, and nothing downstream restores them.
+	const manager = getTrajectoryContextManager();
+	const swapContext: TrajectoryContext = {
+		...manager.active(),
+		purpose: "voice-gate-rephrase",
+		secretSwapSession: undefined,
+		piiSwapSession: undefined,
+	};
 	try {
 		const prompt = buildVoiceGatePrompt(runtime.character, raw);
-		const response = await runWithTrajectoryPurpose("voice-gate-rephrase", () =>
+		const response = await manager.run(swapContext, () =>
 			runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
 		);
 		rephrased =
@@ -228,6 +241,35 @@ export async function ensureAgentVoice(
 		runtime.reportError(
 			"voice-gate",
 			new Error("voice-gate rephrase returned empty output"),
+			{
+				source: options.source,
+				agentId: runtime.agentId,
+				...(escalationDiagnostic ? { diagnosticOnly: true } : {}),
+			},
+		);
+		return content;
+	}
+
+	// Same order and policy as the reply boundary: PII surrogates back to real
+	// values, then contact placeholders back while true secrets stay redacted.
+	const piiSession = swapContext.piiSwapSession;
+	const secretSession = swapContext.secretSwapSession;
+	if (piiSession) rephrased = piiSession.restoreText(rephrased);
+	if (secretSession) rephrased = secretSession.restoreUserReplyText(rephrased);
+	const unrestored =
+		/__ELIZA_(?:SECRET|CONTACT)_/.test(rephrased) ||
+		(piiSession?.entries.some((entry) =>
+			[entry.surrogate, entry.value].some(
+				(text) => rephrased.includes(text) && !raw.includes(text),
+			),
+		) ??
+			false);
+	if (unrestored) {
+		// voice-policy:V1 a rewrite that kept a swap token or a stand-in value
+		// would show the user fake data; deliver the original and do not cache.
+		runtime.reportError(
+			"voice-gate",
+			new Error("voice-gate rephrase kept an unrestorable swap value"),
 			{
 				source: options.source,
 				agentId: runtime.agentId,

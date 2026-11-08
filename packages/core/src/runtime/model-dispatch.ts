@@ -1543,9 +1543,10 @@ export class RuntimeModelDispatch {
 					// context) with never-seen PII. If the assembled text changed, re-run
 					// detection so that new PII is swapped too — not just already-learned
 					// values re-masked. learn() is idempotent, so this only adds new entities.
-					const postHookText = this.host.collectPromptText(
-						modelParams,
-						effectiveSystemPrompt,
+					// The params are already in surrogate space here; learn from the
+					// restored text so a surrogate is never learned as a new real value.
+					const postHookText = piiSwapSession.restoreText(
+						this.host.collectPromptText(modelParams, effectiveSystemPrompt),
 					);
 					if (postHookText !== piiIngressText) {
 						await piiSwapSession.learn(postHookText);
