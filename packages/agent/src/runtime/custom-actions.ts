@@ -98,7 +98,7 @@ export function customActionExecutionBlockReason(
     return buildStoreVariantBlockedMessage(`${handlerType} custom actions`);
   }
   if (shellEnabled === false) {
-    return `${handlerType} custom actions need shell access, which is turned off.`;
+    return `${handlerType === "shell" ? "Shell" : "Code"} custom actions need shell access, which is turned off.`;
   }
   if (handlerType === "shell") {
     if (isMobilePlatform()) {

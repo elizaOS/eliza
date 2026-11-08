@@ -598,8 +598,8 @@ async function handlePutConfig(
       return;
     }
     // The host is stored as entered: pinning to the resolved IP would break
-    // TLS name checks and DNS failover. Boot re-validates and pins per
-    // connection (see applyPinnedPostgresUrl in runtime/eliza.ts).
+    // TLS name checks and DNS failover. Boot re-validates the host and pins
+    // its address (see pinConfiguredPostgresUrl in runtime/eliza.ts).
   }
   // Merge: keep existing postgres/pglite sub-configs unless explicitly provided
   const merged: DatabaseConfig = {
