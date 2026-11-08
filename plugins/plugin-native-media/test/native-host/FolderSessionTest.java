@@ -1,5 +1,9 @@
 package ai.eliza.plugins.media;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Host-JVM checks of the folder-tree capability session. Not Android or provider evidence. */
@@ -19,6 +23,48 @@ public final class FolderSessionTest {
       return;
     }
     throw new AssertionError("Expected refusal: " + label);
+  }
+
+  /** The (location, parent) index answers exactly what a scan of the live entries would. */
+  private static void indexMatchesScan() {
+    AtomicInteger next = new AtomicInteger();
+    FolderSession<String> session = new FolderSession<>(64, 40, () -> "s" + next.incrementAndGet());
+    FolderSession.Entry<String> root = session.root("r");
+    List<FolderSession.Entry<String>> issued = new ArrayList<>();
+    issued.add(root);
+    List<String> folders = new ArrayList<>(List.of(root.id));
+    Random random = new Random(7);
+    for (int step = 0; step < 2000; step++) {
+      String parent = folders.get(random.nextInt(folders.size()));
+      if (session.get(parent) == null) continue;
+      String location = "r/" + random.nextInt(48);
+      FolderSession.Entry<String> scanned = null;
+      for (FolderSession.Entry<String> item : issued)
+        if (session.get(item.id) == item
+            && item.location().equals(location)
+            && Objects.equals(item.parent, parent)) scanned = item;
+      int roll = random.nextInt(10);
+      if (roll == 0 && scanned != null && scanned != root) {
+        session.remove(scanned.id);
+        continue;
+      }
+      if (roll == 1 && scanned != null && scanned != root) {
+        session.renamed(scanned, location + "-" + step);
+        continue;
+      }
+      FolderSession.Entry<String> found;
+      try {
+        found = session.authorize(location, parent);
+      } catch (IllegalStateException limit) {
+        continue;
+      }
+      if (scanned != null) check(found == scanned, "indexed lookup equals the scan");
+      else {
+        check(!issued.contains(found), "a new location is a new capability");
+        issued.add(found);
+        if (random.nextInt(4) == 0) folders.add(found.id);
+      }
+    }
   }
 
   public static void main(String[] args) {
@@ -63,14 +109,32 @@ public final class FolderSessionTest {
     check(full.size() == 4, "nothing evicted");
     rejects(() -> full.authorize("t/x", "unknown-parent"), "an unknown parent cannot evict");
 
+    // An evicted capability is gone for good: relisting its location issues a new id.
+    FolderSession.Entry<String> relisted = session.authorize("tree:/old", root.id);
+    check(relisted != old && !relisted.id.equals(old.id), "evicted entry is not revived");
+    check(session.authorize("tree:/old", root.id) == relisted, "relisted entry is found again");
+
     // Rename and removal follow provider confirmation; clear forgets every capability.
     session.renamed(a, "tree:/docs/a2");
     check(a.location().equals("tree:/docs/a2"), "renamed location");
+    check(session.authorize("tree:/docs/a2", docs.id) == a, "found at the renamed location");
     session.remove(b.id);
     check(session.get(b.id) == null, "removed");
+    check(session.authorize("tree:/docs/b", docs.id) != b, "a removed location is new");
     session.clear();
     check(session.size() == 0 && session.rootId() == null, "cleared");
     check(session.get(null) == null, "no entry for no id");
+
+    indexMatchesScan();
+
+    // Revisions keep their listed format, so changes made against earlier listings still match.
+    check(
+        FolderSession.revision("a.txt", "text/plain", 12, 34, 5).equals("a.txt|text/plain|12|34|5"),
+        "revision format");
+    check(
+        FolderSession.revision("Docs", "vnd.android.document/directory", -1, -1, 8)
+            .equals("Docs|vnd.android.document/directory|-1|-1|8"),
+        "unknown size and time");
 
     // Cursors name the folder they continue; anything else asks for a refresh.
     check(FolderSession.cursorOffset(FolderSession.cursor("e3", 250), "e3") == 250, "cursor");

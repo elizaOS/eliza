@@ -1,5 +1,6 @@
 package ai.eliza.plugins.media;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -52,6 +53,8 @@ public final class FolderSession<U> {
   private final int retain;
   private final Supplier<String> ids;
   private final Map<String, Entry<U>> entries = new HashMap<>();
+  /** The same entries keyed by (location, parent), so a listing finds a relisted row directly. */
+  private final Map<Map.Entry<U, String>, Entry<U>> listed = new HashMap<>();
   private String rootId;
   private long touch;
 
@@ -72,7 +75,7 @@ public final class FolderSession<U> {
   public Entry<U> root(U location) {
     if (rootId == null) {
       Entry<U> root = new Entry<>(ids.get(), location, null);
-      entries.put(root.id, root);
+      put(root);
       rootId = root.id;
     }
     return entries.get(rootId);
@@ -98,17 +101,21 @@ public final class FolderSession<U> {
 
   /** Forgets one entry after the provider confirmed it was deleted or moved away. */
   public void remove(String id) {
-    entries.remove(id);
+    Entry<U> entry = entries.remove(id);
+    if (entry != null) listed.remove(key(entry.location, entry.parent), entry);
   }
 
   /** Records a provider-confirmed rename of a listed entry. */
   public void renamed(Entry<U> entry, U location) {
+    listed.remove(key(entry.location, entry.parent), entry);
     entry.location = location;
+    if (entries.get(entry.id) == entry) listed.put(key(location, entry.parent), entry);
   }
 
   /** Forgets every capability, for example when access to the tree was revoked or replaced. */
   public void clear() {
     entries.clear();
+    listed.clear();
     rootId = null;
   }
 
@@ -118,18 +125,27 @@ public final class FolderSession<U> {
    * session is full and nothing may be evicted.
    */
   public Entry<U> authorize(U location, String parent) {
-    for (Entry<U> item : entries.values())
-      if (item.location.equals(location) && Objects.equals(item.parent, parent)) {
-        item.touched = ++touch;
-        return item;
-      }
+    Entry<U> item = listed.get(key(location, parent));
+    if (item != null) {
+      item.touched = ++touch;
+      return item;
+    }
     Entry<U> folder = parent == null ? null : entries.get(parent);
     if (folder != null) evict(folder);
     else if (entries.size() >= limit) throw new IllegalStateException("Folder session limit");
     Entry<U> value = new Entry<>(ids.get(), location, parent);
     value.touched = ++touch;
-    entries.put(value.id, value);
+    put(value);
     return value;
+  }
+
+  private void put(Entry<U> entry) {
+    entries.put(entry.id, entry);
+    listed.put(key(entry.location, entry.parent), entry);
+  }
+
+  private static <U> Map.Entry<U, String> key(U location, String parent) {
+    return new AbstractMap.SimpleImmutableEntry<>(location, parent);
   }
 
   /** The folder, its ancestors and the root. */
@@ -152,7 +168,7 @@ public final class FolderSession<U> {
     candidates.sort((a, b) -> Long.compare(a.touched, b.touched));
     for (Entry<U> item : candidates) {
       if (entries.size() <= retain) break;
-      entries.remove(item.id);
+      remove(item.id);
     }
     if (entries.size() >= limit) throw new IllegalStateException("Folder session limit");
   }
@@ -176,6 +192,14 @@ public final class FolderSession<U> {
     } catch (NumberFormatException malformed) {
       return MALFORMED;
     }
+  }
+
+  /**
+   * The revision a change must name: a listed row's name, type, size, modification time and
+   * provider flags. Size and modification time are -1 when the provider does not report them.
+   */
+  public static String revision(String name, String mime, long size, long modified, long flags) {
+    return name + "|" + mime + "|" + size + "|" + modified + "|" + flags;
   }
 
   /** A "Load more" cursor for the next page of a folder. */
