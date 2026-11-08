@@ -547,3 +547,211 @@ test("a rejected earnings result retains pending settlement for repair", async (
   expect(facilitator).toHaveBeenCalledTimes(1);
   expect(paidCallbacks(fetches)).toBe(1);
 });
+
+async function broadcastOf(payment: string) {
+  const row = await pg().query<{
+    broadcast: { transaction?: string; errorReason?: string } | null;
+    transaction_hash: string | null;
+  }>(
+    "SELECT metadata->'settlementBroadcast' AS broadcast, transaction_hash FROM crypto_payments WHERE id=$1",
+    [payment],
+  );
+  return row.rows[0];
+}
+
+function pendingWith(transaction: string): Settlement {
+  return {
+    success: false,
+    pending: true,
+    transaction,
+    network: "base",
+    payer: "0x00000000000000000000000000000000000000cc",
+    errorReason: "settlement_unconfirmed",
+  } as Settlement;
+}
+
+function failedCallbacks(spy: { mock: { calls: unknown[][] } }) {
+  return spy.mock.calls.filter((call) => {
+    const init = call[1] as RequestInit | undefined;
+    return String(init?.body ?? "").includes("x402.payment_request.failed");
+  }).length;
+}
+
+async function withCallbackUrl(payment: string) {
+  await pg().query(
+    `UPDATE crypto_payments
+     SET metadata = metadata || jsonb_build_object('callbackUrl', 'https://seller.example/paid')
+     WHERE id=$1`,
+    [payment],
+  );
+}
+
+test("an unconfirmed broadcast keeps the claim, records the hash and is confirmed once later", async () => {
+  const { payment, txHash } = await openRequest();
+  await withCallbackUrl(payment);
+  const facilitator = spyOn(x402FacilitatorService, "settle").mockResolvedValue(
+    pendingWith(txHash),
+  );
+  const confirm = spyOn(x402FacilitatorService, "confirmSettlement")
+    .mockResolvedValueOnce(pendingWith(txHash))
+    .mockResolvedValue(settledWith(txHash));
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+  stubEarnings();
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toMatchObject({ status: 202, code: "settlement_pending" });
+  expect(await statusOf(payment)).toBe("pending");
+  expect(await settleClaim(payment)).not.toBeNull();
+  expect(await broadcastOf(payment)).toEqual({
+    broadcast: expect.objectContaining({
+      transaction: txHash,
+      errorReason: "settlement_unconfirmed",
+    }),
+    transaction_hash: txHash,
+  });
+  expect(failedCallbacks(fetches)).toBe(0);
+
+  // Still unknown: a new authorization is not settled.
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x02")),
+  ).rejects.toMatchObject({ status: 202, code: "settlement_pending" });
+
+  const result = await x402PaymentRequestsService.settle(
+    payment,
+    paymentPayload("0x02"),
+  );
+  await x402PaymentRequestsService.settle(payment, paymentPayload("0x02"));
+
+  expect(result.paymentRequest.paid).toBe(true);
+  expect(facilitator).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(confirm.mock.calls[0]?.[0]).toMatchObject({
+    transaction: txHash,
+    payer: "0x00000000000000000000000000000000000000cc",
+  });
+  expect(await statusOf(payment)).toBe("confirmed");
+  expect(await broadcastOf(payment)).toEqual({
+    broadcast: null,
+    transaction_hash: txHash,
+  });
+  expect(paidCallbacks(fetches)).toBe(1);
+  expect(failedCallbacks(fetches)).toBe(0);
+});
+
+test("a broadcast that reverted releases the claim and settles the new payment", async () => {
+  const { payment, txHash } = await openRequest();
+  const reverted = `0x${"ef".repeat(32)}`;
+  const facilitator = spyOn(x402FacilitatorService, "settle")
+    .mockResolvedValueOnce(pendingWith(reverted))
+    .mockResolvedValueOnce(settledWith(txHash));
+  spyOn(x402FacilitatorService, "confirmSettlement").mockResolvedValue({
+    success: false,
+    transaction: reverted,
+    network: "base",
+    errorReason: "settlement_reverted",
+  } as Settlement);
+  stubEarnings();
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toMatchObject({ status: 202 });
+  const result = await x402PaymentRequestsService.settle(
+    payment,
+    paymentPayload("0x02"),
+  );
+
+  expect(result.paymentRequest.paid).toBe(true);
+  expect(facilitator).toHaveBeenCalledTimes(2);
+  expect((await broadcastOf(payment))?.transaction_hash).toBe(txHash);
+});
+
+test("a garbage payload is a 400 with no failure callback", async () => {
+  const { payment } = await openRequest();
+  await withCallbackUrl(payment);
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, "not base64 json {"),
+  ).rejects.toMatchObject({ status: 400, code: "invalid_payment_payload" });
+  await expect(
+    x402PaymentRequestsService.settle(payment, { x402Version: 2 }),
+  ).rejects.toMatchObject({ status: 400, code: "invalid_payment_payload" });
+
+  expect(fetches).not.toHaveBeenCalled();
+  expect(await settleClaim(payment)).toBeNull();
+});
+
+test("a rejected attempt that leaves the request payable sends no failure callback", async () => {
+  const { payment } = await openRequest();
+  await withCallbackUrl(payment);
+  spyOn(x402FacilitatorService, "settle").mockResolvedValue(rejected);
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toMatchObject({ status: 402 });
+
+  expect(fetches).not.toHaveBeenCalled();
+  expect(await settleClaim(payment)).toBeNull();
+});
+
+test("an expired request sends its failure callback once", async () => {
+  const { payment } = await lapsedRequest("pending");
+  await withCallbackUrl(payment);
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(
+      x402PaymentRequestsService.settle(payment, {}),
+    ).rejects.toMatchObject({ status: 410, code: "expired" });
+  }
+
+  expect(failedCallbacks(fetches)).toBe(1);
+});
+
+test("an exact_permit quote stays signable until the request expires", async () => {
+  const org = randomUUID();
+  const user = randomUUID();
+  await pg().query(
+    "INSERT INTO organizations(id,name,slug,credit_balance) VALUES ($1,'Seller',$2,'0')",
+    [org, `seller-${org}`],
+  );
+  await pg().query(
+    "INSERT INTO users(id,organization_id,steward_user_id,role) VALUES ($1,$2,$3,'owner')",
+    [user, org, `subject_${user}`],
+  );
+  process.env.X402_RECIPIENT_ADDRESS =
+    "0x00000000000000000000000000000000000000aa";
+  spyOn(x402FacilitatorService, "initialize").mockResolvedValue();
+  spyOn(x402FacilitatorService, "getSignerAddress").mockReturnValue(
+    "0x00000000000000000000000000000000000000dd",
+  );
+
+  const { paymentRequest, paymentRequired } =
+    await x402PaymentRequestsService.create({
+      organizationId: org,
+      userId: user,
+      amountUsd: 5,
+      network: "bsc-testnet",
+    });
+
+  const meta = (
+    paymentRequired as {
+      extensions?: {
+        paymentPermitContext?: { meta: { validBefore: number } };
+      };
+    }
+  ).extensions?.paymentPermitContext?.meta;
+  expect(meta?.validBefore).toBe(
+    Math.floor(new Date(paymentRequest.expiresAt).getTime() / 1000),
+  );
+});

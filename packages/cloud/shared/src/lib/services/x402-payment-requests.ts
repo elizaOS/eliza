@@ -16,6 +16,7 @@ import { appsRepository } from "../../db/repositories/apps";
 import {
   type CryptoPayment,
   cryptoPaymentsRepository,
+  SETTLEMENT_BROADCAST_KEY,
   SETTLEMENT_PENDING_KEY,
 } from "../../db/repositories/crypto-payments";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -192,6 +193,14 @@ function settlementInProgress(): X402PaymentRequestError {
   );
 }
 
+function settlementPending(): X402PaymentRequestError {
+  return new X402PaymentRequestError(
+    "Payment was sent and is waiting for network confirmation. Do not pay again; retry later to check.",
+    202,
+    "settlement_pending",
+  );
+}
+
 function parseStoredPaymentAmount(params: {
   paymentId: string;
   field: string;
@@ -290,7 +299,11 @@ function isX402PaymentRequest(payment: CryptoPayment | undefined): payment is Cr
   return !!payment && metadataOf(payment).kind === KIND;
 }
 
-function buildExtensions(network: NetworkConfig): PaymentRequiredExtensions | undefined {
+/** The permit stays signable for as long as the request is payable. */
+function buildExtensions(
+  network: NetworkConfig,
+  expiresAt: Date,
+): PaymentRequiredExtensions | undefined {
   if (network.scheme !== "exact_permit") return undefined;
   const now = Math.floor(Date.now() / 1000);
   return {
@@ -300,9 +313,21 @@ function buildExtensions(network: NetworkConfig): PaymentRequiredExtensions | un
         paymentId: `0x${randomHex(16)}`,
         nonce: BigInt(`0x${randomHex(16)}`).toString(),
         validAfter: now,
-        validBefore: now + 300,
+        validBefore: Math.floor(expiresAt.getTime() / 1000),
       },
     },
+  };
+}
+
+type SettlementBroadcast = { transaction: string; network: string; payer?: string };
+
+function settlementBroadcastOf(payment: CryptoPayment): SettlementBroadcast | undefined {
+  const broadcast = metadataOf(payment)[SETTLEMENT_BROADCAST_KEY];
+  if (!isRecord(broadcast) || typeof broadcast.transaction !== "string") return undefined;
+  return {
+    transaction: broadcast.transaction,
+    network: typeof broadcast.network === "string" ? broadcast.network : payment.network,
+    payer: typeof broadcast.payer === "string" ? broadcast.payer : undefined,
   };
 }
 
@@ -616,7 +641,7 @@ class X402PaymentRequestsService {
     const expiresAt = new Date(Date.now() + (input.expiresInSeconds ?? 900) * 1000);
     const resource = `${publicBaseUrl()}/api/v1/x402/requests/${id}/settle`;
     const description = input.description?.trim() || "x402 payment request";
-    const extensions = buildExtensions(network);
+    const extensions = buildExtensions(network, expiresAt);
     const requirements: PaymentRequirements = {
       scheme: network.scheme,
       network: network.caip2,
@@ -702,11 +727,21 @@ class X402PaymentRequestsService {
     paymentRequest: X402PaymentRequestView;
     paymentResponse: string;
   }> {
-    const payment = await this.get(id);
+    let payment = await this.get(id);
     if (!payment) {
       throw new X402PaymentRequestError("Payment request not found", 404, "not_found");
     }
     if (payment.status === "confirmed") return this.alreadySettled(payment);
+
+    // A transfer from an earlier attempt was broadcast without a known
+    // outcome. Its claim holds until the receipt says paid or reverted.
+    const broadcast = settlementBroadcastOf(payment);
+    if (broadcast) {
+      const settled = await this.resolveBroadcastSettlement(payment, broadcast);
+      if (settled) return settled;
+      payment = (await this.get(id)) ?? payment;
+    }
+
     if (payment.expires_at.getTime() < Date.now()) {
       const expired = await cryptoPaymentsRepository.markAsExpired(payment.id);
       const current = expired ?? (await this.get(id)) ?? payment;
@@ -748,17 +783,20 @@ class X402PaymentRequestsService {
       throw error;
     }
 
+    // A malformed payload is the caller's error; the request stays payable,
+    // so it is not reported to the merchant as a failed payment.
     let paymentPayload: Parameters<typeof x402FacilitatorService.settle>[0];
     try {
       paymentPayload = decodePaymentPayload(paymentPayloadInput);
     } catch (error) {
-      await this.triggerFailureCallback(payment, "invalid_payment_payload", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
+      if (error instanceof X402PaymentRequestError) throw error;
+      throw new X402PaymentRequestError(
+        "Invalid x402 payment payload",
+        400,
+        "invalid_payment_payload",
+      );
     }
     if (!isDecodedPaymentPayload(paymentPayload)) {
-      await this.triggerFailureCallback(payment, "invalid_payment_payload");
       throw new X402PaymentRequestError(
         "Invalid x402 payment payload",
         400,
@@ -784,20 +822,43 @@ class X402PaymentRequestsService {
       );
     }
 
+    const paymentId = payment.id;
     let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
     try {
-      settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
+      settlement = await x402FacilitatorService.settle(paymentPayload, requirements, {
+        onBroadcast: async (sent) => {
+          await cryptoPaymentsRepository.recordSettlementBroadcast(paymentId, sent);
+        },
+      });
     } catch (error) {
       // The transfer may have been broadcast; keep its claim until reconciled.
-      await this.triggerFailureCallback(payment, "settlement_error", {
+      logger.error("[x402-payment-requests] settlement error", {
+        paymentRequestId: paymentId,
         error: error instanceof Error ? error.message : String(error),
       });
       throw new X402PaymentRequestError("x402 settlement failed", 402, "settlement_failed");
     }
+    if (settlement.pending) {
+      await cryptoPaymentsRepository.recordSettlementBroadcast(paymentId, {
+        transaction: settlement.transaction,
+        network: settlement.network,
+        payer: settlement.payer,
+        errorReason: settlement.errorReason,
+      });
+      logger.warn("[x402-payment-requests] settlement broadcast but unconfirmed", {
+        paymentRequestId: paymentId,
+        transaction: settlement.transaction,
+        errorReason: settlement.errorReason,
+      });
+      throw settlementPending();
+    }
     if (!settlement.success) {
-      await cryptoPaymentsRepository.releaseSettlementClaim(payment.id);
-      await this.triggerFailureCallback(payment, settlement.errorReason ?? "settlement_failed", {
-        settlement,
+      // This attempt failed and moved no funds; the request stays payable, so
+      // the merchant is not told the payment failed.
+      await cryptoPaymentsRepository.releaseSettlementClaim(paymentId);
+      logger.warn("[x402-payment-requests] settlement attempt rejected", {
+        paymentRequestId: paymentId,
+        errorReason: settlement.errorReason,
       });
       throw new X402PaymentRequestError(
         settlement.errorReason ?? "x402 settlement failed",
@@ -806,12 +867,29 @@ class X402PaymentRequestsService {
       );
     }
 
+    return this.recordSettlement(payment, amountUsd, settlement);
+  }
+
+  /**
+   * Confirms the payment for a settlement whose transfer succeeded and
+   * completes earnings and callbacks.
+   */
+  private async recordSettlement(
+    payment: CryptoPayment,
+    amountUsd: number,
+    settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>,
+  ): Promise<{
+    paymentRequest: X402PaymentRequestView;
+    paymentResponse: string;
+  }> {
     const settledPayment = await cryptoPaymentsRepository.confirmSettlement(payment.id, {
       txHash: settlement.transaction,
       receivedAmount: payment.expected_amount,
       metadataPatch: { payer: settlement.payer, settlement },
     });
     if (!settledPayment) {
+      const current = await this.get(payment.id);
+      if (current?.status === "confirmed") return this.alreadySettled(current);
       throw new X402PaymentRequestError(
         "Payment confirmation was not persisted",
         503,
@@ -824,6 +902,44 @@ class X402PaymentRequestsService {
       paymentRequest: this.toPublicView(settledPayment),
       paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
     };
+  }
+
+  /**
+   * Re-reads a broadcast transfer. Returns the settled result when it paid,
+   * undefined after releasing the claim when it reverted (the request is
+   * payable again), and throws settlement_pending while it is still unknown.
+   */
+  private async resolveBroadcastSettlement(
+    payment: CryptoPayment,
+    broadcast: SettlementBroadcast,
+  ): Promise<{ paymentRequest: X402PaymentRequestView; paymentResponse: string } | undefined> {
+    const metadata = metadataOf(payment);
+    const requirements = metadata.requirements as Parameters<
+      typeof x402FacilitatorService.confirmSettlement
+    >[0]["requirements"];
+    if (!requirements) {
+      throw new X402PaymentRequestError("Payment request is missing requirements", 500);
+    }
+    const settlement = await x402FacilitatorService.confirmSettlement({
+      transaction: broadcast.transaction,
+      requirements,
+      payer: broadcast.payer,
+    });
+    if (settlement.success) {
+      const amountUsd = parseStoredPaymentAmount({
+        paymentId: payment.id,
+        field: "amountUsd",
+        value: metadata.amountUsd ?? payment.credits_to_add,
+      });
+      return this.recordSettlement(payment, amountUsd, settlement);
+    }
+    if (settlement.pending) throw settlementPending();
+    logger.warn("[x402-payment-requests] broadcast settlement reverted", {
+      paymentRequestId: payment.id,
+      transaction: broadcast.transaction,
+    });
+    await cryptoPaymentsRepository.releaseSettlementClaim(payment.id);
+    return undefined;
   }
 
   /**
@@ -912,11 +1028,17 @@ class X402PaymentRequestsService {
     return { paymentRequest: this.toPublicView(payment), paymentResponse };
   }
 
+  /**
+   * Announces a terminal failure (expiry, corrupt amount) once per request.
+   * A rejected attempt that leaves the request payable is never announced.
+   */
   private async triggerFailureCallback(
     payment: CryptoPayment,
     reason: string,
     details?: Record<string, unknown>,
   ): Promise<void> {
+    const notified = await cryptoPaymentsRepository.markFailureNotified(payment.id);
+    if (!notified) return;
     await triggerCallback(payment, {
       type: "x402.payment_request.failed",
       paymentRequest: this.toView(payment),

@@ -11,6 +11,7 @@ const { creditsService } = await import("../credits");
 const { referralsService } = await import("../referrals");
 const { usersService } = await import("../users");
 const walletSignup = await import("../wallet-signup");
+const { cryptoPaymentsRepository } = await import("../../../db/repositories/crypto-payments");
 
 type Settlement = Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
 
@@ -407,4 +408,104 @@ test("a signed request applies the referral without an app owner from the reques
 
   expect(response.status).toBe(200);
   expect(applyReferral.mock.calls).toEqual([[walletUser.id, organizationId, "FRIEND"]]);
+});
+
+const pendingHash = `0x${"cd".repeat(32)}`;
+
+function stubWalletUser() {
+  const walletUser = stubCredit({
+    id: "30000000-0000-4000-8000-000000000009",
+    organization_id: "30000000-0000-4000-8000-000000000010",
+  });
+  spyOn(walletSignup, "findOrCreateUserByWalletAddress").mockResolvedValue({
+    user: walletUser,
+  } as never);
+}
+
+function unsignedTopup(walletAddress: string, transaction?: string) {
+  return topup(
+    new Request("https://cloud.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "X-PAYMENT": paymentHeader,
+        ...(transaction && { "X-PAYMENT-TRANSACTION": transaction }),
+      },
+      body: JSON.stringify({ walletAddress }),
+    }),
+  );
+}
+
+test("a broadcast top-up with an unknown outcome returns 202 and credits nothing", async () => {
+  spyOn(x402FacilitatorService, "settle").mockResolvedValue({
+    success: false,
+    pending: true,
+    transaction: pendingHash,
+    network: "eip155:8453",
+    payer: account.address,
+    errorReason: "settlement_unconfirmed",
+  } as Settlement);
+  const addCredits = spyOn(creditsService, "addCredits");
+
+  const response = await unsignedTopup(account.address);
+
+  expect(response.status).toBe(202);
+  expect(await response.json()).toMatchObject({
+    pending: true,
+    code: "settlement_pending",
+    transaction: pendingHash,
+  });
+  expect(addCredits).not.toHaveBeenCalled();
+});
+
+test("a confirmed pending top-up credits the payer once, keyed on its hash", async () => {
+  stubWalletUser();
+  const settle = spyOn(x402FacilitatorService, "settle");
+  spyOn(cryptoPaymentsRepository, "findByTransactionHash").mockResolvedValue(undefined);
+  const confirm = spyOn(x402FacilitatorService, "confirmSettlement").mockResolvedValue({
+    success: true,
+    transaction: pendingHash,
+    network: "eip155:8453",
+    payer: account.address,
+  } as Settlement);
+
+  const response = await unsignedTopup(account.address, pendingHash);
+
+  expect(response.status).toBe(200);
+  expect(settle).not.toHaveBeenCalled();
+  expect(confirm.mock.calls[0]?.[0]).toMatchObject({
+    transaction: pendingHash,
+    payer: account.address,
+    authorizationNonce: `0x${"1".repeat(64)}`,
+  });
+  expect(
+    (
+      creditsService.addCredits as unknown as {
+        mock: { calls: { stripePaymentIntentId?: string }[][] };
+      }
+    ).mock.calls[0]?.[0].stripePaymentIntentId,
+  ).toBe(`x402:eip155:8453:${pendingHash}`);
+});
+
+test("a pending top-up cannot be credited to a wallet other than the payer", async () => {
+  stubWalletUser();
+  const confirm = spyOn(x402FacilitatorService, "confirmSettlement");
+
+  const response = await unsignedTopup("0x00000000000000000000000000000000000000dd", pendingHash);
+
+  expect(response.status).toBe(403);
+  expect(await response.json()).toMatchObject({ code: "payer_wallet_mismatch" });
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+test("a hash that already paid a payment request is not reused for a top-up", async () => {
+  stubWalletUser();
+  spyOn(cryptoPaymentsRepository, "findByTransactionHash").mockResolvedValue({
+    id: "payment-request",
+  } as never);
+  const confirm = spyOn(x402FacilitatorService, "confirmSettlement");
+
+  const response = await unsignedTopup(account.address, pendingHash);
+
+  expect(response.status).toBe(409);
+  expect(confirm).not.toHaveBeenCalled();
 });

@@ -55,7 +55,9 @@ app.post("/", async (c) => {
       >[1],
     );
 
-    return c.json(result, result.success ? 200 : 400);
+    // 202: the transfer was broadcast and is not confirmed yet. The caller
+    // must not sign a new payment for it.
+    return c.json(result, result.success ? 200 : result.pending ? 202 : 400);
   } catch (err) {
     // error-policy:J1 route boundary — settlement failures return a constant
     // reason to unauthenticated callers; upstream RPC/provider detail stays in

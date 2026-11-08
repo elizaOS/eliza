@@ -152,6 +152,20 @@ export interface SettleResult {
   network: string;
   payer?: string;
   errorReason?: string;
+  /**
+   * The transfer was broadcast but its outcome is not known yet. The caller
+   * must not settle a new authorization; confirm `transaction` later instead.
+   */
+  pending?: boolean;
+}
+
+export interface SettleOptions {
+  /** Called once the transfer is broadcast, before its receipt is read. */
+  onBroadcast?: (broadcast: {
+    transaction: string;
+    network: string;
+    payer?: string;
+  }) => Promise<void>;
 }
 
 /** Supported scheme/network pair */
@@ -349,16 +363,6 @@ const TRANSFER_WITH_AUTHORIZATION_TYPES = {
   ],
 } as const;
 
-const PERMIT_TYPES = {
-  Permit: [
-    { name: "owner", type: "address" },
-    { name: "spender", type: "address" },
-    { name: "value", type: "uint256" },
-    { name: "nonce", type: "uint256" },
-    { name: "deadline", type: "uint256" },
-  ],
-} as const;
-
 const PAYMENT_PERMIT_TYPES = {
   PermitMeta: [
     { name: "kind", type: "uint8" },
@@ -387,6 +391,10 @@ const PAYMENT_PERMIT_TYPES = {
 
 const ERC20_TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)",
+);
+
+const AUTHORIZATION_USED_EVENT = parseAbiItem(
+  "event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce)",
 );
 
 const PAYMENT_PERMIT_ABI = [
@@ -463,6 +471,19 @@ function isSolanaNetwork(network: string): boolean {
   return network.startsWith("solana:");
 }
 
+/**
+ * A payment settles on the network, under the scheme, the quote names. The
+ * client's `accepted` block only echoes the quote; it never chooses the chain.
+ */
+function quoteMismatch(
+  accepted: { network: string; scheme: string },
+  requirements: { network: string; scheme: string },
+): string | null {
+  if (accepted.network !== requirements.network) return "network_mismatch";
+  if (accepted.scheme !== requirements.scheme) return "scheme_mismatch";
+  return null;
+}
+
 function parseEnabledNetworkNames(enabledStr: string): string[] {
   return enabledStr
     .split(",")
@@ -524,6 +545,32 @@ function decodeSolanaPrivateKey(raw: string): Uint8Array {
   return bs58.decode(trimmed);
 }
 
+type SvmSigner = ReturnType<typeof toFacilitatorSvmSigner>;
+
+/**
+ * Wraps the SVM signer so a settle can tell whether its transaction reached
+ * the network: @x402/svm reports a failed confirmation with an empty
+ * transaction, which would otherwise read as "nothing was sent".
+ */
+function trackSolanaBroadcasts(signer: SvmSigner, broadcasts: Map<string, string>): SvmSigner {
+  const signedFrom = new Map<string, string>();
+  return {
+    ...signer,
+    signTransaction: async (transaction, feePayer, network) => {
+      const signed = await signer.signTransaction(transaction, feePayer, network);
+      signedFrom.set(signed, transaction);
+      return signed;
+    },
+    sendTransaction: async (transaction, network) => {
+      const original = signedFrom.get(transaction);
+      signedFrom.delete(transaction);
+      const signature = await signer.sendTransaction(transaction, network);
+      if (original) broadcasts.set(original, signature);
+      return signature;
+    },
+  };
+}
+
 // Service Implementation
 
 class X402FacilitatorService {
@@ -534,6 +581,9 @@ class X402FacilitatorService {
   private enabledNetworks: string[] = [];
   private enabledSolanaNetworks: string[] = [];
   private svmScheme: ExactSvmFacilitator | null = null;
+  private svmSigner: SvmSigner | null = null;
+  /** Payer-signed transaction → signature, for Solana transfers already broadcast. */
+  private solanaBroadcasts: Map<string, string> = new Map();
   private initialized = false;
   private initializing: Promise<void> | null = null;
 
@@ -561,6 +611,7 @@ class X402FacilitatorService {
     this.enabledNetworks = [];
     this.enabledSolanaNetworks = [];
     this.svmScheme = null;
+    this.svmSigner = null;
 
     const env = getCloudAwareEnv();
     const enabledStr =
@@ -717,8 +768,8 @@ class X402FacilitatorService {
    * Verify a payment payload against its requirements.
    *
    * Checks:
-   * 1. Network is supported
-   * 2. Scheme is "exact" (only supported scheme for now)
+   * 1. Network and scheme are the quoted ones, and the network is supported
+   * 2. Scheme is "exact" or "exact_permit"
    * 3. Payment amount matches requirements
    * 4. Signature is valid (recovers to the claimed payer)
    * 5. Deadline has not passed
@@ -737,7 +788,13 @@ class X402FacilitatorService {
     const { accepted, payload } = paymentPayload;
     const { signature } = payload;
 
-    if (isSolanaNetwork(accepted.network)) {
+    const mismatch = quoteMismatch(accepted, paymentRequirements);
+    if (mismatch) {
+      return { isValid: false, invalidReason: mismatch };
+    }
+    const network = paymentRequirements.network;
+
+    if (isSolanaNetwork(network)) {
       return this.verifySolanaPayment(paymentPayload, paymentRequirements);
     }
 
@@ -750,19 +807,15 @@ class X402FacilitatorService {
     }
 
     // 1. Check network
-    if (!this.enabledNetworks.includes(accepted.network)) {
+    if (!this.enabledNetworks.includes(network)) {
       return {
         isValid: false,
-        invalidReason: `network_not_supported: ${accepted.network}`,
+        invalidReason: `network_not_supported: ${network}`,
       };
     }
 
     // 2. Check scheme
-    if (
-      accepted.scheme !== "exact" &&
-      accepted.scheme !== "upto" &&
-      accepted.scheme !== "exact_permit"
-    ) {
+    if (accepted.scheme !== "exact" && accepted.scheme !== "exact_permit") {
       return {
         isValid: false,
         invalidReason: `scheme_not_supported: ${accepted.scheme}`,
@@ -795,15 +848,20 @@ class X402FacilitatorService {
     // 5. Validate deadline
     const now = Math.floor(Date.now() / 1000);
     // 6. Verify signature (recover signer from EIP-712 typed data)
-    const networkConfig = this.networks[accepted.network];
+    const networkConfig = this.networks[network];
     if (!networkConfig) {
       return { isValid: false, invalidReason: "network_config_missing" };
+    }
+    // The signature domain, balance read and settlement all use this network's
+    // USDC, so the quote must name that token.
+    if (networkConfig.usdcAddress.toLowerCase() !== paymentRequirements.asset.toLowerCase()) {
+      return { isValid: false, invalidReason: "asset_not_supported" };
     }
 
     let payerForError: string | undefined;
 
     try {
-      const client = this.clients.get(accepted.network);
+      const client = this.clients.get(network);
       if (!client) {
         return { isValid: false, invalidReason: "no_rpc_client" };
       }
@@ -846,7 +904,7 @@ class X402FacilitatorService {
           return { isValid: false, invalidReason: "fee_amount_too_low", payer: permit.buyer };
         }
 
-        const permitContract = getPaymentPermitAddress(accepted.network);
+        const permitContract = getPaymentPermitAddress(network);
         if (!permitContract) {
           return { isValid: false, invalidReason: "payment_permit_contract_missing" };
         }
@@ -883,8 +941,7 @@ class X402FacilitatorService {
       payerForError = authorization.from;
       // SECURITY: gate on the SIGNED amount actually transferred on-chain
       // (`authorization.value` — bound by the EIP-712 signature below and moved
-      // by settle(): transferWithAuthorization for "exact", permit+transferFrom
-      // for "upto"), not only the client-supplied `accepted.amount` checked at
+      // by settle() through transferWithAuthorization), not only the client-supplied `accepted.amount` checked at
       // step 3. `accepted.amount` is unsigned request metadata, so a value gate
       // that relies on it alone can be satisfied independently of what is
       // actually paid. Mirrors the exact_permit `payAmount` gate above.
@@ -911,49 +968,27 @@ class X402FacilitatorService {
         };
       }
 
-      // Scheme-aware signature verification
-      let isValidSig: boolean;
-      const domain = {
-        name: networkConfig.usdcDomainName,
-        version: "2",
-        chainId: BigInt(networkConfig.chainId),
-        verifyingContract: networkConfig.usdcAddress,
-      };
-
-      if (accepted.scheme === "upto") {
-        // ERC-2612 Permit
-        isValidSig = await client.verifyTypedData({
-          address: authorization.from as Hex,
-          domain,
-          types: PERMIT_TYPES,
-          primaryType: "Permit",
-          message: {
-            owner: authorization.from as Hex,
-            spender: authorization.to as Hex,
-            value: BigInt(authorization.value),
-            nonce: BigInt(authorization.nonce),
-            deadline: BigInt(authorization.validBefore),
-          },
-          signature: signature as Hex,
-        });
-      } else {
-        // EIP-3009 TransferWithAuthorization
-        isValidSig = await client.verifyTypedData({
-          address: authorization.from as Hex,
-          domain,
-          types: TRANSFER_WITH_AUTHORIZATION_TYPES,
-          primaryType: "TransferWithAuthorization",
-          message: {
-            from: authorization.from as Hex,
-            to: authorization.to as Hex,
-            value: BigInt(authorization.value),
-            validAfter: BigInt(authorization.validAfter ?? "0"),
-            validBefore: BigInt(authorization.validBefore),
-            nonce: authorization.nonce as Hex,
-          },
-          signature: signature as Hex,
-        });
-      }
+      // EIP-3009 TransferWithAuthorization
+      const isValidSig = await client.verifyTypedData({
+        address: authorization.from as Hex,
+        domain: {
+          name: networkConfig.usdcDomainName,
+          version: "2",
+          chainId: BigInt(networkConfig.chainId),
+          verifyingContract: networkConfig.usdcAddress,
+        },
+        types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+        primaryType: "TransferWithAuthorization",
+        message: {
+          from: authorization.from as Hex,
+          to: authorization.to as Hex,
+          value: BigInt(authorization.value),
+          validAfter: BigInt(authorization.validAfter ?? "0"),
+          validBefore: BigInt(authorization.validBefore),
+          nonce: authorization.nonce as Hex,
+        },
+        signature: signature as Hex,
+      });
 
       if (!isValidSig) {
         return {
@@ -976,7 +1011,7 @@ class X402FacilitatorService {
 
     // 7. Check USDC balance (optional but recommended)
     try {
-      const client = this.clients.get(accepted.network);
+      const client = this.clients.get(network);
       const balanceAddress = payload.authorization?.from ?? payload.paymentPermit?.buyer;
       if (client && balanceAddress) {
         const balance = await client.readContract({
@@ -1085,13 +1120,23 @@ class X402FacilitatorService {
   /**
    * Settle a verified payment on-chain.
    *
-   * Calls USDC's `transferWithAuthorization()` to execute the payment.
+   * Calls USDC's `transferWithAuthorization()` (or the PaymentPermit contract
+   * for "exact_permit") on the quoted network. Once the transfer is broadcast,
+   * any failure other than a reverted receipt is returned as `pending`: funds
+   * may have moved, so the caller must confirm the hash instead of retrying.
    */
   async settle(
     paymentPayload: PaymentPayload,
     paymentRequirements: PaymentRequirements,
+    options: SettleOptions = {},
   ): Promise<SettleResult> {
     await this.initialize();
+
+    const network = paymentRequirements.network;
+    const mismatch = quoteMismatch(paymentPayload.accepted, paymentRequirements);
+    if (mismatch) {
+      return { success: false, transaction: "", network, errorReason: mismatch };
+    }
 
     // SECURITY (#11574): settlement SPONSORS GAS from the platform wallet, so it
     // must only ever pay a PLATFORM-OWNED recipient. The unauthenticated
@@ -1102,26 +1147,20 @@ class X402FacilitatorService {
     // (their funds, their recipient, self-consistent payTo) at net-zero cost and
     // the platform sponsors the gas → gas-wallet drain. The topup + stored
     // payment-request paths resolve payTo from platform config, so they pass.
-    const settleNetwork = isSolanaNetwork(paymentRequirements.network)
-      ? paymentRequirements.network
-      : paymentPayload.accepted.network;
-    if (!this.isPlatformOwnedRecipient(settleNetwork, paymentRequirements.payTo)) {
+    if (!this.isPlatformOwnedRecipient(network, paymentRequirements.payTo)) {
       logger.warn("[x402-facilitator] Rejected settle to non-platform recipient", {
         payTo: paymentRequirements.payTo,
-        network: settleNetwork,
+        network,
       });
       return {
         success: false,
         transaction: "",
-        network: paymentRequirements.network,
+        network,
         errorReason: "payto_not_platform_owned",
       };
     }
 
-    if (
-      isSolanaNetwork(paymentRequirements.network) ||
-      isSolanaNetwork(paymentPayload.accepted.network)
-    ) {
+    if (isSolanaNetwork(network)) {
       return this.settleSolanaPayment(paymentPayload, paymentRequirements);
     }
 
@@ -1129,7 +1168,7 @@ class X402FacilitatorService {
       return {
         success: false,
         transaction: "",
-        network: paymentRequirements.network,
+        network,
         errorReason: "facilitator_not_configured",
       };
     }
@@ -1140,7 +1179,7 @@ class X402FacilitatorService {
       return {
         success: false,
         transaction: "",
-        network: paymentRequirements.network,
+        network,
         payer: verifyResult.payer,
         errorReason: verifyResult.invalidReason,
       };
@@ -1148,44 +1187,31 @@ class X402FacilitatorService {
 
     const { accepted, payload } = paymentPayload;
     const { signature } = payload;
+    const payer = payload.authorization?.from ?? payload.paymentPermit?.buyer;
     if (typeof signature !== "string") {
       return {
         success: false,
         transaction: "",
-        network: accepted.network,
-        payer: verifyResult.payer,
+        network,
+        payer,
         errorReason: "missing_signature",
       };
     }
-    const networkConfig = this.networks[accepted.network];
-
-    if (!networkConfig) {
+    const networkConfig = this.networks[network];
+    const settlementClient = this.clients.get(network);
+    if (!networkConfig || !settlementClient) {
       return {
         success: false,
         transaction: "",
-        network: accepted.network,
+        network,
         errorReason: "network_config_missing",
       };
     }
 
     // Execute on-chain settlement — scheme-aware
+    let txHash: Hex | undefined;
     try {
-      const { createWalletClient } = await import("viem");
-      const { http: viemHttp } = await import("viem");
-
-      const walletClient = createWalletClient({
-        account: this.account,
-        chain: networkConfig.chain,
-        transport: viemHttp(networkConfig.rpcUrl),
-      });
-
-      // Parse v, r, s from the compact signature when the token method needs it.
-      const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
-      const r = `0x${sigHex.slice(0, 64)}` as Hex;
-      const s = `0x${sigHex.slice(64, 128)}` as Hex;
-      const v = parseInt(sigHex.slice(128, 130), 16);
-
-      let txHash: Hex;
+      const walletClient = await this.createSettlementWalletClient(networkConfig);
 
       if (accepted.scheme === "exact_permit") {
         const permit = payload.paymentPermit;
@@ -1193,16 +1219,16 @@ class X402FacilitatorService {
           return {
             success: false,
             transaction: "",
-            network: accepted.network,
+            network,
             errorReason: "missing_payment_permit",
           };
         }
-        const permitContract = getPaymentPermitAddress(accepted.network);
+        const permitContract = getPaymentPermitAddress(network);
         if (!permitContract) {
           return {
             success: false,
             transaction: "",
-            network: accepted.network,
+            network,
             payer: permit.buyer,
             errorReason: "payment_permit_contract_missing",
           };
@@ -1214,82 +1240,22 @@ class X402FacilitatorService {
           functionName: "permitTransferFrom",
           args: [normalizePermitForTypedData(permit), permit.buyer as Hex, signature as Hex],
         });
-      } else if (accepted.scheme === "upto") {
-        const authorization = payload.authorization;
-        if (!authorization) {
-          return {
-            success: false,
-            transaction: "",
-            network: accepted.network,
-            errorReason: "missing_authorization",
-          };
-        }
-        // ERC-2612: permit() then transferFrom()
-        const permitAbi = [
-          {
-            inputs: [
-              { name: "owner", type: "address" },
-              { name: "spender", type: "address" },
-              { name: "value", type: "uint256" },
-              { name: "deadline", type: "uint256" },
-              { name: "v", type: "uint8" },
-              { name: "r", type: "bytes32" },
-              { name: "s", type: "bytes32" },
-            ],
-            name: "permit",
-            outputs: [],
-            stateMutability: "nonpayable",
-            type: "function",
-          },
-        ] as const;
-        const transferFromAbi = [
-          {
-            inputs: [
-              { name: "from", type: "address" },
-              { name: "to", type: "address" },
-              { name: "value", type: "uint256" },
-            ],
-            name: "transferFrom",
-            outputs: [{ name: "", type: "bool" }],
-            stateMutability: "nonpayable",
-            type: "function",
-          },
-        ] as const;
-
-        // Step 1: Submit permit
-        const permitTx = await walletClient.writeContract({
-          address: networkConfig.usdcAddress,
-          abi: permitAbi,
-          functionName: "permit",
-          args: [
-            authorization.from as Hex,
-            this.account.address,
-            BigInt(authorization.value),
-            BigInt(authorization.validBefore),
-            v,
-            r,
-            s,
-          ],
-        });
-        logger.info("[x402-facilitator] Permit TX submitted: " + permitTx);
-
-        // Step 2: Transfer
-        txHash = await walletClient.writeContract({
-          address: networkConfig.usdcAddress,
-          abi: transferFromAbi,
-          functionName: "transferFrom",
-          args: [authorization.from as Hex, authorization.to as Hex, BigInt(authorization.value)],
-        });
       } else {
         const authorization = payload.authorization;
         if (!authorization) {
           return {
             success: false,
             transaction: "",
-            network: accepted.network,
+            network,
             errorReason: "missing_authorization",
           };
         }
+        // Parse v, r, s from the compact signature for transferWithAuthorization.
+        const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
+        const r = `0x${sigHex.slice(0, 64)}` as Hex;
+        const s = `0x${sigHex.slice(64, 128)}` as Hex;
+        const v = parseInt(sigHex.slice(128, 130), 16);
+
         // EIP-3009: transferWithAuthorization()
         const transferWithAuthorizationAbi = [
           {
@@ -1329,15 +1295,22 @@ class X402FacilitatorService {
         });
       }
 
-      const settlementClient = this.clients.get(accepted.network);
-      if (!settlementClient) {
-        throw new Error("settlement_no_rpc_client");
+      if (options.onBroadcast) {
+        try {
+          await options.onBroadcast({ transaction: txHash, network, payer });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error(`[x402-facilitator] Recording broadcast settlement failed: ${msg}`, {
+            txHash,
+          });
+        }
       }
+
       await this.requireSuccessfulEvmSettlementReceipt({
         client: settlementClient,
         txHash,
-        tokenAddress: (payload.paymentPermit?.payment.payToken ?? networkConfig.usdcAddress) as Hex,
-        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        tokenAddress: networkConfig.usdcAddress,
+        payer,
         payTo:
           payload.authorization?.to ??
           payload.paymentPermit?.payment.payTo ??
@@ -1348,27 +1321,29 @@ class X402FacilitatorService {
 
       logger.info("[x402-facilitator] Settlement TX confirmed", {
         txHash,
-        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        payer,
         payTo: payload.authorization?.to ?? payload.paymentPermit?.payment.payTo,
         amount: payload.authorization?.value ?? payload.paymentPermit?.payment.payAmount,
-        network: accepted.network,
+        network,
       });
 
       return {
         success: true,
         transaction: txHash,
-        network: accepted.network,
-        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        network,
+        payer,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error(`[x402-facilitator] Settlement TX failed: ${msg}`);
+      logger.error(`[x402-facilitator] Settlement TX failed: ${msg}`, { txHash });
 
-      // Determine error reason
+      if (txHash) {
+        return this.broadcastSettlementFailure(txHash, network, payer, msg);
+      }
+
+      // Nothing was broadcast, so no funds moved and the payer may retry.
       let errorReason = "transaction_failed";
-      if (msg.startsWith("settlement_")) {
-        errorReason = msg;
-      } else if (msg.includes("insufficient")) {
+      if (msg.includes("insufficient")) {
         errorReason = "insufficient_gas";
       } else if (msg.includes("nonce") || msg.includes("already used")) {
         errorReason = "nonce_already_used";
@@ -1379,11 +1354,111 @@ class X402FacilitatorService {
       return {
         success: false,
         transaction: "",
-        network: accepted.network,
-        payer: payload.authorization?.from ?? payload.paymentPermit?.buyer,
+        network,
+        payer,
         errorReason,
       };
     }
+  }
+
+  /**
+   * Re-reads the outcome of a transfer that `settle` returned as pending.
+   * Success when the receipt shows the quoted amount reaching `payTo`;
+   * `settlement_reverted` (not pending) when the transaction reverted, so no
+   * funds moved; pending while the outcome is still unknown. With
+   * `authorizationNonce`, the receipt must also show USDC consuming that
+   * EIP-3009 authorization of `payer`, which binds the hash to one payment.
+   */
+  async confirmSettlement(params: {
+    transaction: string;
+    requirements: PaymentRequirements;
+    payer?: string;
+    authorizationNonce?: string;
+  }): Promise<SettleResult> {
+    await this.initialize();
+    const { transaction, requirements, payer } = params;
+    const network = requirements.network;
+
+    if (isSolanaNetwork(network)) {
+      if (!this.svmSigner) {
+        return this.broadcastSettlementFailure(
+          transaction,
+          network,
+          payer,
+          "settlement_unconfirmed",
+        );
+      }
+      try {
+        await this.svmSigner.confirmTransaction(transaction, network);
+        return { success: true, transaction, network, payer };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`[x402-facilitator] Solana settlement still unconfirmed: ${msg}`, {
+          transaction,
+        });
+        return this.broadcastSettlementFailure(
+          transaction,
+          network,
+          payer,
+          "settlement_unconfirmed",
+        );
+      }
+    }
+
+    const networkConfig = this.networks[network];
+    const client = this.clients.get(network);
+    if (!networkConfig || !client) {
+      return this.broadcastSettlementFailure(transaction, network, payer, "settlement_unconfirmed");
+    }
+    try {
+      await this.requireSuccessfulEvmSettlementReceipt({
+        client,
+        txHash: transaction as Hex,
+        tokenAddress: networkConfig.usdcAddress,
+        payer,
+        payTo: requirements.payTo,
+        minimumAmount: requirements.amount,
+        timeoutMs: 10_000,
+        authorizationNonce: params.authorizationNonce,
+      });
+      return { success: true, transaction, network, payer };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[x402-facilitator] Settlement confirmation failed: ${msg}`, { transaction });
+      return this.broadcastSettlementFailure(transaction, network, payer, msg);
+    }
+  }
+
+  /** Classifies a failure after `transaction` was broadcast; see settle(). */
+  private broadcastSettlementFailure(
+    transaction: string,
+    network: string,
+    payer: string | undefined,
+    message: string,
+  ): SettleResult {
+    if (message === "settlement_reverted") {
+      return { success: false, transaction, network, payer, errorReason: "settlement_reverted" };
+    }
+    return {
+      success: false,
+      pending: true,
+      transaction,
+      network,
+      payer,
+      errorReason:
+        message === "settlement_amount_too_low" || message === "settlement_authorization_not_used"
+          ? message
+          : "settlement_unconfirmed",
+    };
+  }
+
+  private async createSettlementWalletClient(networkConfig: NetworkConfig) {
+    const { createWalletClient, http: viemHttp } = await import("viem");
+    return createWalletClient({
+      account: this.account as PrivateKeyAccount,
+      chain: networkConfig.chain,
+      transport: viemHttp(networkConfig.rpcUrl),
+    });
   }
 
   private async requireSuccessfulEvmSettlementReceipt(params: {
@@ -1394,6 +1469,7 @@ class X402FacilitatorService {
     payTo: string;
     minimumAmount: string;
     timeoutMs: number;
+    authorizationNonce?: string;
   }): Promise<void> {
     const receipt = await params.client.waitForTransactionReceipt({
       hash: params.txHash,
@@ -1429,6 +1505,24 @@ class X402FacilitatorService {
     if (received < BigInt(params.minimumAmount)) {
       throw new Error("settlement_amount_too_low");
     }
+
+    if (params.authorizationNonce !== undefined) {
+      const nonce = params.authorizationNonce.toLowerCase();
+      const used = parseEventLogs({
+        abi: [AUTHORIZATION_USED_EVENT],
+        logs: receipt.logs,
+        strict: false,
+      }).some(
+        (event) =>
+          event.address.toLowerCase() === tokenAddress &&
+          !!payer &&
+          event.args.authorizer?.toLowerCase() === payer &&
+          event.args.nonce?.toLowerCase() === nonce,
+      );
+      if (!used) {
+        throw new Error("settlement_authorization_not_used");
+      }
+    }
   }
 
   private async settleSolanaPayment(
@@ -1453,11 +1547,29 @@ class X402FacilitatorService {
       };
     }
 
+    const payerTransaction = paymentPayload.payload.transaction;
+    const broadcastSignature = () =>
+      payerTransaction ? this.solanaBroadcasts.get(payerTransaction) : undefined;
     try {
       const result = await this.svmScheme.settle(
         paymentPayload as Parameters<ExactSvmFacilitator["settle"]>[0],
         paymentRequirements as Parameters<ExactSvmFacilitator["settle"]>[1],
       );
+      const broadcast = result.transaction || broadcastSignature();
+      if (!result.success && broadcast) {
+        // Sent but not confirmed (or the transfer check failed): funds may
+        // have moved, so the caller keeps the payment until it is confirmed.
+        logger.warn("[x402-facilitator] Solana settlement unconfirmed after broadcast", {
+          transaction: broadcast,
+          errorReason: result.errorReason,
+        });
+        return this.broadcastSettlementFailure(
+          broadcast,
+          result.network,
+          result.payer || undefined,
+          "settlement_unconfirmed",
+        );
+      }
       if (!result.success) {
         return {
           success: false,
@@ -1485,6 +1597,15 @@ class X402FacilitatorService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[x402-facilitator] Solana settlement failed: ${msg}`);
+      const broadcast = broadcastSignature();
+      if (broadcast) {
+        return this.broadcastSettlementFailure(
+          broadcast,
+          paymentRequirements.network,
+          undefined,
+          "settlement_unconfirmed",
+        );
+      }
       return {
         success: false,
         transaction: "",
@@ -1493,6 +1614,8 @@ class X402FacilitatorService {
         // key-bearing RPC URL and reaches unauthenticated callers verbatim.
         errorReason: "solana_settlement_error",
       };
+    } finally {
+      if (payerTransaction) this.solanaBroadcasts.delete(payerTransaction);
     }
   }
 
@@ -1508,7 +1631,11 @@ class X402FacilitatorService {
     try {
       const secretKeyBytes = decodeSolanaPrivateKey(solanaKey);
       const keypair = await createKeyPairSignerFromBytes(secretKeyBytes);
-      const signer = toFacilitatorSvmSigner(keypair, buildSolanaFacilitatorRpcConfig());
+      const signer = trackSolanaBroadcasts(
+        toFacilitatorSvmSigner(keypair, buildSolanaFacilitatorRpcConfig()),
+        this.solanaBroadcasts,
+      );
+      this.svmSigner = signer;
       this.svmScheme = new ExactSvmFacilitator(signer);
 
       for (const [caip2, config] of Object.entries(this.solanaNetworks)) {
@@ -1522,6 +1649,7 @@ class X402FacilitatorService {
       });
     } catch (err) {
       this.svmScheme = null;
+      this.svmSigner = null;
       this.enabledSolanaNetworks = [];
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[x402-facilitator] Failed to initialize Solana signer: ${msg}`);

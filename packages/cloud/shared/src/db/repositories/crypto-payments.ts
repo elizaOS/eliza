@@ -15,11 +15,15 @@ export type { CryptoPayment, NewCryptoPayment };
 
 const SETTLE_CLAIM_KEY = "settleClaimedUntil";
 export const SETTLEMENT_PENDING_KEY = "settlementPending";
+/** A broadcast transfer whose outcome is not known yet: { transaction, network, payer, errorReason }. */
+export const SETTLEMENT_BROADCAST_KEY = "settlementBroadcast";
+const FAILURE_NOTIFIED_KEY = "failureNotifiedAt";
 
 function settleClaimInactive() {
   // A deadline is not proof that a broadcast transfer failed. Retain the
-  // claim until a definitive rejection releases it or settlement confirms it.
-  return sql`${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NULL`;
+  // claim until a definitive rejection releases it or settlement confirms it,
+  // and never while a broadcast transfer is still unconfirmed.
+  return sql`${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NULL AND ${cryptoPayments.metadata}->${SETTLEMENT_BROADCAST_KEY}::text IS NULL`;
 }
 
 /**
@@ -191,8 +195,8 @@ export class CryptoPaymentsRepository {
   }
 
   /**
-   * Records a facilitator settlement in one statement: confirms the row,
-   * releases the settle claim, merges `metadataPatch`, and flags the
+   * Records a facilitator settlement in one statement: confirms the pending
+   * row, releases the settle claim, merges `metadataPatch`, and flags the
    * post-settlement work as pending until `clearSettlementPending` runs.
    */
   async confirmSettlement(
@@ -210,9 +214,10 @@ export class CryptoPaymentsRepository {
         received_amount: params.receivedAmount,
         confirmed_at: now,
         updated_at: now,
-        metadata: sql`(coalesce(${cryptoPayments.metadata}, '{}'::jsonb) - ${SETTLE_CLAIM_KEY}::text) || ${JSON.stringify(patch)}::jsonb`,
+        metadata: sql`(coalesce(${cryptoPayments.metadata}, '{}'::jsonb) - ${SETTLE_CLAIM_KEY}::text - ${SETTLEMENT_BROADCAST_KEY}::text) || ${JSON.stringify(patch)}::jsonb`,
       })
-      .where(eq(cryptoPayments.id, id))
+      // Only the first confirmation flags the post-settlement work.
+      .where(and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending")))
       .returning();
     return payment;
   }
@@ -239,14 +244,63 @@ export class CryptoPaymentsRepository {
     return payment;
   }
 
+  /**
+   * Records a broadcast transfer on a still-pending, claimed payment so the
+   * claim is held until that transfer is confirmed or seen to revert.
+   */
+  async recordSettlementBroadcast(
+    id: string,
+    broadcast: { transaction: string; network: string; payer?: string; errorReason?: string },
+  ): Promise<CryptoPayment | undefined> {
+    const [payment] = await dbWrite
+      .update(cryptoPayments)
+      .set({
+        transaction_hash: canonicalizeCryptoTransactionHash(broadcast.transaction),
+        metadata: sql`coalesce(${cryptoPayments.metadata}, '{}'::jsonb) || jsonb_build_object(${SETTLEMENT_BROADCAST_KEY}::text, ${JSON.stringify(broadcast)}::jsonb)`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(cryptoPayments.id, id),
+          eq(cryptoPayments.status, "pending"),
+          sql`${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NOT NULL`,
+        ),
+      )
+      .returning();
+    return payment;
+  }
+
+  /** Releases the settle claim and forgets a broadcast transfer that reverted. */
   async releaseSettlementClaim(id: string): Promise<void> {
     await dbWrite
       .update(cryptoPayments)
       .set({
-        metadata: sql`${cryptoPayments.metadata} - ${SETTLE_CLAIM_KEY}::text`,
+        transaction_hash: null,
+        metadata: sql`${cryptoPayments.metadata} - ${SETTLE_CLAIM_KEY}::text - ${SETTLEMENT_BROADCAST_KEY}::text`,
         updated_at: new Date(),
       })
       .where(and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending")));
+  }
+
+  /**
+   * Marks the failure notification as sent; returns undefined when it already
+   * was, so a terminal failure is announced once.
+   */
+  async markFailureNotified(id: string): Promise<CryptoPayment | undefined> {
+    const [payment] = await dbWrite
+      .update(cryptoPayments)
+      .set({
+        metadata: sql`coalesce(${cryptoPayments.metadata}, '{}'::jsonb) || jsonb_build_object(${FAILURE_NOTIFIED_KEY}::text, ${new Date().toISOString()}::text)`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(cryptoPayments.id, id),
+          sql`${cryptoPayments.metadata}->>${FAILURE_NOTIFIED_KEY}::text IS NULL`,
+        ),
+      )
+      .returning();
+    return payment;
   }
 
   async markAsFailed(id: string, reason?: string): Promise<CryptoPayment | undefined> {

@@ -4,6 +4,7 @@
  * Used by /api/v1/topup/10, /api/v1/topup/50, and /api/v1/topup/100 so all tiers behave consistently.
  */
 import { isAddress } from "viem";
+import { cryptoPaymentsRepository } from "../../db/repositories/crypto-payments";
 import { verifyWalletSignature } from "../auth/wallet-auth";
 import { getStripeProductMessages } from "../stripe-products/messages";
 import type { UserWithOrganization } from "../types";
@@ -329,6 +330,83 @@ function paymentRequiredResponse(
   });
 }
 
+/**
+ * The transfer was broadcast but not confirmed. Nothing is credited yet; the
+ * client retries with the same X-PAYMENT plus X-PAYMENT-TRANSACTION.
+ */
+function settlementPendingResponse(settlement: {
+  transaction: string;
+  network: string;
+  payer?: string;
+}): Response {
+  return Response.json(
+    {
+      success: false,
+      pending: true,
+      error: "Payment was sent and is waiting for network confirmation. Do not pay again.",
+      code: "settlement_pending",
+      transaction: settlement.transaction,
+      network: settlement.network,
+      payer: settlement.payer,
+    },
+    {
+      status: 202,
+      headers: {
+        "X-PAYMENT-STATUS": "pending",
+        "Access-Control-Expose-Headers": "X-PAYMENT-STATUS",
+      },
+    },
+  );
+}
+
+/**
+ * Confirms a top-up transfer that an earlier call broadcast. The receipt must
+ * show USDC consuming this exact authorization, and only the payer's own
+ * wallet is credited: the signed authorization is public once broadcast, so
+ * anyone could otherwise replay it toward another wallet. The credit is keyed
+ * on the transaction hash, so a confirmed transfer is credited once, and a
+ * hash that settled a payment request is never reused for a top-up.
+ */
+async function confirmPendingTopup(params: {
+  transaction: string;
+  paymentPayload: PaymentPayload;
+  requirements: PaymentRequirements;
+  walletAddress?: string;
+}): Promise<Awaited<ReturnType<typeof x402FacilitatorService.settle>> | Response> {
+  const { transaction, paymentPayload, requirements, walletAddress } = params;
+  const authorization = paymentPayload.payload?.authorization;
+  const reject = (error: string, code: string, status: number) =>
+    Response.json({ success: false, error, code }, { status });
+  if (!/^0x[0-9a-fA-F]{64}$/.test(transaction)) {
+    return reject("X-PAYMENT-TRANSACTION must be a transaction hash", "invalid_transaction", 400);
+  }
+  if (requirements.scheme !== "exact" || !authorization?.from || !authorization.nonce) {
+    return reject(
+      "This payment cannot be confirmed by transaction hash",
+      "confirmation_not_supported",
+      400,
+    );
+  }
+  if (!walletAddress || walletAddress.toLowerCase() !== authorization.from.toLowerCase()) {
+    return reject(
+      "A pending payment can only be credited to the wallet that paid it",
+      "payer_wallet_mismatch",
+      403,
+    );
+  }
+  if (await cryptoPaymentsRepository.findByTransactionHash(transaction)) {
+    return reject("This transaction already paid for something else", "transaction_used", 409);
+  }
+  return x402FacilitatorService.confirmSettlement({
+    transaction,
+    requirements: requirements as Parameters<
+      typeof x402FacilitatorService.confirmSettlement
+    >[0]["requirements"],
+    payer: authorization.from,
+    authorizationNonce: authorization.nonce,
+  });
+}
+
 export function createTopupHandler(options: CreateTopupHandlerOptions) {
   const { amount, getSourceId } = options;
 
@@ -397,10 +475,26 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       const msg = e instanceof Error ? e.message : String(e);
       return Response.json({ error: msg }, { status: 401 });
     }
-    const settlement = await x402FacilitatorService.settle(
-      paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
-      requirements as Parameters<typeof x402FacilitatorService.settle>[1],
-    );
+    const pendingTransaction = req.headers.get("X-PAYMENT-TRANSACTION")?.trim();
+    let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
+    if (pendingTransaction) {
+      const confirmation = await confirmPendingTopup({
+        transaction: pendingTransaction,
+        paymentPayload,
+        requirements,
+        walletAddress: signedRecipient?.walletAddress ?? body.walletAddress,
+      });
+      if (confirmation instanceof Response) return confirmation;
+      settlement = confirmation;
+    } else {
+      settlement = await x402FacilitatorService.settle(
+        paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
+        requirements as Parameters<typeof x402FacilitatorService.settle>[1],
+      );
+    }
+    if (settlement.pending && settlement.errorReason === "settlement_unconfirmed") {
+      return settlementPendingResponse(settlement);
+    }
     if (!settlement.success) {
       return Response.json(
         {
