@@ -1,7 +1,8 @@
 /**
  * A reply that names an ordinary tag must keep the rest of the sentence.
- * `<HTML>`, `<JSON>`, `<HTTP>`, and `<HEAD>` are prose. An underscore tool
- * tag, and a bare tag whose body is a JSON object, stay tool markup.
+ * `<HTML>`, `<JSON>`, `<HTTP>`, and `<HEAD>` are prose when nothing closes
+ * them. A closed bare tag with content, an underscore tool tag, and a bare
+ * tag whose body starts with `{` or a child tag stay tool markup.
  */
 import { expect, it } from "vitest";
 import {
@@ -42,4 +43,29 @@ it("still removes an underscore tool tag and a bare tag with a JSON body", () =>
 	const unclosed = 'Saving <NOTES_CREATE>{"title":"Plan"} and then more.';
 	expect(stripJsonStructuralJunkReply(unclosed)).toBe("Saving");
 	expect(containsToolCallShapedMarkup(unclosed)).toBe(true);
+});
+
+it("treats a closed single-word action tag as a tool call", () => {
+	const samples = [
+		{
+			input: "Deleting. <CALENDAR><action>delete</action></CALENDAR>",
+			stripped: "Deleting.",
+		},
+		{
+			input: "Saving note. <SEARCH><query>x</query></SEARCH>",
+			stripped: "Saving note.",
+		},
+		{
+			input: "Running <SHELL>ls -la</SHELL> now.",
+			stripped: "Running  now.",
+		},
+		{
+			input: "<REPLY>hello there</REPLY>",
+			stripped: "",
+		},
+	];
+	for (const sample of samples) {
+		expect(containsToolCallShapedMarkup(sample.input)).toBe(true);
+		expect(stripJsonStructuralJunkReply(sample.input)).toBe(sample.stripped);
+	}
 });
