@@ -345,6 +345,47 @@
       "remainingWork": [
         "Build the finite transition model and connect adversarial implementation tests."
       ]
+    },
+    {
+      "id": "evm-sweep-nonce-and-deletion",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
+        "packages/cloud/shared/src/lib/services/evm-sweep-authority.ts",
+        "packages/cloud/shared/src/lib/services/account-deletion-crypto-sweeps.ts",
+        "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql",
+        "packages/cloud/shared/src/lib/services/evm-sweep-deletion.postgres.integration.test.ts"
+      ],
+      "states": [
+        "pending",
+        "prepared",
+        "submitted",
+        "awaiting_receipt",
+        "read_only_recovery",
+        "confirmed",
+        "erased"
+      ],
+      "invariants": [
+        "Each wallet/network has one outstanding signed nonce authority.",
+        "A pending transaction or missing response cannot release signed authority.",
+        "An account cascade cannot erase an unconfirmed EVM sweep.",
+        "Terminal recovery cannot issue a new signed transaction.",
+        "Receipt publication and deletion acquire payment before outbox so the two transactions cannot form a reverse row-lock cycle."
+      ],
+      "assumptions": [
+        "Two outboxes, one wallet/network, chain nonces zero through two.",
+        "One matching successful receipt establishes nonce consumption; reorgs and provider dishonesty are excluded.",
+        "The lock model covers one payment, one outbox and two transactions. It excludes unrelated lock orders and makes no scheduling fairness claim."
+      ],
+      "models": ["evm_sweep_nonce.qnt", "evm_sweep_receipt_locks.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Prove implementation refinement and composition with payment crediting and full account deletion.",
+        "Model Solana replacement and deletion separately.",
+        "Resolve reverted EVM sweeps and indefinite unavailable provider receipts without inventing success.",
+        "Profile and bound historical legacy-identity migration under a large mixed-wallet backlog."
+      ]
     }
   ]
 }

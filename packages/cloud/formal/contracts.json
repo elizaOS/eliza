@@ -330,6 +330,40 @@
       "maxSteps": 20
     },
     {
+      "id": "evm-sweep-nonce",
+      "file": "evm_sweep_nonce.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
+        "packages/cloud/shared/src/lib/services/evm-sweep-authority.ts",
+        "packages/cloud/shared/src/lib/services/account-deletion-crypto-sweeps.ts",
+        "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One original wallet/network, two durable outboxes, chain nonces zero through two, one unrelated pending transaction and one configured-wallet rotation. Signed bytes and transaction identity remain immutable; activity from the replacement wallet is outside this model.",
+        "Signing and persistence commit atomically under the wallet lock. One matching successful chain receipt is trusted as nonce consumption; arbitrary reorgs, RPC dishonesty and cryptography are excluded.",
+        "Account deletion preserves unconfirmed signed authority. Terminal recovery observes the original receipt without another send. The model does not establish TypeScript/SQL refinement, safe retry of reverted sweeps, or liveness.",
+        "A matching original receipt remains recoverable after configuration rotation. Any new send still requires current-wallet authorization; disabled networks and unbounded external configuration changes are not modeled."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "evm-sweep-receipt-locks",
+      "file": "evm_sweep_receipt_locks.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
+        "packages/cloud/shared/src/lib/services/evm-sweep-deletion.postgres.integration.test.ts",
+        "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two PostgreSQL transactions, one payment and one sweep outbox. Receipt publication and deletion take the payment lock before its child outbox lock.",
+        "Deletion retains unconfirmed signed authority. Transaction completion or rollback releases both row locks. A matching receipt is already available; provider receipt validity is covered by the nonce model.",
+        "The model checks this finite lock order and includes the reversed-order deadlock witness. It does not establish fairness, database implementation refinement or freedom from unrelated lock cycles."
+      ],
+      "maxSteps": 20
+    },
+    {
       "id": "speech-host-cutover",
       "file": "speech_host_cutover.qnt",
       "sources": [
