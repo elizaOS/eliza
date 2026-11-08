@@ -26,6 +26,8 @@ const result = spawnSync(
     "test",
     "--isolate",
     "--conditions=eliza-source",
+    // Match the owning package's run-unit-isolated.mjs deadline.
+    "--timeout=60000",
     "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
     "--reporter=junit",
     `--reporter-outfile=${report}`,
