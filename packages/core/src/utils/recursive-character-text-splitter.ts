@@ -1,18 +1,34 @@
 /**
  * Character-count text chunker: recursively splits text on separators from
- * coarsest to finest (paragraph, line, space, Unicode code point) and re-merges
+ * coarsest to finest (paragraph, line, space, grapheme cluster) and re-merges
  * adjacent pieces up to chunkSize, carrying chunkOverlap between successive
- * chunks. The finest grain is a code point, not a UTF-16 unit, so an astral
- * character cannot be emitted as a lone surrogate. Incoming text is passed
- * through {@link toWellFormedUnicode} so pre-existing lone surrogates become
- * U+FFFD before chunking; every emitted chunk is well-formed. The length
- * function may be async; chunkOverlap must be < chunkSize or the constructor
- * throws. Pieces that still exceed chunkSize are emitted and logged as a
- * warning.
+ * chunks. The finest grain is a grapheme cluster, not a UTF-16 unit, so an
+ * astral character cannot be emitted as a lone surrogate and a ZWJ emoji
+ * sequence, a flag, a combining mark, or a skin-tone modifier cannot be cut
+ * across chunks. Incoming text is passed through {@link toWellFormedUnicode}
+ * so pre-existing lone surrogates become U+FFFD before chunking; every emitted
+ * chunk is well-formed. The length function may be async; chunkOverlap must be
+ * < chunkSize or the constructor throws. Pieces that still exceed chunkSize are
+ * emitted and logged as a warning.
  */
 
 import logger from "../logger";
 import { toWellFormedUnicode } from "./unicode";
+
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+	Intl as unknown as {
+		Segmenter: new (
+			locale: string,
+			options: { granularity: "grapheme" },
+		) => { segment(text: string): Iterable<{ segment: string }> };
+	}
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+	granularity: "grapheme",
+});
 
 /** Parameters for {@link RecursiveCharacterTextSplitter}. */
 export interface RecursiveCharacterTextSplitterParams {
@@ -60,10 +76,14 @@ export class RecursiveCharacterTextSplitter {
 				splits = text.split(separator);
 			}
 		} else {
-			// Finest grain is a Unicode code point. text.split("") yields UTF-16
-			// units and cuts astral-plane characters, leaving lone surrogates
-			// that JSON.stringify as \uD8xx and that embed APIs reject.
-			splits = Array.from(text);
+			// Finest grain is a grapheme cluster. Splitting by code point
+			// (Array.from) cuts ZWJ emoji sequences, flags, combining marks,
+			// and skin-tone modifiers across chunks, so the two halves render
+			// as different characters in each chunk.
+			splits = Array.from(
+				graphemeSegmenter.segment(text),
+				({ segment }) => segment,
+			);
 		}
 		return splits.filter((s) => s !== "");
 	}
