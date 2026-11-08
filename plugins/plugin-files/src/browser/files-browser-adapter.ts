@@ -1171,7 +1171,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
               at.category)
             : at.path
               ? baseName(at.path)
-              : volumeName;
+              : at.volume ? volumeName : "All files";
       let items: Record<string, unknown>[] = [];
       if (at.kind === "trash") {
         items = trashItems.map((item) => ({
