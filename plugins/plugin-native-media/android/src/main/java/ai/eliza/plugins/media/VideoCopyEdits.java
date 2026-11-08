@@ -628,7 +628,11 @@ public final class VideoCopyEdits {
   }
   private void metadata(Session session) throws Exception {
     try (MediaMetadataRetriever media = new MediaMetadataRetriever()) {
-      media.setDataSource(session.input.getAbsolutePath());
+      try {
+        media.setDataSource(session.input.getAbsolutePath());
+      } catch (RuntimeException unreadable) { // Its IllegalArgumentException text is framework text.
+        throw new IOException("This video cannot be edited.");
+      }
       session.durationMs = positive(media, MediaMetadataRetriever.METADATA_KEY_DURATION);
       session.width = (int) positive(media, MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
       session.height = (int) positive(media, MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
