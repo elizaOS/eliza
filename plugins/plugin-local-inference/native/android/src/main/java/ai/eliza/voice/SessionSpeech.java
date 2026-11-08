@@ -27,6 +27,8 @@ public final class SessionSpeech implements LocalSpeechEngine.Backend {
  }
  public InferenceSession session(){return inference;}
  @Override public void prepare()throws IOException{client.prepareSpeech();}
+ @Override public void preparePlayback()throws IOException{client.prepareVoice(null);}
+ @Override public void prepareRecognition()throws IOException{client.prepareRecognition();}
  public String transcribe(float[] samples)throws IOException{
   if(samples==null||samples.length<1600||samples.length>16000*60)throw new IllegalArgumentException("Expected 0.1 to 60 seconds of audio");
   double energy=0;for(float sample:samples){if(!Float.isFinite(sample)||Math.abs(sample)>1)throw new IllegalArgumentException("Invalid PCM");energy+=(double)sample*sample;}

@@ -78,12 +78,21 @@ public final class LocalVoiceRecording {
   if(!file.isFile()||file.length()==0||file.length()>MAX_BYTES){cancel();throw new IllegalStateException("Recording is unavailable or exceeds the size limit");}
   JSONObject result=new JSONObject();put(result,"status","recorded");put(result,"recordingId",id);put(result,"durationMs",durationMs);return result;
  }
- /** Stops at a limit, an interruption (call, pause) or an error and reports the outcome as an event. */
- public synchronized void stopAutomatically(){
+ /** Stops at a duration or size limit and reports the outcome as an event. */
+ public synchronized void stopAutomatically(){stopAutomatically(null);}
+ /**
+  * Stops and reports the outcome as an event. {@code interrupted} names an interruption (for example
+  * "call-active" or "paused"); the clip is kept and the event carries it as {@code interrupted}, so a
+  * conversation can discard the fragment while a note keeps it.
+  */
+ public synchronized void stopAutomatically(String interrupted){
   if(recorder==null)return;
   final String ownedId=id;
-  try{events.accept(stop());}
-  catch(RuntimeException error){JSONObject result=new JSONObject();put(result,"recordingId",ownedId);put(result,"status","failed");put(result,"message","Recording could not be saved");events.accept(result);}
+  JSONObject result;
+  try{result=stop();}
+  catch(RuntimeException error){result=new JSONObject();put(result,"recordingId",ownedId);put(result,"status","failed");put(result,"message","Recording could not be saved");}
+  if(interrupted!=null)put(result,"interrupted",interrupted);
+  events.accept(result);
  }
  /** The finished draft for {@code recordingId}, or null while recording or after it changed. */
  public synchronized File selected(String recordingId){

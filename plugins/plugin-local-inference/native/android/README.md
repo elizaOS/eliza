@@ -99,7 +99,11 @@ start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`
 `liveCaptureTranscript` events, `localSpeechStatus`/`releaseLocalSpeech`, `nativeVoiceTiming`,
 `markVoiceTurn` and `clearNativeVoiceTiming`. A live capture start with `reopen` (the voice
 assistant's automatic reopen after a busy hold) never prompts: without microphone permission it
-rejects with `permission`. Ports a product overrides:
+rejects with `permission`. `localSpeechStatus` resolves `ready` (recognition and speech output
+both load), `playback` (speech output loads) and, when not ready, a `reason`: `bundle-absent`,
+`storage` or `engine-load-failed`; it rejects only when cancelled. A `recordingStopped` event from a
+call or an activity pause keeps the clip and carries `interrupted: "call-active"` or `"paused"`.
+Ports a product overrides:
 
 - `residentRoute(ownerId)` / `residentTransport()`: the owner-bound transport that carries VAD
   segments to the resident agent of the owner who started a capture (`nativeAsr`). The default

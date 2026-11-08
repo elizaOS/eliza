@@ -20,6 +20,10 @@ public final class LocalSpeechEngine implements AutoCloseable {
   void close();
   /** Explicit readiness checks must initialize their native models before reporting ready. */
   default void prepare()throws Exception{}
+  /** Loads speech output alone, for a readiness check by part; defaults to {@link #prepare}. */
+  default void preparePlayback()throws Exception{prepare();}
+  /** Loads recognition alone, for a readiness check by part; defaults to {@link #prepare}. */
+  default void prepareRecognition()throws Exception{prepare();}
   /** Native streaming synthesis is available; otherwise speech is synthesized whole. */
   default boolean supportsStreaming(){return false;}
   /** Whether this backend has loaded speech output; lazy session probes do not load it. */

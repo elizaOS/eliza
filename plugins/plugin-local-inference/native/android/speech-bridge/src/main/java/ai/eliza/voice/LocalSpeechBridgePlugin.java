@@ -147,7 +147,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(stale!=null)for(File file:stale)file.delete();
  }
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
- @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
+ @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically("paused");gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
   destroyed=true;gate.destroy();main.post(()->{if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
   if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);
@@ -264,11 +264,18 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private static boolean keepsEngine(SpeechRequestGate.Request request){return request.keepEngine&&request.cancelled;}
  @PluginMethod public void releaseLocalSpeech(PluginCall call){gate.cancelAll();main.post(this::clearPlayback);queueLocalRelease();call.resolve();}
  // Local CPU execution has no dependency on an account, URL, or host process. The status resolves
- // only when the native pair loads, every bundle file verifies and a context opens. A build without
- // the voice bundle answers "unavailable" without loading any native library.
+ // {ready, playback, execution, provider, reason}: ready when recognition and speech output both
+ // load, playback when speech output loads, and a stable reason otherwise (see
+ // LocalSpeechReadiness). A build without the voice bundle answers bundle-absent without loading any
+ // native library. Only cancellation rejects.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
-  localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();engine.prepare();return null;});
-  if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","fused-paradee-asr");request.result=out;
+  java.util.function.BooleanSupplier cancelled=()->request.cancelled||destroyed;
+  LocalSpeechReadiness status;
+  try{status=LocalSpeechReadiness.check(()->VoiceBundleAssets.isPackaged(getContext()),()->VoiceAssets.sharedInference(getContext()),
+   ()->localEngine.use(engine->{engine.preparePlayback();return null;}),()->localEngine.use(engine->{engine.prepareRecognition();return null;}),cancelled);}
+  catch(java.util.concurrent.CancellationException ended){throw new IOException("Voice cancelled");}
+  if(!status.playback)localEngine.release();
+  JSObject out=new JSObject();out.put("ready",status.ready);out.put("playback",status.playback);out.put("execution","device");out.put("provider","fused-paradee-asr");if(status.reason!=null)out.put("reason",status.reason);request.result=out;
  });}
  @PluginMethod public void transcribeLocalRecording(PluginCall call){submitLocal(call,request->{
   File file=capture.selected(required(call.getString("recordingId"),256));if(file==null)throw new IOException();byte[] wav=RecordingPcm.decode(file,()->request.cancelled||destroyed);float[] samples;
@@ -409,7 +416,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private void callStarted(){if(destroyed)return;stopSpeechFor(SpeechAudioFocusPolicy.CALL_ACTIVE);stopCaptureForCall();}
  private void stopCaptureForCall(){
   live.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
-  if(capture!=null)capture.stopAutomatically();
+  if(capture!=null)capture.stopAutomatically(SpeechAudioFocusPolicy.CALL_ACTIVE);
  }
  private void clearPlayback(){clearPlayback(true);}
  private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
