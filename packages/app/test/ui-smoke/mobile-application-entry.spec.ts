@@ -26,14 +26,15 @@ async function fixture(page: Page, receiptLinks = false) {
       Reflect.set(window, "u1NativeLaunches", 0);
       const storage = new Map(Object.entries(localStorage));
       const receiptProbe = {
-        navigations: 0,
+        requests: 0,
+        deliveries: 0,
         acknowledgements: [] as Array<{
           id: string;
-          navigations: number;
+          requests: number;
           cleared: boolean;
         }>,
         beforeReady: null as null | {
-          navigations: number;
+          requests: number;
           acknowledgements: number;
         },
       };
@@ -41,13 +42,21 @@ async function fixture(page: Page, receiptLinks = false) {
       let pendingReceipt: string | null = "B";
       if (receiptLinks) {
         const dispatch = window.dispatchEvent.bind(window);
+        const seenRequests = new WeakSet<object>();
         window.dispatchEvent = ((event: Event) => {
           if (
             event.type === "eliza:navigate:view" &&
             (event as CustomEvent<{ viewId?: string }>).detail?.viewId ===
               "notes"
           ) {
-            receiptProbe.navigations += 1;
+            receiptProbe.deliveries += 1;
+            const detail = (event as CustomEvent<object>).detail;
+            // The retained FIFO can emit one request several times before a
+            // destination claims it. Count its identity once across replays.
+            if (!seenRequests.has(detail)) {
+              seenRequests.add(detail);
+              receiptProbe.requests += 1;
+            }
           }
           return dispatch(event);
         }) as typeof window.dispatchEvent;
@@ -109,7 +118,7 @@ async function fixture(page: Page, receiptLinks = false) {
             callback({ url: "elizaos://notes", receiptId: "A" });
             callback({ url: "elizaos://notes", receiptId: "B" });
             receiptProbe.beforeReady = {
-              navigations: receiptProbe.navigations,
+              requests: receiptProbe.requests,
               acknowledgements: receiptProbe.acknowledgements.length,
             };
           }
@@ -186,7 +195,7 @@ async function fixture(page: Page, receiptLinks = false) {
                 options.receiptId === pendingReceipt;
               receiptProbe.acknowledgements.push({
                 id: options.receiptId ?? "",
-                navigations: receiptProbe.navigations,
+                requests: receiptProbe.requests,
                 cleared,
               });
               if (cleared) pendingReceipt = null;
@@ -942,22 +951,22 @@ for (const device of [
         .poll(() =>
           page.evaluate(() => {
             const state = Reflect.get(window, "u1ReceiptProbe") as {
-              beforeReady: { navigations: number; acknowledgements: number };
-              navigations: number;
+              beforeReady: { requests: number; acknowledgements: number };
+              requests: number;
               acknowledgements: Array<{
                 id: string;
-                navigations: number;
+                requests: number;
                 cleared: boolean;
               }>;
             };
             return {
               beforeReady: state.beforeReady,
-              navigations: state.navigations,
+              requests: state.requests,
               receipts: [
                 ...new Set(state.acknowledgements.map((entry) => entry.id)),
               ].sort(),
               premature: state.acknowledgements.some(
-                (entry) => entry.navigations === 0,
+                (entry) => entry.requests === 0,
               ),
               cleared: state.acknowledgements
                 .filter((entry) => entry.cleared)
@@ -966,8 +975,8 @@ for (const device of [
           }),
         )
         .toEqual({
-          beforeReady: { navigations: 0, acknowledgements: 0 },
-          navigations: 2,
+          beforeReady: { requests: 0, acknowledgements: 0 },
+          requests: 2,
           receipts: ["A", "B"],
           premature: false,
           cleared: ["B"],
@@ -982,6 +991,12 @@ for (const device of [
         path: info.outputPath("receipt-navigation-notes.png"),
       });
       await expectNoRenderTelemetryErrors(page, "retained native receipts");
+      await info.attach("native-receipt-observations", {
+        body: JSON.stringify(
+          await page.evaluate(() => Reflect.get(window, "u1ReceiptProbe")),
+        ),
+        contentType: "application/json",
+      });
     });
   });
 }
