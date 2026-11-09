@@ -14,6 +14,23 @@ to the SDK. Zero values are preserved. Empty stop lists are omitted. Omitted
 settings use provider defaults; the provider and model determine support. Stop
 text uses the existing Unicode cleanup.
 
+## Using an OpenAI-compatible gateway
+
+Set `OPENAI_BASE_URL` to the gateway's OpenAI-compatible endpoint, put the
+gateway key in `OPENAI_API_KEY`, and name a model for each size the gateway
+serves. Sizes left unset fall back: nano and medium to small, mega to large.
+
+```env
+OPENAI_API_KEY=your-gateway-key
+OPENAI_BASE_URL=https://api.teamorouter.com/v1   # e.g. TeamoRouter
+OPENAI_SMALL_MODEL=glm-5.3-flash
+OPENAI_LARGE_MODEL=claude-sonnet-5-5
+```
+
+Embeddings use `OPENAI_BASE_URL` too unless `OPENAI_EMBEDDING_URL` is set. If
+the gateway has no embeddings endpoint, point `OPENAI_EMBEDDING_URL` and
+`OPENAI_EMBEDDING_API_KEY` at a provider that does.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
