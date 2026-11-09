@@ -152,8 +152,10 @@ export function CockpitInteractiveTerminal({
     }
   }, [kind, tier, cwd]);
 
-  // Spawn exactly once on mount.
+  // Spawn exactly once on mount. StrictMode's dev remount runs the unmount
+  // cleanup first, so clear the flag here or the first spawn stops itself.
   useEffect(() => {
+    disposedRef.current = false;
     if (spawnStartedRef.current) return;
     spawnStartedRef.current = true;
     void spawn();
