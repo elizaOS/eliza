@@ -328,6 +328,8 @@ jobs:
             packages/app/src/runtime/native-runtime-profile.test.ts \
             packages/app/src/runtime/native-managed-google-host.ts \
             packages/app/src/runtime/native-managed-google-host.test.ts \
+            packages/app/src/runtime/managed-google-agent \
+            packages/app/test/native-host/managed-google-agent.test.mjs \
             packages/app/src/runtime/native-direct-routing.test.ts \
             packages/agent/src/runtime/runtime-settings.ts \
             packages/agent/src/config/blocked-env-keys.ts \
@@ -357,6 +359,7 @@ jobs:
               src/runtime/native-direct-routing.test.ts \
               --maxWorkers=1 --no-file-parallelism \
               --execArgv=--max-old-space-size=2048
+            node --test test/native-host/managed-google-agent.test.mjs
           )
           (
             cd packages/agent

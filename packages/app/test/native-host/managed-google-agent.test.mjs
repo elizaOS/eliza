@@ -150,12 +150,12 @@ async function fixture({
   });
   const call = async (body, headers = {}) => {
     const response = await fetch(
-      "http://127.0.0.1:" + host.port + "/__alpha-owner-gmail",
+      `http://127.0.0.1:${host.port}/__alpha-owner-gmail`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + apiToken,
+          Authorization: `Bearer ${apiToken}`,
           ...headers,
         },
         body: JSON.stringify(body),

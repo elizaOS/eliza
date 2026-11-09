@@ -42,11 +42,11 @@ export type GoogleAgentRefusalReason =
   | "result-too-large"
   | "outcome-unconfirmed";
 export class GoogleAgentRefusal extends Error {
-  constructor(
-    readonly reason: GoogleAgentRefusalReason,
-    message: string,
-  ) {
+  readonly reason: GoogleAgentRefusalReason;
+
+  constructor(reason: GoogleAgentRefusalReason, message: string) {
     super(message);
+    this.reason = reason;
   }
 }
 /** The agent transport reads at most this much of one result. */
