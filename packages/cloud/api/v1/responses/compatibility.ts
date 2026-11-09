@@ -246,6 +246,15 @@ export function parseResponsesRequest(raw: unknown): ParsedResponsesRequest {
     ],
     "request",
   );
+  if (
+    body.model === undefined ||
+    body.model === null ||
+    (typeof body.model === "string" && !body.model.trim())
+  )
+    throw new ResponsesInputError(
+      "Missing required field: model",
+      "missing_required_parameter",
+    );
   const model = identifier(body.model, "model").trim();
   if (body.stream !== undefined && body.stream !== false)
     throw new ResponsesInputError(
