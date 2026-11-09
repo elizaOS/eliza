@@ -1,0 +1,95 @@
+# STAGING-ONLY lean host for SpeechRelayCoordinator.
+# The 32 MB API Worker pays ~4.4 s (3.4-8.1 s) on the first touch of a new
+# session object; the lean admission Worker pays ~1.0 s (Voice Live E2E staging
+# runs 42253042765, 42149492907, 42121063998 with the #38833 hosting probe).
+# Every speech session is a new object, so the host script's cold start is on
+# the bootstrap path. This Worker exports only the canonical class.
+#
+# Resources below are DECLARED, never provisioned by this file: Hyperdrive and
+# KV reuse the existing staging IDs, Durable Object bindings reference classes
+# that already live in the API and admission Workers, and secrets are named in
+# README.md. See README.md for the operator checklist.
+name = "eliza-cloud-speech-staging"
+main = "src/index.ts"
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
+workers_dev = false
+preview_urls = false
+minify = true
+
+# Match the canonical staging API build substitutions and Worker adapters.
+[define]
+__dirname = "\"/\""
+__filename = "\"/worker.js\""
+
+[alias]
+"@elizaos/plugin-elevenlabs" = "../api/src/stubs/elizaos-plugin-elevenlabs.ts"
+"@elizaos/cloud-sdk" = "../sdk/src/index.ts"
+"@elizaos/cloud-shared" = "../shared/src/index.ts"
+"@elizaos/core/contracts/cloud-coding-containers" = "../../core/src/contracts/cloud-coding-containers.ts"
+"@elizaos/plugin-native-inference/model-catalog/voice-models" = "../../../plugins/plugin-native-inference/src/model-catalog/voice-models.ts"
+"@brighter/storage-adapter-s3" = "../api/src/stubs/brighter-storage-adapter-s3.ts"
+"ssh2" = "../api/src/stubs/ssh2.ts"
+"undici" = "../api/src/stubs/undici.ts"
+"unpdf" = "../api/src/stubs/unpdf.ts"
+"mammoth" = "../api/src/stubs/mammoth.ts"
+"@electric-sql/pglite" = "../api/src/stubs/pglite.ts"
+"@electric-sql/pglite/vector" = "../api/src/stubs/pglite.ts"
+"@electric-sql/pglite/contrib/btree_gist" = "../api/src/stubs/pglite.ts"
+
+[observability]
+enabled = true
+
+# Every new session gets its own object in this namespace. The API keeps its
+# existing export so its objects can finish their retirement alarms there.
+# Declarative exports create this namespace on first deploy without a transfer.
+[exports.SpeechRelayCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[[durable_objects.bindings]]
+name = "SPEECH_RELAY_SESSIONS"
+class_name = "SpeechRelayCoordinator"
+
+# Admission and the speech revocation fence use the adopted admission namespace.
+[[durable_objects.bindings]]
+name = "INFERENCE_ADMISSION_GATES"
+class_name = "InferenceAdmissionGate"
+script_name = "eliza-cloud-admission-staging"
+
+# Per-user voice minutes when CLOUD_VOICE_USAGE_BACKEND=cloudflare. The release
+# workflow passes the same selector it passes to the API.
+[[durable_objects.bindings]]
+name = "VOICE_USAGE_STATE"
+class_name = "VoiceUsageState"
+script_name = "eliza-cloud-api-staging"
+
+# Same physical staging resources as the API; no new database or cache.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "ef65eb94c74144a3a3848ad1945571fb"
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "f7e24faaff734e7c8cd8e12b093c3571"
+
+# Every value must equal the staging API's; the source contract enforces it.
+[vars]
+NODE_ENV = "production"
+ENVIRONMENT = "staging"
+CACHE_BACKEND = "auto"
+CACHE_ENABLED = "true"
+DIRECT_REDIS_BACKEND = "redis-rest"
+NEXT_PUBLIC_APP_URL = "https://cloud-staging.eliza.app"
+INFERENCE_PASSTHROUGH_STREAMING = "true"
+INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+VOICE_SPEECH_RELAY_ENABLED = "true"
+VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "true"
+VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
+# Funded admission stays unset here as on the staging API and admission Worker.
+
+# Secrets (names only; values are operator-provisioned, never in this repo):
+#   CARTESIA_API_KEY, CARTESIA_STT_USD_PER_CREDIT  provider key and billing rate
+#   DATABASE_URL                                   origin URL Hyperdrive proxies
+#   KV_REST_API_URL, KV_REST_API_TOKEN             redis-rest for voice usage

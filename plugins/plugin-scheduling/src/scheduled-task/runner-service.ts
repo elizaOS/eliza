@@ -61,7 +61,6 @@ import {
   registerFallbackAnchors,
 } from "./consolidation-policy.js";
 import {
-  renderFailureDispatchResult,
   renderScheduledDispatchMessage,
   renderScheduledDispatchTitle,
 } from "./dispatch-render.js";
@@ -281,14 +280,13 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
  */
 function createDefaultScheduledTaskDispatcher(
   runtime: IAgentRuntime,
-  store: ScheduledTaskStore,
 ): ScheduledTaskDispatcher {
   return {
     async dispatch(record): Promise<DispatchResult> {
       // `promptInstructions` is a model prompt, never user-facing copy: the
       // notification body must be the model's rendering of it. A model-free
-      // runtime receives a neutral deterministic fallback; a present-but-failed
-      // model call is a typed, retryable dispatch failure.
+      // runtime, or a model call that fails, receives the authored fallback
+      // copy at once so a time-sensitive reminder is never held for the model.
       const connectorTarget = resolveConnectorDispatchTarget(record);
       if (isConnectorDispatchIntent(record) && !connectorTarget) {
         return {
@@ -311,48 +309,26 @@ function createDefaultScheduledTaskDispatcher(
           message: `Channel "${connectorTarget.source}" has no registered message connector.`,
         };
       }
-      let body: string;
-      try {
-        const preparedMessage = connectorTarget
-          ? (await store.get(record.taskId))?.metadata?.dispatchPreparedMessage
-          : undefined;
-        body =
-          typeof preparedMessage === "string" &&
-          preparedMessage.trim().length > 0
-            ? preparedMessage
-            : await renderScheduledDispatchMessage(runtime, record);
-      } catch (error) {
-        // error-policy:J1 boundary translation — dispatch outcomes are the
-        // runner's typed contract; the failure also reaches RECENT_ERRORS and
-        // owner escalation via reportError.
-        runtime.reportError(
-          "scheduling:scheduled-task:dispatch-render",
-          error,
-          {
-            taskId: record.taskId,
-            channelKey: record.channelKey,
-          },
-        );
-        return renderFailureDispatchResult(error);
-      }
+      // A connector retry re-sends the payload already committed for this
+      // fire so the idempotency key and the text stay paired.
+      const preparedMessage = connectorTarget
+        ? record.metadata?.dispatchPreparedMessage
+        : undefined;
+      const body =
+        typeof preparedMessage === "string" && preparedMessage.trim().length > 0
+          ? preparedMessage
+          : await renderScheduledDispatchMessage(runtime, record);
       if (connectorTarget) {
-        const current = await store.get(record.taskId);
-        if (!current) {
-          return {
-            ok: false,
-            reason: "transport_error",
-            acceptance: "not_accepted",
-            userActionable: false,
-            message: "Scheduled task disappeared before connector dispatch.",
-          };
-        }
-        const existingKey = current.metadata?.dispatchIdempotencyKey;
+        const existingKey = record.metadata?.dispatchIdempotencyKey;
         const dispatchIdempotencyKey =
           typeof existingKey === "string" && existingKey.trim().length > 0
             ? existingKey.trim()
             : `${record.taskId}:${record.firedAtIso}`;
-        current.metadata = {
-          ...(current.metadata ?? {}),
+        // Commits through the fire's guarded snapshot; throws when a user verb
+        // settled the task meanwhile, which the runner records as a failure.
+        await record.persistPreparedDelivery?.(body, dispatchIdempotencyKey);
+        record.metadata = {
+          ...(record.metadata ?? {}),
           dispatchPreparedMessage: body,
           dispatchIdempotencyKey,
           dispatchAttempt: {
@@ -361,12 +337,7 @@ function createDefaultScheduledTaskDispatcher(
             firedAtIso: record.firedAtIso,
           },
         };
-        await store.upsert(current);
-        if (record.metadata) {
-          Object.assign(record.metadata, current.metadata);
-        } else {
-          record.metadata = current.metadata;
-        }
+        await record.assertStillFired?.();
       }
       // Channel-destination dispatch through a live message connector (e.g.
       // `output: { destination: "channel", target: "discord:user:<id>" }` on
@@ -378,17 +349,8 @@ function createDefaultScheduledTaskDispatcher(
         body,
       );
       if (connectorResult) return connectorResult;
-      let title: string;
-      try {
-        title = await renderScheduledDispatchTitle(runtime, record, body);
-      } catch (error) {
-        runtime.reportError(
-          "scheduling:scheduled-task:dispatch-render",
-          error,
-          { taskId: record.taskId, channelKey: record.channelKey },
-        );
-        return renderFailureDispatchResult(error);
-      }
+      // Model failures fall back to the deterministic title inside the renderer.
+      const title = await renderScheduledDispatchTitle(runtime, record, body);
       const isUrgent = record.intensity === "urgent";
       const notifier = getNotifier(runtime);
       if (!notifier) {
@@ -400,6 +362,7 @@ function createDefaultScheduledTaskDispatcher(
           message: "No notification service is registered for in-app delivery.",
         };
       }
+      await record.assertStillFired?.();
       try {
         await notifier.notify({
           title,
@@ -503,7 +466,7 @@ function defaultRunnerDeps(
       (hasRuntimeDb
         ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
         : createInMemoryScheduledTaskLogStore()),
-    dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
+    dispatcher: createDefaultScheduledTaskDispatcher(runtime),
     // Without an owner fact store, the owner zone is the one saved in the
     // plugin settings (owner_local triggers otherwise run in UTC).
     ownerFacts: () => {

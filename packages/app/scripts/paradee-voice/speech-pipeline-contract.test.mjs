@@ -319,8 +319,9 @@ test("a host subclasses the inference transport through its hooks, against Andro
       .map((name) => path.join(directory, name));
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "inference-host-"));
   try {
-    // A host in its own package overrides admit, configure, describe, hear and the idle
-    // release, and calls cancelAll; compile-only Capacitor signatures, nothing runs.
+    // A host in its own package overrides admit, configure, describe, hear, the idle and
+    // hidden releases and holdsModels, and calls cancelAll and releaseModels; compile-only
+    // Capacitor signatures, nothing runs.
     execFileSync(
       java("javac"),
       [
@@ -367,6 +368,39 @@ test("a host subclasses the inference transport through its hooks, against Andro
     source,
     /final Lane hearing = new Lane\(Executors\.newSingleThreadExecutor\(\)\);/,
   );
+});
+
+test("the inference transport releases its models only when the host is hidden and idle", () => {
+  // Runnable Capacitor, Android and session doubles (speech-pipeline/inference-transport): the
+  // transport's queue and release policy on the host JVM. Not native memory or device evidence.
+  const transport = path.resolve(
+    here,
+    "../../../../plugins/plugin-local-inference/native/android/capacitor/src/main/java/ai/eliza/voice",
+  );
+  const doubles = path.join(fixtures, "inference-transport");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "inference-hidden-"));
+  try {
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-d",
+        temp,
+        path.join(transport, "ElizaInferencePlugin.java"),
+        ...javaFiles(doubles),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+    const output = execFileSync(
+      java("java"),
+      ["-cp", temp, "ai.eliza.voice.InferenceHiddenReleaseTest"],
+      { encoding: "utf8", timeout: 60000 },
+    );
+    assert.match(output, /^PASS inference hidden release/m);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test("live capture uses the shared session's VAD and never a platform recognizer", () => {
@@ -421,13 +455,75 @@ test("the product-subclassable speech bridge compiles with the library against A
   const capacitor = path.join(fixtures, "capacitor-api");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-bridge-"));
   try {
+    // The Cloud bridge uses the same pinned HTTP dependencies as consumer.gradle.
+    const dependency = (group, artifact, version, file) => {
+      if (process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR) {
+        const candidate = path.join(
+          process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR,
+          file,
+        );
+        assert.ok(
+          fs.existsSync(candidate),
+          `Missing speech compile dependency ${candidate}`,
+        );
+        return candidate;
+      }
+      const directory = path.join(
+        os.homedir(),
+        ".gradle/caches/modules-2/files-2.1",
+        group,
+        artifact,
+        version,
+      );
+      const found = fs.existsSync(directory)
+        ? fs
+            .readdirSync(directory)
+            .map((hash) => path.join(directory, hash, file))
+            .find((candidate) => fs.existsSync(candidate))
+        : undefined;
+      assert.ok(
+        found,
+        `Install the native speech dependency ${group}:${artifact}:${version}`,
+      );
+      return found;
+    };
+    const okhttp = path.join(temp, "okhttp.jar");
+    fs.writeFileSync(
+      okhttp,
+      execFileSync("unzip", [
+        "-p",
+        dependency(
+          "com.squareup.okhttp3",
+          "okhttp-android",
+          "5.3.2",
+          "okhttp-release.aar",
+        ),
+        "classes.jar",
+      ]),
+    );
+    const dependencies = [
+      sdk,
+      okhttp,
+      dependency(
+        "com.squareup.okio",
+        "okio-jvm",
+        "3.16.4",
+        "okio-jvm-3.16.4.jar",
+      ),
+      dependency(
+        "org.jetbrains.kotlin",
+        "kotlin-stdlib",
+        "2.2.21",
+        "kotlin-stdlib-2.2.21.jar",
+      ),
+    ].join(path.delimiter);
     execFileSync(
       java("javac"),
       [
         "--release",
         "21",
         "-cp",
-        sdk,
+        dependencies,
         "-d",
         temp,
         ...javaFiles(voice),

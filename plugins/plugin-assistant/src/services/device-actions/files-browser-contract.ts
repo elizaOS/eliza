@@ -21,6 +21,8 @@
  * Operations keep one flat shape, so a validated operation validates again
  * unchanged (journal recovery re-reads it).
  */
+import type { ActionParameterSchema } from "@elizaos/core/schema-types";
+
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES = [
   "files_filter",
@@ -53,7 +55,6 @@ export type FilesFilterOperation = {
 };
 /** Opaque identity of the storage object and revision shown in the review. */
 export type FilesIdentity = string;
-
 export type FilesAgentOperation =
   | FilesFilterOperation
   | { type: "files_open"; path: string }
@@ -96,7 +97,7 @@ export function validFilesName(value: unknown): string {
 export function validFilesPath(value: unknown, allowRoot = false): string {
   if (typeof value !== "string" || value.length > 1024 || value.startsWith("/"))
     throw Error("Invalid path");
-  const path = value.replace(/^\/+|\/+$/g, "");
+  const path = value.replace(/\/+$/g, "");
   if (!path) {
     if (allowRoot) return "";
     throw Error("Invalid path");
@@ -113,17 +114,13 @@ function paths(value: unknown): string[] {
   return out;
 }
 function identities(value: unknown, count: number): FilesIdentity[] {
-  if (
-    !Array.isArray(value) ||
-    value.length !== count ||
-    value.some(
-      (token) =>
-        typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token),
-    )
-  ) {
+  if (!Array.isArray(value) || value.length !== count)
     throw Error("Invalid reviewed files");
-  }
-  return value.slice();
+  return Array.from(value, (token: unknown) => {
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
+      throw Error("Invalid reviewed files");
+    return token;
+  });
 }
 /** Files operations that change files the owner reviewed by identity. */
 export function filesNeedsIdentity(
@@ -315,7 +312,7 @@ const filesPaths = {
   description: "1-50 paths on Internal storage",
 } as const;
 /** Tool schema branches (one per operation, disjoint by `type`). */
-export const FILES_OPERATION_SCHEMAS = [
+export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,

@@ -514,6 +514,68 @@ test("sign-out stops a room's turn even after its request closed, and only rooms
   }
 });
 
+test("runtime supervisor fences account rotation and close during real child startup", async () => {
+  for (const transition of ["rotate", "close"]) {
+    let owner = "first";
+    const children = [];
+    const started = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    const supervisor = createRuntimeSupervisor({
+      readIdentity: async () => owner,
+      start: async () => {
+        const child = spawn(
+          process.execPath,
+          ["-e", "setInterval(()=>{},1000)"],
+          {
+            stdio: "ignore",
+          },
+        );
+        children.push(child);
+        await once(child, "spawn");
+        started.resolve();
+        await release.promise;
+        return child;
+      },
+      stop: async (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const exited = once(child, "exit");
+        child.kill();
+        await exited;
+      },
+    });
+    const pending = supervisor.reconcile();
+    let closing;
+    try {
+      await started.promise;
+      if (transition === "rotate") owner = "second";
+      else closing = supervisor.close();
+      await supervisor.reconcile();
+      assert.equal(children.length, 1);
+      assert.equal(children[0].signalCode, null);
+      release.resolve();
+      await pending;
+      await closing;
+      assert.equal(children[0].signalCode, "SIGTERM");
+      assert.throws(() => process.kill(children[0].pid, 0), { code: "ESRCH" });
+      if (transition === "rotate") {
+        await supervisor.reconcile();
+        assert.equal(children.length, 2);
+      } else {
+        await supervisor.reconcile();
+        assert.equal(children.length, 1);
+      }
+    } finally {
+      release.resolve();
+      await pending;
+      await supervisor.close();
+      await closing;
+      for (const child of children) {
+        if (child.exitCode === null && child.signalCode === null) child.kill();
+      }
+    }
+  }
+});
+
 test("runtime supervisor starts real processes in isolated account storage and stops only its child", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-runtime-e2e-"));
   let owner = "first";
@@ -559,72 +621,80 @@ test("runtime supervisor starts real processes in isolated account storage and s
   }
 });
 
-for (const transition of ["reset", "rotate"]) {
-  test(`request admission rechecks account after task presentation: ${transition}`, async () => {
-    let owner = "first";
-    let messageRequests = 0;
-    const entered = Promise.withResolvers();
-    const release = Promise.withResolvers();
-    const upstream = http.createServer((req, res) => {
-      if (req.url.endsWith("/messages")) messageRequests++;
-      res.setHeader("Content-Type", "application/json");
-      res.end(
-        JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
-      );
-    });
-    const target = await listen(upstream);
-    const gateway = createLocalAgentGateway({
-      upstream: target,
-      token: "upstream-authority",
-      inboundToken: "host-authority",
-      credentialGate: async () => owner,
-      hostPolicy: {
-        ...policy,
-        prepareMessage: (input) => ({
-          body: { text: input.text },
-          chatTask: { id: "task" },
-        }),
-      },
-      taskGateway: {
-        revoke: async () => {},
-        presentationForConversation: async () => {
-          entered.resolve();
-          await release.promise;
-          return { choice: null };
-        },
-      },
-      cloudHandler: async (req, res, url, { json }) => {
-        if (url.pathname !== "/identity/logout") return false;
-        json(res, 200, { disconnected: true });
-        return true;
-      },
-    });
-    const base = await listen(gateway);
-    const post = (path, body = {}) =>
-      fetch(base + path, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer host-authority",
-        },
-        body: JSON.stringify(body),
+for (const stage of ["admission", "reply"]) {
+  for (const transition of ["reset", "rotate"]) {
+    test(`request ${stage} rechecks account after task presentation: ${transition}`, async () => {
+      let owner = "first";
+      let messageRequests = 0;
+      let presentations = 0;
+      const entered = Promise.withResolvers();
+      const release = Promise.withResolvers();
+      const upstream = http.createServer((req, res) => {
+        if (req.url.endsWith("/messages")) messageRequests++;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+        );
       });
-    try {
-      assert.equal((await post("/conversations")).status, 200);
-      const pending = post(`/conversations/${id}/messages`, { text: "hello" });
-      await entered.promise;
-      if (transition === "reset")
-        assert.equal((await post("/identity/logout")).status, 200);
-      else owner = "second";
-      release.resolve();
-      assert.equal((await pending).status, 409);
-      assert.equal(messageRequests, 0);
-    } finally {
-      release.resolve();
-      await close(gateway);
-      await close(upstream);
-    }
-  });
+      const target = await listen(upstream);
+      const gateway = createLocalAgentGateway({
+        upstream: target,
+        token: "upstream-authority",
+        inboundToken: "host-authority",
+        credentialGate: async () => owner,
+        hostPolicy: {
+          ...policy,
+          prepareMessage: (input) => ({
+            body: { text: input.text },
+            chatTask: { id: "task" },
+          }),
+        },
+        taskGateway: {
+          revoke: async () => {},
+          presentationForConversation: async () => {
+            presentations += 1;
+            if (presentations === (stage === "admission" ? 1 : 2)) {
+              entered.resolve();
+              await release.promise;
+            }
+            return { choice: null };
+          },
+        },
+        cloudHandler: async (req, res, url, { json }) => {
+          if (url.pathname !== "/identity/logout") return false;
+          json(res, 200, { disconnected: true });
+          return true;
+        },
+      });
+      const base = await listen(gateway);
+      const post = (path, body = {}) =>
+        fetch(base + path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer host-authority",
+          },
+          body: JSON.stringify(body),
+        });
+      try {
+        assert.equal((await post("/conversations")).status, 200);
+        const pending = post(`/conversations/${id}/messages`, {
+          text: "hello",
+        });
+        await entered.promise;
+        if (transition === "reset")
+          assert.equal((await post("/identity/logout")).status, 200);
+        else owner = "second";
+        release.resolve();
+        assert.equal((await pending).status, 409);
+        assert.equal(messageRequests, stage === "admission" ? 0 : 1);
+      } finally {
+        release.resolve();
+        await close(gateway);
+        await close(upstream);
+      }
+    });
+  }
 }
 
 test("a message's inference check and owner share one account check", async () => {
@@ -763,7 +833,7 @@ test("a reset during the inference check refuses the retired message", async () 
       if (!holdNext) return true;
       holdNext = false;
       // The shared check reads the account before the reset.
-      assert.equal(await (credentialGate ? credentialGate() : Promise.resolve(owner)), "first");
+      assert.equal(await credentialGate(), "first");
       entered.resolve();
       await release.promise;
       return true;
@@ -795,7 +865,15 @@ test("a reset during the inference check refuses the retired message", async () 
     const refused = await pending;
     assert.equal(refused.status, 409);
     assert.equal((await refused.json()).code, "CONVERSATION_NOT_OWNED");
+    assert.deepEqual(owners, []);
     assert.equal(messageRequests, 0);
+    assert.equal(
+      (await post(`/conversations/${id}/messages`, { text: "new message" }))
+        .status,
+      200,
+    );
+    assert.deepEqual([...new Set(owners)], ["second"]);
+    assert.equal(messageRequests, 1);
   } finally {
     release.resolve();
     await close(gateway);
@@ -1762,10 +1840,10 @@ test("a pull collects text to a phrase, one pull waits per stream, one account c
       cursor = body.cursor;
       if (body.done) break;
     }
-    // One check per pull and one for the final reply.
-    assert.equal(state.gateCalls - calls, pulls + 1);
+    // One check per pull; the final reply checks before and after task presentation.
+    assert.equal(state.gateCalls - calls, pulls + 2);
     assert.equal((await cancel(streamId)).status, 200);
-    assert.equal(state.gateCalls - calls, pulls + 1);
+    assert.equal(state.gateCalls - calls, pulls + 2);
   } finally {
     for (const gate of gates) gate.resolve();
     await harness.close();

@@ -39,6 +39,41 @@ public class ReminderQuestionTest {
   engine.releaseQuestionTap(ask);engine.captureTap(open);assertFalse(engine.pendingTap().getBoolean("question"));assertTrue("Normal exact detail navigation remains available",engine.pendingTap().getBoolean("retained"));
   try{engine.releaseQuestionTap(open);fail("content tap released as question");}catch(IllegalStateException expected){}
  }
+ /** Makes the current occurrence due now without waiting for its civil time. */
+ static void dueNow(Context context,ReminderEngine engine,String id)throws Exception{synchronized(engine.store){SharedPreferences rows=new ReminderEnvelope(context,engine.store).records();JSONObject row=new JSONObject(rows.getString(id,null)).put("at",System.currentTimeMillis()-1);assertTrue(rows.edit().putString(id,row.toString()).commit());}}
+ static void deliver(Context context,ReminderEngine engine,ReminderConfiguration config,String id)throws Exception{
+  String occurrence=engine.read(id).getString("occurrenceId");dueNow(context,engine,id);
+  engine.dispatch(new Intent(config.remindAction).putExtra(config.idExtra,id).putExtra(config.occurrenceExtra,occurrence));
+ }
+ static boolean noticed(Context context,ReminderConfiguration config,String id){for(android.service.notification.StatusBarNotification notice:context.getSystemService(NotificationManager.class).getActiveNotifications())if(config.notificationTag(id).equals(notice.getTag()))return true;return false;}
+ @Test public void dailyReminderKeepsPostingAfterManyCompletedOccurrences()throws Exception{
+  Context context=RuntimeEnvironment.getApplication();String name="daily"+UUID.randomUUID().toString().replace("-","");Memory memory=new Memory(name);ReminderConfiguration config=configuration(name,true);ReminderEngine engine=ReminderEngine.get(context,config,c->memory);
+  java.time.LocalDate tomorrow=java.time.LocalDate.now(java.time.ZoneOffset.UTC).plusDays(1);
+  JSONObject daily=new JSONObject().put("rule","daily").put("zone","UTC").put("date",tomorrow.toString()).put("time","09:00").put("leadMinutes",0);
+  engine.schedule("daily","Synthetic reminder","Owned fixture",tomorrow.atTime(9,0).toInstant(java.time.ZoneOffset.UTC).toEpochMilli(),daily,null);
+  for(int i=0;i<300;i++){
+   String occurrence=engine.read("daily").getString("occurrenceId");deliver(context,engine,config,"daily");
+   assertTrue("Delivery "+i+" posted",noticed(context,config,"daily"));
+   JSONObject ledger=new JSONObject(memory.read(config.tapSlot));assertTrue(ledger.length()<512);
+   // Both routes of this delivery survive prepareQuestion; earlier dismissed notices are reclaimed.
+   assertEquals(2,ledger.length());int questions=0;JSONObject target=engine.selected("daily");
+   for(Iterator<String> it=ledger.keys();it.hasNext();){JSONObject row=ledger.getJSONObject(it.next());assertTrue(ReminderTaps.same(target,row.getJSONObject("target")));if(row.optBoolean("question"))questions++;}
+   assertEquals(1,questions);
+   assertEquals("scheduled",engine.decide("daily",occurrence,"done").getString("status"));assertFalse(noticed(context,config,"daily"));
+  }
+ }
+ @Test public void olderPendingTapIsNotReclaimed()throws Exception{
+  Context context=RuntimeEnvironment.getApplication();String name="pending"+UUID.randomUUID().toString().replace("-","");Memory memory=new Memory(name);ReminderConfiguration config=configuration(name,true);ReminderEngine engine=ReminderEngine.get(context,config,c->memory);
+  engine.schedule("older","Synthetic reminder","Owned fixture",System.currentTimeMillis()+60000,null,null);deliver(context,engine,config,"older");
+  JSONObject ledger=new JSONObject(memory.read(config.tapSlot));String open=null,ask=null;for(Iterator<String> it=ledger.keys();it.hasNext();){String key=it.next();if(ledger.getJSONObject(key).optBoolean("question"))ask=key;else open=key;}
+  engine.captureTap(open);context.getSystemService(NotificationManager.class).cancel(config.notificationTag("older"),0);
+  engine.schedule("newer","Synthetic reminder","Owned fixture",System.currentTimeMillis()+60000,null,null);deliver(context,engine,config,"newer");
+  assertTrue(noticed(context,config,"newer"));
+  ledger=new JSONObject(memory.read(config.tapSlot));
+  assertEquals("pending",ledger.getJSONObject(open).getString("state"));
+  assertFalse("Untapped route without its notice is reclaimed",ledger.has(ask));
+  assertEquals(open,engine.pendingTap().getString("token"));
+ }
  @Test public void absentQuestionConfigurationPreservesTwoActions()throws Exception{
   Context context=RuntimeEnvironment.getApplication();String name="legacy"+UUID.randomUUID().toString().replace("-","");Memory memory=new Memory(name);ReminderConfiguration config=configuration(name,false);ReminderEngine engine=ReminderEngine.get(context,config,c->memory);
   engine.schedule("plain","Synthetic reminder","Owned fixture",System.currentTimeMillis()+100,null,null);String occurrence=engine.read("plain").getString("occurrenceId");while(System.currentTimeMillis()<engine.read("plain").getLong("at"))Thread.sleep(1);engine.dispatch(new Intent(config.remindAction).putExtra(config.idExtra,"plain").putExtra(config.occurrenceExtra,occurrence));

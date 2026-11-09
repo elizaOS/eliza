@@ -341,6 +341,21 @@ test("a brand that leaves lock-screen capture to Camera2 refuses a launcher show
   );
 });
 
+test("only a product that says so stages without the assistant role", (t) => {
+  const alpha = fixture(t, "alpha").product;
+  const eliza = fixture(t, "eliza").product;
+  assert.equal(alpha.launcher.assistantRole, false);
+  assert.equal(eliza.launcher.assistantRole, undefined);
+  assert.throws(
+    () =>
+      validatePixel10aProduct({
+        ...alpha,
+        launcher: { ...alpha.launcher, assistantRole: "no" },
+      }),
+    /assistantRole must be a boolean/,
+  );
+});
+
 test("shared provisioning takes actual component names and leaves absent Autofill unset", () => {
   const files = renderProvisioningOverlay("ai.elizaos.app", {
     home: "ai.elizaos.app.MainActivity",

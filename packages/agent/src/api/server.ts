@@ -57,7 +57,7 @@ import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/transactions";
+} from "@elizaos/plugin-wallet/lib/trade-safety";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   loadElizaConfig,
@@ -245,6 +245,7 @@ import {
 } from "./runtime-mode/runtime-mode.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
 import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
+import { setSelfApiTcpListenerBound } from "./self-api-endpoint.ts";
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
@@ -468,7 +469,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
     if (!browser || typeof browser.setNativeClientTransport !== "function")
       return;
     browser.setNativeClientTransport({
-      executeCommand: async (clientId, command) => {
+      executeCommand: async (clientId, command, selection) => {
         const hostKey = requestingHost(clientId);
         const [
           { dispatchViewInteract, getViewsBroadcastWsToClientId },
@@ -485,7 +486,8 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           entry,
           "browser",
           "browser-command",
-          { command },
+          // The observed tab lets the renderer refuse history on another page.
+          { command, ...(selection ? { selection } : {}) },
           {
             clientId,
             hostKey,
@@ -1178,6 +1180,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         // Connector setup (Telegram, Discord, iMessage): saves, replaces or
         // clears the owner's connector credentials and sessions.
         under("/api/setup") ||
+        // Approval resolution runs the owner's reviewed change (Calendar
+        // writes and invitations); a paired guest must not approve it.
+        under("/api/approvals") ||
         // The app-facing runtime switch repoints the owner's text inference,
         // and a local target can start a model download. Its loopback writes
         // carry the owner's self token, so the outer request needs this gate.
@@ -5450,6 +5455,7 @@ export async function startApiServer(opts?: {
     logger.info(
       "[eliza-api] Started without binding a TCP listener (skipListen; local-agent IPC mode)",
     );
+    setSelfApiTcpListenerBound(false);
     if (!opts?.skipDeferredStartupWork) {
       void startDeferredStartupWork();
     }
@@ -5520,9 +5526,12 @@ export async function startApiServer(opts?: {
     hostConfig === undefined
       ? setLiveElizaConfigSource(() => state.config, configWritePath)
       : undefined;
+  setSelfApiTcpListenerBound(true);
   return {
     port: listener.port,
     close: async () => {
+      // Once closed, the port is free for any local app to bind.
+      setSelfApiTcpListenerBound(false);
       releaseLiveConfigSource?.();
       await listener.close();
     },

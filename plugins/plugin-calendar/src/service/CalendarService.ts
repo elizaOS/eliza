@@ -154,6 +154,7 @@ import {
   elizaCalendarSummary,
   isElizaCalendarEventId,
   isElizaCalendarGrant,
+  restoreElizaCalendarEvent,
   updateElizaCalendarEvent,
 } from "../internal/eliza-calendar.js";
 import { CalendarServiceError, fail } from "../internal/errors.js";
@@ -237,6 +238,7 @@ import {
   GoogleLinkedCalendarProviderPort,
   type LinkedCalendarEventRecord,
   type LinkedCalendarLocalPort,
+  type LinkedCalendarProviderPort,
   LinkedCalendarReconciler,
   LinkedCalendarRepository,
   type LinkedCalendarSemanticEvent,
@@ -244,6 +246,7 @@ import {
 import {
   attachManagedCalendarReadDiagnostic,
   createManagedCalendarRead,
+  MANAGED_CALENDAR_REQUEST_TIMEOUT_MS,
   managedCalendarPlaceholder,
 } from "./managed-calendar-read.js";
 import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
@@ -281,6 +284,9 @@ const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
 /** Managed owner feeds one service reads at once, across every overlapping
  * aggregate read. Each one verifies the owner over the private broker. */
 const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
+/** An uncertain write may still be in flight until twice the request timeout. */
+const LINKED_CALENDAR_RECOVERY_SETTLE_MS =
+  2 * MANAGED_CALENDAR_REQUEST_TIMEOUT_MS;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -1570,22 +1576,55 @@ export class CalendarService extends Service {
           );
         }
       },
+      restore: async (eventId, providerEvent, previousRevision) => {
+        if (providerEvent.recurrence?.length)
+          throw new CalendarServiceError(
+            409,
+            "The built-in calendar cannot represent this recurring series. Review the linked event before syncing.",
+            "LINKED_CALENDAR_RECURRENCE_UNSUPPORTED",
+          );
+        const receipt = await this.repo.insertCalendarEventIfAbsent(
+          restoreElizaCalendarEvent({
+            agentId: this.agentId(),
+            eventId,
+            title: providerEvent.title,
+            description: providerEvent.description,
+            location: providerEvent.location,
+            startAt: providerEvent.startAt,
+            endAt: providerEvent.endAt,
+            timeZone: providerEvent.timeZone ?? "UTC",
+            isAllDay: providerEvent.isAllDay,
+            attendees: providerEvent.attendees.map((attendee) => ({
+              email: attendee.email,
+              optional: attendee.optional === true,
+            })),
+            revision: previousRevision + 1,
+            now: new Date(),
+          }),
+        );
+        if (!receipt.inserted) {
+          throw new CalendarServiceError(
+            409,
+            "The linked Eliza event reappeared during reconciliation.",
+            "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+          );
+        }
+        return {
+          eventId: receipt.event.id,
+          revision: Number(receipt.event.metadata.version),
+          event: this.linkedSemanticEvent(receipt.event),
+        };
+      },
     };
   }
 
-  private linkedReconciler(
+  private linkedProviderPort(
     connectorAccountId: string,
-    onProviderMutation?: () => void,
-  ): LinkedCalendarReconciler {
+  ): LinkedCalendarProviderPort {
     if (this.managedCalendar?.acceptsGrantId(connectorAccountId)) {
-      return new LinkedCalendarReconciler(
-        this.linkedRepo,
-        this.linkedLocalPort(),
-        new ManagedLinkedCalendarProviderPort(
-          this.managedCalendar,
-          managedCalendarDeleteEnabled(process.env),
-        ),
-        onProviderMutation,
+      return new ManagedLinkedCalendarProviderPort(
+        this.managedCalendar,
+        managedCalendarDeleteEnabled(process.env),
       );
     }
     const google = this.runtime.getService("google");
@@ -1596,10 +1635,19 @@ export class CalendarService extends Service {
         "GOOGLE_CALENDAR_SERVICE_UNAVAILABLE",
       );
     }
+    return new GoogleLinkedCalendarProviderPort(
+      google as IGoogleWorkspaceService,
+    );
+  }
+
+  private linkedReconciler(
+    connectorAccountId: string,
+    onProviderMutation?: () => void,
+  ): LinkedCalendarReconciler {
     return new LinkedCalendarReconciler(
       this.linkedRepo,
       this.linkedLocalPort(),
-      new GoogleLinkedCalendarProviderPort(google as IGoogleWorkspaceService),
+      this.linkedProviderPort(connectorAccountId),
       onProviderMutation,
     );
   }
@@ -1820,21 +1868,47 @@ export class CalendarService extends Service {
   async listLinkedCalendarEventViews(): Promise<
     LifeOpsLinkedCalendarEventView[]
   > {
-    const links = await this.listLinkedCalendarEvents();
+    const records = await this.linkedRepo.listForAgent(this.agentId());
     return Promise.all(
-      links.map(async (link) => {
-        const event = await this.getCalendarEventById(link.localEventId);
-        return {
-          ...link,
+      records.map(async (record) => {
+        const event = await this.getCalendarEventById(record.localEventId);
+        const view: LifeOpsLinkedCalendarEventView = {
+          ...this.publicLinkedCalendar(record),
           event: event
             ? {
                 title: event.title,
                 startAt: event.startAt,
                 endAt: event.endAt,
                 isAllDay: event.isAllDay,
+                location: event.location,
               }
             : null,
         };
+        if (record.state === "conflicted") {
+          // The owner chooses a side, so a conflict also shows Google's copy.
+          try {
+            const provider = await this.linkedProviderPort(
+              record.connectorAccountId,
+            ).get(record);
+            view.providerEvent =
+              provider && !provider.event.deleted
+                ? {
+                    title: provider.event.title,
+                    startAt: provider.event.startAt,
+                    endAt: provider.event.endAt,
+                    isAllDay: provider.event.isAllDay,
+                    location: provider.event.location,
+                  }
+                : null;
+          } catch (error) {
+            // error-policy:J7 One unreadable Google copy must not hide the
+            // review list; an absent providerEvent means it could not be read.
+            this.runtime.reportError("calendar:linked-conflict-read", error, {
+              linkId: record.id,
+            });
+          }
+        }
+        return view;
       }),
     );
   }
@@ -1848,7 +1922,16 @@ export class CalendarService extends Service {
       pendingDispatch: control.dispatch
         ? { linkId: control.dispatch.linkId }
         : null,
+      conflicts: await this.linkedConflictCount(control.destination),
     };
+  }
+
+  private async linkedConflictCount(
+    destination: LifeOpsLinkedCalendarControl["destination"],
+  ): Promise<number> {
+    return destination
+      ? this.linkedRepo.countConflicted(this.agentId(), destination)
+      : 0;
   }
 
   private async verifyLinkedDestination(
@@ -2089,11 +2172,20 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_RECOVERY_IDENTITY_MISMATCH",
             );
           }
-          if (
-            !(await this.linkedReconciler(
-              record.connectorAccountId,
-            ).recoverDispatch(record))
-          ) {
+          // Anchor the settle window at the later of dispatch and the row's
+          // last checkpoint, which the quarantine writes after the failure.
+          const anchors = [current.dispatch.acquiredAt, record.updatedAt]
+            .map((value) => (value ? Date.parse(value) : Number.NaN))
+            .filter(Number.isFinite);
+          const recovered = await this.linkedReconciler(
+            record.connectorAccountId,
+          ).recoverDispatch(record, {
+            dispatchedAt: anchors.length
+              ? new Date(Math.max(...anchors))
+              : null,
+            settleMs: LINKED_CALENDAR_RECOVERY_SETTLE_MS,
+          });
+          if (recovered === "unresolved") {
             throw new CalendarServiceError(
               409,
               "The provider outcome is still uncertain or the events differ. Sync remains paused; no provider write was retried.",
@@ -2129,9 +2221,9 @@ export class CalendarService extends Service {
     return this.publicLinkedControlMutation(committed);
   }
 
-  private publicLinkedControlMutation(
+  private async publicLinkedControlMutation(
     mutation: LinkedCalendarControlMutation,
-  ): LifeOpsLinkedCalendarControlMutationResult {
+  ): Promise<LifeOpsLinkedCalendarControlMutationResult> {
     return {
       revision: mutation.control.revision,
       paused: mutation.control.paused,
@@ -2139,6 +2231,7 @@ export class CalendarService extends Service {
       pendingDispatch: mutation.control.dispatch
         ? { linkId: mutation.control.dispatch.linkId }
         : null,
+      conflicts: await this.linkedConflictCount(mutation.control.destination),
       receipt: mutation.receipt,
     };
   }

@@ -75,7 +75,7 @@ describe("files.browser.v1 operations", () => {
         reviewed: [{ size: 1, modified: 1 }],
       },
     ])
-      expect(() => validateFilesOperation(bad), JSON.stringify(bad)).toThrow();
+      expect(() => validateFilesOperation(bad)).toThrow();
     expect(filesNeedsIdentity({ type: "files_trash", paths: ["a"] })).toBe(
       true,
     );
@@ -84,7 +84,7 @@ describe("files.browser.v1 operations", () => {
     );
     // The agent's tool schema never offers it.
     for (const schema of FILES_OPERATION_SCHEMAS)
-      expect(Object.keys(schema.properties)).not.toContain("reviewed");
+      expect(Object.keys(schema.properties ?? {})).not.toContain("reviewed");
   });
   it("rejects escapes, duplicates, hidden folders, empty filters and extra fields", () => {
     for (const bad of [
@@ -98,7 +98,7 @@ describe("files.browser.v1 operations", () => {
       { type: "files_open", path: "a", extra: 1 },
       { type: "files_delete", paths: ["a"] },
     ])
-      expect(() => validateFilesOperation(bad), JSON.stringify(bad)).toThrow();
+      expect(() => validateFilesOperation(bad)).toThrow();
   });
   it("runs only filter and open directly; changes need Files on the unlocked screen", () => {
     expect([...FILES_DIRECT_TYPES]).toEqual(["files_filter", "files_open"]);
@@ -147,7 +147,9 @@ describe("files.browser.v1 operations", () => {
       );
     }
     expect(
-      FILES_OPERATION_SCHEMAS.flatMap((schema) => schema.properties.type.enum),
+      FILES_OPERATION_SCHEMAS.flatMap(
+        (schema) => schema.properties?.type.enum ?? [],
+      ),
     ).toEqual([
       "files_filter",
       "files_open",

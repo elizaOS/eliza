@@ -1,7 +1,8 @@
 /** Phone Photos view operations: filter the grid, open one item, create an album, share items.
  * Dependency-free apart from the photo library contract, so hosts and tests can use the rules
- * anywhere. Validation rejects rather than truncates. Owner-facing text names the app through an
- * `appName` argument; hosts pass their product name.
+ * anywhere. Validation rejects rather than truncates. Owner-facing review text is the change
+ * itself, nothing else; `describePhotosViewOperation` takes the host's product name like
+ * `describeLibraryOperation`, though no Photos view text needs it.
  *
  * `photos_filter` only narrows what the Photos grid shows, behind a clearable chip, and returns
  * counts, never items. `photos_open` opens one item in the Photos viewer. Neither changes or
@@ -33,7 +34,7 @@ export type PhotosFilterAlbum =
 export const PHOTOS_ALBUM_NAME_MAX = 80;
 export const PHOTOS_SHARE_MAX = 100;
 const CUSTOM_ALBUM = /^custom:[A-Za-z0-9_-]{1,80}$/;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in Photos input.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: names and query text must reject control characters.
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 export type PhotosViewOperation =

@@ -1,0 +1,25 @@
+[
+  {
+    "id": "os.OtaFreshAdmission",
+    "model": "packages/os/quint/OtaFreshAdmission.qnt",
+    "sources": [
+      "packages/os/native/ota-trust/admission.go",
+      "packages/os/native/ota-trust/admission_state.go",
+      "packages/os/native/ota-trust/recovery_authorization.go",
+      "packages/os/native/ota-trust/fresh_admission_conformance_test.go"
+    ],
+    "invariants": [
+      "FloorRatchets",
+      "NoEquivocation",
+      "LaneIsolation",
+      "CommitUsesCurrentAuthority",
+      "RecoveryUsesCurrentAuthority"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The finite descriptor, policy, device and prepared-release tables mirror the existing differential suite. Cryptographic authentication, device qualification and binding checks are admission preconditions outside this instance.",
+      "Generated Quint sequences replay against real Go admission, commit and recovery functions. Existing full two-descriptor differential cases provide additional implementation checks.",
+      "This instance models completed floor/refresh publication atomically. Separate-file crash recovery, file locks, corrupt state, authority enrollment and full OTA transport/install lifecycles remain separate obligations."
+    ]
+  }
+]

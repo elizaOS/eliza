@@ -3,7 +3,8 @@
  *
  * Mirrors the wallet-shim contract: the in-tab preload sends
  * `__elizaVaultAutofillRequest` to the host, the host calls these
- * methods, then replies via `tag.executeJavascript("window.__elizaVaultReply(...)")`.
+ * methods for the tab's committed site, then fills via
+ * `tag.executeJavascript("window.__elizaVaultFill(...)")`.
  *
  * The list endpoint aggregates entries from every signed-in backend:
  * in-house vault, 1Password, and Bitwarden. Each entry carries a

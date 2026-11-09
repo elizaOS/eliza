@@ -13,6 +13,7 @@ import {
   parseTelephonyStatus,
   parseThreads,
   reviewSms,
+  SmsSendNotAttempted,
   smsBindingHash,
   smsBindingText,
   TelephonyUnavailable,
@@ -573,6 +574,103 @@ test("a conversation is marked read only through the shown message, by the SMS a
       ).markThreadRead("thread:7", 5),
       /invalid read marker/,
     );
+});
+
+test("a row the host refused to clip keeps the rest of the page and its cursor", async () => {
+  const thread = {
+    id: "thread:4",
+    date: 1700000000000,
+    messageCount: 2,
+    snippet: "hi",
+    unread: false,
+    addresses: ["+15555550100"],
+  };
+  const group = {
+    id: "thread:3",
+    date: 1690000000000,
+    incomplete: true,
+    reason: "too-many-addresses",
+  };
+  const long = {
+    id: "sms:8",
+    kind: "sms",
+    threadId: "thread:4",
+    date: 1690000000000,
+    incomplete: true,
+    reason: "body-too-long",
+  };
+  const { plugin } = stub({
+    listThreads: { threads: [thread, group], next: "1690000000000:thread:3" },
+    listMessages: { messages: [long], next: "1690000000000:sms:8" },
+  });
+  const client = createTelephonyClient(plugin, true);
+  assert.deepEqual(await client.threadPage(), {
+    rows: [thread, group],
+    next: "1690000000000:thread:3",
+  });
+  assert.deepEqual(await client.messagePage("thread:4"), {
+    rows: [long],
+    next: "1690000000000:sms:8",
+  });
+  // No clipped content may ride along, and the reason is one the renderer can name.
+  assert.throws(
+    () => parseThreads({ threads: [{ ...group, snippet: "hi" }] }, 5),
+    /incomplete thread/,
+  );
+  assert.throws(
+    () => parseThreads({ threads: [{ ...group, reason: "other" }] }, 5),
+    /incomplete row reason/,
+  );
+  assert.throws(
+    () =>
+      parseMessages(
+        { messages: [{ ...long, body: "x".repeat(10) }] },
+        "thread:4",
+        5,
+      ),
+    /incomplete message/,
+  );
+  assert.throws(
+    () =>
+      parseMessages({ messages: [{ ...long, kind: "mms" }] }, "thread:4", 5),
+    /message id/,
+  );
+});
+
+test("a send that was never attempted is typed, not unknown", async () => {
+  const review = {
+    recipients: ["+15555550100"],
+    body: "On my way",
+    subscriptionId: 3,
+  };
+  const notAttempted = (reason: string, operationId = "op-1") => ({
+    kind: "sms-send-not-attempted",
+    operationId,
+    reason,
+  });
+  for (const reason of ["busy", "closed"] as const) {
+    const { plugin } = stub({ sendSms: notAttempted(reason) });
+    await assert.rejects(
+      createTelephonyClient(plugin, true).sendSms(review, "op-1"),
+      (error: unknown) =>
+        error instanceof SmsSendNotAttempted &&
+        error.reason === reason &&
+        error.operationId === "op-1",
+    );
+  }
+  for (const value of [
+    notAttempted("busy", "op-2"),
+    notAttempted("denied"),
+    { ...notAttempted("busy"), status: "sent" },
+  ]) {
+    const { plugin } = stub({ sendSms: value });
+    await assert.rejects(
+      createTelephonyClient(plugin, true).sendSms(review, "op-1"),
+      (error: unknown) =>
+        !(error instanceof SmsSendNotAttempted) &&
+        /invalid send result/.test(String(error)),
+    );
+  }
 });
 
 test("native sends: exact binding, evidence-backed status, no resend", async () => {

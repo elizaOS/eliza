@@ -1,0 +1,14 @@
+[
+  {
+    "id": "NativeSpeechRequest",
+    "model": "packages/voice/quint/NativeSpeechRequest.qnt",
+    "sources": ["packages/voice/src/native-speech-request.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models one request and permanent request-binding invalidation. A binding that becomes valid again is excluded.",
+      "Caller-supplied work must race interruption or honor the owned signal, as the API contract requires. Provider bridge cancel may fail without preventing fencing.",
+      "Finite verification domain. One request, permanent binding loss, caller abort, one bridge cancel and terminal outcome. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  }
+]

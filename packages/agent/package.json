@@ -51,7 +51,8 @@
     "test:e2e": "node scripts/run-vitest-batches.ts",
     "test:integration": "node scripts/run-vitest-batches.ts",
     "test:tee:dstack": "node scripts/run-vitest-batches.ts test/tee-dstack-admission.test.ts test/tee-dstack-protected-profile.test.ts test/tee-dstack-gpu.test.ts test/tee-gpu-nvidia-attestation.test.ts",
-    "test:tee:dstack-live": "node scripts/run-vitest-batches.ts test/tee-dstack-live.test.ts"
+    "test:tee:dstack-live": "node scripts/run-vitest-batches.ts test/tee-dstack-live.test.ts",
+    "test:formal": "node ../scripts/check-quint.ts packages/agent/quint"
   },
   "exports": {
     ".": {

@@ -14,6 +14,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
 } from "react";
 
@@ -167,7 +168,7 @@ export function InstalledAppsGridDrawer({
   query,
   onQuery,
   onClose,
-  menu,
+  menu: requestedMenu,
   onMenu,
   onAddHome,
   onAppInfo,
@@ -181,6 +182,10 @@ export function InstalledAppsGridDrawer({
 }: InstalledAppsGridDrawerProps) {
   const snapshot = launcher.snapshot();
   const entries = appsDrawerEntries(snapshot, builtinPrefix, query);
+  const menu =
+    requestedMenu && entries.some((entry) => entry.key === requestedMenu)
+      ? requestedMenu
+      : null;
   const loading = snapshot.status === "idle" || snapshot.status === "loading";
   const status =
     snapshot.status === "failed"
@@ -191,6 +196,8 @@ export function InstalledAppsGridDrawer({
   // Long press: the tap that ends it is swallowed, so it does not also open the entry.
   const press = useRef<{
     key: string;
+    pointer: number;
+    target: Element;
     x: number;
     y: number;
     timer: ReturnType<typeof setTimeout>;
@@ -200,26 +207,47 @@ export function InstalledAppsGridDrawer({
     if (press.current) clearTimeout(press.current.timer);
     press.current = null;
   }, []);
-  useEffect(() => endPress, [endPress]);
+  useLayoutEffect(() => endPress, [endPress]);
+  useLayoutEffect(() => {
+    if (press.current && !press.current.target.isConnected) endPress();
+    if (
+      swallow.current &&
+      !entries.some((entry) => entry.key === swallow.current)
+    )
+      swallow.current = "";
+    if (requestedMenu && !menu) onMenu(null);
+  }, [endPress, entries, menu, onMenu, requestedMenu]);
+  const releasePress = (event: ReactPointerEvent) => {
+    if (press.current?.pointer === event.pointerId) endPress();
+  };
   const hold = (key: string) => ({
     onPointerDown: (event: ReactPointerEvent) => {
+      const pointer = event.pointerId;
+      if (press.current && press.current.pointer !== pointer) return;
       swallow.current = "";
       endPress();
       if (event.button > 0) return;
-      press.current = {
+      const target = event.currentTarget;
+      const pending = {
         key,
+        pointer,
+        target,
         x: event.clientX,
         y: event.clientY,
         timer: setTimeout(() => {
+          if (press.current !== pending) return;
           press.current = null;
+          if (!target.isConnected || !scope.current?.contains(target)) return;
           swallow.current = key;
           onMenu(key);
         }, HOLD_MS),
       };
+      press.current = pending;
     },
     onPointerMove: (event: ReactPointerEvent) => {
       if (
         press.current?.key === key &&
+        press.current.pointer === event.pointerId &&
         Math.hypot(
           event.clientX - press.current.x,
           event.clientY - press.current.y,
@@ -227,8 +255,8 @@ export function InstalledAppsGridDrawer({
       )
         endPress();
     },
-    onPointerUp: endPress,
-    onPointerCancel: endPress,
+    onPointerUp: releasePress,
+    onPointerCancel: releasePress,
     onContextMenu: (event: ReactMouseEvent) => {
       event.preventDefault();
       endPress();

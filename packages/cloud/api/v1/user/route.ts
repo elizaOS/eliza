@@ -23,6 +23,10 @@ import type {
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  scheduleReplacedAvatarCleanup,
+  swapUserAvatar,
+} from "@/api/_lib/user-avatar";
 
 const updateUserSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -151,9 +155,22 @@ app.patch("/", async (c) => {
   }
   const validated = parsed.data;
 
+  if (validated.avatar !== undefined) {
+    const avatar = validated.avatar || null;
+    const swap = await swapUserAvatar(authed.id, null, avatar);
+    if (!swap.updated) throw NotFoundError("User not found");
+    await scheduleReplacedAvatarCleanup(
+      c,
+      swap.updated.organization_id,
+      authed.id,
+      swap.previousAvatar,
+      avatar,
+    );
+  }
+
+  // Also evicts the cached user, so the avatar written above is visible.
   const updated = await usersService.update(authed.id, {
     ...(validated.name && { name: validated.name }),
-    ...(validated.avatar !== undefined && { avatar: validated.avatar || null }),
     ...(validated.nickname !== undefined && { nickname: validated.nickname }),
     ...(validated.work_function !== undefined && {
       work_function: validated.work_function,

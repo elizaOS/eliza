@@ -2,7 +2,7 @@
  * Keyless runtime proof for a coordinate-only Maps share handoff, exercising
  * the promoted action without a provider credential or external request.
  * Sharing a location is consent-gated: the first turn must only ask, and the
- * handoff exists only after the explicit confirm turn.
+ * handoff exists only after the user's "Yes, share ..." reply on a later turn.
  */
 
 import {
@@ -63,7 +63,6 @@ export default scenario({
           ...PLACE,
           latitude: LATITUDE,
           longitude: LONGITUDE,
-          confirm: true,
         },
       },
       timeoutMs: 120_000,

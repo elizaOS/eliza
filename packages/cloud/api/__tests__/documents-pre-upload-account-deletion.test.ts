@@ -71,9 +71,11 @@ function memoryBucket() {
     async delete(key: string) {
       objects.delete(key);
     },
-    async list() {
+    async list(options: { prefix?: string } = {}) {
       return {
-        objects: [...objects].map(([key, value]) => ({ key, ...value })),
+        objects: [...objects]
+          .filter(([key]) => key.startsWith(options.prefix ?? ""))
+          .map(([key, value]) => ({ key, ...value })),
         truncated: false,
       };
     },

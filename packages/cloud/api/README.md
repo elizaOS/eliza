@@ -9,6 +9,14 @@ local bindings are derived from root .env/.env.local. Add routes in the file-bas
 tree and run the package codegen script. The build script checks types; typecheck also
 validates router and Worker bundling contracts.
 
+`/api/v1/responses` is a synchronous adapter to the same chat authentication,
+admission and billing owner. It preserves ordered text, image URLs, inline files
+and function-call histories. Unsupported inputs (including stored response IDs,
+streaming, hosted tools and explicit image detail) return `400` before admission.
+Provider token limits remain `incomplete`; malformed provider output returns `503`.
+Numeric tool arguments that the chat SDK cannot preserve are rejected explicitly.
+The adapter does not persist Responses objects.
+
 Delegated inference budgets are off by default. Apply shared migrations 0544–0545
 before setting `INFERENCE_FUNDED_BUDGET_ADMISSION=true`. Keep strong revocation
 enabled and configure the same `INFERENCE_FUNDING_BUDGET_SEAL_SECRET` on the
@@ -124,9 +132,9 @@ published self-serve overage rate ($65 per million provider credits) in the
 This is an estimate for staging validation, not an assertion about a private
 invoice. Production retains its existing configured account rate.
 
-The speech-only Ink profile uses responsive thresholds and a 1280 ms final-turn
-timeout. `VOICE_SPEECH_END_TIMEOUT_MS` can select an integer clamped to 640–5000
-ms. Eager-end remains a distinct event; it is never promoted to a final transcript.
+Cloud speech uses the shared Cartesia Ink turn-detection settings, just like
+Direct speech. It does not replace them with a faster-ending profile. Eager-end
+remains a distinct event; it is never promoted to a final transcript.
 The streaming route bypasses the legacy SQL audio cache and does not replay
 cached PCM. Its cache stores positive moderation verdicts, not synthesized
 audio. Positive text moderation receipts use a 60-second, exact-input cache bound to
@@ -717,3 +725,15 @@ variable through its atomic Worker-binding pipeline. A blank source preserves
 the deployed value. This uses the existing binding mechanism even though the
 content is public. To withdraw published documents, replace the binding with
 `{}` so the endpoint refuses it; an empty source is not a deletion request.
+
+App deletion is asynchronous. `DELETE /api/v1/apps/:id` returns `202` with the
+original `jobId` while teardown is pending, and `200` only for confirmed completion.
+Poll the existing jobs endpoint and require its matching app-deletion receipt before
+removing the app from local state. Cancelling a client wait does not cancel teardown.
+The original deletion fence remains in place after a failed or uncertain provider
+operation; retries read the same job and cannot change its repository-deletion option.
+A missing GitHub deletion acknowledgement reports `operator_reconciliation_required`.
+It does not repeat the DELETE or accept a 404 as success. Escalate the original job
+and repository ID to an operator; this release has no automatic evidence-import
+endpoint. Independent original provider evidence is required before an operator
+can reconcile that receipt. The app and its deletion fence remain retained.

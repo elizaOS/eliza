@@ -1,0 +1,63 @@
+{
+	"sources": [
+		"packages/core/src/services/notification.ts",
+		"packages/core/src/types/notification.ts",
+		"packages/core/test/notification.test.ts",
+		"plugins/plugin-assistant/src/services/approval/store.ts"
+	],
+	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
+	"bounds": "One notification group, three allocated row IDs, wall clock 0 through 2, one queued write, two non-silent inputs and representative silent, permanent, explicit-expiry and count-override inputs.",
+	"fairness": "RequestFinishes assumes weak fairness of the serial writer's successful settlement. An admitted write can wait forever without fairness.",
+	"limitations": [
+		"This case projects a row to its identity, title, silent priority, expiration, count and read mark. Exact projection uses the approval owner's unread, permanent, no-coalesced-count predicate.",
+		"Time advances monotonically within the finite clock. A default silent lifetime is one model tick. The real suite checks the 24-hour value and explicit timestamps and null.",
+		"Write failure and ambiguous persistence are in NotificationDurability. Tenant ownership, cross-process writers, mixed group histories and arbitrary callbacks are outside this case."
+	],
+	"cases": [
+		{
+			"name": "group-policy",
+			"main": "NotificationGroupPolicy",
+			"init": "init",
+			"step": "step",
+			"invariants": ["SequenceTracksRetainedRow"],
+			"temporal": [
+				"ClockTickKeepsHistory",
+				"GroupWriteRules",
+				"RequestFinishes",
+				"RequestFinishesWithoutFairness"
+			],
+			"maxSteps": 25,
+			"samples": 300,
+			"temporalChecks": [
+				{
+					"property": "ClockTickKeepsHistory",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. A change in visibility leaves the retained row until a later write."
+					]
+				},
+				{
+					"property": "GroupWriteRules",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Check the completed write transition and use the wall clock at that transition."
+					]
+				},
+				{
+					"property": "RequestFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Assume weak fairness of settle after admission. This case assumes storage accepts the write."
+					]
+				},
+				{
+					"property": "RequestFinishesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. The serial writer can stutter forever after admission."
+					]
+				}
+			]
+		}
+	]
+}

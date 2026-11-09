@@ -25,6 +25,12 @@ import {
   validateClockOperation,
 } from "./clock-contract.ts";
 import {
+  FILES_CAPABILITY,
+  type FilesAgentOperation,
+  isFilesOperation,
+  validateFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   type ForegroundReviewOperation,
   foregroundReviewCapabilityAvailable,
   isForegroundReviewType,
@@ -36,10 +42,22 @@ import {
   validateNotesOperation,
 } from "./notes-contract.ts";
 import {
+  isNotesOrganizeType,
+  NOTES_ORGANIZE_CAPABILITY,
+  type NotesOrganizeOperation,
+  validateNotesOrganizeOperation,
+} from "./notes-organize-contract.ts";
+import {
   PHONE_DIAL_CAPABILITY,
   type PhoneDialOperation,
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
+import {
+  isPhotosViewType,
+  type PhotosViewOperation,
+  photosViewCapabilityAvailable,
+  validatePhotosViewOperation,
+} from "./photos-view-contract.ts";
 import {
   type ReminderOperation,
   validateReminderOperation,
@@ -53,12 +71,6 @@ import {
   type SmsSendOperation,
   validateSmsSend,
 } from "./sms-contract.ts";
-import {
-  FILES_CAPABILITY,
-  type FilesAgentOperation,
-  isFilesOperation,
-  validateFilesOperation,
-} from "./files-browser-contract.ts";
 import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
@@ -102,8 +114,10 @@ export type DeviceOperation =
   | FilesAgentOperation
   | ReminderOperation
   | NotesOperation
+  | NotesOrganizeOperation
   | NativeNotesQueryOperation
   | CalendarOperation
+  | PhotosViewOperation
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
@@ -137,6 +151,13 @@ export function deviceOperationSupportedByCapabilities(
       capabilities?.includes(NOTES_QUERY_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (isNotesOrganizeType(type))
+    return (
+      capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
+      capabilities.includes("notes.local-record.v1")
+    );
+  if (isPhotosViewType(type))
+    return photosViewCapabilityAvailable(capabilities);
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -250,6 +271,29 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         return validateNotesOperation(p);
       } catch {
         throw new DeviceActionError("Invalid Notes operation");
+      }
+    case "notes_filter":
+    case "notes_move":
+    case "notes_folder_create":
+    case "notes_restore":
+    case "notes_record":
+      try {
+        return validateNotesOrganizeOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Notes operation: ${(error as Error).message}`,
+        );
+      }
+    case "photos_filter":
+    case "photos_open":
+    case "photos_album_create":
+    case "photos_share":
+      try {
+        return validatePhotosViewOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Photos operation: ${(error as Error).message}`,
+        );
       }
     case "calendar_create_local":
     case "calendar_read_next":

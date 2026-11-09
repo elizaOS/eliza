@@ -151,8 +151,14 @@ A host can register its own `@CapacitorPlugin` subclass of
 `describe` (add status fields), `hear` (put its own recognizer in front of
 `Transcription.asr()`), `answerBeforeInstall` (status answers from the APK
 manifest and the bundle installs after it), `failureCode` (the host's own
-rejection codes), `resolved` (for example timing logs), `idleReleaseMillis`
-and `cancelAll`. The defaults keep the behavior above.
+rejection codes), `resolved` (for example timing logs), `idleReleaseMillis`,
+`hiddenReleaseMillis` and `holdsModels` (release the transport's hold on the
+models once the host's activity stops or Android reports `TRIM_MEMORY_UI_HIDDEN`,
+nothing is queued or running and nothing was spoken or heard for that time;
+never cancels running work), `releaseModels` and `cancelAll`. The defaults keep
+the behavior above: no release for a hidden host. A host that overrides
+`handleOnStart` or `handleOnStop` must call `super`, since they tell the
+transport that the host is shown or hidden.
 
 Transcription runs on its own hearing worker with its own client of the
 session, so a slow host recognizer never holds synthesis, and a cancel on one
@@ -303,8 +309,13 @@ directly. The installer hashes the bytes in the APK once per bundle manifest.
 After an app update with the same manifest it only rewrites the region files for
 the new APK path, since the package manager has checked the APK's signature. The
 agent's ASR check (`asr-provenance.ts`) reads the GGUF header through a region
-file too. It still copies compressed or unaligned entries, the VAD model and the
-eSpeak NG data. A region bundle needs a libelizainference built from a fork
+file too. The installer still copies compressed or unaligned entries, the VAD
+model and the eSpeak NG data. A host that reads a model itself, for example to
+warm the page cache, calls `VoiceBundleAssets.modelRegion(File)` for the file
+and span to read: it returns a `Region` (`file`, `offset`, `length`), where
+`file` is the APK for an in-place model and the model file itself for a copied
+one. A missing model throws `FileNotFoundException`; an invalid region file, or
+one whose containing file is missing or too short, throws `IOException`. A region bundle needs a libelizainference built from a fork
 commit with region-file support.
 
 ## Licenses

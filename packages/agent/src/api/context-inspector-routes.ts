@@ -52,6 +52,12 @@ export interface ContextInspectorBudget {
   usedTokens: number;
   limitTokens: number;
   reservedTokens: number;
+  /**
+   * How usedTokens was measured. "reported" is the provider's prompt token
+   * count; "utf8-upper-bound" is a UTF-8 byte count, an upper bound rather
+   * than a token count.
+   */
+  estimationMode: "reported" | "heuristic" | "utf8-upper-bound" | "unknown";
   state: "within-budget" | "rejected" | "unavailable";
 }
 
@@ -188,17 +194,28 @@ function budgetFromCall(call: unknown): ContextInspectorBudget | null {
   const actual = finiteNonnegativeInteger(callRecord?.promptTokens);
   const threshold = finiteNonnegativeInteger(budget.dispatchThresholdTokens);
   const contextWindow = finiteNonnegativeInteger(budget.contextWindowTokens);
+  // ModelInputBudget names the field reserveTokens; older recorded
+  // trajectories used the output-reserve names.
   const reserved =
+    finiteNonnegativeInteger(budget.reserveTokens) ??
     finiteNonnegativeInteger(budget.reserveOutputTokens) ??
     finiteNonnegativeInteger(budget.reservedOutputTokens) ??
     0;
   const used = actual ?? estimated;
+  const estimationMode: ContextInspectorBudget["estimationMode"] =
+    actual !== null
+      ? "reported"
+      : budget.estimationMode === "utf8-upper-bound" ||
+          budget.estimationMode === "heuristic"
+        ? budget.estimationMode
+        : "unknown";
   const limit = threshold ?? contextWindow;
   if (used === null || limit === null) {
     return {
       usedTokens: used ?? 0,
       limitTokens: limit ?? 0,
       reservedTokens: reserved,
+      estimationMode,
       state: "unavailable",
     };
   }
@@ -206,6 +223,7 @@ function budgetFromCall(call: unknown): ContextInspectorBudget | null {
     usedTokens: used,
     limitTokens: limit,
     reservedTokens: reserved,
+    estimationMode,
     // Core estimates are diagnostic only and never reject model input, so a
     // recorded budget cannot mark a dispatched call as rejected.
     state: "within-budget",

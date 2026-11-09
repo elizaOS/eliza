@@ -40,6 +40,9 @@ commit stays fenced, and stale release cannot clear a newer request. The retaine
 The host binds the exact session, installed APK digest and executing APK digest. Pending
 confirmation and storage failures keep the fence; only an exact successor or proven
 ended baseline attempt releases it. Hosts configure admission before Android providers start.
+The source-linked [Quint journal model](quint/UpdateJournal.qnt) preserves the
+portable reference transitions. Its checker compares all 11,581 journal cases
+with real Java codec results. Bounds and remaining gaps are in the case manifest.
 File-based primitives require Android API 26 or newer. Run their portable JVM
 crash/recovery tests with JDK 21 and `bun run --cwd plugins/plugin-native-agent test:native-host`.
 
@@ -345,7 +348,25 @@ Staging rejects unknown fixtures, invalid packages and existing output files; it
 
 `runtime.EmbeddedRuntimeService` integrates the existing NativeRuntimeSession and
 EmbeddedRuntimeGroup with Android Service lifecycle, foreground dispatch, status,
-endpoint-bound requests and local health snapshots. When the runtime is available,
+endpoint-bound requests and local health snapshots. A request refused before dispatch
+throws `NativeRuntimeSession.NotReadyException`; a host bridge rejects it with
+`NotReadyException.CODE` (`RUNTIME_NOT_READY`), which `createRuntimeJsonClient` with `reuseRunningStatus`
+sends once after startup. A request cancelled after dispatch stays a plain `LifecycleException`. A Capacitor
+bridge maps it before any other `LifecycleException`:
+
+```java
+try {
+  // In a subclass of EmbeddedRuntimeService (requestFor is protected static).
+  call.resolve(toJs(requestFor(MyRuntimeService.class, request, unavailable, cancelled)));
+} catch (NativeRuntimeSession.NotReadyException e) {
+  call.reject(e.getMessage(), NativeRuntimeSession.NotReadyException.CODE);
+} catch (Exception e) {
+  call.reject(e.getMessage()); // dispatched or unknown: never RUNTIME_NOT_READY
+}
+```
+
+A host that sets `reuseRunningStatus` without this mapping fails the first request after a
+service stop it did not see. When the runtime is available,
 status reports `requestBodyLimit`: the stock `RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS`
 a host uses with this service. The host's serialization is what is counted, and
 Android org.json escapes `/`, so a renderer that checks a body's `JSON.stringify`

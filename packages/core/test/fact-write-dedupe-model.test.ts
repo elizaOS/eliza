@@ -1,4 +1,4 @@
-/** Regression tests for counterexamples found by tla/FactWriteDedupe.tla. */
+/** Regression tests for counterexamples found by quint/FactWriteDedupe.qnt. */
 import {
 	AgentRuntime,
 	type Memory,
@@ -52,7 +52,7 @@ async function facts(runtime: AgentRuntime) {
 	});
 }
 
-// TLA+ NoDuplicateFact: concurrent identical fact writes (the detached
+// Quint NoDuplicateFact: concurrent identical fact writes (the detached
 // facts stage of one turn overlapping the next turn's in the same room)
 // leave one row.
 test("concurrent identical fact writes store one row", async () => {
@@ -65,7 +65,7 @@ test("concurrent identical fact writes store one row", async () => {
 	expect(ids[0]).toBe(ids[1]);
 });
 
-// TLA+ NoLostEvidence: concurrent dedupe hits on one row keep every
+// Quint NoLostEvidence: concurrent dedupe hits on one row keep every
 // occurrence's evidence id.
 test("concurrent dedupe hits keep every evidence id", async () => {
 	const runtime = await createRuntime();

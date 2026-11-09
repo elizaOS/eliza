@@ -435,7 +435,14 @@ describe("NotesStore", () => {
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
-      ["notes", "persistedAt", "revision", "schemaVersion", "trash"].sort(),
+      [
+        "noteRevisions",
+        "notes",
+        "persistedAt",
+        "revision",
+        "schemaVersion",
+        "trash",
+      ].sort(),
     );
   });
 

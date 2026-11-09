@@ -7,6 +7,7 @@ import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { createPlaywrightTestSessionToken } from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
+import * as realCheckout from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
 import type {
   AppEnv,
   AuthedUser,
@@ -82,6 +83,7 @@ mock.module(
 mock.module(
   "@elizaos/cloud-shared/lib/services/stripe-checkout-orders",
   () => ({
+    ...realCheckout,
     stripeCheckoutOrdersService: {
       create: async () => {
         effects.push("order");

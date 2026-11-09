@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="${applicationId}.sense.permission.LISTENER_CONTROL" />
     <queries><package android:name="${applicationId}.sense" /></queries>
+    <!-- Reset recovery offers a dialer outside this app (DataResetRecoveryActivity). -->
+    <queries><intent><action android:name="android.intent.action.DIAL" /></intent></queries>
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
