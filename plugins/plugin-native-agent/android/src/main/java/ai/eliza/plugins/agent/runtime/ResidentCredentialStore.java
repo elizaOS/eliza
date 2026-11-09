@@ -91,8 +91,8 @@ public final class ResidentCredentialStore {
           throw new IllegalStateException("Credential changed");
         if (cloudSlot.equals(name) && !NativeProviderAdmission.sameCloudCredential(before, value))
           compatibility.cloudChanged();
-        String committed = providerSlot.equals(name) && value != null
-            ? NativeProviderAdmission.withoutAdmission(value) : value;
+        String committed = providerSlot.equals(name)
+            ? value == null ? NativeProviderAdmission.unbindProvider(before) : NativeProviderAdmission.withoutAdmission(value) : value;
         boolean changed = providerSlot.equals(name) ? !Objects.equals(before, committed)
             : !NativeProviderAdmission.sameCloudCredential(before, committed);
         if (changed) authority.changed();
@@ -221,8 +221,9 @@ public final class ResidentCredentialStore {
           if (epoch != authority.epoch() || !Objects.equals(provider, slots.read(providerSlot))
               || !Objects.equals(cloud, slots.read(cloudSlot))) throw new ProviderChanged();
           authority.changed();
-          slots.remove(providerSlot);
-          if (slots.read(providerSlot) != null) throw new IllegalStateException("Provider removal unconfirmed");
+          String retained = NativeProviderAdmission.unbindProvider(provider);
+          if (retained == null) slots.remove(providerSlot); else slots.write(providerSlot, retained);
+          if (!Objects.equals(retained, slots.read(providerSlot))) throw new IllegalStateException("Provider removal unconfirmed");
           return true;
         }
       });

@@ -2,7 +2,7 @@
 
 Android media and selected-document primitives for Eliza hosts: the host's own published media,
 the full permitted device photo/video library, exact-byte selections and reviewed changes. Nothing
-here uploads media, builds a remote index or rewrites an original; outbound use of any bytes is a
+here uploads media or builds a remote index; an original is rewritten only through reviewed Replace; outbound use of any bytes is a
 separate, explicit host action.
 
 Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
@@ -15,7 +15,11 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
   crop and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
   operation identity, a receipt journal and a deterministic display name, so a crash between
   publish and receipt resolves to `saved` or `failed`, never a duplicate. The session aborts if
-  the source changes (MediaStore generation and SHA-256 of the snapshot).
+  the source changes (MediaStore generation and SHA-256 of the snapshot). Explicit Replace keeps
+  the original and encoded edit durably before writing. Recovery requires current access, the same
+  target and unchanged readback; it restores recorded damage or a prefix proven by the encoded edit.
+  An interrupted restore also requires its durable phase record. Unproven bytes and backups remain
+  untouched. A complete edit or original settles the receipt without replaying the edit.
 - `VideoCopyEdits` / `VideoEditSpec` – trim, quarter-turn rotation and centered crop of an admitted
   video with Media3 Transformer, saved as a new owned MP4. The encoder reads a frozen private
   snapshot; publication rechecks the source bytes, access and provider revision; each save has
@@ -52,7 +56,8 @@ Full permitted library (other apps' media, as far as Android grants it):
   version and generation; a changed library or revoked access refuses the read instead of
   returning stale rows. Observation runs only while a host view watches.
 - `PermittedMediaReview` – one-shot native review of favorite, Recently deleted and permanent
-  removal for 1–20 items: a native dialog naming every item, then Android's MediaStore write
+  removal: up to 500 items for favorite, trash and restore, and 20 for permanent removal.
+  A native dialog names every item, then Android's MediaStore write
   request. Changes apply only to the reviewed revisions after the activity resumes; recreation
   discards authority and never replays a write. Hosts inject their launch gate.
 - `SelectedPhotoCopy` – exact provider-readable bytes of one selected still photo (PNG, JPEG,
@@ -73,7 +78,7 @@ Capacitor bindings (a host registers a subclass under its own plugin name):
 - `PhotosPlugin` – the Photos bridge over the engines above, built on `PermittedPhotosPlugin`: library access (`libraryAccess`,
   `requestLibraryAccess` from an explicit control only, `openLibrarySettings`), permitted and owned
   listings with bounded previews (`list`, `listPermitted`, `read`, `readPermitted`, `summary`),
-  favorite and Recently deleted changes (single and 1–20 item batches, permitted items through the
+  favorite and Recently deleted changes (single and 1–20 owned or 1–500 permitted item batches through the
   native review), two-step permanent removal, custom albums, still-photo and video edit copies,
   explicit capture keeps, single and multi-item share, and same-origin video playback. Every
   permitted read is published only under the catalog ticket it started with; pausing the activity

@@ -26,8 +26,10 @@ public final class PhotoLibraryAccess {
   public static final int PAGE = 24;
   /** Validation reads at most this many named items in one call. */
   public static final int VALIDATE = 200;
-  /** Reviewed changes, shares and permanent removals name at most this many items. */
+  /** Owned changes and permanent removals name at most this many items. */
   public static final int REVIEWED = 20;
+  /** One reviewed Android favorite, trash or restore request over permitted media. */
+  public static final int REVIEWED_BATCH = 500;
 
   private PhotoLibraryAccess() {}
 

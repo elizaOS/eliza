@@ -148,6 +148,13 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   File[] stale=getContext().getCacheDir().listFiles((dir,name)->name.startsWith(playbackPrefix));
   if(stale!=null)for(File file:stale)file.delete();
  }
+ /** A host credential change or protected secret surface retires capture and playback without
+  * changing activity foreground state. Already-owned transport cleanup still runs normally. */
+ protected final void retireSpeechAuthority(){
+  epoch.incrementAndGet();live.cancelAll();gate.cancelAll();
+  main.post(()->{if(capture!=null)capture.stopAutomatically();clearPlayback();});
+ }
+ protected boolean sensitiveSurfaceActive(){return false;}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
  @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
@@ -198,6 +205,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   * {@code request.failure}/{@code failureCode}; a request that resolved early settles nothing.
   */
  protected final void submit(PluginCall call,Work work){
+  if(sensitiveSurfaceActive()){call.reject("Close the protected credential surface before using speech.");return;}
   final String id;try{id=required(call.getString("requestId"),256);}catch(Exception error){call.reject("Invalid request");return;}
   SpeechRequestGate.Admission admission=gate.admit(id,!Boolean.FALSE.equals(call.getBoolean("replace",true)));
   if(admission.request==null){if(admission.refusal==SpeechRequestGate.Refusal.BUSY)call.reject("Speaker is in use","playback-busy");else call.reject("Voice request already active or unavailable");return;}
@@ -229,7 +237,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Capacitor's own permission request launches through the activity; see {@link #launch}. */
  @Override @PluginMethod public void requestPermissions(PluginCall call){launch(call,()->super.requestPermissions(call));}
  @PermissionCallback private void microphonePermission(PluginCall call){Long admitted=permissionEpochs.remove(call.getCallbackId());if(admitted==null||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startRecording(call,admitted);}
- private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
+ private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
  @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(js(capture.metrics(call.getString("recordingId"))));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(js(capture.stop()));}catch(Exception error){call.reject("Recording could not be saved");}});}
  private void finishDrain(boolean complete,String error){
@@ -484,6 +492,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** The shared VAD opens on this process's inference session (verifies the bundle once; capture worker only). */
  private boolean vadAvailable(){try{return LiveVoiceCapture.vadAvailable(VoiceAssets.sharedInference(getContext()));}catch(Exception|Error unavailable){return false;}}
  @PluginMethod public void startLiveCapture(PluginCall call){
+  if(sensitiveSurfaceActive()){call.reject("Close the protected credential surface before using speech.");return;}
   String id=call.getString("captureId","");
   if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
   if(gate.draining()||destroyed||!speechForeground){call.reject(LiveCaptureController.CANCELLED);return;}
@@ -496,6 +505,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  }
  @PermissionCallback private void liveMicrophonePermission(PluginCall call){LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());if(ticket==null||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,ticket);}
  private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
+  if(sensitiveSurfaceActive()){if(live.current(ticket))live.cancelAll();call.reject(LiveCaptureController.CANCELLED);return;}
   String owner=call.getString("ownerId","");
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;
   live.start(ticket,Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),route,call.getString("roomId",null),Boolean.TRUE.equals(call.getBoolean("reopen",false)),new LiveCaptureController.Started(){
