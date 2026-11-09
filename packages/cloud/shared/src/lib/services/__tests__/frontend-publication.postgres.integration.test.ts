@@ -57,7 +57,9 @@ async function makeScope() {
   await control.connect();
   await observer.connect();
   await control.query(`CREATE SCHEMA ${schema}; SET search_path TO ${schema},pg_catalog,public`);
-  await control.query("CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL)");
+  await control.query(
+    "CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL, deletion_job_id uuid)",
+  );
   for (const statement of await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ appFrontendDeployments }),
@@ -169,8 +171,12 @@ async function uploading(scope: Scope, appId: string) {
     "INSERT INTO apps(id,organization_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
     [appId, organizationId],
   );
-  const row = await scope.run(() => repository.create({ appId, r2Prefix: "fixture/" }));
-  const result = await scope.run(() => repository.beginUpload(row.id));
+  const row = await scope.run(() =>
+    repository.create({ appId, organizationId, r2Prefix: "fixture/" }),
+  );
+  const result = await scope.run(() =>
+    repository.beginUpload({ id: appId, organization_id: organizationId }, row.id),
+  );
   if (!result) throw new Error("Fixture upload did not start");
   return result;
 }
@@ -221,6 +227,48 @@ async function rowStatus(scope: Scope, id: string) {
       }
     }
   });
+
+  test(
+    "ownership changed while creation waits cannot allocate a deployment",
+    async () =>
+      inScope(async (scope) => {
+        const appId = randomUUID();
+        await scope.control.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [
+          appId,
+          organizationId,
+        ]);
+        const {
+          rows: [owner],
+        } = await scope.control.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        if (!owner) throw new Error("Missing controlled owner connection");
+        let attempt: Promise<AppFrontendDeployment> | undefined;
+        try {
+          await scope.control.query("BEGIN");
+          await scope.control.query("UPDATE apps SET organization_id=$2 WHERE id=$1", [
+            appId,
+            randomUUID(),
+          ]);
+          attempt = scope.run(() =>
+            repository.create({ appId, organizationId, r2Prefix: "original-owner/" }),
+          );
+          void attempt.catch(() => undefined);
+          expect(await waitingOn(scope, owner.pid)).not.toBe(owner.pid);
+          await scope.control.query("COMMIT");
+          await expect(attempt).rejects.toMatchObject({ code: "FRONTEND_APP_OWNER_UNAVAILABLE" });
+          const {
+            rows: [count],
+          } = await scope.control.query<{ count: string }>(
+            "SELECT count(*)::text AS count FROM app_frontend_deployments WHERE app_id=$1",
+            [appId],
+          );
+          expect(count?.count).toBe("0");
+        } finally {
+          await scope.control.query("ROLLBACK");
+          await attempt?.catch(() => undefined);
+        }
+      }),
+    30_000,
+  );
 
   test(
     "acknowledged publication wins a waiting retirement and keeps its manifest",

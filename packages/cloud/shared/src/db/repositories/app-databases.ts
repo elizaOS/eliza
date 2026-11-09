@@ -1,15 +1,30 @@
 // Persists app databases records for cloud services through the shared DB boundary.
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
 import {
   type AllocatedCluster,
   type ClusterCandidate,
   ClusterPool,
 } from "../../lib/services/tenant-db/cluster-pool";
+import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type AppDatabase, appDatabases, type NewAppDatabase } from "../schemas/app-databases";
 import type { UserDatabaseStatus } from "../schemas/apps";
+import { apps } from "../schemas/apps";
 import { tenantDbClusters } from "../schemas/tenant-db-clusters";
+
+async function lockProvisionableApp(tx: DbTransaction, appId: string): Promise<void> {
+  /* global-scope: Lifecycle-only lock for internal database provisioning; caller admission owns tenant authorization. */
+  const [app] = await tx
+    .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
+    .from(apps)
+    .where(eq(apps.id, appId))
+    .for("update");
+  if (!app) throw new ElizaError("App no longer exists", { code: "APP_NOT_FOUND" });
+  if (app.deletionJobId) throw new AppDeletionInProgressError(appId, app.deletionJobId);
+}
 
 export type { AppDatabase, NewAppDatabase };
 
@@ -80,9 +95,11 @@ export class AppDatabasesRepository {
   }
 
   async trySetProvisioning(appId: string, region: string): Promise<AppDatabase | undefined> {
-    const [database] = await sqlRows<AppDatabase>(
-      dbWrite,
-      sql`
+    return dbWrite.transaction(async (tx) => {
+      await lockProvisionableApp(tx, appId);
+      const [database] = await sqlRows<AppDatabase>(
+        tx,
+        sql`
         INSERT INTO ${appDatabases} (
           app_id,
           user_database_status,
@@ -100,9 +117,10 @@ export class AppDatabasesRepository {
         WHERE ${appDatabases.user_database_status} IN ('none', 'error')
         RETURNING *
       `,
-    );
+      );
 
-    return database;
+      return database;
+    });
   }
 
   async findTenantDbPlacementByAppId(appId: string): Promise<TenantDbClusterPlacement | undefined> {
@@ -122,6 +140,7 @@ export class AppDatabasesRepository {
 
   async claimTenantDbPlacementForApp(appId: string): Promise<TenantDbClusterPlacement> {
     return await dbWrite.transaction(async (tx) => {
+      await lockProvisionableApp(tx, appId);
       const now = new Date();
       await tx
         .insert(appDatabases)
@@ -221,25 +240,28 @@ export class AppDatabasesRepository {
   }
 
   async updateState(appId: string, data: AppDatabaseStateUpdate): Promise<AppDatabase> {
-    const update = compactUpdate(data);
-    const now = new Date();
-    const [database] = await dbWrite
-      .insert(appDatabases)
-      .values({
-        app_id: appId,
-        ...update,
-        updated_at: now,
-      } as NewAppDatabase)
-      .onConflictDoUpdate({
-        target: appDatabases.app_id,
-        set: {
+    return dbWrite.transaction(async (tx) => {
+      await lockProvisionableApp(tx, appId);
+      const update = compactUpdate(data);
+      const now = new Date();
+      const [database] = await tx
+        .insert(appDatabases)
+        .values({
+          app_id: appId,
           ...update,
           updated_at: now,
-        },
-      })
-      .returning();
+        } as NewAppDatabase)
+        .onConflictDoUpdate({
+          target: appDatabases.app_id,
+          set: {
+            ...update,
+            updated_at: now,
+          },
+        })
+        .returning();
 
-    return database;
+      return database;
+    });
   }
 
   private async findStateByAppIdUsingDb(

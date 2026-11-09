@@ -89,7 +89,7 @@ function afterNextRead(other: () => Promise<unknown>) {
 beforeAll(async () => {
   await dbWrite.execute(
     sql.raw(
-      "CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL)",
+      "CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL, deletion_job_id uuid)",
     ),
   );
   await dbWrite.execute(
