@@ -78,6 +78,7 @@ export interface NotificationServiceLifecycleRuntime {
 
 interface NotificationRecoveryState {
 	failures: number;
+	/** Process-local deadline in performance.now() milliseconds. */
 	nextAttemptAt: number;
 	inFlight: Promise<NotificationService | null> | null;
 }
@@ -289,7 +290,7 @@ export class NotificationService extends Service {
 			return { state: "unavailable", retryAfterSeconds: 1 };
 		}
 
-		const now = Date.now();
+		const now = performance.now();
 		if (existing && existing.nextAttemptAt > now) {
 			return {
 				state: "backoff",
@@ -329,7 +330,7 @@ export class NotificationService extends Service {
 				const failures = recovery.failures + 1;
 				const delayMs = recoveryDelayMs(failures);
 				recovery.failures = failures;
-				recovery.nextAttemptAt = Date.now() + delayMs;
+				recovery.nextAttemptAt = performance.now() + delayMs;
 				runtime.reportError("NotificationService.recovery", error, {
 					attempt,
 					retryAfterSeconds: retryAfterSeconds(delayMs),

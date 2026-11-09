@@ -1032,6 +1032,12 @@ describe("NotificationService", () => {
 			sqliteTestAgentId("NotificationIntegrationAgent"),
 		);
 		const unavailable = await createRuntime([NotificationService], adapter);
+		let elapsed = 10_000;
+		let wallTime = Date.now();
+		const elapsedClock = vi
+			.spyOn(performance, "now")
+			.mockImplementation(() => elapsed);
+		const wallClock = vi.spyOn(Date, "now").mockImplementation(() => wallTime);
 		try {
 			await expect(
 				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
@@ -1066,7 +1072,41 @@ describe("NotificationService", () => {
 				true,
 			);
 			expect(adapter.readAttempts).toBe(2);
+
+			const originalWallTime = wallTime;
+			wallTime += 60_000;
+			expect(NotificationService.requestRecovery(unavailable.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			wallTime = originalWallTime - 60_000;
+			for (const seconds of [1, 2, 4, 8, 16, 30, 30]) {
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime),
+				).toEqual({
+					state: "backoff",
+					retryAfterSeconds: seconds,
+				});
+				elapsed += seconds * 1_000 - 1;
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime),
+				).toEqual({
+					state: "backoff",
+					retryAfterSeconds: 1,
+				});
+				elapsed += 1;
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime).state,
+				).toBe("started");
+				await expect(
+					unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+				).rejects.toThrow("failed to start");
+				await Promise.resolve();
+			}
+			expect(adapter.readAttempts).toBe(9);
 		} finally {
+			wallClock.mockRestore();
+			elapsedClock.mockRestore();
 			await unavailable.cleanup();
 		}
 	});
