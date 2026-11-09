@@ -14,7 +14,7 @@ import {
 
 const MAPS_SHARE = "MAPS_SHARE";
 const PLACE = {
-  name: "Eliza Research",
+  name: "Alpha Compute",
   address: "San Francisco, California",
 };
 const LATITUDE = 37.7749;
@@ -43,7 +43,7 @@ export default scenario({
       kind: "action",
       name: "share-coordinate",
       actionName: MAPS_SHARE,
-      text: "Share Eliza Research in San Francisco.",
+      text: "Share Alpha Compute in San Francisco.",
       options: {
         parameters: {
           ...PLACE,

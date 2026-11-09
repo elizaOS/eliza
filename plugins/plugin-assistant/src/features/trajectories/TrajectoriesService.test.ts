@@ -8,8 +8,11 @@
  * database.
  */
 
+import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TrajectoriesService } from "./TrajectoriesService.ts";
 
 function createRuntimeWithoutSql(): IAgentRuntime {
@@ -81,12 +84,79 @@ function extractSqlStringAssignment(
 }
 
 describe("TrajectoriesService", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("disables SQL-backed capture when the runtime adapter has no SQL executor", async () => {
+    vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
     const service = await TrajectoriesService.start(createRuntimeWithoutSql());
 
     expect((service as TrajectoriesService).isEnabled()).toBe(false);
 
     await service.stop();
+  });
+
+  it("runs no table DDL at start while the trajectory gate is off", async () => {
+    vi.stubEnv("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
+    const client = new PGlite();
+    const db = drizzle(client);
+    const statements: string[] = [];
+    const runtime = {
+      ...createRuntimeWithoutSql(),
+      runtimeInstanceId: "runtime-instance-1",
+      adapter: {
+        db: {
+          execute: (query: ReturnType<typeof sql.raw>) => {
+            const chunks = (
+              query as unknown as {
+                queryChunks: Array<{ value?: unknown }>;
+              }
+            ).queryChunks;
+            statements.push(
+              chunks
+                .flatMap((chunk) =>
+                  Array.isArray(chunk.value) ? chunk.value : [],
+                )
+                .join(""),
+            );
+            return db.execute(query);
+          },
+          transaction: <T>(
+            work: (executor: {
+              execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;
+            }) => Promise<T>,
+          ): Promise<T> =>
+            db.transaction((tx) =>
+              work({ execute: (query) => tx.execute(query) }),
+            ),
+        },
+      },
+    } as unknown as IAgentRuntime;
+    try {
+      const service = (await TrajectoriesService.start(
+        runtime,
+      )) as TrajectoriesService;
+      expect(service.isEnabled()).toBe(false);
+      expect(statements).toEqual([]);
+
+      // An operator turns capture on later: the tables exist before the first row.
+      service.setEnabled(true);
+      const trajectoryId = await service.startTrajectory(runtime.agentId);
+      expect(
+        statements.some((text) =>
+          text.includes("CREATE TABLE IF NOT EXISTS trajectories"),
+        ),
+      ).toBe(true);
+      const rows = await db.execute(
+        sql.raw(`SELECT id FROM trajectories WHERE id = '${trajectoryId}'`),
+      );
+      expect(rows.rows).toHaveLength(1);
+
+      await service.stop();
+    } finally {
+      await client.close();
+    }
   });
 
   it("persists complete JSON-safe model request and response payloads", async () => {

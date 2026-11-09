@@ -950,6 +950,19 @@ jobs:
         with:
           go-version-file: packages/os/native/ota-trust/go.mod
           cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - name: Setup Android platform for native capture conformance
+        if: steps.changes.outputs.run == 'true'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platforms;android-36
+      - name: Fetch pinned JSON library for native capture conformance
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/json-20250517.jar"
+          curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
+          echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
+          echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
       - name: Build core conformance dependencies
         if: steps.changes.outputs.run == 'true'
         run: bun run build:core

@@ -11,7 +11,7 @@ import {
   writeProvisioningOverlay,
 } from "../android/launcher-provisioning.mjs";
 
-const PKG = "ai.elizaresearch.alphaphone";
+const PKG = "ai.alphacompute.alphaphone";
 const str = (value) => `"${value}" (Raw: "${value}")`;
 const element = (indent, tag, attrs = {}) => [
   `${" ".repeat(indent)}E: ${tag} (line=1)`,
@@ -103,11 +103,11 @@ test("the overlay sets default HOME, assistant and Autofill offer additively", (
     files[
       "provisioning/overlay/frameworks/base/core/res/res/values/config.xml"
     ],
-    /config_defaultAutofillService" translatable="false">ai\.elizaresearch\.alphaphone\/ai\.eliza\.plugins\.passwords\.ElizaPasswordAutofillService</,
+    /config_defaultAutofillService" translatable="false">ai\.alphacompute\.alphaphone\/ai\.eliza\.plugins\.passwords\.ElizaPasswordAutofillService</,
   );
   assert.match(
     files["provisioning/preferred-apps/launcher-home.xml"],
-    /<item name="ai\.elizaresearch\.alphaphone\/ai\.elizaresearch\.alphaphone\.MainActivity"/,
+    /<item name="ai\.alphacompute\.alphaphone\/ai\.alphacompute\.alphaphone\.MainActivity"/,
   );
   assert.match(
     files["provisioning/preferred-apps/launcher-home.xml"],
