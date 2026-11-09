@@ -175,7 +175,8 @@ public class ConsentActivity extends Activity {
   boolean microphone=checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED;
   boolean notifications=checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED;
   if(!ListenerPolicy.consentPermissionsGranted(microphone,notifications)){
-   deniedPermission=microphone?Manifest.permission.POST_NOTIFICATIONS:Manifest.permission.RECORD_AUDIO;
+   // An interrupted request returns no results: nothing was refused, so no settings link.
+   if(results.length>0)deniedPermission=microphone?Manifest.permission.POST_NOTIFICATIONS:Manifest.permission.RECORD_AUDIO;
    render();return;
   }
   new ListenerStore(this).grantConsent(System.currentTimeMillis(),generation);

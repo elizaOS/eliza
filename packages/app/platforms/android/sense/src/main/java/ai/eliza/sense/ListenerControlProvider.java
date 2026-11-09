@@ -7,6 +7,8 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.Looper;
+import android.os.SystemClock;
 
 /**
  * The listener's only exported programmatic surface, for the host's settings and status UI. Callers
@@ -33,6 +35,7 @@ public class ListenerControlProvider extends ContentProvider {
    else if(TURN_OFF.equals(method)){store.setEnabled(false);Listener.refresh(getContext());}
    else if(!STATUS.equals(method))throw new IllegalArgumentException("Unknown method");
    ListenerPolicy.State state=Listener.state(getContext());
+   if(!STATUS.equals(method))awaitRelease(state);
    Bundle out=new Bundle();
    out.putString("state",state.name());
    out.putString("label",ListenerStore.storageFailed()?ConsentActivity.STORAGE_FAILED:ListenerPolicy.label(state));
@@ -43,6 +46,18 @@ public class ListenerControlProvider extends ContentProvider {
    out.putBoolean("microphoneOpen",Listener.microphoneHeld);
    return out;
   }finally{Binder.restoreCallingIdentity(identity);}
+ }
+
+ /**
+  * The service releases the microphone on its main thread after the stop above, so a pause, turn-off
+  * or reset waits briefly for that before reporting it; a caller confirming a stop reads microphoneOpen.
+  */
+ private static void awaitRelease(ListenerPolicy.State state){
+  if(Looper.myLooper()==Looper.getMainLooper())return;
+  long deadline=SystemClock.elapsedRealtime()+2000;
+  while(Listener.microphoneHeld&&!ListenerPolicy.holdsMicrophone(state)&&SystemClock.elapsedRealtime()<deadline){
+   try{Thread.sleep(20);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return;}
+  }
  }
 
  @Override public Cursor query(Uri uri,String[] projection,String selection,String[] args,String order){return null;}
