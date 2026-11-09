@@ -92,6 +92,17 @@ final class ElizaResidentCredentials {
                     });
                 } else binding.withLocks(() -> { binding.cloud.remove(slot); return null; });
             }
+            public boolean compareExchange(String slot, String expected, String value) throws Exception {
+                if (!binding.config.pendingSlot.equals(slot))
+                    throw new IllegalArgumentException("Only the pending sign-in record can be compared");
+                return binding.withLocks(() -> {
+                    guard.run();
+                    if (!java.util.Objects.equals(binding.cloud.read(slot), expected)) return false;
+                    if (value == null) binding.cloud.remove(slot);
+                    else binding.cloud.write(slot, value);
+                    return true;
+                });
+            }
         };
     }
 
