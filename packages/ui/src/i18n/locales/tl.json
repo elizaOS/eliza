@@ -2967,7 +2967,6 @@
   "gameview.UpdatingSession": "Ina-update ang session…",
   "gameview.ViewerAttached": "Naka-attach ang viewer.",
   "gameview.ViewerAttachFailed": "Hindi na-attach ang viewer: {{message}}",
-  "gameview.ViewerAuthSent": "Ipinadala ang auth ng tumitingin.",
   "gameview.ViewerDetached": "Na-detach ang viewer.",
   "gameview.ViewerDetachFailed": "Hindi na-detach ang viewer: {{message}}",
   "gameview.ViewerUnavailable": "Walang available na viewer o launch URL para sa run na ito.",

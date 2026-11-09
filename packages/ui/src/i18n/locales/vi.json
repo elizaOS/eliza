@@ -2967,7 +2967,6 @@
   "gameview.UpdatingSession": "Đang cập nhật phiên…",
   "gameview.ViewerAttached": "Đã gắn trình xem.",
   "gameview.ViewerAttachFailed": "Không thể gắn trình xem: {{message}}",
-  "gameview.ViewerAuthSent": "Đã gửi xác thực người xem.",
   "gameview.ViewerDetached": "Đã tách trình xem.",
   "gameview.ViewerDetachFailed": "Không thể tách trình xem: {{message}}",
   "gameview.ViewerUnavailable": "Không có trình xem hoặc URL khởi chạy nào cho lần chạy này.",
