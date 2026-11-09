@@ -629,12 +629,13 @@ export async function submitAccountDeletion(
   } catch (cause) {
     // A 400 or 409 is answered only after the server found no admitted
     // request for this credential, so nothing exists to recover. A 401, 5xx
-    // or network failure may follow a committed request and keeps it.
+    // or network failure may follow a committed request and keeps it. Only
+    // the admission credential goes: a saved request keeps its recovery.
     if (
       cause instanceof ApiError &&
       (cause.status === 400 || cause.status === 409)
     ) {
-      saveStoredRequest(admission, null);
+      saveStoredRequest(admission, { ...admission, admissionCredential: null });
     }
     throw cause;
   }

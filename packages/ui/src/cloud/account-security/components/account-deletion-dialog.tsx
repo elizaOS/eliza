@@ -19,6 +19,7 @@ import {
   AccountDeletionClientError,
   abandonAccountDeletion,
   endLocalSessionAfterDeletion,
+  finishAccountDeletion,
   submitAccountDeletion,
 } from "../data/account-deletion-client";
 import { needsSignInAgain, signInAgainPath } from "../data/sign-in-again";
@@ -44,13 +45,18 @@ export function AccountDeletionDialog({
     setSubmitting(true);
     setError(null);
     setSignInAgain(false);
-    let accepted: Awaited<ReturnType<typeof submitAccountDeletion>>;
+    let request: AccountDeletionStatusDto;
     try {
-      accepted = await submitAccountDeletion(
-        session.user
-          ? { id: session.user.id, label: session.user.email || null }
-          : null,
-      );
+      // A saved request whose activation failed is finished, not re-sent.
+      request = pendingRequestId
+        ? await finishAccountDeletion(pendingRequestId)
+        : (
+            await submitAccountDeletion(
+              session.user
+                ? { id: session.user.id, label: session.user.email || null }
+                : null,
+            )
+          ).request;
       setPendingRequestId(null);
       setServerAccepted(true);
     } catch (cause) {
@@ -85,7 +91,7 @@ export function AccountDeletionDialog({
         "Deletion is scheduled, but local sign-out is incomplete on this device.",
       );
     }
-    onAccepted?.(accepted.request);
+    onAccepted?.(request);
     if (!onAccepted && typeof window !== "undefined") {
       window.location.assign("/account-deletion");
     }

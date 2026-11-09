@@ -837,6 +837,7 @@ export class AccountDeletionRequestsRepository {
       // wait for it, but not past the bound; export_revoke below deletes any
       // orphan either way.
       const neverAttempted =
+        exportPhase.status !== "completed" &&
         exportPhase.before_provider_call_at === null &&
         !(exportPhase.lease_expires_at && exportPhase.lease_expires_at > input.now) &&
         exportReceipt.status !== "ready";

@@ -232,6 +232,27 @@ describe("account deletion credentials", () => {
     expect(calls).toEqual([]);
   });
 
+  it("keeps a saved request's recovery when a retry is rejected", async () => {
+    queue(REQUEST_A, "A");
+    activationFails = true;
+    await submitAccountDeletion({ id: "user-a", label: null }).catch(
+      () => undefined,
+    );
+    // The server no longer replays this admission credential.
+    server[0]!.admissionCredential = null;
+    admissionFailure = { status: 409, code: "conflict" };
+    await expect(
+      submitAccountDeletion({ id: "user-a", label: null }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(storedRecord()?.requests).toEqual([
+      expect.objectContaining({
+        requestId: REQUEST_A,
+        admissionCredential: null,
+        recoveryCredential: credential("rA"),
+      }),
+    ]);
+  });
+
   it("keeps the admission credential when the request outcome is unknown", async () => {
     admissionFailure = { status: 503, code: "unavailable" };
     await expect(
