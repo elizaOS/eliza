@@ -2,7 +2,14 @@
 	"root": false,
 	"$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
 	"files": {
-		"includes": ["src/**", "*.ts", "*.json"]
+		"includes": [
+			"src/**",
+			"quint/LiveCaptureLifecycle.cases.json",
+			"quint/check-live-capture-lifecycle.mjs",
+			"quint/coverage.json",
+			"*.ts",
+			"*.json"
+		]
 	},
 	"linter": {
 		"enabled": true,

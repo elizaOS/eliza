@@ -36,11 +36,12 @@ public final class LiveCaptureControllerTest {
  static final LiveVoiceCapture.Detector DETECTOR=new LiveVoiceCapture.Detector(){public float[] process(float[] w){return new float[]{0f};}public void reset(){}public void close(){}};
 
  static final class Host implements LiveCaptureController.Host {
-  final AtomicBoolean open=new AtomicBoolean(true);final AtomicBoolean failReads=new AtomicBoolean();
+  final AtomicBoolean open=new AtomicBoolean(true),startAllowed=new AtomicBoolean(true);final AtomicBoolean failReads=new AtomicBoolean();
   final List<String> events=new CopyOnWriteArrayList<>();final List<Source> sources=new CopyOnWriteArrayList<>();
   final AtomicReference<Runnable> beforeOpen=new AtomicReference<>();final AtomicInteger captures=new AtomicInteger();
   volatile CountDownLatch ended=new CountDownLatch(1);
   public boolean open(long epoch){return open.get();}
+  public boolean canStart(long epoch){return open.get()&&startAllowed.get();}
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel){
    captures.incrementAndGet();
    return new LiveVoiceCapture(null,id,sink,LiveVoiceCapture.DICTATION,()->{Runnable hook=beforeOpen.getAndSet(null);if(hook!=null)hook.run();events.add("mic:"+id);Source source=new Source(failReads.get());sources.add(source);return source;},()->DETECTOR);
@@ -215,6 +216,23 @@ public final class LiveCaptureControllerTest {
    Result again=new Result();controller.start(controller.reserve(B,205),false,null,null,true,again);await(again.done);
    check(again.refused==null&&host.captures.get()==opened+4,"reopen after the user start");
    Stop againStop=new Stop();controller.stop(B,false,System.currentTimeMillis(),againStop);await(againStop.done);
+   // Phone focus blocks a new start before the admitted capture receives its terminal callback.
+   host.events.clear();host.ended=new CountDownLatch(1);Result admitted=new Result();
+   controller.start(controller.reserve(A,899),false,null,null,false,admitted);await(admitted.done);
+   check(admitted.refused==null,"capture admitted before phone focus closes startup");
+   host.startAllowed.set(false);controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);await(host.ended);
+   check(host.events.stream().filter(e->e.equals("ended:"+A+":"+SpeechAudioFocusPolicy.CALL_ACTIVE)).count()==1,"admitted capture reports the call interruption exactly once");
+   check(host.sources.get(host.sources.size()-1).closed.getCount()==0,"interrupted capture releases the microphone");
+   // Protected surfaces can close startup without closing delivery for an older interrupted capture.
+   int beforeDenied=host.captures.get();host.startAllowed.set(false);Result protectedStart=new Result();
+   controller.start(controller.reserve(A,900),false,null,null,false,protectedStart);await(protectedStart.done);
+   check(LiveCaptureController.CANCELLED.equals(protectedStart.refused)&&host.captures.get()==beforeDenied,"protected surface refuses before capture");
+   host.startAllowed.set(true);host.events.clear();host.beforeOpen.set(()->host.startAllowed.set(false));Result lateProtection=new Result();
+   controller.start(controller.reserve(A,901),false,null,null,false,lateProtection);await(lateProtection.done);
+   check(LiveCaptureController.CANCELLED.equals(lateProtection.refused),"protection during native start is cancellation, not capture failure");
+   check(host.sources.get(host.sources.size()-1).closed.getCount()==0,"late protected startup closes microphone");
+   check(host.events.stream().noneMatch(e->e.startsWith("ended:")),"unreported protected startup emits no capture end");
+   host.startAllowed.set(true);
   }finally{controller.shutdown();}
   AtomicInteger refusedAfterShutdown=new AtomicInteger();
   controller.start(controller.reserve(A,7),false,null,null,false,new LiveCaptureController.Started(){public void started(String id,int r,boolean e,boolean p){}public void refused(String m,String c){refusedAfterShutdown.incrementAndGet();}});
