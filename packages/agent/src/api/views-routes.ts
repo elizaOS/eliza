@@ -909,8 +909,12 @@ export async function handleViewsRoutes(
               "viewType",
               "prepareOnly",
               "resolvedAlias",
+              "source",
             ].includes(key),
         ) ||
+        (body.source !== undefined &&
+          body.source !== "user" &&
+          body.source !== "agent") ||
         action ||
         subview ||
         alwaysOnTop ||
@@ -926,6 +930,8 @@ export async function handleViewsRoutes(
         );
         return true;
       }
+      // A renderer reports its own committed manual switch with source "user"
+      // so the settled state does not tell the model it navigated there.
       // The action may carry its already resolved alias. Re-resolve it against
       // this exact installed destination; arbitrary presentation text is ignored.
       const requestedAlias =

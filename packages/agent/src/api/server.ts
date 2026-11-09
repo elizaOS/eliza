@@ -469,7 +469,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
     if (!browser || typeof browser.setNativeClientTransport !== "function")
       return;
     browser.setNativeClientTransport({
-      executeCommand: async (clientId, command) => {
+      executeCommand: async (clientId, command, selection) => {
         const hostKey = requestingHost(clientId);
         const [
           { dispatchViewInteract, getViewsBroadcastWsToClientId },
@@ -486,7 +486,8 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
           entry,
           "browser",
           "browser-command",
-          { command },
+          // The observed tab lets the renderer refuse history on another page.
+          { command, ...(selection ? { selection } : {}) },
           {
             clientId,
             hostKey,
