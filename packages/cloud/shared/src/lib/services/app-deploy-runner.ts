@@ -28,6 +28,8 @@
 import { ElizaError } from "@elizaos/core";
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
+import { jobsRepository } from "../../db/repositories/jobs";
+import type { App } from "../../db/schemas/apps";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { toNewContainer } from "./app-container-record";
@@ -35,6 +37,7 @@ import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
   type AppDeployDeps,
   AppDeployGenerationFailedError,
+  AppDeployHandoffUnconfirmedError,
   type AppDeployRunner,
   type AppDeployRunOptions,
   deployApp,
@@ -48,6 +51,7 @@ import {
   type ContainerRetirementResult,
   retireContainerWithDeleteJob,
 } from "./container-retirement";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import { getOrgImageNamespaces } from "./org-image-namespaces";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
@@ -191,6 +195,25 @@ export function containerNameForApp(appId: string, deploymentGeneration?: string
   return `${base}-g${generationSlug.slice(0, 8)}`;
 }
 
+async function confirmProvisionHandoff(
+  app: App,
+  generation: string,
+  cause?: unknown,
+): Promise<void> {
+  if (
+    !app.created_by_user_id ||
+    !(await jobsRepository.hasAppDeployProvisionHandoff(
+      app.id,
+      app.organization_id,
+      app.created_by_user_id,
+      generation,
+    ))
+  ) {
+    // The original process may still produce a durable child after lease loss.
+    throw new AppDeployHandoffUnconfirmedError(generation, cause);
+  }
+}
+
 export class DefaultAppDeployRunner implements AppDeployRunner {
   private readonly deps: AppDeployRunnerDeps;
 
@@ -202,17 +225,27 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     appId: string,
     deploymentGeneration: string,
     options: AppDeployRunOptions = {},
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<void> {
     const app = await appsService.updateDeploymentGeneration(
       appId,
       deploymentGeneration,
       { deployment_status: "deploying" },
       ["building"],
+      executionAuthority,
     );
     if (!app) {
-      const current = await appsService.findByDeploymentGeneration(appId, deploymentGeneration);
-      if (current?.deployment_status === "failed") {
+      const current = await appsService.findByDeploymentGeneration(
+        appId,
+        deploymentGeneration,
+        executionAuthority?.organizationId,
+      );
+      if (current?.deployment_status === "failed" && !current.deletion_job_id) {
         throw new AppDeployGenerationFailedError(deploymentGeneration);
+      }
+      if (executionAuthority && current?.deployment_status === "deploying") {
+        await confirmProvisionHandoff(current, deploymentGeneration);
+        return;
       }
       logger.info("[AppDeployRunner] ignored stale deployment generation", {
         appId,
@@ -221,6 +254,7 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       return;
     }
 
+    let provisionEnqueueStarted = false;
     try {
       if (!app.created_by_user_id) {
         throw new ElizaError("The app's deployment principal is no longer available", {
@@ -271,7 +305,10 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       const orchestratorDeps: AppDeployDeps = {
         ensureTenantDb: (id) => this.deps.ensureTenantDb(id, app.name),
         createContainerRow,
-        enqueueProvision: (p) => enqueuer.enqueueProvision(p),
+        enqueueProvision: (p) => {
+          provisionEnqueueStarted = true;
+          return enqueuer.enqueueProvision(p);
+        },
         linkContainerToApp: async (id, containerId) => {
           // Re-read for the freshest metadata before merging containerId in.
           const current = await appsService.getById(id);
@@ -288,6 +325,7 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
               ...(endpoint ? { production_url: endpoint.url } : {}),
             },
             ["deploying"],
+            executionAuthority,
           );
         },
       };
@@ -316,11 +354,21 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
         image,
       });
     } catch (error) {
+      if (executionAuthority && provisionEnqueueStarted) {
+        await confirmProvisionHandoff(app, deploymentGeneration, error);
+        logger.warn("[AppDeployRunner] recovered durable provision handoff after an error", {
+          appId,
+          deploymentGeneration,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
       const failed = await appsService.updateDeploymentGeneration(
         appId,
         deploymentGeneration,
         { deployment_status: "failed" },
         ["deploying"],
+        executionAuthority,
       );
       if (failed) throw new AppDeployGenerationFailedError(deploymentGeneration, error);
       throw error;

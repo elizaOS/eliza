@@ -775,15 +775,21 @@ export class AppsRepository {
     return updated;
   }
 
-  /** Reads one app only when the caller still owns its persisted generation. */
-  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+  /** Reads a persisted generation on the primary, including deletion for daemon reconciliation. */
+  async findByDeploymentGeneration(
+    id: string,
+    generation: string,
+    recoveryOrganizationId?: string,
+  ): Promise<App | undefined> {
     const [app] = await dbWrite
       .select()
       .from(apps)
       .where(
         and(
           eq(apps.id, id),
-          isNull(apps.deletion_job_id),
+          recoveryOrganizationId
+            ? eq(apps.organization_id, recoveryOrganizationId)
+            : isNull(apps.deletion_job_id),
           sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
         ),
       )
