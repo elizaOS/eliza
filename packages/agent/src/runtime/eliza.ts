@@ -2409,6 +2409,8 @@ function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {
       process.env[key] = "true";
+    } else if (shouldLoadCloudPlugin) {
+      process.env[key] = "false";
     } else {
       delete process.env[key];
     }
