@@ -1,5 +1,13 @@
 {
-  "sources": ["packages/core/src/runtime/room-handler-queue.ts"],
+  "sources": [
+    "packages/core/src/runtime/room-handler-queue.ts",
+    "packages/core/test/room-handler-queue-model.test.ts"
+  ],
+  "bounds": {
+    "domain": "Three turns, two rooms, at most two leases or waiters per room, a total limit of three or four, and one outstanding write per room per turn. Same-room nested reuse leaves ownership unchanged. Widening refuses the nested call and can unwind the outer lease.",
+    "limitations": "The real queue suite exercises ambient ownership, nested reuse, widening refusal and released-lease continuation. It does not replay the generated schedules for saturation, close, cancellation or writes. The PostDeliveryTasks suite separately exercises write-tail ownership."
+  },
+  "conformance": "packages/core/quint/check-core-concurrency.mjs",
   "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
   "cases": [
     {
@@ -31,8 +39,7 @@
         "MaxPerRoom": 2,
         "MaxTotal": 3,
         "MaxRooms": 2,
-        "MaxWrites": 1,
-        "None": "None"
+        "MaxWrites": 1
       },
       "deadlock": true,
       "temporalChecks": [
@@ -109,8 +116,7 @@
         "MaxPerRoom": 2,
         "MaxTotal": 4,
         "MaxRooms": 2,
-        "MaxWrites": 1,
-        "None": "None"
+        "MaxWrites": 1
       },
       "deadlock": true,
       "temporalChecks": [
