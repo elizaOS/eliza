@@ -8,6 +8,10 @@ import {
   calendarSyncHttp,
 } from "../../../../../plugins/plugin-calendar/src/linked-sync/google-sync-port.ts";
 import { ManagedGmailMailboxClient } from "../../../../../plugins/plugin-inbox/src/mailbox/managed-gmail-client.ts";
+import {
+  parseManagedGoogleCalendarFeed,
+  parseManagedGoogleCalendars,
+} from "./managed-google-calendar-read.ts";
 import { assertManagedGoogleApiOrigin } from "./managed-google-route-policy.ts";
 
 export interface ManagedGoogleCredential {
@@ -70,9 +74,6 @@ function string(value: unknown): string {
   if (typeof value !== "string" || !value.trim())
     throw new CloudProtocolError("invalid-response");
   return value;
-}
-function optionalString(value: unknown): string | null {
-  return value == null ? null : string(value);
 }
 function uuid(value: unknown): string {
   const id = string(value);
@@ -143,9 +144,10 @@ export function createManagedGoogleClient({
     return response.data;
   }
 
+  const invalidResponse = () => new CloudProtocolError("invalid-response");
   const gmail = new ManagedGmailMailboxClient({
     request: read,
-    invalidResponse: () => new CloudProtocolError("invalid-response"),
+    invalidResponse,
     reviewAttachment: () => {
       throw new Error("Managed Google agent cannot download attachments");
     },
@@ -183,30 +185,7 @@ export function createManagedGoogleClient({
       `/api/v1/eliza/google/calendar/calendars?${params}`,
       signal,
     );
-    if (!Array.isArray(data)) throw new CloudProtocolError("invalid-response");
-    const seen = new Set<string>();
-    return data.map((value) => {
-      const row = object(value),
-        calendarId = string(row.calendarId);
-      if (
-        seen.has(calendarId) ||
-        typeof row.primary !== "boolean" ||
-        typeof row.selected !== "boolean"
-      )
-        throw new CloudProtocolError("invalid-response");
-      seen.add(calendarId);
-      return {
-        calendarId,
-        summary: string(row.summary),
-        description: optionalString(row.description),
-        primary: row.primary,
-        accessRole: string(row.accessRole),
-        backgroundColor: optionalString(row.backgroundColor),
-        foregroundColor: optionalString(row.foregroundColor),
-        timeZone: optionalString(row.timeZone),
-        selected: row.selected,
-      };
-    });
+    return parseManagedGoogleCalendars(data, invalidResponse);
   }
   async function googleCalendarFeed(
     grantId: string,
@@ -231,68 +210,11 @@ export function createManagedGoogleClient({
       timeMax: range.timeMax,
       timeZone: range.timeZone,
     });
-    const data = object(
+    return parseManagedGoogleCalendarFeed(
       await read(`/api/v1/eliza/google/calendar/feed?${params}`, signal),
+      calendarId,
+      invalidResponse,
     );
-    if (
-      data.calendarId !== calendarId ||
-      !Array.isArray(data.events) ||
-      data.nextPageToken != null ||
-      data.truncated === true
-    )
-      throw new CloudProtocolError("invalid-response");
-    timestamp(data.syncedAt);
-    const plain = (value: unknown) => {
-      if (typeof value !== "string")
-        throw new CloudProtocolError("invalid-response");
-      return value;
-    };
-    const flag = (value: unknown) => {
-      if (typeof value !== "boolean")
-        throw new CloudProtocolError("invalid-response");
-      return value;
-    };
-    const seen = new Set<string>();
-    const events = data.events.map((value) => {
-      const row = object(value),
-        externalId = string(row.externalId);
-      if (
-        row.calendarId !== calendarId ||
-        seen.has(externalId) ||
-        !Array.isArray(row.attendees) ||
-        timestamp(row.endAt) < timestamp(row.startAt)
-      )
-        throw new CloudProtocolError("invalid-response");
-      seen.add(externalId);
-      return {
-        externalId,
-        calendarId,
-        title: plain(row.title),
-        description: plain(row.description),
-        location: plain(row.location),
-        status: string(row.status),
-        startAt: string(row.startAt),
-        endAt: string(row.endAt),
-        isAllDay: flag(row.isAllDay),
-        timezone: optionalString(row.timezone),
-        htmlLink: optionalString(row.htmlLink),
-        conferenceLink: optionalString(row.conferenceLink),
-        organizer: row.organizer == null ? null : object(row.organizer),
-        metadata: object(row.metadata),
-        attendees: row.attendees.map((value) => {
-          const a = object(value);
-          return {
-            email: optionalString(a.email),
-            displayName: optionalString(a.displayName),
-            responseStatus: optionalString(a.responseStatus),
-            self: flag(a.self),
-            organizer: flag(a.organizer),
-            optional: flag(a.optional),
-          };
-        }),
-      };
-    });
-    return { calendarId, events, syncedAt: string(data.syncedAt) };
   }
   return {
     identity,
