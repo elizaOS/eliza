@@ -446,15 +446,18 @@ public final class DataResetTest {
         try {
             check("locked".equals(new java.io.BufferedReader(new java.io.InputStreamReader(other.getInputStream())).readLine()), "other process holds the lock");
             SenseListenerClient.acknowledged = false;
-            Thread attempt = new Thread(() -> reset.attempt(app, first + 1));
+            java.util.concurrent.atomic.AtomicReference<DataReset.Outcome> result = new java.util.concurrent.atomic.AtomicReference<>();
+            Thread attempt = new Thread(() -> result.set(reset.attempt(app, first + 1)));
             attempt.start();
             attempt.join(300);
-            check(attempt.isAlive(), "attempt waits for the other process");
+            check(!attempt.isAlive() && result.get() == DataReset.Outcome.DEFERRED, "contending attempt defers without effects");
             other.getOutputStream().write('\n');
             other.getOutputStream().flush();
             attempt.join(10_000);
             check(!attempt.isAlive() && other.waitFor(10, TimeUnit.SECONDS) && other.exitValue() == 0, "both finished");
-            check(count(failures)[0] == 3 && count(failures)[1] == first, "both attempts counted: " + new String(Files.readAllBytes(failures.toPath())));
+            check(count(failures)[0] == 2 && count(failures)[1] == first, "only the admitted process changed the count");
+            check(reset.attempt(app, first + 1) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "retry after the other process releases");
+            check(count(failures)[0] == 3 && count(failures)[1] == first, "both admitted attempts counted: " + new String(Files.readAllBytes(failures.toPath())));
         } finally {
             other.destroyForcibly();
             for (File file : data.listFiles()) file.delete();

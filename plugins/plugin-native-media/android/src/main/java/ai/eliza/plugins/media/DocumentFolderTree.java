@@ -809,7 +809,8 @@ public final class DocumentFolderTree {
       if (old != null && !old.toString().equals(saved))
         return result("failed", "Folder selection changed. Refresh before retrying.");
       if (old == null && saved != null) old = Uri.parse(saved);
-      if (old != null) {
+      int kept = old == null ? 0 : retention.linked(old);
+      if (old != null && kept == 0) {
         for (UriPermission permission : resolver().getPersistedUriPermissions())
           if (old.equals(permission.getUri())) {
             int flags = (permission.isReadPermission() ? Intent.FLAG_GRANT_READ_URI_PERMISSION : 0)
@@ -827,7 +828,9 @@ public final class DocumentFolderTree {
         return result("failed", "Folder selection could not be forgotten.");
       tree = null;
       session.clear();
-      return result("forgotten", "Folder access released.");
+      return result("forgotten", kept > 0
+          ? "Folder released here; kept for " + kept + (kept == 1 ? " linked note." : " linked notes.")
+          : "Folder access released.");
     }
   }
 }
