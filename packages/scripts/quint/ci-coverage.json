@@ -9,9 +9,9 @@
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Seven mandatory lanes, each with one terminal outcome. Real YAML and shell conformance covers all 29 one-fault or all-success outcomes.",
+      "Seven mandatory lanes, each with one terminal outcome. Real YAML and shell conformance covers all 29 one-fault or all-success outcomes. Whole-workflow cancellation before aggregate dispatch cancels both gates; dependency cancellation still fails admission.",
       "Conditional aggregate completion assumes fair lane completion and evaluation. An explicit unfair counterexample retains unavailable-service behavior.",
-      "Actual GitHub scheduling, job contents, administrator permissions, branch-rule deployment and develop's conditional workflow are outside this PR aggregate model."
+      "Actual GitHub scheduling, cancellation after aggregate dispatch, job contents, administrator permissions, branch-rule deployment and develop's conditional workflow are outside this PR aggregate model."
     ]
   }
 ]
