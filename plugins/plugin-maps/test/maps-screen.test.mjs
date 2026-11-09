@@ -215,6 +215,9 @@ function fixture(options = {}) {
     publishContext: (kind) => calls.published.push(kind),
     clearContext: () => {},
     ...(options.mapsApp ? { mapsApp: options.mapsApp } : {}),
+    ...(options.unconfiguredText
+      ? { unconfiguredText: options.unconfiguredText }
+      : {}),
   };
   const screen = new MapsScreenController(host);
   screen.ensure();
@@ -346,6 +349,49 @@ test("an unsafe provider website is never offered or opened", async () => {
   assert.equal(f.screen.view().place?.website, undefined);
   f.screen.openWebsite();
   assert.deepEqual(f.calls.websites, []);
+});
+
+test("place labels name provider places and typed coordinates", async () => {
+  const f = fixture();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  assert.match(f.screen.view().place?.meta ?? "", /^Place/);
+  f.screen.openDirections();
+  const directions = f.screen.view().directions;
+  assert.equal(directions?.routeReady, false);
+  assert.equal(directions?.meta, "");
+
+  const typed = fixture();
+  typed.screen.setQuery("1, 2");
+  typed.screen.submit();
+  await settle();
+  assert.match(typed.screen.view().place?.meta ?? "", /^Coordinates/);
+});
+
+test("a host replaces the missing-provider text", async () => {
+  const text = "Sign in to use Maps.";
+  const directions = fixture({ unconfigured: true, unconfiguredText: text });
+  directions.screen.setQuery("1, 2");
+  directions.screen.submit();
+  directions.screen.openDirections();
+  assert.equal(directions.screen.view().status.text, text);
+
+  const search = fixture({ unconfigured: true, unconfiguredText: text });
+  search.screen.setQuery("Cafe");
+  search.screen.submit();
+  await settle();
+  await settle();
+  assert.equal(search.screen.view().status.text, text);
+
+  const plain = fixture({ unconfigured: true });
+  plain.screen.setQuery("Cafe");
+  plain.screen.submit();
+  await settle();
+  await settle();
+  assert.match(plain.screen.view().status.text, /Connect a Maps provider/);
 });
 
 test("directions need a real origin and a served mode", async () => {

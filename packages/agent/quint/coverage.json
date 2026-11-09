@@ -4,14 +4,23 @@
     "model": "packages/agent/quint/api-approvals.qnt",
     "sources": [
       "packages/agent/src/api/device-action-routes.ts",
-      "packages/agent/src/api/approval-routes.ts"
+      "packages/agent/src/api/approval-routes.ts",
+      "plugins/plugin-assistant/src/services/approval/store.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+      "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts",
+      "plugins/plugin-assistant/test/photos-filter.e2e.test.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "AtMostOneClaim",
+      "DispatchPrecedesReceipt",
+      "PermitRequiresCommittedDispatch"
+    ],
     "status": "partial",
     "limitations": [
-      "One operation and two claims.",
-      "Approval/device services remain external authorities; multiple principals and provider effects are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One device proposal and one claim. Receipt identity and approval expiry are symbolic.",
+      "Real HTTP and SQL checks bind the atomic dispatch and reconciliation boundary. Device effects, enrollment revocation, multiple proposals and arbitrary receipt payloads remain outside this scope.",
+      "The generic list hides device records. Non-device approvals have separate execution authorities."
     ]
   },
   {
@@ -51,14 +60,15 @@
     "model": "packages/agent/quint/api-connections.qnt",
     "sources": [
       "packages/agent/src/api/conversation-connection-readiness.ts",
-      "packages/agent/src/api/conversation-routes.ts"
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/character-routes.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One room/runtime, two queued writes and generations 0..2.",
-      "Independent rooms, unbounded generations, database failures and process restart are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One room and runtime, one proof identity with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
+      "Distinct callers and rooms, deletion retries while raw I/O is stalled, room-generation eviction, request fences, and process restart are outside the projections.",
+      "Database failures and observer deadlines are abstracted. Drain assumes weakly fair raw I/O settlement. HTTP and SQLite scenarios do not establish implementation refinement."
     ]
   },
   {
@@ -143,9 +153,7 @@
       "packages/agent/native-host/private-runtime-launch.mjs",
       "packages/agent/native-host/gateway.e2e.test.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owner identities and one child. Repeated arbitrary rotations, stop failures and hung host callbacks require separate state refinements.",

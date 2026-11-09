@@ -798,9 +798,16 @@ public abstract class CloudSignInPlugin extends Plugin {
     if (!"invalid-code".equals(failure.code)) { end(current, failure.code, false); return; }
     // A wrong code keeps the step for a retry, up to the per-attempt cap; then the attempt ends.
     boolean exhausted;
-    synchronized (lock) { current.failedVerifies++; exhausted = current.failedVerifies >= CloudSignInFlow.MAX_VERIFY_ATTEMPTS; }
+    synchronized (lock) {
+     if (attempt != current || current.waiting != call) return;
+     exhausted = ++current.failedVerifies >= CloudSignInFlow.MAX_VERIFY_ATTEMPTS;
+     if (!exhausted) {
+      current.waiting = null;
+      current.busy = false;
+     }
+    }
     if (exhausted) { end(current, "attempts-exhausted", false); return; }
-    release(current); synchronized (lock) { current.waiting = null; } call.reject(failure.code, failure.code);
+    call.reject(failure.code, failure.code);
    }
    catch (Exception unexpected) { end(current, "unavailable", false); }
   });

@@ -257,3 +257,72 @@ test("CLI reveal rechecks revocation, owner and key hash after external decrypti
     }
   }
 }, 30_000);
+
+test("a session created with a verifier hash releases its key only to that verifier", async () => {
+  const { cliAuthSessionsService, hashCliAuthSessionVerifier } = await import(
+    "./cli-auth-sessions"
+  );
+  const userId = "00000000-0000-4000-8000-0000000000b1";
+  const verifier = "client-held-verifier-0123456789abcdefghijklmnop";
+  const authenticatedSession = async (n: number, verifierHash: string | null) => {
+    const sessionId = `00000000-0000-4000-8000-00000000050${n}`;
+    const keyId = `00000000-0000-4000-8000-00000000060${n}`;
+    const organizationId = `00000000-0000-4000-8000-00000000070${n}`;
+    await dbWrite.insert(organizations).values({
+      id: organizationId,
+      name: `Verifier organization ${n}`,
+      slug: `verifier-organization-${n}`,
+      created_at: new Date(Date.now() - 86_400_000),
+    });
+    await dbWrite.insert(apiKeys).values({
+      id: keyId,
+      name: "CLI login",
+      key_hash: `verifier-hash-${n}`,
+      key_prefix: "eliza_",
+      organization_id: organizationId,
+      user_id: userId,
+      is_active: true,
+      key_ciphertext: "ciphertext",
+      key_nonce: "nonce",
+      key_auth_tag: "tag",
+      key_kms_key_id: "kms",
+      key_kms_key_version: 1,
+    });
+    await cliAuthSessionsService.createSession(sessionId, verifierHash);
+    await dbWrite
+      .update(cliAuthSessions)
+      .set({ status: "authenticated", user_id: userId, api_key_id: keyId })
+      .where(eq(cliAuthSessions.session_id, sessionId));
+    revealable.add(keyId);
+    return { sessionId, keyId };
+  };
+  const poll = (sessionId: string, sentVerifier?: string) =>
+    app.request(`http://localhost/api/auth/cli-session/${sessionId}`, {
+      headers: sentVerifier ? { "X-Cli-Session-Verifier": sentVerifier } : {},
+    });
+
+  const bound = await authenticatedSession(1, await hashCliAuthSessionVerifier(verifier));
+  for (const attempt of [undefined, "some-other-verifier"]) {
+    const refused = await poll(bound.sessionId, attempt);
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({ error: "Session verifier required" });
+  }
+  const [kept] = await dbWrite
+    .select()
+    .from(cliAuthSessions)
+    .where(eq(cliAuthSessions.session_id, bound.sessionId));
+  expect(kept?.consumed_at).toBeNull();
+  const released = await poll(bound.sessionId, verifier);
+  expect(released.status).toBe(200);
+  expect((await released.json()).apiKey).toBe(`synthetic-key-${bound.keyId}`);
+  expect(await (await poll(bound.sessionId, verifier)).json()).toEqual({
+    status: "authenticated",
+    message: "API key already retrieved",
+  });
+
+  // Sessions created without a hash keep the unbound behavior.
+  const legacy = await authenticatedSession(2, null);
+  const legacyReply = await poll(legacy.sessionId);
+  expect(legacyReply.status).toBe(200);
+  expect((await legacyReply.json()).apiKey).toBe(`synthetic-key-${legacy.keyId}`);
+}, 30_000);

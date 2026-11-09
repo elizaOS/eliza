@@ -163,8 +163,33 @@ export function createNotesTrashActions<
           }
           return host.policy.add(doc, entry);
         });
+        // An edit that landed during the row write would leave Trash an older copy.
+        const visible = collection.visible();
+        if (
+          !collection.ready() ||
+          !same(
+            collection.stored().find((item) => item.id === note.id),
+            note,
+          ) ||
+          !same(
+            visible.find((item) => item.id === note.id),
+            note,
+          ) ||
+          !same(
+            (await host.savedNotes()).find((item) => item.id === note.id),
+            note,
+          )
+        ) {
+          changed = true;
+          try {
+            await host.edit((doc) => host.policy.remove(doc, [entry.id]));
+          } catch {
+            // Maintenance drops the row while the note stays saved.
+          }
+          throw Error("Note changed");
+        }
         const committed = await collection.commit(
-          collection.visible().filter((item) => item.id !== note.id),
+          visible.filter((item) => item.id !== note.id),
           "remove",
         );
         return committed

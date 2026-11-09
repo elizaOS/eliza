@@ -165,6 +165,12 @@ storage namespaces, schema validation, legacy migration and recovery presentatio
 This API does not maintain a localStorage mirror. Run
 `bun run --cwd packages/ui test:browser-document-store` for real cross-tab,
 cancellation and recovery checks in Chromium, Firefox and WebKit.
+The browser suite also runs `browserDocumentDraftSlot` over IndexedDB. It checks
+cross-tab draft writes, exact document receipts, rollback and reload. Run
+`bun run --cwd packages/ui test:browser-document-store chromium` for that engine
+alone. The `BrowserDraftStorage` Quint case checks the bounded adapter protocol.
+A cancelled draft caller can receive an abort error after its raw write commits.
+A later read can recover the committed draft.
 
 `startCumulativeMicrophoneCapture` and `observeMicrophonePause` share cumulative sample previews and speech-pause
 observation without owning microphone tracks, transcription or message submission.

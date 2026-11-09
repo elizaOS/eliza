@@ -12,6 +12,7 @@ const packageRoot = path.resolve(
 const repositoryRoot = path.resolve(packageRoot, "../..");
 const models = [
 	"NotificationDurability.qnt",
+	"NotificationGroupPolicy.qnt",
 	"NativeNotificationCursor.qnt",
 	"NotificationRecovery.qnt",
 ].map((name) => path.join(packageRoot, "quint", name));
@@ -61,6 +62,7 @@ const requiredNames = new Set([
 	"NotificationService marks one and all read, updating unread count",
 	"NotificationService removes and clears",
 	"NotificationService persists to the runtime cache and rehydrates on restart",
+	"NotificationService isolates notification payloads from producers and observers across restart",
 	"NotificationService excludes a notification whose explicit expiresAt has passed",
 	"NotificationService retains a notification with a future expiresAt",
 	"NotificationService keeps expired durable rows addressable after rehydrate",

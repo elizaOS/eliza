@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -472,6 +473,103 @@ test("inventory includes native, ESM, shell and database state owners", () => {
   for (const file of Object.keys(nativeSources))
     assert(discovered.includes(file));
   assert(!discovered.includes("plugins/native/test/Journal.java"));
+});
+
+test("the completeness gate separates ownerless reviews from unchecked state and declared gaps", async () => {
+  const source = "packages/example/src/contracts.ts";
+  const contents = 'export type ExampleState = "ready" | "closed";\n';
+  const review = {
+    source,
+    sha256: createHash("sha256").update(contents).digest("hex"),
+    reason: "Declares the status sent by the example service.",
+  };
+  const reviewFile = "packages/example/quint/ownerless-sources.json";
+  const directory = fixture({ ...checkedFiles, [source]: contents });
+  const output = path.join(directory, "test-results/quint");
+  const args = ["--inventory", "--require-complete"];
+
+  await assert.rejects(
+    main(args, directory, output),
+    /1 unreviewed source candidates/,
+  );
+  writeFileSync(path.join(directory, reviewFile), JSON.stringify([review]));
+  await main(args, directory, output);
+  const inventory = JSON.parse(
+    readFileSync(path.join(output, "inventory.json"), "utf8"),
+  );
+  assert.equal(inventory.unreferencedCandidates, 1);
+  assert.equal(inventory.unreviewedCandidates, 0);
+  assert.deepEqual(inventory.ownerlessSources, [review]);
+
+  const uncheckedSource = path.join(directory, "packages/example/src/queue.ts");
+  writeFileSync(uncheckedSource, 'let status = "waiting";\n');
+  await assert.rejects(
+    main(args, directory, output),
+    /1 unreviewed source candidates/,
+  );
+  rmSync(uncheckedSource);
+  const coveragePath = path.join(
+    directory,
+    "packages/example/quint/coverage.json",
+  );
+  writeFileSync(
+    coveragePath,
+    JSON.stringify([{ ...coveredEntry, status: "partial" }]),
+  );
+  await assert.rejects(
+    main(args, directory, output),
+    /0 unreviewed source candidates and 1 declared gaps/,
+  );
+  writeFileSync(
+    coveragePath,
+    JSON.stringify([
+      {
+        ...coveredEntry,
+        model: null,
+        invariants: [],
+        status: "unmodeled",
+        sources: [`./${source}`],
+      },
+    ]),
+  );
+  await assert.rejects(
+    main(args, directory, output),
+    /conflicts with a model or coverage entry/,
+  );
+});
+
+test("an ownerless review must match one current candidate with no checked model", () => {
+  const source = "packages/example/src/contracts.ts";
+  const contents = 'export type ExampleState = "ready";\n';
+  const review = {
+    source,
+    sha256: createHash("sha256").update(contents).digest("hex"),
+    reason: "Declares the status sent by the example service.",
+  };
+  const reviewFile = "packages/example/quint/ownerless-sources.json";
+  const directory = fixture({
+    ...checkedFiles,
+    [source]: contents,
+    [reviewFile]: JSON.stringify([review, review]),
+  });
+  const check = () =>
+    createQuintInventory(directory, loadQuintModels(directory));
+  assert.throws(check, /Duplicate Quint ownerless source review/);
+  writeFileSync(path.join(directory, reviewFile), JSON.stringify([review]));
+  writeFileSync(
+    path.join(directory, source),
+    contents.replace("ready", "closed"),
+  );
+  assert.throws(check, /Stale Quint ownerless source review/);
+  rmSync(path.join(directory, source));
+  assert.throws(check, /Quint ownerless source is not an inventory candidate/);
+
+  writeFileSync(path.join(directory, source), contents);
+  writeFileSync(
+    path.join(directory, `${example}.cases.json`),
+    JSON.stringify({ sources: [stateSource, source], cases: [modelCase] }),
+  );
+  assert.throws(check, /conflicts with a model or coverage entry/);
 });
 
 test("the repository fingerprint binds tracked and untracked helper contents", () => {

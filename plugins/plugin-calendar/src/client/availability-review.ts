@@ -19,6 +19,7 @@ import {
   calendarAvailability,
   validateCalendarAvailabilityOperation,
 } from "@elizaos/contracts";
+import { currentClockTimeZone } from "@elizaos/plugin-assistant/device-clock-review";
 
 /** One calendar the device can read. Names and accounts are shown to the owner only. */
 export interface AvailabilitySource {
@@ -239,8 +240,8 @@ export async function executeCalendarAvailability(
   signal: AbortSignal,
   current: () => void,
   review: AvailabilityReview,
-  deviceTimeZone: () => string = () =>
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  // The context zone is normalized the same way, so a "+00:00" device reads as "UTC" on both sides.
+  deviceTimeZone: () => string = currentClockTimeZone,
   pause: (
     milliseconds: number,
     signal: AbortSignal,

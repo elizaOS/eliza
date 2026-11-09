@@ -109,7 +109,9 @@ export async function stagePixel10aProduct(options) {
       { encoding: "utf8", env: options.env },
     );
     enforceLauncherLockScreenPolicy(product, xml);
-    const components = provisioningComponents(xml, launcher.packageName);
+    const components = provisioningComponents(xml, launcher.packageName, {
+      assistant: product.launcher.assistantRole !== false,
+    });
     writeProvisioningOverlay(output, launcher.packageName, components);
     const nativeStagingEvidence = stageAndroidNative({
       apk: path.join(output, "Launcher.apk"),
