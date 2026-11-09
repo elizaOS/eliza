@@ -193,6 +193,7 @@ function OverlayOrCatalogWindow({
   // Reset to the freshest synchronous resolution whenever the slug changes.
   useEffect(() => {
     setApp(resolveOverlayAppBySlug(slug));
+    setResolveWindowElapsed(false);
   }, [slug]);
   // If the app isn't registered yet, poll the registry briefly until it shows
   // up (late async plugin registration) or the retry window elapses.

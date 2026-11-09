@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { isApiError } from "../../api/api-error";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { client } from "../../api/client";
+import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 
 export type AppRunApiSupport = "probing" | "supported" | "unsupported";
 
@@ -70,21 +71,25 @@ function readSettledAppRunApi(): boolean | null {
 }
 
 export function useAppRunApiSupport(): AppRunApiSupport {
-  const [support, setSupport] = useState<AppRunApiSupport>(() => {
-    const known = readSettledAppRunApi();
-    if (known === null) return "probing";
-    return known ? "supported" : "unsupported";
-  });
+  // Re-probe when the client is repointed at another agent.
+  const authority = useActiveAgentAuthority();
+  const [probed, setProbed] = useState<{
+    authority: string;
+    supported: boolean;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void probeAppRunApi().then((supported) => {
-      if (!cancelled) setSupport(supported ? "supported" : "unsupported");
+      if (!cancelled) setProbed({ authority, supported });
     });
     return () => {
       cancelled = true;
     };
-  }, []);
-  return support;
+  }, [authority]);
+  const known =
+    probed?.authority === authority ? probed.supported : readSettledAppRunApi();
+  if (known === null) return "probing";
+  return known ? "supported" : "unsupported";
 }
 
 /** Test hook: forget cached probe results. */

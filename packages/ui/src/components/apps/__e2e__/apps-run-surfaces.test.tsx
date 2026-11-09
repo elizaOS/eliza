@@ -135,6 +135,27 @@ describe("app run API gate", () => {
       expect(launchApp).toHaveBeenCalledWith("@example/app-chess"),
     );
   });
+
+  it("probes again when the client switches agents", async () => {
+    runApiAbsent();
+    vi.mocked(client.listCatalogApps).mockResolvedValue([
+      catalogApp("@example/app-chess", "url"),
+    ]);
+    render(<RegistryAppWindowView slug="chess" />);
+    expect(
+      await screen.findByText(APP_RUN_API_UNSUPPORTED_MESSAGE),
+    ).toBeTruthy();
+    vi.mocked(client.getBaseUrl).mockReturnValue("http://agent-two.test");
+    vi.mocked(client.listAppRuns).mockResolvedValue([]);
+    act(() => {
+      (
+        client as unknown as { notifyAuthorityChange(): void }
+      ).notifyAuthorityChange();
+    });
+    await vi.waitFor(() =>
+      expect(launchApp).toHaveBeenCalledWith("@example/app-chess"),
+    );
+  });
 });
 
 describe("detached app windows", () => {
