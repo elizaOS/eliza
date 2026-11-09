@@ -28,6 +28,7 @@ const manifest: FrontendManifest = {
   spaFallback: false,
   files: [{ path: "index.html", hash: "a".repeat(64), contentType: "text/html", size: 4 }],
 };
+const organizationId = randomUUID();
 const finalizeInput = {
   r2Prefix: "fixture/",
   manifest,
@@ -56,7 +57,7 @@ async function makeScope() {
   await control.connect();
   await observer.connect();
   await control.query(`CREATE SCHEMA ${schema}; SET search_path TO ${schema},pg_catalog,public`);
-  await control.query("CREATE TABLE apps(id uuid PRIMARY KEY)");
+  await control.query("CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL)");
   for (const statement of await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ appFrontendDeployments }),
@@ -164,7 +165,10 @@ async function contend<T, U>(
 }
 
 async function uploading(scope: Scope, appId: string) {
-  await scope.control.query("INSERT INTO apps(id) VALUES($1) ON CONFLICT DO NOTHING", [appId]);
+  await scope.control.query(
+    "INSERT INTO apps(id,organization_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+    [appId, organizationId],
+  );
   const row = await scope.run(() => repository.create({ appId, r2Prefix: "fixture/" }));
   const result = await scope.run(() => repository.beginUpload(row.id));
   if (!result) throw new Error("Fixture upload did not start");
@@ -263,14 +267,15 @@ async function rowStatus(scope: Scope, id: string) {
     async () =>
       inScope(async (scope) => {
         const appId = randomUUID();
+        const app = { id: appId, organization_id: organizationId };
         const old = await ready(scope, appId);
-        await scope.run(() => repository.activate(appId, old.id));
+        await scope.run(() => repository.activate(app, old.id));
         const target = await ready(scope, appId);
         const [activated, deleted] = await contend(
           scope,
           target.id,
           "active",
-          () => repository.activate(appId, target.id),
+          () => repository.activate(app, target.id),
           () => repository.deleteInactive(appId, target.id),
         );
         expect(activated?.status).toBe("active");
@@ -287,15 +292,16 @@ async function rowStatus(scope: Scope, id: string) {
     async () =>
       inScope(async (scope) => {
         const appId = randomUUID();
+        const app = { id: appId, organization_id: organizationId };
         const old = await ready(scope, appId);
-        await scope.run(() => repository.activate(appId, old.id));
+        await scope.run(() => repository.activate(app, old.id));
         const target = await ready(scope, appId);
         const [deleted, activated] = await contend(
           scope,
           target.id,
           "delete",
           () => repository.deleteInactive(appId, target.id),
-          () => repository.activate(appId, target.id),
+          () => repository.activate(app, target.id),
         );
         expect(deleted?.id).toBe(target.id);
         expect(activated).toBeUndefined();
@@ -311,7 +317,10 @@ async function rowStatus(scope: Scope, id: string) {
     async () =>
       inScope(async (scope) => {
         const app = { id: randomUUID(), organization_id: randomUUID() };
-        await scope.control.query("INSERT INTO apps(id) VALUES($1)", [app.id]);
+        await scope.control.query("INSERT INTO apps(id,organization_id) VALUES($1,$2)", [
+          app.id,
+          app.organization_id,
+        ]);
         const files = [
           { path: "index.html", content: "<html>complete site</html>" },
           { path: "asset.txt", content: "complete asset" },
@@ -341,7 +350,7 @@ async function rowStatus(scope: Scope, id: string) {
         const spy = spyOn(repository, "finalize").mockImplementation(async (...args) => {
           const result = await original(...args);
           if (!result) throw new Error("Fixture did not publish");
-          await repository.activate(app.id, result.id);
+          await repository.activate(app, result.id);
           throw new Error("controlled lost PostgreSQL publication acknowledgement");
         });
         try {

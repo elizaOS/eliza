@@ -29,6 +29,7 @@ const suites = [
     file: "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.pglite.test.ts",
     names: [
       "complete frontend publication retains every manifest object and serves it",
+      "a foreign organization cannot activate a published deployment",
       "a lost finalization acknowledgement preserves the published row and all objects",
       "activation before a lost finalization reply cannot be undone by upload cleanup",
       "a proven unpublished failure retires the row before removing its objects",
@@ -105,5 +106,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `Frontend publication conformance passed ten PGlite and five PostgreSQL cases. Evidence ${directory}`,
+  `Frontend publication conformance passed eleven PGlite and five PostgreSQL cases. Evidence ${directory}`,
 );
