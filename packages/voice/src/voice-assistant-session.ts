@@ -183,6 +183,9 @@ export interface AssistantPorts {
       recentAgentReply: string;
       replyAgeMs: number;
       agentSpeaking: boolean;
+      /** Segment speech start minus the last reply's playback end; omitted when either is unknown. */
+      turnStartedAfterReplyEndMs?: number;
+      echoCancelled: boolean;
     },
   ): boolean;
   /** Turn signal metadata for the agent (upstream buildVoiceTurnSignal). */
@@ -299,6 +302,8 @@ type Segment = {
   closed: boolean;
   done: boolean;
   text: string;
+  /** When the segment's speech started, on the session clock. */
+  startedAt?: number;
   /** Started while a reply was pending or playing: interrupts only once confirmed. */
   tentative?: Response;
   /** Started during playback over a capture without echo cancellation: never a turn. */
@@ -703,7 +708,7 @@ export class VoiceAssistantSession {
     this.shortTimer = this.longTimer = undefined;
   }
 
-  private speechStarted(_at: number) {
+  private speechStarted(at: number) {
     // Speech always wins over a racing timer or endpoint decision.
     ++this.utteranceEpoch;
     this.clearTimers();
@@ -736,6 +741,9 @@ export class VoiceAssistantSession {
       closed: false,
       done: false,
       text: "",
+      ...(Number.isFinite(at)
+        ? { startedAt: Math.min(at, this.clock.now()) }
+        : {}),
       ...(response ? { tentative: response } : {}),
     };
     this.segments.push(segment);
@@ -786,12 +794,22 @@ export class VoiceAssistantSession {
       !segment.ignored && typeof text === "string" ? text.trim() : "";
     if (value) {
       const playing = this.response?.started ? this.response : undefined;
+      const startedAfterReply =
+        !playing &&
+        segment.startedAt !== undefined &&
+        Number.isFinite(this.lastSpoken.at)
+          ? segment.startedAt - this.lastSpoken.at
+          : undefined;
       const context = {
         recentAgentReply: playing ? audible(playing) : this.lastSpoken.text,
         replyAgeMs: playing
           ? 0
           : Math.max(0, this.clock.now() - this.lastSpoken.at),
         agentSpeaking: !!playing,
+        ...(startedAfterReply !== undefined
+          ? { turnStartedAfterReplyEndMs: startedAfterReply }
+          : {}),
+        echoCancelled: this.capture?.fullDuplex === true,
       };
       if (!this.ports.shouldRespond || this.ports.shouldRespond(value, context))
         segment.text = value;
@@ -986,7 +1004,13 @@ export class VoiceAssistantSession {
   ) {
     const guard = () => {
       if (!this.owned(session, turn, response)) throw stopped();
-      this.ports.assertCurrent();
+      try {
+        this.ports.assertCurrent();
+      } catch (error) {
+        // A changed binding stops quietly, as recheck() does; it is not a failed turn.
+        void this.stop();
+        throw error;
+      }
     };
     try {
       // One request at a time: an interrupted request settles before the next turn is sent.
@@ -1119,8 +1143,8 @@ export class VoiceAssistantSession {
       });
       this.finishResponse(response);
     } catch (error) {
-      if (!this.owned(session, turn, response)) return; // Interrupted or stopped: already accounted.
-      if ((error as { name?: unknown })?.name === "AbortError") return;
+      // Interrupted or stopped: already accounted. An abort the port raised itself still fails the turn.
+      if (!this.owned(session, turn, response)) return;
       if (response.replyId) this.reportInterrupted(response, true);
       this.response = undefined;
       await this.fail(session, error);
