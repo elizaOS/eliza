@@ -15,20 +15,22 @@ export type NativeHistoryCommand = {
   selection?: NativeHistorySelection;
 };
 const HISTORY_SUBACTIONS = ["back", "forward", "reload"];
+// Same bounds as the client observation contract's selected object id and token.
+const SELECTION_ID = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}$/;
 const SELECTION_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}$/;
 
 function parseNativeHistorySelection(value: unknown): NativeHistorySelection {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw Error("Browser selection is invalid");
   const selection = value as Record<string, unknown>;
-  const token = (key: string) =>
+  const token = (key: string, pattern = SELECTION_TOKEN) =>
     typeof selection[key] === "string" &&
-    SELECTION_TOKEN.test(selection[key] as string);
+    pattern.test(selection[key] as string);
   if (
     Object.keys(selection).some(
       (key) => !["id", "revision", "navigation"].includes(key),
     ) ||
-    !token("id") ||
+    !token("id", SELECTION_ID) ||
     !token("revision") ||
     (selection.navigation !== undefined && !token("navigation"))
   )
@@ -87,7 +89,7 @@ export function observedNativeHistorySelection(
     observation.view !== "browser" ||
     selected?.kind !== "browser-tab" ||
     selected.revision === undefined ||
-    !SELECTION_TOKEN.test(selected.id) ||
+    !SELECTION_ID.test(selected.id) ||
     !SELECTION_TOKEN.test(selected.revision)
   )
     return undefined;

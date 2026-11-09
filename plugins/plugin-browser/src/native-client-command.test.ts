@@ -79,6 +79,20 @@ describe("observedNativeHistorySelection", () => {
       revision: "4",
     });
     expect(observedNativeHistorySelection(turn, "click")).toBeUndefined();
+    // Ids follow the observation contract's 512-character bound.
+    const longId = `tab-${"a".repeat(400)}`;
+    expect(
+      observedNativeHistorySelection(
+        browserTurn({ kind: "browser-tab", id: longId, revision: "4" }),
+        "back",
+      ),
+    ).toEqual({ id: longId, revision: "4" });
+    expect(
+      parseNativeHistoryCommand(
+        { subaction: "back" },
+        { id: longId, revision: "4" },
+      ).selection,
+    ).toEqual({ id: longId, revision: "4" });
     expect(
       observedNativeHistorySelection(
         browserTurn({ kind: "note", id: "n1", revision: "1" }),
