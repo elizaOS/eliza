@@ -121,6 +121,15 @@ const suites = new Map([
 			],
 		},
 	],
+	[
+		"SingleFlightMemo.qnt",
+		{
+			file: "test/read-memo-runtime.test.ts",
+			tests: [
+				"bounds cached room reads by elapsed time despite wall clock rollback",
+			],
+		},
+	],
 ]);
 
 const model = path.resolve(root, process.argv[2] ?? "");
