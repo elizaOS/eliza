@@ -231,8 +231,11 @@ export function parseProviderRateLimit(
 		retryAfterMs,
 		...(planId ? { planId } : {}),
 		...(scope ? { scope } : {}),
-		...(resetAt !== undefined && resetAfterSeconds !== undefined
-			? { resetAt, resetAfterSeconds }
+		...(resetAt !== undefined
+			? {
+					resetAt,
+					...(resetAfterSeconds !== undefined ? { resetAfterSeconds } : {}),
+				}
 			: {}),
 	};
 }
