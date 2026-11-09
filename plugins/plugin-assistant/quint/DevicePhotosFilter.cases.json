@@ -15,7 +15,7 @@
     "plugins/plugin-assistant/test/photos-filter.e2e.test.ts",
     "plugins/plugin-assistant/vitest.device-actions.config.ts"
   ],
-  "conformance": "plugins/plugin-assistant/quint/check-device-photos-filter.mjs",
+  "conformance": "plugins/plugin-assistant/quint/check-device-action-flow.mjs",
   "bounds": {
     "domain": "One named Photos Filter tool, one operation key, one claim and one pending writer. Exact, foreign, stale and incomplete proof inputs abstract the authenticated proposal and execution identity. Count receipts carry shown 0..2 and more true or false.",
     "abstraction": "Binding changes invalidate pending foreground admission. The final database callback decides whether the transaction commits. Closed covers review rejection, elapsed expiry and a reconciled not-applied outcome that this device claim API cannot redispatch.",

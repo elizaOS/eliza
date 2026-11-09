@@ -291,6 +291,7 @@ export {
   DeviceActionError,
   validateDeviceOperation,
 } from "./services/device-actions/contract.ts";
+export { FILES_CAPABILITY } from "./services/device-actions/files-browser-contract.ts";
 export type { DeviceReadCompletionHint } from "./services/device-actions/read-completion.ts";
 export {
   readableReminderOperationSchema,
