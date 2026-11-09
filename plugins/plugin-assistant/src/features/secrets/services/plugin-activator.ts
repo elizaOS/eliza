@@ -85,6 +85,7 @@ export class PluginActivatorService extends Service {
   private pluginSecretMapping: Map<string, Set<string>> = new Map();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private activePoll: Promise<void> | null = null;
+  private stopping = false;
   private activationPromises: Map<string, Promise<boolean>> = new Map();
   private unsubscribeSecretChanges: (() => void) | null = null;
 
@@ -219,6 +220,7 @@ export class PluginActivatorService extends Service {
    * Stop the service
    */
   async stop(): Promise<void> {
+    this.stopping = true;
     logger.info("[PluginActivator] Stopping");
 
     this.stopPolling();
@@ -254,6 +256,7 @@ export class PluginActivatorService extends Service {
     plugin: PluginWithSecrets,
     activationCallback?: () => Promise<void>,
   ): Promise<boolean> {
+    if (this.stopping) return false;
     const pluginId = plugin.name;
 
     if (this.activatedPlugins.has(pluginId)) {
@@ -286,6 +289,7 @@ export class PluginActivatorService extends Service {
 
     // Check current secret status
     const status = await this.checkPluginRequirements(plugin);
+    if (this.stopping) return false;
 
     if (status.ready) {
       // All secrets available, activate now
@@ -361,6 +365,7 @@ export class PluginActivatorService extends Service {
     plugin: PluginWithSecrets,
     callback?: () => Promise<void>,
   ): Promise<boolean> {
+    if (this.stopping) return Promise.resolve(false);
     const existingActivation = this.activationPromises.get(pluginId);
     if (existingActivation) {
       return existingActivation;
@@ -390,16 +395,19 @@ export class PluginActivatorService extends Service {
     plugin: PluginWithSecrets,
     callback?: () => Promise<void>,
   ): Promise<boolean> {
+    if (this.stopping) return false;
     try {
       // Call the activation callback
       if (callback) {
         await callback();
       }
+      if (this.stopping) return false;
 
       // Call plugin's onSecretsReady if defined
       if (plugin.onSecretsReady) {
         await plugin.onSecretsReady(this.runtime);
       }
+      if (this.stopping) return false;
 
       this.activatedPlugins.add(pluginId);
       this.pendingPlugins.delete(pluginId);
@@ -410,6 +418,7 @@ export class PluginActivatorService extends Service {
       const listeners = this.secretsReadyListeners.get(pluginId);
       if (listeners) {
         for (const listener of listeners) {
+          if (this.stopping) return false;
           try {
             await listener(this.runtime);
           } catch (error) {
@@ -684,6 +693,7 @@ export class PluginActivatorService extends Service {
   private startPolling(): void {
     if (
       this.pollingInterval ||
+      this.stopping ||
       !this.activatorConfig.enableAutoActivation ||
       this.activatorConfig.pollingIntervalMs <= 0
     ) {

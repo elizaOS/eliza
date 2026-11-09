@@ -56,6 +56,8 @@ export class PiiScrubService extends Service {
 
 	private batchQueue: BatchQueue<PiiScrubQueueItem> | null = null;
 	private drainStart: Promise<void> | null = null;
+	private stopping = false;
+	private stopPromise: Promise<void> | null = null;
 	private readonly scrubRequestHandler = (payload: PiiScrubRequestPayload) =>
 		this.handleScrubRequest(payload);
 
@@ -132,7 +134,7 @@ export class PiiScrubService extends Service {
 	private async handleScrubRequest(
 		payload: PiiScrubRequestPayload,
 	): Promise<void> {
-		if (!this.batchQueue) {
+		if (this.stopping || !this.batchQueue) {
 			return;
 		}
 
@@ -184,7 +186,7 @@ export class PiiScrubService extends Service {
 
 		// stop() can run while the done-marker check above is pending.
 		const queue = this.batchQueue;
-		if (!queue?.enqueue(item)) return;
+		if (this.stopping || !queue?.enqueue(item)) return;
 		this.runtime.logger.debug(
 			{
 				src: SRC,
@@ -388,6 +390,17 @@ export class PiiScrubService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		if (this.stopPromise) return this.stopPromise;
+		this.stopping = true;
+		this.stopPromise = this.finishStop();
+		try {
+			await this.stopPromise;
+		} finally {
+			this.stopPromise = null;
+		}
+	}
+
+	private async finishStop(): Promise<void> {
 		this.runtime.logger.info(
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Stopping PII scrub service",
@@ -396,7 +409,8 @@ export class PiiScrubService extends Service {
 			EventType.PII_SCRUB_REQUESTED,
 			this.scrubRequestHandler,
 		);
-		if (!this.batchQueue) {
+		const queue = this.batchQueue;
+		if (!queue) {
 			return;
 		}
 		try {
@@ -413,12 +427,12 @@ export class PiiScrubService extends Service {
 				"Drain start failed while stopping",
 			);
 		}
-		const remaining = this.batchQueue.size;
+		const remaining = queue.size;
 		const fastShutdown = process.env.ELIZA_FAST_SHUTDOWN === "1";
 		if (fastShutdown) {
-			this.batchQueue.clear();
+			queue.clear();
 		}
-		await this.batchQueue.dispose(this.runtime, {
+		await queue.dispose(this.runtime, {
 			flushHighPriority: !fastShutdown,
 		});
 		this.runtime.logger.info(
