@@ -175,6 +175,8 @@ const declarations = [
     "DEVICE_NOTES_RECORD",
     "notes_record",
     "Start or stop a voice note recording in the Notes app on this phone. Only works while Notes is open. Runs directly when the owner's current message asked for it, otherwise the owner reviews it. A proposal does not prove recording started or stopped.",
+  ],
+  [
     "DEVICE_PHOTOS_FILTER",
     "photos_filter",
     "Filter the Photos grid on this phone by date range (epoch ms), kind (image or video), favorite, album and/or text matched on the phone. Read-only: Photos shows the matching items behind a clearable filter chip and returns only how many it shows, never the items.",
