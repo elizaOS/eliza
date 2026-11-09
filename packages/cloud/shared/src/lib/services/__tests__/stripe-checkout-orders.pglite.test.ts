@@ -228,6 +228,30 @@ describe("Stripe Checkout order authority", () => {
     expect(state.balances[0]?.credit_balance).toBe("5.000000");
   });
 
+  test("a cache failure after commit preserves the original grant for replay", async () => {
+    const order = await deliveredOrder();
+    const invalidate = creditsService.invalidateCreditCaches;
+    creditsService.invalidateCreditCaches = async () => {
+      throw new Error("cache invalidation unavailable");
+    };
+    try {
+      await expect(service.settle(receipt(order.id))).rejects.toThrow(
+        "cache invalidation unavailable",
+      );
+    } finally {
+      creditsService.invalidateCreditCaches = invalidate;
+    }
+    const committed = await rows();
+    expect(committed.credits).toHaveLength(1);
+    expect(committed.balances[0]?.credit_balance).toBe("5.000000");
+    expect(committed.orders[0]?.status).toBe("settled");
+
+    const replay = await service.settle(receipt(order.id));
+    expect(replay.alreadyApplied).toBe(true);
+    expect(replay.order.credit_transaction_id).toBe(committed.orders[0]?.credit_transaction_id);
+    expect(await rows()).toEqual(committed);
+  });
+
   test("trusted webhook or verify receipts recover Session-create ACK loss exactly once", async () => {
     const order = await service.create({
       organizationId: ORG_A,

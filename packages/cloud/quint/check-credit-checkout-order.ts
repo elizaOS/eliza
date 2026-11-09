@@ -7,9 +7,13 @@ import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
-assert.equal(
-  path.resolve(root, process.argv[2] ?? ""),
-  path.join(root, "packages/cloud/quint/CreditCheckoutOrder.qnt"),
+assert.ok(
+  ["CreditCheckoutOrder.qnt", "LegacyCheckoutSettlement.qnt"].some(
+    (model) =>
+      path.resolve(root, process.argv[2] ?? "") ===
+      path.join(root, "packages/cloud/quint", model),
+  ),
+  "Expected a checkout order or legacy settlement model",
 );
 const base = testOutputPath("quint-credit-checkout-order");
 mkdirSync(base, { recursive: true });
