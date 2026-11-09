@@ -213,10 +213,21 @@ function redactedVariantId(row: Memory): UUID | null {
  */
 function serveRedactedVariant(
 	variant: Transcript,
-	original: Pick<Transcript, "id" | "createdAt" | "endedAt" | "source">,
+	original: Transcript,
 ): Transcript {
+	// The variant's audio is cut from the source recording: once the owner
+	// turns source-audio sharing off or deletes the source audio, it is
+	// withheld from redacted-grant viewers as it is from full-grant viewers.
+	const privacy = transcriptCapturePrivacyState(original);
+	const audioWithheld =
+		privacy.sourceAudioDeleted ||
+		privacy.sharing.sourceAudio === "disabled" ||
+		privacy.sharing.sourceAudio === "owner_private";
 	return {
 		...variant,
+		...(audioWithheld
+			? { audioUrl: undefined, audioContentType: undefined }
+			: {}),
 		id: original.id,
 		createdAt: original.createdAt,
 		...(original.endedAt !== undefined ? { endedAt: original.endedAt } : {}),
