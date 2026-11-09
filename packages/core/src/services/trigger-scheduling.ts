@@ -349,7 +349,11 @@ function resolveOnceTiming(
 	const nextRunAtMs = Math.max(scheduledAt, nowMs);
 	return {
 		updatedAt: nowMs,
-		updateIntervalMs: Math.max(0, nextRunAtMs - nowMs),
+		// A past-due once trigger fires on the next tick, so the interval
+		// must stay positive: 0 makes the scheduler reject the repeat task
+		// as TASK_SCHEDULE_INVALID on every tick, and the task never fires
+		// and never dies. The worker deletes a fired once trigger.
+		updateIntervalMs: Math.max(1, nextRunAtMs - nowMs),
 		nextRunAtMs,
 	};
 }
