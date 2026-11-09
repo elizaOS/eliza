@@ -10,6 +10,7 @@ const model = path.join(core, "quint/AgentEventService.qnt");
 if (process.argv[2]) assert.equal(path.resolve(process.argv[2]), model);
 const test = "test/agent-event-bridge.test.ts";
 const required = [
+	"keeps delivering to peers when an event callback detaches itself",
 	"delivers the original event before its listener failure diagnostics",
 	"keeps newer registrations when old event and heartbeat handles detach",
 	"clears per-run sequence state after RUN_ENDED (no map leak)",

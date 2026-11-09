@@ -133,6 +133,28 @@ function messagePayload(
 }
 
 describe("agent-event-bridge", () => {
+	it("keeps delivering to peers when an event callback detaches itself", async () => {
+		const { runtime } = await createCtx();
+		const service = runtime.getService<AgentEventService>(
+			ServiceType.AGENT_EVENT,
+		);
+		if (!service) throw new Error("Agent event service is missing");
+		const detached: number[] = [];
+		const peer: number[] = [];
+		const detach = service.subscribe((event) => {
+			detached.push(event.seq);
+			detach();
+		});
+		service.subscribe((event) => peer.push(event.seq));
+
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		expect(detached).toEqual([1]);
+		expect(peer).toEqual([1]);
+		service.emit({ runId: RUN_ID, stream: "action", data: {} });
+		expect(detached).toEqual([1]);
+		expect(peer).toEqual([1, 2]);
+	});
+
 	it("delivers the original event before its listener failure diagnostics", async () => {
 		const { runtime } = await createCtx();
 		const service = runtime.getService<AgentEventService>(

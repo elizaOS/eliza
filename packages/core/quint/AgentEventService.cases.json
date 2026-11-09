@@ -6,7 +6,7 @@
 		"packages/core/test/agent-event-bridge.test.ts"
 	],
 	"conformance": "packages/core/scripts/quint-agent-event-conformance.mjs",
-	"bounds": "One service, two run IDs, four sequence values per run after zero, and one failure and one healthy observer per event. The separate registration case has two channels, one tracked callback identity per channel, three registrations per callback, and sent and failed heartbeat statuses.",
+	"bounds": "One service, two run IDs, four sequence values per run after zero, and one failure and one healthy observer per event. The separate registration case has two channels, one tracked callback identity per channel, three registrations per callback, one healthy peer for self-detach, and sent and failed heartbeat statuses.",
 	"cases": [
 		{
 			"name": "run-sequence-and-diagnostic-fanout",
@@ -41,10 +41,20 @@
 			"invariants": [
 				"OneCurrentRegistration",
 				"DetachRequiresCurrentHandle",
+				"CallbackDetachesBeforePeer",
 				"HeartbeatStatusMatchesIndicator",
 				"StopClearsRegistrationsAndHeartbeat"
 			],
-			"temporal": [],
+			"temporal": ["PeerStillReceives"],
+			"temporalChecks": [
+				{
+					"property": "PeerStillReceives",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of deliverPeer. The detaching callback returns and a later peer remains subscribed to this synchronous emission."
+					]
+				}
+			],
 			"maxSteps": 35,
 			"samples": 500
 		}

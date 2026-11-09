@@ -15,15 +15,16 @@
 			"SessionUsesCallerOrRun",
 			"OneCurrentRegistration",
 			"DetachRequiresCurrentHandle",
+			"CallbackDetachesBeforePeer",
 			"HeartbeatStatusMatchesIndicator",
 			"StopClearsRegistrationsAndHeartbeat"
 		],
 		"status": "partial",
 		"limitations": [
 			"The fan-out trace models a healthy peer and one listener failure on the original event. Multiple failing listeners, failures during diagnostics, and arbitrary nested callback emissions are outside this projection.",
-			"Stop, subscription changes and run teardown occur between calls. Listeners that change the listener set or invoke teardown from inside a callback need additional transition coverage.",
+			"The subscription case includes a callback that detaches itself during dispatch. Adding subscriptions, removing other listeners, stopping the service and tearing down runs from inside callbacks need additional transition coverage.",
 			"The session projection abstracts an absent or blank caller key to one value. Additional run context fields, heartbeat timestamp and explicit indicator overrides are outside the finite state domain.",
-			"The real runtime conformance tests exercise diagnostic forwarding, stale handles, heartbeat retention, and run cleanup. They do not exhaust callback schedules."
+			"The real runtime conformance tests exercise diagnostic forwarding, stale handles, callback self-detach, heartbeat retention, and run cleanup. They do not exhaust callback schedules."
 		]
 	}
 ]
