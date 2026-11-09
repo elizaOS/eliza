@@ -28,12 +28,12 @@ public class CloudSignInChainTest {
  static class SignInFailure extends Exception { final String code;SignInFailure(String c){code=c;} }
  static class JSObject extends JSONObject { @Override public JSObject put(String k,Object v){super.put(k,v);return this;} }
  static class PluginCall {
-  final Map<String,Object> input=new HashMap<>();JSObject result;String error;
+  final Map<String,Object> input=new HashMap<>();JSObject result;String error;int rejections;
   String getString(String key){Object value=input.get(key);return value instanceof String?(String)value:null;}
   JSObject getData(){JSObject data=new JSObject();for(var entry:input.entrySet())data.put(entry.getKey(),entry.getValue());return data;}
   void resolve(JSObject value){result=value;}
   void resolve(){resolve(new JSObject());}
-  void reject(String message,String code){error=code;}
+  void reject(String message,String code){error=code;rejections++;}
  }
  static class Uri {
   final java.net.URI value;Uri(String value){this.value=java.net.URI.create(value);}
@@ -94,6 +94,7 @@ public class CloudSignInChainTest {
    return new Response(200,new JSONObject().put("token","synthetic-steward-token-for-fixture"));
   }
   if(path.equals(CloudEmailCode.VERIFY_PATH)||path.startsWith("/steward/auth/mfa/")){
+   if(mode.equals("cancel-before-wrong-reply")){cancel(new PluginCall());return new Response(401,new JSONObject());}
    if(mode.equals("bad-code")||mode.equals("mfa-denied"))return new Response(401,new JSONObject());
    if(mode.equals("invalid-mfa"))return new Response(200,new JSONObject().put("mfaRequired",true).put("mfa",new JSONObject().put("type","unknown").put("challengeId","fixture").put("expiresAt",System.currentTimeMillis()+60000)));
    return new Response(200,new JSONObject().put("token","synthetic-steward-token-for-fixture"));
@@ -266,6 +267,63 @@ public class CloudSignInChainTest {
    }else check(cancel.result!=null&&!slots.containsKey(host.config().pendingSlot),"owned pending removed");
   }
  }
+ /** Offer a retry at the first point where the worker allows the bridge to claim the attempt. */
+ static final class RetryInterleaving extends CloudSignInChainTest {
+  PluginCall retry;
+  boolean admitted;
+  void offerRetry(){
+   if(admitted)return;
+   admitted=true;
+   verify(retry,false);
+   check(attempt.busy && retry.result==null && retry.error==null,"bridge admitted retry");
+  }
+  @Override void release(Attempt current){
+   super.release(current);
+   if(!Thread.holdsLock(lock))offerRetry();
+  }
+ }
+ static PluginCall verificationCall(Attempt owner){
+  PluginCall call=new PluginCall();
+  call.input.put("attemptId",owner.id);call.input.put("code","123456");
+  return call;
+ }
+ static void retryCancellationOwnsReply(){
+  RetryInterleaving host=new RetryInterleaving();
+  host.defer=true;host.mode="bad-code";host.attempt=new Attempt(REQUEST);
+  Attempt owner=host.attempt;
+  host.retry=verificationCall(owner);
+  PluginCall first=new PluginCall(){
+   @Override void reject(String message,String code){super.reject(message,code);host.offerRetry();}
+  };
+  first.input.putAll(verificationCall(owner).input);
+  host.verify(first,false);
+  host.queued.remove().run();
+  check("invalid-code".equals(first.error)&&first.rejections==1,"first reply rejected once");
+  PluginCall cancel=new PluginCall();cancel.input.put("requestId",REQUEST);
+  host.cancel(cancel);
+  check(cancel.result!=null && host.attempt==null,"scoped cancel retires the right attempt");
+  check("cancelled".equals(host.retry.error) && host.retry.rejections==1,"retry retains its cancellation reply");
+ }
+ static void cancellationBeatsWrongCode(){
+  CloudSignInChainTest host=new CloudSignInChainTest();
+  host.mode="cancel-before-wrong-reply";host.attempt=new Attempt(REQUEST);
+  PluginCall call=verificationCall(host.attempt);
+  host.verify(call,false);
+  check("cancelled".equals(call.error) && call.rejections==1,"late wrong code cannot replace cancellation");
+ }
+ static void wrongCodeBudgetStillExhausts(){
+  CloudSignInChainTest host=new CloudSignInChainTest();
+  host.mode="bad-code";
+  Attempt owner=new Attempt(REQUEST);
+  host.attempt=owner;
+  for(int i=1;i<=5;i++){
+   PluginCall call=verificationCall(owner);
+   host.verify(call,false);
+   String expected=i==5?"attempts-exhausted":"invalid-code";
+   check(expected.equals(call.error) && call.rejections==1,"wrong-code round settles once: "+i);
+   check(i==5?host.attempt==null:host.attempt==owner,"attempt retires only at the cap");
+  }
+ }
  static void changedAfterCommit(String mode)throws Exception{
   slots.clear();events.clear();notifications.clear();
   CloudSignInChainTest host=new CloudSignInChainTest();host.mode=mode;
@@ -359,6 +417,8 @@ public class CloudSignInChainTest {
   mfaScope(false,false);mfaScope(true,false);mfaScope(false,true);
   callbackOwner("live");callbackOwner("cold-after-signout");callbackOwner("live-after-signout");
   for(String mode:List.of("stale","malformed","matching","legacy","queued","queued-completed"))scopedCancel(mode);
+  retryCancellationOwnsReply();cancellationBeatsWrongCode();wrongCodeBudgetStillExhausts();
+  System.out.println("PASS native code verification ownership (3 scenarios)");
   System.out.println("PASS native sign-in chain (38 scenarios; no browser facilities)");
   recoveryScenarios();
   System.out.println("PASS native startup acknowledgement recovery (17 scenarios)");

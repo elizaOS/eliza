@@ -1,4 +1,35 @@
 {
+  "app_deploy_generation.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+      "required": [
+        "an interrupted deploy without an exact child retains an unresolved job and app generation",
+        "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
+        "a lost child insert response retains the committed child without failing the app",
+        "app deploy handoff recovery preserves the URL published by its ready child",
+        "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
+        "an app deletion claim does not hide its interrupted deployment from recovery",
+        "a deploy attempt that fails after the runner claims it leaves the app redeployable",
+        "a worker that sees an already failed current generation settles it failed",
+        "an older queued generation cannot change a newer deployment",
+        "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
+      ]
+    }
+  ],
+  "anonymous_chat_gate.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/anonymous-chat-gate.miniflare.test.ts",
+      "required": [
+        "a replayed lease retains its exact quota and original hydrated owner",
+        "lifetime quota remains capped while the hourly window has room",
+        "an expired undispatched lease cannot start before its alarm refunds it",
+        "dispatch replay keeps the original settlement deadline and expiry commits it",
+        "a delayed old-window refund does not restore the current hourly allowance",
+        "a failed alarm mirror retries its durable latest snapshot after reload",
+        "session expiry and invalidation remain terminal after rehydration"
+      ]
+    }
+  ],
   "container_monitor.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",

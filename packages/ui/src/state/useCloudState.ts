@@ -646,7 +646,10 @@ export function useCloudState({
         cloudStatus = snapshot.status;
         prefetchedCloudCredits = snapshot.credits;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError")
+        if (
+          !nativeReadIsCurrent() ||
+          (error instanceof DOMException && error.name === "AbortError")
+        )
           return lastElizaCloudPollConnectedRef.current;
         setElizaCloudStatusUnavailable(true);
         if (intent === "session-verification") throw error;
@@ -1969,12 +1972,15 @@ export function useCloudState({
     if (!port || elizaCloudDisconnectInFlightRef.current) return;
     // Invalidate every account read before asking the native credential owner
     // to retire its current binding. A failed stop keeps the last account visible.
-    owner.revision++;
+    const revision = ++owner.revision;
     for (const operation of owner.operations) operation.abort();
     elizaCloudDisconnectInFlightRef.current = true;
     setElizaCloudDisconnecting(true);
     try {
       await withNativeSession(port, (signal) => port.signOut(signal));
+      // A replacement can run after the host acknowledgement is checked.
+      if (owner.port !== port || owner.revision !== revision)
+        throw new DOMException("Account owner changed", "AbortError");
       resetCloudAccountState();
       setActionNotice(
         `Signed out of ${port.copy.serviceName}.`,

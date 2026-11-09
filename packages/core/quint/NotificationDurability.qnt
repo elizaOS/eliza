@@ -104,3 +104,61 @@ module NotificationDurability {
     .then(persist("ack")).then(broadcast(true)).then(drained).then(restart).then(read)
     .expect(s.readRows == Set(1) and s.readSequence == 1)
 }
+
+// Project a nested JSON payload to one distinguishable value. The producer
+// and an observer can change their own copies during the inbox write.
+module NotificationPayloadOwnership {
+  type Payload = Missing | Present(str)
+  var s: { producer: str, admitted: Payload, memory: Payload, disk: Payload, observer: Payload }
+
+  action init = s' = { producer: "original", admitted: Missing, memory: Missing, disk: Missing, observer: Missing }
+  action submit = all {
+    s.admitted == Missing,
+    s' = { ...s, admitted: Present(s.producer) },
+  }
+  action producerChanges(value: str): bool = s' = { ...s, producer: value }
+  action materialize = all {
+    s.admitted != Missing and s.memory == Missing and s.disk == Missing,
+    s' = { ...s, memory: s.admitted },
+  }
+  action persist = all {
+    s.memory != Missing,
+    s' = { ...s, disk: s.memory },
+  }
+  // A normal read may see provisional memory. Durable reads and events use
+  // the same detached payload after commit.
+  action expose = all {
+    s.memory != Missing,
+    s' = { ...s, observer: s.memory },
+  }
+  action observerChanges(value: str): bool = all {
+    s.observer != Missing,
+    s' = { ...s, observer: Present(value) },
+  }
+  action stop = all {
+    s.disk != Missing and s.memory != Missing,
+    s' = { ...s, memory: Missing },
+  }
+  action restart = all {
+    s.disk != Missing and s.memory == Missing,
+    s' = { ...s, memory: s.disk },
+  }
+  action step = {
+    nondet value = Set("original", "edited").oneOf()
+    any { submit, producerChanges(value), materialize, persist, expose, observerChanges(value), stop, restart, s' = s }
+  }
+  val OwnedPayloadMatchesAdmission = (s.memory == Missing or s.memory == s.admitted) and
+    (s.disk == Missing or s.disk == s.admitted)
+  temporal AdmissionCapturesPayload = always((
+    (s.admitted != Missing).implies(next(s.admitted) == s.admitted) and
+    (s.admitted == Missing and next(s.admitted) != Missing).implies(next(s.admitted) == Present(s.producer))
+  ).orKeep(s))
+  temporal AdmittedPayloadPersistsWithoutFairness = (s.admitted != Missing).leadsTo(s.disk != Missing)
+  temporal AdmittedPayloadPersists = (materialize.weakFair(s) and persist.weakFair(s))
+    .implies(AdmittedPayloadPersistsWithoutFairness)
+
+  run callerAndObserverEditsDoNotPersistTest = init.then(submit).then(producerChanges("edited"))
+    .then(materialize).then(expose).then(observerChanges("edited")).then(persist)
+    .then(expose).then(observerChanges("edited")).then(persist).then(stop).then(restart)
+    .expect(s.memory == Present("original") and s.disk == Present("original") and s.observer == Present("edited"))
+}

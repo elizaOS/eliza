@@ -549,21 +549,29 @@
   },
   {
     "id": "cloud-flow-remote-session-pairing",
-    "model": null,
+    "model": "packages/cloud/quint/RemoteSessionPairing.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/remote-sessions-store.ts",
+      "packages/cloud/shared/src/db/repositories/remote-hosts.ts",
+      "packages/cloud/shared/src/db/repositories/remote-command-envelopes.ts",
+      "packages/cloud/shared/src/db/repositories/primary-database-clock.ts",
       "packages/cloud/shared/src/db/schemas/remote-sessions.ts",
-      "packages/cloud/shared/src/db/crypto/remote-pairing-code.ts"
+      "packages/cloud/shared/src/db/migrations/0332_remote_target_initiated_pairing.sql",
+      "packages/cloud/shared/src/db/crypto/remote-pairing-code.ts",
+      "packages/cloud/shared/src/db/repositories/remote-command-envelopes.pglite.test.ts",
+      "packages/cloud/api/v1/remote/sessions/route.ts",
+      "packages/cloud/api/v1/remote/sessions/[id]/activate/route.ts",
+      "packages/cloud/api/v1/remote/pair/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite implementation model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Pairing token has one owner | Grant revision and sequence do not regress | Revocation prevents further authority",
-      "Abstract states: pending, claimed, activating, active, denied, revoked, expired"
+      "One enrolled host, one owner, two distinct target challenges, two possible controller identities, and one outstanding target confirmation read. Issue at time 0 through 2, advance to time 5, and give each challenge a pairing deadline two ticks after issue and a grant deadline three ticks after issue.",
+      "Scope and HMAC verification use matching and mismatching input classes. Secret bytes, rate policy, HTTP and cryptographic correctness are outside the model. The command predicate projects only a live host, active session and grant deadline.",
+      "Target-created challenges use immutable distinct grant identities and revision 1. Controller-created legacy issuance, code lookup collisions and limits, agent pairing, command sequences and key rotation remain outside this model.",
+      "The database's controller-identity constraint rolls back attempted legacy activation of an unclaimed target challenge. Atomic state changes abstract lock ordering, storage failures and retry delivery. The single outstanding confirmation read is rechecked before it can stage a grant.",
+      "The model assumes canonical database constraints and covers both rows in one unlocked host revocation page. Locked rows and continuation have a separate RemoteHostRevocation model. Native durable grant installation remains a caller responsibility.",
+      "Progress assumes time advances and a successful sweep runs for each persistently expired uncommitted row. It does not require either party to confirm or commit a pairing."
     ]
   },
   {
@@ -652,6 +660,29 @@
       "Unknown dispatch acknowledgement retains any committed hold. Cancellation requires the live caller to know it has yet to invoke the provider. A retained recovering lease fences the direct debit until the current recovery publishes the authoritative balance.",
       "A direct debit is idempotent under the original request identity. The model compresses known-cost settlement to one transition and uses one-unit exposure. Widening, partial collection, funding views, settled-ID eviction, authenticated zero-receipt composition and alarm batching remain separate.",
       "Workerd runs the production Durable Object, with the transport response controlled for acknowledgement loss. PGlite runs actual direct debit recovery with injected write and publication failures. The two suites qualify their boundaries separately, without executing a live provider or the entire alarm-to-SQL composition."
+    ]
+  },
+  {
+    "id": "cloud-flow-inference-credential-cache",
+    "model": "packages/cloud/quint/InferenceCredentialCache.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/inference-auth-context.ts",
+      "packages/cloud/shared/src/lib/services/inference-auth-cache.ts",
+      "packages/cloud/shared/src/lib/services/inference-credential-revocation.ts",
+      "packages/cloud/api/src/inference-admission-gate.ts",
+      "packages/cloud/shared/src/lib/services/inference-auth-hot-path.pglite.test.ts",
+      "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
+      "packages/cloud/api/test/fixtures/inference-admission-gate-worker.ts",
+      "packages/cloud/quint/check-inference-credential-cache.mjs"
+    ],
+    "invariants": ["Safety"],
+    "status": "partial",
+    "limitations": [
+      "Standalone API-key authorization for a cache-qualified Worker with execution context and primary-only hosts. A matching cache allow still needs an affirmative exact gate reply. A cached expiry denies locally. Malformed or foreign-hash entries reach the primary without supplying candidate identity.",
+      "The gate verdict reflects the serialized read, before reply delivery. Timeout or unusable output fails closed without a primary retry from the gate stage. Later mutations do not rewrite an already evaluated reply. This model does not prove authority at provider invocation.",
+      "A stale allow can pass when the primary has changed and no matching durable fence has reached the gate. One refresh slot can publish a checked positive or a primary denial, or retire on failure. Invalidation and delayed publication can overlap. Cached positives remain subordinate to the durable fence.",
+      "One pending request and one refresh slot represent overlap, without modeling simultaneous request joins, exact retry counts, time values, availability fallback, or distributed cache convergence. Sessions, membership fences, deferred credential checks, and paid dispatch remain separate.",
+      "PGlite exercises production resolution and primary reads with controlled gate replies. Workerd exercises the deployed Durable Object fence against retained KV and independent standing reasons. Neither harness composes the complete paid provider path."
     ]
   },
   {
@@ -901,6 +932,37 @@
     ]
   },
   {
+    "id": "cloud-app-deploy-generation",
+    "model": "packages/cloud/quint/app_deploy_generation.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/app-deployments.ts",
+      "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
+      "packages/cloud/shared/src/lib/services/app-deploy-orchestrator.ts",
+      "packages/cloud/shared/src/lib/services/app-deploy-runner.ts",
+      "packages/cloud/shared/src/lib/services/container-jobs-writer.ts",
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts"
+    ],
+    "invariants": [
+      "jobHasAdmission",
+      "confirmedHandoffHasClaim",
+      "knownFailureNeverCompletes",
+      "oldJobCannotSetNewPhase",
+      "deployingCompletionRequiresHandoff",
+      "unconfirmedKeepsOriginalFence",
+      "currentHandoffCompletionLinksContainer",
+      "appLinkRequiresHandoff"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One app, two generations, one parent job, two insert attempts, and three queue attempts. The real PGlite checks cover admission, known failures, interrupted handoff, app-link recovery, lost child insert responses, and deletion inventory.",
+      "An exact durable child confirms parent handoff and identifies the container for a generation-scoped app link. Missing or conflicting evidence retains an unresolved parent for operator reconciliation.",
+      "The model abstracts child readiness only for the race with app linking. Already terminal parents with missing links require separate reconciliation. Coverage gaps include live image builds, Docker, tenant databases, ingress, and child execution and publication protocols."
+    ]
+  },
+  {
     "id": "cloud-flow-app-build-and-deployment",
     "model": null,
     "sources": [
@@ -913,7 +975,8 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite deployment model yet.",
+      "FrontendActivationSwap checks rollback racing one inactive deployment deletion. frontend_publication checks bounded upload, finalization and publication. app_frontend_deletion checks final app deletion and its shared parent lock. Build job orchestration and composition across these models remain open.",
+      "App deployment job admission and known failure settlement are tracked under cloud-app-deploy-generation. This entry tracks the full app build and deployment flow.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Only complete artifacts are published | Active deployment changes atomically | Rollback retains immutable artifact identity",
       "Abstract states: queued, building, uploading, finalizing, ready, active, superseded, failed, deleted"
@@ -990,21 +1053,24 @@
   },
   {
     "id": "cloud-flow-anonymous-chat-sessions",
-    "model": null,
+    "model": "packages/cloud/quint/anonymous_chat_gate.qnt",
     "sources": [
       "packages/cloud/api/src/anonymous-chat-gate.ts",
+      "packages/cloud/shared/src/lib/services/anonymous-chat-admission.ts",
       "packages/cloud/shared/src/db/repositories/anonymous-sessions.ts",
+      "packages/cloud/api/v1/chat/route.ts",
+      "packages/cloud/api/__tests__/anonymous-chat-gate.miniflare.test.ts",
+      "packages/cloud/api/test/fixtures/anonymous-chat-gate-worker.ts",
       "packages/cloud/api/auth/migrate-anonymous/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "QuotaConserved"
+    ],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite anonymous-session model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Anonymous request admission retains its original owner | Expired leases are reconciled once | Migration does not lose complete conversation content",
-      "Abstract states: created, leased, dispatched, committed, refunded, expired"
+      "The anonymous quota gate covers two requests within one session, live dispatch authority, terminal settlement, durable alarm recovery and a strictly monotonic SQL mirror.",
+      "Named conformance exercises real Workerd storage and the PGlite counter repository. Provider behavior and production database isolation need separate evidence.",
+      "Anonymous account conversion, migration of retained conversation content, multiple sessions and terminal receipt eviction remain separate."
     ]
   },
   {
@@ -1042,7 +1108,7 @@
     "status": "partial",
     "limitations": [
       "Checks one stable redirect and one trusted platform session with two candidate claim lineages and account pairs. Workerd checks exact re-entry, denial and cleanup against stored platform and account scope records.",
-      "OnboardingGreetingLease separately checks greeting lease ownership. Transcript migration, replay alarm pagination, cross-shard binding races and authentication-state ownership remain separate."
+      "OnboardingGreetingLease checks greeting lease ownership. OnboardingReplayCleanup checks replay alarm pagination and writes during a scan. Transcript migration, cross-shard binding races and authentication-state ownership remain separate."
     ]
   },
   {
@@ -1332,7 +1398,8 @@
     "status": "unmodeled",
     "limitations": [
       "Reviewed source families: shared/src/lib/services/app-deploy, shared/src/lib/services/apps-deploy, shared/src/db/repositories/app-frontend",
-      "Unmodeled obligations: upload and finalize, single active deployment, rollback, ingress publication"
+      "FrontendActivationSwap, frontend_publication and app_frontend_deletion cover bounded frontend row swaps, publication and whole-app deletion. Backend deployment orchestration, ingress publication and concurrent activations beyond the bounded lock projection remain open.",
+      "App deployment job admission and known failure settlement are tracked under cloud-app-deploy-generation."
     ]
   },
   {

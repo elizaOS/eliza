@@ -14,16 +14,33 @@
       "UncertaintyFencesMutation",
       "DurableFence",
       "StoppedHasNoProvisionalRows",
-      "SuccessAfterAcknowledgement"
+      "SuccessAfterAcknowledgement",
+      "OwnedPayloadMatchesAdmission"
     ],
     "status": "partial",
     "limitations": [
       "A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
-      "Hydration begins with a valid version-2 snapshot. Legacy migration, malformed coordinate rejection, group coalescing, expiry and notification category/priority policy remain separately test-covered and not modeled here.",
-      "Rows project title/body/data content to identity plus a read mark. Alias mutation of returned or input objects is outside this projection.",
+      "Hydration begins with a valid version-2 snapshot. Legacy migration and malformed coordinate rejection remain separately test-covered. NotificationGroupPolicy checks grouped replacement and retention. The full category-to-priority mapping remains outside these models.",
+      "The write-queue case projects rows to identity and read state. A separate payload case models producer and observer ownership for one nested payload through admission, persistence and restart.",
       "Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
       "Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
-      "Conformance executes all 69 existing real SQLite/runtime tests. Named fault injection gates real API effects, and is not exhaustive schedule equivalence."
+      "Conformance executes 70 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
+    ]
+  },
+  {
+    "id": "core-NotificationGroupPolicy",
+    "model": "packages/core/quint/NotificationGroupPolicy.qnt",
+    "sources": [
+      "packages/core/src/services/notification.ts",
+      "packages/core/src/types/notification.ts",
+      "packages/core/test/notification.test.ts",
+      "plugins/plugin-assistant/src/services/approval/store.ts"
+    ],
+    "invariants": ["SequenceTracksRetainedRow"],
+    "status": "partial",
+    "limitations": [
+      "One notification group, three appends and a finite wall clock. Multiple groups, arbitrary predicates and the full category-to-priority mapping are outside the checked domain.",
+      "The model assumes one successful serialized write. Ambiguous persistence and restart are covered separately by NotificationDurability. The real SQLite suite covers default and explicit expiry, grouped replacement, count overrides and exact approval projection."
     ]
   },
   {
@@ -36,17 +53,17 @@
     ],
     "invariants": [
       "SequenceBounds",
+      "BlockBelongsToRetainedRow",
       "ReturnedRowsWithinFence",
       "IncompleteAlwaysAdvances",
       "CompleteConsumesFence",
-      "FailedPageDoesNotAdvance"
+      "RejectedPagesReturnNothing"
     ],
     "status": "partial",
     "limitations": [
-      "The finite capacity one represents the item/byte page boundary. Real tests check the actual encoded envelope and native byte limits without truncating records.",
-      "A sequence cursor can skip deleted/expired/superseded rows when no retained row exists at that sequence. The fence remains fixed across later appends.",
-      "Malformed arbitrary cursor numbers, unknown record fields and Unicode byte encoding are checked by existing implementation tests, outside the finite value domain.",
-      "Changing the inbox epoch invalidates old cursors. After that error the client must explicitly begin a new snapshot, which is outside this one-cursor model."
+      "Capacity one represents the item or byte boundary. Actual envelope and Unicode byte limits are implementation tests.",
+      "Deletion or supersession can remove a retained row between pages. A projection error is attached to the current retained row and cannot cross epochs.",
+      "One explicit replacement and restart are checked. Native client scheduling, multiple clients, persistence faults and arbitrary invalid query numbers are outside this finite projection."
     ]
   },
   {
@@ -54,20 +71,22 @@
     "model": "packages/core/quint/NotificationRecovery.qnt",
     "sources": [
       "packages/core/src/services/notification.ts",
+      "packages/core/src/runtime.ts",
+      "packages/core/src/runtime/service-lifecycle.ts",
       "packages/core/test/notification.test.ts"
     ],
     "invariants": [
-      "SingleLoad",
       "BusyRequestsJoin",
       "BackoffBlocksAdmission",
       "OnlyFailedServicesStart",
-      "BoundedCooldown"
+      "BoundedCooldown",
+      "PhaseMatchesAvailability"
     ],
     "status": "partial",
     "limitations": [
-      "Concurrent replacement of the registered class during an unsettled recovery and separate runtime identity maps require the service lifecycle ownership model.",
-      "Only the first two exponential delays are represented. Wall-clock rollback, later capped delays, and exceptions thrown by diagnostic observers are outside this domain.",
-      "The existing 69-test real runtime/SQLite conformance suite covers hydration failure, recovery deduplication and immediate backoff. It is scenario conformance, not exhaustive schedule equivalence."
+      "Service replacement during recovery and concurrent runtimes require their separate lifecycle ownership models.",
+      "The model projects wall-clock changes away and uses elapsed seconds. The SQLite/runtime regression checks both wall-clock directions and the exact millisecond retry boundary, including repeated capped delays.",
+      "Exceptions from diagnostics and cross-process restart are outside this recovery projection."
     ]
   }
 ]
