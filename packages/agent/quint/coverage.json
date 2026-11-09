@@ -51,14 +51,15 @@
     "model": "packages/agent/quint/api-connections.qnt",
     "sources": [
       "packages/agent/src/api/conversation-connection-readiness.ts",
-      "packages/agent/src/api/conversation-routes.ts"
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/character-routes.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One room/runtime, two queued writes and generations 0..2.",
-      "Independent rooms, unbounded generations, database failures and process restart are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One room and runtime, one proof identity with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
+      "Distinct callers and rooms, deletion retries while raw I/O is stalled, room-generation eviction, request fences, and process restart are outside the projections.",
+      "Database failures and observer deadlines are abstracted. Drain assumes weakly fair raw I/O settlement. HTTP and SQLite scenarios do not establish implementation refinement."
     ]
   },
   {
