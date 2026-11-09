@@ -400,6 +400,29 @@ async function redactTranscript(
 	await pseudonyms.learn(transcriptTextCorpus(original));
 	const safeText = (text: string): string =>
 		redactedText(pseudonyms.substituteText(text));
+	// Words are separate ASR tokens: a multi-word value ("Alice Johnson",
+	// "555 867 5309") never matches inside one word, so any word that is a
+	// token of a learned/detected value is withheld outright.
+	const wordKey = (text: string): string =>
+		text.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+	const valueTokens = (values: readonly string[]): string[] =>
+		values
+			.flatMap((value) => value.split(/\s+/))
+			.map(wordKey)
+			.filter(Boolean);
+	const learnedTokens = valueTokens(pseudonyms.entries.map((e) => e.value));
+	const safeWords = (segment: Transcript["segments"][number]) => {
+		const sensitive = new Set([
+			...learnedTokens,
+			...valueTokens(detectPii(segment.text).map((m) => m.value)),
+		]);
+		return segment.words.map((word) => ({
+			...word,
+			text: sensitive.has(wordKey(word.text))
+				? "[REDACTED]"
+				: safeText(word.text),
+		}));
+	};
 	const segments = original.segments.map((segment) => ({
 		id: segment.id,
 		...(segment.speakerLabel
@@ -408,10 +431,7 @@ async function redactTranscript(
 		startMs: segment.startMs,
 		endMs: segment.endMs,
 		text: safeText(segment.text),
-		words: segment.words.map((word) => ({
-			...word,
-			text: safeText(word.text),
-		})),
+		words: safeWords(segment),
 		...(segment.confidence !== undefined
 			? { confidence: segment.confidence }
 			: {}),
