@@ -2188,7 +2188,7 @@ export async function startBenchmarkServer() {
     }
     if (pathname === "/api/benchmark/reset" && req.method === "POST") {
       if (!checkBenchAuth(req, res)) return;
-      let body = "";
+      const chunks: Buffer[] = [];
       let bodyBytes = 0;
       let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
@@ -2204,10 +2204,12 @@ export async function startBenchmarkServer() {
           req.destroy();
           return;
         }
-        body += chunk;
+        chunks.push(chunk);
       });
       req.on("end", async () => {
         if (bodyTooLarge) return;
+        // Decode once at the end: a chunk can end inside a UTF-8 character.
+        const body = Buffer.concat(chunks).toString("utf8");
         try {
           const parsed = body.trim()
             ? (JSON.parse(body) as {
@@ -2356,7 +2358,7 @@ export async function startBenchmarkServer() {
     }
     if (pathname === "/api/benchmark/message" && req.method === "POST") {
       if (!checkBenchAuth(req, res)) return;
-      let body = "";
+      const chunks: Buffer[] = [];
       let bodyBytes = 0;
       let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
@@ -2372,10 +2374,12 @@ export async function startBenchmarkServer() {
           req.destroy();
           return;
         }
-        body += chunk;
+        chunks.push(chunk);
       });
       req.on("end", async () => {
         if (bodyTooLarge) return;
+        // Decode once at the end: a chunk can end inside a UTF-8 character.
+        const body = Buffer.concat(chunks).toString("utf8");
         try {
           let parsed: {
             text?: unknown;
