@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/device-action-routes.ts",
+    "packages/agent/src/api/approval-routes.ts"
+  ],
+  "bounds": {
+    "domain": "One operation and two claims.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_approvals",
+      "main": "api_approvals",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

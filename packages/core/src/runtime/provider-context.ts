@@ -7,6 +7,8 @@ import { hashStableJson } from "./context-hash";
 import type { ContextObject, ContextProviderEvent } from "./context-object";
 import { OWNED_CONTEXT_SOURCE_SCOPE } from "./context-object";
 
+const REVIEW_SOURCE_ID = /^[a-zA-Z][a-zA-Z0-9]*$/;
+
 /** Bind source selection to exact authorized bodies, authors, rooms and turn.
  * Discovery-only bodies have not been reviewed and cannot participate. */
 export function providerReviewSources(context: ContextObject) {
@@ -45,7 +47,7 @@ export function providerReviewSources(context: ContextObject) {
 			if (
 				!source ||
 				typeof source.id !== "string" ||
-				!/^[a-zA-Z][a-zA-Z0-9]*$/.test(source.id) ||
+				!REVIEW_SOURCE_ID.test(source.id) ||
 				ids.has(source.id) ||
 				typeof source.text !== "string" ||
 				!source.text ||

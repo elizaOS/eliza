@@ -115,6 +115,7 @@ const memory = () => {
   assert.deepEqual(maps.cloudMapsDiagnostics(), {
     configured: true,
     error: "unauthorized",
+    message: "Sign in to Eliza Cloud to use Maps.",
   });
 }
 

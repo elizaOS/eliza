@@ -41,6 +41,7 @@ import { billingSubscriptionCommands } from "../../db/schemas/subscription-billi
 import { userVoices } from "../../db/schemas/user-voices";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../storage/r2-runtime-binding";
 import { getStripe } from "../stripe";
+import { countUnconfirmedAccountEvmSweeps } from "./account-deletion-crypto-sweeps";
 import type {
   AccountDeletionProviderAdapter,
   AccountDeletionProviderAdapters,
@@ -856,6 +857,8 @@ export function createAccountDeletionProviderAdapters(
     },
     other_grants: {
       async inspect(context) {
+        if (await countUnconfirmedAccountEvmSweeps(context.userId, context.organizationId))
+          return { state: "action_required", errorCode: "ACCOUNT_DELETION_EVM_SWEEP_UNCONFIRMED" };
         const count = await countLocalRestrictiveRows(context);
         return count === 0 ? complete(context, "other_grants") : { state: "needs_execution" };
       },

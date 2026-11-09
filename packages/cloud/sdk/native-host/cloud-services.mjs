@@ -22,6 +22,7 @@ const speechLanguageCode = (value) =>
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+const ACCOUNT_REQUEST_TIMEOUT_MS = 20_000;
 // Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
 function invoiceProjection(value, id) {
   if (
@@ -716,7 +717,11 @@ export function createCloudRoutes({
   // Native/custom stores need the same ordering as the host file store. A
   // logout must finish clearing a credential whose write was already pending.
   let credentialWrites = Promise.resolve();
+  // Advanced by every credential mutation and every state-changing Cloud
+  // route, so an account read never joins one that started before them.
+  let accessRevision = 0;
   const mutateCredential = (work) => {
+    accessRevision++;
     const next = credentialWrites.then(work);
     credentialWrites = next.catch(() => {});
     return next;
@@ -881,7 +886,26 @@ export function createCloudRoutes({
         }
       : { state: "signed_out" };
   }
-  async function accountAccess() {
+  // Concurrent account reads (the access route and each paid action) share
+  // one Cloud round trip. A caller joins only a read of the same account
+  // session that started after the latest credential or account change.
+  // A caller that joins gets the answer of a read already in flight when it
+  // called, so a change made on Cloud's side alone (a webhook payment, an
+  // operator revoking a grant, an expiry) can be up to one round trip old.
+  // Nothing is kept once the read settles: the next caller reads afresh.
+  let sharedAccess = null;
+  function accountAccess() {
+    const shared = sharedAccess;
+    if (shared?.generation === generation && shared.revision === accessRevision)
+      return shared.promise;
+    const entry = { generation, revision: accessRevision };
+    entry.promise = readAccountAccess().finally(() => {
+      if (sharedAccess === entry) sharedAccess = null;
+    });
+    sharedAccess = entry;
+    return entry.promise;
+  }
+  async function readAccountAccess() {
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
     await ready;
@@ -907,18 +931,21 @@ export function createCloudRoutes({
     // Only a refusal at the identity check names the stored key as revoked.
     let identityRefused = false;
     try {
-      const user = await parse(
-        await request("/api/v1/user", { key, authorityGeneration: epoch }),
-      ).catch((error) => {
+      // Both reads start together. The identity answer is awaited first, so
+      // its refusal still decides, as when the reads ran one after the other.
+      // One deadline covers headers and body parsing for both requests. A
+      // stalled response must not keep every later caller on this shared read.
+      const signal = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
+      const read = (path) =>
+        request(path, { key, authorityGeneration: epoch, signal }).then(parse);
+      const userRead = read("/api/v1/user"),
+        snapshotRead = read("/api/v1/billing/limits");
+      snapshotRead.catch(() => {});
+      const user = await userRead.catch((error) => {
         identityRefused = error.status === 401;
         throw error;
       });
-      const snapshot = await parse(
-        await request("/api/v1/billing/limits", {
-          key,
-          authorityGeneration: epoch,
-        }),
-      );
+      const snapshot = await snapshotRead;
       current(epoch);
       if (!subscriptionCodes) return projectAccountAccess(user, snapshot);
       return projectAccountAccess(user, snapshot, {
@@ -990,7 +1017,7 @@ export function createCloudRoutes({
       .slice(0, 40)}`;
     let response;
     for (let attempt = 0; !response; attempt++) {
-      const timeout = AbortSignal.timeout(20000);
+      const timeout = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
       try {
         response = await request("/api/v1/subscription/redeem", {
           key,
@@ -2363,6 +2390,9 @@ export function createCloudRoutes({
               : {}),
           });
       }
+    } finally {
+      // A purchase, redeem or sign-in change may alter the account's access.
+      if (req.method !== "GET") accessRevision++;
     }
     return true;
   };

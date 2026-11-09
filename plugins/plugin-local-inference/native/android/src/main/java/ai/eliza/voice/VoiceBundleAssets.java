@@ -212,22 +212,73 @@ public final class VoiceBundleAssets {
                 && (relative.endsWith(".gguf") || relative.endsWith(".lex"));
     }
 
-    /** Where an uncompressed asset's bytes are in the APK. */
-    private static final class Region {
-        final File apk;
-        final long offset, length;
+    /**
+     * Where a model's bytes are: {@code length} bytes of {@code file} from
+     * {@code offset}. For an in-place model, {@code file} is the APK.
+     */
+    public static final class Region {
+        public final File file;
+        public final long offset, length;
 
-        Region(File apk, long offset, long length) {
-            this.apk = apk;
+        Region(File file, long offset, long length) {
+            this.file = file;
             this.offset = offset;
             this.length = length;
         }
 
         /** The libelizainference region file (tools/file-region/eliza-file-region.h). */
         byte[] text() {
-            return (REGION_MAGIC + "\noffset=" + offset + "\nlength=" + length + "\npath=" + apk.getPath() + "\n")
+            return (REGION_MAGIC + "\noffset=" + offset + "\nlength=" + length + "\npath=" + file.getPath() + "\n")
                     .getBytes(StandardCharsets.UTF_8);
         }
+    }
+
+    /** A region file is a few hundred bytes; anything larger is a model. */
+    private static final int MAX_REGION_FILE = 4096;
+
+    /**
+     * The bytes an installed model path stands for, by the rules of the native
+     * loaders and {@code file-region.ts}: a region file gives its span of the
+     * containing file, checked against that file's size; any other file gives
+     * the whole file. A host that reads the model itself (for example to warm
+     * the page cache) calls this instead of parsing region files. An invalid
+     * region file, or one whose containing file is missing or too short, is an
+     * IOException.
+     */
+    public static Region modelRegion(File installed) throws IOException {
+        if (!installed.isFile()) throw new java.io.FileNotFoundException("Voice model missing: " + installed);
+        long size = installed.length();
+        if (size <= REGION_MAGIC.length() || size > MAX_REGION_FILE) return new Region(installed, 0, size);
+        byte[] head = read(new FileInputStream(installed), MAX_REGION_FILE);
+        String text = new String(head, StandardCharsets.UTF_8);
+        if (!text.startsWith(REGION_MAGIC + "\n")) return new Region(installed, 0, size);
+        Long offset = null, length = null;
+        String path = null;
+        for (String line : text.substring(REGION_MAGIC.length() + 1).split("\n", -1)) {
+            if (line.isEmpty()) continue;
+            int eq = line.indexOf('=');
+            String key = eq < 0 ? line : line.substring(0, eq), value = eq < 0 ? "" : line.substring(eq + 1);
+            if (eq >= 0 && "offset".equals(key) && offset == null && (offset = count(value)) != null) continue;
+            if (eq >= 0 && "length".equals(key) && length == null && (length = count(value)) != null) continue;
+            if (eq >= 0 && "path".equals(key) && path == null && value.startsWith("/")) {
+                path = value;
+                continue;
+            }
+            throw new IOException("Invalid voice region file: " + installed);
+        }
+        if (offset == null || length == null || path == null || length == 0 || offset % REGION_ALIGNMENT != 0) {
+            throw new IOException("Invalid voice region file: " + installed);
+        }
+        File container = new File(path);
+        if (!container.isFile() || offset > container.length() || length > container.length() - offset) {
+            throw new IOException("Voice region outside its file: " + installed);
+        }
+        return new Region(container, offset, length);
+    }
+
+    /** A decimal byte count that fits a Java long, or null. */
+    private static Long count(String value) {
+        return value.matches("[0-9]{1,18}") ? Long.valueOf(value) : null;
     }
 
     /** The asset's place in the APK, or null when it is compressed or unaligned (it is then copied). */
@@ -266,7 +317,7 @@ public final class VoiceBundleAssets {
                 && Arrays.equals(read(new FileInputStream(target), text.length), text)) {
             return;
         }
-        if (!verified && !sha.equals(sha256(region.apk, region.offset, region.length))) {
+        if (!verified && !sha.equals(sha256(region.file, region.offset, region.length))) {
             throw new IOException("Voice asset checksum mismatch: " + relative);
         }
         File parent = target.getParentFile();

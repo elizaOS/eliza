@@ -1,0 +1,40 @@
+{
+  "sources": [
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechOutputWarmup.java",
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/AudioTrackSpeechOutput.java",
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java",
+    "plugins/plugin-local-inference/native/android/test/speech/SpeechOutputWarmupTest.java",
+    "plugins/plugin-local-inference/native/android/test/speech-output.node.mjs"
+  ],
+  "bounds": [
+    "Two warm-up workers, each launched once, with two abstract clock ticks and two writes. Main-thread admission and replacement are serialized. The model includes an open that completes after cancellation and an admitted write that settles after cancellation.",
+    "The Java lifecycle monitor makes output publication and play admission atomic with respect to close. Release records one attempt by the writer and does not promise that Android releases hardware.",
+    "Conditional worker progress assumes open, play, write and cleanup settle. The real JVM tests cover the 15-second bound, blocked writes, late opens, play/close ordering, and write failures with controlled output ports. Device timing and playback are outside this model."
+  ],
+  "conformance": "plugins/plugin-local-inference/quint/check-speech-output.mjs",
+  "cases": [
+    {
+      "name": "foreground-owner-and-retirement",
+      "main": "SpeechOutputWarmup",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [
+        "RetiredWorkerSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "RetiredWorkerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each enabled worker advancement. Output-port operations complete or return a failure, including after an abort."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

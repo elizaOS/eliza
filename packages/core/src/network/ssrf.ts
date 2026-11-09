@@ -550,13 +550,3 @@ export async function resolvePinnedHostname(
 ): Promise<PinnedHostname> {
 	return resolvePinnedHostnameWithPolicy(hostname, { lookupFn });
 }
-
-/**
- * Assert that a hostname resolves to a public IP address.
- */
-export async function assertPublicHostname(
-	hostname: string,
-	lookupFn?: LookupFn,
-): Promise<void> {
-	await resolvePinnedHostname(hostname, lookupFn);
-}

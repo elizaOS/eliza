@@ -82,6 +82,11 @@ async function runTurn(
   envelopes: string[],
   finalText: string,
   transport: "conversation" | "append-only" = "conversation",
+  inspectTiming?: (
+    runtime: AgentRuntime,
+    base: string,
+    token: string,
+  ) => Promise<void>,
 ): Promise<SseEvent[]> {
   const directory = await mkdtemp(join(tmpdir(), "chat-reply-stream-"));
   const token = randomUUID();
@@ -90,6 +95,7 @@ async function runTurn(
     ELIZA_CONFIG_PATH: join(directory, "config.json"),
     ELIZA_API_TOKEN: token,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
+    ELIZA_HOST_CONTEXT_REVISION: "boot:timing-transport-test",
   }))
     vi.stubEnv(key, value);
   const runtime = new AgentRuntime({
@@ -222,10 +228,12 @@ async function runTurn(
       },
     );
     expect(response.status).toBe(200);
-    return (await response.text())
+    const events = (await response.text())
       .split("\n")
       .filter((line) => line.startsWith("data: "))
       .map((line) => JSON.parse(line.slice(6)) as SseEvent);
+    await inspectTiming?.(runtime, base, token);
+    return events;
   } finally {
     await server?.close();
     await runtime.stop();
@@ -233,6 +241,37 @@ async function runTurn(
     await rm(directory, { recursive: true, force: true });
   }
 }
+
+it("projects the completed streamed turn through existing owner status without reading logs", async () => {
+  await runTurn(
+    [envelope("Paris is the capital.")],
+    "Paris is the capital.",
+    "conversation",
+    async (runtime, base, token) => {
+      const getLogs = vi.spyOn(runtime, "getLogs");
+      try {
+        const response = await fetch(`${base}/api/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status).toBe(200);
+        const { nativeInferenceTiming } = await response.json();
+        expect(nativeInferenceTiming).toMatchObject({
+          version: 1,
+          totalMs: expect.any(Number),
+          timeToResponseFinalizedMs: expect.any(Number),
+          traceId: expect.stringMatching(/^[0-9a-f]{32}$/),
+        });
+        expect(nativeInferenceTiming.stages.length).toBeGreaterThan(0);
+        expect(JSON.stringify(nativeInferenceTiming)).not.toMatch(
+          /Paris|scripted-stage1|roomId|turnId|label|meta/,
+        );
+        expect(getLogs).not.toHaveBeenCalled();
+      } finally {
+        getLogs.mockRestore();
+      }
+    },
+  );
+}, 60_000);
 
 /** The client's text after each token frame (`fullText` replaces, `text` appends). */
 function clientTexts(events: SseEvent[]): string[] {

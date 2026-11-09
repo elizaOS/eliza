@@ -76,6 +76,7 @@ export const RESIDENT_HOST_HELPERS = Object.freeze({
   ...Object.fromEntries(
     [
       ["ChromiumBrowserIdentity", "verbatim"],
+      ["ChromiumBindingDemand", "verbatim"],
       ["ChromiumBrowserConnection", "host-build-config"],
       ["BrowserWebOrigin", "verbatim"],
       ["BrowserDownloadPolicy", "verbatim"],
@@ -88,6 +89,19 @@ export const RESIDENT_HOST_HELPERS = Object.freeze({
       kind,
     ]),
   ),
+});
+
+const BROWSER_SURFACE =
+  "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface";
+/**
+ * Helpers that compile only beside others: a host selecting the key must select
+ * every listed source too, or its javac fails on a missing symbol after a pin bump.
+ */
+export const RESIDENT_HELPER_DEPENDENCIES = Object.freeze({
+  [`${BROWSER_SURFACE}/ChromiumBrowserConnection.java`]: Object.freeze([
+    `${BROWSER_SURFACE}/ChromiumBindingDemand.java`,
+    `${BROWSER_SURFACE}/ChromiumBrowserIdentity.java`,
+  ]),
 });
 
 /** Runtime notification text in ElizaAgentService, by semantic key: anchor and occurrences. */
@@ -420,7 +434,16 @@ export function stageResidentHostSources({
     Array.isArray(helpers) && new Set(helpers).size === helpers.length,
     "Resident helpers must be distinct",
   );
-  for (const relative of helpers) residentHelperKind(relative);
+  for (const relative of helpers) {
+    residentHelperKind(relative);
+    const missing = (RESIDENT_HELPER_DEPENDENCIES[relative] ?? []).filter(
+      (dependency) => !helpers.includes(dependency),
+    );
+    requireValue(
+      missing.length === 0,
+      `Resident helper ${relative} needs ${missing.join(", ")} staged beside it`,
+    );
+  }
   const rows = [];
   const write = (relative, target, input, value) => {
     fs.mkdirSync(path.dirname(target), { recursive: true });

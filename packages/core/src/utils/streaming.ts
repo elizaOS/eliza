@@ -12,9 +12,13 @@
  * visible runs without copying the remaining stream suffix at every index.
  */
 
+import type { StreamingContext } from "../streaming-context";
 import type { StreamChunkCallback } from "../types/components";
+import type { ResponseSkeleton, StructuredStreamGate } from "../types/model";
+import type { SchemaRow, StreamEvent } from "../types/state";
 import type {
 	IStreamExtractor,
+	IStreamingRetryState,
 	StructuredFieldEventCallbacks,
 } from "../types/streaming";
 import { REASONING_TAG_NAMES } from "./reasoning-tags";
@@ -146,10 +150,6 @@ export class MarkableExtractor implements IStreamExtractor {
 		this._done = true;
 	}
 }
-
-import type { ResponseSkeleton, StructuredStreamGate } from "../types/model";
-import type { SchemaRow, StreamEvent } from "../types/state";
-import type { IStreamingRetryState } from "../types/streaming";
 
 /**
  * Extractor state machine for validation-aware streaming.
@@ -441,15 +441,12 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			return;
 		}
 
+		// Streamed fields emit their diff on completeCurrentField (level <= 1).
 		if (this.currentTrackedField) {
 			this.appendFieldContent(
 				this.currentTrackedField,
 				this.normalizeContinuationLine(line),
 			);
-			if (this.currentField && this.streamFieldSet.has(this.currentField)) {
-				// emitFieldContent diffing happens on completeCurrentField for
-				// level <= 1; nothing additional needed per continuation line.
-			}
 		}
 	}
 
@@ -565,9 +562,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	}
 
 	private emitEvent(event: StreamEvent): void {
-		if (this.config.onEvent) {
-			this.config.onEvent(event);
-		}
+		this.config.onEvent?.(event);
 	}
 }
 
@@ -599,6 +594,8 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private passthroughEmitted = "";
 	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
+	/** `[field, JSON-encoded key]` for each streamed field, in declaration order. */
+	private readonly streamFieldKeys: ReadonlyArray<readonly [string, string]>;
 	private readonly maxKeyPatternLength: number;
 	/** Everything pushed this attempt, kept only until the gate decides. */
 	private gateHead = "";
@@ -646,9 +643,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			);
 		}
 		this.streamFieldSet = new Set(config.streamFields);
+		this.streamFieldKeys = Array.from(
+			this.streamFieldSet,
+			(field) => [field, JSON.stringify(field)] as const,
+		);
 		this.maxKeyPatternLength = Math.max(
 			0,
-			...config.streamFields.map((field) => JSON.stringify(field).length),
+			...this.streamFieldKeys.map(([, key]) => key.length),
 		);
 	}
 
@@ -1090,8 +1091,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				| { field: string; keyStart: number; keyEnd: number }
 				| undefined;
 
-			for (const field of this.streamFieldSet) {
-				const key = JSON.stringify(field);
+			for (const [field, key] of this.streamFieldKeys) {
 				const keyStart = this.buffer.indexOf(key);
 				if (keyStart >= 0 && (!earliest || keyStart < earliest.keyStart)) {
 					earliest = { field, keyStart, keyEnd: keyStart + key.length };
@@ -1270,6 +1270,20 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				continue;
 			}
 
+			// Copy the plain run up to the next quote or escape in one slice
+			// instead of re-slicing the buffer for every character.
+			let runEnd = 0;
+			while (runEnd < this.buffer.length) {
+				const code = this.buffer.charCodeAt(runEnd);
+				if (code === 0x22 || code === 0x5c) break;
+				runEnd += 1;
+			}
+			if (runEnd > 0) {
+				plain += this.buffer.slice(0, runEnd);
+				this.buffer = this.buffer.slice(runEnd);
+				continue;
+			}
+
 			const char = this.buffer[0];
 			this.buffer = this.buffer.slice(1);
 			if (char === '"') {
@@ -1302,9 +1316,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				}
 				flushPlain();
 				this.appendAndEmit(field, decodeJsonEscape(`\\${next}`));
-				continue;
 			}
-			plain += char;
 		}
 
 		flushPlain();
@@ -1510,9 +1522,15 @@ function matchTagAt(
 	}
 	const compareLen = remainingLen < tag.length ? remainingLen : tag.length;
 	for (let offset = 0; offset < compareLen; offset++) {
-		const sourceCh = source[index + offset] ?? "";
-		const tagCh = tag[offset] ?? "";
-		if (sourceCh.toLowerCase() !== tagCh.toLowerCase()) {
+		// Tags are lowercase ASCII. Fold ASCII without allocating; only non-ASCII
+		// source characters (e.g. U+212A KELVIN SIGN lowercases to "k") need the
+		// full Unicode lowercase mapping.
+		const code = source.charCodeAt(index + offset);
+		const folded = code >= 0x41 && code <= 0x5a ? code + 0x20 : code;
+		if (
+			folded !== tag.charCodeAt(offset) &&
+			(code < 0x80 || source[index + offset].toLowerCase() !== tag[offset])
+		) {
 			return "none";
 		}
 	}
@@ -1654,8 +1672,6 @@ function findBalancedJsonEnd(value: string): number | null {
 }
 
 // Streaming Context Helpers
-
-import type { StreamingContext } from "../streaming-context";
 
 /**
  * Creates a streaming retry state from an extractor.

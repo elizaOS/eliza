@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/api/backup-v2-stream-response.ts",
+    "packages/agent/src/api/chat-stream-writer.ts",
+    "packages/agent/src/api/ws-event-replay.ts"
+  ],
+  "bounds": {
+    "domain": "Two data frames, one terminal frame and bounded event cursor.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_streams",
+      "main": "api_streams",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

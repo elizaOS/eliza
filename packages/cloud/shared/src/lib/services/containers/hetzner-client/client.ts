@@ -6,8 +6,8 @@
  * sibling modules under this directory.
  */
 
-import { eq } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../../../db/client";
+import { eq, getTableColumns, sql } from "drizzle-orm";
+import { dbRead } from "../../../../db/client";
 import type { NewContainer } from "../../../../db/repositories/containers";
 import { type Container, containersRepository } from "../../../../db/repositories/containers";
 import { dockerNodesRepository } from "../../../../db/repositories/docker-nodes";
@@ -905,10 +905,16 @@ export class HetznerContainersClient {
    * Inspect the Docker health status of every container in
    * (`building`, `deploying`) and flip `running` / `failed` accordingly.
    * Called from the deployment-monitor cron handler.
+   * Only the sampled deployment may accept its asynchronous health response.
    */
   async monitorInflight(): Promise<{ checked: number; running: number; failed: number }> {
     const inflight = await dbRead
-      .select()
+      .select({
+        ...getTableColumns(containersTable),
+        // Preserve PostgreSQL microseconds; a JavaScript Date cannot identify
+        // an original row exactly when its UUID is deleted and reused.
+        createdAtSnapshot: sql<string>`to_char(${containersTable.created_at}, 'YYYY-MM-DD HH24:MI:SS.US')`,
+      })
       .from(containersTable)
       .where(eq(containersTable.status, "deploying"));
 
@@ -931,31 +937,35 @@ export class HetznerContainersClient {
 
         if (status === "healthy" || status === "running") {
           const checkedAt = new Date();
-          await dbWrite
-            .update(containersTable)
-            .set({
+          const updated = await containersRepository.update(
+            row.id,
+            row.organization_id,
+            {
               status: "running",
               deployment_log: `Container is running on ${meta.nodeId}.`,
               error_message: null,
               last_deployed_at: checkedAt,
               last_health_check: checkedAt,
               updated_at: checkedAt,
-            })
-            .where(eq(containersTable.id, row.id));
-          running += 1;
+            },
+            row,
+          );
+          if (updated) running += 1;
         } else if (status === "exited" || status === "dead") {
           const checkedAt = new Date();
-          await dbWrite
-            .update(containersTable)
-            .set({
+          const updated = await containersRepository.update(
+            row.id,
+            row.organization_id,
+            {
               status: "failed",
               deployment_log: `Container is ${status}.`,
               error_message: `Container is ${status}`,
               last_health_check: checkedAt,
               updated_at: checkedAt,
-            })
-            .where(eq(containersTable.id, row.id));
-          failed += 1;
+            },
+            row,
+          );
+          if (updated) failed += 1;
         }
         // else still starting — leave alone
       } catch (err) {

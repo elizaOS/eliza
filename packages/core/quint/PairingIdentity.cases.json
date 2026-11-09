@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/core/src/services/pairing.ts",
+    "packages/core/src/types/pairing.ts",
+    "plugins/plugin-sql/src/base.ts",
+    "plugins/plugin-sql/src/__tests__/pairing-identity.test.ts",
+    "plugins/plugin-sql/src/schema/pairingAllowlist.ts",
+    "plugins/plugin-sql/src/schema/pairingRequest.ts"
+  ],
+  "conformance": "packages/core/scripts/quint-pairing-conformance.mjs",
+  "bounds": "Five agent/channel/sender tuple identities, three grant row keys, one request generation per scope, arbitrary grant removal. Request UUID uniqueness and collision-resistant canonical grant hashing are assumptions.",
+  "limitations": [
+    "Full Unicode values are represented by collision families, including legacy delimiter collisions. Random UUID bit entropy and hash collision probabilities are outside the finite state space.",
+    "SQL conflict decisions are atomic. Between the conflict and the follow-up read another transaction may remove the row, which fails explicitly. Named real SQL tests cover conflict receipts and service readback.",
+    "Only the finite identity projection is proved. Admission, expiry and approval recovery are in PairingAdmission.qnt."
+  ],
+  "cases": [
+    {
+      "name": "reply-scopes",
+      "main": "PairingReplyIdentity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "IndependentClaimScopes",
+        "ClaimOncePerOwner"
+      ],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "request-scopes",
+      "main": "PairingRequestIdentity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "IndependentRequestScopes",
+        "RowsRetainTheirScope"
+      ],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "grant-receipts",
+      "main": "PairingGrantIdentity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ReceiptMatchesStoredScope",
+        "GrantIndexesAgree"
+      ],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

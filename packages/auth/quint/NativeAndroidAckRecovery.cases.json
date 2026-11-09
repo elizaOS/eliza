@@ -1,0 +1,47 @@
+{
+  "sources": [
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
+    "packages/auth/android/test/native-sign-in.test.mjs",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
+  ],
+  "bounds": {
+    "domain": "One selected Android deployment, one receipt slot, one saved credential slot, at most two startup worker invocations and three acknowledgement requests per invocation. Initial receipts may be absent, malformed, expired, foreign-deployment, foreign-credential or current. A second server credential identity and absent credential distinguish mismatched readback.",
+    "assumptions": "A startup worker uses its selected deployment and there is no concurrent replacement of that deployment's receipt or saved key during this case. Receipt read and remove return or fail as one abstract operation. A failed remove leaves the receipt in this model. The acknowledged response includes the exact expected credential ID, or the authenticated server returns its idempotent authorization-complete conflict. Wall-clock backoff and deadlines are projected to retry rounds and the expiry check at receipt read.",
+    "limitations": "This case covers the Android Java startup acknowledgement worker. It excludes key issuance, new credential writes, overlapping plugin instances, other deployments' workers, device process death, storage durability, actual transport scheduling, and cleanup of credential-slot records after the receipt is gone. The JVM fixture executes the exact recovery and acknowledgement methods against synthetic slot, HTTPS and lifecycle ports."
+  },
+  "conformance": "packages/auth/quint/check-native-android-ack-recovery.mjs",
+  "cases": [
+    {
+      "name": "startup-ack-recovery",
+      "main": "NativeAndroidAckRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "RetryBudget",
+        "AckUsesCurrentUnexpiredReceipt",
+        "RecoveryNeverReplacesSavedKey",
+        "RemoveOnlyStaleOrAcknowledged"
+      ],
+      "temporal": ["UnderFairReplies", "EachRunSettles"],
+      "temporalChecks": [
+        {
+          "property": "UnderFairReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the worker's storage, network and retry progress actions. A reply can reject, exhaust the budget, or keep the receipt. The Java delay eventually elapses while the worker remains available. No fairness assumes eventual acknowledgement or that another startup occurs."
+          ]
+        },
+        {
+          "property": "EachRunSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An invocation can remain pending at a storage or network boundary without a reply."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

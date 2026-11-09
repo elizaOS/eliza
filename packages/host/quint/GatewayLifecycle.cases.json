@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "GatewayLifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/host/native-host/gateway-lifecycle.mjs"],
+  "bounds": "Four optional returned resources, one startup and cleanup lifecycle, release at most once."
+}

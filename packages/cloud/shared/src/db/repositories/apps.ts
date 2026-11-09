@@ -22,6 +22,7 @@ import {
   metadataForDeploymentGeneration,
 } from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import type { JobExecutionAuthority } from "../../lib/services/job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -46,9 +47,14 @@ import {
 import { apiKeys } from "../schemas/api-keys";
 import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
+import {
+  type AppFrontendDeployment,
+  appFrontendDeployments,
+} from "../schemas/app-frontend-deployments";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { materializeAppBillingAccounts } from "./app-billing-accounts";
+import { assertJobExecutionAuthority, lockJobExecutionAuthority } from "./job-execution-authority";
 
 interface AppCacheFenceIdentity {
   appId?: string;
@@ -133,6 +139,12 @@ export interface AppMobileAuthRevocationMutation {
   app: App | undefined;
   revokedKeyHashes: string[];
   revokedKeys: { id: string; organizationId: string }[];
+}
+
+/** Acknowledged row deletion authorizes cleanup of these exact retained manifests. */
+export interface AppDeletionReceipt {
+  app: App;
+  frontendDeployments: AppFrontendDeployment[];
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -743,6 +755,7 @@ export class AppsRepository {
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
     const generationFilter = generation
       ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
@@ -754,11 +767,38 @@ export class AppsRepository {
       generation && data.metadata
         ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
         : data;
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({ ...nextData, updated_at: new Date() })
-      .where(and(eq(apps.id, id), generationFilter, statusFilter))
-      .returning();
+    const write = async (database: typeof dbWrite | DbTransaction) => {
+      const [updated] = await database
+        .update(apps)
+        .set({ ...nextData, updated_at: new Date() })
+        .where(
+          and(
+            eq(apps.id, id),
+            generationFilter,
+            statusFilter,
+            executionAuthority
+              ? eq(apps.organization_id, executionAuthority.organizationId)
+              : undefined,
+          ),
+        )
+        .returning();
+      return updated;
+    };
+    const updated = executionAuthority
+      ? await dbWrite.transaction(async (tx) => {
+          await lockJobExecutionAuthority(tx, executionAuthority);
+          await tx
+            .select({ id: apps.id })
+            .from(apps)
+            .where(
+              and(eq(apps.id, id), eq(apps.organization_id, executionAuthority.organizationId)),
+            )
+            .for("update")
+            .limit(1);
+          await assertJobExecutionAuthority(tx, executionAuthority);
+          return write(tx);
+        })
+      : await write(dbWrite);
 
     if (updated) {
       await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
@@ -929,7 +969,7 @@ export class AppsRepository {
   }
 
   /** Permanently removes only an app whose mobile authorization is already revoked. */
-  async finalizeDelete(id: string): Promise<App | undefined> {
+  async finalizeDelete(id: string): Promise<AppDeletionReceipt | undefined> {
     /* global-scope: by-id final delete; AppsService calls this only after owned revocation/teardown. */
     const deleted = await dbWrite.transaction(async (tx) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
@@ -957,12 +997,31 @@ export class AppsRepository {
           severity: "fatal",
         });
       }
+      // Lock the app before its deployment rows. The FK serializes concurrent
+      // inserts with app deletion; row locks retain any publication that wins
+      // before this snapshot. Read every manifest from the primary without a
+      // listing limit so acknowledged deletion can clean up all retained sites.
+      // Activation takes this same parent app lock first, so concurrent
+      // activation cannot hold a deployment while waiting for our snapshot.
+      const frontendDeployments = await tx
+        .select()
+        .from(appFrontendDeployments)
+        .where(eq(appFrontendDeployments.app_id, id))
+        .orderBy(appFrontendDeployments.id)
+        .for("update");
       const [removed] = await tx.delete(apps).where(eq(apps.id, id)).returning();
-      return removed;
+      if (!removed) {
+        throw new ElizaError("App deletion did not return its locked row", {
+          code: "APP_DELETE_NOT_PERSISTED",
+          context: { appId: id },
+          severity: "fatal",
+        });
+      }
+      return { app: removed, frontendDeployments };
     });
 
     if (deleted) {
-      await invalidateAppCacheEntries(id, deleted.api_key_id, deleted.slug);
+      await invalidateAppCacheEntries(id, deleted.app.api_key_id, deleted.app.slug);
     } else {
       await invalidateAppCacheEntries(id);
     }

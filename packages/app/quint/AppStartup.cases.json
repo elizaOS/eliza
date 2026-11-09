@@ -1,0 +1,17 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "AppStartup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/app/src/runtime/startup-state.ts"],
+  "conformance": "packages/scripts/quint/check-application.ts",
+  "bounds": "Two runtime-start attempts; complete phase graph and rejected/self transitions."
+}

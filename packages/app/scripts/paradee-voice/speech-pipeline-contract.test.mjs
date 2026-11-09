@@ -166,6 +166,19 @@ test("the on-device recognizer keeps a late answer and never reads an unanswered
     /^PASS on-device recognizer probe wiring/,
     { android: true },
   ));
+test("the on-device recognizer hears fed speech before finish and keeps its timeout and cancel meaning", () =>
+  run(
+    [
+      "OnDeviceRecognizer",
+      "RecognizerAvailability",
+      "RecognizerUnavailable",
+      "NativeAsr",
+      "VoiceNative",
+    ],
+    "OnDeviceRecognizerSessionTest",
+    /^PASS on-device recognizer session/,
+    { android: true },
+  ));
 test("latency trials link one turn from last user audio to audible playback", () =>
   run(
     ["LiveVadGate", "VoiceLatencyTrials"],
@@ -306,8 +319,9 @@ test("a host subclasses the inference transport through its hooks, against Andro
       .map((name) => path.join(directory, name));
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "inference-host-"));
   try {
-    // A host in its own package overrides admit, configure, describe, hear and the idle
-    // release, and calls cancelAll; compile-only Capacitor signatures, nothing runs.
+    // A host in its own package overrides admit, configure, describe, hear, the idle and
+    // hidden releases and holdsModels, and calls cancelAll and releaseModels; compile-only
+    // Capacitor signatures, nothing runs.
     execFileSync(
       java("javac"),
       [
@@ -354,6 +368,39 @@ test("a host subclasses the inference transport through its hooks, against Andro
     source,
     /final Lane hearing = new Lane\(Executors\.newSingleThreadExecutor\(\)\);/,
   );
+});
+
+test("the inference transport releases its models only when the host is hidden and idle", () => {
+  // Runnable Capacitor, Android and session doubles (speech-pipeline/inference-transport): the
+  // transport's queue and release policy on the host JVM. Not native memory or device evidence.
+  const transport = path.resolve(
+    here,
+    "../../../../plugins/plugin-local-inference/native/android/capacitor/src/main/java/ai/eliza/voice",
+  );
+  const doubles = path.join(fixtures, "inference-transport");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "inference-hidden-"));
+  try {
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-d",
+        temp,
+        path.join(transport, "ElizaInferencePlugin.java"),
+        ...javaFiles(doubles),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+    const output = execFileSync(
+      java("java"),
+      ["-cp", temp, "ai.eliza.voice.InferenceHiddenReleaseTest"],
+      { encoding: "utf8", timeout: 60000 },
+    );
+    assert.match(output, /^PASS inference hidden release/m);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test("live capture uses the shared session's VAD and never a platform recognizer", () => {

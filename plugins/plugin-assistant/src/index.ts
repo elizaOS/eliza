@@ -298,6 +298,7 @@ export {
 } from "./services/device-actions/reminder-local-time.ts";
 export {
   bindDeviceRequestedActionPolicy,
+  currentAppRecordSource,
   currentRequestedActionOrigin,
   DeviceActionService,
   type DeviceCredential,

@@ -136,6 +136,20 @@ const GBNF_RULE_BODIES: Record<string, string> = {
 	ws: "[ \\t\\n\\r]*",
 };
 
+/** Shared rules each shared rule body references, computed once. */
+const GBNF_RULE_DEPENDENCIES: ReadonlyMap<string, readonly string[]> = new Map(
+	Object.entries(GBNF_RULE_BODIES).map(([name, body]) => [
+		name,
+		Object.keys(GBNF_RULE_BODIES).filter(
+			(candidate) =>
+				candidate !== name &&
+				new RegExp(`(^|[^A-Za-z0-9_-])${candidate}([^A-Za-z0-9_-]|$)`).test(
+					body,
+				),
+		),
+	]),
+);
+
 type SimpleRegexQuantifier =
 	| { kind: "zeroOrOne" }
 	| { kind: "zeroOrMore" }
@@ -749,12 +763,8 @@ class GbnfBuilder {
 		if (body === undefined) return this;
 		this.rules.set(name, body);
 		// Pull in transitively referenced shared rules.
-		for (const candidate of Object.keys(GBNF_RULE_BODIES)) {
-			if (candidate === name) continue;
-			const referenced = new RegExp(
-				`(^|[^A-Za-z0-9_-])${candidate}([^A-Za-z0-9_-]|$)`,
-			);
-			if (referenced.test(body)) this.useShared(candidate);
+		for (const dependency of GBNF_RULE_DEPENDENCIES.get(name) ?? []) {
+			this.useShared(dependency);
 		}
 		return this;
 	}
@@ -767,6 +777,23 @@ class GbnfBuilder {
 }
 
 // Stage-1: buildResponseGrammar
+
+/**
+ * Compiled grammars are keyed by per-turn inputs (exposed actions, contexts and
+ * parameter schemas, which can carry per-message ids), so each cache keeps only
+ * its most recently inserted entries.
+ */
+const GRAMMAR_CACHE_LIMIT = 64;
+
+function cacheGrammar<T>(cache: Map<string, T>, key: string, value: T): T {
+	cache.set(key, value);
+	while (cache.size > GRAMMAR_CACHE_LIMIT) {
+		const oldest = cache.keys().next().value;
+		if (oldest === undefined) break;
+		cache.delete(oldest);
+	}
+	return value;
+}
 
 const stage1Cache = new Map<string, ResponseGrammarResult>();
 
@@ -783,11 +810,11 @@ function hashStringSet(values: ReadonlyArray<string>): string {
 	return h.toString(16);
 }
 
+/** Signature of already priority-sorted fields. */
 function deriveFieldSignature(
 	fields: ReadonlyArray<ResponseHandlerFieldShape>,
 ): string {
-	const sorted = sortFields(fields);
-	return sorted.map((f) => `${f.name}:${JSON.stringify(f.schema)}`).join("|");
+	return fields.map((f) => `${f.name}:${JSON.stringify(f.schema)}`).join("|");
 }
 
 function sortFields(
@@ -916,18 +943,15 @@ export function buildResponseGrammar(
 	runtime: ResponseGrammarRuntimeView,
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
-	const suppliedFields = runtime.responseHandlerFields ?? [];
-	const baseFields = sortFields(suppliedFields);
-	const fields = baseFields;
+	const fields = sortFields(runtime.responseHandlerFields ?? []);
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
 			(options.actions ?? runtime.actions).map((a) => a.name).filter(Boolean),
 		),
 	).sort();
-	const suppliedFieldSignature =
-		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(baseFields);
-	const fieldSignature = suppliedFieldSignature;
+	const fieldSignature =
+		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(fields);
 
 	const cacheKey = [
 		"stage1",
@@ -1003,15 +1027,17 @@ export function buildResponseGrammar(
 	builder.root(rootParts);
 	const grammar = builder.build();
 	const skeleton: ResponseSkeleton = { spans, id: cacheKey };
-	const result: ResponseGrammarResult = { responseSkeleton: skeleton, grammar };
-	stage1Cache.set(cacheKey, result);
-	return result;
+	return cacheGrammar(stage1Cache, cacheKey, {
+		responseSkeleton: skeleton,
+		grammar,
+	});
 }
 
 /** Clear the process-wide Stage-1 grammar cache (test hook). */
 export function clearResponseGrammarCache(): void {
 	stage1Cache.clear();
 	plannerCache.clear();
+	plannerStrictCache.clear();
 }
 
 /**
@@ -1126,6 +1152,31 @@ export interface PlannerActionGrammarResult {
 }
 
 const plannerCache = new Map<string, PlannerActionGrammarResult>();
+const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
+
+/** Descriptors, name enum, cache key and schema map shared by both planner grammars. */
+function plannerGrammarInput(
+	cachePrefix: string,
+	actions: ReadonlyArray<
+		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
+	>,
+) {
+	const descriptors = actions
+		.map(actionToPlannerDescriptor)
+		.filter((d) => d.name.length > 0);
+	if (descriptors.length === 0) return null;
+	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
+	const actionSchemas: Record<string, JSONSchema> = {};
+	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
+	// Sorting in place is safe: the schema map above kept registration order.
+	const sortedDescriptors = descriptors.sort((a, b) =>
+		a.name.localeCompare(b.name),
+	);
+	const cacheKey = `${cachePrefix}#${hashStringSet(names)}#${JSON.stringify(
+		sortedDescriptors.map((d) => [d.name, d.parametersSchema]),
+	)}`;
+	return { names, sortedDescriptors, cacheKey, actionSchemas };
+}
 
 /**
  * Build a {@link PlannerActionDescriptor} from a registered action.
@@ -1154,23 +1205,11 @@ export function buildPlannerActionGrammar(
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
 	>,
 ): PlannerActionGrammarResult | null {
-	const descriptors = actions
-		.map(actionToPlannerDescriptor)
-		.filter((d) => d.name.length > 0);
-	if (descriptors.length === 0) return null;
-	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
-
-	const cacheKey = `planner#${hashStringSet(names)}#${JSON.stringify(
-		descriptors
-			.slice()
-			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((d) => [d.name, d.parametersSchema]),
-	)}`;
+	const input = plannerGrammarInput("planner", actions);
+	if (!input) return null;
+	const { names, cacheKey, actionSchemas } = input;
 	const cached = plannerCache.get(cacheKey);
 	if (cached) return cached;
-
-	const actionSchemas: Record<string, JSONSchema> = {};
-	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
 
 	// Guided decoding emits action, parameters, and thought in that order, pinning the action
 	// before its arguments.
@@ -1214,13 +1253,11 @@ export function buildPlannerActionGrammar(
 	rootParts.push(gbnfLiteral("}"));
 
 	builder.root(rootParts);
-	const result: PlannerActionGrammarResult = {
+	return cacheGrammar(plannerCache, cacheKey, {
 		responseSkeleton: { spans, id: cacheKey },
 		grammar: builder.build(),
 		actionSchemas,
-	};
-	plannerCache.set(cacheKey, result);
-	return result;
+	});
 }
 
 /**
@@ -1247,40 +1284,21 @@ export function buildPlannerActionGrammar(
  *
  * Returns `null` when no actions are exposed.
  */
-/**
- * Group action names by longest common prefix (≥3 chars, ≥2 names sharing it).
- * Returns a map of prefix → suffixes, plus a list of ungrouped names.
- */
 export function buildPlannerActionGrammarStrict(
 	actions: ReadonlyArray<
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
 	>,
 ): PlannerActionGrammarResult | null {
-	const descriptors = actions
-		.map(actionToPlannerDescriptor)
-		.filter((d) => d.name.length > 0);
-	if (descriptors.length === 0) return null;
-	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
-
-	const cacheKey = `planner-strict#${hashStringSet(names)}#${JSON.stringify(
-		descriptors
-			.slice()
-			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((d) => [d.name, d.parametersSchema]),
-	)}`;
+	const input = plannerGrammarInput("planner-strict", actions);
+	if (!input) return null;
+	const { sortedDescriptors, cacheKey, actionSchemas } = input;
 	const cached = plannerStrictCache.get(cacheKey);
 	if (cached) return cached;
-
-	const actionSchemas: Record<string, JSONSchema> = {};
-	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
 
 	const builder = new GbnfBuilder();
 	builder.useShared("jsonstring");
 
 	const branchRuleNames: string[] = [];
-	const sortedDescriptors = descriptors
-		.slice()
-		.sort((a, b) => a.name.localeCompare(b.name));
 
 	// One branch per action. A previous version of this function tried to
 	// factor common UPPER_SNAKE_CASE prefixes (e.g. emit "MESSAGE_" once with a
@@ -1320,25 +1338,12 @@ export function buildPlannerActionGrammarStrict(
 		id: cacheKey,
 	};
 
-	const result: PlannerActionGrammarResult = {
+	return cacheGrammar(plannerStrictCache, cacheKey, {
 		responseSkeleton,
 		grammar: builder.build(),
 		actionSchemas,
-	};
-	plannerStrictCache.set(cacheKey, result);
-	// The key carries each action's full parameter schema, and the planner's
-	// schemas include a per-message source-set id, so most keys are unique.
-	// Evict the oldest entries beyond the cap.
-	while (plannerStrictCache.size > PLANNER_STRICT_CACHE_LIMIT) {
-		const oldest = plannerStrictCache.keys().next().value;
-		if (oldest === undefined) break;
-		plannerStrictCache.delete(oldest);
-	}
-	return result;
+	});
 }
-
-const PLANNER_STRICT_CACHE_LIMIT = 64;
-const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
 
 /**
  * GBNF rule names must stay inside the name characters accepted by the
@@ -1440,14 +1445,6 @@ function emitObjectRule(
 }
 
 /**
- * Map a single property schema to a GBNF expression. Pulls in the matching
- * shared JSON rules and (for objects / arrays-of-objects) emits nested rules
- * as a side effect on `builder`.
- *
- * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
- * unique rule names for nested constructs (e.g. `...-obj`, `...-item`).
- */
-/**
  * Build a GBNF rule that matches only numbers within a [min, max] range.
  * For integers: emits a union of literal ranges and digit-length cases.
  * For numbers: allows integer part + optional fractional digits, bounded by min/max.
@@ -1492,8 +1489,10 @@ function buildBoundedNumberRule(
 				? Math.floor(maximum)
 				: Number.POSITIVE_INFINITY;
 
-		// Handle edge cases: if bounds are missing, fall back to unbounded.
-		if (!Number.isFinite(min) && !Number.isFinite(max)) {
+		// Unbounded, or fractional bounds that admit no integer (e.g. 1.2..1.8
+		// rounds to 2..1): same fallback as an inverted range, since enumerating
+		// an empty range would emit an empty rule body.
+		if ((!Number.isFinite(min) && !Number.isFinite(max)) || min > max) {
 			builder.useShared("jsonnumber");
 			return "jsonnumber";
 		}
@@ -1533,6 +1532,14 @@ function buildBoundedNumberRule(
 	return "jsonnumber";
 }
 
+/**
+ * Map a single property schema to a GBNF expression. Pulls in the matching
+ * shared JSON rules and (for objects / arrays-of-objects) emits nested rules
+ * as a side effect on `builder`.
+ *
+ * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
+ * unique rule names for nested constructs (e.g. `...-obj`, `...-item`).
+ */
 function propertyValueGbnf(
 	builder: GbnfBuilder,
 	propSchema: JSONSchema,
@@ -1703,8 +1710,6 @@ function readStringEnum(propSchema: JSONSchema): string[] | null {
 	return normalized;
 }
 
-// Re-export the local JsonSchema type for convenience.
+// The package entry exposes these through this module.
 export type { JsonSchema };
-// Re-export the schema normalizer so callers that already import this module
-// don't need a second import path.
 export { normalizeActionJsonSchema };
