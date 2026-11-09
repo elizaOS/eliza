@@ -35,6 +35,7 @@ import {
   parseMobileStubPlugins,
 } from "./mobile-stub-plugins.ts";
 import { mobileWalletConnectorStubPlugin } from "./mobile-wallet-connectors.ts";
+import { mobileUuidExportsPlugin } from "./mobile-uuid-exports.ts";
 import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
@@ -1461,6 +1462,7 @@ const buildResult = await Bun.build({
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
     viemCjsResolverPlugin,
+    ...(TARGET === "android" ? [mobileUuidExportsPlugin] : []),
     stubCssPlugin,
     // Before the generic resolvers: no wallet-connector closure reaches a mobile bundle.
     mobileWalletConnectorStubPlugin(path.join(stubsDir, "null-plugin.ts")),
