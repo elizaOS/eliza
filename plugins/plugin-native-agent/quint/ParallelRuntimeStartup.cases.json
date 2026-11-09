@@ -11,9 +11,9 @@
     "packages/host/native-host/gateway-bootstrap.test.mjs"
   ],
   "bounds": {
-    "domain": "One existing supervisor scope, one agent and gateway, one broker and three private publications. Publication failures, cancellation, child exits, readiness timeouts and explicit cleanup failure are included. A retired scope cannot spawn again.",
-    "assumptions": "Readiness is an observed authenticated result. Each startup advance either moves the finite host sequence forward or reports failure/timeout. Cleanup represents observed child termination plus broker closure, or an explicit failed cleanup outcome.",
-    "progress": "Startup settles under weak fairness of the startup advance action, including timeout/failure observation. Retirement settles under weak fairness of cleanup; this permits an explicit cleanup failure and does not promise successful reclamation. The variants without fairness must have stuttering counterexamples.",
+    "domain": "One existing supervisor scope, one agent and gateway, one broker and three private publications. Publication failures, cancellation, child exits, readiness timeouts and explicit cleanup failure are included. A retired scope cannot spawn again. Destruction requests and subsequent observations of child termination are distinct.",
+    "assumptions": "Readiness is an observed authenticated result. Each startup advance either moves the finite host sequence forward or reports failure/timeout. Cleanup records attempted child destruction and broker closure or explicit failure; it does not acknowledge child exit. Physical termination is an independent environmental observation.",
+    "progress": "Startup settles under weak fairness of startup advance, including timeout/failure observation. Retirement returns under weak fairness of cleanup, with explicit failure permitted. Conditional physical-exit progress separately assumes fair observations of each child exit after a destruction request; no unconditional exit acknowledgment is claimed.",
     "limitations": "Does not prove OS scheduling, elapsed deadlines, JVM/Android refinement, file publication durability, secret redaction or a physical-device speedup. One scope abstracts replacement by permanent retirement; concurrent scopes and account-store custody remain outside the model. The existing real-process JVM and loopback tests check implementation boundaries, not every generated trace."
   },
   "conformance": "plugins/plugin-native-agent/scripts/check-parallel-runtime-startup.mjs",
@@ -28,7 +28,7 @@
         "OwnedGateway",
         "ReadinessOrder",
         "RunningNeedsReadiness",
-        "DisposedMeansClosed"
+        "DisposedFencesScope"
       ],
       "temporal": [
         "StartupSettles",
@@ -37,7 +37,9 @@
         "RetirementSettlesWithoutFairness",
         "ChildExitSettles",
         "ChildExitSettlesWithoutFairness",
-        "RetirementMonotone"
+        "RetirementMonotone",
+        "ObservedTerminationProgress",
+        "CloseIsNotExitAcknowledgment"
       ],
       "temporalChecks": [
         {
@@ -85,6 +87,20 @@
           "expect": "holds",
           "assumptions": [
             "No fairness. The modeled scope is never reused after retirement."
+          ]
+        },
+        {
+          "property": "ObservedTerminationProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each post-destruction child-termination observation. This assumes eventual observable OS exit and does not establish that destroyForcibly returns only after termination."
+          ]
+        },
+        {
+          "property": "CloseIsNotExitAcknowledgment",
+          "expect": "counterexample",
+          "assumptions": [
+            "No exit fairness. Scope.close can return after requesting destruction while one or both children remain alive. The real JVM tests wait separately for process exit."
           ]
         }
       ],

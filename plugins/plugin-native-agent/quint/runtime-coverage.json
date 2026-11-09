@@ -12,12 +12,12 @@
       "OwnedGateway",
       "ReadinessOrder",
       "RunningNeedsReadiness",
-      "DisposedMeansClosed"
+      "DisposedFencesScope"
     ],
     "status": "partial",
     "limitations": [
       "One scope and two children; replacement is permanent retirement of that scope. No arbitrary interleaving or whole-session refinement claim.",
-      "Readiness, timeout observation and cleanup progress require the explicit fairness assumptions. Cleanup settlement includes a reported failure, not a fabricated reclamation receipt.",
+      "Readiness, timeout observation and logical cleanup progress require the explicit fairness assumptions. Child-destruction requests do not acknowledge exit; physical quiescence requires independent termination observations and has its own conditional progress property and no-fairness counterexample.",
       "OS scheduling, real deadline bounds, Android instrumentation, durable private-file publication, secret redaction and physical-device performance are outside the finite proof. Existing JVM and loopback contracts exercise those relevant implementation boundaries within controlled conditions."
     ]
   }
