@@ -37,6 +37,7 @@ const child = spawnSync(
     "--",
     process.execPath,
     "--test",
+    "--test-reporter=tap",
     ...files,
   ],
   {
