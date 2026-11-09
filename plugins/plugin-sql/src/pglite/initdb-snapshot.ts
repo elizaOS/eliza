@@ -13,7 +13,8 @@
  * PGlite it bundles). It also writes `pglite-migrated.bin`, the same cluster
  * after the always-loaded plugin schemas are migrated (migrated-snapshot.ts);
  * when that file is beside the bundle it is preferred, so a boot skips the
- * migrations as well. `PGLITE_MIGRATED_SNAPSHOT=0` keeps the plain initdb one.
+ * migrations as well. `PGLITE_MIGRATED_SNAPSHOT=0` keeps the plain initdb one,
+ * as does `ELIZA_PGLITE_DISABLE_EXTENSIONS=1` (the migrated cluster needs them).
  * `PGLITE_INITDB_SNAPSHOT` may name another absolute path, which wins over both.
  * Only an empty in-memory database uses it; on-disk databases and callers that
  * already pass `loadDataDir` are left alone. Nothing here writes to disk.
@@ -52,7 +53,12 @@ export function initdbSnapshotPath(
   const configured = env.PGLITE_INITDB_SNAPSHOT?.trim();
   if (configured) return isAbsolute(configured) ? configured : null;
   try {
-    if (env.PGLITE_MIGRATED_SNAPSHOT?.trim() !== "0") {
+    // The migrated cluster records the vector, fuzzystrmatch and pg_trgm
+    // extensions and has columns of their types, so it needs them loaded.
+    if (
+      env.PGLITE_MIGRATED_SNAPSHOT?.trim() !== "0" &&
+      env.ELIZA_PGLITE_DISABLE_EXTENSIONS !== "1"
+    ) {
       const migrated = fileURLToPath(new URL(`./${MIGRATED_SNAPSHOT_FILE}`, bundleUrl));
       if (isFile(migrated)) return migrated;
     }

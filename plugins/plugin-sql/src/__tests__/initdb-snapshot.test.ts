@@ -32,6 +32,10 @@ describe("initdbSnapshotPath", () => {
     expect(
       initdbSnapshotPath(memory, { PGLITE_MIGRATED_SNAPSHOT: "0" }, bundleUrl, () => true)
     ).toBe(`/data/app/bundle/${INITDB_SNAPSHOT_FILE}`);
+    // Without the extensions the migrated cluster's vector columns cannot load.
+    expect(
+      initdbSnapshotPath(memory, { ELIZA_PGLITE_DISABLE_EXTENSIONS: "1" }, bundleUrl, () => true)
+    ).toBe(`/data/app/bundle/${INITDB_SNAPSHOT_FILE}`);
     // An explicit PGLITE_INITDB_SNAPSHOT wins over both.
     expect(
       initdbSnapshotPath(memory, { PGLITE_INITDB_SNAPSHOT: "/opt/snap.bin" }, bundleUrl, () => true)

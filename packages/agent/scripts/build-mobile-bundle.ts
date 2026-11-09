@@ -1698,6 +1698,11 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
         ...process.env,
         PGLITE_INITDB_SNAPSHOT: snapshotPath,
         LOG_LEVEL: "warn",
+        // The shipped cluster must not depend on the build machine's shell:
+        // extensions loaded, and no RLS baked in (a boot with
+        // ENABLE_DATA_ISOLATION=true applies it after the migrations).
+        ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
+        ENABLE_DATA_ISOLATION: "false",
       },
     },
   );
