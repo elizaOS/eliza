@@ -6,10 +6,12 @@ let locked = false,
   dispatched = 0,
   usage = 0;
 let status = "active",
+  planId = "plus_monthly",
   expiry = "2099-01-01T00:00:00Z",
   signal: AbortController;
 let response: () => Promise<Response> = async () =>
   Response.json({ admitted: true });
+const policyTransaction = { mapsTransaction: true };
 const caller = {
   user: { id: "maps-user", organization_id: "maps-org" },
   apiKeyId: "maps-key",
@@ -25,21 +27,24 @@ mock.module(
     withOrganizationPolicyReadAdmission: async (
       _org: string,
       _expected: unknown,
-      operation: (policy: unknown) => Promise<unknown>,
+      operation: (policy: unknown, tx: unknown) => Promise<unknown>,
     ) => {
       locked = true;
       try {
-        return await operation({
-          subscriptionFunded: status === "active",
-          authority: {
-            generation: "1",
-            effectiveFrom: "2020-01-01T00:00:00Z",
-            effectiveUntil: expiry,
+        return await operation(
+          {
+            subscriptionFunded: status === "active",
+            authority: {
+              generation: "1",
+              effectiveFrom: "2020-01-01T00:00:00Z",
+              effectiveUntil: expiry,
+            },
+            get balance() {
+              throw Error("Maps must not read monetary allowance");
+            },
           },
-          get balance() {
-            throw Error("Maps must not read monetary allowance");
-          },
-        });
+          policyTransaction,
+        );
       } finally {
         locked = false;
       }
@@ -49,22 +54,35 @@ mock.module(
 mock.module(
   "@elizaos/cloud-shared/lib/services/subscription-entitlement-token",
   () => ({
-    readOrganizationEntitlementSummary: async () => ({
-      plan: { status },
-      rateTier: "selected_test",
-      effectiveUntil: new Date(expiry),
-    }),
+    readOrganizationEntitlementSummary: async (
+      _org: string,
+      options: { transaction?: unknown } = {},
+    ) => {
+      expect(locked).toBe(true);
+      expect(options.transaction).toBe(policyTransaction);
+      return {
+        plan: { id: planId, status },
+        rateTier: "custom",
+        effectiveUntil: new Date(expiry),
+      };
+    },
   }),
 );
 mock.module(
   "@elizaos/cloud-shared/lib/services/inference-admission-gate",
   () => ({
-    callMapsRequestAllowance: async (_request: unknown, outcome?: string) => {
+    callMapsRequestAllowance: async (
+      namespace: unknown,
+      request: { policy: { planKey: string } },
+      outcome?: string,
+    ) => {
+      expect(namespace).toBe(mapsGateBinding);
       if (outcome) {
         usage++;
         return Response.json({ recorded: true });
       }
       expect(locked).toBe(true);
+      expect(request.policy.planKey).toBe(planId);
       admitted++;
       return response();
     },
@@ -74,12 +92,14 @@ const { admitMapsRequest, authenticateMapsCaller } = await import(
   "../src/lib/maps-request-admission"
 );
 const { createMapsRoute } = await import("../src/lib/maps-route");
+const mapsGateBinding = {};
 let gatesBound = true;
 beforeEach(() => {
   gatesBound = true;
   admitted = dispatched = usage = 0;
   locked = false;
   status = "active";
+  planId = "plus_monthly";
   expiry = "2099-01-01T00:00:00Z";
   signal = new AbortController();
   response = async () => Response.json({ admitted: true });
@@ -121,7 +141,7 @@ function call(body: unknown = { query: "test" }, key = "request") {
     },
     {
       NODE_ENV: "test",
-      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: {} } : {}),
+      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: mapsGateBinding } : {}),
     },
   );
 }
@@ -131,6 +151,22 @@ test("active subscription with zero inference funds uses separate Maps allowance
   expect(admitted).toBe(1);
   expect(dispatched).toBe(1);
   expect(usage).toBe(1);
+});
+test("Pro keeps its Maps plan when the inference tier is overridden", async () => {
+  planId = "pro_monthly";
+  expect((await call()).status).toBe(200);
+  expect(admitted).toBe(1);
+  expect(dispatched).toBe(1);
+});
+test("unknown subscription plan never consumes Maps allowance", async () => {
+  planId = "unknown";
+  const result = await call();
+  expect(result.status).toBe(503);
+  expect(((await result.json()) as { code: string }).code).toBe(
+    "maps_allowance_unconfigured",
+  );
+  expect(admitted).toBe(0);
+  expect(dispatched).toBe(0);
 });
 test("revoked subscription never consumes allowance or dispatches", async () => {
   status = "none";

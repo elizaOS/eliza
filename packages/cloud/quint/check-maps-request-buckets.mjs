@@ -60,6 +60,7 @@ assert.deepEqual(
     "Maps refuses malformed policy, expired windows, and credential revocation before admission",
     "Maps count and replay tombstones survive a Worker restart, without touching zero monetary funds",
     "Maps refuses corrupted storage and carries rate tokens across allowance resets",
+    "Maps has its own limits when shared plan limits are off",
     "Maps requires selected burst and sustained configuration as well as an allowance",
   ].sort(),
 );
