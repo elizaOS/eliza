@@ -39,14 +39,19 @@
 			"packages/core/src/runtime/data-mutations.ts",
 			"packages/core/src/runtime.ts"
 		],
-		"invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
+		"invariants": [
+			"TypeOK",
+			"NoStaleAfterInvalidate",
+			"RejectedNotCached",
+			"ExpiredReadRefreshes",
+			"FreshReadDoesNotRefresh"
+		],
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter.",
-			"A generated-trace implementation conformance adapter is not present."
+			"The conformance hook checks coalescing, exact elapsed expiry after a wall rollback and local write invalidation through real room reads. Rejection schedules and message-window metadata are not replayed by this test."
 		],
-		"implementationTests": []
+		"implementationTests": ["packages/core/test/read-memo-runtime.test.ts"]
 	},
 	{
 		"id": "core.ProviderExecution",
