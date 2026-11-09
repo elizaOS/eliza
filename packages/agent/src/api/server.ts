@@ -366,7 +366,11 @@ import {
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
 import { createServerResources } from "./server-resources.ts";
-import { createServerState } from "./server-state.ts";
+import {
+  appendApiLogEntries,
+  createServerState,
+  resolveApiLogBufferMax,
+} from "./server-state.ts";
 import type { ServerState } from "./server-types.ts";
 import { isAuthProtectedRoute, serveStaticUi } from "./static-file-server.ts";
 import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
@@ -3779,6 +3783,7 @@ export async function startApiServer(opts?: {
       `[eliza-api] Ignoring invalid agents.defaults.adminEntityId "${configuredAdminEntityId}"`,
     );
   }
+  const apiLogBufferMax = resolveApiLogBufferMax();
   const addLog = (
     level: string,
     message: string,
@@ -3801,13 +3806,19 @@ export async function startApiServer(opts?: {
             : resolvedSource === "cloud"
               ? ["server", "cloud"]
               : ["system"];
-    state.logBuffer.push({
-      timestamp: Date.now(),
-      level,
-      message,
-      source: resolvedSource,
-      tags: resolvedTags,
-    });
+    appendApiLogEntries(
+      state.logBuffer,
+      [
+        {
+          timestamp: Date.now(),
+          level,
+          message,
+          source: resolvedSource,
+          tags: resolvedTags,
+        },
+      ],
+      apiLogBufferMax,
+    );
   };
   addLog("info", `Discovered ${plugins.length} plugins`, "system", [
     "system",
@@ -5331,9 +5342,7 @@ export async function startApiServer(opts?: {
     earlyEntries = flushEarlyLogs();
   }
   if (earlyEntries.length > 0) {
-    for (const entry of earlyEntries) {
-      state.logBuffer.push(entry);
-    }
+    appendApiLogEntries(state.logBuffer, earlyEntries, apiLogBufferMax);
     addLog(
       "info",
       `Flushed ${earlyEntries.length} early startup log entries`,
