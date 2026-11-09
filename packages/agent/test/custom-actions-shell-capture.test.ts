@@ -71,14 +71,15 @@ it("fails with stderr when the command exits non-zero", async () => {
   });
 });
 
-it("returns stdout when the command succeeds", async () => {
+it("preserves complete stdout and refuses an incomplete terminal result", async () => {
+  const stdout = `Filesystem Size\n${"complete command output ".repeat(4_000)}\n`;
   reply = {
     status: 200,
     body: {
       ok: true,
       runId: "run-2",
       exitCode: 0,
-      stdout: "Filesystem Size\n/dev/sda1 100G\n",
+      stdout,
       stderr: "",
       timedOut: false,
       truncated: false,
@@ -87,8 +88,13 @@ it("returns stdout when the command succeeds", async () => {
   const result = await buildTestHandler(shellAction("df -h /"))({});
   expect(result).toEqual({
     ok: true,
-    output: "Filesystem Size\n/dev/sda1 100G",
+    output: stdout,
   });
+  reply.body.truncated = true;
+  const incomplete = await buildTestHandler(shellAction("df -h /"))({});
+  expect(incomplete.ok).toBe(false);
+  expect(incomplete.output).toContain("Terminal result is incomplete");
+  expect(incomplete.output).toContain("Do not repeat it automatically");
 });
 
 it("fails when the command times out", async () => {

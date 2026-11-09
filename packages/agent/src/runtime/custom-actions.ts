@@ -154,7 +154,6 @@ let bodyTotalTimeoutMs = 60_000;
 const CUSTOM_ACTION_SHELL_TRANSPORT_GRACE_MS = 10_000;
 // The terminal route can return up to four MiB per stream, JSON-escaped.
 const CUSTOM_ACTION_SHELL_RESPONSE_BYTE_LIMIT = 25 * 1024 * 1024;
-const CUSTOM_ACTION_SHELL_OUTPUT_CHAR_LIMIT = 64 * 1024;
 const CUSTOM_ACTION_CONTEXTS = [
   "general",
   "automation",
@@ -946,12 +945,19 @@ function parseShellRunResponse(
       output: "Terminal request failed: the reply had no exit code",
     };
   }
+  if (body.truncated === true) {
+    return {
+      ok: false,
+      output:
+        "Terminal result is incomplete: output was truncated. The command may have completed. Do not repeat it automatically.",
+    };
+  }
   const stdout = typeof body.stdout === "string" ? body.stdout : "";
   const stderr = typeof body.stderr === "string" ? body.stderr : "";
   const timedOut = body.timedOut === true;
   const parts: string[] = [];
-  if (stdout.trim()) parts.push(stdout.trimEnd());
-  if (stderr.trim()) parts.push(stderr.trimEnd());
+  if (stdout.length > 0) parts.push(stdout);
+  if (stderr.length > 0) parts.push(stderr);
   if (timedOut) {
     parts.push(
       typeof body.maxDurationMs === "number"
@@ -961,10 +967,7 @@ function parseShellRunResponse(
   } else if (body.exitCode !== 0) {
     parts.push(`Exit code ${body.exitCode}`);
   }
-  let output = parts.join("\n") || "Done";
-  if (output.length > CUSTOM_ACTION_SHELL_OUTPUT_CHAR_LIMIT) {
-    output = `${output.slice(0, CUSTOM_ACTION_SHELL_OUTPUT_CHAR_LIMIT)}\n[output truncated]`;
-  }
+  const output = parts.join("\n") || "Done";
   return {
     ok: body.exitCode === 0 && !timedOut,
     output: toWellFormedUnicode(output),

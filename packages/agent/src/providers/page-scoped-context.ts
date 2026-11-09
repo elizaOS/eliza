@@ -33,11 +33,6 @@ import { renderLiveStateForScope } from "./page-scoped-live-state.ts";
 
 const SOURCE_TAIL_MIN_FOR_INCLUSION = 2;
 const SOURCE_TAIL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-// The tail is "recent" context: read only the newest rows and bound what reaches
-// the prompt, so a long main chat cannot flood a page-scoped turn.
-const SOURCE_TAIL_LIMIT = 24;
-const SOURCE_TAIL_MAX_ENTRY_CHARS = 600;
-const SOURCE_TAIL_MAX_TOTAL_CHARS = 6000;
 
 const EMPTY_RESULT: ProviderResult = { text: "", values: {}, data: {} };
 
@@ -133,40 +128,20 @@ async function fetchSourceTail(
   const memories = await runtime.getMemories({
     roomId: sourceRoomId,
     tableName: "messages",
-    limit: SOURCE_TAIL_LIMIT,
     orderBy: "createdAt",
     orderDirection: "desc",
     includeEmbedding: false,
   });
-  // Slice again in case an adapter ignores the limit.
-  const pruned = pruneMainChatTail(memories, runtime.agentId, Date.now()).slice(
-    -SOURCE_TAIL_LIMIT,
-  );
+  const pruned = pruneMainChatTail(memories, runtime.agentId, Date.now());
   if (pruned.length < SOURCE_TAIL_MIN_FOR_INCLUSION) {
     return [];
   }
-  const entries = pruned.map((mem) => ({
+  return pruned.map((mem) => ({
     speaker: formatSpeakerLabel(runtime, mem),
-    text: truncateTailText(toWellFormedUnicode(mem.content.text ?? "")),
+    text: toWellFormedUnicode(mem.content.text ?? ""),
     agePrefix: formatRelativeTimestampPrefix(mem.createdAt),
     role: inferRole(mem, runtime.agentId),
   }));
-  // Keep the newest entries that fit the character budget.
-  let total = 0;
-  let first = entries.length;
-  while (first > 0) {
-    const size = entries[first - 1].text.length;
-    if (total + size > SOURCE_TAIL_MAX_TOTAL_CHARS) break;
-    total += size;
-    first -= 1;
-  }
-  const kept = entries.slice(first);
-  return kept.length < SOURCE_TAIL_MIN_FOR_INCLUSION ? [] : kept;
-}
-
-function truncateTailText(text: string): string {
-  if (text.length <= SOURCE_TAIL_MAX_ENTRY_CHARS) return text;
-  return `${text.slice(0, SOURCE_TAIL_MAX_ENTRY_CHARS)}…`;
 }
 
 function formatSourceTail(entries: SourceTailEntry[]): string {

@@ -195,11 +195,6 @@ function desktopBrowserWorkspaceWaitScriptBranch(
           }`;
 }
 
-/** Inspect and snapshot caps, matching the web backend's element cap. */
-const DESKTOP_INSPECT_ELEMENT_LIMIT = 40;
-const DESKTOP_ELEMENT_TEXT_LIMIT = 200;
-const DESKTOP_BODY_TEXT_LIMIT = 20_000;
-
 /**
  * Page-side helpers shared by the command and utility scripts: the selected
  * frame's document, the element table inspect stamps into the page, a unique
@@ -403,18 +398,13 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     return normalize(parts.join(""));
   };
-  let truncated = false;
-  const clip = (text, limit) => {
-    if (text.length <= limit) return text;
-    truncated = true;
-    return text.slice(0, limit);
-  };
+  const truncated = false;
   const serialize = (element) => {
     const value = isControl(element) && !isPrivateControl(element) ? element.value : null;
     return {
       selector: selectorFor(element),
       tag: element.tagName.toLowerCase(),
-      text: clip(isControl(element) ? normalize(value) : readText(element), ${DESKTOP_ELEMENT_TEXT_LIMIT}),
+      text: isControl(element) ? normalize(value) : readText(element),
       type: element.getAttribute("type"),
       name: element.getAttribute("name"),
       href: element.getAttribute("href"),
@@ -694,14 +684,13 @@ export function createDesktopBrowserWorkspaceCommandScript(
         "a, button, input, textarea, select, form, [role='button'], [data-testid]"
       )
     );
-    const elements = all.slice(0, ${DESKTOP_INSPECT_ELEMENT_LIMIT});
-    if (all.length > elements.length) truncated = true;
+    const elements = all;
     const tableId = stampElementRefs(elements);
     return { elements: elements.map((element) => serialize(element)), tableId };
   };
   const snapshot = () => {
     const { elements, tableId } = inspect();
-    const bodyText = clip(readText(activeDoc().body), ${DESKTOP_BODY_TEXT_LIMIT});
+    const bodyText = readText(activeDoc().body);
     return { title: document.title, url: location.href, bodyText, elements, tableId, truncated };
   };
   // Set through the prototype's value setter: frameworks that track the last

@@ -1,5 +1,5 @@
 /**
- * Page-scoped providers read bounded, newest-first history, never print a
+ * Page-scoped providers retain authorized conversation history, never print a
  * failed wallet chain as zero, and list automations by display name.
  */
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
@@ -76,11 +76,12 @@ describe("pruneMainChatTail", () => {
 });
 
 describe("page-scoped source tail", () => {
-  it("reads a bounded newest-first window from a 500-message room", async () => {
+  it("reads the complete authorized source history from a 500-message room", async () => {
     const now = Date.now();
     const rows = Array.from({ length: 500 }, (_, index) =>
       message(index, index % 2 === 0 ? userId : agentId, now - (500 - index)),
     );
+    rows[0].content.text = `message 0 ${"complete source content ".repeat(1000)}`;
     const getMemories = vi.fn(async () => rows);
     const runtime = fakeRuntime({
       getRoom: vi.fn(async () => ({
@@ -105,7 +106,6 @@ describe("page-scoped source tail", () => {
     expect(getMemories).toHaveBeenCalledWith(
       expect.objectContaining({
         roomId: stringToUuid("web-conv-main-1"),
-        limit: 24,
         orderDirection: "desc",
         includeEmbedding: false,
       }),
@@ -113,8 +113,9 @@ describe("page-scoped source tail", () => {
     const lines = (result.text ?? "")
       .split("\n")
       .filter((line) => line.includes("message "));
-    expect(lines).toHaveLength(24);
-    expect(lines[0]).toContain("message 476");
+    expect(getMemories.mock.calls[0]?.[0]).not.toHaveProperty("limit");
+    expect(lines).toHaveLength(500);
+    expect(lines[0]).toContain(rows[0].content.text);
     expect(lines.at(-1)).toContain("message 499");
   });
 });

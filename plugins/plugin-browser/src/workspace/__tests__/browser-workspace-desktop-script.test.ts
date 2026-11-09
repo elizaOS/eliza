@@ -1,8 +1,8 @@
 /**
  * Desktop page scripts evaluated in a JSDOM page: fill reaches a React-style
  * value tracker, the selected frame applies to command scripts, Enter submits,
- * settings are refused without touching the page, snapshot output is capped
- * page prose, and back reports where the tab landed.
+ * settings are refused without touching the page, snapshots retain complete
+ * authorized page prose, and back reports where the tab landed.
  */
 
 import http from "node:http";
@@ -150,7 +150,7 @@ describe("desktop command script", () => {
     ).toMatchObject({ effect: "none" });
   });
 
-  it("caps snapshot output and leaves script text out", () => {
+  it("keeps complete snapshot output and leaves script text out", () => {
     const buttons = Array.from(
       { length: 50 },
       (_, index) => `<button>Button ${index}</button>`,
@@ -169,10 +169,13 @@ describe("desktop command script", () => {
       truncated: boolean;
     };
 
-    expect(snapshot.truncated).toBe(true);
-    expect(snapshot.elements).toHaveLength(40);
-    expect(snapshot.elements[0]?.text.length).toBe(200);
-    expect(snapshot.bodyText.length).toBe(20_000);
+    expect(snapshot.truncated).toBe(false);
+    expect(snapshot.elements).toHaveLength(51);
+    expect(snapshot.elements[0]?.text).toBe(
+      "long link text ".repeat(40).trim(),
+    );
+    expect(snapshot.bodyText).toContain("page prose ".repeat(3_000).trim());
+    expect(snapshot.bodyText).toContain("Button 49");
     expect(snapshot.bodyText).not.toContain("SCRIPT_SECRET");
     expect(snapshot.bodyText).not.toContain("NOSCRIPT_TEXT");
     expect(snapshot.bodyText).not.toContain("color: red");
