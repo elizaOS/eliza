@@ -192,6 +192,8 @@ public class ListeningService extends Service {
   else stopCapture();
   long until=new ListenerStore(this).pausedUntil(),now=SystemClock.elapsedRealtime();
   if(state==ListenerPolicy.State.PAUSED_USER&&until!=ListenerPolicy.PAUSE_UNTIL_RESUMED)main.postDelayed(reapply,Math.max(1000,until-now));
+  // A refused microphone or durable marker must not arm an epoch or load ASR.
+  analyse=analyse&&capture!=null;
   Listener.epoch.renew(analyse);
   if(analyse)recognizer.execute(this::loadEngine);
  }
@@ -205,7 +207,7 @@ public class ListeningService extends Service {
  }
 
  private synchronized void startCapture(){
-  if(capture!=null)return;
+  if(capture!=null||record!=null)return;
   if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)return;
   boolean hotword=checkSelfPermission("android.permission.CAPTURE_AUDIO_HOTWORD")==PackageManager.PERMISSION_GRANTED;
   int bytes=Math.max(AudioRecord.getMinBufferSize(SpeechGate.SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT),SpeechGate.FRAME_SAMPLES*2*10);
@@ -244,11 +246,19 @@ public class ListeningService extends Service {
   // stop() unblocks a pending read; the capture thread then sees it is no longer current and exits.
   if(current!=null)try{current.stop();}catch(RuntimeException ignored){}
   if(thread!=null){try{thread.join(1000);}catch(InterruptedException ignored){Thread.currentThread().interrupt();}}
-  if(current!=null)current.release();
-  if(thread!=null)new ListenerStore(this).setSessionOpen(false);
-  Listener.microphoneHeld=false;
-  Listener.unsilencedSince=-1;
-  Listener.micSilenced=false;
+  boolean released=current==null;
+  if(current!=null)try{current.release();released=true;}
+  catch(RuntimeException failed){
+   // Retain ownership for another Stop; an unconfirmed release cannot admit a replacement.
+   record=current;
+   Log.w(TAG,"Microphone release unconfirmed: "+failed.getClass().getSimpleName());
+  }
+  if(released){
+   if(thread!=null||current!=null)new ListenerStore(this).setSessionOpen(false);
+   Listener.microphoneHeld=false;
+   Listener.unsilencedSince=-1;
+   Listener.micSilenced=false;
+  }
  }
 
  private void captureLoop(AudioRecord source){
