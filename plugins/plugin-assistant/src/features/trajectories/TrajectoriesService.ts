@@ -1232,7 +1232,10 @@ export class TrajectoriesService extends Service {
   private ensureDeferredStorage(): Promise<boolean> {
     if (!this.storageDeferred) return Promise.resolve(true);
     this.deferredStorageReady ??= this.initialize().then(
-      () => this.initialized,
+      () => {
+        if (!this.initialized) this.deferredStorageReady = null;
+        return this.initialized;
+      },
       (error: unknown) => {
         // error-policy:J2 withdraw the failed setup so the next capture retries;
         // this capture's caller receives the failure.
@@ -1456,6 +1459,12 @@ export class TrajectoriesService extends Service {
   }
 
   private async ensureStorageReady(): Promise<void> {
+    if (this.storageDeferred) {
+      if (!(await this.ensureDeferredStorage())) {
+        throw this.storageUnavailableError();
+      }
+      return;
+    }
     if (!this.initialized) {
       await this.initialize();
       return;

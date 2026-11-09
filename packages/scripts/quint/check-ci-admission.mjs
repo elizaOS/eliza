@@ -45,8 +45,8 @@ assert.deepEqual(
 );
 assert.equal(
   required.if,
-  "always()",
-  "The aggregate must evaluate failed and cancelled dependencies",
+  `\${{ always() && !cancelled() }}`,
+  "The aggregate must check every dependency unless the whole workflow is cancelled",
 );
 const gate = required.steps.find(
   (step) => step.name === "Require every admission lane",
@@ -92,7 +92,11 @@ for (const [job, name] of [
   );
 }
 assert.deepEqual(shardGate.needs, ["quint-models"]);
-assert.equal(shardGate.if, "always()");
+assert.equal(
+  shardGate.if,
+  `\${{ always() && !cancelled() }}`,
+  "The Quint aggregate must stop when the whole workflow is cancelled",
+);
 const shardGuard = shardGate.steps.find(
   (step) => step.name === "Require successful Quint shards",
 );
