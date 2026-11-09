@@ -287,14 +287,19 @@ export class NotesStore {
       // Retire metadata only for records this mutation permanently removed.
       // Unknown new metadata still reaches validation and is rejected.
       const previousRevisions = current.noteRevisions;
-      if (draft.noteRevisions !== undefined && previousRevisions !== undefined) {
+      if (
+        draft.noteRevisions !== undefined &&
+        previousRevisions !== undefined
+      ) {
         const remaining = new Set([
-          ...draft.notes.map(note => note.id),
-          ...(draft.trash ?? []).map(entry => entry.note.id),
+          ...draft.notes.map((note) => note.id),
+          ...(draft.trash ?? []).map((entry) => entry.note.id),
         ]);
         draft.noteRevisions = Object.fromEntries(
-          Object.entries(draft.noteRevisions).filter(([id]) =>
-            remaining.has(id) || !Object.hasOwn(previousRevisions, id)),
+          Object.entries(draft.noteRevisions).filter(
+            ([id]) =>
+              remaining.has(id) || !Object.hasOwn(previousRevisions, id),
+          ),
         );
       }
       // Compare inside the write barrier: a replay must neither rewrite the

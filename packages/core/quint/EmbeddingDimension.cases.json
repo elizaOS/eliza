@@ -59,7 +59,7 @@
   },
   "initialStateAssumptions": [
     "The index is empty or each existing row is already labeled with its real representation.",
-    "Unmarked direct adapter inputs retain the legacy contract of asserting the active representation at admission.",
+    "Unmarked direct adapter inputs can enter only unnamed storage. Named storage requires explicit vector provenance.",
     "Previously mislabeled rows require explicit fresh-index/re-embedding recovery; this change preserves their bytes."
   ]
 }

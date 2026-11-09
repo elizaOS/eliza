@@ -277,10 +277,7 @@ export class MemoryStore implements Store {
       const tableName = params.tableName;
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
 
-      const similarity = sql<number>`1 - (${cosineDistance(
-        embeddingTable[column],
-        cleanVector
-      )})`;
+      const similarity = sql<number>`1 - (${cosineDistance(embeddingTable[column], cleanVector)})`;
 
       const conditions = [
         embeddingSpaceCondition(spaceId),

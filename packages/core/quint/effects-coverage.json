@@ -59,7 +59,7 @@
     "limitations": [
       "Two embedding calls and three probes across named, plain and wide providers. The original abstraction excludes disabled-generation and background re-embedding progress.",
       "Starts with an empty/correct index. Previously mislabeled rows cannot be identified or repaired automatically and require the existing explicit fresh-index/re-embedding workflow.",
-      "Unmarked direct adapter inputs preserve the legacy assertion of the active representation at admission. Runtime-generated and SQL-read vectors carry explicit provenance.",
+      "Unmarked direct adapter inputs can enter only unnamed storage. Runtime-generated and SQL-read vectors carry explicit provenance.",
       "Model verification does not establish behavior outside these bounds."
     ]
   },

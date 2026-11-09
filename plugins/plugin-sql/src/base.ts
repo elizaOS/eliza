@@ -5077,7 +5077,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 .where(eq(embeddingTable.memoryId, memory.id))
                 .limit(1);
 
-              assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.activeEmbeddingSpace());
+              assertEmbeddingWrite(
+                embeddingWrite,
+                this.embeddingDimension,
+                this.activeEmbeddingSpace()
+              );
               if (existingEmbedding.length > 0) {
                 // Update existing embedding
                 const updateValues: Record<string, unknown> = {

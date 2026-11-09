@@ -840,7 +840,7 @@ export class TaskService extends Service {
 	}
 
 	private releaseExecution(taskId: string): void {
-		const remaining = this.executingTasks.get(taskId)! - 1;
+		const remaining = (this.executingTasks.get(taskId) ?? 1) - 1;
 		if (remaining > 0) this.executingTasks.set(taskId, remaining);
 		else this.executingTasks.delete(taskId);
 	}
@@ -900,7 +900,10 @@ export class TaskService extends Service {
 		) {
 			return;
 		}
-		this.executingTasks.set(task.id, (this.executingTasks.get(task.id) ?? 0) + 1);
+		this.executingTasks.set(
+			task.id,
+			(this.executingTasks.get(task.id) ?? 0) + 1,
+		);
 		if (!isRepeat) {
 			// A one-shot from a stale snapshot may already have run and been
 			// deleted. The read sits outside the failure path below, so a failed
