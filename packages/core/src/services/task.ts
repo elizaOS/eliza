@@ -196,8 +196,8 @@ export class TaskService extends Service {
 	private maxTickMs = DEFAULT_MAX_TICK_MS;
 	private activeTick: Promise<void> | null = null;
 	private readonly clock: TaskServiceTimeoutClock;
-	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
-	private executingTasks: Set<string> = new Set();
+	/** Count overlapping invocations so exclusivity sees every active owner. */
+	private executingTasks = new Map<string, number>();
 	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** Tracks tasks quarantined for missing workers, preventing repeated diagnostics while pause/delete operations settle. */
@@ -255,6 +255,7 @@ export class TaskService extends Service {
 	 * The local timer sleeps until the earliest due task (at most TASK_TICK_MAX_MS) and markDirty() wakes it.
 	 */
 	startTimer() {
+		if (this.stopped) return;
 		if (this.runtime.serverless === true) {
 			return;
 		}
@@ -829,6 +830,21 @@ export class TaskService extends Service {
 		}
 	}
 
+	private assertAcceptingExecution(): void {
+		if (this.stopped) {
+			throw new ElizaError("Task service has stopped accepting execution", {
+				code: "TASK_SERVICE_STOPPED",
+				severity: "ephemeral",
+			});
+		}
+	}
+
+	private releaseExecution(taskId: string): void {
+		const remaining = this.executingTasks.get(taskId)! - 1;
+		if (remaining > 0) this.executingTasks.set(taskId, remaining);
+		else this.executingTasks.delete(taskId);
+	}
+
 	/**
 	 * Executes a given task asynchronously.
 	 * Tracks execution state to prevent overlapping runs of the same task.
@@ -840,6 +856,7 @@ export class TaskService extends Service {
 	 * @param {Task} task - The task to be executed.
 	 */
 	private async executeTask(task: Task) {
+		this.assertAcceptingExecution();
 		const execution = this.executeTaskInternal(task);
 		this.executingTaskPromises.add(execution);
 		try {
@@ -883,7 +900,7 @@ export class TaskService extends Service {
 		) {
 			return;
 		}
-		this.executingTasks.add(task.id);
+		this.executingTasks.set(task.id, (this.executingTasks.get(task.id) ?? 0) + 1);
 		if (!isRepeat) {
 			// A one-shot from a stale snapshot may already have run and been
 			// deleted. The read sits outside the failure path below, so a failed
@@ -892,11 +909,11 @@ export class TaskService extends Service {
 			try {
 				current = await this.runtime.getTask(task.id);
 			} catch (error) {
-				this.executingTasks.delete(task.id);
+				this.releaseExecution(task.id);
 				throw error;
 			}
-			if (!current) {
-				this.executingTasks.delete(task.id);
+			if (!current || this.stopped) {
+				this.releaseExecution(task.id);
 				return;
 			}
 		}
@@ -1111,7 +1128,7 @@ export class TaskService extends Service {
 			);
 			throw failure;
 		} finally {
-			this.executingTasks.delete(task.id);
+			this.releaseExecution(task.id);
 			const durationMs = this.clock.now() - startTime;
 			this.runtime.logger.debug(
 				{
@@ -1146,9 +1163,11 @@ export class TaskService extends Service {
 	 * WHY separate from timer: serverless has no long-lived process; host drives execution explicitly.
 	 */
 	async runDueTasks(): Promise<void> {
+		if (this.stopped) return;
 		while (this.activeTick) {
 			await this.activeTick;
 		}
+		if (this.stopped) return;
 		const run = (async () => {
 			const allTasks = await this.runtime.getTasks({
 				tags: ["queue"],
@@ -1177,6 +1196,7 @@ export class TaskService extends Service {
 	 * @param taskId - UUID of the task.
 	 */
 	async executeTaskById(taskId: UUID): Promise<void> {
+		this.assertAcceptingExecution();
 		const task = await this.runtime.getTask(taskId);
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
@@ -1306,7 +1326,7 @@ export class TaskService extends Service {
 		if (inFlight.length > 0) {
 			await Promise.allSettled(inFlight);
 		}
-		// Clear executing tasks set on stop
+		// Every admitted execution has settled.
 		this.executingTasks.clear();
 	}
 }

@@ -43,9 +43,8 @@ interface ActiveTurn {
 	reason?: string;
 }
 
-const currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();
-
 export class TurnControllerRegistry {
+	private readonly currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();
 	private active = new Map<string, ActiveTurn[]>();
 	private listeners = new Set<(event: TurnEvent) => void>();
 	private closedReason: string | null = null;
@@ -78,7 +77,7 @@ export class TurnControllerRegistry {
 		this.active.set(roomId, turns);
 		this.emit({ type: "started", roomId, startedAt: turn.startedAt });
 		try {
-			const result = await currentTurnStorage.run(turn, () =>
+			const result = await this.currentTurnStorage.run(turn, () =>
 				fn(controller.signal),
 			);
 			this.emit({
@@ -127,7 +126,7 @@ export class TurnControllerRegistry {
 		// evaluator could only ever find its own controller and self-aborted
 		// (live 2026-08-19: "cancel all ur running coding tasks" → errored
 		// turn, nothing delivered).
-		const self = currentTurnStorage.getStore();
+		const self = this.currentTurnStorage.getStore();
 		let aborted = false;
 		for (const turn of this.active.get(roomId) ?? []) {
 			if (turn === self) continue;
@@ -182,7 +181,7 @@ export class TurnControllerRegistry {
 
 	/** Whether abortTurn could stop work in this room, excluding its caller. */
 	hasAbortableTurn(roomId: string): boolean {
-		const self = currentTurnStorage.getStore();
+		const self = this.currentTurnStorage.getStore();
 		return (this.active.get(roomId) ?? []).some(
 			(turn) => turn !== self && !turn.controller.signal.aborted,
 		);
@@ -204,7 +203,7 @@ export class TurnControllerRegistry {
 	 * newest turn's signal.
 	 */
 	signalFor(roomId: string): AbortSignal | null {
-		const self = currentTurnStorage.getStore();
+		const self = this.currentTurnStorage.getStore();
 		if (self && self.roomId === roomId) return self.controller.signal;
 		const turns = this.active.get(roomId);
 		return turns && turns.length > 0
