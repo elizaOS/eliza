@@ -1003,7 +1003,7 @@ jobs:
 
   quint:
     name: Quint state and implementation checks
-    if: always()
+    if: ${{ always() && !cancelled() }}
     needs: [quint-models]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1568,7 +1568,7 @@ jobs:
 
   required:
     name: All Tests Passed
-    if: always()
+    if: ${{ always() && !cancelled() }}
     needs:
       - secret-scan
       - source-checks
