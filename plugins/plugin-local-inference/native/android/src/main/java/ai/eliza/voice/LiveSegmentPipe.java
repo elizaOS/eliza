@@ -107,7 +107,8 @@ public final class LiveSegmentPipe {
   }catch(Exception failure){fail("TRANSPORT");}
   finally{
    ready.complete(false);
-   try{transport.check();JSONObject response=transport.post(body(null));transport.check();reply(response);serverClosed=response.optInt("status")==200&&new JSONObject(response.getString("body")).optBoolean("closed");}
+   // A failed last segment still closes the server session (502 ASR_FAILED with closed).
+   try{transport.check();JSONObject response=transport.post(body(null));transport.check();reply(response);int status=response.optInt("status");JSONObject value=new JSONObject(response.getString("body"));serverClosed=(status==200||status==502&&"ASR_FAILED".equals(value.optString("code")))&&value.optBoolean("closed");}
    catch(Exception unavailable){/* A changed enrollment must never receive even this cleanup. */}
    synchronized(this){finished=true;queued.clear();}
    closed.complete(serverClosed);
