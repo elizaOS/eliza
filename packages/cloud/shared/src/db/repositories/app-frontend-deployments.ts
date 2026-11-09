@@ -170,6 +170,8 @@ export class AppFrontendDeploymentsRepository {
   }
 
   private async activateOrRollBack(appId: string, id: string): Promise<AppFrontendDeployment> {
+    /* global-scope: the frontend route authorizes app ownership before activation;
+     * deployment publication supplies its owned app id. Writes below stay app-scoped. */
     return await dbWrite.transaction(async (tx) => {
       // Share final app deletion's parent lock before touching deployments.
       // A mutable active-first ordering alone is insufficient when another
