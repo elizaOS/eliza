@@ -174,6 +174,15 @@ test("exact shared SystemUI patch stages only into a new overlay and retains all
   assert.equal(result.systemUiCompiled, false);
   assert.equal(result.imageBuilt, false);
   assert.equal(verifyListenerSystemui(output, "after", "chip").files.length, 9);
+  const receipt = fs.readFileSync(path.join(output, "derived-source.json"));
+  assert.throws(
+    () => prepareListenerSystemui(source, output, "chip"),
+    /Output must not exist/,
+  );
+  assert.deepEqual(
+    fs.readFileSync(path.join(output, "derived-source.json")),
+    receipt,
+  );
   const generated = path.join(
     output,
     "frameworks/base",

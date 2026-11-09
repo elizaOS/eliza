@@ -204,6 +204,7 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
   let closed = false;
   let draftRevision: string | undefined;
   let autoSaved = false;
+  let explicitlySaved = false;
   let saving: Promise<void> = Promise.resolve();
   const { drafts } = options;
 
@@ -238,7 +239,7 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
         );
         if (closed) return;
         draftRevision = draft.revision;
-        autoSaved = true;
+        autoSaved = !explicitlySaved;
         changed();
       } catch (error) {
         if (!closed && !controller.signal.aborted)
@@ -445,6 +446,7 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
         );
         if (closed) return false;
         draftRevision = draft.revision;
+        explicitlySaved = true;
         autoSaved = false;
         return true;
       });
@@ -473,6 +475,7 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
           textLayer: draft.textLayers?.[i],
         }));
         draftRevision = draft.revision;
+        explicitlySaved = true;
         autoSaved = false;
         exported = false;
         return "loaded" as const;
@@ -484,6 +487,7 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
         await store.remove(draftRevision, controller.signal);
         if (closed) return false;
         draftRevision = undefined;
+        explicitlySaved = false;
         autoSaved = false;
         return true;
       });

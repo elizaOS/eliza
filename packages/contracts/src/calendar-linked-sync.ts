@@ -132,15 +132,22 @@ function googleMutationFailure(error: unknown): {
   };
 }
 
-export function linkedCalendarSemanticText(
+function semanticText(
   event: LinkedCalendarSemanticEvent,
+  normalizeTimes: boolean,
 ): string {
   const normalized = {
     title: event.title.trim(),
     description: event.description.trim(),
     location: event.location.trim(),
-    startAt: event.startAt,
-    endAt: event.endAt,
+    startAt:
+      normalizeTimes && !event.isAllDay
+        ? new Date(event.startAt).toISOString()
+        : event.startAt,
+    endAt:
+      normalizeTimes && !event.isAllDay
+        ? new Date(event.endAt).toISOString()
+        : event.endAt,
     timeZone: event.isAllDay ? null : event.timeZone,
     // Retain timed-event checkpoints; all-day semantics need a distinct hash.
     ...(event.isAllDay ? { isAllDay: true } : {}),
@@ -160,16 +167,38 @@ export function linkedCalendarSemanticText(
   return JSON.stringify(normalized);
 }
 
-export async function linkedCalendarSemanticDigest(
+export function linkedCalendarSemanticText(
   event: LinkedCalendarSemanticEvent,
-): Promise<string> {
+): string {
+  return semanticText(event, true);
+}
+
+async function digestText(text: string): Promise<string> {
   const bytes = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(linkedCalendarSemanticText(event)),
+    new TextEncoder().encode(text),
   );
   return Array.from(new Uint8Array(bytes), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+export async function linkedCalendarSemanticDigest(
+  event: LinkedCalendarSemanticEvent,
+): Promise<string> {
+  return digestText(linkedCalendarSemanticText(event));
+}
+
+// Read old checkpoints until the next successful reconciliation saves the canonical digest.
+async function matchesCheckpoint(
+  hash: string | null,
+  event: LinkedCalendarSemanticEvent,
+  current: string,
+): Promise<boolean> {
+  return (
+    hash === current ||
+    (hash !== null && hash === (await digestText(semanticText(event, false))))
+  );
 }
 
 export type LinkedCalendarReconcileOutcome =
@@ -255,9 +284,19 @@ export class LinkedCalendarReconciler<
     const providerHash = provider
       ? await linkedCalendarSemanticDigest(provider.event)
       : null;
-    const localChanged = record.lastCommonSemanticHash !== localHash;
+    const localChanged = !(await matchesCheckpoint(
+      record.lastCommonSemanticHash,
+      local.event,
+      localHash,
+    ));
     const providerChanged =
-      providerHash !== null && record.lastCommonSemanticHash !== providerHash;
+      provider !== null &&
+      providerHash !== null &&
+      !(await matchesCheckpoint(
+        record.lastCommonSemanticHash,
+        provider.event,
+        providerHash,
+      ));
 
     if (
       provider &&
@@ -275,7 +314,12 @@ export class LinkedCalendarReconciler<
       return "conflicted";
     }
 
-    if (provider && providerChanged && !localChanged) {
+    if (
+      provider &&
+      providerChanged &&
+      !localChanged &&
+      localHash !== providerHash
+    ) {
       if (provider.event.deleted) {
         try {
           await this.local.delete(local.eventId, local.revision);

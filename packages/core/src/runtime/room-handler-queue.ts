@@ -313,9 +313,11 @@ export class RoomHandlerQueue {
 			});
 			throw error;
 		}
-		this.emit({ type: "enqueued", roomId, queueDepth: queuePosition + 1 });
 		try {
-			const result = await queue.enqueue(fn, options?.signal);
+			// Reserve the slot before diagnostics can synchronously submit more work.
+			const pending = queue.enqueue(fn, options?.signal);
+			this.emit({ type: "enqueued", roomId, queueDepth: queuePosition + 1 });
+			const result = await pending;
 			this.emit({ type: "completed", roomId });
 			return result;
 		} catch (error) {
@@ -660,7 +662,11 @@ export class RoomHandlerQueue {
 			} catch (error) {
 				// error-policy:J7 Queue listeners are diagnostics-only, but their
 				// failures are reported at the runtime boundary before work continues.
-				this.onListenerError?.(error, event);
+				try {
+					this.onListenerError?.(error, event);
+				} catch {
+					// error-policy:J7 Diagnostics cannot change an admitted turn's outcome.
+				}
 			}
 		}
 	}
