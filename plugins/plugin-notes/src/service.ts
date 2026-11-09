@@ -15,6 +15,7 @@ import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type EncryptedNotesDocumentPort, NotesStore } from "./store.js";
 import type {
   NotesSnapshot,
+  NotesDocument,
   NotesStoreStatus,
   StickyNote,
   UpdateNoteInput,
@@ -140,14 +141,33 @@ function noteContentKey(note: StickyNote): string {
 
 /** Show one note per content key: the copy edited last, so a note the owner
  * just edited to match another note stays visible in its editor. */
-function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {
+function distinctNotes(
+  notes: readonly StickyNote[],
+  noteRevisions: Record<string, number> = {},
+): StickyNote[] {
+  const revisionOf = (note: StickyNote) =>
+    Object.hasOwn(noteRevisions, note.id) ? noteRevisions[note.id] : 0;
   const shown = new Map<string, StickyNote>();
   for (const note of notes) {
     const key = noteContentKey(note);
     const current = shown.get(key);
-    if (!current || note.updatedAt > current.updatedAt) shown.set(key, note);
+    if (
+      !current ||
+      revisionOf(note) > revisionOf(current) ||
+      (revisionOf(note) === revisionOf(current) && note.updatedAt > current.updatedAt)
+    ) {
+      shown.set(key, note);
+    }
   }
   return notes.filter((note) => shown.get(noteContentKey(note)) === note);
+}
+
+function projectNotesSnapshot(document: NotesDocument): NotesSnapshot {
+  return {
+    revision: document.revision,
+    notes: distinctNotes(document.notes, document.noteRevisions),
+    trash: document.trash ?? [],
+  };
 }
 
 function resolveNoteIndex(
@@ -271,8 +291,7 @@ export class NotesService extends Service {
   }
 
   snapshot(): NotesSnapshot {
-    const snapshot = this.store.snapshot();
-    return { ...snapshot, notes: distinctNotes(snapshot.notes) };
+    return this.store.snapshot(projectNotesSnapshot);
   }
 
   listNotes(): StickyNote[] {
@@ -402,7 +421,7 @@ export class NotesService extends Service {
       const existing =
         input.forceNew || input.format
           ? undefined
-          : draft.notes.find(
+          : distinctNotes(draft.notes, draft.noteRevisions).find(
               (note) => !note.format && noteContentKey(note) === requestedKey,
             );
       if (existing) return { note: existing, replayed: true };
@@ -423,17 +442,15 @@ export class NotesService extends Service {
         updatedAt: now,
       };
       draft.notes.unshift(note);
+      draft.noteRevisions = { ...draft.noteRevisions, [id]: draft.revision + 1 };
       return { note, replayed: false };
-    });
+    }, projectNotesSnapshot);
     if (!transaction.value.replayed) {
       await this.emitStateUpdated(transaction.snapshot, "note:created");
     }
     return {
       value: transaction.value.note,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
+      snapshot: transaction.snapshot,
       replayed: transaction.value.replayed,
     };
   }
@@ -470,15 +487,12 @@ export class NotesService extends Service {
       if (index < 0 || !existing) throw notFound(id);
       const updated = applyNotePatch(existing, patch, updatedAt);
       draft.notes[index] = updated;
+      draft.noteRevisions = { ...draft.noteRevisions, [id]: draft.revision + 1 };
       return updated;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       consolidatedIds,
     };
   }
@@ -545,15 +559,12 @@ export class NotesService extends Service {
         }
       }
       draft.notes = next;
+      draft.noteRevisions = { ...draft.noteRevisions, [updated.id]: draft.revision + 1 };
       return updated;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       consolidatedCount: consolidatedIds.length,
       consolidatedIds,
     };
@@ -587,14 +598,10 @@ export class NotesService extends Service {
       ];
       draft.notes = draft.notes.filter((note) => !removedIds.includes(note.id));
       return existing;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       removedIds,
     };
   }
@@ -616,8 +623,9 @@ export class NotesService extends Service {
         throw notFound(id);
       draft.notes.unshift(structuredClone(entry.note));
       trash.splice(index, 1);
+      draft.noteRevisions = { ...draft.noteRevisions, [id]: draft.revision + 1 };
       return entry.note;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:restored");
     return transaction;
   }
@@ -677,14 +685,10 @@ export class NotesService extends Service {
       ];
       draft.notes = kept;
       return existing;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       removedCount: removedIds.length,
       removedIds,
     };
@@ -730,7 +734,7 @@ export class NotesService extends Service {
       ];
       draft.notes = [];
       return count;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "notes:cleared");
     return transaction;
   }

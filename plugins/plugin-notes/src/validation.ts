@@ -498,7 +498,7 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   const record = requireRecord(value, "notes state");
   assertOnlyKeys(
     record,
-    ["schemaVersion", "revision", "persistedAt", "notes", "trash"],
+    ["schemaVersion", "revision", "persistedAt", "notes", "trash", "noteRevisions"],
     "notes state",
   );
   if (
@@ -544,12 +544,31 @@ export function parseNotesDocument(value: unknown): NotesDocument {
       deletedAt: parseTimestamp(item.deletedAt, "trash.deletedAt"),
     };
   });
+  const revision = parseRevision(record.revision);
+  let noteRevisions: Record<string, number> | undefined;
+  if (record.noteRevisions !== undefined) {
+    const revisions = requireRecord(record.noteRevisions, "noteRevisions");
+    noteRevisions = Object.fromEntries(
+      Object.entries(revisions).map(([id, value]) => {
+        if (
+          !allIds.has(id) ||
+          typeof value !== "number" ||
+          !Number.isSafeInteger(value) ||
+          value < 0 || value > revision
+        ) {
+          throw validationError("Invalid note mutation revision.", "noteRevisions");
+        }
+        return [id, value] as const;
+      }),
+    );
+  }
   return {
     schemaVersion: NOTES_SCHEMA_VERSION,
-    revision: parseRevision(record.revision),
+    revision,
     persistedAt: parseTimestamp(record.persistedAt, "persistedAt"),
     notes,
     trash,
+    ...(noteRevisions === undefined ? {} : { noteRevisions }),
   };
 }
 

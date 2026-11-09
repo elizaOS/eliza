@@ -55,6 +55,8 @@ export interface NotesSnapshot {
 export interface NotesDocument extends NotesSnapshot {
   schemaVersion: typeof NOTES_SCHEMA_VERSION;
   persistedAt: string;
+  /** Private mutation order. Public snapshots omit it; legacy documents may lack it. */
+  noteRevisions?: Record<string, number>;
 }
 
 export type NotesStorePhase =
