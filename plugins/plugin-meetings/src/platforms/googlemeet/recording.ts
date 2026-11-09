@@ -8,7 +8,10 @@
  * Alone-detection is cross-validated against recent audio activity: DOM tile
  * counts can transiently drop during screen-share / layout changes, so if audio
  * flowed within the last 120s the tick refuses to accrue alone-time (false
- * LEFT_ALONE guard, ported from Vexa recording.ts, Apache-2.0).
+ * LEFT_ALONE guard, ported from Vexa recording.ts, Apache-2.0). The grace
+ * clock starts only when audio actually flows — it is not seeded at session
+ * start, or an empty meeting would sit out the whole grace before its
+ * no-one-joined timeout even starts to count.
  */
 
 import { logger } from "@elizaos/core";
@@ -69,7 +72,9 @@ export async function startGoogleRecording(
   );
   identity.start();
 
-  let lastAudioMs = Date.now();
+  // Null until the first chunk arrives: the audio grace below must not run
+  // on a meeting where no audio ever flowed.
+  let lastAudioMs: number | null = null;
   const capture = await startSpeakerAudioCapture(page, {
     onChunk: (streamKey, samples) => {
       lastAudioMs = Date.now();
@@ -110,7 +115,9 @@ export async function startGoogleRecording(
         return;
       }
       // Cross-validate: recent audio means the meeting is live despite tile drop.
-      if (Date.now() - lastAudioMs < AUDIO_GRACE_MS) {
+      // Only audio that actually flowed counts — before the first chunk there
+      // is nothing to cross-validate against, so alone-time accrues normally.
+      if (lastAudioMs !== null && Date.now() - lastAudioMs < AUDIO_GRACE_MS) {
         aloneMs = 0;
         return;
       }

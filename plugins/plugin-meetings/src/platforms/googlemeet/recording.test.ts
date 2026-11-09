@@ -6,8 +6,14 @@
  */
 
 import type { Page } from "playwright-core";
-import { describe, expect, it } from "vitest";
-import { countParticipants } from "./recording.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { startSpeakerAudioCapture } from "../../browser/audio-capture.js";
+import type { MeetingBotSession } from "../../types.js";
+import { countParticipants, startGoogleRecording } from "./recording.js";
+
+vi.mock("../../browser/audio-capture.js", () => ({
+  startSpeakerAudioCapture: vi.fn(),
+}));
 
 function fakePage(evaluate: Page["evaluate"]): Page {
   return { evaluate } as unknown as Page;
@@ -29,5 +35,92 @@ describe("countParticipants", () => {
       throw new Error("Execution context was destroyed");
     }) as Page["evaluate"]);
     expect(await countParticipants(page)).toBeNull();
+  });
+});
+
+describe("startGoogleRecording alone-time", () => {
+  let capturedOnChunk:
+    | ((streamKey: string, samples: Float32Array) => void)
+    | undefined;
+  let controller: AbortController;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    capturedOnChunk = undefined;
+    controller = new AbortController();
+    vi.mocked(startSpeakerAudioCapture).mockImplementation(
+      async (_page, opts) => {
+        capturedOnChunk = opts.onChunk;
+        return { stop: async () => {} };
+      },
+    );
+  });
+
+  afterEach(() => {
+    controller.abort();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  function makeSession(): MeetingBotSession {
+    return {
+      id: "session-1",
+      config: {
+        platform: "googlemeet",
+        meetingUrl: "https://meet.google.com/abc-defg-hij",
+        nativeMeetingId: "abc-defg-hij",
+        botName: "Notetaker",
+        autoLeave: {
+          waitingRoomTimeoutMs: 300_000,
+          noOneJoinedTimeoutMs: 3_000,
+          everyoneLeftTimeoutMs: 2_000,
+        },
+        retainAudio: false,
+      },
+      sink: {
+        pushSpeakerAudio: vi.fn(),
+        setSpeakerName: vi.fn(),
+        flushSpeaker: vi.fn(),
+        participantJoined: vi.fn(),
+        participantLeft: vi.fn(),
+      },
+      signal: controller.signal,
+      reportStatus: vi.fn(),
+    } as unknown as MeetingBotSession;
+  }
+
+  function emptyRoomPage(): Page {
+    return {
+      evaluate: async () => 0,
+      isClosed: () => false,
+    } as unknown as Page;
+  }
+
+  it("leaves an empty meeting at the configured no-one-joined timeout even when no audio ever flowed", async () => {
+    const session = makeSession();
+    let reason: string | undefined;
+    const done = startGoogleRecording(emptyRoomPage(), session).then((r) => {
+      reason = r;
+    });
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(reason).toBe("startup_alone_timeout");
+    await done;
+  });
+
+  it("still waits out the audio grace after real audio flowed", async () => {
+    const session = makeSession();
+    let reason: string | undefined;
+    const done = startGoogleRecording(emptyRoomPage(), session).then((r) => {
+      reason = r;
+    });
+    await Promise.resolve();
+    expect(capturedOnChunk).toBeDefined();
+    capturedOnChunk?.("0", new Float32Array([0.5]));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(reason).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reason).toBe("startup_alone_timeout");
+    await done;
   });
 });
