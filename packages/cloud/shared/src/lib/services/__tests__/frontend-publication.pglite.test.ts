@@ -2,7 +2,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -26,8 +26,10 @@ let beforeDelete: (() => Promise<void>) | undefined;
 const spies: Array<{ mockRestore(): void }> = [];
 
 beforeAll(async () => {
-  await dbWrite.execute("CREATE TABLE apps(id uuid PRIMARY KEY)");
-  await dbWrite.execute(`INSERT INTO apps(id) VALUES('${app.id}')`);
+  await dbWrite.execute("CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL)");
+  await dbWrite.execute(
+    sql`INSERT INTO apps(id, organization_id) VALUES (${app.id}, ${app.organization_id})`,
+  );
   for (const statement of await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ appFrontendDeployments }),
@@ -104,6 +106,18 @@ test("complete frontend publication retains every manifest object and serves it"
   expect(new TextDecoder().decode(response.body as ArrayBuffer)).toBe(files[1]?.content);
 });
 
+test("a foreign organization cannot activate a published deployment", async () => {
+  const live = await hosting.deployBundle({ app, files });
+  const ready = await hosting.deployBundle({ app, files, activate: false });
+
+  const foreignApp = { ...app, organization_id: randomUUID() };
+  await expect(hosting.activate(foreignApp, ready.id)).resolves.toBeUndefined();
+  expect((await repository.getActive(app.id))?.id).toBe(live.id);
+  expect((await repository.getById(ready.id))?.status).toBe("ready");
+
+  expect((await hosting.activate(app, ready.id))?.id).toBe(ready.id);
+});
+
 test("a lost finalization acknowledgement preserves the published row and all objects", async () => {
   const original = repository.finalize.bind(repository);
   spies.push(
@@ -123,7 +137,7 @@ test("activation before a lost finalization reply cannot be undone by upload cle
   spies.push(
     spyOn(repository, "finalize").mockImplementation(async (...args) => {
       await original(...args);
-      await repository.activate(app.id, args[0]);
+      await repository.activate(app, args[0]);
       throw new Error("reply lost after another client activated");
     }),
   );

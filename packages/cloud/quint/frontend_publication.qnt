@@ -37,8 +37,9 @@ module frontend_publication {
       cleanupPermit: applies and mode == 1 } }
   action cleanup = all { s.cleanupPermit,
     s' = { ...s, objects: false, cleanupPermit: false } }
-  action activate = all { published.contains(s.row),
-    s' = { ...s, row: "active", otherActive: false } }
+  // The locked parent must match the caller's authorized organization.
+  action activate(organizationMatches) = all { published.contains(s.row),
+    s' = if (organizationMatches) { ...s, row: "active", otherActive: false } else s }
   action activatePrevious = all { s.row == "active",
     s' = { ...s, row: "superseded", otherActive: true } }
   action deleteInactive(replyLost) = all {
@@ -53,7 +54,7 @@ module frontend_publication {
       finishRetire(mode), cleanup, deleteArtifacts }
   }
   action step = any { beginUpload, startFinalize, loseFinalizeReply, startRetire,
-    finish, activate, activatePrevious, deleteInactive(false), deleteInactive(true), s' = s }
+    finish, activate(true), activate(false), activatePrevious, deleteInactive(false), deleteInactive(true), s' = s }
   val safety = all {
     published.contains(s.row) implies s.objects,
     s.wasPublished implies (published.contains(s.row) or s.row == "deleted"),
@@ -71,12 +72,15 @@ module frontend_publication {
 
   run successfulPublicationTest = init.then(beginUpload).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(receiveFinalize)
-    .then(activate).expect(safety and s.row == "active")
+    .then(activate(true)).expect(safety and s.row == "active")
+  run foreignOrganizationKeepsLiveDeploymentTest = init.then(beginUpload)
+    .then(finishPut(false, true)).then(startFinalize).then(finishFinalize(true))
+    .then(activate(false)).expect(safety and s.row == "ready" and s.otherActive)
   run committedReplyLostTest = init.then(beginUpload).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(loseFinalizeReply)
     .then(startRetire).then(finishRetire(1)).expect(safety and s.row == "ready" and s.objects)
   run activationBeforeFailureCleanupTest = init.then(beginUpload).then(finishPut(false, true))
-    .then(startFinalize).then(finishFinalize(true)).then(activate).then(loseFinalizeReply)
+    .then(startFinalize).then(finishFinalize(true)).then(activate(true)).then(loseFinalizeReply)
     .then(startRetire).then(finishRetire(1)).expect(safety and s.row == "active" and s.objects)
   run retirementWinsPendingSqlTest = init.then(beginUpload).then(finishPut(false, true))
     .then(startFinalize).then(loseFinalizeReply).then(startRetire).then(finishRetire(1))
@@ -87,11 +91,11 @@ module frontend_publication {
     .then(startFinalize).then(deleteInactive(false)).then(deleteArtifacts)
     .then(finishFinalize(true)).expect(safety and s.row == "deleted")
   run rollbackAndDeleteTest = init.then(beginUpload).then(finishPut(false, true))
-    .then(startFinalize).then(finishFinalize(true)).then(activate).then(activatePrevious)
+    .then(startFinalize).then(finishFinalize(true)).then(activate(true)).then(activatePrevious)
     .then(deleteInactive(false)).then(deleteArtifacts).expect(safety and s.otherActive)
   action oldErrorCleanup = s' = { ...s, row: "failed", objects: false }
   run oldCleanupWitnessTest = init.then(beginUpload).then(finishPut(false, true))
-    .then(startFinalize).then(finishFinalize(true)).then(activate).then(oldErrorCleanup)
+    .then(startFinalize).then(finishFinalize(true)).then(activate(true)).then(oldErrorCleanup)
     .expect(not(safety))
   run oldReadyCleanupWitnessTest = init.then(beginUpload).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(oldErrorCleanup)

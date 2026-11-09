@@ -2008,6 +2008,8 @@
     "sources": [
       "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
       "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/db/schemas/apps.ts",
+      "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/activate/route.ts",
       "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
       "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.pglite.test.ts",
       "packages/cloud/quint/check-frontend-publication.mjs",
@@ -2022,10 +2024,10 @@
     "status": "partial",
     "limitations": [
       "One immutable deployment with a complete abstract object set and one pre-existing active deployment; one upload, publication request, retirement request and deletion. Both known and transport-ambiguous SQL outcomes are represented.",
-      "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. The model assumes immutable deployment IDs and complete acknowledged object writes.",
-      "No general TypeScript refinement, live R2 proof, account deletion or authorization proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid.",
+      "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. Activation first locks the parent app in the supplied organization. A nonmatching organization cannot change either deployment. The model assumes immutable deployment IDs and complete acknowledged object writes.",
+      "No general TypeScript refinement, live R2 proof, account deletion or request authentication proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid.",
       "Fair continuation of outstanding storage operations gives a terminal result; success, availability, cleanup after lost receipts and elapsed deadlines are not promised.",
-      "Ten real PGlite service/repository cases plus five real PostgreSQL cases. Four PG tests observe row-lock wait chains across separate connections; the fifth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement."
+      "Eleven real PGlite service/repository cases include rejection of a foreign organization. Five real PostgreSQL cases check contention and acknowledgement loss. Four PG tests observe row-lock wait chains across separate connections; the fifth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement."
     ]
   },
   {
@@ -2079,7 +2081,7 @@
     "status": "partial",
     "limitations": [
       "One app, two immutable published deployment identities, reversible app deactivation/reactivation and one final deletion request with rollback, acknowledged commit or lost acknowledgement.",
-      "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows; a missing parent rejects activation.",
+      "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows. Activation requires that the parent still belongs to the authorized organization.",
       "Six real PGlite service/repository/public-serving cases: actual SQL-trigger rejection, normal reactivation during teardown, acknowledged cascade before object deletion, committed-but-lost deletion reply, 1002 retained manifests, and publication after deactivation. Controlled object storage and the user-database cleanup seam avoid live provider effects. PGlite does not prove independent-connection PostgreSQL contention. Two real PostgreSQL cases observe independent-session parent-lock blocking, including a queued third activation. An earlier uncommitted unordered snapshot control reproduces PostgreSQL 40P01.",
       "No general TypeScript refinement, live R2 proof, arbitrary object counts, account authorization, account deletion, cache consistency, pending object uploads, crash orphan collection or concurrency of unrelated teardown providers. Database/container/GitHub teardown still has a separate app lifecycle authority gap; this repair only protects frontend objects. SQL acknowledgement loss and failed object deletes may leave orphans; no automatic recovery owner is introduced. The separate lock projection covers two fixed existing deployment rows and three one-shot operations only, not unbounded deadlock freedom. All participating workers must run the guarded protocol; mixed older writers are excluded until coordinated rollout completes.",
       "A pending SQL operation settles under weak fairness of its continuation; acknowledged cleanup settles under weak fairness of cleanup. No provider availability, successful deletion, orphan cleanup or elapsed deadline guarantee."

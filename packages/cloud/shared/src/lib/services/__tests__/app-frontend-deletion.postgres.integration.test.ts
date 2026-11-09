@@ -101,12 +101,14 @@ async function exerciseParentLock(queueThird: boolean) {
     "../../../db/repositories/app-frontend-deployments"
   );
   const app = randomUUID();
+  const organizationId = randomUUID();
+  const ownerApp = { id: app, organization_id: organizationId };
   const old = randomUUID();
   const current = randomUUID();
   const gate = randomInt(1, 1_000_000_000);
   await control.query(
     "INSERT INTO apps(id,organization_id,name,slug,app_url,is_active) VALUES($1,$2,'Lock fixture',$3,'https://example.test',false)",
-    [app, randomUUID(), app],
+    [app, organizationId, app],
   );
   await control.query(
     "INSERT INTO app_frontend_deployments(id,app_id,version,status,r2_prefix) VALUES($1,$3,1,'ready','old/'),($2,$3,2,'active','current/')",
@@ -120,7 +122,7 @@ async function exerciseParentLock(queueThird: boolean) {
     .pid;
   const pending: Promise<unknown>[] = [];
   try {
-    const activation = run(() => frontends.activate(app, old));
+    const activation = run(() => frontends.activate(ownerApp, old));
     pending.push(activation);
     void activation.catch(() => undefined);
     const activationPid = await waitOn(blocker);
@@ -131,7 +133,7 @@ async function exerciseParentLock(queueThird: boolean) {
     expect(deletionPid).not.toBe(activationPid);
     let third: ReturnType<typeof frontends.activate> | undefined;
     if (queueThird) {
-      third = run(() => frontends.activate(app, current));
+      third = run(() => frontends.activate(ownerApp, current));
       pending.push(third);
       void third.catch(() => undefined);
       expect(await waitOn(deletionPid)).not.toBe(deletionPid);
