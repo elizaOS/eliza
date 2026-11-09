@@ -5,8 +5,9 @@
  * Runs on foreground/chat/Talk events, once per URL and credential per minute.
  * It never schedules periodic traffic or delays the owner's actual request.
  */
+
+import { createHash } from "node:crypto";
 import type http from "node:http";
-import {createHash} from "node:crypto";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import { sendJson } from "../lib/http";
 import { resolveCloudSdkAuthorityTuple } from "../utils/config";
@@ -32,7 +33,11 @@ const MAX_WARM_IDENTITIES = 256;
 export async function warmCloudInference(runtime: IAgentRuntime | null): Promise<CloudWarmResult> {
   // Only when this plugin registered a chat-brain handler: with
   // ELIZAOS_CLOUD_USE_INFERENCE=false (direct provider) there is nothing to warm.
-  if (!runtime?.getModelRegistrations().some((r) => r.provider === CLOUD_PROVIDER && CLOUD_TEXT_MODEL_TYPES.has(r.modelType))) {
+  if (
+    !runtime
+      ?.getModelRegistrations()
+      .some((r) => r.provider === CLOUD_PROVIDER && CLOUD_TEXT_MODEL_TYPES.has(r.modelType))
+  ) {
     return { warmed: false, reason: "not-cloud-text" };
   }
   const tuple = resolveCloudSdkAuthorityTuple(runtime);
@@ -41,10 +46,14 @@ export async function warmCloudInference(runtime: IAgentRuntime | null): Promise
   if (!/^https?:\/\//.test(url)) return { warmed: false, reason: "unreachable" };
   const now = Date.now();
   const identity = createHash("sha256").update(url).update("\0").update(tuple.apiKey).digest("hex");
-  for (const [key, at] of recentWarms) if (now - at >= CLOUD_WARM_INTERVAL_MS) recentWarms.delete(key);
+  for (const [key, at] of recentWarms)
+    if (now - at >= CLOUD_WARM_INTERVAL_MS) recentWarms.delete(key);
   if (recentWarms.has(identity)) return { warmed: false, reason: "debounced" };
   // Bound the cache and retain no raw credential. A changed key gets its own warmup.
-  if (recentWarms.size >= MAX_WARM_IDENTITIES) recentWarms.delete(recentWarms.keys().next().value!);
+  if (recentWarms.size >= MAX_WARM_IDENTITIES) {
+    const oldest = recentWarms.keys().next().value;
+    if (oldest !== undefined) recentWarms.delete(oldest);
+  }
   // Claimed before the request so concurrent triggers and failures debounce too.
   recentWarms.set(identity, now);
   try {
@@ -58,14 +67,25 @@ export async function warmCloudInference(runtime: IAgentRuntime | null): Promise
     await response.arrayBuffer();
     if (!response.ok) return { warmed: false, reason: "unreachable" };
     const durationMs = Date.now() - now;
-    logger.debug(`[ELIZAOS_CLOUD] inference pre-warm status=${response.status} durationMs=${durationMs}`);
+    logger.debug(
+      `[ELIZAOS_CLOUD] inference pre-warm status=${response.status} durationMs=${durationMs}`
+    );
     return { warmed: true, status: response.status, durationMs };
   } catch (error) {
-    logger.debug(`[ELIZAOS_CLOUD] inference pre-warm failed: ${error instanceof Error ? error.name : "unknown"}`);
+    logger.debug(
+      `[ELIZAOS_CLOUD] inference pre-warm failed: ${error instanceof Error ? error.name : "unknown"}`
+    );
     return { warmed: false, reason: "unreachable" };
   }
 }
 
-export async function handleCloudWarmRoute(_req: unknown, res: unknown, runtime: unknown): Promise<void> {
-  sendJson(res as http.ServerResponse, await warmCloudInference((runtime as IAgentRuntime | null) ?? null));
+export async function handleCloudWarmRoute(
+  _req: unknown,
+  res: unknown,
+  runtime: unknown
+): Promise<void> {
+  sendJson(
+    res as http.ServerResponse,
+    await warmCloudInference((runtime as IAgentRuntime | null) ?? null)
+  );
 }
