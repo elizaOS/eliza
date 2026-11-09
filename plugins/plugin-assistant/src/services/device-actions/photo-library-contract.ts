@@ -770,7 +770,7 @@ export function describeLibraryOperation(
           : "photos and videos";
     return {
       title: "Search device library",
-      description: `List up to ${op.limit ?? 20} ${op.favorites ? "favorite " : ""}${what} Android lets ${appName} read${op.from !== undefined || op.to !== undefined ? " in the requested date range" : ""}. The agent receives ids, kind, dates, dimensions and duration only: no file or album names, no location, no pixels.`,
+      description: `List up to ${op.limit ?? LIBRARY_LIMITS.search} ${op.favorites ? "favorite " : ""}${what} Android lets ${appName} read${op.from !== undefined || op.to !== undefined ? " in the requested date range" : ""}. The agent receives ids, kind, dates, dimensions and duration only: no file or album names, no location, no pixels.`,
     };
   }
   if (op.type === "photo_library_inspect")

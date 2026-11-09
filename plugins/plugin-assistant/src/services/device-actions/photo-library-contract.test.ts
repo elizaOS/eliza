@@ -59,6 +59,9 @@ describe("photo library contract", () => {
         "Example",
       ).description,
     ).toMatch(/videos Android lets Example read\. The agent receives ids/);
+    expect(
+      describeLibraryOperation({ type: "photo_library_search" }).description,
+    ).toMatch(/^List up to 24 photos and videos /);
   });
 
   it("presents only what Android granted", () => {
