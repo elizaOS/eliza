@@ -163,6 +163,8 @@ export interface AssistantHeard {
    * interrupt it. A reporter must not empty the stored reply for a failure.
    */
   playbackFailed?: boolean;
+  /** The reply stream failed after early speech began; playback itself did not fail. */
+  replyFailed?: boolean;
 }
 export interface AssistantCapture {
   /**
@@ -1058,6 +1060,7 @@ export class VoiceAssistantSession {
       if (!this.owned(session, turn, response)) throw stopped();
       this.ports.assertCurrent();
     };
+    let playbackFailed = false;
     try {
       // One request at a time: an interrupted request settles before the next turn is sent.
       await previous;
@@ -1080,7 +1083,7 @@ export class VoiceAssistantSession {
       const plan: string[] = [];
       response.sentences = plan;
       let begun = 0;
-      let failure: unknown;
+      let failure: { error: unknown } | undefined;
       let pumping: Promise<void> = Promise.resolve();
       let running = false;
       // Playback of this reply's sentences; aborted with the response, or alone when a pause
@@ -1103,7 +1106,8 @@ export class VoiceAssistantSession {
               );
             }
           } catch (error) {
-            failure ??= error;
+            playbackFailed = true;
+            failure ??= { error };
           } finally {
             running = false;
           }
@@ -1201,10 +1205,11 @@ export class VoiceAssistantSession {
           const prior = failure;
           voice.abort(stopped());
           await pumping;
-          if (prior) throw prior;
+          if (prior) throw prior.error;
           guard();
           voice = linkedController(response.controller.signal);
           failure = undefined;
+          playbackFailed = false;
           plan.length = begun = response.played = 0;
           response.started = false;
         }
@@ -1242,7 +1247,7 @@ export class VoiceAssistantSession {
       plan.push(...final.slice(same));
       pump();
       await pumping;
-      if (failure) throw failure;
+      if (failure) throw failure.error;
       guard();
       if (!response.sentences.length) {
         this.finishResponse(response);
@@ -1266,7 +1271,7 @@ export class VoiceAssistantSession {
       // A reply that failed after streamed speech started still reports what
       // was heard; before confirmation the host finds it by turnId.
       if (response.replyId || response.started)
-        this.reportInterrupted(response, true);
+        this.reportInterrupted(response, playbackFailed ? "playback" : "reply");
       this.response = undefined;
       // Streamed speech may still be playing: the failed turn stops it now.
       response.controller.abort(stopped());
@@ -1328,7 +1333,10 @@ export class VoiceAssistantSession {
       );
   }
 
-  private reportInterrupted(response: Response, playbackFailed = false) {
+  private reportInterrupted(
+    response: Response,
+    failure?: "playback" | "reply",
+  ) {
     // Before confirmation only streamed speech can have played: it is reported once it started.
     if (!response.replyId && !response.started) return;
     const heard = response.sentences.slice(0, response.played).join(" ");
@@ -1339,7 +1347,8 @@ export class VoiceAssistantSession {
       heard,
       unheard,
       interrupted: true,
-      ...(playbackFailed ? { playbackFailed: true } : {}),
+      ...(failure === "playback" ? { playbackFailed: true } : {}),
+      ...(failure === "reply" ? { replyFailed: true } : {}),
     });
   }
 

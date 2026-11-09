@@ -549,9 +549,11 @@ public abstract class TelephonyPlugin extends Plugin {
   catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
   final SmsSendJournal journal;
   final SmsSendJournal.Record existing;
+  final String binding;
   try {
    journal = SmsTelephony.journal(getContext(), config);
-   existing = journal.existing(operationId, SmsSendJournal.sha256(SmsSendJournal.bindingText(recipients, body, subscriptionId)));
+   binding = SmsSendJournal.sha256(SmsSendJournal.bindingText(recipients, body, subscriptionId));
+   existing = journal.existing(operationId, binding);
   } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
   catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
   catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
@@ -591,7 +593,10 @@ public abstract class TelephonyPlugin extends Plugin {
       if (!admitted() || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
      }))); }
      catch (Exception unrecorded) {
-      SmsSendJournal.Record record = journal.get(operationId);
+      final SmsSendJournal.Record record;
+      try { record = journal.existing(operationId, binding); }
+      catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+      catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
       if (record != null) call.resolve(SmsTelephony.result(record));
       // Nothing reached Android (access or the reviewed SIM changed, or the journal refused it):
       // close the ID as denied so it is never sent later; decide() rejects if even that cannot be recorded.
@@ -714,9 +719,12 @@ public abstract class TelephonyPlugin extends Plugin {
   catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
   final SmsSendJournal journal;
   final SmsSendJournal.Record existing;
+  final String binding;
   try {
    journal = SmsTelephony.journal(getContext(), config);
-   existing = journal.existing(operationId, SmsSendJournal.sha256(SmsSendJournal.mmsBindingText(recipients, body, attachments, subscriptionId)));
+   binding = SmsSendJournal.sha256(SmsSendJournal.mmsBindingText(recipients, body, attachments, subscriptionId));
+   existing = journal.existing(operationId, binding);
+   if (existing != null && !existing.group) throw new IllegalStateException("operation reused");
   } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
   catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
   catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
@@ -776,7 +784,12 @@ public abstract class TelephonyPlugin extends Plugin {
      };
      try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
      catch (Exception unrecorded) {
-      SmsSendJournal.Record record = journal.get(operationId);
+      final SmsSendJournal.Record record;
+      try {
+       record = journal.existing(operationId, binding);
+       if (record != null && !record.group) throw new IllegalStateException("operation reused");
+      } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+      catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
       if (record != null) call.resolve(SmsTelephony.result(record));
       else decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);
      }

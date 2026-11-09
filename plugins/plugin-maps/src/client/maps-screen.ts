@@ -29,7 +29,7 @@ import { usableNavigationFix } from "./navigation-fix.ts";
 import { distanceToRoute, routeProgress } from "./route-distance.ts";
 import type { SavedPlace } from "./saved-places.ts";
 import { type MapShare, placeShare, routeShare } from "./share.ts";
-import type { MapsController, MapsState } from "./state.ts";
+import type { MapsController, MapsState, RoutePlanReceipt } from "./state.ts";
 
 export type MapsScreenSelection = {
   label: string;
@@ -283,6 +283,7 @@ export class MapsScreenController {
   private offRoute = false;
   private rerouting = false;
   private rerouteCleared = false;
+  private reroutePublication?: { session: number; revision: number };
   private navSession = 0;
   private backgroundRunning = false;
   private query = "";
@@ -994,6 +995,16 @@ export class MapsScreenController {
           return;
         }
         this.backgroundRunning = running;
+        // The page could hide while native startup held a pending reservation.
+        if (
+          !running &&
+          !this.host.active() &&
+          !this.controller?.awaitingLocationPermission() &&
+          !this.host.navigationLocation.awaitingPermission()
+        ) {
+          this.release();
+          return;
+        }
         if (running && !this.navFix)
           this.message =
             "Waiting for a fresh location fix. Guidance continues with the screen off.";
@@ -1135,7 +1146,7 @@ export class MapsScreenController {
             });
         });
       },
-      planFrom: (origin) => {
+      planFrom: async (origin) => {
         const controller = this.ensure();
         this.originMode = false;
         this.originText = coordLabel(origin);
@@ -1143,12 +1154,13 @@ export class MapsScreenController {
         this.message = "";
         const pending = controller.planRoute();
         this.invalidate();
-        return pending;
+        await pending;
       },
       // The session lasts from Start to End, including while rerouting and after arrival.
       guidance: (): ActiveGuidance | null =>
         this.navigating && this.selected && this.state
           ? {
+              session: this.navSession,
               routeId: this.navRouteId,
               placeName: this.selected.label,
               travelMode: this.state.mode,
@@ -1487,20 +1499,24 @@ export class MapsScreenController {
     if (this.navigating && this.rerouting) {
       // An explicit reroute keeps the session; only a route planned after the
       // reroute request cleared the old one replaces it.
-      if (next.route.phase !== "ready" && next.route.phase !== "error")
-        this.rerouteCleared = true;
-      else if (
-        next.route.phase === "ready" &&
-        next.route.value &&
-        this.rerouteCleared
-      ) {
+      const replacement =
+        next.route.phase === "ready" && this.rerouteCleared
+          ? next.route.value
+          : null;
+      if (replacement || next.route.phase === "error")
+        this.reroutePublication = {
+          session: this.navSession,
+          revision: next.revision,
+        };
+      if (replacement) {
         this.rerouting = false;
         this.navStep = 0;
-        this.navRouteId = next.route.value.id;
+        this.navRouteId = replacement.id;
         this.host.voice.pause();
         this.message = "New route ready.";
       } else if (next.route.phase === "error")
         void this.stopGuidance().catch(() => {});
+      else if (next.route.phase !== "ready") this.rerouteCleared = true;
     } else if (
       this.navigating &&
       (next.route.phase !== "ready" || next.route.value?.id !== this.navRouteId)
@@ -1604,7 +1620,9 @@ export class MapsScreenController {
     this.invalidate();
   }
 
-  private rerouteFrom(from: Coordinate): Promise<void> | undefined {
+  private rerouteFrom(
+    from: Coordinate,
+  ): Promise<RoutePlanReceipt | undefined> | undefined {
     if (!this.navigating || this.rerouting) return undefined;
     if (!usableNavigationFix(this.navFix, this.now())) {
       this.message =
@@ -1615,13 +1633,22 @@ export class MapsScreenController {
     }
     this.rerouting = true;
     this.rerouteCleared = false;
+    this.reroutePublication = undefined;
+    const session = this.navSession;
     this.offRoute = false;
     this.host.voice.pause();
     this.originText = coordLabel(from);
     this.message = "Planning a new route from here…";
     const pending = this.ensure().reroute(from);
     this.invalidate();
-    return pending;
+    return pending.then((reply) => {
+      const publication = this.reroutePublication;
+      return reply &&
+        publication?.session === session &&
+        publication.revision === reply.revision
+        ? reply
+        : undefined;
+    });
   }
 
   private stopGuidance(): Promise<void> {

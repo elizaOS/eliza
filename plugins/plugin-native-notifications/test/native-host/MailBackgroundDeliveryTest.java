@@ -68,7 +68,10 @@ public class MailBackgroundDeliveryTest {
   refuses(()->a.delivery.pending(()->{if(!unlocked[0])throw new SecurityException("locked");}),"locked response admitted");
   check(a.saved().has("tap"),"lock during grant check retains tap");String token=a.saved().getJSONObject("tap").getString("token");
   refuses(()->a.delivery.consume(token,()->{throw new SecurityException("paused");}),"paused consume admitted");check(a.saved().has("tap"),"pause cannot consume unseen tap");
-  a.transport.onUser=null;unlocked[0]=true;JSONObject tap=a.delivery.pending(()->{});check(tap.getString("userId").equals(USER)&&tap.getString("grantId").equals("grant"),"verified tap names owner and grant");a.delivery.consume(tap.getString("token"),()->{});check(!a.saved().has("tap")&&a.poster.active.isEmpty(),"tap consumed once and notice withdrawn");
+  a.transport.onUser=null;unlocked[0]=true;JSONObject tap=a.delivery.pending(()->{});check(tap.getString("userId").equals(USER)&&tap.getString("grantId").equals("grant"),"verified tap names owner and grant");a.transport.onUser=()->unlocked[0]=false;
+  refuses(()->a.delivery.consume(tap.getString("token"),()->{if(!unlocked[0])throw new SecurityException("locked");}),"consume rechecks foreground during verification");
+  check(a.saved().has("tap"),"foreground loss during verification keeps tap");
+  a.transport.onUser=null;unlocked[0]=true;a.delivery.consume(tap.getString("token"),()->{});check(!a.saved().has("tap")&&a.poster.active.isEmpty(),"tap consumed once and notice withdrawn");
   a.transport.historyStatus=404;check(a.delivery.sync(generation,()->{}),"unsupported is not a retry storm");check(a.delivery.status().getString("status").equals("unsupported"),"undeployed endpoint truthful");
   a.transport.historyStatus=503;check(!a.delivery.sync(generation,()->{}),"server failure retries");check(a.delivery.status().getString("status").equals("retrying"),"retry state reported");
   a.transport.historyStatus=200;a.transport.staleDuringHistory=true;a.transport.pages.add(MailHistoryReconciliationTest.page("112","114",null,MailHistoryReconciliationTest.event("113","message-added","stale","INBOX","UNREAD")));
@@ -85,6 +88,10 @@ public class MailBackgroundDeliveryTest {
   Case failed=new Case();String kept=failed.configure();failed.transport.accountsDown=true;try{failed.delivery.configure(failed.delivery.begin(),"credential","grant",USER,ORG);throw new AssertionError("failed selection admitted");}catch(IOException expected){assertions++;}
   failed.transport.accountsDown=false;failed.transport.pages.add(MailHistoryReconciliationTest.baseline("100"));check(failed.delivery.sync(kept,()->{}),"failed reselection keeps the saved selection checking");
   Case other2=new Case();other2.configure();other2.delivery.withdraw("another-grant");check(other2.host.state!=null,"withdraw for another grant keeps the selection");
+  long queued=other2.delivery.begin("next-grant");
+  other2.delivery.withdraw("next-grant");
+  refuses(()->other2.delivery.configure(queued,"credential","next-grant",USER,ORG),"retired queued grant admitted");
+  check(other2.saved().getJSONObject("binding").getString("grantId").equals("grant"),"queued retirement keeps the saved grant");
   System.out.println(assertions+" assertions passed");
  }
 }

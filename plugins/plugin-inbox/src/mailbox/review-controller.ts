@@ -104,12 +104,16 @@ export function createMailReviewController(
 ) {
   const { publish, toast } = options;
   const disabled = () => options.disabled?.() === true;
+  const allowed = (proposal: Bag) =>
+    gmailInboxAllows(caps, proposal.kind as GmailMailboxAction) &&
+    (!proposal.forwardAttachments || caps?.forwardAttachments === true);
   const now = options.now ?? (() => performance.now());
   const defer = options.defer ?? ((task: () => void) => queueMicrotask(task));
   let editor:
     | ((
         proposal: Bag,
         reference: { draftId: string; providerDigest: string },
+        review?: Bag | null,
       ) => Promise<boolean>)
     | null = null;
   let selected = "",
@@ -423,7 +427,7 @@ export function createMailReviewController(
   async function prepare(proposal: Bag, source?: { draftId: string }) {
     if (!operation) return;
     const kind = proposal.kind;
-    if (!gmailInboxAllows(caps, kind as GmailMailboxAction)) {
+    if (!allowed(proposal)) {
       toast(
         "The selected account has not granted this provider action. Authorize Gmail changes, then try again. Nothing was changed.",
       );
@@ -532,7 +536,7 @@ export function createMailReviewController(
           throw new Error(
             "Gmail draft changed outside this app. The saved content will not overwrite it. Open Gmail to inspect the conflict.",
           );
-        if (!(await editor?.(record.proposal, draft)))
+        if (!(await editor?.(record.proposal, draft, record.review)))
           throw new Error(
             "Save or discard changed local edits before opening this provider draft.",
           );
@@ -687,6 +691,11 @@ export function createMailReviewController(
             toast(reviewBindingRefusal.absent);
             return;
           }
+          const record = operation?.snapshot();
+          if (!record || !allowed(record.proposal)) {
+            toast("Reconnect Gmail, then try again.");
+            return;
+          }
           // The composer is read in the same turn as the comparison inside confirm(), before any await.
           void run((owned) =>
             owned.confirm(
@@ -701,7 +710,8 @@ export function createMailReviewController(
           !absent &&
           !!record &&
           record.phase === "review" &&
-          receiptState === "prepared",
+          receiptState === "prepared" &&
+          allowed(record.proposal),
         check: () => void run((owned) => owned.refresh()),
         reload: () => void run((owned) => owned.reloadReview()),
         canReload: record?.phase === "preparing",

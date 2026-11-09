@@ -194,11 +194,11 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ACTUAL_CALLBACK: between(
       plugin,
       " private boolean captureCallback(",
-      " /** Cancelled, ended or consumed",
+      " /** Retire only the captured record",
     ),
     ACTUAL_BURN: between(
       plugin,
-      " private void burnUnclaimedPending()",
+      " private void burnUnclaimedPending(Attempt owner)",
       " // ── Email code and MFA:",
     ),
     ACTUAL_VERIFY:
@@ -389,7 +389,7 @@ test("the plugin owns every secret, compares state before burning and logs only 
   const capture = between(
     plugin,
     "private boolean captureCallback(",
-    "private void burnUnclaimedPending()",
+    "private void burnUnclaimedPending(Attempt owner)",
   );
   assert.ok(
     capture.indexOf("intent.setData(null)") > 0 &&
@@ -403,10 +403,12 @@ test("the plugin owns every secret, compares state before burning and logs only 
   assert.doesNotMatch(noResult, /\.remove\(|burnUnclaimedPending/);
   assert.ok(
     capture.indexOf("!pending.sameState(received)) return;") <
-      capture.indexOf("store.remove(config().pendingSlot)"),
+      capture.indexOf(
+        "compareExchange(config().pendingSlot, pendingRaw, null)",
+      ),
   );
   assert.ok(
-    capture.indexOf("store.remove(config().pendingSlot)") <
+    capture.indexOf("compareExchange(config().pendingSlot, pendingRaw, null)") <
       capture.indexOf('"/steward/auth/oauth/exchange"'),
   );
   // Tail: Android authorization before connect; receipt, key, ack; the Steward session is revoked.
