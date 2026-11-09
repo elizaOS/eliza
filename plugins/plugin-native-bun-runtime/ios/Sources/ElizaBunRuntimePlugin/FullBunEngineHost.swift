@@ -32,10 +32,14 @@ private let fullBunHostCallCallback: @convention(c) (
 ///   native side. `bun_start(...)` receives the read end of the parent's stdin
 ///   pipe and the write end of its stdout pipe; no other network socket is
 ///   created by the shim.
-/// - Input validation: the C shim (`eliza_bun_engine_shim.c`) validates all
-///   NDJSON frames before dispatch: `id` must be numeric, `method` must be a
-///   JSON string, `payload` is extracted as a bounded value field. The
-///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
+/// - Framing: one reader thread per run in the C shim
+///   (`eliza_bun_engine_shim.c`) splits the bridge's stdout into lines.
+///   Responses are routed to the waiting call by their numeric `id`; a
+///   `host_call` frame needs a string `id` and `method`, and `payload` is
+///   extracted as a bounded value field. JSON strings are decoded strictly:
+///   an unterminated string or a malformed escape is rejected, and `\u`
+///   escapes (including surrogate pairs) become UTF-8. A line over
+///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) ends the run's reader.
 /// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
 ///   `llama_generate`, `llama_free`, `llama_cancel`, `eliza_tts_synthesize`,
 ///   `eliza_asr_transcribe`, `keep_awake_set`, `stream_emit`,
