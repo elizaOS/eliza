@@ -101,6 +101,8 @@ class MobileSignalsPlugin : Plugin() {
     // Broadcasts are handled off the main thread, one at a time and in order.
     private val signalDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val permissionRequest = PermissionController.createRequestPermissionResultContract()
+    // Read from the broadcast coroutines as well as the plugin thread.
+    @Volatile
     private var monitoring = false
     private var receiver: BroadcastReceiver? = null
     private val batteryFilter = BatteryChangeFilter()
