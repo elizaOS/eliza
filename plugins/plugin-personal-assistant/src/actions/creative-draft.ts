@@ -89,6 +89,7 @@ type CreativeDraftDocumentService = Pick<
   | "getDocumentById"
   | "listDocuments"
   | "listDocumentsDetailed"
+  | "readDocumentRange"
   | "updateDocument"
 >;
 
@@ -413,13 +414,25 @@ async function loadPersistedDraft(args: {
     args.documentId as UUID,
     args.message,
   );
-  if (!document?.content.text) {
+  // A draft over the inline parent limit is stored as source segments; its
+  // parent row carries a documentSource pointer instead of content.text.
+  const text =
+    document?.content.documentSource !== undefined
+      ? (
+          await args.documents.readDocumentRange(
+            args.documentId as UUID,
+            { unit: "byte", offset: 0 },
+            args.message,
+          )
+        )?.text
+      : document?.content.text;
+  if (!text) {
     throw new ElizaError("Creative draft document was not found", {
       code: "CREATIVE_DRAFT_NOT_FOUND",
       context: { documentId: args.documentId },
     });
   }
-  return parseStoredDraft(document.content.text, args.documentId);
+  return parseStoredDraft(text, args.documentId);
 }
 
 async function findStandingDraftDocumentId(args: {
