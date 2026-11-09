@@ -16,7 +16,7 @@ import {
 export const ORCHESTRATOR_CAPABILITY_IDS: ReadonlySet<string> = new Set([
   "orchestrator-status",
   "orchestrator-list-tasks",
-  "orchestrator-open-task",
+  "orchestrator-get-task",
   "orchestrator-create-task",
   "orchestrator-pause-task",
   "orchestrator-resume-task",
@@ -46,7 +46,7 @@ export async function runOrchestratorCapability(
         limit:
           typeof params?.limit === "number" ? params.limit : TASK_LIST_LIMIT,
       });
-    case "orchestrator-open-task": {
+    case "orchestrator-get-task": {
       const taskId = paramString(params?.taskId);
       if (taskId) return client.getCodingAgentTaskThread(taskId);
       const [first] = await client.listCodingAgentTaskThreads({ limit: 1 });
