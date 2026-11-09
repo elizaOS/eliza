@@ -700,8 +700,14 @@ export function createCloudRoutes({
         write: async () => {
           throw verifiedRequired();
         },
-        clear: async () => {
-          const { raw } = await verifiedSnapshot();
+        clear: async (expectedKey) => {
+          const { raw, record } = await verifiedSnapshot();
+          if (expectedKey !== undefined) {
+            if (record?.credential !== expectedKey) return false;
+            return (
+              (await verifiedAccountStore.compareExchange(raw, null)) === true
+            );
+          }
           await verifiedExchange(raw, null);
         },
       }
@@ -710,8 +716,10 @@ export function createCloudRoutes({
         write: async (value) => {
           memory = value;
         },
-        clear: async () => {
+        clear: async (expectedKey) => {
+          if (expectedKey !== undefined && memory !== expectedKey) return false;
           memory = null;
+          if (expectedKey !== undefined) return true;
         },
       };
   // Paid access is answered from a cache, so a paid request never waits on
@@ -959,7 +967,12 @@ export function createCloudRoutes({
       // stalled response must not keep every later caller on this shared read.
       const signal = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
       const read = (path) =>
-        request(path, { key, authorityGeneration: epoch, signal, accessCheck: true }).then(parse);
+        request(path, {
+          key,
+          authorityGeneration: epoch,
+          signal,
+          accessCheck: true,
+        }).then(parse);
       const userRead = read("/api/v1/user"),
         snapshotRead = read("/api/v1/billing/limits");
       snapshotRead.catch(() => {});
@@ -969,8 +982,7 @@ export function createCloudRoutes({
       });
       const snapshot = await snapshotRead;
       current(epoch);
-      if (!subscriptionCodes)
-        return projectAccountAccess(user, snapshot);
+      if (!subscriptionCodes) return projectAccountAccess(user, snapshot);
       return projectAccountAccess(user, snapshot, {
         grant: subscriptionGrantFromSnapshot(snapshot, {
           planKeys: hostPolicy.planKeys,
@@ -980,13 +992,15 @@ export function createCloudRoutes({
       current(epoch);
       if (error.status === 401) {
         let recorded = true;
+        let replaced = false;
         await mutateCredential(async () => {
           current(epoch);
-          if (
-            identityRefused &&
-            credentialRevocation &&
-            (await store.read().catch(() => null)) === key
-          ) {
+          if ((await store.read()) !== key) {
+            replaced = true;
+            return;
+          }
+          current(epoch);
+          if (identityRefused && credentialRevocation) {
             try {
               await credentialRevocation.onRevoked({ key });
             } catch {
@@ -994,9 +1008,18 @@ export function createCloudRoutes({
               return;
             }
           }
-          await store.clear();
+          // The host receipt above can await storage. Revalidate ownership
+          // after it; owned file/verified stores also compare at clear time.
+          current(epoch);
+          if ((await store.read()) !== key) {
+            replaced = true;
+            return;
+          }
+          current(epoch);
+          if ((await store.clear(key)) === false) replaced = true;
         });
         current(epoch);
+        if (replaced) throw fail(message("accountSessionChanged"), 409);
         // The host could not record it: the key stays, and the next check
         // tries again.
         if (!recorded) return { state: "unavailable" };
@@ -1009,14 +1032,19 @@ export function createCloudRoutes({
    * One live account check. A definite answer for a saved key fills the paid
    * access cache, unless the session or the key changed while Cloud answered.
    */
-  async function checkAccess() {
+  async function checkAccess(credential, cacheEpoch, revision) {
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
-    const cacheEpoch = paidAccessEpoch;
-    const revision = accessRevision;
-    const { epoch, key, answer } = await savedCredential();
+    const { epoch, key, answer } = credential;
     if (answer) return { access: answer, fingerprint: null };
     const access = await liveAccess(key, epoch);
+    // Custom/native stores can replace a key outside these routes. A reply
+    // for the captured key must never admit or publish for its replacement.
+    if (access.state !== "signed_out") {
+      const latest = await savedCredential();
+      if (latest.epoch !== epoch || latest.key !== key)
+        throw fail(message("accountSessionChanged"), 409);
+    }
     const fingerprint = credentialFingerprint(key);
     if (
       access.state !== "unavailable" &&
@@ -1028,17 +1056,32 @@ export function createCloudRoutes({
     return { access, fingerprint };
   }
   /** The live check in flight for this cache epoch, or a new one. */
-  function sharedAccessCheck() {
+  async function sharedAccessCheck(credential) {
+    if (!billingEnabled)
+      throw fail("Account billing is unavailable in this host", 404);
+    const scope = credential ?? (await savedCredential());
+    current(scope.epoch);
+    if (scope.answer) return { access: scope.answer, fingerprint: null };
+    const fingerprint = credentialFingerprint(scope.key);
     if (
       paidAccessCheck?.epoch === paidAccessEpoch &&
-      paidAccessCheck.generation === generation &&
-      paidAccessCheck.revision === accessRevision
+      paidAccessCheck.generation === scope.epoch &&
+      paidAccessCheck.revision === accessRevision &&
+      paidAccessCheck.fingerprint === fingerprint
     )
       return paidAccessCheck.promise;
-    const flight = { epoch: paidAccessEpoch, generation, revision: accessRevision, promise: null };
-    flight.promise = checkAccess().finally(() => {
-      if (paidAccessCheck === flight) paidAccessCheck = null;
-    });
+    const flight = {
+      epoch: paidAccessEpoch,
+      generation: scope.epoch,
+      revision: accessRevision,
+      fingerprint,
+      promise: null,
+    };
+    flight.promise = checkAccess(scope, flight.epoch, flight.revision).finally(
+      () => {
+        if (paidAccessCheck === flight) paidAccessCheck = null;
+      },
+    );
     flight.promise.catch(() => {});
     paidAccessCheck = flight;
     return flight.promise;
@@ -1074,7 +1117,8 @@ export function createCloudRoutes({
       throw fail("Account billing is unavailable in this host", 404);
     const cacheEpoch = paidAccessEpoch;
     const revision = accessRevision;
-    const { epoch, key, answer } = await savedCredential();
+    const credential = await savedCredential();
+    const { epoch, key, answer } = credential;
     if (answer) throw hostPolicy.fundingError(answer);
     const fingerprint = credentialFingerprint(key);
     const cached = paidAccess;
@@ -1090,9 +1134,7 @@ export function createCloudRoutes({
       scheduleRevalidation();
       return;
     }
-    let result = await sharedAccessCheck();
-    // A check that began for another key never answers for this one.
-    if (result.fingerprint !== fingerprint) result = await checkAccess();
+    const result = await sharedAccessCheck(credential);
     if (result.access.state !== "active")
       throw hostPolicy.fundingError(result.access);
   }
@@ -3039,32 +3081,31 @@ export function createFileCredentialStore(path) {
     queue = result.catch(() => {});
     return result;
   };
+  const readCurrent = async () => {
+    let file;
+    try {
+      file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const stat = await file.stat();
+      if (
+        !stat.isFile() ||
+        (stat.mode & 0o077) !== 0 ||
+        (typeof process.getuid === "function" && stat.uid !== process.getuid())
+      )
+        throw fail(
+          "Cloud credential file must be private to the current user",
+          503,
+        );
+      const value = (await file.readFile("utf8")).trim();
+      return value || null;
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    } finally {
+      await file?.close();
+    }
+  };
   return {
-    read: () =>
-      serialize(async () => {
-        let file;
-        try {
-          file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-          const stat = await file.stat();
-          if (
-            !stat.isFile() ||
-            (stat.mode & 0o077) !== 0 ||
-            (typeof process.getuid === "function" &&
-              stat.uid !== process.getuid())
-          )
-            throw fail(
-              "Cloud credential file must be private to the current user",
-              503,
-            );
-          const value = (await file.readFile("utf8")).trim();
-          return value || null;
-        } catch (error) {
-          if (error.code === "ENOENT") return null;
-          throw error;
-        } finally {
-          await file?.close();
-        }
-      }),
+    read: () => serialize(readCurrent),
     write: (value) =>
       serialize(async () => {
         if (typeof value !== "string" || !value.trim())
@@ -3086,11 +3127,16 @@ export function createFileCredentialStore(path) {
           });
         }
       }),
-    clear: () =>
+    clear: (expectedKey) =>
       serialize(async () => {
+        // Conditional clear and writes through this store share one queue.
+        // Arbitrary external writers still need their host's ownership guard.
+        if (expectedKey !== undefined && (await readCurrent()) !== expectedKey)
+          return false;
         await unlink(path).catch((error) => {
           if (error.code !== "ENOENT") throw error;
         });
+        if (expectedKey !== undefined) return true;
       }),
   };
 }

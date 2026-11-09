@@ -3084,7 +3084,11 @@ async function paidAccessHarness(t) {
         }),
     },
     credentialStore: {
-      read: async () => control.saved,
+      read: async () => {
+        const value = control.saved;
+        await control.afterRead?.();
+        return value;
+      },
       write: async (value) => {
         control.saved = value;
       },
@@ -3217,6 +3221,104 @@ test("the paid-access cache never answers for another account", async (t) => {
   await routes.requirePaidAccess();
   assert.equal(accountCalls().length, back + 2);
   await routes.paidAccessSettled();
+
+  // A host may replace the credential while its asynchronous read settles.
+  // The admitted request must not silently retarget to the replacement.
+  const fresh = await paidAccessHarness(t);
+  fresh.plans.set("key-a", "plan_required");
+  fresh.plans.set("key-b", "active");
+  let reads = 0;
+  fresh.control.afterRead = () => {
+    if (++reads === 1) fresh.control.saved = "key-b";
+  };
+  await assert.rejects(fresh.routes.requirePaidAccess(), { status: 409 });
+  assert.ok(fresh.accountCalls().every(({ key }) => key === "key-a"));
+});
+
+test("a late identity refusal keeps a replacement private-file credential", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-paid-owner-"));
+  const store = createFileCredentialStore(join(directory, "credential"));
+  await store.write("key-a");
+  const seen = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const revocationSeen = Promise.withResolvers();
+  const releaseRevocation = Promise.withResolvers();
+  let holdRevocation = false;
+  const cloud = http.createServer(async (req, res) => {
+    const key = req.headers.authorization?.slice("Bearer ".length);
+    if (req.url === "/api/v1/user" && key === "key-a") {
+      seen.resolve();
+      await release.promise;
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end("{}");
+    } else {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify(
+          req.url === "/api/v1/user" ? { id: key } : { plan: "active" },
+        ),
+      );
+    }
+  });
+  t.after(async () => {
+    release.resolve();
+    releaseRevocation.resolve();
+    cloud.closeAllConnections();
+    await new Promise((resolve) => cloud.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  });
+  cloud.listen(0, "127.0.0.1");
+  await once(cloud, "listening");
+  const routes = createCloudRoutes({
+    credentialStore: store,
+    credentialRevocation: {
+      onRevoked: async () => {
+        if (holdRevocation) {
+          revocationSeen.resolve();
+          await releaseRevocation.promise;
+        }
+      },
+      status: () => ({ revoked: false }),
+    },
+    hostPolicy: policy,
+    // Real loopback HTTP stands in for the trusted Cloud origin; production
+    // HTTPS origin and response validation remain unchanged.
+    fetchImpl: (url, init) =>
+      fetch(
+        `http://127.0.0.1:${cloud.address().port}${new URL(url).pathname}`,
+        init,
+      ),
+    speechVoice: { voiceId: "voice", modelId: "model" },
+  });
+  const pending = routes.accountAccess().then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  await seen.promise;
+  await store.write("key-b");
+  release.resolve();
+  const outcome = await pending;
+  assert.equal(outcome.error?.status, 409);
+  assert.equal(await store.read(), "key-b");
+  await routes.requirePaidAccess();
+  await routes.paidAccessSettled();
+
+  // The host's asynchronous revocation receipt must not clear a key saved
+  // while that receipt was being recorded.
+  holdRevocation = true;
+  await store.write("key-a");
+  const duringRevocation = routes.accountAccess().then(
+    (value) => ({ value }),
+    (error) => ({ error }),
+  );
+  await revocationSeen.promise;
+  await store.write("key-b");
+  releaseRevocation.resolve();
+  const lateOutcome = await duringRevocation;
+  assert.equal(lateOutcome.error?.status, 409);
+  assert.equal(await store.read(), "key-b");
+  assert.equal(await store.clear("key-a"), false);
+  assert.equal(await store.read(), "key-b");
 });
 
 test("one live check serves concurrent cold requests, and background checks coalesce", async (t) => {
