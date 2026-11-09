@@ -27,7 +27,6 @@ import { parseCartesiaUsdPerCredit } from "../v1/voice/stt/cartesia-pricing";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
 import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
-import { speechRelayInkFactory } from "./speech-relay-ink";
 import {
   beginSpeechRetirement,
   claimSpeechOpening,
@@ -929,10 +928,7 @@ export class SpeechRelayCoordinator {
               openStt: (onEvent) =>
                 createCartesiaInkRealtimeSession({
                   cartesiaApiKey: key,
-                  webSocketFactory: speechRelayInkFactory(
-                    createWorkerCartesiaInkFactory(),
-                    this.env.VOICE_SPEECH_END_TIMEOUT_MS,
-                  ),
+                  webSocketFactory: createWorkerCartesiaInkFactory(),
                   onEvent,
                 }),
               openTts: (id, callbacks) =>

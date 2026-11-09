@@ -59,7 +59,6 @@ describe("staging speech host source contract", () => {
       "CARTESIA_API_KEY",
       "CARTESIA_STT_USD_PER_CREDIT",
       "VOICE_SPEECH_RELAY_ENABLED",
-      "VOICE_SPEECH_END_TIMEOUT_MS",
       "VOICE_REALTIME_CARTESIA_VOICE_ID",
       "VOICE_REALTIME_ORG_DAILY_MINUTES",
       "VOICE_REALTIME_USER_DAILY_MINUTES",
@@ -180,9 +179,9 @@ describe("staging speech host source contract", () => {
     [
       "a coordinator variable missing on the host",
       (input) => {
-        delete input.target.vars!.VOICE_SPEECH_END_TIMEOUT_MS;
+        delete input.target.vars!.VOICE_REALTIME_CARTESIA_VOICE_ID;
       },
-      "Coordinator variable must match staging: VOICE_SPEECH_END_TIMEOUT_MS",
+      "Coordinator variable must match staging: VOICE_REALTIME_CARTESIA_VOICE_ID",
     ],
     [
       "an API-only voice usage limit",
