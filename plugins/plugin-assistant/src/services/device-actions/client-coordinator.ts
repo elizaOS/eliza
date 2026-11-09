@@ -413,6 +413,8 @@ export interface DeviceActionClientProfile<
   namedCalendarReadTarget(context: C): unknown;
   /** True when the host foreground is hidden (for example `document.hidden`). */
   foregroundHidden(): boolean;
+  /** Owner-facing name of the SIM for an SMS review; undefined omits the line. */
+  simLabel?(subscriptionId: number): string | undefined;
 }
 
 // ── Pure validation ─────────────────────────────────────────────────────────
@@ -1058,6 +1060,8 @@ export class DeviceActionCoordinator<
     }
   >();
   private busy = false;
+  /** The proposal this instance is executing now; sync never settles it. */
+  private executing: string | undefined;
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
   private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
   private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
@@ -1390,14 +1394,16 @@ export class DeviceActionCoordinator<
       return {
         ...base,
         title: "Open dial screen",
-        description: `${op.target.kind === "number" ? `Number: ${op.target.number}` : `Contact: ${op.target.query}`}\n\n${this.profile.appName} opens your phone app with this number. You place the call there; ${this.profile.appName} does not know whether it connects.`,
+        description: `${op.target.kind === "number" ? `Number: ${op.target.number}` : `Contact: ${op.target.query}`}\n\nOpens your phone app with this number. You place the call there.`,
       };
-    if (isSmsSend(op))
+    if (isSmsSend(op)) {
+      const sim = this.profile.simLabel?.(op.subscriptionId);
       return {
         ...base,
         title: "Review SMS",
-        description: `To: ${op.recipients.join(", ")}\nSIM subscription: ${op.subscriptionId}\n\n${op.body}\n\nConfirm again in Android. Submission does not prove delivery.`,
+        description: `To: ${op.recipients.join(", ")}${sim ? `\nFrom: ${sim}` : ""}\n\n${op.body}\n\nConfirm again in Android.`,
       };
+    }
     if (isCameraCapture(op))
       return {
         ...base,
@@ -1437,7 +1443,7 @@ export class DeviceActionCoordinator<
           (isClockHandoffOperation(op)
             ? describeClockHandoff(op, this.profile.appName)
             : isMapsOperation(op)
-              ? "Send the exact selected place location or route endpoints, mode and distance to the connected agent. This shares location information. It does not start navigation."
+              ? "Share this place or route, with its mode and distance, with the agent."
               : op.type === "open_view"
                 ? `Open ${op.view} on this phone`
                 : op.type === "browser_navigate"
@@ -1481,9 +1487,14 @@ export class DeviceActionCoordinator<
       if (!pendingIds.has(id)) this.browserPolicy.delete(id);
     const items: PendingReviewItem[] = [];
     for (const proposal of valid) {
+      // An approval whose claim never arrived is shown again: deciding is
+      // idempotent for it, so a second tap reaches the claim.
       if (
         proposal.workflow ||
-        proposal.state !== "pending" ||
+        !(
+          proposal.state === "pending" ||
+          (proposal.state === "approved" && !proposal.attemptId)
+        ) ||
         proposal.expiresAt <= Date.now()
       )
         continue;
@@ -1531,11 +1542,13 @@ export class DeviceActionCoordinator<
     const failures = invalid
       .filter((item) => item.pending)
       .map((item) => item.error);
-    for (const error of failures)
-      items.push({
+    // The reason stays in `failures` for diagnostics; the owner sees a plain notice.
+    items.push(
+      ...failures.map(() => ({
         proposal: null,
-        notice: `An agent action could not be shown on this phone. ${error.message.slice(0, 300)}`,
-      });
+        notice: "This action isn't available on this phone.",
+      })),
+    );
     return { items, failures };
   }
   /** Reviewable proposals plus owner-visible notices for pending ones that do not fit this screen. */
@@ -1918,11 +1931,29 @@ export class DeviceActionCoordinator<
     const p = reviewed.proposal,
       // Minted before `busy` is taken: a context without randomUUID refuses
       // this approval instead of leaving the coordinator busy for good.
-      operationId = isSmsSend(p.operation) ? p.id : crypto.randomUUID();
+      minted = isSmsSend(p.operation) ? p.id : crypto.randomUUID();
     this.busy = true;
+    this.executing = proposalId;
     this.proposals.delete(proposalId);
     let execution: ReturnType<typeof createDeviceActionExecution> | undefined;
     try {
+      const operationHash = await actionScope(JSON.stringify(p.operation));
+      // A reservation left by an approval that never reached its claim is
+      // adopted: nothing was dispatched under it, so this is the same attempt.
+      const { entry: earlier } = await this.journal.get({
+        scope: this.scope,
+        proposalId,
+      });
+      const adopted =
+        earlier?.phase === "reserved" &&
+        !earlier.attemptId &&
+        earlier.operationHash === operationHash &&
+        this.ownEntry(earlier, p) &&
+        this.ownDevice(earlier) &&
+        (!isSmsSend(p.operation) || earlier.operationId === p.id)
+          ? earlier
+          : undefined;
+      const operationId = adopted?.operationId ?? minted;
       const assertCurrent = () => {
         assertProposalContext(p.operation, context, this.profile);
         if (reviewed.currentRequest) {
@@ -1949,7 +1980,7 @@ export class DeviceActionCoordinator<
         scope: this.scope,
         proposalId,
         operationId,
-        operationHash: await actionScope(JSON.stringify(p.operation)),
+        operationHash,
         record: {
           digest: p.digest,
           operation: p.operation,
@@ -1964,7 +1995,16 @@ export class DeviceActionCoordinator<
           ...(p.workflow ? { workflow: p.workflow } : {}),
         },
       });
-      if (!reserved.created)
+      if (
+        !reserved.created &&
+        !(
+          adopted &&
+          reserved.entry.phase === "reserved" &&
+          !reserved.entry.attemptId &&
+          reserved.entry.operationId === adopted.operationId &&
+          reserved.entry.operationHash === operationHash
+        )
+      )
         return {
           proposalId,
           status: "unknown",
@@ -2034,13 +2074,16 @@ export class DeviceActionCoordinator<
             p.calendarAgendaSource,
           );
       } catch {
-        result = {
-          status: "unknown",
-          summary:
-            "Action outcome needs review. It will not be repeated automatically.",
-        };
+        // `markDispatched` runs before any port call, so an attempt that never
+        // reached it had no effect; one that did stays uncertain.
+        result = execution.dispatched
+          ? { status: "unknown", summary: UNKNOWN_SUMMARY }
+          : { status: "failed", summary: NOT_DISPATCHED_SUMMARY };
       }
-      const typed = await this.typedResults(p, result, operationId, context);
+      const notDispatched = !execution.dispatched;
+      const typed: TypedResults = notDispatched
+        ? {}
+        : await this.typedResults(p, result, operationId, context);
       await this.journal.finish({
         scope: this.scope,
         proposalId,
@@ -2105,11 +2148,13 @@ export class DeviceActionCoordinator<
           "receipt",
           {
             attemptId: claimed.attemptId,
-            receipt: {
-              outcome: receiptOutcome(result.status),
-              operationId,
-              ...receiptResult(typed),
-            },
+            receipt: notDispatched
+              ? { outcome: "failed", operationId, code: NOT_DISPATCHED_CODE }
+              : {
+                  outcome: receiptOutcome(result.status),
+                  operationId,
+                  ...receiptResult(typed),
+                },
           },
           signal,
         );
@@ -2118,7 +2163,7 @@ export class DeviceActionCoordinator<
         return {
           proposalId,
           status: result.status,
-          summary: `${result.summary} Server receipt is pending; check action history.`,
+          summary: `${result.summary} Not synced yet; open action history to retry.`,
           committedChanges,
         };
       }
@@ -2166,6 +2211,7 @@ export class DeviceActionCoordinator<
       };
     } finally {
       execution?.retire();
+      this.executing = undefined;
       this.busy = false;
     }
   }
@@ -2222,7 +2268,11 @@ export class DeviceActionCoordinator<
   }
   async reject(proposalId: string, signal: AbortSignal): Promise<void> {
     const p = (await this.list(signal)).find((item) => item.id === proposalId);
-    if (!p || p.state !== "pending")
+    // A re-shown approval whose claim never arrived can still be closed.
+    if (
+      !p ||
+      !(p.state === "pending" || (p.state === "approved" && !p.attemptId))
+    )
       throw new Error("This proposal can no longer be rejected");
     await this.mutation(p, "decision", { decision: "reject" }, signal);
     this.proposals.delete(proposalId);
@@ -2327,15 +2377,68 @@ export class DeviceActionCoordinator<
     signal.throwIfAborted();
     return results;
   }
+  /**
+   * Each entry names the owner resolutions it can take now. An SMS, dial or
+   * Clock handoff offers only what its saved evidence allows; other actions
+   * may still need exact saved receipts in `reconcile`.
+   */
   async history(signal: AbortSignal) {
     const proposals = await this.list(signal),
       local = await this.journal.list({ scope: this.scope });
-    return proposals.map((p) => ({
-      id: p.id,
-      state: p.state,
-      operation: p.operation,
-      local: local.entries.find((entry) => entry.proposalId === p.id),
-    }));
+    const rows = [];
+    for (const p of proposals) {
+      const entry = local.entries.find((item) => item.proposalId === p.id);
+      rows.push({
+        id: p.id,
+        state: p.state,
+        operation: p.operation,
+        local: entry,
+        resolutions: await this.resolutions(p, entry ?? null, signal),
+      });
+    }
+    return rows;
+  }
+  private async resolutions(
+    p: DeviceProposal,
+    entry: DeviceJournalEntry | null,
+    signal: AbortSignal,
+  ): Promise<Array<"applied" | "not_applied" | "unresolved">> {
+    if (p.state !== "reconciliation_required" || !p.attemptId) return [];
+    if (!handoffOperation(p.operation)) return ["applied", "not_applied"];
+    const settled = await this.handoffEvidence(p, entry, signal);
+    return settled === undefined
+      ? ["unresolved"]
+      : [settled === "succeeded" ? "applied" : "not_applied"];
+  }
+  /** Settled SMS, dial or Clock evidence, or undefined when it is missing or unknown. */
+  private async handoffEvidence(
+    p: DeviceProposal,
+    entry: DeviceJournalEntry | null,
+    signal: AbortSignal,
+  ): Promise<"succeeded" | "failed" | undefined> {
+    if (!entry) return undefined;
+    const op = p.operation;
+    try {
+      if (isSmsSend(op)) {
+        const result = await this.smsReconciliationResult(p, entry, signal);
+        const status = result && smsDeviceStatus(result);
+        return status === "unknown" ? undefined : status;
+      }
+      if (isPhoneDial(op)) {
+        const result = await this.savedDialResult(p, entry);
+        return result && dialDeviceStatus(result);
+      }
+      const result = await this.savedClockResult(p, entry);
+      return !result || result.status === "unknown"
+        ? undefined
+        : result.status === "opened"
+          ? "succeeded"
+          : "failed";
+    } catch (error) {
+      // error-policy:J1 A refused or foreign saved entry is no evidence.
+      if (signal.aborted) throw error;
+      return undefined;
+    }
   }
   private async recoverNotification(
     p: DeviceProposal,
@@ -2519,8 +2622,32 @@ export class DeviceActionCoordinator<
   ): Promise<void> {
     let entry = journaled;
     const p = proposals.find((item) => item.id === entry.proposalId);
-    if (!p || otherWorkflow(p)) return;
-    entry = await this.recoverEntry(p, entry, signal);
+    if (!p || otherWorkflow(p) || this.executing === p.id) return;
+    entry = await this.settleAbandoned(p, entry, signal);
+    if (!notDispatchedEntry(entry))
+      entry = await this.recoverEntry(p, entry, signal);
+    if (
+      notDispatchedEntry(entry) &&
+      entry.attemptId &&
+      entry.record.digest === p.digest &&
+      p.attemptId === entry.attemptId &&
+      (p.state === "executing" || p.state === "reconciliation_required")
+    ) {
+      await this.mutation(
+        p,
+        "receipt",
+        {
+          attemptId: entry.attemptId,
+          receipt: {
+            outcome: "failed",
+            operationId: entry.operationId,
+            code: NOT_DISPATCHED_CODE,
+          },
+        },
+        signal,
+      );
+      return;
+    }
     if (
       entry.phase !== "terminal" ||
       !entry.attemptId ||
@@ -2572,6 +2699,63 @@ export class DeviceActionCoordinator<
         },
         signal,
       );
+  }
+  /**
+   * Closes a journal entry no live attempt in this instance owns, while the
+   * server still awaits that claim. A reservation never reached dispatch, so it
+   * failed with nothing sent. An entry left applying keeps any recovered native
+   * evidence and is otherwise unknown; it is never dispatched again.
+   */
+  private async settleAbandoned(
+    p: DeviceProposal,
+    entry: DeviceJournalEntry,
+    signal: AbortSignal,
+  ): Promise<DeviceJournalEntry> {
+    if (
+      entry.phase === "terminal" ||
+      p.state !== "executing" ||
+      !p.attemptId ||
+      !this.ownEntry(entry, p) ||
+      !this.ownDevice(entry)
+    )
+      return entry;
+    const identity = { scope: this.scope, proposalId: p.id };
+    if (entry.phase === "reserved") {
+      if (entry.attemptId) return entry;
+      // Dispatch happens only after markApplying, so nothing ran under this claim.
+      await this.journal.markApplying({ ...identity, attemptId: p.attemptId });
+      await this.journal.finish({
+        ...identity,
+        status: "failed",
+        summary: NOT_DISPATCHED_SUMMARY,
+        result: { operationId: entry.operationId },
+      });
+    } else {
+      if (entry.attemptId !== p.attemptId) return entry;
+      const recovered = await this.recoverEntry(p, entry, signal);
+      if (recovered.phase === "terminal") return recovered;
+      const smsResult = await this.smsReconciliationResult(p, entry, signal);
+      const status = smsResult ? smsDeviceStatus(smsResult) : "unknown";
+      signal.throwIfAborted();
+      await this.journal.finish({
+        ...identity,
+        status,
+        summary:
+          status === "succeeded"
+            ? "SMS submitted."
+            : status === "failed"
+              ? "SMS not sent."
+              : UNKNOWN_SUMMARY,
+        result: {
+          operationId: entry.operationId,
+          ...(smsResult ? { smsResult } : {}),
+        },
+      });
+    }
+    const { entry: next } = await this.journal.get(identity);
+    if (!next || next.operationId !== entry.operationId)
+      throw Error("Device journal entry changed while it was closed");
+    return next;
   }
   private async savedResults(p: DeviceProposal, entry: DeviceJournalEntry) {
     return {
@@ -2888,16 +3072,38 @@ export class DeviceActionCoordinator<
       throw new Error(refusal);
     return this.profile.workflow.validateResult(op, entry.result?.readResult);
   }
-  /** Owner-confirmed reconciliation of a dispatched action from exact saved evidence. */
+  /**
+   * Owner-confirmed reconciliation of a dispatched action from exact saved
+   * evidence. `unresolved` closes an SMS, dial or Clock handoff whose evidence
+   * is missing or unknown without claiming it was or was not applied.
+   */
   async reconcile(
     proposalId: string,
-    outcome: "applied" | "not_applied",
+    outcome: "applied" | "not_applied" | "unresolved",
     signal: AbortSignal,
   ): Promise<void> {
     const p = (await this.list(signal)).find((item) => item.id === proposalId);
     if (!p?.attemptId) throw new Error("No dispatched action to reconcile");
     const op = p.operation;
     let { entry } = await this.journal.get({ scope: this.scope, proposalId });
+    if (outcome === "unresolved") {
+      if (!handoffOperation(op))
+        throw Error("Only an SMS, dial or Clock outcome can stay unresolved");
+      if ((await this.handoffEvidence(p, entry, signal)) !== undefined)
+        throw Error(
+          "Saved evidence settles this outcome; reconcile it as applied or not applied",
+        );
+      await this.mutation(
+        p,
+        "reconciliation",
+        {
+          attemptId: p.attemptId,
+          resolution: { confirmed: true, outcome: "unresolved" },
+        },
+        signal,
+      );
+      return;
+    }
     const applied = outcome === "applied";
     if (entry && applied) entry = await this.recoverEntry(p, entry, signal);
     if (
@@ -3040,6 +3246,27 @@ type TypedResults = {
   reminderResult?: ReminderResult | ReminderCreateResult;
   foregroundResult?: ForegroundReviewResult;
 };
+/** Handoffs whose effect happens outside this app; their outcome may stay unresolved. */
+function handoffOperation(operation: ReviewableDeviceOperation): boolean {
+  return (
+    isSmsSend(operation) ||
+    isPhoneDial(operation) ||
+    isClockHandoffOperation(operation)
+  );
+}
+const UNKNOWN_SUMMARY =
+  "Action outcome needs review. It will not be repeated automatically.";
+const NOT_DISPATCHED_SUMMARY = "Not started. Nothing was sent.";
+const NOT_DISPATCHED_CODE = "DEVICE_NOT_DISPATCHED";
+/** A journal entry this device finished before dispatch: failed, with no typed result. */
+function notDispatchedEntry(entry: DeviceJournalEntry): boolean {
+  return (
+    entry.phase === "terminal" &&
+    entry.status === "failed" &&
+    entry.summary === NOT_DISPATCHED_SUMMARY &&
+    Object.keys(entry.result ?? {}).every((key) => key === "operationId")
+  );
+}
 function receiptOutcome(
   status: NonNullable<DeviceJournalEntry["status"]>,
 ): "applied" | "failed" | "unknown" {
