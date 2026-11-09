@@ -1,11 +1,13 @@
 /**
- * Resolves trusted X DM senders to tenant-safe personal accounts and links a
- * verified owner OAuth identity without merging accounts implicitly.
+ * Resolves X DM senders reported by the allowlisted platform DM router to
+ * tenant-safe personal accounts and links a verified owner OAuth identity
+ * without merging accounts implicitly.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../../db/helpers";
-import { identityLinks } from "../../../db/schemas/identity-links";
+import { creditTransactions } from "../../../db/schemas/credit-transactions";
+import { type IdentityLinkRow, identityLinks } from "../../../db/schemas/identity-links";
 import { type Organization, organizations } from "../../../db/schemas/organizations";
 import { type User, users } from "../../../db/schemas/users";
 import { SIGNUP_CREDIT_POLICY } from "../../signup-credits";
@@ -20,10 +22,30 @@ function userEntityId(userId: string): string {
   return `user:${userId}`;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Organizations allowed to report X DM senders: the platform DM router only.
+ * Read from X_PERSONAL_DM_ROUTER_ORG_IDS (comma-separated UUIDs); unset or
+ * empty allows nobody.
+ */
+export function xPersonalDmRouterOrgIds(env: {
+  readonly [key: string]: unknown;
+}): ReadonlySet<string> {
+  const raw = env.X_PERSONAL_DM_ROUTER_ORG_IDS;
+  if (typeof raw !== "string") return new Set();
+  return new Set(
+    raw
+      .split(",")
+      .map((id) => id.trim().toLowerCase())
+      .filter((id) => UUID_PATTERN.test(id)),
+  );
+}
+
 function assertTwitterUserId(value: string): string {
   const normalized = value.trim();
   if (!/^\d{1,20}$/.test(normalized)) {
-    throw new ElizaError("Trusted X transport supplied an invalid sender id", {
+    throw new ElizaError("X DM router supplied an invalid sender id", {
       code: "X_PERSONAL_IDENTITY_INVALID",
       severity: "fatal",
     });
@@ -71,7 +93,10 @@ async function loadAvailableAccount(
   return { user, organization };
 }
 
-/** Resolves a trusted central-bot sender, creating one funded personal account. */
+/**
+ * Resolves an X DM sender, creating one unfunded personal account. The sender
+ * id is trusted only because the caller is an allowlisted platform DM router.
+ */
 export async function findOrCreateXPersonalAccount(params: {
   twitterUserId: string;
   username?: string;
@@ -140,8 +165,51 @@ export async function findOrCreateXPersonalAccount(params: {
 }
 
 /**
+ * True when the X identity is held only by a DM-created account its owner
+ * never used: transport links only, no credits or ledger rows, no other
+ * linked identity and no sign-in other than the X transport id. Such an
+ * account may have been created from a forged sender id, so a verified
+ * owner OAuth link supersedes it.
+ */
+async function isUnclaimedTransportAccount(
+  tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0],
+  foreignLinks: IdentityLinkRow[],
+  xEntity: string,
+): Promise<boolean> {
+  if (foreignLinks.some((link) => link.source !== "transport")) return false;
+  const userIds = [
+    ...new Set(foreignLinks.flatMap((link) => (link.user_id ? [link.user_id] : []))),
+  ];
+  if (userIds.length > 1) return false;
+  const userId = userIds[0];
+  if (!userId) return true;
+  const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return true;
+  if (user.steward_user_id !== xEntity || !user.organization_id) return false;
+  const [organization] = await tx
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, user.organization_id))
+    .limit(1);
+  if (organization && Number(organization.credit_balance) !== 0) return false;
+  const [ledgerRow] = await tx
+    .select({ id: creditTransactions.id })
+    .from(creditTransactions)
+    .where(eq(creditTransactions.organization_id, user.organization_id))
+    .limit(1);
+  if (ledgerRow) return false;
+  const [otherLink] = await tx
+    .select({ id: identityLinks.id })
+    .from(identityLinks)
+    .where(and(eq(identityLinks.user_id, userId), ne(identityLinks.source, "transport")))
+    .limit(1);
+  return !otherLink;
+}
+
+/**
  * Binds an OAuth-verified owner identity. An X identity already owned by a
- * different account fails closed; account convergence must be explicit.
+ * different account fails closed unless that account is an unclaimed
+ * DM-created one; account convergence must otherwise be explicit.
  */
 export async function linkVerifiedXOwnerIdentity(params: {
   organizationId: string;
@@ -164,12 +232,21 @@ export async function linkVerifiedXOwnerIdentity(params: {
           or(eq(identityLinks.left_entity_id, xEntity), eq(identityLinks.right_entity_id, xEntity)),
         ),
       );
-    if (links.some((link) => link.user_id !== params.userId)) {
-      throw new ElizaError("X identity is already linked to another account", {
-        code: "X_PERSONAL_IDENTITY_CONFLICT",
-        context: { twitterUserId },
-        severity: "fatal",
-      });
+    const foreignLinks = links.filter((link) => link.user_id !== params.userId);
+    if (foreignLinks.length > 0) {
+      if (!(await isUnclaimedTransportAccount(tx, foreignLinks, xEntity))) {
+        throw new ElizaError("X identity is already linked to another account", {
+          code: "X_PERSONAL_IDENTITY_CONFLICT",
+          context: { twitterUserId },
+          severity: "fatal",
+        });
+      }
+      await tx.delete(identityLinks).where(
+        inArray(
+          identityLinks.id,
+          foreignLinks.map((link) => link.id),
+        ),
+      );
     }
     await tx
       .insert(identityLinks)
