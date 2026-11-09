@@ -338,9 +338,13 @@ export class AnonymousChatGate {
     const ready = await this.requireReady();
     if ("response" in ready) return ready.response;
     const ledger = cloneLedger(ready.ledger);
+    const now = Date.now();
 
     const existing = ledger.activeLeases[request.requestId];
     if (existing) {
+      if (existing.phase === "leased" && existing.expiresAtMs <= now) {
+        return jsonError("Anonymous chat lease has expired", 409);
+      }
       return Response.json({
         admitted: true,
         duplicate: true,
@@ -359,7 +363,6 @@ export class AnonymousChatGate {
       return jsonError("Anonymous chat user is suspended", 410);
     }
 
-    const now = Date.now();
     rotateHourlyWindow(ledger, now);
     if (ledger.messageCount >= ledger.messagesLimit) {
       return Response.json(
@@ -433,11 +436,18 @@ export class AnonymousChatGate {
     if (!active) {
       return jsonError("Anonymous chat lease was not found", 409);
     }
-    const duplicate = active.phase === "dispatched";
+    if (active.phase === "dispatched") {
+      // The caller can recover its receipt without resetting the original alarm.
+      return Response.json({ dispatched: true, duplicate: true });
+    }
+    const now = Date.now();
+    if (active.expiresAtMs <= now) {
+      return jsonError("Anonymous chat lease has expired", 409);
+    }
     active.phase = "dispatched";
-    active.expiresAtMs = Date.now() + DISPATCH_SETTLEMENT_TIMEOUT_MS;
+    active.expiresAtMs = now + DISPATCH_SETTLEMENT_TIMEOUT_MS;
     await this.save(ledger);
-    return Response.json({ dispatched: true, duplicate });
+    return Response.json({ dispatched: true, duplicate: false });
   }
 
   private async refund(request: LeaseRequest): Promise<Response> {

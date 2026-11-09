@@ -1021,21 +1021,24 @@
   },
   {
     "id": "cloud-flow-anonymous-chat-sessions",
-    "model": null,
+    "model": "packages/cloud/quint/anonymous_chat_gate.qnt",
     "sources": [
       "packages/cloud/api/src/anonymous-chat-gate.ts",
+      "packages/cloud/shared/src/lib/services/anonymous-chat-admission.ts",
       "packages/cloud/shared/src/db/repositories/anonymous-sessions.ts",
+      "packages/cloud/api/v1/chat/route.ts",
+      "packages/cloud/api/__tests__/anonymous-chat-gate.miniflare.test.ts",
+      "packages/cloud/api/test/fixtures/anonymous-chat-gate-worker.ts",
       "packages/cloud/api/auth/migrate-anonymous/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "QuotaConserved"
+    ],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite anonymous-session model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Anonymous request admission retains its original owner | Expired leases are reconciled once | Migration does not lose complete conversation content",
-      "Abstract states: created, leased, dispatched, committed, refunded, expired"
+      "The anonymous quota gate covers two requests within one session, live dispatch authority, terminal settlement, durable alarm recovery and a strictly monotonic SQL mirror.",
+      "Named conformance exercises real Workerd storage and the PGlite counter repository. Provider behavior and production database isolation need separate evidence.",
+      "Anonymous account conversion, migration of retained conversation content, multiple sessions and terminal receipt eviction remain separate."
     ]
   },
   {
