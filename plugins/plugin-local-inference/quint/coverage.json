@@ -1,0 +1,19 @@
+[
+	{
+		"id": "native-live-capture-lifecycle",
+		"model": "plugins/plugin-local-inference/quint/LiveCaptureLifecycle.qnt",
+		"sources": [
+			"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java"
+		],
+		"invariants": [
+			"TerminalDelivered",
+			"NoUnreportedEnd",
+			"RefusedStartDiscarded"
+		],
+		"status": "modeled",
+		"limitations": [
+			"One capture and one original host epoch. Delivery may be delayed arbitrarily; there is no liveness claim.",
+			"The JVM fixture uses controlled microphone and transport boundaries. Physical Android audio focus and device acceptance remain outside this evidence."
+		]
+	}
+]

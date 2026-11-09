@@ -1,0 +1,29 @@
+{
+	"sources": [
+		"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java",
+		"packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureControllerTest.java",
+		"packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs"
+	],
+	"bounds": {
+		"domain": "One capture, one original host epoch, one native start, one interruption and one terminal delivery. Startup protection may toggle; retirement of the original host is permanent.",
+		"assumptions": "The existing admission owner serializes capture state and consumes a terminal callback once. Host.open is the current original-epoch delivery check; Host.canStart may be stricter. JVM conformance runs the production admission and capture classes with a controlled microphone source.",
+		"limitations": "Does not model PCM, transport queues, permission dialogs, multiple overlapping captures, device audio focus implementation, arbitrary thread interleavings or eventual callback scheduling. No liveness or device acceptance claim."
+	},
+	"conformance": "plugins/plugin-local-inference/quint/check-live-capture-lifecycle.mjs",
+	"cases": [
+		{
+			"name": "original-host-delivery",
+			"main": "LiveCaptureLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TerminalDelivered",
+				"NoUnreportedEnd",
+				"RefusedStartDiscarded"
+			],
+			"temporal": [],
+			"maxSteps": 24,
+			"samples": 1000
+		}
+	]
+}
