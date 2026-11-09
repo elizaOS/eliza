@@ -23,6 +23,7 @@ type LivePort = StartupPort & {
 type Pending = Activation & {
   phase: "preparing" | "paused";
   canContinue: boolean;
+  automatic: boolean;
 };
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -49,6 +50,7 @@ function preparation(value: unknown): Pending | undefined {
     activationId: value.activationId,
     bridgeId: value.bridgeId,
     phase: value.phase,
+    automatic: "automatic" in value && value.automatic === true,
     canContinue:
       value.phase === "paused" &&
       "canContinue" in value &&
@@ -196,6 +198,8 @@ export async function watchMountedAppUpdates(
   appearance: AppUpdatePresentation,
   prepare: (
     current: () => boolean,
+    automatic?: boolean,
+    editingAtFreeze?: boolean,
   ) => Promise<(stillSettled: () => boolean) => Promise<void>>,
   refused: () => void,
 ): Promise<void> {
@@ -206,6 +210,11 @@ export async function watchMountedAppUpdates(
   let localRefusal = false;
   let checking = false;
   let notified = false;
+  let editingAtFreeze = false;
+  const editing = () =>
+    !!document.querySelector(
+      'input:focus,textarea:focus,[contenteditable="true"]:focus',
+    );
   const stopNavigation = (event: Event) => {
     if (!active) return;
     event.preventDefault();
@@ -224,6 +233,8 @@ export async function watchMountedAppUpdates(
         if (value && typeof value === "object" && "pending" in value) {
           const next = value.pending === true ? preparation(value) : undefined;
           if (next && (!active || active.bridgeId === next.bridgeId)) {
+            if (!active || active.activationId !== next.activationId)
+              editingAtFreeze = editing();
             active = next;
             const binding = {
               activationId: next.activationId,
@@ -249,7 +260,9 @@ export async function watchMountedAppUpdates(
               // Do not wait on a stalled editor before observing Android cancel the activation.
               const ready = frozen
                 ? Promise.resolve()
-                    .then(() => prepare(current))
+                    .then(() =>
+                      prepare(current, next.automatic, editingAtFreeze),
+                    )
                     .catch(() => undefined)
                 : Promise.resolve(undefined);
               void ready.then(async (prepared) => {
@@ -290,7 +303,11 @@ export async function watchMountedAppUpdates(
                 value.resume === true
                   ? reconnect
                   : undefined;
-              const explain = matching && terminal === "failed" && localRefusal;
+              const explain =
+                matching &&
+                terminal === "failed" &&
+                localRefusal &&
+                !active.automatic;
               active = undefined;
               reconnect = undefined;
               localRefusal = false;
@@ -313,6 +330,7 @@ export async function watchMountedAppUpdates(
     const pending = preparation(value);
     if (!pending) return;
     if (!active) {
+      editingAtFreeze = editing();
       active = pending;
       try {
         panel.show();
@@ -325,4 +343,113 @@ export async function watchMountedAppUpdates(
   });
   // The read covers an event emitted before subscription was installed.
   void check();
+}
+
+export type AppUpdateSchedule = {
+  active: boolean;
+  disposed: boolean;
+  busy: boolean;
+  failures: number;
+  wakeAt: number;
+};
+
+/** Foreground upkeep. Native owns package admission, draft receipts and installation.
+ * A suspended/disposed owner cannot start a later effect after an awaited read.
+ * Never overlap a still-running native call, even across background/resume.
+ */
+export function createAppUpdateScheduler(options: {
+  run(current: () => boolean): Promise<void>;
+  now?: () => number;
+  schedule?: (callback: () => void, delay: number) => unknown;
+  cancel?: (timer: unknown) => void;
+  intervalMs?: number;
+  retryMs?: number;
+}) {
+  const now = options.now ?? (() => performance.now());
+  const schedule =
+    options.schedule ?? ((callback, delay) => setTimeout(callback, delay));
+  const cancel =
+    options.cancel ??
+    ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
+  const interval = options.intervalMs ?? 15 * 60 * 1000;
+  const retry = options.retryMs ?? 60 * 1000;
+  if (
+    !Number.isSafeInteger(interval) ||
+    interval <= 0 ||
+    !Number.isSafeInteger(retry) ||
+    retry <= 0 ||
+    retry > interval
+  )
+    throw Error("Invalid app update schedule");
+  let state: AppUpdateSchedule = {
+    active: false,
+    disposed: false,
+    busy: false,
+    failures: 0,
+    wakeAt: 0,
+  };
+  let timer: unknown;
+  let generation = 0;
+  const clear = () => {
+    if (timer !== undefined) cancel(timer);
+    timer = undefined;
+  };
+  const arm = () => {
+    clear();
+    if (!state.active || state.disposed || state.busy) return;
+    timer = schedule(
+      () => {
+        timer = undefined;
+        void poll();
+      },
+      Math.max(0, state.wakeAt - now()),
+    );
+  };
+  async function poll() {
+    if (!state.active || state.disposed || state.busy) return;
+    if (now() < state.wakeAt) {
+      arm();
+      return;
+    }
+    clear();
+    state = { ...state, busy: true };
+    const owner = generation;
+    const current = () =>
+      !state.disposed && state.active && owner === generation;
+    let failed = false;
+    try {
+      await options.run(current);
+    } catch {
+      failed = true;
+    }
+    const failures = failed ? Math.min(state.failures + 1, 20) : 0;
+    state = {
+      ...state,
+      busy: false,
+      failures,
+      wakeAt:
+        owner !== generation
+          ? now()
+          : now() +
+            (failed
+              ? Math.min(interval, retry * 2 ** (failures - 1))
+              : interval),
+    };
+    arm();
+  }
+  return {
+    snapshot: (): AppUpdateSchedule => ({ ...state }),
+    setActive(active: boolean) {
+      if (state.disposed) return;
+      if (state.active !== active) generation++;
+      state = { ...state, active };
+      if (active) arm();
+      else clear();
+    },
+    dispose() {
+      generation++;
+      state = { ...state, active: false, disposed: true };
+      clear();
+    },
+  };
 }
