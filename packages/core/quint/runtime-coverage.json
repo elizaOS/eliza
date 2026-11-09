@@ -27,7 +27,7 @@
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter."
+			"The conformance hook runs nine named real Semaphore tests. The earlier abort-listener race is checked with one and two permits. It does not replay every generated schedule."
 		],
 		"implementationTests": ["packages/core/test/semaphore.test.ts"]
 	},
@@ -89,7 +89,7 @@
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter."
+			"The conformance hook runs five named real queue ownership tests. Saturation, close, cancellation and write-tail schedules remain formal here. PostDeliveryTasks separately checks real write-tail ownership."
 		],
 		"implementationTests": [
 			"packages/core/test/room-handler-queue-model.test.ts"
