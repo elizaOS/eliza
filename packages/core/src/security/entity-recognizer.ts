@@ -158,7 +158,7 @@ export class GazetteerEntityRecognizer implements PiiEntityRecognizer {
 			.map((e) => ({
 				kind: e.kind,
 				value: e.value,
-				lower: e.value.toLowerCase(),
+				lower: foldCase(e.value),
 			}))
 			.filter((e) => e.value.length > 0)
 			// Longest first so "San Francisco" is preferred over "San".
@@ -168,7 +168,7 @@ export class GazetteerEntityRecognizer implements PiiEntityRecognizer {
 	recognize(text: string): Promise<EntitySpan[]> {
 		const spans: EntitySpan[] = [];
 		if (!text) return Promise.resolve(spans);
-		const haystack = this.caseSensitive ? text : text.toLowerCase();
+		const haystack = this.caseSensitive ? text : foldCase(text);
 		for (const term of this.terms) {
 			const needle = this.caseSensitive ? term.value : term.lower;
 			let from = 0;
@@ -190,6 +190,15 @@ export class GazetteerEntityRecognizer implements PiiEntityRecognizer {
 		}
 		return Promise.resolve(spans);
 	}
+}
+
+/**
+ * Lowercase without changing UTF-16 length, so an index in the folded copy is
+ * the same index in the source. `"İ"` (U+0130) is the only code point whose
+ * `toLowerCase()` grows (to `"i"` + U+0307); fold it to `"i"` first.
+ */
+function foldCase(text: string): string {
+	return text.replace(/\u0130/g, "i").toLowerCase();
 }
 
 function isWordChar(text: string, index: number): boolean {
