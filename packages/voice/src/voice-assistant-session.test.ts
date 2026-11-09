@@ -1824,7 +1824,12 @@ describe("VoiceAssistantSession streamed replies", () => {
     expect(h.phase()).toBe("error");
     // The streamed sentence already started, so what was heard is reported.
     expect(h.log.heard).toHaveLength(1);
-    expect(h.log.heard[0]).toMatchObject({ turnId: input.turnId, replyId: "" });
+    expect(h.log.heard[0]).toMatchObject({
+      turnId: input.turnId,
+      replyId: "",
+      replyFailed: true,
+    });
+    expect(h.log.heard[0]?.playbackFailed).toBeUndefined();
   });
 
   it("Stop speaking during a streamed sentence cancels the reply and reports exactly what was heard", async () => {

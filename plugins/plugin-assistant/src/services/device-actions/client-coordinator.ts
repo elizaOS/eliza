@@ -1105,6 +1105,10 @@ export class DeviceActionCoordinator<
   readonly session: DeviceClientSession;
   readonly credential: DeviceCredential;
   readonly scope: string;
+  private readonly filesReviews = new Map<
+    string,
+    { digest: string; identities: FilesIdentity[] }
+  >();
   private proposals = new Map<
     string,
     {
@@ -1564,6 +1568,8 @@ export class DeviceActionCoordinator<
     }
     this.proposals.clear();
     const pendingIds = new Set(valid.map((proposal) => proposal.id));
+    for (const id of this.filesReviews.keys())
+      if (!pendingIds.has(id)) this.filesReviews.delete(id);
     for (const id of this.browserPolicy.keys())
       if (!pendingIds.has(id)) this.browserPolicy.delete(id);
     const items: PendingReviewItem[] = [];
@@ -1613,9 +1619,32 @@ export class DeviceActionCoordinator<
         const op = proposal.operation;
         let operation: FilesAgentOperation | undefined;
         try {
-          const identity = await this.ports.filesIdentity?.(op.paths, signal);
-          if (identity)
-            operation = validateFilesOperation({ ...op, reviewed: identity });
+          const before = this.filesReviews.get(proposal.id);
+          const identities =
+            before?.identities ??
+            (await this.ports.filesIdentity?.(op.paths, signal));
+          signal.throwIfAborted();
+          // Once a card has been shown, a refresh must not bind its approval to replacement files.
+          const recorded = this.filesReviews.get(proposal.id);
+          if (
+            identities &&
+            (!recorded || recorded.digest === proposal.digest)
+          ) {
+            operation = validateFilesOperation({
+              ...op,
+              reviewed: recorded?.identities ?? identities,
+            });
+            if (
+              !recorded &&
+              isFilesOperation(operation) &&
+              filesNeedsIdentity(operation) &&
+              operation.reviewed
+            )
+              this.filesReviews.set(proposal.id, {
+                digest: proposal.digest,
+                identities: operation.reviewed,
+              });
+          }
         } catch {
           operation = undefined;
         }
@@ -2031,6 +2060,12 @@ export class DeviceActionCoordinator<
       assertClockHandoffTimeZone(reviewed.proposal.operation, context.timeZone);
     if (isNativeNotesQuery(reviewed.proposal.operation))
       assertNotesQueryContext(context);
+    if (
+      isFilesOperation(reviewed.proposal.operation) &&
+      filesNeedsIdentity(reviewed.proposal.operation) &&
+      !reviewed.proposal.operation.reviewed
+    )
+      throw Error("Review these files again before making changes");
     const p = reviewed.proposal,
       // Minted before `busy` is taken: a context without randomUUID refuses
       // this approval instead of leaving the coordinator busy for good.

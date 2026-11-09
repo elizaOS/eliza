@@ -286,9 +286,10 @@ export function createLocalAgentGateway({
         code: "INFERENCE_UNAVAILABLE",
         error: message("error15"),
       });
-    const requestEpoch = epoch;
-    // A reset during the inference check: read the owner again.
-    if (requestEpoch !== checkEpoch) ownerCheck = undefined;
+    // Admission belongs to the account generation that began this message.
+    // Reset retires its input; it cannot be adopted by a later account.
+    const requestEpoch = checkEpoch;
+    if (requestEpoch !== epoch) throw ownershipError();
     const owner = await checkOwner();
     if (requestEpoch !== epoch) throw ownershipError();
     const record = rooms.get(conversationId);

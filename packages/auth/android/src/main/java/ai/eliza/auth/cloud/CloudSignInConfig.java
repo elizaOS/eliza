@@ -19,6 +19,8 @@ public final class CloudSignInConfig {
  public final String productName;
  /** Steward app client id for native Google sign-in. */
  public final String googleClientId;
+ /** Explicit host selection. Native is the default; browser requires verified App Links and an external browser. */
+ public final String googleSignInMode;
  /** Tag of the one bounded Google diagnostic line. */
  public final String logTag;
  /** Plain preferences file that caches non-secret readiness. */
@@ -36,6 +38,7 @@ public final class CloudSignInConfig {
   deviceName = label(builder.deviceName, "device name");
   productName = label(builder.productName, "product name");
   googleClientId = required(builder.googleClientId, "[a-z0-9][a-z0-9_-]{2,63}", "Google client id");
+  googleSignInMode = required(builder.googleSignInMode, "native|browser", "Google sign-in mode");
   logTag = required(builder.logTag, "[A-Za-z][A-Za-z0-9_]{0,22}", "log tag");
   readinessPreferences = required(builder.readinessPreferences, "[A-Za-z0-9._:-]{1,200}", "readiness preferences");
   pendingSlot = required(builder.pendingSlot, "[A-Za-z0-9._:-]{1,128}", "pending slot");
@@ -72,6 +75,7 @@ public final class CloudSignInConfig {
  public static Builder builder() { return new Builder(); }
  public static final class Builder {
   private String clientId, deviceName, productName, googleClientId, logTag = "ElizaCloudSignIn";
+  private String googleSignInMode = "native";
   private String readinessPreferences = "eliza-cloud-signin-readiness", pendingSlot = "cloud-signin:v1:pending";
   private String receiptSlotPrefix = "cloud-signin:v1:ack:", credentialSlotPrefix = "cloud:";
   private final List<CloudSignInEnvironment> environments = new ArrayList<>();
@@ -80,6 +84,7 @@ public final class CloudSignInConfig {
   public Builder deviceName(String value) { deviceName = value; return this; }
   public Builder productName(String value) { productName = value; return this; }
   public Builder googleClientId(String value) { googleClientId = value; return this; }
+  public Builder googleSignInMode(String value) { googleSignInMode = value; return this; }
   public Builder logTag(String value) { logTag = value; return this; }
   public Builder readinessPreferences(String value) { readinessPreferences = value; return this; }
   public Builder pendingSlot(String value) { pendingSlot = value; return this; }
