@@ -4,7 +4,7 @@
  * bodies, quoted examples, and model-generated parameters cannot move a timer.
  */
 
-const NUMBER_TOKEN = String.raw`(?:[+-]?(?:\d+(?:\.\d+)?|\.\d+)|an?|one|[^\s,;:!?]+)`;
+const NUMBER_TOKEN = String.raw`(?:(?:a\s+)?half(?:\s+an?)?|[+-]?(?:\d+(?:\.\d+)?|\.\d+)|an?|one|[^\s,;:!?]+)`;
 const UNIT_TOKEN = `(seconds?|minutes?|hours?)`;
 const RECIPIENT_TOKEN = String.raw`(?:me|us|(?:this|the)\s+group)`;
 
@@ -361,11 +361,13 @@ function parseCandidate(candidate: DelayCandidate): number | undefined {
   let total = 0;
   for (const term of candidate.terms) {
     const normalizedNumber = term.rawNumber.toLowerCase();
-    const amount =
-      numberWordValue(normalizedNumber) ??
-      (DECIMAL_TOKEN.test(normalizedNumber)
-        ? Number(normalizedNumber)
-        : Number.NaN);
+    // A leading "half (an) hour" / "a half hour" is half of its unit.
+    const amount = /^(a\s+)?half(\s+an?)?$/.test(normalizedNumber)
+      ? 0.5
+      : (numberWordValue(normalizedNumber) ??
+        (DECIMAL_TOKEN.test(normalizedNumber)
+          ? Number(normalizedNumber)
+          : Number.NaN));
     const milliseconds = amount * UNIT_MILLISECONDS[term.unit];
     if (
       !Number.isFinite(amount) ||
