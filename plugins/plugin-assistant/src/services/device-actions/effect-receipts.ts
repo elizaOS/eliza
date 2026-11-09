@@ -224,6 +224,8 @@ export function deviceApprovalPersistenceReceipt(
 function deviceOperationIsRead(operation: DeviceOperation): boolean {
   switch (operation.type) {
     case "maps_read_selected":
+    case "photo_library_search":
+    case "photo_library_inspect":
     case "notes_read_selected":
     case "notes_query":
     case "notes_search":
@@ -254,6 +256,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "clock_handoff":
     case "clock_alarm":
     case "camera_capture_photo":
+    case "photo_library_select":
     case "create_note":
     case "create_reminder":
     case "reminder_create":

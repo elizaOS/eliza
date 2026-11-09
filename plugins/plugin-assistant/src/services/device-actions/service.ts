@@ -93,6 +93,7 @@ import {
   deviceOperationSupportedByCapabilities,
   exactKeys,
   identifier,
+  isAgentLibraryOperation,
   object,
   text,
   validateDeviceOperation,
@@ -132,6 +133,10 @@ import {
   phoneDialReceiptOutcome,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
+import {
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
 import {
   assertDeviceReadCompletionCurrent,
   bindDeviceCompletion,
@@ -1772,6 +1777,7 @@ export class DeviceActionService {
           SMS_SEND_CAPABILITY,
           PHONE_DIAL_CAPABILITY,
           CONTACT_LOOKUP_CAPABILITY,
+          PHOTO_LIBRARY_CAPABILITY,
         ],
       };
     });
@@ -2047,6 +2053,9 @@ export class DeviceActionService {
     if (
       ![
         "camera_capture_photo",
+        "photo_library_search",
+        "photo_library_inspect",
+        "photo_library_select",
         "sms_send",
         "phone_dial",
         "clock_handoff",
@@ -2782,6 +2791,21 @@ export class DeviceActionService {
             "Unconfirmed Camera capture cannot return a saved photo",
           );
         }
+      } else if (isAgentLibraryOperation(payload.operation)) {
+        if (receipt.outcome === "applied") {
+          try {
+            receipt = {
+              ...receipt,
+              result: validateLibraryResult(payload.operation, value.result),
+            };
+          } catch {
+            throw new DeviceActionError("Invalid library receipt");
+          }
+        } else if (value.result !== undefined) {
+          throw new DeviceActionError(
+            "Failed library action cannot return content",
+          );
+        }
       } else if (isPhoneDial(payload.operation)) {
         // A dial result names a handoff; no outcome may claim a placed call.
         if (receipt.outcome !== "unknown" || value.result !== undefined) {
@@ -3059,6 +3083,21 @@ export class DeviceActionService {
         } else if (value.result !== undefined) {
           throw new DeviceActionError(
             "Unconfirmed Camera capture cannot return a saved photo",
+          );
+        }
+      } else if (isAgentLibraryOperation(payload.operation)) {
+        if (receipt.outcome === "applied") {
+          try {
+            receipt = {
+              ...receipt,
+              result: validateLibraryResult(payload.operation, value.result),
+            };
+          } catch {
+            throw new DeviceActionError("Invalid library receipt");
+          }
+        } else if (value.result !== undefined) {
+          throw new DeviceActionError(
+            "Failed library action cannot return content",
           );
         }
       } else if (isPhoneDial(payload.operation)) {

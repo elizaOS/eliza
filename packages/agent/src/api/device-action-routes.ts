@@ -111,6 +111,8 @@ export function deviceRequestCredential(
     // phones advertise them only with the native telephony profile.
     "phone.dial.v1",
     "contacts.lookup.v1",
+    // Agent search, inspect and select over the permitted photo library.
+    "photos.library.v1",
   ]);
   if (
     capabilities.length > allowedCapabilities.size ||

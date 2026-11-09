@@ -28,8 +28,10 @@ import {
   validateClockResult,
 } from "./clock-contract.ts";
 import {
+  AGENT_LIBRARY_OPERATION_TYPES,
   DEVICE_VIEWS,
   deviceOperationSupportedByCapabilities,
+  isAgentLibraryOperation,
   object,
   text,
   validateDevicePayload,
@@ -53,6 +55,11 @@ import {
   phoneDialResultText,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
+import {
+  LIBRARY_LIMITS,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
 import {
   isReminderOperation,
   validateReminderResult,
@@ -581,6 +588,7 @@ const CLOCK_PROPOSAL_GUIDANCE =
   "Clock handoff requires clock.handoff.v1 or clock.handoff.v2. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Explicit days requires clock.handoff.v2: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; other weekly patterns use exact unique integers Sunday=1 through Saturday=7. Preserve requested repeat days exactly. A v1 phone supports only a one-off set without days; never silently drop recurrence or replace an unsupported alarm pattern with a reminder. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.";
 export const CLOCK_ALARM_GUIDANCE =
   "Eliza-owned alarms require clock.alarms.v1 and operation.type=clock_alarm. Use set, update, delete, enable, dismiss, snooze or show. Set/update requires exact hour,minute,label,timeZone,days; [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays. Targeted operations require an exact alarmId from the fresh authenticated full Eliza alarm snapshot. Update replaces all schedule fields. Enable requires enabled boolean. Snooze requires minutes 1..60 and affects that selected firing alarm only. Show opens Eliza Clock. These operations never launch an external Clock app. The native store revision stays bound to approval. List/query uses only the current full snapshot; stale/unavailable is not an empty alarm list. External Clock alarms are outside this store. Scheduling permission/failure states are not success. Applied typed results establish the reported store/schedule change, not a future audible ring. Every proposal retains the existing authenticated approval decision, execution claim and result protocol. Other alarm proposals require owner approval as before. For a pending owned dismiss/snooze, describe the request as recorded and pending for the phone. Its native policy may request manual review. For these controls, awaitingDeviceExecution preserves the external prerequisite while approvalRequired preserves backend approval authority; neither proves that a visible manual approval dialog exists. For these pending ringing controls, do not instruct a manual approval tap unless the phone actually requests review, and never claim execution before an applied native receipt.";
+export const PHOTO_LIBRARY_GUIDANCE = `Device photo library operations require ${PHOTO_LIBRARY_CAPABILITY} and run only while the phone shows Photos. photo_library_search lists up to ${LIBRARY_LIMITS.search} items by kind (image, video or all), optional taken-at range from/to in epoch milliseconds and favorites; it takes no search text. photo_library_inspect reads one returned id; photo_library_select marks 1-${LIBRARY_LIMITS.action} returned ids as selected in Photos and changes or shares nothing. Results carry ids, kind, dates, dimensions and duration only, never file or album names, location or pixels. Use only ids the phone returned; never invent them.`;
 
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
@@ -594,6 +602,8 @@ export const proposeDeviceAction: Action = {
     "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Browser navigation is only for a web address the user typed in this message and asks to open now; never for a deferred, hypothetical, question-about, past or reported mention. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local and calendar.create.v1; the host derives original readable event details through Calendar and code converts the timezone; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve, except that a typed address the user asks to open now may open without a review." +
     " " +
     FOREGROUND_REVIEW_GUIDANCE +
+    " " +
+    PHOTO_LIBRARY_GUIDANCE +
     " " +
     CLOCK_ALARM_GUIDANCE +
     " " +
@@ -663,6 +673,41 @@ export const proposeDeviceAction: Action = {
                   revision: { type: "string" },
                 },
               },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: {
+              type: { type: "string", enum: ["photo_library_search"] },
+              kind: { type: "string", enum: ["image", "video", "all"] },
+              from: { type: "integer", minimum: 0 },
+              to: { type: "integer", minimum: 0 },
+              favorites: { type: "boolean" },
+              limit: {
+                type: "integer",
+                minimum: 1,
+                maximum: LIBRARY_LIMITS.search,
+              },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "id"],
+            properties: {
+              type: { type: "string", enum: ["photo_library_inspect"] },
+              id: { type: "string" },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "ids"],
+            properties: {
+              type: { type: "string", enum: ["photo_library_select"] },
+              ids: { type: "array", items: { type: "string" } },
             },
           },
           ...calendarSchemas,
@@ -1048,6 +1093,7 @@ export const proposeDeviceAction: Action = {
     if (
       request.state === "done" &&
       (isCameraCapture(payload.operation) ||
+        isAgentLibraryOperation(payload.operation) ||
         isMapsOperation(payload.operation) ||
         isReminderOperation(payload.operation) ||
         isReminderCreate(payload.operation) ||
@@ -1067,25 +1113,30 @@ export const proposeDeviceAction: Action = {
               ? receipt.operationId
               : undefined,
           )
-        : isForegroundReviewOperation(payload.operation)
-          ? validateForegroundReviewResult(payload.operation, receipt.result)
-          : isNativeNotesQuery(payload.operation)
-            ? validateNotesQueryResult(payload.operation, receipt.result)
-            : isMapsOperation(payload.operation)
-              ? validateMapsResult(payload.operation, receipt.result)
-              : isReminderCreate(payload.operation)
-                ? validateReminderCreateResult(
-                    payload.operation,
-                    receipt.result,
-                    typeof receipt.operationId === "string"
-                      ? receipt.operationId
-                      : undefined,
-                  )
-                : isReminderOperation(payload.operation)
-                  ? validateReminderResult(payload.operation, receipt.result)
-                  : isNotesOperation(payload.operation)
-                    ? validateNotesResult(payload.operation, receipt.result)
-                    : validateCalendarResult(payload.operation, receipt.result);
+        : isAgentLibraryOperation(payload.operation)
+          ? validateLibraryResult(payload.operation, receipt.result)
+          : isForegroundReviewOperation(payload.operation)
+            ? validateForegroundReviewResult(payload.operation, receipt.result)
+            : isNativeNotesQuery(payload.operation)
+              ? validateNotesQueryResult(payload.operation, receipt.result)
+              : isMapsOperation(payload.operation)
+                ? validateMapsResult(payload.operation, receipt.result)
+                : isReminderCreate(payload.operation)
+                  ? validateReminderCreateResult(
+                      payload.operation,
+                      receipt.result,
+                      typeof receipt.operationId === "string"
+                        ? receipt.operationId
+                        : undefined,
+                    )
+                  : isReminderOperation(payload.operation)
+                    ? validateReminderResult(payload.operation, receipt.result)
+                    : isNotesOperation(payload.operation)
+                      ? validateNotesResult(payload.operation, receipt.result)
+                      : validateCalendarResult(
+                          payload.operation,
+                          receipt.result,
+                        );
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -1200,6 +1251,9 @@ export function deviceActionForCapabilities(
 ): Action {
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   const navigation = usesCompletedActionNavigation(messageMetadata);
+  const description = capabilities?.includes(PHOTO_LIBRARY_CAPABILITY)
+    ? action.description
+    : action.description.replace(` ${PHOTO_LIBRARY_GUIDANCE}`, "");
   return {
     ...action,
     description:
@@ -1208,8 +1262,8 @@ export function deviceActionForCapabilities(
         : "") +
       (deviceOperationSupportedByCapabilities("open_view", capabilities)
         ? capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
-          ? action.description.replace(CLOCK_PROPOSAL_GUIDANCE, "")
-          : action.description.replace(CLOCK_ALARM_GUIDANCE, "")
+          ? description.replace(CLOCK_PROPOSAL_GUIDANCE, "")
+          : description.replace(CLOCK_ALARM_GUIDANCE, "")
         : capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
           ? `This connection supports only the Eliza-owned Clock alarm operations in this schema. ${CLOCK_ALARM_GUIDANCE}`
           : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`),
@@ -1278,6 +1332,9 @@ export function deviceActionForCapabilities(
                 type !== "phone_dial" &&
                 type !== "clock_alarm" &&
                 type !== "notes_query" &&
+                !(AGENT_LIBRARY_OPERATION_TYPES as readonly string[]).includes(
+                  type,
+                ) &&
                 !isForegroundReviewType(type)
               : deviceOperationSupportedByCapabilities(
                   type === "reminder_create_after" ? "reminder_create" : type,

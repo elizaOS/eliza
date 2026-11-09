@@ -41,6 +41,11 @@ import {
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
 import {
+  type LibraryAgentOperation,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryOperation,
+} from "./photo-library-contract.ts";
+import {
   type ReminderOperation,
   validateReminderOperation,
 } from "./reminder-contract.ts";
@@ -100,10 +105,29 @@ export type DeviceOperation =
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
+  | AgentLibraryOperation
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
   | { type: "browser_navigate"; url: string };
+
+/** Library reads and selection the agent may propose; reviewed library changes stay in Photos. */
+export type AgentLibraryOperation = Exclude<
+  LibraryAgentOperation,
+  { type: "photo_library_review" }
+>;
+export const AGENT_LIBRARY_OPERATION_TYPES = [
+  "photo_library_search",
+  "photo_library_inspect",
+  "photo_library_select",
+] as const;
+export function isAgentLibraryOperation(
+  operation: DeviceOperation,
+): operation is AgentLibraryOperation {
+  return (AGENT_LIBRARY_OPERATION_TYPES as readonly string[]).includes(
+    operation.type,
+  );
+}
 
 /** Clock-only executors do not inherit the legacy phone executor's base operations. */
 export function deviceOperationSupportedByCapabilities(
@@ -114,6 +138,8 @@ export function deviceOperationSupportedByCapabilities(
     return capabilities?.includes(CAMERA_CAPTURE_CAPABILITY) === true;
   if (type === "sms_send")
     return capabilities?.includes(SMS_SEND_CAPABILITY) === true;
+  if ((AGENT_LIBRARY_OPERATION_TYPES as readonly string[]).includes(type))
+    return capabilities?.includes(PHOTO_LIBRARY_CAPABILITY) === true;
   // A contact target also needs contacts.lookup.v1 (phoneDialCapabilityAvailable).
   if (type === "phone_dial")
     return capabilities?.includes(PHONE_DIAL_CAPABILITY) === true;
@@ -268,6 +294,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
             ? "Invalid Calendar availability operation. Use canonical UTC start/end with milliseconds (YYYY-MM-DDTHH:mm:ss.sssZ), end after start and at most seven days later, and a valid IANA timeZone."
             : `Invalid ${String(p.type).replace("_", " ")} operation: ${(error as Error).message}`,
         );
+      }
+    case "photo_library_search":
+    case "photo_library_inspect":
+    case "photo_library_select":
+      try {
+        return validateLibraryOperation(p) as AgentLibraryOperation;
+      } catch (error) {
+        throw new DeviceActionError((error as Error).message);
       }
     case "sms_send":
       try {
