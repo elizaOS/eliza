@@ -1422,12 +1422,16 @@ static int insert_bundle_arg(char ***argv_inout, int *argc_inout, const char *bu
     if (option_consumes_value(arg) && insert_at < argc) insert_at++;
   }
 
+  char *bundle = xstrdup(bundle_path);
+  if (!bundle) return -1;
   char **grown = (char **)realloc(argv, (size_t)(argc + 1) * sizeof(char *));
-  if (!grown) return -1;
+  if (!grown) {
+    free(bundle);
+    return -1;
+  }
   argv = grown;
   for (int i = argc; i > insert_at; i--) argv[i] = argv[i - 1];
-  argv[insert_at] = xstrdup(bundle_path);
-  if (!argv[insert_at]) return -1;
+  argv[insert_at] = bundle;
   *argv_inout = argv;
   *argc_inout = argc + 1;
   return 0;
@@ -1436,11 +1440,15 @@ static int insert_bundle_arg(char ***argv_inout, int *argc_inout, const char *bu
 static int append_arg(char ***argv_inout, int *argc_inout, const char *value) {
   char **argv = *argv_inout;
   int argc = *argc_inout;
+  char *copy = xstrdup(value ? value : "");
+  if (!copy) return -1;
   char **grown = (char **)realloc(argv, (size_t)(argc + 1) * sizeof(char *));
-  if (!grown) return -1;
+  if (!grown) {
+    free(copy);
+    return -1;
+  }
   argv = grown;
-  argv[argc] = xstrdup(value ? value : "");
-  if (!argv[argc]) return -1;
+  argv[argc] = copy;
   *argv_inout = argv;
   *argc_inout = argc + 1;
   return 0;
@@ -1845,13 +1853,18 @@ int32_t eliza_bun_engine_start(
   } else if (ready == 0) {
     ready = -1;
   }
-  g_starting = 0;
+  if (ready == 0) g_starting = 0;
   pthread_cond_broadcast(&g_state_cond);
   pthread_mutex_unlock(&g_state_mutex);
   if (ready != 0) {
     debug_log("ios-bridge ready wait failed code=%d error=%s", ready, eliza_bun_engine_last_error());
+    // g_starting stays set until this run is released, so another start
+    // cannot begin a run that this cleanup would then tear down.
     pthread_mutex_lock(&g_lifecycle_mutex);
     release_run_resources();
+    pthread_mutex_lock(&g_state_mutex);
+    g_starting = 0;
+    pthread_mutex_unlock(&g_state_mutex);
     pthread_mutex_unlock(&g_lifecycle_mutex);
     return ready;
   }
