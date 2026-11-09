@@ -1,0 +1,30 @@
+[
+  {
+    "id": "ui-NativeRuntimeStatusCache",
+    "model": "packages/ui/quint/RuntimeStatusCache.qnt",
+    "sources": [
+      "packages/ui/src/api/runtime-json-client.ts",
+      "packages/ui/src/api/transport.ts",
+      "packages/ui/src/api/__e2e__/runtime-json-client.test.ts"
+    ],
+    "invariants": [
+      "invariant",
+      "dispatchFence",
+      "publicationFence",
+      "noUnsafeReplay",
+      "nativeOwnsAvailableRequests",
+      "finiteBounds"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Outer status-cache, request dispatch/retry and account-generation/refresh ownership model. The host must keep one native bridge identity within each account generation and call refreshNativeAccount when that owner changes.",
+      "Two requests and one refresh, or two requests and two overlapping refreshes. Integer identities never wrap. These checks do not establish unbounded population or refresh behavior.",
+      "Readiness abstracts ensure() completion. Shared startup coalescing, internal polling cadence, physical timer accuracy and late native startup effects require a separate inner-protocol model. Existing real-client checks exercise normal startup, failure and retry paths.",
+      "Only RUNTIME_NOT_READY bridge rejection authorizes the single retry. The bridge must truthfully mean the request was not dispatched. HTTP 503/body codes and ordinary errors never authorize retry.",
+      "Conformance runs all 15 named tests through the actual TypeScript client with controlled native boundary ports. It is not generated-trace refinement or installed-device proof.",
+      "Native invocation and response publication are fenced. Already-invoked native effects cannot be undone. Native method execution, JSON decoding, request-body admission, HTTP transport cancellation and external account credential storage are outside this instance.",
+      "No in-repository production construction was found. The factory is exported for host consumers, whose implementation and deployment coverage remain unknown.",
+      "The model groups terminal failures and does not refine exact exception messages or error precedence after refresh. The real-client suite checks observed rejection behavior."
+    ]
+  }
+]

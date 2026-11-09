@@ -41,15 +41,18 @@ import { readJsonBody } from "@elizaos/host";
 import {
   createSelfApiRequestHeaders,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
-
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
 } from "@elizaos/plugin-native-inference/model-catalog/catalog";
 import { PendingRequestMap } from "./pending-request-map.ts";
+import {
+  hasSelfApiTcpListener,
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "./self-api-endpoint.ts";
 
 // Provider ids as registered with the routing layer. Typed against the shared
 // ProviderId union so a rename upstream fails compilation here. The string
@@ -117,7 +120,10 @@ export interface RuntimeSwitchRouteContext {
   loopbackFetch?: typeof fetch;
 }
 function loopbackBase(): string {
-  return resolveSelfApiBaseUrl(process.env);
+  const base = resolveSelfApiTcpBaseUrl(process.env);
+  // No listener of ours: the bearer must not go to a port another app owns.
+  if (base === null) throw new Error(SELF_API_UNREACHABLE_TEXT);
+  return base;
 }
 interface LoopbackResult {
   ok: boolean;
@@ -364,6 +370,10 @@ export async function handleRuntimeSwitchRoutes(
         `"${requestedModel}" is not a sanctioned cloud model. Available: ${DEFAULT_ELIZA_CLOUD_TEXT_MODEL}.`,
         400,
       );
+      return true;
+    }
+    if (!hasSelfApiTcpListener()) {
+      error(res, `Model switch failed: ${SELF_API_UNREACHABLE_TEXT}`, 503);
       return true;
     }
     try {

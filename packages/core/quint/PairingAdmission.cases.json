@@ -1,0 +1,86 @@
+{
+  "sources": [
+    "packages/core/src/services/pairing.ts",
+    "packages/core/src/types/pairing.ts",
+    "plugins/plugin-sql/src/base.ts",
+    "plugins/plugin-sql/src/__tests__/pairing-identity.test.ts",
+    "plugins/plugin-sql/src/schema/pairingAllowlist.ts",
+    "plugins/plugin-sql/src/schema/pairingRequest.ts"
+  ],
+  "conformance": "packages/core/scripts/quint-pairing-conformance.mjs",
+  "bounds": "Three senders, one channel/runtime and one active request admission, live/expired/absent row projection, cap two. One approval with retryable grant and consume effects. Three reply senders and a two-entry insertion-ordered cache.",
+  "fairness": "QueueProgress assumes weakly fair read, write and rejection actions for the current admission. SuccessfulRetryProgress assumes weakly fair owner retries and strongly fair successful storage effects when retried infinitely often. Permanent storage failures and abandoned approvals have no completion promise.",
+  "limitations": [
+    "Request admission is serialized within one PairingService instance. Concurrent independent service instances and external inserts are outside this cap proof.",
+    "Waiting JavaScript promises are projected to nondeterministic admission after the current owner releases. FIFO scheduling of multiple waiting callers is not proved.",
+    "Expiry represents the strict request TTL and inclusive reply TTL boundaries. Real tests check exact milliseconds. Clock rollback, capacity above the finite bound and stop/restart cache loss remain environmental cases.",
+    "An approval is eligible when its initial live-code lookup succeeds. Concurrent explicit revocation, a later expiry and external request deletion do not cancel an already admitted approval. No stronger revocation fence is claimed.",
+    "A grant write can commit before a later consumption error. The retry keeps the existing grant. Grant removal by a separate owner action is outside the approval progress case.",
+    "Reply eviction can rearm a sender within the same TTL. Only retained live claims suppress a second reply.",
+    "Conformance uses named real runtime and embedded SQL traces, including triggers for commit/conflict and failure boundaries. It is not a bisimulation proof for every JavaScript schedule."
+  ],
+  "cases": [
+    {
+      "name": "serialized-admission",
+      "main": "PairingAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "PendingLimit",
+        "SingleAdmission",
+        "AdmissionUsesBoundedRead"
+      ],
+      "temporal": ["QueueProgress"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "QueueProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PairingAdmission: QueueProgress = (step.weakFair(s) and read.weakFair(s) and write(true).weakFair(s) and reject.weakFair(s)).implies( (s.phase != \"idle\").leadsTo(s.phase == \"idle\"))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "approval-recovery",
+      "main": "PairingApprovalRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "GrantPrecedesConsumption",
+        "SuccessfulApprovalHasGrant",
+        "FailedWriteRetainsCode"
+      ],
+      "temporal": ["SuccessfulRetryProgress"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SuccessfulRetryProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PairingApprovalRecovery: SuccessfulRetryProgress = (begin.weakFair(s) and grant(true).strongFair(s) and consume(true).strongFair(s)).implies((s.request).leadsTo(not(s.request)))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reply-retention",
+      "main": "PairingReplyWindow",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CacheBound",
+        "RetainedLiveClaimSuppressesReply",
+        "UniqueRetainedKeys"
+      ],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -89,6 +89,7 @@ describe("Google Calendar event revisions", () => {
     });
     expect(new URL(requests[0].url).searchParams.get("fields")).toContain("items(id,etag,");
     expect(feed.events.map((event) => event.etag)).toEqual([ETAG, null]);
+    expect(feed.events.map((event) => event.metadata.etag)).toEqual([ETAG, null]);
   });
 
   test("PATCH sends If-Match and returns the new revision; without it no precondition is sent", async () => {

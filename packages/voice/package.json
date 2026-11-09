@@ -46,6 +46,18 @@
       "import": "./dist/native-speech-request.js",
       "default": "./dist/native-speech-request.js"
     },
+    "./native-cloud-speech": {
+      "eliza-source": "./src/native-cloud-speech.ts",
+      "types": "./dist/native-cloud-speech.d.ts",
+      "import": "./dist/native-cloud-speech.js",
+      "default": "./dist/native-cloud-speech.js"
+    },
+    "./cloud-speech-chunks": {
+      "eliza-source": "./src/cloud-speech-chunks.ts",
+      "types": "./dist/cloud-speech-chunks.d.ts",
+      "import": "./dist/cloud-speech-chunks.js",
+      "default": "./dist/cloud-speech-chunks.js"
+    },
     "./turn-routes": {
       "eliza-source": "./src/voice-turn-routes.ts",
       "types": "./dist/voice-turn-routes.d.ts",

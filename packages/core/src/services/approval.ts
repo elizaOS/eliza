@@ -420,7 +420,7 @@ export class ApprovalService extends Service {
 		const pending = this.pendingApprovals.get(taskId);
 		if (!pending) return;
 		// Take the approval before the first await, so a racing selection or
-		// cancel cannot also settle it (tla/ApprovalService.tla, AtMostOneCallback).
+		// cancel cannot also settle it (quint/ApprovalService.qnt, AtMostOneCallback).
 		this.pendingApprovals.delete(taskId);
 
 		const { request } = pending;
@@ -471,7 +471,7 @@ export class ApprovalService extends Service {
 			return;
 		}
 		// Take the approval before onSelect runs: a racing timeout, cancel or
-		// second selection then finds nothing (tla/ApprovalService.tla).
+		// second selection then finds nothing (quint/ApprovalService.qnt).
 		const pending = this.pendingApprovals.get(taskId);
 		if (pending) {
 			this.pendingApprovals.delete(taskId);

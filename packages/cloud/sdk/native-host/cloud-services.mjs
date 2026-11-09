@@ -22,6 +22,7 @@ const speechLanguageCode = (value) =>
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+const ACCOUNT_REQUEST_TIMEOUT_MS = 20_000;
 // Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
 function invoiceProjection(value, id) {
   if (
@@ -736,7 +737,11 @@ export function createCloudRoutes({
   // Native/custom stores need the same ordering as the host file store. A
   // logout must finish clearing a credential whose write was already pending.
   let credentialWrites = Promise.resolve();
+  // Advanced by every credential mutation and every state-changing Cloud
+  // route, so an account read never joins one that started before them.
+  let accessRevision = 0;
   const mutateCredential = (work) => {
+    accessRevision++;
     // A check that started before this write must not fill the cache.
     invalidatePaidAccess();
     const next = credentialWrites.then(work);
@@ -858,19 +863,18 @@ export function createCloudRoutes({
             : {}),
       },
     );
-    // Cloud refused a call made with the saved key: the cached paid answer is
-    // no longer trusted, and a live check runs in the background.
+    if (epoch !== generation) {
+      // A response arriving after account replacement must not retain its stream.
+      void response.body?.cancel().catch(() => {});
+      current(epoch);
+    }
+    // A retired account's reply must not invalidate its successor's cache.
     if (
       key &&
       !accessCheck &&
       (response.status === 401 || response.status === 402)
     )
       paidAccessRefused();
-    if (epoch !== generation) {
-      // A response arriving after account replacement must not retain its stream.
-      void response.body?.cancel().catch(() => {});
-      current(epoch);
-    }
     responseEpoch.set(response, epoch);
     return response;
   }
@@ -949,29 +953,26 @@ export function createCloudRoutes({
     // Only a refusal at the identity check names the stored key as revoked.
     let identityRefused = false;
     try {
-      const [user, snapshot] = await Promise.allSettled([
-        request("/api/v1/user", {
-          key,
-          authorityGeneration: epoch,
-          accessCheck: true,
-        }).then(parse),
-        request("/api/v1/billing/limits", {
-          key,
-          authorityGeneration: epoch,
-          accessCheck: true,
-        }).then(parse),
-      ]);
-      // The identity answer decides first, as when the two were asked in turn.
-      if (user.status === "rejected") {
-        identityRefused = user.reason?.status === 401;
-        throw user.reason;
-      }
-      if (snapshot.status === "rejected") throw snapshot.reason;
+      // Both reads start together. The identity answer is awaited first, so
+      // its refusal still decides, as when the reads ran one after the other.
+      // One deadline covers headers and body parsing for both requests. A
+      // stalled response must not keep every later caller on this shared read.
+      const signal = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
+      const read = (path) =>
+        request(path, { key, authorityGeneration: epoch, signal, accessCheck: true }).then(parse);
+      const userRead = read("/api/v1/user"),
+        snapshotRead = read("/api/v1/billing/limits");
+      snapshotRead.catch(() => {});
+      const user = await userRead.catch((error) => {
+        identityRefused = error.status === 401;
+        throw error;
+      });
+      const snapshot = await snapshotRead;
       current(epoch);
       if (!subscriptionCodes)
-        return projectAccountAccess(user.value, snapshot.value);
-      return projectAccountAccess(user.value, snapshot.value, {
-        grant: subscriptionGrantFromSnapshot(snapshot.value, {
+        return projectAccountAccess(user, snapshot);
+      return projectAccountAccess(user, snapshot, {
+        grant: subscriptionGrantFromSnapshot(snapshot, {
           planKeys: hostPolicy.planKeys,
         }),
       });
@@ -1012,6 +1013,7 @@ export function createCloudRoutes({
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
     const cacheEpoch = paidAccessEpoch;
+    const revision = accessRevision;
     const { epoch, key, answer } = await savedCredential();
     if (answer) return { access: answer, fingerprint: null };
     const access = await liveAccess(key, epoch);
@@ -1019,19 +1021,21 @@ export function createCloudRoutes({
     if (
       access.state !== "unavailable" &&
       epoch === generation &&
+      revision === accessRevision &&
       cacheEpoch === paidAccessEpoch
     )
-      paidAccess = { generation: epoch, fingerprint, access };
+      paidAccess = { generation: epoch, revision, fingerprint, access };
     return { access, fingerprint };
   }
   /** The live check in flight for this cache epoch, or a new one. */
   function sharedAccessCheck() {
     if (
       paidAccessCheck?.epoch === paidAccessEpoch &&
-      paidAccessCheck.generation === generation
+      paidAccessCheck.generation === generation &&
+      paidAccessCheck.revision === accessRevision
     )
       return paidAccessCheck.promise;
-    const flight = { epoch: paidAccessEpoch, generation, promise: null };
+    const flight = { epoch: paidAccessEpoch, generation, revision: accessRevision, promise: null };
     flight.promise = checkAccess().finally(() => {
       if (paidAccessCheck === flight) paidAccessCheck = null;
     });
@@ -1069,6 +1073,7 @@ export function createCloudRoutes({
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
     const cacheEpoch = paidAccessEpoch;
+    const revision = accessRevision;
     const { epoch, key, answer } = await savedCredential();
     if (answer) throw hostPolicy.fundingError(answer);
     const fingerprint = credentialFingerprint(key);
@@ -1077,6 +1082,8 @@ export function createCloudRoutes({
       cached?.access.state === "active" &&
       cached.generation === epoch &&
       epoch === generation &&
+      cached.revision === revision &&
+      revision === accessRevision &&
       cached.fingerprint === fingerprint &&
       cacheEpoch === paidAccessEpoch
     ) {
@@ -1124,7 +1131,7 @@ export function createCloudRoutes({
       .slice(0, 40)}`;
     let response;
     for (let attempt = 0; !response; attempt++) {
-      const timeout = AbortSignal.timeout(20000);
+      const timeout = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
       try {
         response = await request("/api/v1/subscription/redeem", {
           key,
@@ -2497,6 +2504,9 @@ export function createCloudRoutes({
               : {}),
           });
       }
+    } finally {
+      // A purchase, redeem or sign-in change may alter the account's access.
+      if (req.method !== "GET") accessRevision++;
     }
     return true;
   };

@@ -1,4 +1,4 @@
-/** Regression tests for counterexamples found by tla/ServiceLifecycle.tla. */
+/** Regression tests for counterexamples found by quint/ServiceLifecycle.qnt. */
 import { expect, it } from "vitest";
 import { EventType } from "../src/types/events";
 import type { Plugin } from "../src/types/plugin";
@@ -21,7 +21,7 @@ function runtimeFixture(name: string) {
 	});
 }
 
-// TLA+ StatusConsistent: one sibling's failure never marks a running type failed.
+// Quint StatusConsistent: one sibling's failure never marks a running type failed.
 it("reports a running sibling as registered when another sibling failed", async () => {
 	const runtime = await runtimeFixture("SiblingStatus");
 	const type = "sibling-status-model";
@@ -52,7 +52,7 @@ it("reports a running sibling as registered when another sibling failed", async 
 	expect(seen).toEqual(["registered"]);
 });
 
-// TLA+ StopAtMostOnce: unloadPlugin racing runtime.stop() calls stop() once.
+// Quint StopAtMostOnce: unloadPlugin racing runtime.stop() calls stop() once.
 it("stops a service once when plugin unload races runtime stop", async () => {
 	const runtime = await runtimeFixture("UnloadStop");
 	const release = gate();
@@ -84,7 +84,7 @@ it("stops a service once when plugin unload races runtime stop", async () => {
 	expect(stops).toBe(1);
 });
 
-// TLA+ NoOrphan: a sibling started while unload awaits stop() stays published.
+// Quint NoOrphan: a sibling started while unload awaits stop() stays published.
 it("keeps a sibling that started while plugin unload was stopping its class", async () => {
 	const runtime = await runtimeFixture("UnloadSibling");
 	const type = "unload-sibling-model";
@@ -129,7 +129,7 @@ it("keeps a sibling that started while plugin unload was stopping its class", as
 	expect(stopped).toEqual(["owned", "late"]);
 });
 
-// TLA+ NoOrphan: a sibling that publishes while plugin unload awaits its start
+// Quint NoOrphan: a sibling that publishes while plugin unload awaits its start
 // rebuilds runtime.services without the withdrawn class; a runtime stop in
 // that window must not leave the unloaded plugin's instance running.
 it("stops the unloaded instance when runtime stop runs while unload awaits a sibling start", async () => {
@@ -187,7 +187,7 @@ it("stops the unloaded instance when runtime stop runs while unload awaits a sib
 	expect(stopped.sort()).toEqual(["owned", "sibling"]);
 });
 
-// TLA+ NoStatusWithoutClasses: the start that settles with its class gone
+// Quint NoStatusWithoutClasses: the start that settles with its class gone
 // marks the type "failed" before the unload sets the status, so a type with
 // no classes left has no registration status.
 it("leaves no registration status when unload runs while the only class is mid-start", async () => {
@@ -223,7 +223,7 @@ it("leaves no registration status when unload runs while the only class is mid-s
 	expect(runtime.getService(type)).toBeNull();
 });
 
-// TLA+ NoStatusWithoutClasses: a later caller that reused the published
+// Quint NoStatusWithoutClasses: a later caller that reused the published
 // instance replaces the startingServices entry; the unload still awaits the
 // owned class's own start, which is still emitting SERVICE_STARTED.
 it("leaves no registration status when unload runs while the only class emits its start event", async () => {
@@ -263,7 +263,7 @@ it("leaves no registration status when unload runs while the only class emits it
 	expect(runtime.getService(type)).toBeNull();
 });
 
-// TLA+ NoStatusWithoutClasses: the caller that started the class writes the
+// Quint NoStatusWithoutClasses: the caller that started the class writes the
 // status a few microtasks after its start settled, after its
 // startingServiceClasses entry and the replaced startingServices entry are
 // gone, so an unload that finds nothing in flight still runs before it. The

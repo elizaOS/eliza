@@ -56,13 +56,18 @@ export const webPushSubscriptionsRepository = {
 
   /**
    * Delete a subscription by endpoint, scoped to the owning user so one user
-   * can't unsubscribe another's device.
+   * can't unsubscribe another's device. With `agentId` only that agent's row
+   * goes; without it the device is removed from every agent.
    */
-  async deleteByEndpoint(userId: string, endpoint: string): Promise<number> {
+  async deleteByEndpoint(userId: string, endpoint: string, agentId?: string): Promise<number> {
     const rows = await dbWrite
       .delete(webPushSubscriptions)
       .where(
-        and(eq(webPushSubscriptions.user_id, userId), eq(webPushSubscriptions.endpoint, endpoint)),
+        and(
+          eq(webPushSubscriptions.user_id, userId),
+          eq(webPushSubscriptions.endpoint, endpoint),
+          agentId === undefined ? undefined : eq(webPushSubscriptions.agent_id, agentId),
+        ),
       )
       .returning({ id: webPushSubscriptions.id });
     return rows.length;

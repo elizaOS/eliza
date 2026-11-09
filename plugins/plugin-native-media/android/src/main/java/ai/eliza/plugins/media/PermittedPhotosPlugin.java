@@ -214,18 +214,23 @@ public abstract class PermittedPhotosPlugin extends Plugin {
     requestLibraryAccess(call);
   }
 
-  private interface ReadAction {
+  protected interface ReadAction {
     JSObject run() throws Exception;
   }
 
-  private void submitRead(PluginCall call, ReadAction action) {
+  protected final void submitRead(PluginCall call, ReadAction action) {
+    submitRead(call, action, null);
+  }
+
+  /** Null from an action means it already rejected the call. */
+  protected final void submitRead(PluginCall call, ReadAction action, Runnable onPublished) {
     try {
       long ticket = permitted.readTicket();
       submit(call, () -> {
         try {
           permitted.requireReadTicket(ticket);
           JSObject value = action.run();
-          permitted.publish(call, value, ticket);
+          if (value != null) permitted.publish(call, value, ticket, onPublished);
         } catch (Exception changed) {
           call.reject("Photo library changed or is unavailable. Refresh Photos and check its access.");
         }

@@ -216,6 +216,25 @@ export class TelephonyUnavailable extends Error {
     super(message);
   }
 }
+/**
+ * A reviewed native send that was never attempted: nothing was recorded or sent, so the same
+ * operation ID may be reviewed again. "busy": another review is open. "closed": the review dialog
+ * could not be shown.
+ */
+export class SmsSendNotAttempted extends Error {
+  readonly name = "SmsSendNotAttempted";
+  readonly operationId: string;
+  readonly reason: "busy" | "closed";
+  constructor(operationId: string, reason: "busy" | "closed") {
+    super(
+      reason === "busy"
+        ? "Another message is waiting for review. Nothing was sent."
+        : "The review could not be shown. Nothing was sent.",
+    );
+    this.operationId = operationId;
+    this.reason = reason;
+  }
+}
 const invalid = (what: string) =>
   new Error(`Telephony returned an invalid ${what}`);
 const object = (value: unknown, what: string): Record<string, unknown> => {
@@ -744,6 +763,48 @@ export interface SmsMessage {
   deliveryReport: "none" | "pending" | "complete" | "failed" | null;
   attachments: number;
 }
+/** Why the host could not read a row completely. Such a row carries no content; open it in the system messaging app. */
+export type SmsIncompleteReason =
+  | "body-too-long"
+  | "address-too-long"
+  | "too-many-addresses"
+  | "address-unavailable"
+  | "text-as-attachment"
+  | "too-many-parts";
+const INCOMPLETE_REASONS: readonly SmsIncompleteReason[] = [
+  "body-too-long",
+  "address-too-long",
+  "too-many-addresses",
+  "address-unavailable",
+  "text-as-attachment",
+  "too-many-parts",
+];
+/** A thread the host refused to clip. Its date keeps the page order and cursor. */
+export interface IncompleteSmsThread {
+  id: string;
+  date: number;
+  incomplete: true;
+  reason: SmsIncompleteReason;
+}
+/** A message the host refused to clip. Its date keeps the page order and cursor. */
+export interface IncompleteSmsMessage {
+  id: string;
+  kind: "sms" | "mms";
+  threadId: string;
+  date: number;
+  incomplete: true;
+  reason: SmsIncompleteReason;
+}
+export function isIncompleteSmsRow(
+  row: SmsThread | IncompleteSmsThread | SmsMessage | IncompleteSmsMessage,
+): row is IncompleteSmsThread | IncompleteSmsMessage {
+  return "incomplete" in row && row.incomplete === true;
+}
+const incompleteReason = (value: unknown) => {
+  if (!INCOMPLETE_REASONS.includes(value as SmsIncompleteReason))
+    throw invalid("incomplete row reason");
+  return value as SmsIncompleteReason;
+};
 export const SMS_MAX_THREADS = 50;
 export const SMS_MAX_MESSAGES = 50;
 const THREAD_ID = /^thread:[1-9]\d{0,17}$/;
@@ -760,7 +821,10 @@ const addresses = (value: unknown) => {
     throw invalid("message addresses");
   return value.map((item) => text(item, "message address", 64));
 };
-export function parseThreads(value: unknown, limit: number): SmsThread[] {
+export function parseThreads(
+  value: unknown,
+  limit: number,
+): (SmsThread | IncompleteSmsThread)[] {
   const data = object(value, "threads");
   if (!Array.isArray(data.threads) || data.threads.length > limit)
     throw invalid("threads");
@@ -770,6 +834,16 @@ export function parseThreads(value: unknown, limit: number): SmsThread[] {
     const id = text(t.id, "thread id", 32);
     if (!THREAD_ID.test(id) || seen.has(id)) throw invalid("thread id");
     seen.add(id);
+    if (t.incomplete !== undefined) {
+      if (t.incomplete !== true || Object.keys(t).length !== 4)
+        throw invalid("incomplete thread");
+      return {
+        id,
+        date: count(t.date, "thread date"),
+        incomplete: true,
+        reason: incompleteReason(t.reason),
+      };
+    }
     return {
       id,
       date: count(t.date, "thread date"),
@@ -792,7 +866,7 @@ export function parseMessages(
   value: unknown,
   threadId: string,
   limit: number,
-): SmsMessage[] {
+): (SmsMessage | IncompleteSmsMessage)[] {
   const data = object(value, "messages");
   if (!Array.isArray(data.messages) || data.messages.length > limit)
     throw invalid("messages");
@@ -811,6 +885,18 @@ export function parseMessages(
     )
       throw invalid("message id");
     seen.add(id);
+    if (m.incomplete !== undefined) {
+      if (m.incomplete !== true || Object.keys(m).length !== 6)
+        throw invalid("incomplete message");
+      return {
+        id,
+        kind: kind as "sms" | "mms",
+        threadId,
+        date: count(m.date, "message date"),
+        incomplete: true,
+        reason: incompleteReason(m.reason),
+      };
+    }
     if (direction !== "incoming" && direction !== "outgoing")
       throw invalid("message direction");
     if (!(direction === "incoming" ? INCOMING : OUTGOING).includes(status))
@@ -1190,17 +1276,23 @@ export function createTelephonyClient(
         throw new RangeError("Too large for a native send");
       const bound = { ...review, subscriptionId: review.subscriptionId };
       const hash = await smsBindingHash(bound);
-      return parseSmsSendResult(
-        await bridge.sendSms({
-          operationId,
-          recipients: review.recipients,
-          body: review.body,
-          subscriptionId: review.subscriptionId,
-        }),
-        bound,
+      const value = await bridge.sendSms({
         operationId,
-        hash,
-      );
+        recipients: review.recipients,
+        body: review.body,
+        subscriptionId: review.subscriptionId,
+      });
+      const v = value as Record<string, unknown> | null;
+      if (v && typeof v === "object" && v.kind === "sms-send-not-attempted") {
+        if (
+          Object.keys(v).length !== 3 ||
+          v.operationId !== operationId ||
+          (v.reason !== "busy" && v.reason !== "closed")
+        )
+          throw invalid("send result");
+        throw new SmsSendNotAttempted(operationId, v.reason);
+      }
+      return parseSmsSendResult(value, bound, operationId, hash);
     },
     /** A reviewed native MMS: one message to every recipient, with the text and attachments the
      * host's native dialog shows again. Reusing an operation ID returns its record and never sends

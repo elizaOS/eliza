@@ -3208,4 +3208,95 @@ describe("request-bound Notes negative constraints", () => {
       await f.service.stop();
     }
   });
+
+  it.each([true, false])(
+    "a settled Notes create defers reply recovery only when its host opts in (%s)",
+    async (defer) => {
+      const f = await fixture(
+        { classification: "mutation_requested", operations: ["create"] },
+        "create a new launch note",
+      );
+      let requests = 0;
+      const executed: string[] = [];
+      try {
+        const pending = diagnosedPlanner(f, {
+          context: f.context,
+          deferInternalReplyRecoveryToCaller: defer,
+          tools: [
+            {
+              name: "NOTES_CREATE",
+              parameters: {
+                type: "object",
+                properties: { content: { type: "string" } },
+                required: ["content"],
+              },
+            },
+          ],
+          runtime: {
+            useModel: async () => {
+              requests++;
+              return requests === 1
+                ? {
+                    text: "",
+                    toolCalls: [
+                      {
+                        id: "settled-create",
+                        name: "NOTES_CREATE",
+                        arguments: {
+                          content: "Launch note",
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ],
+                  }
+                : JSON.stringify({
+                    completed: true,
+                    toolCalls: [],
+                    messageToUser: "Saved the launch note.",
+                  });
+            },
+          },
+          executeToolCall: async (call, current) => {
+            bindTaskExtractionContext(
+              f.state,
+              f.message,
+              current.trajectory.context,
+              current.trajectory.context,
+              f.runtime,
+              getRequestOperationIssuer(f.runtime, f.message),
+            );
+            executed.push(call.name);
+            return actionResultToPlannerToolResult(
+              await f.execute(call.name, call.params ?? {}),
+              { requestOperationIssuer: f.issuer },
+            );
+          },
+          evaluate: async () => ({
+            success: false,
+            decision: "CONTINUE" as const,
+            thought: "The final reply is still incomplete.",
+            requestFullyCovered: false,
+            messageToUser: "",
+          }),
+          config: { maxTerminalOnlyContinuations: 2 },
+        });
+        if (defer) {
+          const result = await pending;
+          expect(result.status).toBe("finished");
+          expect(result.replyRecoveryRequired).toBe(true);
+          expect(result.finalMessage).toBeUndefined();
+        } else
+          await expect(pending).rejects.toMatchObject({
+            kind: "terminal_only_continuations",
+          });
+        expect(executed).toEqual(["NOTES_CREATE"]);
+        expect(f.writes).toHaveBeenCalledTimes(1);
+        expect(f.service.snapshot().notes).toHaveLength(
+          f.before.notes.length + 1,
+        );
+      } finally {
+        await f.service.stop();
+      }
+    },
+  );
 });

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "PluginActivatorLifecycle",
+    "model": "plugins/plugin-assistant/quint/PluginActivatorLifecycle.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/features/secrets/services/plugin-activator.ts",
+      "plugins/plugin-assistant/src/features/secrets/services/plugin-activator.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "RetiredTimerStopped",
+      "NoLateCallback",
+      "StoppedReleased"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One plugin registration, one polling owner, one activation callback, one permanent stop epoch and at most one poll-query failure. Requirement checks, polling queries and the activation microtask keep separate boundaries.",
+      "When secrets remain available, ReadySettles assumes weak fairness of enabled polling, query settlement, activation dispatch and callback completion. One allowed query failure may occur before success; repeated permanent provider failures are outside this finite bound. ReadyWithoutFairness must produce a stuttering counterexample.",
+      "Stop blocks new activation callbacks and new timers. It waits for callbacks that already began; this model does not undo their external effects. A registration awaiting requirements may settle after stop but cannot recreate pending work.",
+      "Multiple plugins, activation-callback rejection and retries, reinitializing the same retired service, arbitrary secret values and all listener/onSecretsReady effects are outside this instance. Callback completion is assumed; no external effect or exactly-once retry guarantee is proved. The production service test uses a controlled Secrets port and deterministic timers for the stop race; it is not an external plugin-effect acceptance test."
+    ],
+    "implementationTests": [
+      "plugins/plugin-assistant/src/features/secrets/services/plugin-activator.test.ts"
+    ]
+  }
+]

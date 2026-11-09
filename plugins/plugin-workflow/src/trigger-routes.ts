@@ -61,6 +61,25 @@ function canonicalizeTimezoneForComparison(timezone?: string): string {
     return timezone ?? 'UTC';
   }
 }
+const WORKFLOW_MANAGED_SCHEDULE_ERROR =
+  'This schedule belongs to a workflow. Change it in the workflow.';
+
+/**
+ * The workflow service arms and rebuilds its own schedule task from the
+ * reviewed workflow version (plain, typed and digest schedules). Editing that
+ * task here would diverge from the version, so only the workflow changes it.
+ */
+function isWorkflowManagedSchedule(
+  task: Task,
+  readTriggerConfig: (task: Task) => TriggerConfig | null
+): boolean {
+  const metadata = task.metadata as Record<string, unknown> | undefined;
+  return (
+    readTriggerConfig(task)?.dedupeKey?.startsWith('workflow-schedule:') === true ||
+    typeof metadata?.hostedVersionId === 'string' ||
+    typeof metadata?.reviewedVersionId === 'string'
+  );
+}
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -620,6 +639,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'System trigger is read-only', 403);
       return true;
     }
+    if (isWorkflowManagedSchedule(task, readTriggerConfig)) {
+      error(res, WORKFLOW_MANAGED_SCHEDULE_ERROR, 403);
+      return true;
+    }
     await runtime.deleteTask(task.id);
     json(res, { ok: true });
     return true;
@@ -632,6 +655,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     if (isAgentOwnedHeartbeat(task, runtime.agentId)) {
       error(res, 'System trigger is read-only', 403);
+      return true;
+    }
+    if (isWorkflowManagedSchedule(task, readTriggerConfig)) {
+      error(res, WORKFLOW_MANAGED_SCHEDULE_ERROR, 403);
       return true;
     }
     const current = readTriggerConfig(task);

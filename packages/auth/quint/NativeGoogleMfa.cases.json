@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/auth/native-host/cloud-enrollment.mjs",
+    "packages/auth/native-host/cloud-enrollment-google.test.mjs"
+  ],
+  "conformance": "packages/auth/quint/check-native-google-admission.mjs",
+  "bounds": {
+    "domain": "Native Google factor submission through the first Cloud grant admission.",
+    "limitations": [
+      "One Google attempt with one admitted MFA challenge, one replacement, three completion submissions, one local cancellation and bounded logical time. TOTP and SMS are submit-capable. Passkey is represented as admitted but unsupported by this operation.",
+      "A rejected provider reply retains the private challenge, and a replacement uses the earlier deadline. The expiry check happens before dispatch. The case ends at the first Cloud grant dispatch, so retries after grant dispatch are outside the bound.",
+      "The stored-receipt read may report an existing receipt or return empty. Cancellation fences an empty result with the epoch. Existing receipt recovery, grant issuance, durable writes, acknowledgement, activation, key revocation and Android handling belong to other models.",
+      "Maintained native-host tests check successful factor completion and exact expiry. A loopback scenario checks retry, private replacement, and cancellation while the post-token receipt read is pending. Provider MFA verification and code replay handling remain external assumptions."
+    ]
+  },
+  "cases": [
+    {
+      "name": "google-mfa-retry-and-grant-admission",
+      "main": "NativeGoogleMfa",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "CompletionUsesMatchingLiveFactor",
+        "ReplacementCanOnlyShortenDeadline",
+        "ProviderFailureKeepsChallenge",
+        "GrantNeedsCurrentEpochAndEmptyReceipt",
+        "CancelCannotRestoreChallengeOrDispatchGrant"
+      ],
+      "temporal": ["AdmittedMfaSettles"],
+      "temporalChecks": [
+        {
+          "property": "AdmittedMfaSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of providerWork and receiptWork settles a submitted factor by refusal, a replacement challenge or grant handoff.",
+            "Provider HTTP and the receipt read eventually return. Process failure and actual cancellation cleanup are outside this progress property."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

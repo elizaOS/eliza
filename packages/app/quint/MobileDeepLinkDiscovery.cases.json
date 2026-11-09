@@ -1,0 +1,48 @@
+{
+  "sources": [
+    "packages/app/src/mobile-lifecycle.ts",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/DeepLinkBufferPlugin.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ReceiptAppPlugin.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/MainActivity.java",
+    "packages/app/scripts/mobile/android/templates/main-activity.ts",
+    "packages/app/scripts/mobile/android/gradle-reconciliation.ts",
+    "packages/app/scripts/mobile/android/overlay.ts"
+  ],
+  "bounds": "One cold URL, one version-query completion/rejection, one retained App event, one 15-second replay expiry, readiness and at most three application attempts. Native version is either 1 or 2. One optional document close disables further external progress.",
+  "conformance": "packages/app/quint/check-mobile-deep-links.mjs",
+  "cases": [
+    {
+      "name": "cold-discovery",
+      "main": "MobileDeepLinkDiscovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "receiptBeforeFallback",
+        "acknowledgementRequiresApplication",
+        "finiteBounds",
+        "deadlineReleasesCold"
+      ],
+      "temporal": ["ColdDeliveryProgress", "UnfairColdDelivery"],
+      "maxSteps": 20,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "ColdDeliveryProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of ready and expire while their guards are enabled. An observed cold URL eventually receives an application attempt or the document closes.",
+            "Closure disables further readiness/timer/application steps and ends that document delivery obligation. Real browser scheduling, wall-clock progress and eventual application success are not proved."
+          ]
+        },
+        {
+          "property": "UnfairColdDelivery",
+          "expect": "counterexample",
+          "assumptions": [
+            "No readiness or timer fairness is assumed. An observed cold URL can remain queued while an open document stutters forever, so unconditional progress is expected to fail."
+          ]
+        }
+      ]
+    }
+  ]
+}

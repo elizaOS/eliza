@@ -5,6 +5,7 @@ export * from "./database-lease.mjs";
 export * from "./errors.mjs";
 export * from "./gateway-bootstrap.mjs";
 export * from "./gateway-lifecycle.mjs";
+export * from "./provider-key-session.mjs";
 export * from "./research-capture-host.mjs";
 export * from "./research-configuration.mjs";
 export * from "./research-server.mjs";

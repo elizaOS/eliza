@@ -39,6 +39,8 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY, account_lifecycle_state text NOT NULL DEFAULT 'active');
     CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE crypto_payments (id uuid PRIMARY KEY, organization_id uuid, user_id uuid);
+    CREATE TABLE crypto_sweep_outbox (id uuid PRIMARY KEY, payment_id uuid, prepared_transaction text, prepared_metadata jsonb, evm_sender text, evm_confirmed_at timestamptz);
     CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE, CONSTRAINT credit_transactions_id_org_idx UNIQUE(id, organization_id));
@@ -474,5 +476,81 @@ describe("account deletion restrictive-grant terminal absence", () => {
         resolution: "Provider replay inspected and resolved",
       },
     ]);
+  });
+  test("unconfirmed EVM sweep blocks account erasure inspection", async () => {
+    const paymentId = crypto.randomUUID(),
+      sweepId = crypto.randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO crypto_payments(id,organization_id,user_id) VALUES (${paymentId},${ORGANIZATION_ID},${USER_ID})`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO crypto_sweep_outbox(id,payment_id,prepared_transaction,prepared_metadata) VALUES (${sweepId},${paymentId},'signed-bytes','{"network":"base"}'::jsonb)`,
+    );
+    const adapter = createAccountDeletionProviderAdapters().other_grants;
+    expect(await adapter.inspect(context)).toEqual({
+      state: "action_required",
+      errorCode: "ACCOUNT_DELETION_EVM_SWEEP_UNCONFIRMED",
+    });
+    await dbWrite.execute(
+      sql`UPDATE crypto_sweep_outbox SET evm_confirmed_at=now() WHERE id=${sweepId}`,
+    );
+    expect(await adapter.inspect(context)).toMatchObject({ state: "complete" });
+  });
+});
+
+describe("account deletion primary object storage", () => {
+  test("lists only the tenant's own prefixes and deletes only its objects", async () => {
+    const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
+    const stored = new Map<string, Record<string, string>>([
+      [`org/${ORGANIZATION_ID}/notes.txt`, {}],
+      [
+        `generations/images/${ORGANIZATION_ID}/${USER_ID}/a.png`,
+        { organizationId: ORGANIZATION_ID },
+      ],
+      [`${ORGANIZATION_ID}/2026-10-01/trajectory.json`, {}],
+      [`documents-pre-upload/${USER_ID}/notes.txt`, { organizationId: ORGANIZATION_ID }],
+      [`cloud-files/${ORGANIZATION_ID}/2026-10-01/file.bin`, { organizationId: ORGANIZATION_ID }],
+      [`org/${otherOrganizationId}/notes.txt`, {}],
+      [`generations/images/${otherOrganizationId}/b.png`, { organizationId: otherOrganizationId }],
+      ["website-reputation/snapshot.json", {}],
+    ]);
+    const listed: Array<string | undefined> = [];
+    const blob = {
+      async list(options?: { prefix?: string }) {
+        listed.push(options?.prefix);
+        return {
+          objects: [...stored]
+            .filter(([key]) => key.startsWith(options?.prefix ?? ""))
+            .map(([key, customMetadata]) => ({ key, customMetadata })),
+          truncated: false,
+        };
+      },
+      async delete(key: string) {
+        stored.delete(key);
+      },
+    };
+    const adapter = createAccountDeletionProviderAdapters({
+      trajectoryStore: {
+        reachable: async () => true,
+        listOrganizationKeys: async () => [],
+        deleteObject: async () => undefined,
+      },
+    }).primary_object_storage;
+
+    await adapter.execute({ ...context, blob } as AccountDeletionProviderContext, "storage");
+
+    expect(listed.length).toBeGreaterThan(0);
+    expect(
+      listed.every(
+        (prefix) => prefix?.includes(`${ORGANIZATION_ID}/`) || prefix?.includes(`${USER_ID}/`),
+      ),
+    ).toBe(true);
+    expect([...stored.keys()].sort()).toEqual(
+      [
+        `generations/images/${otherOrganizationId}/b.png`,
+        `org/${otherOrganizationId}/notes.txt`,
+        "website-reputation/snapshot.json",
+      ].sort(),
+    );
   });
 });

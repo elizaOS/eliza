@@ -376,6 +376,21 @@ describe("createCameraSession recording", () => {
     expect(await h.session.finishRecording()).toBe("saved");
   });
 
+  it("a bridge that throws synchronously on stop never leaves the session busy", async () => {
+    const h = harness();
+    h.camera.stopRecording.mockImplementationOnce(() => {
+      throw new Error("plugin missing");
+    });
+    await h.session.start();
+    await h.session.startRecording();
+    expect(await h.session.finishRecording()).toBe("failed");
+    expect(h.hooks.recordingFailed).toHaveBeenCalledTimes(1);
+    expect(h.session.finalizing).toBe(false);
+    expect(h.session.busy).toBe(false);
+    expect(await h.session.startRecording()).toBe("recording");
+    expect(await h.session.finishRecording()).toBe("saved");
+  });
+
   it("classifies a microphone denial", async () => {
     const h = harness({
       startRecording: async () => {
@@ -398,6 +413,27 @@ describe("createCameraSession recording", () => {
     await g.session.start();
     expect(await g.session.startRecording()).toBe("failed");
     expect(g.session.denied).toBeUndefined();
+  });
+
+  it("a recording start that lost the preview moves the session to error", async () => {
+    const h = harness({
+      startRecording: async () => {
+        throw { code: "PREVIEW_STOPPED" };
+      },
+    });
+    await h.session.start();
+    expect(await h.session.startRecording()).toBe("failed");
+    expect(h.session.phase).toBe("error");
+    expect(await h.session.start()).toEqual({ status: "skipped" });
+    expect(await h.session.start(true)).toEqual({ status: "ready" });
+    const g = harness({
+      startRecording: async () => {
+        throw { code: "RECORDING_ERROR" };
+      },
+    });
+    await g.session.start();
+    expect(await g.session.startRecording()).toBe("failed");
+    expect(g.session.phase).toBe("ready");
   });
 
   it("stopping the surface finishes an active recording before releasing the preview", async () => {

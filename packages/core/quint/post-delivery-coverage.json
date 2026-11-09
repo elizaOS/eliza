@@ -1,0 +1,30 @@
+[
+	{
+		"id": "core-PostDeliveryTasks",
+		"model": "packages/core/quint/PostDeliveryTasks.qnt",
+		"sources": [
+			"packages/core/src/services/post-delivery-task-tracker.ts",
+			"packages/core/src/runtime/room-handler-queue.ts",
+			"packages/core/test/post-delivery-task-conformance.test.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"ScopedAdmission",
+			"ExplicitModeEnforced",
+			"EffectsRequireInvocation",
+			"FailedDeliveryBlocksEffects",
+			"AbortedBeforeInvocationHasNoEffect",
+			"TaskIndexesAgree",
+			"CapturedSettlementRetained"
+		],
+		"status": "partial",
+		"limitations": [
+			"Tracker-specific lease checks are modeled. Queue acquisition/generation ordering is delegated to RoomHandlerQueue.qnt.",
+			"Task effects represent callbacks that use roomDeliverySettlement and honor its boolean. Arbitrary callbacks can ignore that result.",
+			"An already invoked callback can ignore AbortSignal and perform effects after quarantine. The tracker retains it until settlement and refuses runtime reuse.",
+			"Concurrent observers of the same room drain, multiple delivery cycles, callback result values and JS garbage collection are outside these bounds.",
+			"Registration may occur while draining or after an earlier successful drain. Empty-at-return properties apply to the return transition, not forever afterward.",
+			"Conformance checks exercise named real queue/promise traces; they do not establish full bisimulation between arbitrary JavaScript schedules and the finite model."
+		]
+	}
+]

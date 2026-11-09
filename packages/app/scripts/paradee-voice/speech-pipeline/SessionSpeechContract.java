@@ -70,6 +70,38 @@ public final class SessionSpeechContract {
    rejects(CancellationException.class,()->speech.synthesizeStream("refused",()->false,(samples,complete)->false),"a refusing sink cancels");
    boolean[] cancelNow={false};
    rejects(CancellationException.class,()->speech.synthesizeStream("cancel",()->cancelNow[0],(samples,complete)->{cancelNow[0]=true;return true;}),"cancellation between chunks");
+   // A long passage is synthesized one sentence segment at a time, as one stream to the sink.
+   StringBuilder passage=new StringBuilder();
+   for(int i=0;passage.length()<4950;i++)passage.append("This is sentence number ").append(i).append(" of a long reviewed passage. ");
+   String text=passage.toString().strip();
+   check(text.length()<=5000,"passage within the input bound");
+   List<String> segments=SessionSpeech.segments(text);
+   check(segments.size()>=10,"a 5000-character passage has several segments");
+   for(String segment:segments)check(segment.length()<=SessionSpeech.SEGMENT_CHARS&&segment.endsWith("."),"segments end at a sentence: "+segment);
+   check(String.join(" ",segments).equals(text),"segments cover the whole passage");
+   List<String> split=SessionSpeech.segments("x".repeat(700)+" "+"word ".repeat(150).strip());
+   for(String segment:split)check(segment.length()<=SessionSpeech.SEGMENT_CHARS,"a long sentence is split");
+   check(split.get(0).equals("x".repeat(500)),"a run without whitespace is hard-split");
+   check(SessionSpeech.segments("One. ... Two.").equals(List.of("One. ... Two.")),"punctuation joins its neighbour");
+   check(SessionSpeech.segments("... !").equals(List.of("... !")),"text with nothing spoken stays one segment");
+   for(String segment:SessionSpeech.segments("--- "+"y".repeat(499)+". ?! "+"z".repeat(499)+"."))check(segment.codePoints().anyMatch(Character::isLetterOrDigit),"no segment is silent: "+segment);
+   // Each segment is validated on its own: the total may exceed one stream's bound, one segment may not.
+   float[][] segmentAudio=new float[18][];for(int i=0;i<segmentAudio.length;i++)segmentAudio[i]=tone(24000,.3f);
+   VoiceNative.streamed=segmentAudio;
+   int callsBefore=VoiceNative.calls;long[] total={0};int[] completions={0};boolean[] completeEarly={false};
+   speech.synthesizeStream(text,()->false,(samples,complete)->{total[0]+=samples.length;if(complete)completions[0]++;if(complete&&total[0]<(long)segments.size()*18*24000)completeEarly[0]=true;return true;});
+   check(VoiceNative.calls-callsBefore==segments.size(),"one native stream per segment");
+   check(total[0]==(long)segments.size()*18*24000&&total[0]>SpeechStreamValidation.MAX_SAMPLES,"every segment reached the sink past one stream's bound");
+   check(completions[0]==1&&!completeEarly[0],"only the last chunk completes the utterance");
+   float[][] runaway=new float[SpeechStreamValidation.MAX_SAMPLES/24000+1][];for(int i=0;i<runaway.length;i++)runaway[i]=segmentAudio[0];
+   VoiceNative.streamed=runaway;
+   rejects(IllegalStateException.class,()->speech.synthesizeStream("One runaway sentence.",()->false,(samples,complete)->true),"a runaway segment is still refused");
+   VoiceNative.streamed=new float[][]{tone(4800,0f)};
+   rejects(IllegalStateException.class,()->speech.synthesizeStream(text,()->false,(samples,complete)->true),"a silent segment fails the stream");
+   VoiceNative.streamed=new float[][]{tone(2400,.3f),tone(2400,.3f)};
+   boolean[] stopAfterFirst={false};callsBefore=VoiceNative.calls;
+   rejects(CancellationException.class,()->speech.synthesizeStream(text,()->stopAfterFirst[0],(samples,complete)->{stopAfterFirst[0]=true;return true;}),"cancellation stops a segmented stream");
+   check(VoiceNative.calls-callsBefore==1,"no later segment is synthesized after cancellation");
    VoiceNative.sampleRate=16000;session.trimMemory();
    rejects(IllegalStateException.class,()->speech.synthesizeStream("rate",()->false,(samples,complete)->true),"an unexpected stream rate is refused");
    VoiceNative.sampleRate=24000;session.trimMemory();

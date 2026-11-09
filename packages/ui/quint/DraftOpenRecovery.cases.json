@@ -1,0 +1,30 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One opening, factory/read attempts 0..2, exact 150ms/600ms retry classes, three initial editor values and a distinct retired-binding text, marked/unmarked saved text, one edit, one same-key join and one retirement. Host restoration is synchronous in this case. asynchronous completion is checked separately.",
+  "cases": [
+    {
+      "name": "bounded-opening",
+      "main": "DraftOpenRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": ["Terminates"],
+      "maxSteps": 20,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "Terminates",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in DraftOpenRecovery: Terminates = progress.weakFair(s) implies eventually(s.phase == \"done\")",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

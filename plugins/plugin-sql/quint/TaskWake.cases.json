@@ -1,0 +1,18 @@
+{
+  "sources": ["plugins/plugin-sql/src/stores/task-wake.ts"],
+  "implementationTests": [
+    "plugins/plugin-sql/src/__tests__/task-wake-atomic.real.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "TaskWake",
+      "init": "init",
+      "step": "step",
+      "invariants": ["RevisionMonotonic", "EarliestOutstandingWake", "TypeOK"],
+      "temporal": [],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

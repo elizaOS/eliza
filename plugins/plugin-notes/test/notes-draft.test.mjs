@@ -83,6 +83,31 @@ test("a drafted removal does not delete a note edited since", () => {
   assert.deepEqual(notesDraftConflicts(later, draft), ["c"]);
 });
 
+test("a drafted note that cannot be applied is a conflict that keeps the draft", () => {
+  // The create commit landed but its acknowledgement was lost; later typing was drafted as new.
+  const older = [note("n", "First words"), ...saved];
+  const draft = notesDraftChanges(
+    [note("n", "First words and more"), ...saved],
+    saved,
+  );
+  assert.deepEqual(draft.added, ["n"]);
+  assert.deepEqual(applyNotesDraft(older, draft), older);
+  assert.deepEqual(notesDraftConflicts(older, draft), ["n"]);
+  // An edit of a note deleted since is neither revived nor dropped silently.
+  const edit = notesDraftChanges(
+    [note("a", "A draft"), note("b", "B"), note("c", "C")],
+    saved,
+  );
+  const deleted = [note("b", "B"), note("c", "C")];
+  assert.deepEqual(applyNotesDraft(deleted, edit), deleted);
+  assert.deepEqual(notesDraftConflicts(deleted, edit), ["a"]);
+  // A removal that already landed and a creation that landed as drafted are clean.
+  const clean = notesDraftChanges([note("n", "N"), note("a", "A")], saved);
+  const landed = [note("n", "N"), note("a", "A")];
+  assert.deepEqual(applyNotesDraft(landed, clean), landed);
+  assert.deepEqual(notesDraftConflicts(landed, clean), []);
+});
+
 test("a later failure merges a kept draft instead of replacing it", () => {
   const kept = notesDraftChanges(
     [

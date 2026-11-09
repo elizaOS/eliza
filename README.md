@@ -50,6 +50,7 @@ bun run dev:local   # app + API with the runtime chooser (local agent, own provi
 bun run start       # run the standalone agent host (API only, no UI; use bun run dev for the app)
 bun run build       # build the workspace with Turbo
 bun run verify      # dependency, type, lint, and audit gates
+bun run test:quint  # application state models and invariants
 bun run test        # repository end-to-end test lane
 bun run test:e2e    # end-to-end lane
 bun run cloud:mock  # local Eliza Cloud stack with mocks

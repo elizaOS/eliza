@@ -35,7 +35,7 @@ final class ListenerStore {
   try { saved = edit.commit(); } catch (RuntimeException failure) { saved = false; }
   if (!saved) {
    storageFailed = true; processConsent = false; Listener.epoch.invalidate();
-   context.stopService(new android.content.Intent(context, ListeningService.class));
+   context.stopService(new android.content.Intent().setComponent(SenseConfig.component(context, "ListeningService")));
   }
   return saved;
  }
@@ -62,6 +62,14 @@ final class ListenerStore {
  /** Stored pause end on the monotonic clock, kept until resumed when it came from another boot. */
  long pausedUntil(){return ListenerPolicy.effectivePause(prefs.getLong(PAUSED_UNTIL,0),prefs.getLong(PAUSE_BOOT,-1),bootCount(context));}
  long consentAt(){return prefs.getLong(CONSENT_AT,0);}
+
+ /**
+  * Listening was on when the last process ended, but this process has no opt-in yet. Withdrawing
+  * consent or turning listening off clears it on disk.
+  */
+ boolean lapsedAfterRestart(){
+  return !processConsent&&!storageFailed&&ListenerPolicy.consented(prefs.getInt(CONSENT,0))&&prefs.getBoolean(ENABLED,false);
+ }
 
  /** Records the explicit opt-in shown in {@link ConsentActivity} and turns listening on. */
  boolean grantConsent(long now,long generation){
@@ -91,7 +99,7 @@ final class ListenerStore {
   boolean saved;
   try{saved=prefs.edit().clear().commit();}catch(RuntimeException failure){saved=false;}
   storageFailed=!saved;
-  context.stopService(new android.content.Intent(context,ListeningService.class));
+  context.stopService(new android.content.Intent().setComponent(SenseConfig.component(context,"ListeningService")));
   return saved;
   }
  }

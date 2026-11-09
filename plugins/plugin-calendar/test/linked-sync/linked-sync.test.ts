@@ -296,10 +296,11 @@ describe("Google sync-v1 port", () => {
   });
 
   it("checks capabilities, owner fence and create privacy", async () => {
-    // Google answers recurrence in its own form; the canonical form is what
-    // the local record holds and what the readback must hash to.
+    // Google can use a different recurrence spelling and time offset for the
+    // same event. The readback must still match the requested event.
     const remote = cloud((value) => ({
       ...value,
+      startAt: "2026-10-15T14:00:00-04:00",
       ...(value.recurrence
         ? { recurrence: value.recurrence.map((line) => line.toLowerCase()) }
         : {}),
@@ -328,6 +329,7 @@ describe("Google sync-v1 port", () => {
       "rrule:freq=daily",
     ]);
     expect(created.event.recurrence).toEqual(["RRULE:FREQ=DAILY"]);
+    expect(created.event.startAt).toBe("2026-10-15T14:00:00-04:00");
     current = false;
     await expect(port.get(link)).rejects.toThrow("owner changed");
     await expect(
@@ -347,10 +349,9 @@ describe("Google sync-v1 port", () => {
   });
 
   it("refuses a write whose readback differs from the requested event", async () => {
-    // Google stores the time with an offset the local record never holds.
     const remote = cloud((value) => ({
       ...value,
-      startAt: "2026-10-15T14:00:00-04:00",
+      startAt: "2026-10-15T14:30:00-04:00",
     }));
     const port = await googleCalendarSyncPort(
       remote.client,

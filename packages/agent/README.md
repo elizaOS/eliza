@@ -113,6 +113,13 @@ matching `cancel-read-completion` route retires the completion. Deploy the addit
 
 ## Development
 
+Run `bun run --cwd packages/agent test:formal` with Java 21 available to check
+the source-linked Quint models in `quint/` through the shared repository runner.
+It runs scenarios, seeded simulation and exhaustive finite-state safety checks.
+Results and raw logs go to `test-results/quint/`. The coverage manifest lists
+reduced domains and remaining obligations. These checks complement the real
+host tests and do not establish implementation equivalence.
+
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash

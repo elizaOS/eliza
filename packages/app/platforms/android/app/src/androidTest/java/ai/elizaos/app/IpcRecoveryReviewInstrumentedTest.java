@@ -56,7 +56,6 @@ public final class IpcRecoveryReviewInstrumentedTest {
         }
         File liveMarker=new File(home,"ipc/a.sock.generation");write(liveMarker,"synthetic current IPC remains untouched by archive");long liveInode=Os.lstat(liveMarker.getPath()).st_ino;
         try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
-            assertTrue(assertThrows(IOException.class,()->recovery.recover()).getMessage().contains(IpcStartupRecovery.RETENTION_LIMIT));
             JSONObject result=recovery.archiveRetained(token(recovery));assertEquals("archived",result.getString("status"));assertEquals(8,result.getInt("archivedCount"));assertEquals(0,result.getInt("retainedCount"));
             File[] archives=home.listFiles(f->f.getName().startsWith("ipc-reviewed-")&&!f.getName().startsWith("ipc-reviewed-pending-"));assertNotNull(archives);assertEquals(1,archives.length);
             assertEquals(0700,Os.lstat(archives[0].getPath()).st_mode&0777);
@@ -72,6 +71,41 @@ public final class IpcRecoveryReviewInstrumentedTest {
             // A separate, explicit normal recovery can now retire the current IPC namespace.
             recovery.recover();assertEquals(0,Objects.requireNonNull(new File(home,"ipc").list()).length);
             assertEquals(1,Objects.requireNonNull(home.listFiles(f->f.getName().startsWith("ipc-recovery-"))).length);
+        } finally {removeFixture(home);}
+    }
+    private void residue(File home,int i) throws Exception {
+        write(new File(home,"ipc/a.sock.lock"),"synthetic lock "+i);write(new File(home,"ipc/a.sock.generation"),"synthetic dead owner "+i);
+    }
+    private File[] named(File home,String prefix) {
+        return Objects.requireNonNull(home.listFiles(f->f.getName().startsWith(prefix)&&!f.getName().startsWith("ipc-reviewed-pending-")));
+    }
+    @Test public void uncleanExitsPastTheLimitRotateTheOldestRecordAndStillStart() throws Exception {
+        File home=home();String first=null;
+        try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
+            for(int i=0;i<9;i++) {
+                residue(home,i);recovery.recover();assertEquals(0,Objects.requireNonNull(new File(home,"ipc").list()).length);
+                if(first==null)first=named(home,"ipc-recovery-")[0].getName();
+            }
+            assertEquals(8,named(home,"ipc-recovery-").length);
+            File[] archives=named(home,"ipc-reviewed-auto-");assertEquals(1,archives.length);
+            File rotated=new File(archives[0],first);assertTrue(rotated.isDirectory());assertFalse(new File(home,first).exists());
+            assertEquals("synthetic dead owner 0",new String(Files.readAllBytes(new File(rotated,"a.sock.generation").toPath()),StandardCharsets.UTF_8));
+        } finally {removeFixture(home);}
+    }
+    @Test public void malformedRetainedRecordAtTheLimitStillRefusesWithoutMovingAnything() throws Exception {
+        File home=home();List<File> dirs=seed(home);write(new File(dirs.get(0),"not-transport"),"synthetic");residue(home,0);
+        try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
+            assertTrue(assertThrows(IOException.class,()->recovery.recover()).getMessage().contains(IpcStartupRecovery.RETENTION_LIMIT));
+            for(File dir:dirs)assertTrue(dir.isDirectory());assertEquals(0,named(home,"ipc-reviewed-").length);
+            assertEquals(2,Objects.requireNonNull(new File(home,"ipc").list()).length);
+        } finally {removeFixture(home);}
+    }
+    @Test public void reviewedArchivesStayBoundedAcrossManyRotations() throws Exception {
+        File home=home();seed(home);
+        try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
+            for(int i=0;i<20;i++){residue(home,i);recovery.recover();}
+            assertEquals(8,named(home,"ipc-recovery-").length);
+            assertEquals(IpcStartupRecovery.REVIEWED_LIMIT,named(home,"ipc-reviewed-").length);
         } finally {removeFixture(home);}
     }
     @Test public void crossParentRenameMayChangeDirectoryMtimeButNotRecordMetadata() throws Exception {
