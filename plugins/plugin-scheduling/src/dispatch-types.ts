@@ -51,8 +51,10 @@ export type DispatchResult =
       message?: string;
       /**
        * Whether the provider definitively rejected the request before
-       * acceptance. Missing means unknown; unknown failures must never be
-       * automatically retried for a non-idempotent transport.
+       * acceptance. Omitted is treated like `not_accepted` by
+       * `decideDispatchPolicy` (retry/advance). A dispatcher whose transport
+       * may have accepted the send MUST set `unknown`; set `not_accepted`
+       * explicitly when nothing left the process.
        */
       acceptance?: "not_accepted" | "unknown";
     };
