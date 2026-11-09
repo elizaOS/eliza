@@ -403,7 +403,9 @@ test("the plugin owns every secret, compares state before burning and logs only 
   assert.doesNotMatch(noResult, /\.remove\(|burnUnclaimedPending/);
   assert.ok(
     capture.indexOf("!pending.sameState(received)) return;") <
-      capture.indexOf("compareExchange(config().pendingSlot, pendingRaw, null)"),
+      capture.indexOf(
+        "compareExchange(config().pendingSlot, pendingRaw, null)",
+      ),
   );
   assert.ok(
     capture.indexOf("compareExchange(config().pendingSlot, pendingRaw, null)") <
