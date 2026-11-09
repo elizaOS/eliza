@@ -20,7 +20,6 @@ import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
   type NoteFormat,
-  type NoteJson,
   type NotesDocument,
   type StickyColor,
   type StickyNote,
@@ -498,7 +497,14 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   const record = requireRecord(value, "notes state");
   assertOnlyKeys(
     record,
-    ["schemaVersion", "revision", "persistedAt", "notes", "trash", "noteRevisions"],
+    [
+      "schemaVersion",
+      "revision",
+      "persistedAt",
+      "notes",
+      "trash",
+      "noteRevisions",
+    ],
     "notes state",
   );
   if (
@@ -554,9 +560,13 @@ export function parseNotesDocument(value: unknown): NotesDocument {
           !allIds.has(id) ||
           typeof value !== "number" ||
           !Number.isSafeInteger(value) ||
-          value < 0 || value > revision
+          value < 0 ||
+          value > revision
         ) {
-          throw validationError("Invalid note mutation revision.", "noteRevisions");
+          throw validationError(
+            "Invalid note mutation revision.",
+            "noteRevisions",
+          );
         }
         return [id, value] as const;
       }),

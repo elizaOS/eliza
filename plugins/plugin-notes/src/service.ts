@@ -14,11 +14,10 @@ import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type EncryptedNotesDocumentPort, NotesStore } from "./store.js";
 import type {
-  NotesSnapshot,
   NotesDocument,
+  NotesSnapshot,
   NotesStoreStatus,
   StickyNote,
-  UpdateNoteInput,
 } from "./types.js";
 import {
   parseCreateNoteInput,
@@ -154,7 +153,8 @@ function distinctNotes(
     if (
       !current ||
       revisionOf(note) > revisionOf(current) ||
-      (revisionOf(note) === revisionOf(current) && note.updatedAt > current.updatedAt)
+      (revisionOf(note) === revisionOf(current) &&
+        note.updatedAt > current.updatedAt)
     ) {
       shown.set(key, note);
     }
@@ -442,7 +442,10 @@ export class NotesService extends Service {
         updatedAt: now,
       };
       draft.notes.unshift(note);
-      draft.noteRevisions = { ...draft.noteRevisions, [id]: draft.revision + 1 };
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [id]: draft.revision + 1,
+      };
       return { note, replayed: false };
     }, projectNotesSnapshot);
     if (!transaction.value.replayed) {
@@ -487,7 +490,10 @@ export class NotesService extends Service {
       if (index < 0 || !existing) throw notFound(id);
       const updated = applyNotePatch(existing, patch, updatedAt);
       draft.notes[index] = updated;
-      draft.noteRevisions = { ...draft.noteRevisions, [id]: draft.revision + 1 };
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [id]: draft.revision + 1,
+      };
       return updated;
     }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
@@ -559,7 +565,10 @@ export class NotesService extends Service {
         }
       }
       draft.notes = next;
-      draft.noteRevisions = { ...draft.noteRevisions, [updated.id]: draft.revision + 1 };
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [updated.id]: draft.revision + 1,
+      };
       return updated;
     }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
@@ -623,7 +632,10 @@ export class NotesService extends Service {
         throw notFound(id);
       draft.notes.unshift(structuredClone(entry.note));
       trash.splice(index, 1);
-      draft.noteRevisions = { ...draft.noteRevisions, [id]: draft.revision + 1 };
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [id]: draft.revision + 1,
+      };
       return entry.note;
     }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:restored");

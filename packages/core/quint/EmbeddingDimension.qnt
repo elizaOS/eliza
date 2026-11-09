@@ -1,8 +1,7 @@
 // src/runtime/embeddings.ts and the embedding adapter contract in plugin-sql.
 // Each provider, adapter resize, space update, pin, clear and write await remains
 // separate. Runtime and stored vectors carry immutable named or unversioned
-// provenance. Unmarked legacy caller arrays assert the active space at admission;
-// they are outside the provider-generated vector domain modeled here.
+// provenance. Unmarked direct inputs can write only to an unnamed store.
 // Init starts with an empty/correct index. Previously mislabeled persisted
 // vectors need the existing explicit fresh-index/re-embedding workflow.
 module EmbeddingDimension {
@@ -96,12 +95,19 @@ module EmbeddingDimension {
       else {...s, dropped: s.dropped + 1, epc: s.epc.set(e, "done")}
     }
   }
+  action DirectUnmarkedWrite(e: str): bool = all {
+    s.epc.get(e) == "idle",
+    s' = if (s.aspace == None)
+      {...s, epc: s.epc.set(e, "done"), stored: s.stored.union(Set({space: None, dim: s.col, from: None}))}
+    else {...s, epc: s.epc.set(e, "done"), dropped: s.dropped + 1}
+  }
   val Finished = s.ppc == "idle" and Embedders.forall(e => s.epc.get(e) == "done")
   action nextStep = {
     nondet p = Providers.oneOf()
     nondet e = Embedders.oneOf()
     any {ProbeStart(p), ProbeResize, ProbeSpace, ProbePin, ProbeClear,
-      EmbedCall(e, p), EmbedValidate(e), EmbedAdmit(e), EmbedWrite(e), all {Finished, s' = s}}
+      EmbedCall(e, p), EmbedValidate(e), EmbedAdmit(e), EmbedWrite(e),
+      DirectUnmarkedWrite(e), all {Finished, s' = s}}
   }
   action step = any {nextStep, s' = s}
   val TypeOK = and {

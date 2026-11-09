@@ -307,7 +307,10 @@ export class RuntimeEmbeddings {
 	 * {@link ensureEmbeddingDimension} (e.g. the deferred boot re-probe).
 	 */
 	isEmbeddingGenerationDisabled(): boolean {
-		return this.embeddingStoreTransition || this.embeddingGenerationDisabledReason !== null;
+		return (
+			this.embeddingStoreTransition ||
+			this.embeddingGenerationDisabledReason !== null
+		);
 	}
 
 	disableEmbeddingGeneration(reason: string): void {
@@ -340,7 +343,8 @@ export class RuntimeEmbeddings {
 			{
 				src: "agent",
 				agentId: this.runtime.agentId,
-				reason: this.embeddingGenerationDisabledReason ??
+				reason:
+					this.embeddingGenerationDisabledReason ??
 					"Embedding store transition is not yet confirmed",
 			},
 			"Embedding generation is disabled; memory writes are persisted WITHOUT vectors — recall over new memories is degraded until embedding initialization succeeds",
@@ -527,9 +531,13 @@ export class RuntimeEmbeddings {
 					},
 				);
 			}
-			const identity = spaceId === undefined
-				? await this.prepareEmbeddingStoreIdentity(registration, embedding.length)
-				: undefined;
+			const identity =
+				spaceId === undefined
+					? await this.prepareEmbeddingStoreIdentity(
+							registration,
+							embedding.length,
+						)
+					: undefined;
 			if (
 				identity &&
 				(identity.next || this.pinnedEmbeddingDimension !== embedding.length) &&
@@ -547,11 +555,17 @@ export class RuntimeEmbeddings {
 					: [];
 			if (
 				identity?.next &&
-				!(await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, identity.next))
+				!(await this.runtime.setCache(
+					EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+					identity.next,
+				))
 			) {
-				throw new ElizaError("Embedding store identity write is not confirmed", {
-					code: "EMBEDDING_STORE_IDENTITY_WRITE_UNCONFIRMED",
-				});
+				throw new ElizaError(
+					"Embedding store identity write is not confirmed",
+					{
+						code: "EMBEDDING_STORE_IDENTITY_WRITE_UNCONFIRMED",
+					},
+				);
 			}
 			const modelLabel = identity?.modelLabel ?? spaceId ?? null;
 			this.pinnedEmbeddingSpace = spaceId;
