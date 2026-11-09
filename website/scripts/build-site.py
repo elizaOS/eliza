@@ -12,7 +12,7 @@ directories = (
 ).split()
 files = (
     "404.html ads.txt app-ads.txt changelog.json connect-core.js consent.js "
-    "disclaimer.md errors.js faq.json googlec12e36a98a292c4c.html hive-core.js "
+    "desk.css desk.js disclaimer.md errors.js faq.json googlec12e36a98a292c4c.html hive-core.js "
     "home-motion.js home.css home.js index.html landing.css manifest.webmanifest "
     "merch-promo.js monetization.json nacl.min.js offers.json privacy-policy.md "
     "robots.txt site-chrome.js site-config.js site-motion.js site-offers.js "
@@ -45,6 +45,6 @@ errors.write_text(text)
 
 for name in ("index.html", "app/index.html", "app/gate.js", "assets/mark.svg",
              "assets/mech.jpg", "assets/poster.jpg", "media/hero.mp4",
-             "connect-core.js", "site-wallet.js"):
+             "connect-core.js", "site-wallet.js", "desk.js", "desk.css"):
     if not (out / name).is_file() or not (out / name).stat().st_size:
         raise RuntimeError("Missing required site file: " + name)

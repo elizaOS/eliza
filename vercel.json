@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "python3 website/scripts/build-site.py && python3 website/scripts/test-site.py && node website/scripts/test-wallet.cjs && node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs",
+  "buildCommand": "python3 website/scripts/build-site.py && python3 website/scripts/test-site.py && node website/scripts/test-wallet.cjs && node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs website/scripts/desk.test.cjs",
   "outputDirectory": "site-build",
   "redirects": [
     { "source": "/app", "destination": "/app/", "permanent": true }

@@ -1,0 +1,25 @@
+.cyber-desk {
+  grid-column: 1 / -1;
+  background: #101914;
+  color: #e5f5e6;
+  border: 1px solid #d59a3d;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+.cyber-desk .cyber-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #ffd184; }
+.cyber-desk h2, .cyber-desk h3 { margin: 0 0 10px; }
+.cyber-desk h2 { font-size: 19px; }
+.cyber-desk h3 { color: #91e8a4; font-size: 15px; }
+.cyber-desk small { font-size: 12px; }
+.cyber-desk p { margin: 8px 0; }
+.cyber-desk .cyber-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; }
+.cyber-desk .cyber-grid > section { min-width: 0; padding: 12px; border: 1px solid #536e54; background: #0a110d; }
+.cyber-desk form { display: grid; gap: 6px; }
+.cyber-desk input { min-width: 0; width: 100%; padding: 7px; color: #fff; background: #1b2c20; border: 1px solid #a8c9a9; }
+.cyber-desk button { margin: 6px 0; padding: 7px 10px; border: 1px solid #ffd184; background: #35280f; color: #fff1d2; cursor: pointer; }
+.cyber-desk button:focus-visible, .cyber-desk input:focus-visible { outline: 2px solid #91e8a4; outline-offset: 2px; }
+.cyber-desk progress { display: block; max-width: 100%; accent-color: #91e8a4; }
+.cyber-desk progress[hidden] { display: none; }
+.cyber-desk ul { padding-left: 20px; }
+.cyber-desk li { margin: 5px 0; }
+.cyber-desk .cyber-badge { display: inline-block; padding: 2px 5px; background: #543b0f; color: #ffe4a8; font-size: 11px; font-weight: bold; }

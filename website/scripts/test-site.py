@@ -53,7 +53,7 @@ class SiteTests(unittest.TestCase):
             with self.subTest(route=route), self.get(route) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn("text/html", response.headers["Content-Type"])
-        for route in ("/", "/app/"):
+        for route in ("/", "/app/", "/os/"):
             with self.get(route) as response:
                 html = response.read().decode()
             parser = Assets()
@@ -66,7 +66,8 @@ class SiteTests(unittest.TestCase):
                     self.assertEqual(response.status, 200)
                     response.read()
         for asset in ("/assets/mark.svg", "/assets/mech.jpg", "/assets/poster.jpg",
-                      "/media/hero.mp4", "/connect-core.js", "/site-wallet.js"):
+                      "/media/hero.mp4", "/connect-core.js", "/site-wallet.js",
+                      "/desk.js?v=1.4.2", "/desk.css?v=1.4.2"):
             with self.subTest(asset=asset), self.get(asset) as response:
                 self.assertEqual(response.status, 200)
                 response.read()
@@ -90,7 +91,7 @@ class SiteTests(unittest.TestCase):
             (root / "website/.env").write_text("PRIVATE=fixture")
             build = root / "website/scripts/build-site.py"
             for name in ("index.html", "app/index.html", "app/gate.js",
-                         "assets/mark.svg", "media/hero.mp4"):
+                         "assets/mark.svg", "media/hero.mp4", "desk.js", "desk.css"):
                 with self.subTest(missing=name):
                     source = root / "website" / name
                     backup = source.with_name(source.name + ".saved")

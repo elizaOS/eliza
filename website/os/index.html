@@ -6,10 +6,12 @@
   <meta name="theme-color" content="#080a0c">
   <meta name="description" content="ValhallaOS command desk for wallet connections and assistant chat.">
   <title>ValhallaOS · Command Desk</title>
-  <link rel="stylesheet" href="/os/os.css">
-  <script src="/site-config.js" defer></script>
-  <script src="/os/app.js" defer></script>
-  <script src="/os/bridge.js" defer></script>
+  <link rel="stylesheet" href="/os/os.css?v=1.4.2">
+  <link rel="stylesheet" href="/desk.css?v=1.4.2">
+  <script src="/site-config.js?v=1.4.2" defer></script>
+  <script src="/os/app.js?v=1.4.2" defer></script>
+  <script src="/os/bridge.js?v=1.4.2" defer></script>
+  <script src="/desk.js?v=1.4.2" defer></script>
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
@@ -104,6 +106,51 @@
           <button type="button" class="classic-button" data-open="status">Service status</button>
           <button type="button" class="classic-button" data-open="swarm">Swarm monitor</button>
           <button type="button" class="classic-button" data-open="memory">Memory inspector</button>
+        </div>
+      </section>
+      <section class="workspace-panel cyber-desk" aria-labelledby="cyber-desk-title">
+        <div class="cyber-heading"><h2 id="cyber-desk-title">Command desk <small>v1.4.2</small></h2><span>SIMULATION ONLY</span></div>
+        <div class="cyber-grid">
+          <section aria-labelledby="desk-status-title">
+            <h3 id="desk-status-title">Service status</h3>
+            <p id="desk-status" role="status">Status feed not checked.</p>
+            <progress id="desk-status-progress" aria-label="Checking service status" hidden></progress>
+            <button type="button" id="desk-status-check">Check status</button>
+          </section>
+          <section aria-labelledby="desk-audit-title">
+            <h3 id="desk-audit-title">Token address check</h3>
+            <form id="desk-audit-form">
+              <label for="desk-address">Solana mint or Ethereum address</label>
+              <input id="desk-address" maxlength="44" autocomplete="off" required>
+              <button type="submit">Check syntax</button>
+            </form>
+            <p id="desk-audit-result" role="status">Security audit provider unconfigured. Syntax is not a security audit.</p>
+          </section>
+          <section aria-labelledby="desk-radar-title">
+            <h3 id="desk-radar-title">Pump radar</h3>
+            <p>DexScreener top boosted Solana tokens; boosts are paid promotion, not a safety or performance signal.</p>
+            <p id="desk-radar-status" role="status">Radar not loaded.</p>
+            <progress id="desk-radar-progress" aria-label="Loading boosted tokens" hidden></progress>
+            <button type="button" id="desk-radar-load">Load radar</button>
+            <ul id="desk-radar-list" aria-label="Boosted Solana token addresses"></ul>
+          </section>
+          <section aria-labelledby="desk-paper-title">
+            <h3 id="desk-paper-title">Paper trade</h3>
+            <p>Simulation only. No wallet, signature, order, or real execution. Use an assumed price; fees and slippage are assumed zero.</p>
+            <form id="desk-paper-form">
+              <label for="desk-paper-token">Token label</label>
+              <input id="desk-paper-token" maxlength="80" required>
+              <label for="desk-paper-amount">Quantity</label>
+              <input id="desk-paper-amount" type="number" min="0" step="any" required>
+              <label for="desk-paper-price">Assumed price per token (USD)</label>
+              <input id="desk-paper-price" type="number" min="0" step="any" required>
+              <button type="submit">Simulate</button>
+            </form>
+            <p id="desk-paper-result" role="status">No paper trade simulated.</p>
+            <button type="button" id="desk-export">Export paper journal CSV</button>
+            <p id="desk-journal-status" role="status"></p>
+            <ul id="desk-journal" aria-label="Recent simulated trades"></ul>
+          </section>
         </div>
       </section>
     </div>
