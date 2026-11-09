@@ -5,7 +5,7 @@ module SemaphoreModel {
   const N: int
   type State = {
     permits: int, waiters: List[str], pc: str -> str,
-    aborted: str -> bool, listener: str -> bool, queuedAbort: str -> bool,
+    aborted: str -> bool, queuedAbort: str -> bool,
     ticket: str -> int, nextTicket: int
   }
   var s: State
@@ -13,7 +13,7 @@ module SemaphoreModel {
   def Queued(c: str): bool = s.waiters.indices().exists(i => s.waiters.nth(i) == c)
   action init = s' = {
     permits: N, waiters: List(), pc: Callers.mapBy(_ => "idle"),
-    aborted: Callers.mapBy(_ => false), listener: Callers.mapBy(_ => false),
+    aborted: Callers.mapBy(_ => false),
     queuedAbort: Callers.mapBy(_ => false), ticket: Callers.mapBy(_ => 0), nextTicket: 1
   }
   action Acquire(c: str): bool = all {
@@ -26,14 +26,13 @@ module SemaphoreModel {
   action Abort(c: str): bool = all {
     not(s.aborted.get(c)),
     s' = { ...s, aborted: s.aborted.set(c, true),
-      listener: s.listener.set(c, s.pc.get(c) == "waiting"),
       queuedAbort: s.queuedAbort.set(c, s.pc.get(c) == "waiting") }
   }
+  // An aborted caller still in the queue has a pending cancellation listener.
+  // Release can skip it before the listener runs.
   action CancelListener(c: str): bool = all {
-    s.listener.get(c),
-    s' = { ...s, listener: s.listener.set(c, false),
-      waiters: if (Queued(c)) s.waiters.select(x => x != c) else s.waiters,
-      pc: if (Queued(c)) s.pc.set(c, "rejected") else s.pc }
+    s.pc.get(c) == "waiting", s.aborted.get(c),
+    s' = { ...s, waiters: s.waiters.select(x => x != c), pc: s.pc.set(c, "rejected") }
   }
   // Prefix count is the first live waiter's index, or the entire queue length.
   val Skipped = s.waiters.indices().fold(s.waiters.length(), (k, i) =>
@@ -48,12 +47,11 @@ module SemaphoreModel {
         waiters: if (rest.length() == 0) List() else rest.slice(1, rest.length()),
         pc: Callers.mapBy(x => if (x == c) "done"
           else if (rest.length() > 0 and x == rest.nth(0)) "holding"
-          else if (dead.contains(x)) "rejected" else s.pc.get(x)),
-        listener: Callers.mapBy(x => if (dead.contains(x)) false else s.listener.get(x))
+          else if (dead.contains(x)) "rejected" else s.pc.get(x))
       }
     }
   }
-  val Finished = Callers.forall(c => Set("done", "rejected").contains(s.pc.get(c)) and not(s.listener.get(c)))
+  val Finished = Callers.forall(c => Set("done", "rejected").contains(s.pc.get(c)))
   action nextStep = any {
     { nondet c = Callers.oneOf()
       any { Acquire(c), Abort(c), CancelListener(c), Release(c) } },
@@ -67,7 +65,7 @@ module SemaphoreModel {
   val TypeOK = and {
     s.permits >= 0 and s.permits <= N,
     s.waiters.indices().forall(i => Callers.contains(s.waiters.nth(i))),
-    s.pc.keys() == Callers, s.aborted.keys() == Callers, s.listener.keys() == Callers,
+    s.pc.keys() == Callers, s.aborted.keys() == Callers,
     s.queuedAbort.keys() == Callers, s.ticket.keys() == Callers, s.nextTicket >= 0,
     Callers.forall(c => Set("idle", "waiting", "holding", "done", "rejected").contains(s.pc.get(c)) and s.ticket.get(c) >= 0)
   }
