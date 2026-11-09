@@ -28,7 +28,7 @@ type ListedProposal = {
   id: string;
   digest: string;
   state: string;
-  execution?: { attemptId: string } | null;
+  execution?: { attemptId: string; dispatchStartedAt: string | null } | null;
 };
 const prefix = "/api/client-devices";
 
@@ -256,6 +256,7 @@ test("Files capability negotiation preserves review, proposal visibility, and re
       claimed.body.proposal.execution,
       "Expected an owned execution claim",
     );
+    expect(claimed.body.proposal.execution.dispatchStartedAt).toBeTruthy();
     const receipt = {
       digest,
       attemptId: claimed.body.proposal.execution.attemptId,
