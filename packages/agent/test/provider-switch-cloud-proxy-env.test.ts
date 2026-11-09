@@ -4,19 +4,19 @@ import { AgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
 import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import { registerMediaModels } from "../../../plugins/plugin-openai/index.ts";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   registerCloudEmbeddingModels,
   registerCloudMediaModels,
 } from "../../../plugins/plugin-elizacloud/src/index.ts";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { registerMediaModels } from "../../../plugins/plugin-openai/index.ts";
 import { handleProviderSwitchRoutes } from "../src/api/provider-switch-routes.ts";
+import { applyCloudConfigToEnv } from "../src/runtime/eliza.ts";
 import type {
   RuntimeOperationManager,
   StartOperationRequest,
 } from "../src/runtime/operations/types.ts";
 import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
-import { applyCloudConfigToEnv } from "../src/runtime/eliza.ts";
 
 let testVault: TestVault;
 const savedEnv = { ...process.env };
