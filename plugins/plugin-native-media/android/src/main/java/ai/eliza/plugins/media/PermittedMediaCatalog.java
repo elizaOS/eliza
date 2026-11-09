@@ -236,6 +236,38 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     List<String> volumes = volumes();
     return new Fence(volumes, snapshot(volumes));
   }
+  /**
+   * The published scope version: granted access plus each volume's MediaStore version, so it
+   * changes on a new grant or a rebuilt or removed volume. It leaves out the epoch and generation
+   * that {@link Fence#cursorIdentity} holds, so pausing, locking or editing a row keeps it; row
+   * changes reach watchers as library changes instead.
+   */
+  public String scopeVersion() throws Exception {
+    unlocked();
+    StringBuilder value = new StringBuilder(access().toString());
+    for (String volume : volumes()) value.append('|').append(volume).append('=').append(version(volume));
+    return Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(
+                                     value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+        Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+  }
+  /** A {@code next} cursor from before a pause, lock or change; the caller pages again from the start. */
+  public static final class StaleCursor extends IllegalStateException {
+    StaleCursor() {
+      super("Photo page expired; refresh Photos");
+    }
+  }
+  /**
+   * Each volume's MediaStore generation, which moves on any row change, even one made while
+   * paused and unobserved. Empty below Android 11, which has no generation.
+   */
+  public String generations() {
+    unlocked();
+    if (Build.VERSION.SDK_INT < 30) return "";
+    StringBuilder value = new StringBuilder();
+    for (String volume : volumes())
+      value.append('|').append(volume).append('=').append(MediaStore.getGeneration(context, volume));
+    return value.toString();
+  }
   public void requireCurrent(Fence fence) {
     if (SystemClock.elapsedRealtime() > fence.until)
       throw new IllegalStateException("Media query took too long; refresh Photos");
@@ -377,7 +409,7 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       if (page == null || page.until < SystemClock.elapsedRealtime()
           || !page.snapshot.equals(snapshot) || !page.query.equals(search)
           || !page.kind.equals(pageKind))
-        throw new IllegalStateException("Photo page expired; refresh Photos");
+        throw new StaleCursor();
       bucketIndex = page.bucket;
       before = page.before;
     }
