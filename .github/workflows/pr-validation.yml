@@ -968,6 +968,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: quint-verification-pr-shard-${{ matrix.shard }}
+          overwrite: true
           path: |
             test-results/quint/
             test-results/quint-*/
@@ -979,6 +980,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: quint-manifest-pr-${{ matrix.shard }}
+          overwrite: true
           path: test-results/quint/shard-${{ matrix.shard }}-of-4/verification.json
           if-no-files-found: error
           retention-days: 7
@@ -1040,6 +1042,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: quint-verification-complete-pr
+          overwrite: true
           path: test-results/quint/shards-summary.json
           if-no-files-found: warn
           retention-days: 7
