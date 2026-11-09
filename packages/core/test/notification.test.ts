@@ -1215,6 +1215,47 @@ describe("NotificationService", () => {
 		expect(restarted.getUnreadCount()).toBe(0);
 	});
 
+	it("isolates notification payloads from producers and observers across restart", async () => {
+		const input = {
+			title: "Retained notification",
+			groupKey: "retained",
+			data: { labels: ["original"] },
+		};
+		const pending = service.notify(input);
+		input.data.labels.push("producer during admission");
+		const receipt = await pending;
+		expect.soft(receipt.data?.labels).toEqual(["original"]);
+		input.data.labels.push("producer after persistence");
+
+		const mutate = (row: AgentNotification, source: string) => {
+			const labels = row.data?.labels;
+			if (!Array.isArray(labels))
+				throw new Error("Missing notification labels");
+			labels.push(source);
+		};
+		mutate(receipt, "receipt");
+		mutate(emitted[0].data.notification as AgentNotification, "live event");
+		mutate(service.list()[0], "list");
+		mutate(service.listIncludingExpired()[0], "unfiltered list");
+		mutate((await service.listDurableIncludingExpired())[0], "durable list");
+		const grouped = await service.ensureGroupedNotification(input, (row) => {
+			mutate(row, "exact-match callback");
+			return row.id === receipt.id;
+		});
+		mutate(grouped, "grouped receipt");
+		expect.soft(service.list()[0].data?.labels).toEqual(["original"]);
+
+		expect(await service.markRead(receipt.id)).toBe(true);
+		const restarted = (await NotificationService.start(
+			runtime,
+		)) as NotificationService;
+		try {
+			expect(restarted.list()[0].data?.labels).toEqual(["original"]);
+		} finally {
+			await restarted.stop();
+		}
+	});
+
 	it("excludes a notification whose explicit expiresAt has passed", async () => {
 		await service.notify({ title: "Gone", expiresAt: Date.now() - 1000 });
 		await service.notify({ title: "Stays" });
