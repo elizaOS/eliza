@@ -226,7 +226,8 @@ public final class LiveVoiceCapture {
    if(frames.length()>0||edges.length()>0)sink.frames(captureId,frames,edges,Math.min(1f,peak));
   }catch(Exception|Error failure){if(running)error="capture";}
   finally{
-   try{resource.release(recorder);}finally{vad.close();}
+   try{resource.release(recorder);}catch(Exception|Error cleanupFailure){error="capture";}
+   try{vad.close();}catch(Exception|Error cleanupFailure){error="capture";}
    java.util.Arrays.fill(bytes,(byte)0);java.util.Arrays.fill(window,(short)0);java.util.Arrays.fill(pcm,0f);
    preroll.clear();
    sink.ended(captureId,error!=null?error:interruption);

@@ -19,7 +19,9 @@ public final class LiveCaptureAdmission {
   if(!current(ticket)){cancel.run();return false;}
   ticket.cancel=cancel;return true;
  }
- public synchronized void stop(String id){if(active!=null&&active.id.equals(id))cancel(active,false);}
+ public synchronized void stop(String id){stop(id,false);}
+ /** A discarded stop suppresses the captured tail and retires startup. */
+ public synchronized void stop(String id,boolean discard){if(active!=null&&active.id.equals(id))cancel(active,discard);}
  public synchronized void cancelAll(){if(active!=null)cancel(active,true);}
  private void cancel(Ticket ticket,boolean discard){
   ticket.cancelled=true;ticket.discard|=discard;
