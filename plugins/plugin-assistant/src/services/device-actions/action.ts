@@ -1340,7 +1340,10 @@ export function deviceActionForCapabilities(
 ): Action {
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   const navigation = usesCompletedActionNavigation(messageMetadata);
-  const files = capabilities?.includes(FILES_CAPABILITY) === true;
+  const current = getDeviceActionTurn();
+  const files =
+    capabilities?.includes(FILES_CAPABILITY) === true &&
+    (!current || current.isCurrent());
   return {
     ...action,
     description:
@@ -1367,7 +1370,8 @@ export function deviceActionForCapabilities(
         )
           return false;
         const types = branch.properties?.type?.enum;
-        const current = getDeviceActionTurn();
+        if (!files && types?.some((type) => isFilesOperation({ type })))
+          return false;
         const runtime = binding?.runtime ?? current?.runtime;
         if (
           runtime &&
@@ -1416,7 +1420,6 @@ export function deviceActionForCapabilities(
             typeof type === "string" &&
             (capabilities === undefined
               ? type !== "camera_capture_photo" &&
-                !isFilesOperation({ type }) &&
                 type !== "sms_send" &&
                 type !== "phone_dial" &&
                 type !== "clock_alarm" &&
