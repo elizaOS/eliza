@@ -14,16 +14,17 @@
       "UncertaintyFencesMutation",
       "DurableFence",
       "StoppedHasNoProvisionalRows",
-      "SuccessAfterAcknowledgement"
+      "SuccessAfterAcknowledgement",
+      "OwnedPayloadMatchesAdmission"
     ],
     "status": "partial",
     "limitations": [
       "A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
       "Hydration begins with a valid version-2 snapshot. Legacy migration, malformed coordinate rejection, group coalescing, expiry and notification category/priority policy remain separately test-covered and not modeled here.",
-      "Rows project title/body/data content to identity plus a read mark. Alias mutation of returned or input objects is outside this projection.",
+      "The write-queue case projects rows to identity and read state. A separate payload case models producer and observer ownership for one nested payload through admission, persistence and restart.",
       "Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
       "Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
-      "Conformance executes all 69 existing real SQLite/runtime tests. Named fault injection gates real API effects, and is not exhaustive schedule equivalence."
+      "Conformance executes 70 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
     ]
   },
   {

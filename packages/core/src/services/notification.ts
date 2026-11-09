@@ -134,6 +134,12 @@ function isExpired(n: AgentNotification, now: number): boolean {
 	return n.expiresAt != null && n.expiresAt <= now;
 }
 
+function copyNotification<T extends NotificationInput>(notification: T): T {
+	const copy = { ...notification };
+	if (copy.data !== undefined) copy.data = structuredClone(copy.data);
+	return copy;
+}
+
 /** Minimal structural view of the event bus we publish onto. */
 interface EventBusLike {
 	emit: (event: {
@@ -514,7 +520,9 @@ export class NotificationService extends Service {
 	 * Create, persist, and broadcast a notification. Returns the stamped record.
 	 */
 	async notify(input: NotificationInput): Promise<AgentNotification> {
-		return this.enqueueWrite(() => this.notifySerialized(input, true));
+		// Capture the producer's payload before waiting for the inbox write queue.
+		const admitted = copyNotification(input);
+		return this.enqueueWrite(() => this.notifySerialized(admitted, true));
 	}
 
 	/**
@@ -524,7 +532,7 @@ export class NotificationService extends Service {
 	async notifyWithoutEviction(
 		input: NotificationInput,
 	): Promise<AgentNotification> {
-		return this.enqueueWrite(() => this.notifySerialized(input, true));
+		return this.notify(input);
 	}
 
 	/**
@@ -536,13 +544,14 @@ export class NotificationService extends Service {
 		input: NotificationInput & { groupKey: string },
 		isExact: (notification: AgentNotification) => boolean,
 	): Promise<AgentNotification> {
+		const admitted = copyNotification(input);
 		return this.enqueueWrite(async () => {
 			const grouped = this.notifications.filter(
-				(entry) => entry.groupKey === input.groupKey,
+				(entry) => entry.groupKey === admitted.groupKey,
 			);
-			if (grouped.length === 1 && isExact(grouped[0]))
+			if (grouped.length === 1 && isExact(copyNotification(grouped[0])))
 				return this.withNativeCoordinates(grouped[0]);
-			return this.notifySerialized(input, false);
+			return this.notifySerialized(admitted, false);
 		});
 	}
 
@@ -662,7 +671,7 @@ export class NotificationService extends Service {
 			const data: NotificationEventData = {
 				type,
 				notification: removed
-					? { ...notification }
+					? copyNotification(notification)
 					: this.withNativeCoordinates(notification),
 				unreadCount: this.getUnreadCount(),
 				...(removed ? { removed: true } : {}),
@@ -710,11 +719,10 @@ export class NotificationService extends Service {
 	}
 
 	private withNativeCoordinates(n: AgentNotification): AgentNotification {
-		return {
-			...n,
-			nativeEpoch: this.nativeEpoch,
-			nativeSequence: this.nativeSequences[n.id],
-		};
+		const copy = copyNotification(n);
+		copy.nativeEpoch = this.nativeEpoch;
+		copy.nativeSequence = this.nativeSequences[n.id];
+		return copy;
 	}
 
 	/** Closed native projection shared by live events and native inbox pages. */
