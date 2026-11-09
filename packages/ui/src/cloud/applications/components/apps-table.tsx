@@ -24,8 +24,13 @@ import {
   runBulkDelete,
 } from "../../../cloud-ui/components/bulk-select";
 import { AppsListView } from "../../../cloud-ui/components/data-list/apps-list-view";
+import { Button } from "../../../components/ui/button";
 import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import {
+  AppDeletionPendingError,
+  resumeAppDeletionAndWait,
+} from "../lib/app-deletion-client";
 import { type App, deleteApp } from "../lib/apps";
 
 /** How long to wait before re-syncing the list from the server after a
@@ -57,6 +62,10 @@ export function AppsTable({
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [pendingDeletions, setPendingDeletions] = useState<
+    ReadonlyMap<string, AppDeletionPendingError>
+  >(new Map());
+  const [isCheckingDeletion, setIsCheckingDeletion] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<App[] | null>(null);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -79,24 +88,39 @@ export function AppsTable({
     }
   };
 
-  const handleConfirmDelete = async () => {
-    if (
-      deletionInFlight.current ||
-      !deleteTargets ||
-      deleteTargets.length === 0
-    )
-      return;
+  const observeTargets = async (targets: App[], resume: boolean) => {
+    if (deletionInFlight.current || targets.length === 0) return;
     deletionInFlight.current = true;
-    const targets = deleteTargets;
     admittedRows.current = targets;
     const ids = targets.map((app) => app.id);
     setDeletingIds(new Set(ids));
     setDeleteTargets(null);
+    setIsCheckingDeletion(true);
+    const pending = new Map(pendingDeletions);
+    let firstRejectedError: unknown;
     try {
-      const outcome = await runBulkDelete(targets, (app) => deleteApp(app.id));
+      const outcome = await runBulkDelete(targets, async (app) => {
+        try {
+          if (resume) {
+            const original = pending.get(app.id);
+            if (!original)
+              throw new Error("Original app deletion identity is unavailable");
+            await resumeAppDeletionAndWait(app.id, original.jobId);
+          } else await deleteApp(app.id);
+          pending.delete(app.id);
+        } catch (error) {
+          if (
+            error instanceof AppDeletionPendingError &&
+            error.appId === app.id
+          )
+            pending.set(app.id, error);
+          else if (firstRejectedError === undefined) firstRejectedError = error;
+          throw error;
+        }
+      });
       if (!mounted.current) return;
       const deletedIds = outcome.deleted.map((app) => app.id);
-      const failed = outcome.failed;
+      const failed = outcome.failed.filter((app) => !pending.has(app.id));
 
       if (deletedIds.length > 0) {
         // Drop deleted rows from the cache directly — see the file header for
@@ -122,7 +146,7 @@ export function AppsTable({
       }
 
       if (failed.length > 0) {
-        const firstError = outcome.firstError;
+        const firstError = firstRejectedError ?? outcome.firstError;
         toast.error(
           t("cloud.apps.toast.deleteSomeFailed", {
             count: failed.length,
@@ -140,11 +164,18 @@ export function AppsTable({
       }
       setSelectedIds(new Set());
     } finally {
-      admittedRows.current = [];
       deletionInFlight.current = false;
-      setDeletingIds(new Set());
+      if (mounted.current) {
+        admittedRows.current = targets.filter((app) => pending.has(app.id));
+        setPendingDeletions(pending);
+        setDeletingIds(new Set(pending.keys()));
+        setIsCheckingDeletion(false);
+      }
     }
   };
+
+  const handleConfirmDelete = () => observeTargets(deleteTargets ?? [], false);
+  const handleResume = () => observeTargets(admittedRows.current, true);
 
   const presentIds = new Set(apps.map((app) => app.id));
   const visibleApps = [
@@ -160,6 +191,38 @@ export function AppsTable({
 
   return (
     <>
+      {pendingDeletions.size > 0 && (
+        <div
+          role="status"
+          className="space-y-3 rounded-md border border-border p-4"
+        >
+          <p>
+            {[...pendingDeletions.values()].some(
+              (entry) => entry.reason === "recovery_required",
+            )
+              ? t("cloud.apps.deletionRecoveryRequiredList", {
+                  defaultValue:
+                    "A deletion job requires recovery. Original requests are retained and pending apps remain locked.",
+                })
+              : t("cloud.apps.deletionStillPendingList", {
+                  defaultValue:
+                    "Deletion is still pending. Status could not be confirmed; original requests are retained.",
+                })}
+          </p>
+          <Button
+            onClick={() => void handleResume()}
+            disabled={isCheckingDeletion}
+          >
+            {isCheckingDeletion
+              ? t("cloud.apps.checkingDeletionStatus", {
+                  defaultValue: "Checking deletion status…",
+                })
+              : t("cloud.apps.checkDeletionStatus", {
+                  defaultValue: "Check deletion status",
+                })}
+          </Button>
+        </div>
+      )}
       <BulkSelectionBar
         count={selectedIds.size}
         onClear={() => setSelectedIds(new Set())}

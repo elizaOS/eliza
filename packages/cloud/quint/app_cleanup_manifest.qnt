@@ -112,26 +112,35 @@ module app_cleanup_uploads {
 
 // One projected row; bulk operations apply the same local deleting set to each row.
 module app_cleanup_ui {
-  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool, authorized: bool, resync: bool, navigated: bool }
+  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool, authorized: bool, resync: bool, navigated: bool, observing: bool, job: int, cleanup: bool }
   var s: State
-  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false,authorized:true,resync:false,navigated:false}
-  action begin = all {s.row,not(s.deleting),s'={...s,deleting:true,label:"Deleting",actions:false}}
+  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false,authorized:true,resync:false,navigated:false,observing:false,job:-1,cleanup:false}
+  action begin = all {s.row,not(s.deleting),s'={...s,deleting:true,label:"Deleting",actions:false,observing:true,job:0}}
   action pollPending = all {s.deleting,not(s.receipt),s'=s}
-  action receiveReceipt = all {s.deleting,s.authorized,s'={...s,receipt:true}}
-  action publishComplete = all {s.receipt,s.authorized,s'={...s,deleting:false,row:false,toast:true,resync:true,navigated:true}}
+  action receiveReceipt = all {s.deleting,s.authorized,s.observing,s'={...s,receipt:true,cleanup:true}}
+  action metadataOnly = all {s.deleting,s.authorized,s.observing,s'={...s,receipt:true}}
+  action loseObservation = all {s.deleting,s.observing,s'={...s,observing:false}}
+  action resume = all {s.deleting,s.authorized,not(s.observing),s'={...s,observing:true}}
+  action publishComplete = all {s.receipt,s.cleanup,s.authorized,s'={...s,deleting:false,row:false,toast:true,resync:true,navigated:true,observing:false}}
   action refreshMissing = all {s.deleting,s'=s}
-  action authoritySwitch = s'={...s,authorized:false,deleting:false,row:false,actions:false,toast:false,resync:false,navigated:false}
+  action authoritySwitch = s'={...s,authorized:false,deleting:false,row:false,actions:false,toast:false,resync:false,navigated:false,observing:false}
   action delayedRefresh = all {s.resync,s.authorized,s'={...s,resync:false}}
-  action step = any {begin,pollPending,refreshMissing,authoritySwitch,receiveReceipt,publishComplete,delayedRefresh,s'=s}
+  action step = any {begin,pollPending,refreshMissing,authoritySwitch,receiveReceipt,publishComplete,delayedRefresh,metadataOnly,loseObservation,resume,s'=s}
   val safety = all {
     s.deleting implies (s.row and s.label == "Deleting" and not(s.actions)),
-    (not(s.row) and s.authorized) implies s.receipt,
-    s.toast implies (s.receipt and s.authorized),
+    (not(s.row) and s.authorized) implies (s.receipt and s.cleanup),
+    s.toast implies (s.receipt and s.cleanup and s.authorized),
+    s.deleting implies s.job == 0,
     s.resync implies s.authorized,
-    s.navigated implies (s.receipt and s.authorized),
+    s.navigated implies (s.receipt and s.cleanup and s.authorized),
   }
   run pendingRowThenReceiptTest = init.then(begin).then(pollPending).then(refreshMissing).then(receiveReceipt).then(publishComplete).expect(safety and s.toast and not(s.row))
   run authoritySwitchRetiresOldUiTest = init.then(begin).then(authoritySwitch).expect(safety and not(s.toast))
+  run lostObservationResumesOriginalTest = init.then(begin).then(metadataOnly).then(loseObservation).then(resume).then(receiveReceipt).then(publishComplete).expect(safety and s.job == 0 and s.toast)
+  action unsafeRepeatDelete = all {s.deleting,not(s.observing),s'={...s,job:1,observing:true}}
+  run observationFailureCannotCreateAnotherJobWitnessTest = init.then(begin).then(loseObservation).then(unsafeRepeatDelete).expect(not(safety))
+  action unsafeIgnoreCleanup = all {s.receipt,s'={...s,deleting:false,row:false,toast:true,navigated:true}}
+  run metadataOnlyCompletionWitnessTest = init.then(begin).then(metadataOnly).then(unsafeIgnoreCleanup).expect(not(safety))
   action unsafeLateToast = s'={...s,receipt:true,toast:true}
   run retiredAuthorityToastWitnessTest = init.then(begin).then(authoritySwitch).then(unsafeLateToast).expect(not(safety))
   action unsafeLateNavigation = s'={...s,receipt:true,navigated:true}

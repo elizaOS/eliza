@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { deleteAppAndWait } from "../app-deletion-client";
+import {
+  AppDeletionPendingError,
+  deleteAppAndWait,
+  resumeAppDeletionAndWait,
+} from "../app-deletion-client";
 
 const appId = "original-app";
 const jobId = "original-job";
@@ -15,7 +19,12 @@ const completed = {
       id: jobId,
       type: "app_delete",
       status: "completed",
-      result: { appDeleted: true, appId, deletionJobId: jobId },
+      result: {
+        appDeleted: true,
+        appId,
+        deletionJobId: jobId,
+        cleanupConfirmed: true,
+      },
     },
   },
 };
@@ -164,4 +173,82 @@ test("poll timeout stops only the client wait", async () => {
     }),
   ).rejects.toThrow();
   expect(methods).toEqual(["DELETE", undefined]);
+});
+
+for (const cleanupConfirmed of [undefined, false]) {
+  test(`a completed job without cleanup confirmation ${cleanupConfirmed} remains pending`, async () => {
+    let calls = 0;
+    const error = await deleteAppAndWait(appId, {
+      request: async () =>
+        ++calls === 1
+          ? pending
+          : {
+              ...completed,
+              data: {
+                ...completed.data,
+                data: {
+                  ...completed.data.data,
+                  result: { ...completed.data.data.result, cleanupConfirmed },
+                },
+              },
+            },
+    }).catch((error) => error);
+    expect(error).toBeInstanceOf(AppDeletionPendingError);
+    expect(error).toMatchObject({
+      appId,
+      jobId,
+      reason: "observation_unavailable",
+    });
+  });
+}
+
+test("lost status observation retains original identity and resumes with GET only", async () => {
+  const paths: Array<{ path: string; method?: string }> = [];
+  const error = await deleteAppAndWait(appId, {
+    request: async (path, init) => {
+      paths.push({ path, method: init.method });
+      if (init.method === "DELETE") return pending;
+      throw new TypeError("controlled transport loss");
+    },
+  }).catch((error) => error);
+  expect(error).toBeInstanceOf(AppDeletionPendingError);
+  expect(error).toMatchObject({
+    appId,
+    jobId,
+    reason: "observation_unavailable",
+  });
+  await resumeAppDeletionAndWait(error.appId, error.jobId, {
+    request: async (path, init) => {
+      paths.push({ path, method: init.method });
+      return completed;
+    },
+  });
+  expect(paths).toEqual([
+    { path: `/api/v1/apps/${appId}`, method: "DELETE" },
+    { path: `/api/v1/jobs/${jobId}`, method: undefined },
+    { path: `/api/v1/jobs/${jobId}`, method: undefined },
+  ]);
+});
+
+test("a status deadline retains the original job for read-only recovery", async () => {
+  const error = await deleteAppAndWait(appId, {
+    timeoutMs: 5,
+    pollIntervalMs: 100,
+    request: async (_path, init) =>
+      init.method === "DELETE"
+        ? pending
+        : {
+            status: 200,
+            data: {
+              success: true,
+              data: { id: jobId, type: "app_delete", status: "in_progress" },
+            },
+          },
+  }).catch((error) => error);
+  expect(error).toBeInstanceOf(AppDeletionPendingError);
+  expect(error).toMatchObject({
+    appId,
+    jobId,
+    reason: "observation_unavailable",
+  });
 });

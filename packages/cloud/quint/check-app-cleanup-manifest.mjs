@@ -98,6 +98,39 @@ const suites = [
       "actual detail page preserves pending deletion through missing-metadata",
     ],
   },
+  {
+    name: "ui-recovery",
+    file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-recovery.test.tsx",
+    names: [
+      "detail retains the original deletion after transport and resumes with GET only",
+      "detail retains the original deletion after unconfirmed and resumes with GET only",
+      "detail retains the original deletion after recovery and resumes with GET only",
+      "table retains the original deletion after transport and resumes with GET only",
+      "table retains the original deletion after unconfirmed and resumes with GET only",
+      "table retains the original deletion after recovery and resumes with GET only",
+      "detail keeps ordinary admission rejection separate from pending jobs",
+      "table keeps ordinary admission rejection separate from pending jobs",
+    ],
+  },
+
+  {
+    name: "ui-client",
+    file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-client.test.ts",
+    names: [
+      "the app helper waits for the original job receipt before reporting success",
+      "an acknowledged complete replay needs no additional request",
+      "a completed job with a different app receipt is rejected",
+      "legacy success false is not cast into a successful app deletion",
+      "cancelling the wait never sends a job cancellation or another DELETE",
+      "poll timeout stops only the client wait",
+      "a failed job never reports app deletion success",
+      "a cancelled job never reports app deletion success",
+      "a completed job without cleanup confirmation undefined remains pending",
+      "a completed job without cleanup confirmation false remains pending",
+      "lost status observation retains original identity and resumes with GET only",
+      "a status deadline retains the original job for read-only recovery",
+    ],
+  },
 ];
 for (const suite of suites) {
   const report = path.join(directory, `${suite.name}.xml`);

@@ -2297,7 +2297,8 @@
       "Complete plans intentionally remain inline and immutable in job.data, with small independently updated result receipts. Physical PostgreSQL write-cost measurements are experimental evidence, not a worst-case bound.",
       "Upload execution requires actual original-writer quiescence. Pending unstarted rows can retire; legacy ambiguous or unknown-PUT rows block and need operator reconciliation. No time-based quiescence or general upload recovery is claimed.",
       "One UI row projection; actual two-row React/HTTP conformance retains pending rows and disables conflicting actions until confirmed completion.",
-      "Pending display belongs to one mounted user/organization scope. Auth changes retire that local display without cancelling the server job; no cross-session UI or query-cache publication is allowed."
+      "Pending display belongs to one mounted user/organization scope. Auth changes retire that local display without cancelling the server job; no cross-session UI or query-cache publication is allowed.",
+      "UI observer failure retains the accepted original app/job identity and pending snapshot within the same mounted user/org scope. Explicit resume polls that job only; completed status without cleanupConfirmed cannot remove the row or navigate. Initial admission response loss and browser-reload restoration remain outside this UI model."
     ]
   }
 ]

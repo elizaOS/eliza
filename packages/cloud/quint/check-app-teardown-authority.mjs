@@ -101,6 +101,10 @@ const suites = [
       "poll timeout stops only the client wait",
       "a failed job never reports app deletion success",
       "a cancelled job never reports app deletion success",
+      "a completed job without cleanup confirmation undefined remains pending",
+      "a completed job without cleanup confirmation false remains pending",
+      "lost status observation retains original identity and resumes with GET only",
+      "a status deadline retains the original job for read-only recovery",
     ],
   },
 ];
