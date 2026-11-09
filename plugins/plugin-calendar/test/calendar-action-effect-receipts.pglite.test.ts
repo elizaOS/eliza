@@ -555,6 +555,71 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
   }
 }, 60000);
 
+it("registered availability actions accept the zone aliases the CALENDAR feed resolves", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "CalendarAvailabilityZoneAlias",
+    plugins: [calendarPlugin],
+  });
+  const runtime = fixture.runtime;
+  try {
+    const availability = runtime.actions.filter((action) =>
+      ["CALENDAR_CHECK_AVAILABILITY", "CALENDAR_PROPOSE_TIMES"].includes(
+        action.name,
+      ),
+    );
+    expect(availability).toHaveLength(2);
+    let request = 0;
+    const execute = (name: string, params: Record<string, unknown>) =>
+      executePlannedToolCall(
+        runtime,
+        {
+          message: {
+            id: `00000000-0000-0000-0000-0000000007${String(10 + request++)}`,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: ROOM_ID,
+            createdAt: Date.parse("2026-11-09T08:00:00.000Z"),
+            content: { text: "Am I free then?", source: "client_chat" },
+          } as Memory,
+          activeContexts: ["calendar"],
+          userRoles: ["OWNER"],
+          callback: async () => [],
+        },
+        {
+          name,
+          params: {
+            windowStart: "2026-11-20T14:00:00Z",
+            windowEnd: "2026-11-20T15:00:00Z",
+            ...params,
+          },
+        },
+        { actions: availability },
+      );
+    // CALENDAR reads the window in the alias-resolved zone and echoes that
+    // zone, so "GMT" and "pst" must answer like "UTC" for an empty calendar.
+    for (const timeZone of ["UTC", "GMT", "pst"])
+      expect
+        .soft(
+          await execute("CALENDAR_CHECK_AVAILABILITY", { timeZone }),
+          timeZone,
+        )
+        .toMatchObject({ success: true, data: { isFree: true } });
+    const proposed = await execute("CALENDAR_PROPOSE_TIMES", {
+      timeZone: "EST",
+      durationMinutes: 30,
+    });
+    expect.soft(proposed.success, "EST").toBe(true);
+    expect
+      .soft(proposed.data?.slots, "EST")
+      .toEqual([
+        expect.objectContaining({ timeZone: "America/New_York" }),
+        expect.objectContaining({ timeZone: "America/New_York" }),
+      ]);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60000);
+
 const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,

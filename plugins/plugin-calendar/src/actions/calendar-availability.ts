@@ -14,6 +14,7 @@ import {
   normalizeEffectReceipt,
   stringToUuid,
 } from "@elizaos/core";
+import { CALENDAR_TIME_ZONE_ALIASES } from "../internal/constants.js";
 import { calendarRangeFitsLocalDays } from "../internal/time.js";
 import { evaluateCalendarAvailability } from "../service/availability.js";
 import {
@@ -123,11 +124,20 @@ export function calendarAvailabilityActions(
         const {
           windowStart,
           windowEnd,
-          timeZone,
+          timeZone: requestedTimeZone,
           durationMinutes,
           grantId,
           calendarId,
         } = isObjectRecord(params) ? params : {};
+        // CALENDAR reads the window in the alias-resolved zone ("GMT" -> "UTC",
+        // "pst" -> "America/Los_Angeles") and echoes that zone, so check and
+        // evaluate in the same zone.
+        const timeZone =
+          typeof requestedTimeZone === "string"
+            ? (CALENDAR_TIME_ZONE_ALIASES[
+                requestedTimeZone.trim().toLowerCase()
+              ] ?? requestedTimeZone.trim())
+            : requestedTimeZone;
         const selectedSource =
           typeof grantId === "string" &&
           grantId.trim() &&
