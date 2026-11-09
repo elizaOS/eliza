@@ -6,6 +6,7 @@ import {
   DeviceActionCoordinator,
   type DeviceActionJournal,
   type DeviceContextEnvelope,
+  type DeviceExecutionResult,
   type DeviceExecutor,
   type DeviceJournalEntry,
   type DeviceOperationReceipt,
@@ -1327,5 +1328,278 @@ describe("shared phone and reminder-read parity", () => {
       result: readResult,
     });
     expect(reads).toBe(1);
+  });
+});
+
+describe("notes organize operations", () => {
+  const target = {
+    sourceId: "local",
+    sourceRevision: "a".repeat(64),
+    noteId: "n-1",
+    revision: "b".repeat(64),
+  };
+  function organizeFixture(
+    operation: Record<string, unknown>,
+    capabilities = ["notes.local-record.v1", "notes.organize.v1"],
+  ) {
+    const fixture = fixtureServer(operation);
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      for (const item of response.proposals ?? [response.proposal])
+        if (item) Object.assign(item.payload, { requestMessageId: "message" });
+      return response;
+    };
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities },
+      scope,
+      request,
+      journal,
+      execute: async () => {
+        effects++;
+        return { status: "succeeded", summary: "Done" };
+      },
+      profile,
+    });
+    return { ...fixture, actions, effects: () => effects };
+  }
+
+  it("refuses organize proposals the phone did not negotiate", async () => {
+    const f = organizeFixture({ type: "notes_filter", kind: "voice" }, [
+      "notes.local-record.v1",
+    ]);
+    const review = await f.actions.pendingReview(notesContext, signal());
+    expect(review[0].proposal).toBeNull();
+    expect(review[0].notice).toMatch(/Notes folders were not negotiated/);
+  });
+
+  it("reviews a move and reports a committed Notes change", async () => {
+    const f = organizeFixture({ type: "notes_move", target, folder: "Work" });
+    const [card] = await f.actions.pending(notesContext, signal());
+    expect(card).toMatchObject({ title: "Move note", description: "To Work" });
+    // A reviewed move never runs as a direct request.
+    expect(
+      await f.actions.performRequested(
+        "message",
+        notesContext,
+        signal(),
+        async () => true,
+      ),
+    ).toEqual([]);
+    expect(f.effects()).toBe(0);
+    expect(
+      await f.actions.approve("proposal", notesContext, signal()),
+    ).toMatchObject({ status: "succeeded", committedChanges: ["notes"] });
+    expect(f.effects()).toBe(1);
+  });
+
+  it("runs a filter and recording directly only for the requesting message", async () => {
+    for (const operation of [
+      { type: "notes_filter", text: "milk" },
+      { type: "notes_record", action: "start" },
+    ]) {
+      const f = organizeFixture(operation);
+      await f.actions.pending(notesContext, signal());
+      expect(
+        await f.actions.performRequested(
+          "other-message",
+          notesContext,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(
+        await f.actions.performRequested(
+          "message",
+          notesContext,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+      expect(f.effects()).toBe(1);
+    }
+  });
+
+  it("records only while Notes is open and reviews elsewhere only from Home or Notes", () => {
+    const home = { view: "home", revision: 1, sensitive: false };
+    const calendar = { view: "calendar", revision: 1, sensitive: false };
+    expect(
+      proposalContextNotice(
+        { type: "notes_record", action: "start" },
+        home,
+        profile,
+      ),
+    ).toBe("Open Notes to record a voice note.");
+    expect(
+      proposalContextNotice(
+        { type: "notes_folder_create", name: "Work" },
+        home,
+        profile,
+      ),
+    ).toBeUndefined();
+    expect(
+      proposalContextNotice(
+        { type: "notes_restore", noteId: "n-1" },
+        calendar,
+        profile,
+      ),
+    ).toBe("Open Home or Notes to review this Notes action.");
+  });
+});
+
+describe("photos view operations", () => {
+  const photosContext: DeviceContextEnvelope = {
+    view: "photos",
+    revision: 3,
+    sensitive: false,
+  };
+  const capabilities = ["photos.library.v1", "photos.view.v1"];
+  function photosFixture(
+    operation: Record<string, unknown>,
+    photoLibraryResult: unknown,
+    negotiated = capabilities,
+  ) {
+    const fixture = fixtureServer(operation);
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      for (const item of response.proposals ?? [response.proposal])
+        if (item) Object.assign(item.payload, { requestMessageId: "message" });
+      return response;
+    };
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities: negotiated },
+      scope,
+      request,
+      journal,
+      execute: async () => {
+        effects++;
+        return {
+          status: "succeeded",
+          summary: "Done",
+          // Malformed results are passed on purpose to test the validator.
+          photoLibraryResult:
+            photoLibraryResult as DeviceExecutionResult["photoLibraryResult"],
+        };
+      },
+      profile,
+    });
+    return { ...fixture, actions, effects: () => effects };
+  }
+
+  it("refuses Photos proposals unless both capabilities were negotiated", async () => {
+    for (const negotiated of [["photos.library.v1"], ["photos.view.v1"]]) {
+      const f = photosFixture(
+        { type: "photos_open", id: "lib:i:1:10" },
+        undefined,
+        negotiated,
+      );
+      const review = await f.actions.pendingReview(photosContext, signal());
+      expect(review[0].proposal).toBeNull();
+      expect(review[0].notice).toMatch(/Photos actions were not negotiated/);
+    }
+  });
+
+  it("reviews an album and a share and reports the review result, not a change", async () => {
+    for (const [operation, title] of [
+      [
+        { type: "photos_album_create", name: "Trip", ids: ["lib:i:1:10"] },
+        "Create album “Trip”",
+      ],
+      [{ type: "photos_share", ids: ["lib:i:1:10"] }, "Share 1 item"],
+    ] as const) {
+      const result = {
+        kind: operation.type,
+        status: "review_opened",
+        count: 1,
+        missing: 0,
+      };
+      const f = photosFixture(operation, result);
+      const [card] = await f.actions.pending(photosContext, signal());
+      expect(card).toMatchObject({ title });
+      // A reviewed Photos operation never runs as a direct request.
+      expect(
+        await f.actions.performRequested(
+          "message",
+          photosContext,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(f.effects()).toBe(0);
+      expect(
+        await f.actions.approve("proposal", photosContext, signal()),
+      ).toMatchObject({ status: "succeeded", committedChanges: [] });
+      expect(f.effects()).toBe(1);
+      expect(f.server.providerReceipt).toMatchObject({
+        outcome: "applied",
+        result,
+      });
+    }
+  });
+
+  it("runs a filter and an open directly only for the requesting message", async () => {
+    for (const [operation, result] of [
+      [
+        { type: "photos_filter", kind: "video" },
+        { kind: "photos_filter", shown: 3, more: false },
+      ],
+      [
+        { type: "photos_open", id: "lib:v:2:20" },
+        { kind: "photos_open", opened: true },
+      ],
+    ] as const) {
+      const f = photosFixture(operation, result);
+      await f.actions.pending(photosContext, signal());
+      expect(
+        await f.actions.performRequested(
+          "other-message",
+          photosContext,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(
+        await f.actions.performRequested(
+          "message",
+          photosContext,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+      expect(f.effects()).toBe(1);
+      expect(f.server.providerReceipt).toMatchObject({ result });
+    }
+  });
+
+  it("never reports a malformed Photos result as applied", async () => {
+    const f = photosFixture(
+      { type: "photos_filter", favorite: true },
+      { kind: "photos_filter", shown: 2, more: false, items: ["x"] },
+    );
+    await f.actions.pending(photosContext, signal());
+    expect(
+      await f.actions.approve("proposal", photosContext, signal()),
+    ).toMatchObject({ status: "unknown" });
+    expect(f.server.receipts).toEqual([]);
+  });
+
+  it("is reviewed only in Photos on the unlocked phone", () => {
+    const op = { type: "photos_share", ids: ["lib:i:1:10"] } as const;
+    expect(proposalContextNotice(op, photosContext, profile)).toBeUndefined();
+    expect(
+      proposalContextNotice(
+        op,
+        { view: "home", revision: 1, sensitive: false },
+        profile,
+      ),
+    ).toBe("Open Photos to review this action.");
+    expect(
+      proposalContextNotice(op, { ...photosContext, sensitive: true }, profile),
+    ).toBe("Unlock the phone to review this action.");
   });
 });

@@ -103,12 +103,19 @@ public final class LiveCaptureControllerTest {
 
    // A Stop while the agent session warms is a cancellation, never an enrollment failure.
    host.events.clear();CountDownLatch warming=new CountDownLatch(1),cancelledInFlight=new CountDownLatch(1);
+   Result warmStopped=new Result();AtomicBoolean firstCancel=new AtomicBoolean();
    LiveSegmentPipe.Transport slow=new LiveSegmentPipe.Transport(){
     public void check(){}
     public JSONObject post(JSONObject body)throws Exception{if(body.optBoolean("close"))return new JSONObject().put("status",200).put("body","{\"closed\":true}");warming.countDown();LiveCaptureControllerTest.check(cancelledInFlight.await(5,TimeUnit.SECONDS),"warm cancelled");throw new java.io.IOException("cancelled");}
-    public void cancelInFlight(){cancelledInFlight.countDown();}
+    public void cancelInFlight(){
+     boolean waitForResult=firstCancel.compareAndSet(false,true);
+     cancelledInFlight.countDown();
+     // Let the startup worker classify the result before the stopping caller continues. The
+     // drain thread can cancel again while settling ready(), so only the first caller waits.
+     if(waitForResult)try{await(warmStopped.done);}catch(Exception e){throw new AssertionError(e);}
+    }
    };
-   Result warmStopped=new Result();controller.start(controller.reserve(B,4),false,()->slow,null,false,warmStopped);
+   controller.start(controller.reserve(B,4),false,()->slow,null,false,warmStopped);
    await(warming);controller.stop(B,false,System.currentTimeMillis(),new Stop());await(warmStopped.done);
    check(LiveCaptureController.CANCELLED.equals(warmStopped.refused)&&!host.events.contains("mic:"+B),"stop during warm-up is a cancellation");
 

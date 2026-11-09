@@ -150,6 +150,24 @@ public final class ChromiumBindingDemandTest {
     blocked.close();
     check(!fired[0], "whenReady never fires for an untrusted or denied browser");
 
+    // A later terminal rejection cancels a retry scheduled by an earlier refusal.
+    for (BindResult rejection : new BindResult[] {BindResult.UNTRUSTED, BindResult.DENIED}) {
+      host = new FakeHost();
+      host.answer = BindResult.REFUSED;
+      ChromiumBindingDemand rejectedRetry = new ChromiumBindingDemand(5000, host);
+      rejectedRetry.acquire();
+      check(host.pending() == 1, "the initial refusal queues a retry");
+      host.answer = rejection;
+      rejectedRetry.pin();
+      check(host.pending() == 0, "a terminal rejection cancels the prior retry");
+      host.advance(600000);
+      check(host.binds == 2, "a cancelled retry never binds again");
+      host.answer = BindResult.ACCEPTED;
+      rejectedRetry.pin();
+      check(rejectedRetry.isBound() && host.binds == 3, "a new explicit request can bind after rejection");
+      rejectedRetry.close();
+    }
+
     // Ready callbacks: once, on the verified connection, tied to their hold.
     host = new FakeHost();
     ChromiumBindingDemand ready = new ChromiumBindingDemand(1000, host);

@@ -1,5 +1,5 @@
 /** Runs source-linked Quint cases. Full verification is the default. */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -14,11 +14,15 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { parseQuintShard, selectQuintShard } from "./lib/quint-shards.ts";
 import { testOutputPath } from "./lib/test-output.ts";
+import { MAX_TIMER_DELAY_MS, runWithDeadline } from "./run-with-deadline.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
-const version = "0.33.1";
-const apalacheVersion = "0.62.4";
+export const QUINT_VERSION = "0.33.1";
+export const APALACHE_VERSION = "0.62.4";
+const version = QUINT_VERSION;
+const apalacheVersion = APALACHE_VERSION;
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_:]*$/);
 const temporalCheckSchema = z
   .object({
@@ -87,18 +91,20 @@ type ModelCase = z.infer<typeof caseSchema>;
 type TemporalCheck = z.infer<typeof temporalCheckSchema>;
 export type TemporalOutcome = "holds" | "counterexample" | "checker-error";
 
-/** A checker error, timeout, or safety failure is not a temporal witness. */
+/** A checker error, timeout, or safety failure is not a temporal witness.
+ * TLC checks always-state/action properties without a liveness graph pass.
+ * Require both TLC completion and Quint's successful verifier receipt.
+ */
 export function classifyTemporalOutcome(
   status: number | null,
   output: string,
   error?: string,
 ): TemporalOutcome {
   if (error) return "checker-error";
-  // TLC checks always-state and always-action properties during reachability.
-  // Those successful runs do not print a separate temporal-checking phase.
   if (
     status === 0 &&
-    output.includes("Model checking completed. No error has been found.")
+    output.includes("Model checking completed. No error has been found.") &&
+    /\[ok\] No violation found/.test(output)
   )
     return "holds";
   if (
@@ -432,10 +438,26 @@ export async function main(
   outputDirectory = testOutputPath("quint"),
 ): Promise<void> {
   const options = new Set(["--simulate", "--inventory", "--require-complete"]);
+  const shardArguments = args.filter((arg) => arg.startsWith("--shard="));
+  if (shardArguments.length > 1)
+    throw new Error("Only one Quint shard may be selected");
+  const shard = shardArguments[0]
+    ? parseQuintShard(shardArguments[0])
+    : undefined;
   for (const arg of args) {
-    if (arg.startsWith("-") && !options.has(arg)) {
+    if (
+      arg.startsWith("-") &&
+      !options.has(arg) &&
+      !shardArguments.includes(arg)
+    ) {
       throw new Error(`Unknown Quint option: ${arg}`);
     }
+  }
+  if (shard && outputDirectory === testOutputPath("quint")) {
+    outputDirectory = path.join(
+      outputDirectory,
+      `shard-${shard.index}-of-${shard.count}`,
+    );
   }
   const simulate = args.includes("--simulate");
   if (!args.includes("--inventory")) {
@@ -449,10 +471,13 @@ export async function main(
   }
   const repositorySha256 = quintRepositoryFingerprint(directory);
   const allModels = loadQuintModels(directory);
-  const models = selectQuintModels(
+  const selectedModels = selectQuintModels(
     allModels,
     args.filter((arg) => !arg.startsWith("-")),
   );
+  const models = shard
+    ? selectQuintShard(selectedModels, shard)
+    : selectedModels;
   const inventory = writeInventory(
     directory,
     outputDirectory,
@@ -515,7 +540,7 @@ export async function main(
         outputDirectory,
         simulate ? "simulation.json" : "verification.json",
       ),
-      `${JSON.stringify({ quintVersion: version, apalacheVersion: simulate ? null : apalacheVersion, mode: simulate ? "simulation" : "exhaustive-tlc", repositorySha256, observedRepositorySha256, completed: completed && !repositoryChanged, results }, null, 2)}\n`,
+      `${JSON.stringify({ quintVersion: version, apalacheVersion: simulate ? null : apalacheVersion, mode: simulate ? "simulation" : "exhaustive-tlc", repositorySha256, observedRepositorySha256, ...(shard ? { shard: { ...shard, models: models.map((model) => model.file), allModels: allModels.map((model) => model.file) } } : {}), completed: completed && !repositoryChanged, results }, null, 2)}\n`,
     );
     if (completed && repositoryChanged) {
       throw new Error(
@@ -685,43 +710,21 @@ export async function main(
   }
 }
 
-/** Keep process-group supervision outside the synchronous compiler worker. */
-async function superviseQuintCli(args: string[]): Promise<void> {
-  const child = spawn(
-    process.execPath,
+/** Keep group ownership in this responsive controller until every child is gone. */
+function superviseQuintCli(args: string[]): void {
+  runWithDeadline(
     [
-      fileURLToPath(new URL("./run-with-deadline.ts", import.meta.url)),
-      // Use Node's maximum timer delay. CI and callers set the task deadline.
-      String(2_147_483_647),
+      String(MAX_TIMER_DELAY_MS),
       "--",
       process.execPath,
       fileURLToPath(import.meta.url),
       "--quint-worker",
       ...args,
     ],
-    { stdio: "inherit" },
+    // Leave room for the two-second reap check before an enclosing default
+    // ten-second supervisor can terminate this controller.
+    3_000,
   );
-  let interrupted: NodeJS.Signals | undefined;
-  const interrupt = (signal: NodeJS.Signals) => {
-    interrupted ??= signal;
-    child.kill(signal);
-  };
-  const onInterrupt = () => interrupt("SIGINT");
-  const onTerminate = () => interrupt("SIGTERM");
-  process.on("SIGINT", onInterrupt);
-  process.on("SIGTERM", onTerminate);
-  try {
-    process.exitCode = await new Promise<number>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("close", (code, signal) => {
-        const observed = interrupted ?? signal;
-        resolve(observed === "SIGINT" ? 130 : observed ? 143 : (code ?? 1));
-      });
-    });
-  } finally {
-    process.removeListener("SIGINT", onInterrupt);
-    process.removeListener("SIGTERM", onTerminate);
-  }
 }
 
 if (

@@ -232,6 +232,11 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       " private boolean acknowledge(",
       " /** A key stored before",
     ),
+    ACTUAL_ACK_RECOVERY: between(
+      plugin,
+      " /** A key stored before",
+      " // ── Outcomes and transport",
+    ),
     ACTUAL_OUTCOMES: between(
       plugin,
       " private void finish(",
@@ -244,12 +249,17 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ),
   });
   try {
+    const output = runJvm(
+      [...pure, ...support, file],
+      "ai.eliza.auth.cloud.CloudSignInChainTest",
+    );
     assert.match(
-      runJvm(
-        [...pure, ...support, file],
-        "ai.eliza.auth.cloud.CloudSignInChainTest",
-      ),
-      /^PASS native sign-in chain \(38 scenarios; no browser facilities\)/,
+      output,
+      /^PASS native sign-in chain \(38 scenarios; no browser facilities\)/m,
+    );
+    assert.match(
+      output,
+      /^PASS native startup acknowledgement recovery \(17 scenarios\)$/m,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

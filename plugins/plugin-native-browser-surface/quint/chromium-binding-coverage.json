@@ -1,0 +1,18 @@
+[
+  {
+    "id": "native-ChromiumBindingDemand",
+    "model": "plugins/plugin-native-browser-surface/quint/ChromiumBindingDemand.qnt",
+    "sources": [
+      "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBindingDemand.java",
+      "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserConnection.java",
+      "plugins/plugin-native-browser-surface/test/native-host/ChromiumBindingDemandTest.java"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Two once-acquired holds and one ready registration each, one standing pin, both queue orders, five callback effects and all six production backoff values. Main-thread operations and synchronous callback draining are atomic.",
+      "The proof projects trace-only event labels to a constant. The trace module retains those labels for comparison against real Java after every operation.",
+      "The JVM hook executes the production demand owner with controlled platform bind results and timers. It excludes Android Handler thread marshalling, actual Binder/service identity checks, warmup, device power behavior, callback exceptions and arbitrary callback reentrancy beyond modeled close/disconnect effects."
+    ]
+  }
+]

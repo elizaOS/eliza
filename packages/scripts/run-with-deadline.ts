@@ -46,7 +46,7 @@ const WINDOWS_JOB_SUPERVISOR = fileURLToPath(
  * @param {string} raw
  * @returns {number}
  */
-export function parseDeadlineMs(raw) {
+export function parseDeadlineMs(raw: string) {
   if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
     throw new Error(
       `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
@@ -70,7 +70,7 @@ export function parseDeadlineMs(raw) {
  * @param {string[]} argv process.argv slice after the script path
  * @returns {{ deadlineMs: number, command: string, args: string[] }}
  */
-export function parseArgs(argv) {
+export function parseArgs(argv: string[]) {
   const deadlineRaw = argv[0] ?? "";
   if (argv[1] !== "--" || argv.length < 3) {
     throw new Error(
@@ -82,8 +82,12 @@ export function parseArgs(argv) {
   return { deadlineMs, command, args };
 }
 
-function main(argv) {
-  let options;
+/** Start one owned command group and exit this process with its result. */
+export function runWithDeadline(
+  argv: string[],
+  terminationGraceMs = TERMINATION_GRACE_MS,
+) {
+  let options: ReturnType<typeof parseArgs>;
   try {
     options = parseArgs(argv);
   } catch (error) {
@@ -129,18 +133,18 @@ function main(argv) {
         },
       )
     : spawn(command, args, { stdio: "inherit", detached: true });
-  let timer;
-  let windowsSettleTimer;
-  let windowsForceExitTimer;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let windowsSettleTimer: ReturnType<typeof setTimeout> | undefined;
+  let windowsForceExitTimer: ReturnType<typeof setTimeout> | undefined;
   let windowsWatchdogExpired = false;
   child.once("exit", () => {
     clearTimeout(timer);
     clearTimeout(windowsSettleTimer);
   });
 
-  const killGroup = (signal) => {
+  const killGroup = (signal: NodeJS.Signals) => {
     try {
-      if (isWindows) {
+      if (isWindows || child.pid === undefined) {
         child.kill(signal);
         return;
       }
@@ -157,18 +161,18 @@ function main(argv) {
   };
 
   const processGroupExists = () => {
-    if (isWindows) return false;
+    if (isWindows || child.pid === undefined) return false;
     try {
       process.kill(-child.pid, 0);
       return true;
     } catch (error) {
       // error-policy:J6 process-group liveness probe: ESRCH proves teardown;
       // permission or transient probe errors conservatively mean still alive.
-      return error?.code !== "ESRCH";
+      return (error as NodeJS.ErrnoException)?.code !== "ESRCH";
     }
   };
 
-  const waitForProcessGroupGone = async (timeoutMs) => {
+  const waitForProcessGroupGone = async (timeoutMs: number) => {
     const deadline = Date.now() + timeoutMs;
     while (processGroupExists() && Date.now() < deadline) {
       await new Promise((resolve) =>
@@ -181,7 +185,10 @@ function main(argv) {
   let timedOut = false;
   let interruptedSignal: NodeJS.Signals | null = null;
   let timeoutDone = false;
-  let closeResult = null;
+  let closeResult: {
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  } | null = null;
   const finish = () => {
     if (!closeResult) return;
     if (timedOut || interruptedSignal) {
@@ -203,7 +210,7 @@ function main(argv) {
     if (isWindows) return;
     void (async () => {
       const gracefullyReaped =
-        await waitForProcessGroupGone(TERMINATION_GRACE_MS);
+        await waitForProcessGroupGone(terminationGraceMs);
       if (!gracefullyReaped) {
         console.error(
           `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
@@ -289,5 +296,5 @@ if (
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main(process.argv.slice(2));
+  runWithDeadline(process.argv.slice(2));
 }

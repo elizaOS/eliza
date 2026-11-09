@@ -233,38 +233,21 @@ export async function createDocumentRecord(
     uploadedAt: now,
     characterId: scope.characterId,
   };
-  const memory = await memoriesRepository.create({
-    id,
-    roomId: scope.roomId,
-    entityId: user.id,
-    agentId: scope.agentId,
-    type: "documents",
-    unique: false,
-    content: {
-      text: input.text,
-      source: "documents",
-    },
-    metadata,
-  });
-
-  for (const [position, text] of fragmentTextChunks(input.text).entries()) {
-    await memoriesRepository.create({
-      id: crypto.randomUUID(),
+  const memory = await memoriesRepository.createDocumentWithFragments(
+    {
+      id,
       roomId: scope.roomId,
       entityId: user.id,
       agentId: scope.agentId,
-      type: "document_fragments",
       unique: false,
-      content: { text },
-      metadata: {
-        ...metadata,
-        type: "fragment",
-        documentId: id,
-        position,
-        timestamp: now,
+      content: {
+        text: input.text,
+        source: "documents",
       },
-    });
-  }
+      metadata,
+    },
+    fragmentTextChunks(input.text),
+  );
 
   return toDocumentRecord(memory);
 }

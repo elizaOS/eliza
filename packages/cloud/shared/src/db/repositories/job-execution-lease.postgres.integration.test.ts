@@ -83,6 +83,24 @@ async function expire(job: Job): Promise<void> {
   );
 }
 
+async function sampleDatabaseTime(): Promise<string> {
+  const result = await setup.query<{ observed_at: string }>(
+    "SELECT clock_timestamp()::text AS observed_at",
+  );
+  return result.rows[0].observed_at;
+}
+
+async function expectRetryWindow(id: string, before: string, delayMs: number): Promise<void> {
+  // Apply the delay to the database clock before casting to the stored timestamp type.
+  const result = await setup.query<{ within_window: boolean }>(
+    `SELECT scheduled_for BETWEEN ($2::timestamptz + $3::int * interval '1 millisecond')::timestamp
+      AND (clock_timestamp() + $3::int * interval '1 millisecond')::timestamp AS within_window
+      FROM jobs WHERE id=$1`,
+    [id, before, delayMs],
+  );
+  expect(result.rows[0]?.within_window).toBe(true);
+}
+
 async function seedCommittedCanary(organizationId: string): Promise<Job> {
   const id = randomUUID();
   const userId = randomUUID();
@@ -684,7 +702,7 @@ async function seedCommittedCanary(organizationId: string): Promise<Job> {
         retryable_requeues: 2,
       }),
     );
-    const before = Date.now();
+    const before = await sampleDatabaseTime();
     const first = await run(() =>
       repository.jobsRepository.incrementAttempt(
         claimed.id,
@@ -701,7 +719,7 @@ async function seedCommittedCanary(organizationId: string): Promise<Job> {
       execution_interruptions: 2,
       retryable_requeues: 2,
     });
-    expect(first!.scheduled_for.getTime()).toBeGreaterThanOrEqual(before + 120_000);
+    await expectRetryWindow(claimed.id, before, 120_000);
     await setup.query("UPDATE jobs SET scheduled_for=NOW() WHERE id=$1", [claimed.id]);
     const next = await claim(claimed);
     await expect(
@@ -871,7 +889,7 @@ async function seedCommittedCanary(organizationId: string): Promise<Job> {
             retryable_requeues: bound - 1,
           }),
         );
-        const before = Date.now();
+        const before = await sampleDatabaseTime();
         const pending = await run(() =>
           repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
             claimed,
@@ -887,7 +905,7 @@ async function seedCommittedCanary(organizationId: string): Promise<Job> {
           execution_interruptions: 2,
           retryable_requeues: bound,
         });
-        expect(pending!.scheduled_for.getTime()).toBeGreaterThanOrEqual(before + 120_000);
+        await expectRetryWindow(claimed.id, before, 120_000);
         await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
       }
       const organizationId = randomUUID();

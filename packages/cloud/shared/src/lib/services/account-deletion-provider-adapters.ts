@@ -10,6 +10,7 @@ import { and, eq, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { decideAppBillingDeletionScope } from "../../db/repositories/app-billing-deletion-dispositions";
 import { readAppBillingDeletionObligations } from "../../db/repositories/app-billing-deletion-inventory";
+import { hasUnconfirmedAppCleanup } from "../../db/repositories/app-deletion-cleanup";
 import { containersRepository } from "../../db/repositories/containers";
 import { subscriptionAuthorityRepository } from "../../db/repositories/subscription-authority";
 import {
@@ -778,13 +779,21 @@ export function createAccountDeletionProviderAdapters(
           .from(apps)
           .where(eq(apps.organization_id, context.organizationId))
           .limit(1);
-        return row ? { state: "needs_execution" } : complete(context, "github_repositories");
+        return row || (await hasUnconfirmedAppCleanup(context.organizationId))
+          ? { state: "needs_execution" }
+          : complete(context, "github_repositories");
       },
       async execute(context) {
         const rows = await dbWrite
           .select({ id: apps.id })
           .from(apps)
           .where(eq(apps.organization_id, context.organizationId));
+        if (rows.length === 0 && (await hasUnconfirmedAppCleanup(context.organizationId))) {
+          throw new ElizaError("Original app artifact cleanup is pending", {
+            code: "ACCOUNT_DELETION_APP_CLEANUP_PENDING",
+            severity: "ephemeral",
+          });
+        }
         for (const row of rows) {
           const deleted = await deleteAppWithCleanup(row.id, {
             continueOnError: false,

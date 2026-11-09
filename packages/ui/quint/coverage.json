@@ -215,5 +215,119 @@
       "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and crashes during pending host restoration or consume rollback. Ten finite controller cases cover the reviewed protocols, including one pending keep-current attempt and retired consume recovery.",
       "Storage-adapter atomicity, crash durability and the host-owned authenticated owner/agent/conversation binding contract require their own implementation evidence. The controller accepts an opaque binding string and is not the authentication authority."
     ]
+  },
+  {
+    "id": "NavigateViewClaims",
+    "model": "packages/ui/quint/NavigateViewClaims.qnt",
+    "sources": [
+      "packages/ui/src/events/index.ts",
+      "packages/ui/src/events/__e2e__/navigate-view-claims.test.ts"
+    ],
+    "invariants": [
+      "invariant",
+      "queueBound",
+      "oneResolution",
+      "queuedClaimsLive",
+      "distinctQueue"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two requests, two listeners and two callback attempts for lifecycle. A separate no-listener case checks seventeen admissions against the actual capacity sixteen. Identities and dispatch epochs do not wrap.",
+      "Callback invocation and return are separate actions. This over-approximates ordinary synchronous DOM dispatch and includes explicit reentrant dispatch with the retained event identity, which the real suite reproduces.",
+      "Expected negative temporal checks preserve the observed retired-promise hang and repeated partial effect. They are detected defects or missing callback contracts, not successful progress or exactly-once proofs.",
+      "Generic callback effects are opaque. Selection, loader, anchor and notification-receipt composition remain partial. No unconditional unmount replay is implemented.",
+      "Conformance runs ten named actual event-helper checks. It does not replay all Quint transitions through the implementation."
+    ]
+  },
+  {
+    "id": "ConversationSelection",
+    "model": "packages/ui/quint/ConversationSelection.qnt",
+    "sources": [
+      "packages/ui/src/state/useChatCallbacks.ts",
+      "packages/ui/src/state/useDataLoaders.ts",
+      "packages/ui/src/components/shell/ChatOverlay.tsx",
+      "packages/ui/src/state/ChatComposerContext.hooks.ts",
+      "packages/ui/src/state/__e2e__/conversation-selection.test.tsx"
+    ],
+    "invariants": [
+      "invariant",
+      "finiteBounds",
+      "knownOwner",
+      "terminalCallsStayFinite"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two calls, three conversation identities plus null and five symbolic text values. No active or queued send, images or concurrent composer edits. Cold no-cache loader success is represented by one user row. Epochs and counters never wrap.",
+      "Models outer selection admission, draft persistence success/failure, owned-empty-draft removal, shared epoch checks, forbidden/transient rollback, missing-target list fallback and recovery notices. It is not full loader refinement.",
+      "useDataLoaders cache/overlay reconciliation, independent visible-request fences and loader-owned nested 404 list/fallback effects remain unmodeled. Missing outcomes isolate the outer callback interface and must not be read as a composed 404 proof.",
+      "Per-call retirement over-approximates one overlay lifetime retiring multiple calls. The real one-call retirement probe demonstrates the missing mounted guard. Expected negative temporal check records that behavior.",
+      "Eight named checks mount the actual assembled React hook and actual send interruption with controlled host loaders, including real hook unmount. Actual HTTP/SQL loads, full anchor rendering and final notification receipt are outside these checks.",
+      "Queue claim retirement cannot be fixed safely until partial selection effects and the existing loader ownership fence have a shared completion contract."
+    ]
+  },
+  {
+    "id": "ConversationMessageLoad",
+    "model": "packages/ui/quint/ConversationMessageLoad.qnt",
+    "sources": [
+      "packages/ui/src/state/useDataLoaders.ts",
+      "packages/ui/src/state/__e2e__/conversation-message-load.test.tsx"
+    ],
+    "invariants": ["invariant", "NoStalePublication", "Finite"],
+    "status": "partial",
+    "limitations": [
+      "Two request identities, two explicit owner claims, four symbolic room identities including null. Newest and centered loads share request/owner generations and exact active fence identity. Callback reentrancy may change ownership before commit.",
+      "Real mounted useDataLoaders checks cover eight source paths with controlled HTTP replies. They preserve the actual cache, visible store, abort and owner machinery. This is scenario conformance, not generated-trace refinement.",
+      "Message values, overlay lineage/retirement arithmetic, cache eviction and prefetch tokens, active sends, runtime reset, pagination, arbitrary callback exceptions and anchor rendering are outside this instance.",
+      "The outer useChatCallbacks selection/fallback and final ChatOverlay anchor/notification settlement still need a composed model. This model covers the loader-owned nested 404 list boundary only."
+    ]
+  },
+  {
+    "id": "NativeSignInController",
+    "model": "packages/ui/quint/NativeSignInController.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/AndroidNativeCloudSignInView.tsx",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "DispatchOwnsRequest",
+      "CancellationKeepsItsFence",
+      "ScopedReceiptPreservesForeignAttempt",
+      "AuthenticationUsesDispatchedRequest",
+      "VerificationUsesDisplayedAttempt",
+      "ActivationOwnsStoredOutcome"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The retirement case covers two controller mounts, two unique dispatch IDs and one native slot. It covers delayed host admission, scoped cancellation, lost acknowledgement, explicit cleanup retry and successor isolation.",
+      "The outcome case covers one dispatch, distinct native and credential identities, legacy direct replies, correlated retained outcomes and one retry of the stored account activation.",
+      "Sixteen named checks exercise the controller and canonical broker handoff with controlled native ports. The Android Java bridge and generated model traces require separate conformance.",
+      "The separate NativeSignInResend model covers the bounded resend and admission boundary. Asynchronous MFA resume interleavings, readiness and listener setup, startup recovery, native credential persistence and composed or unbounded histories remain open."
+    ]
+  },
+  {
+    "id": "NativeSignInResend",
+    "model": "packages/ui/quint/NativeSignInResend.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-resend.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "RetirementRequiresReceipts",
+      "ScopedReceiptPreservesOtherAttempt",
+      "VerificationUsesDisplayedOwner",
+      "RetiredOwnsNoNativeAttempt",
+      "NoLateAdmission"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One original code attempt, one replacement dispatch, one native attempt slot and one foreign scope. The model distinguishes admission, lost replies, positive code receipts and partial cancellation receipts.",
+      "The ordered case relies on same-scope start admission preceding cancellation acknowledgement. The reordered case shows an expected looping late-admission counterexample without that condition.",
+      "Six named checks exercise the real controller with controlled native ports. Native device scheduling, transport restart, credential storage, asynchronous MFA and more than two uncertain dispatches remain open."
+    ]
   }
 ]

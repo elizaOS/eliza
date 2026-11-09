@@ -1828,6 +1828,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
         options?.onMessages(serverMessages);
+        // A caller can synchronously select another conversation while it
+        // inspects the returned window. That selection owns subsequent rows.
+        if (!isCurrentConversationMessageFence(fence)) return false;
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),
