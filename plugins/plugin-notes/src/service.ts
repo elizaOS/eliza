@@ -632,12 +632,8 @@ export class NotesService extends Service {
         throw notFound(id);
       draft.notes.unshift(structuredClone(entry.note));
       trash.splice(index, 1);
-      draft.noteRevisions = {
-        ...draft.noteRevisions,
-        [id]: draft.revision + 1,
-      };
       return entry.note;
-    }, projectNotesSnapshot);
+    });
     await this.emitStateUpdated(transaction.snapshot, "note:restored");
     return transaction;
   }
