@@ -852,8 +852,12 @@ export function preferredOperationNames(
   )
     wanted.add("create");
   for (const [operation, terms] of Object.entries(operationTerms)) {
-    if (!terms.some((term) => words.has(term))) continue;
+    const named = terms.filter((term) => words.has(term));
+    if (named.length === 0) continue;
     wanted.add(operation);
+    // The user's own word also names the operation spelled that way
+    // (DATABASE_QUERY for "query", CHARACTER_MODIFY for "modify").
+    for (const term of named) wanted.add(term);
     // Add/write/save can change an existing record's fields as well as create
     // a record. Keep both discoverable; only the planner interprets the target.
     if (

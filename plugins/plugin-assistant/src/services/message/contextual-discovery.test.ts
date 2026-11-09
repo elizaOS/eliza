@@ -11,6 +11,7 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { databaseAction } from "../../../../../packages/agent/src/actions/database.ts";
 import { fileAction } from "../../../../plugin-coding-tools/src/actions/file.ts";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
 import {
@@ -26,6 +27,7 @@ import { createHouseholdOperationsAction } from "../../../../plugin-personal-ass
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
 import { promoteMessageActions } from "../../features/advanced-capabilities/actions/message.ts";
 import { postAction } from "../../features/advanced-capabilities/actions/post.ts";
+import { characterAction } from "../../features/advanced-capabilities/personality/actions/character.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
 import {
@@ -2004,6 +2006,42 @@ describe("contextual native discovery", () => {
         (action) => action.name,
       ),
     ).toEqual(["RECORDS_READ"]);
+  });
+
+  it("prefers the operation the user's own verb names, not only its canonical synonym", () => {
+    const actions = [
+      ...promoteSubactionsToActions(databaseAction),
+      ...promoteSubactionsToActions(characterAction),
+    ];
+    const load = (query: string, contexts: string[], bootstrap: boolean) =>
+      retrieveContextualPlannerActions({
+        actions,
+        query,
+        contexts,
+        ...(bootstrap
+          ? { deferUnscopedBootstrap: true, intents: [query] }
+          : {}),
+      }).actions.map((action) => action.name);
+
+    // DISCOVER_ACTIONS query search: "query" and "count" map to get/list, so
+    // only DATABASE_GET_TABLE and DATABASE_LIST_TABLES were loaded.
+    expect(
+      load(
+        "run a sql query against the database to count rows in memories",
+        ["admin"],
+        false,
+      ),
+    ).toContain("DATABASE_QUERY");
+    // Pending-intent bootstrap; the canonical read sibling stays available.
+    expect(
+      load("query the users table for the 5 newest rows", ["admin"], true),
+    ).toEqual(expect.arrayContaining(["DATABASE_QUERY", "DATABASE_GET_TABLE"]));
+    // "modify" maps to update, which offered only the OWNER-only rename op.
+    expect(
+      load("modify your personality to be more playful", ["settings"], true),
+    ).toEqual(
+      expect.arrayContaining(["CHARACTER_MODIFY", "CHARACTER_UPDATE_IDENTITY"]),
+    );
   });
 
   it("searches fresh authorized operations without names or domain effects", async () => {
