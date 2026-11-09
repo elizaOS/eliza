@@ -226,6 +226,13 @@ function unsupported(
   };
 }
 
+/**
+ * Providers registered before this runtime's LpManagementService started.
+ * The runtime runs a plugin's init before it registers the plugin's services,
+ * so the DEX sub-plugins lpManagerPlugin.init loads cannot reach the registry.
+ */
+const pendingProviders = new WeakMap<IAgentRuntime, LpProtocolProvider[]>();
+
 export class LpManagementService extends Service implements ILpService {
   public static override readonly serviceType = LP_MANAGEMENT_SERVICE_TYPE;
   public readonly capabilityDescription =
@@ -235,6 +242,10 @@ export class LpManagementService extends Service implements ILpService {
 
   static async start(runtime: IAgentRuntime): Promise<LpManagementService> {
     const service = new LpManagementService(runtime);
+    for (const provider of pendingProviders.get(runtime) ?? []) {
+      service.registerProtocol(provider);
+    }
+    pendingProviders.delete(runtime);
     logger.info("[LpManagementService] started");
     return service;
   }
@@ -470,14 +481,18 @@ export async function registerLpProtocolProvider(
   runtime: IAgentRuntime,
   provider: LpProtocolProvider,
 ): Promise<void> {
-  const registry = await getLpManagementService(runtime);
-  if (!registry) {
-    logger.warn(
-      `[LpManagementService] Cannot register ${provider.chain}:${provider.dex}; registry service is unavailable`,
-    );
+  // Not getLpManagementService: this runs from plugin init, where waiting for
+  // the service would wait on the runtime's own initialize().
+  const registry = runtime.getService<LpManagementService>(
+    LP_MANAGEMENT_SERVICE_TYPE,
+  );
+  if (registry) {
+    registry.registerProtocol(provider);
     return;
   }
-  registry.registerProtocol(provider);
+  const pending = pendingProviders.get(runtime) ?? [];
+  pending.push(provider);
+  pendingProviders.set(runtime, pending);
 }
 
 export function createSolanaLpProtocolProvider({
