@@ -457,6 +457,26 @@ export function keyDirectoryProblems(
         : `--keys-dir lacks ${missing.join(", ")} (decrypt the release key bundle first; .enc files are not read)`,
     );
   const apexSigned = inspection && signedApexes(inspection.apexkeys).length > 0;
+  if (apexSigned) {
+    const name = `${APEX_KEYS.payload}.avbpubkey`;
+    const expected = product?.signer?.apexPayloadAvbPublicKeySha256;
+    if (!HEX64.test(expected ?? "")) {
+      problems.push(
+        `${descriptorFile} signer.apexPayloadAvbPublicKeySha256 must be the reviewed public key SHA-256`,
+      );
+    } else {
+      const metadata = path.join(real, name);
+      if (
+        fs.existsSync(metadata) &&
+        fs.lstatSync(metadata).isFile() &&
+        sha256(fs.readFileSync(metadata)) !== expected
+      ) {
+        problems.push(
+          `${name} is not the product's signer.apexPayloadAvbPublicKeySha256`,
+        );
+      }
+    }
+  }
   if (managed) {
     for (const name of fs
       .readdirSync(real)

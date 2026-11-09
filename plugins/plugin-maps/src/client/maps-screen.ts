@@ -74,7 +74,7 @@ export interface MapsScreenHost {
   onConnectionChange(listener: () => void): () => void;
   /** Starts the provider connection; an explicit search retries a failed one. */
   initialize(): Promise<void>;
-  diagnostics(): { configured: boolean; error: string };
+  diagnostics(): { configured: boolean; error: string; message?: string };
   coverage(): MapsScreenCoverage | undefined;
   /** Attribution of the connected provider, for the agent's selected-object read. */
   attribution(): string;
@@ -572,6 +572,16 @@ export class MapsScreenController {
         this.query !== requested
       )
         return;
+      const admission = this.host.diagnostics();
+      if (
+        this.host.connection().config.status !== "configured" &&
+        admission.error &&
+        admission.message
+      ) {
+        this.message = admission.message;
+        this.invalidate();
+        return;
+      }
       this.message = "";
       void this.ensure().search(requested);
     })();
@@ -824,6 +834,7 @@ export class MapsScreenController {
     if (!item || !snapshot) return;
     if (snapshot.provider.status === "unconfigured") {
       this.message =
+        this.host.diagnostics().message ||
         "Connect a Maps provider to plan a route. No route has been calculated.";
     } else {
       this.directions = true;

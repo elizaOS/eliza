@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One retired consume, one optional newer edit before retirement, rollback failure before/after a write, reopen before/after failure including matching editor/stored text, or a competing same-key write in both completion orders. One recovery, two flushes and a repeated reopen. Four text values and at most four durable mutations. Reads and later host updates complete successfully.",
+  "cases": [
+    {
+      "name": "retired-owner-recovery",
+      "main": "DraftRetiredConsumeRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 8,
+      "samples": 1000
+    }
+  ]
+}

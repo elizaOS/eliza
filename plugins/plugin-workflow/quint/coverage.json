@@ -1,0 +1,27 @@
+[
+  {
+    "id": "plugin-workflow.ReviewedApproval",
+    "model": "plugins/plugin-workflow/quint/ReviewedApproval.qnt",
+    "sources": [
+      "plugins/plugin-workflow/src/services/workflow-service.ts",
+      "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+      "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts"
+    ],
+    "invariants": [
+      "OneCanonicalDecision",
+      "UnsupportedNeverApproved",
+      "HonestResponse",
+      "CachedHasCanonicalReceipt",
+      "LockOwnership"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One immutable canonical request, two callers, two attempts each and Boolean owner/version/digest-match inputs.",
+      "The canonical engine decision survives host transaction rollback and lost control responses.",
+      "Complete workflow execution, source publication, changing canonical requests, scheduling and engine internals still need separate models."
+    ],
+    "implementationTests": [
+      "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts"
+    ]
+  }
+]

@@ -1,0 +1,63 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
+    "packages/cloud/shared/src/db/mobile-app-auth-credential-policy.ts",
+    "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
+    "packages/cloud/shared/src/db/schemas/api-keys.ts",
+    "packages/cloud/shared/src/lib/services/auth-credential-policy.postgres.integration.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-mobile-app-auth.mjs",
+  "bounds": "Two grants, three credential identities, one absent-credential sentinel, two sweeps, two batches per sweep, batch sizes 1 and 2, and clock 0..3. Fifteen initial classes include shared/foreign/missing references, malformed lifecycle data, and valid/invalid tombstones.",
+  "fairness": "Weak fairness settles started sweeps. Repeated cron scheduling and eventual removal of corrupt rows are not promised.",
+  "limitations": [
+    "Two grants, three credential identities, one absent-credential sentinel, two sweeps, two batches per sweep, batch sizes 1 and 2, and clock 0..3. Fifteen initial classes include shared/foreign/missing references, malformed lifecycle data, and valid/invalid tombstones.",
+    "Grant ordering is the source lexicographic expiry/creation/id order represented by distinct expiry/id ranks. Creation ranks are fixed. Deleted future timestamps outside the clock horizon are represented by an invalid-time flag.",
+    "One pre-admitted acknowledgement or owner rewrite per grant may race the planner. Row locks exclude competing commits. Key and reference checks follow row locking.",
+    "Live reference counts include both modeled grants. Arbitrary new references introduced by privileged SQL, unbounded backlogs and concurrent cleanup workers are outside this instance.",
+    "Grant lifecycle validity and credential provenance group their exact source field comparisons into predicates. Secret bytes, cryptography and inference-policy admission remain external.",
+    "Weak fairness settles started sweeps. Repeated cron scheduling and eventual removal of corrupt rows are not promised."
+  ],
+  "cases": [
+    {
+      "name": "one",
+      "main": "MobileAppGrantCleanup_one",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["SweepsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SweepsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in MobileAppGrantCleanup_one: SweepsSettle = and { Plan.weakFair(s), LockRows.weakFair(s), LockKeys.weakFair(s), Classify.weakFair(s), Commit.weakFair(s) } implies eventually(always(Set(\"idle\", \"done\").contains(s.phase)))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two",
+      "main": "MobileAppGrantCleanup_two",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["SweepsSettle"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SweepsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in MobileAppGrantCleanup_two: SweepsSettle = and { Plan.weakFair(s), LockRows.weakFair(s), LockKeys.weakFair(s), Classify.weakFair(s), Commit.weakFair(s) } implies eventually(always(Set(\"idle\", \"done\").contains(s.phase)))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

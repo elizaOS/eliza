@@ -586,3 +586,68 @@ it.each([false, true])(
     }
   },
 );
+
+it("reconciles one receipt-aware App class before native plugin loading", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-app-receipt-"));
+  try {
+    const app = path.join(fixture, "packages/app");
+    const android = path.join(app, "android");
+    const assets = path.join(android, "app/src/main/assets");
+    fs.mkdirSync(assets, { recursive: true });
+    fs.writeFileSync(path.join(app, "package.json"), '{"type":"module"}');
+    fs.writeFileSync(
+      path.join(app, "app.config.ts"),
+      'export default { appId: "ai.receipt.fixture", appName: "Receipt fixture" };',
+    );
+    fs.writeFileSync(
+      path.join(android, "capacitor.settings.gradle"),
+      "include ':capacitor-app'\n",
+    );
+    const manifest = path.join(assets, "capacitor.plugins.json");
+    fs.writeFileSync(
+      manifest,
+      JSON.stringify([
+        {
+          pkg: "@capacitor/app",
+          classpath: "com.capacitorjs.plugins.app.AppPlugin",
+        },
+      ]),
+    );
+    const context = new URL("./mobile/context.ts", import.meta.url).href;
+    const reconciliation = new URL(
+      "./mobile/android/gradle-reconciliation.ts",
+      import.meta.url,
+    ).href;
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import {androidDir} from ${JSON.stringify(context)};
+         import {reconcilePluginManifestWithGradle} from ${JSON.stringify(reconciliation)};
+         if (androidDir !== ${JSON.stringify(android)}) throw Error("Unsafe fixture path");
+         reconcilePluginManifestWithGradle(${JSON.stringify(assets)});
+         reconcilePluginManifestWithGradle(${JSON.stringify(assets)});`,
+      ],
+      {
+        env: {
+          ...process.env,
+          ELIZA_MOBILE_REPO_ROOT: fixture,
+          ELIZA_ANDROID_USE_APP_DIR: "1",
+          ELIZA_APP_ID: "ai.receipt.fixture",
+        },
+      },
+    );
+    expect(JSON.parse(fs.readFileSync(manifest, "utf8"))).toEqual([
+      {
+        pkg: "@capacitor/app",
+        classpath: "ai.receipt.fixture.ReceiptAppPlugin",
+      },
+    ]);
+    expect(cloudSafeMainActivityJava("ai.receipt.fixture")).not.toContain(
+      "initialPlugins.add(ReceiptAppPlugin.class)",
+    );
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});

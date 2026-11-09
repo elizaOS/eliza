@@ -9,6 +9,9 @@ import type {
 	PromptSegment,
 	ToolDefinition,
 } from "../types/model";
+import { utf8ByteLength } from "../utils/unicode";
+
+export { utf8ByteLength };
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_INPUT_RESERVE_TOKENS = 10_000;
@@ -45,16 +48,14 @@ function textMeasure(
 	mode: "heuristic" | "utf8-upper-bound",
 ): number {
 	const text = serializedText(value);
-	return mode === "utf8-upper-bound"
-		? new TextEncoder().encode(text).byteLength
-		: text.length;
+	return mode === "utf8-upper-bound" ? utf8ByteLength(text) : text.length;
 }
 
 export function estimateTokensFromChars(chars: number): number {
 	return Math.ceil(chars / 3.5);
 }
 
-export function estimateModelInputTokens(args: {
+function estimateModelInputTokens(args: {
 	/** Complete immutable handler request. When present, it is the sole measurement authority; individual fields support callers without a final dispatch request. */
 	completeRequest?: unknown;
 	messages?: readonly ChatMessage[];

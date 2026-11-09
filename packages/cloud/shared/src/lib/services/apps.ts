@@ -19,6 +19,7 @@ import {
   invalidateInferenceAppByIdState,
   setInferenceAppById,
 } from "./inference-app-memory-cache";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -565,8 +566,15 @@ export class AppsService {
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
-    return await appsRepository.updateDeploymentGeneration(id, generation, data, expectedStatuses);
+    return await appsRepository.updateDeploymentGeneration(
+      id,
+      generation,
+      data,
+      expectedStatuses,
+      executionAuthority,
+    );
   }
 
   async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {
@@ -609,16 +617,19 @@ export class AppsService {
       }
     }
 
-    // Deletes managed frontend deployment R2 artifacts BEFORE the app row is
-    // deleted — the FK cascade removes the deployment rows but never the R2
-    // bytes, so cleaning after would orphan them (#10690 review). Fail-soft.
-    if (app) {
+    if (app?.api_key_id) {
+      await apiKeysService.delete(app.api_key_id);
+    }
+
+    // A reversible inactive flag cannot authorize deleting a published site.
+    // The final primary transaction retains all manifests before the cascade;
+    // only its acknowledged receipt permits object cleanup. An ambiguous SQL
+    // reply retains objects even if the app deletion actually committed.
+    const deleted = await appsRepository.finalizeDelete(id);
+    if (deleted) {
       try {
-        const { appFrontendDeploymentsRepository } = await import(
-          "../../db/repositories/app-frontend-deployments"
-        );
         const { appFrontendHostingService } = await import("./app-frontend-hosting");
-        const deployments = await appFrontendDeploymentsRepository.listByApp(id, 1000);
+        const deployments = deleted.frontendDeployments;
         for (const dep of deployments) {
           await appFrontendHostingService.deleteArtifacts(dep);
         }
@@ -637,12 +648,6 @@ export class AppsService {
         });
       }
     }
-
-    if (app?.api_key_id) {
-      await apiKeysService.delete(app.api_key_id);
-    }
-
-    await appsRepository.finalizeDelete(id);
 
     logger.info(`Deleted app: ${id}`, {
       mobileCredentialsRevoked: mutation.revokedKeyHashes.length,

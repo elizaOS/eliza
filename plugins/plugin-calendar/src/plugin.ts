@@ -1,3 +1,4 @@
+import { calendarAvailabilityActions } from "./actions/calendar-availability.js";
 import { calendarReadSelectedAction } from "./actions/calendar-read-selected.js";
 import { calendarReviewAction } from "./actions/calendar-review.js";
 import { CalendarMutationPortService } from "./mutations/service.js";
@@ -15,6 +16,7 @@ import {
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
+  currentAppRecordSource,
   registerLocalCalendarCreatePlanner,
   registerLocalCalendarTimeUpdateRouting,
   registerLocalCalendarUpdatePlanner,
@@ -70,6 +72,9 @@ export const calendarPlugin: Plugin = {
   actions: [
     calendarReadSelectedAction,
     ...calendarOperationActions(calendarAction),
+    ...calendarAvailabilityActions(calendarAction, (runtime, message) =>
+      currentAppRecordSource(runtime, "calendar", message),
+    ),
     calendarSourcesAction,
     conflictDetectAction,
     calendarReviewAction,

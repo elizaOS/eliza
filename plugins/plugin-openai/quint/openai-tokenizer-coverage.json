@@ -1,0 +1,18 @@
+[
+  {
+    "id": "openai-persistent-tokenizer-cache",
+    "model": "plugins/plugin-openai/quint/OpenAITokenizerCache.qnt",
+    "sources": [
+      "plugins/plugin-openai/utils/tokenization.ts",
+      "plugins/plugin-openai/models/tokenizer.ts",
+      "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts"
+    ],
+    "invariants": ["CacheCoherent", "CallersOwnTheirPromise", "ReceiptsMatchLoad"],
+    "status": "partial",
+    "limitations": [
+      "Two encodings, four callers and two load attempts per encoding in one module instance.",
+      "Real checks cover lazy startup, exact encoding and decoding, coalesced rejection and retry, preservation of another encoding, and model-name fallback.",
+      "No proof of rank-table contents, import resolution, memory or garbage collection, unbounded call populations, or real-time scheduling."
+    ]
+  }
+]

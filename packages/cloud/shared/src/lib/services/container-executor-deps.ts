@@ -20,6 +20,10 @@ import { Buffer } from "node:buffer";
 import { ElizaError } from "@elizaos/core";
 import { dbRead, dbWrite } from "../../db/helpers";
 import { containersRepository } from "../../db/repositories/containers";
+import {
+  assertJobExecutionAuthority,
+  lockJobExecutionAuthority,
+} from "../../db/repositories/job-execution-authority";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
@@ -33,6 +37,7 @@ import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { allocateAppContainerHostPort } from "./docker-port-allocation";
 import { DockerSSHClient } from "./docker-ssh";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import { listVerifiedAppOrigins } from "./managed-domains";
 
 /** True when the apps-container provision backend has enough env to run. */
@@ -176,7 +181,9 @@ async function allocateHostPort(): Promise<number> {
  * Throws (lazily, when a job actually runs) if the backend isn't configured —
  * so wiring it is always safe; nothing connects until a CONTAINER_* job lands.
  */
-export function buildContainerExecutorDeps(): ContainerExecutorDeps {
+export function buildContainerExecutorDeps(
+  executionAuthority?: JobExecutionAuthority,
+): ContainerExecutorDeps {
   if (!appsContainersEnabled()) {
     throw new Error(
       "Apps container backend not configured (need CONTAINERS_DOCKER_NODES + CONTAINERS_SSH_KEY/_PATH). " +
@@ -210,6 +217,7 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     readDatabase: dbRead,
     writeDatabase: dbWrite,
     repository: containersRepository,
+    executionAuthority,
     errorFactory: (message, options) => new ElizaError(message, options),
   });
 
@@ -241,6 +249,13 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
   return {
     provider,
     store,
+    assertExecutionCurrent: executionAuthority
+      ? () =>
+          dbWrite.transaction(async (tx) => {
+            await lockJobExecutionAuthority(tx, executionAuthority);
+            await assertJobExecutionAuthority(tx, executionAuthority);
+          })
+      : undefined,
     // Verified custom domains for the app -> bare hostnames, folded into the
     // ingress route's host-match. Reuses the existing CORS verified-origin query
     // (status='active' AND verified=true); only invoked when ingress is wired.
@@ -263,6 +278,7 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
           last_deployed_at: new Date(),
         },
         ["deploying"],
+        executionAuthority,
       );
     },
     ...ingress,

@@ -8,6 +8,7 @@ import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
 import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
+import { hashStringToUint32 } from "../utils/deterministic";
 import type { EntitySpan, PiiEntityRecognizer } from "./entity-recognizer";
 
 /**
@@ -297,17 +298,7 @@ const STREET_TYPES: readonly string[] = [
 	"Way",
 ];
 
-// Deterministic hashing (FNV-1a 32-bit) — reproducible surrogate selection.
-
-function fnv1a(input: string): number {
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < input.length; i += 1) {
-		hash ^= input.charCodeAt(i);
-		// hash *= 16777619, kept in 32-bit unsigned range.
-		hash = Math.imul(hash, 0x01000193) >>> 0;
-	}
-	return hash >>> 0;
-}
+// Surrogate selection is seeded by FNV-1a 32-bit (`hashStringToUint32`).
 
 function pick<T>(pool: readonly T[], seed: number): T {
 	return pool[seed % pool.length] as T;
@@ -317,8 +308,7 @@ function generateSessionSalt(): string {
 	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): the salt
 	// seeds surrogate minting, so a predictable Math.random() fallback would
 	// make session pseudonyms reproducible by an observer.
-	const bytes = BufferUtils.randomBytes(16);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	return BufferUtils.toHex(BufferUtils.randomBytes(16));
 }
 
 type PiiPseudonymWalkContext = {
@@ -608,7 +598,7 @@ export function mintSurrogate(
 	value: string,
 	attempt: number,
 ): string {
-	const seed = fnv1a(`${salt}\0${kind}\0${value}\0${attempt}`);
+	const seed = hashStringToUint32(`${salt}\0${kind}\0${value}\0${attempt}`);
 	switch (kind) {
 		case "person": {
 			const first = pick(FIRST_NAMES, seed);
@@ -900,6 +890,6 @@ export class PseudonymSession {
 		}
 		// Exhausted the deterministic space (astronomically unlikely): fall back to
 		// a salted, obviously-unique token rather than risk an ambiguous restore.
-		return `${mintSurrogate(this.salt, kind, value, 0)} ${fnv1a(`${this.salt}${value}${this.size}`).toString(36)}`;
+		return `${mintSurrogate(this.salt, kind, value, 0)} ${hashStringToUint32(`${this.salt}${value}${this.size}`).toString(36)}`;
 	}
 }

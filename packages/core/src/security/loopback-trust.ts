@@ -118,17 +118,6 @@ function normalizeProxyClientIp(raw: string): string | null {
 	return isIP(normalized) ? normalized : null;
 }
 
-function isLoopbackProxyClientIp(ip: string): boolean {
-	const normalized = ip.trim().toLowerCase();
-	return (
-		normalized === "::1" ||
-		normalized === "0:0:0:0:0:0:0:1" ||
-		normalized.startsWith("127.") ||
-		normalized.startsWith("::ffff:127.") ||
-		normalized.startsWith("::ffff:0:127.")
-	);
-}
-
 /**
  * True when any proxy-style client-IP header carries a non-loopback (or
  * unparseable) address. A request that reaches a same-machine listener but
@@ -148,7 +137,7 @@ export function proxyClientHeaderBlocksLocalTrust(
 			)) {
 				if (isNeutralProxyClientAddress(candidate)) continue;
 				const ip = normalizeProxyClientIp(candidate);
-				if (!ip || !isLoopbackProxyClientIp(ip)) return true;
+				if (!ip || !isLoopbackRemoteAddress(ip)) return true;
 			}
 		}
 	}
@@ -187,6 +176,8 @@ export function isLoopbackRemoteAddress(
  * IPv6 peer spellings (`::ffff:a.b.c.d`, as dual-stack sockets report them)
  * are matched against the IPv4 entries.
  */
+const IPV4_MAPPED_PREFIXES = ["::ffff:", "::ffff:0:"] as const;
+
 export function isRemoteAddressInCidrList(
 	remoteAddress: string | null | undefined,
 	cidrList: string | null | undefined,
@@ -233,9 +224,10 @@ export function isRemoteAddressInCidrList(
 
 	let peer = remoteAddress.trim().toLowerCase();
 	if (isIP(peer) === 6) {
-		for (const mappedPrefix of ["::ffff:", "::ffff:0:"]) {
+		for (const mappedPrefix of IPV4_MAPPED_PREFIXES) {
+			if (!peer.startsWith(mappedPrefix)) continue;
 			const mapped = peer.slice(mappedPrefix.length);
-			if (peer.startsWith(mappedPrefix) && isIP(mapped) === 4) {
+			if (isIP(mapped) === 4) {
 				peer = mapped;
 				break;
 			}

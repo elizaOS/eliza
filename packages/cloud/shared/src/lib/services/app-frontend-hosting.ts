@@ -16,6 +16,7 @@
  *    view server-side when a document is served (no secret embedded in the page).
  */
 
+import { ElizaError } from "@elizaos/core";
 import { stripHtmlRawTextElements } from "@elizaos/core/protocol";
 import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
 import type { App } from "../../db/repositories/apps";
@@ -208,8 +209,8 @@ export class AppFrontendHostingService {
   /**
    * Publish a complete site in one call: create a deployment, write every file
    * to R2 (content-addressed), validate + finalize the manifest, and (by
-   * default) activate it. On any failure the deployment is marked `failed` and
-   * the error is rethrown.
+   * default) activate it. Failed unpublished work is retired before cleanup.
+   * Published content survives an ambiguous database reply.
    */
   async deployBundle(input: DeployBundleInput): Promise<AppFrontendDeployment> {
     const entrypoint = normalizeSitePath(input.entrypoint ?? DEFAULT_ENTRYPOINT);
@@ -235,10 +236,16 @@ export class AppFrontendHostingService {
     const r2Prefix = this.prefixFor(input.app.organization_id, input.app.id, deployment.id);
     const writtenKeys: string[] = [];
 
-    // Phase 1 — upload + finalize. A failure here marks the deployment `failed`
-    // and best-effort cleans the partial R2 objects it wrote (no orphans).
+    // Publication and retirement compete on the same row. Delete prepared
+    // objects only after an acknowledged retirement of unpublished work.
     try {
-      await appFrontendDeploymentsRepository.markStatus(deployment.id, "uploading");
+      const uploading = await appFrontendDeploymentsRepository.beginUpload(deployment.id);
+      if (!uploading) {
+        throw new ElizaError("Frontend upload did not return its stored row", {
+          code: "FRONTEND_DEPLOYMENT_UPLOAD_NOT_PERSISTED",
+          context: { deploymentId: deployment.id },
+        });
+      }
 
       const bucket = requireBucket();
       const entries: FrontendFileEntry[] = [];
@@ -275,20 +282,35 @@ export class AppFrontendHostingService {
       const manifest: FrontendManifest = { files: entries, entrypoint, spaFallback };
       const contentHash = await computeManifestHash(manifest);
 
-      // Persist the resolved r2_prefix (create seeded it empty), then finalize.
-      await appFrontendDeploymentsRepository.setPrefix(deployment.id, r2Prefix);
-      await appFrontendDeploymentsRepository.finalize(deployment.id, {
+      const finalized = await appFrontendDeploymentsRepository.finalize(deployment.id, {
+        r2Prefix,
         manifest,
         contentHash,
         fileCount: entries.length,
         totalBytes,
       });
+      if (!finalized) {
+        throw new ElizaError("Frontend publication did not return its stored row", {
+          code: "FRONTEND_DEPLOYMENT_PUBLICATION_NOT_PERSISTED",
+          context: { deploymentId: deployment.id },
+        });
+      }
     } catch (error) {
-      await this.cleanupKeys(writtenKeys);
-      await appFrontendDeploymentsRepository.markFailed(
-        deployment.id,
-        error instanceof Error ? error.message : String(error),
-      );
+      try {
+        const retired = await appFrontendDeploymentsRepository.markFailed(
+          deployment.id,
+          error instanceof Error ? error.message : String(error),
+        );
+        if (retired) await this.cleanupKeys(writtenKeys);
+      } catch (retirementError) {
+        // An unacknowledged SQL outcome cannot authorize deletion. Retain the
+        // objects and preserve the original failure for the caller.
+        logger.warn("[AppFrontendHosting] upload retirement unconfirmed; objects retained", {
+          deploymentId: deployment.id,
+          error:
+            retirementError instanceof Error ? retirementError.message : String(retirementError),
+        });
+      }
       logger.error("[AppFrontendHosting] deployBundle failed", {
         appId: input.app.id,
         deploymentId: deployment.id,
@@ -297,16 +319,11 @@ export class AppFrontendHostingService {
       throw error;
     }
 
-    // Phase 2 — activation is SEPARATE: a lost activation race (unique-violation
-    // on the single-active index) must NOT flip a fully-uploaded, `ready`
-    // deployment to `failed`. On activation failure we leave it `ready` (the
-    // client can re-activate) and return the ready row.
+    // Activation failure cannot retire published content. Read the primary
+    // afterward: an ambiguous reply may have committed the active state.
     if (input.activate ?? true) {
       try {
-        const activated = await appFrontendDeploymentsRepository.activate(
-          input.app.id,
-          deployment.id,
-        );
+        const activated = await appFrontendDeploymentsRepository.activate(input.app, deployment.id);
         if (activated) {
           // Bounded retention: prune superseded deployments (+ their R2 bytes)
           // beyond keep-N so storage doesn't grow without bound. Best-effort.
@@ -327,7 +344,13 @@ export class AppFrontendHostingService {
       }
     }
     const fresh = await appFrontendDeploymentsRepository.getById(deployment.id);
-    return fresh ?? deployment;
+    if (!fresh) {
+      throw new ElizaError("Frontend deployment disappeared after publication", {
+        code: "FRONTEND_DEPLOYMENT_NOT_FOUND",
+        context: { deploymentId: deployment.id },
+      });
+    }
+    return fresh;
   }
 
   /** Best-effort delete a set of R2 object keys (partial-upload cleanup). */
@@ -338,7 +361,7 @@ export class AppFrontendHostingService {
       try {
         await bucket.delete(key);
       } catch {
-        // best-effort — a leftover object is GC-swept by prune/delete later.
+        // Retain a failed deletion as an orphan; no general orphan sweep is assumed.
       }
     }
   }
@@ -373,8 +396,11 @@ export class AppFrontendHostingService {
   }
 
   /** Activate a specific (ready/superseded) deployment — this is rollback too. */
-  async activate(appId: string, deploymentId: string): Promise<AppFrontendDeployment | undefined> {
-    const target = await appFrontendDeploymentsRepository.getByIdForApp(appId, deploymentId);
+  async activate(
+    app: DeployBundleInput["app"],
+    deploymentId: string,
+  ): Promise<AppFrontendDeployment | undefined> {
+    const target = await appFrontendDeploymentsRepository.getByIdForApp(app.id, deploymentId);
     if (!target) return undefined;
     if (
       target.status === "pending" ||
@@ -385,7 +411,7 @@ export class AppFrontendHostingService {
         `Deployment ${deploymentId} is not ready to activate (status: ${target.status})`,
       );
     }
-    return appFrontendDeploymentsRepository.activate(appId, deploymentId);
+    return appFrontendDeploymentsRepository.activate(app, deploymentId);
   }
 
   /** Best-effort delete of a deployment's R2 artifacts (call after the row delete). */

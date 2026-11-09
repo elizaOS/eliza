@@ -26,6 +26,8 @@
  * the two projections agree about what constitutes a marker.
  */
 
+import { isObjectRecord } from "../utils/type-guards.ts";
+
 /** Matches `[CONFIG:<pluginId>]` — keep in lockstep with the dashboard's CONFIG_RE. */
 const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 
@@ -42,10 +44,6 @@ const CHECKLIST_STATUS_GLYPHS: Record<string, string> = {
 	pending: "[ ]",
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Project a `[CHECKLIST]` JSON body onto plain task-list lines. Returns null
  * for a body the dashboard would also treat as malformed, so the caller can
@@ -60,10 +58,10 @@ function checklistBodyToPlainText(body: string): string | null {
 		// block degrades to its body text instead of a fake-valid empty list.
 		return null;
 	}
-	if (!isRecord(parsed) || !Array.isArray(parsed.items)) return null;
+	if (!isObjectRecord(parsed) || !Array.isArray(parsed.items)) return null;
 	const lines: string[] = [];
 	for (const raw of parsed.items) {
-		if (!isRecord(raw) || typeof raw.content !== "string") continue;
+		if (!isObjectRecord(raw) || typeof raw.content !== "string") continue;
 		const content = raw.content.trim();
 		if (!content) continue;
 		const glyph =
@@ -94,10 +92,10 @@ function workflowBodyToPlainText(body: string): string | null {
 		// block degrades to its body text instead of a fake-valid empty pipeline.
 		return null;
 	}
-	if (!isRecord(parsed) || !Array.isArray(parsed.steps)) return null;
+	if (!isObjectRecord(parsed) || !Array.isArray(parsed.steps)) return null;
 	const lines: string[] = [];
 	for (const raw of parsed.steps) {
-		if (!isRecord(raw) || typeof raw.label !== "string") continue;
+		if (!isObjectRecord(raw) || typeof raw.label !== "string") continue;
 		const label = raw.label.trim();
 		if (!label) continue;
 		const status =

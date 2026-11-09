@@ -101,6 +101,15 @@ describe("stage-elizavoice-lib build flags", () => {
 });
 
 describe("paradee-voice build-native", () => {
+  it("records explicit product language selection without changing the default", () => {
+    expect(parseArgs(["--workspace", "/w"]).languages).toBeUndefined();
+    expect(
+      parseArgs(["--workspace", "/w", "--languages", "en"]).languages,
+    ).toEqual(["en"]);
+    expect(
+      parseArgs(["--workspace", "/w", "--languages", "en,es"]).languages,
+    ).toEqual(["en", "es"]);
+  });
   it("passes --ffi-exports-only to stage-elizavoice-lib only when asked", () => {
     const plain = parseArgs(["--workspace", "/w", "--abi", "arm64-v8a"]);
     expect(plain.ffiExportsOnly).toBe(false);

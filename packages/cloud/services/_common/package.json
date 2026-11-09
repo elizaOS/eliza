@@ -18,7 +18,8 @@
     "./delivery-receipts": "./src/delivery-receipts.ts",
     "./webhook-ingress": "./src/webhook-ingress.ts",
     "./discord-welcome-state": "./src/discord-welcome-state.ts",
-    "./discord-coordination": "./src/discord-coordination.ts"
+    "./discord-coordination": "./src/discord-coordination.ts",
+    "./redis-ownership": "./src/redis-ownership.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

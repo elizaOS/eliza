@@ -138,8 +138,8 @@ import {
   reportRejectedUserVisibleModelOutput,
 } from "./stage1-output.ts";
 import {
+  createStage1DirectReplyStreamGate,
   STAGE1_REPLY_STREAM_FIELDS,
-  stage1DirectReplyStreamGate,
 } from "./stage1-reply-stream.ts";
 import { parseToolArguments } from "./tool-arguments.ts";
 import { recordMessageHandlerStage } from "./trajectory-stages.ts";
@@ -467,6 +467,11 @@ export async function generateStage1Decision(
   };
   let providerReviewSourceSetId: string | undefined;
   let nativeReadContract: NativeContextReadContract | undefined;
+  // Field names in the HANDLE_RESPONSE tool schema last sent to the model.
+  // The schema can omit an active field (contextRequests when no reference is
+  // available), and the reply stream gate must not wait for a field the
+  // model was never asked to write.
+  let sentHandleResponseFields: ReadonlySet<string> | undefined;
   const createMessageHandlerTools = () => {
     context.metadata = {
       ...context.metadata,
@@ -685,10 +690,15 @@ export async function generateStage1Decision(
             : undefined,
         )
       : undefined;
+    const handleResponseParameters =
+      sourceSelectionBinding?.parameters ?? parameters;
+    sentHandleResponseFields = new Set(
+      Object.keys(handleResponseParameters.properties ?? {}),
+    );
     const tools = [
       createHandleResponseTool({
         directMessage: directMessageChannel,
-        parameters: sourceSelectionBinding?.parameters ?? parameters,
+        parameters: handleResponseParameters,
         description:
           "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
       }),
@@ -759,22 +769,22 @@ export async function generateStage1Decision(
   // prompt text stays byte-stable, only the grammar varies per turn. Cloud
   // adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
   // equivalent (unforced) contract for them.
+  // The fields the model is asked to write on the current attempt; skipped
+  // fields stay in the registry projection but are not generated.
+  const activeResponseHandlerFields = () =>
+    selectedResponseHandlerFields.filter(
+      (field) =>
+        !responseHandlerFieldPrompt.skippedFieldNames.includes(field.name),
+    );
   const createResponseGrammar = () =>
     buildResponseGrammar(
       {
         actions: args.runtime.actions ?? [],
-        responseHandlerFields: selectedResponseHandlerFields
-          .filter(
-            (field) =>
-              !responseHandlerFieldPrompt.skippedFieldNames.includes(
-                field.name,
-              ),
-          )
-          .map((field) =>
-            field === replyTextFieldEvaluator && effectiveReplySchema
-              ? { ...field, schema: effectiveReplySchema }
-              : field,
-          ),
+        responseHandlerFields: activeResponseHandlerFields().map((field) =>
+          field === replyTextFieldEvaluator && effectiveReplySchema
+            ? { ...field, schema: effectiveReplySchema }
+            : field,
+        ),
         responseHandlerFieldSignature:
           hashString(
             JSON.stringify(responseHandlerFieldPrompt.skippedFieldNames),
@@ -842,7 +852,13 @@ export async function generateStage1Decision(
       ? {}
       : {
           streamFields: STAGE1_REPLY_STREAM_FIELDS,
-          streamFieldGate: stage1DirectReplyStreamGate,
+          streamFieldGate: createStage1DirectReplyStreamGate(() =>
+            activeResponseHandlerFields().filter(
+              (field) =>
+                !sentHandleResponseFields ||
+                sentHandleResponseFields.has(field.name),
+            ),
+          ),
         }),
     // This is the only Stage 1 field intended for the user. Local voice
     // consumes the validated replyText field; planner/evaluator calls leave

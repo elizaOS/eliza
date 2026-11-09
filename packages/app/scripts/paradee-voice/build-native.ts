@@ -21,7 +21,7 @@
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> \
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
- *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only]
+ *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only] [--languages en|en,es]
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --models-only \
  *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
@@ -52,6 +52,10 @@
  * the one switch: false leaves the voice out entirely (no conversion, no GGUF
  * or notices in the bundle, no `voices` in the manifest).
  *
+ * --languages en selects the English-only product bundle; en,es selects both.
+ * The default remains the pinned language set. The consumer must declare the
+ * same explicit selection, and build-record.json records productLanguages.
+ *
  * The manifest is eliza-paradee-voice-v2: the v1 keys plus, when the Spanish
  * voice is enabled, `voices`, the other speech languages
  * ({"es": "tts/paradee/delibes-8m-eses.gguf"}). Without it the bundle speaks
@@ -74,6 +78,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { voiceProductInputs } from "../../../../plugins/plugin-local-inference/native/android/voice-product-inputs.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
@@ -110,6 +116,7 @@ export function parseArgs(argv) {
     python: "python3",
     modelsOnly: false,
     ffiExportsOnly: false,
+    languages: undefined as string[] | undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1];
@@ -126,6 +133,7 @@ export function parseArgs(argv) {
     else if (argv[i] === "--abi") args.abis.push(value);
     else if (argv[i] === "--model-cache") args.modelCache = path.resolve(value);
     else if (argv[i] === "--python") args.python = value;
+    else if (argv[i] === "--languages") args.languages = value.split(",");
     else fail(`unknown argument ${argv[i]}`);
     i++;
   }
@@ -466,6 +474,12 @@ function listFiles(dir) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const product = voiceProductInputs(
+    inputs,
+    args.modelsOnly ? (args.languages ?? ["en"]) : args.languages,
+  );
+  if (args.modelsOnly && product.spanish)
+    fail("--models-only prepares English models only");
   if (args.modelsOnly) {
     mkdirSync(args.workspace, { recursive: true });
     mkdirSync(args.out, { recursive: true });
@@ -478,7 +492,7 @@ async function main() {
   if (!existsSync(path.join(sdk, "ndk", NDK_VERSION)))
     fail(`NDK ${NDK_VERSION} not installed under ${path.join(sdk, "ndk")}`);
   mkdirSync(args.workspace, { recursive: true });
-  const withSpanish = spanishEnabled();
+  const withSpanish = product.spanish;
   const pins = forkPins(withSpanish);
   const sourceCommit = execFileSync(
     "git",
@@ -499,11 +513,15 @@ async function main() {
   await buildModels(args, pins, bundle, withSpanish);
 
   const paradeeDir = path.dirname(path.join(bundle, inputs.paradee.path));
-  copyTree(
-    path.join(espeakDir, "data", "espeak-ng-data"),
-    path.join(paradeeDir, "espeak-ng-data"),
-  );
-  const missingEspeak = inputs.espeak.data.filter(
+  for (const relative of product.espeakData) {
+    const target = path.join(paradeeDir, "espeak-ng-data", relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    copyFileSync(
+      path.join(espeakDir, "data", "espeak-ng-data", relative),
+      target,
+    );
+  }
+  const missingEspeak = product.espeakData.filter(
     (relative) =>
       !existsSync(path.join(paradeeDir, "espeak-ng-data", relative)),
   );
@@ -553,7 +571,7 @@ async function main() {
   }
   writeFileSync(
     path.join(args.out, "build-record.json"),
-    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
+    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, productLanguages: product.languages, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
   );
   log(`wrote ${record.length} files under ${args.out}`);
 }

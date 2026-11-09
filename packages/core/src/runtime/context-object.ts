@@ -11,7 +11,7 @@ import type { Content, JsonValue } from "../types/primitives";
  * agree on a single intermediate shape independent of any model's wire format.
  */
 
-export type ContextObjectEventType =
+type ContextObjectEventType =
 	| "message"
 	| "memory"
 	| "provider"
@@ -21,7 +21,7 @@ export type ContextObjectEventType =
 	| "metadata"
 	| (string & {});
 
-export type ContextObjectRole =
+type ContextObjectRole =
 	| "system"
 	| "user"
 	| "assistant"
@@ -176,11 +176,7 @@ export interface ContextObject {
 	events: readonly ContextEvent[];
 }
 
-/**
- * Constructs per-turn context objects with static prefixes and an append-only event log.
- */
-
-export interface CreateContextObjectOptions {
+interface CreateContextObjectOptions {
 	id: string;
 	createdAt?: number;
 	metadata?: ContextObject["metadata"];
@@ -192,6 +188,7 @@ export interface CreateContextObjectOptions {
 	events?: readonly ContextEvent[];
 }
 
+/** Constructs a per-turn context object with static prefixes and an append-only event log. */
 export function createContextObject({
 	id,
 	createdAt,
@@ -223,6 +220,6 @@ export function appendContextEvent(
 ): ContextObject {
 	return {
 		...context,
-		events: [...(context.events ?? []), event],
+		events: [...context.events, event],
 	};
 }
