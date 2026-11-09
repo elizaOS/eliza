@@ -150,6 +150,13 @@ jobs:
         with:
           go-version-file: packages/os/native/ota-trust/go.mod
           cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - name: Install local Redis for protocol conformance
+        run: |
+          if ! command -v redis-server >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Quint application state models
         env:
           INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
