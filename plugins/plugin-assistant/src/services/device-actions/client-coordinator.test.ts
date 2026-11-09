@@ -1695,7 +1695,7 @@ describe("notes organize operations", () => {
     ]);
     const review = await f.actions.pendingReview(notesContext, signal());
     expect(review[0].proposal).toBeNull();
-    expect(review[0].notice).toMatch(/Notes folders were not negotiated/);
+    expect(review[0].notice).toBe("This action isn't available on this phone.");
   });
 
   it("reviews a move and reports a committed Notes change", async () => {
@@ -1823,7 +1823,9 @@ describe("photos view operations", () => {
       );
       const review = await f.actions.pendingReview(photosContext, signal());
       expect(review[0].proposal).toBeNull();
-      expect(review[0].notice).toMatch(/Photos actions were not negotiated/);
+      expect(review[0].notice).toBe(
+        "This action isn't available on this phone.",
+      );
     }
   });
 
