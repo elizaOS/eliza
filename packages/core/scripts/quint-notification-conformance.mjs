@@ -12,6 +12,7 @@ const packageRoot = path.resolve(
 const repositoryRoot = path.resolve(packageRoot, "../..");
 const models = [
 	"NotificationDurability.qnt",
+	"NotificationGroupPolicy.qnt",
 	"NativeNotificationCursor.qnt",
 	"NotificationRecovery.qnt",
 ].map((name) => path.join(packageRoot, "quint", name));

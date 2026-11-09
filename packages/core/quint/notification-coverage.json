@@ -20,11 +20,27 @@
     "status": "partial",
     "limitations": [
       "A single serial owner is explicit. Concurrent independent NotificationService instances writing the same agent cache need a separate cross-process ownership model.",
-      "Hydration begins with a valid version-2 snapshot. Legacy migration, malformed coordinate rejection, group coalescing, expiry and notification category/priority policy remain separately test-covered and not modeled here.",
+      "Hydration begins with a valid version-2 snapshot. Legacy migration and malformed coordinate rejection remain separately test-covered. NotificationGroupPolicy checks grouped replacement and retention. The full category-to-priority mapping remains outside these models.",
       "The write-queue case projects rows to identity and read state. A separate payload case models producer and observer ownership for one nested payload through admission, persistence and restart.",
       "Storage operations are atomic but their outcome may be ambiguous to the caller. Restart in this case assumes a successful read of the durable version-2 snapshot.",
       "Ordinary synchronous list/getUnreadCount APIs can observe provisional in-memory work. The DurableFence invariant concerns the quiescent native and durable-read APIs.",
       "Conformance executes 70 real SQLite/runtime tests. Named scenarios gate real API effects and do not establish exhaustive schedule equivalence."
+    ]
+  },
+  {
+    "id": "core-NotificationGroupPolicy",
+    "model": "packages/core/quint/NotificationGroupPolicy.qnt",
+    "sources": [
+      "packages/core/src/services/notification.ts",
+      "packages/core/src/types/notification.ts",
+      "packages/core/test/notification.test.ts",
+      "plugins/plugin-assistant/src/services/approval/store.ts"
+    ],
+    "invariants": ["SequenceTracksRetainedRow"],
+    "status": "partial",
+    "limitations": [
+      "One notification group, three appends and a finite wall clock. Multiple groups, arbitrary predicates and the full category-to-priority mapping are outside the checked domain.",
+      "The model assumes one successful serialized write. Ambiguous persistence and restart are covered separately by NotificationDurability. The real SQLite suite covers default and explicit expiry, grouped replacement, count overrides and exact approval projection."
     ]
   },
   {
