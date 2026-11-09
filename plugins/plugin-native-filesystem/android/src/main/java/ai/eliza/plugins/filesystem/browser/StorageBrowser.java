@@ -411,4 +411,19 @@ public final class StorageBrowser {
    return new String(out.toByteArray(),StandardCharsets.UTF_8);
   }
  }
+ /** Serializes registration with unwatch and rejects superseded queued requests. */
+ public static final class WatchSlot {
+  public interface Watch { void stop(); }
+  private long generation;
+  private Watch current;
+  public synchronized long request(){return ++generation;}
+  public synchronized boolean install(long ticket,java.util.function.Supplier<Watch> start){
+   if(ticket!=generation)return false;
+   stopCurrent();current=start.get();return true;
+  }
+  public synchronized boolean isCurrent(long ticket){return ticket==generation&&current!=null;}
+  public synchronized void clear(){generation++;stopCurrent();}
+  public synchronized boolean active(){return current!=null;}
+  private void stopCurrent(){Watch old=current;current=null;if(old!=null)old.stop();}
+ }
 }

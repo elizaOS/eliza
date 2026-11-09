@@ -93,11 +93,28 @@ public final class StorageCatalog {
   JSObject out=new JSObject();out.put("entries",entries);out.put("count",files.size());out.put("truncated",files.size()>entries.length());
   return out;
  }
+ /** A category's MediaStore selection, or null for every row of its collection. */
+ private static String selection(String category){
+  if("documents".equals(category)){StringBuilder in=new StringBuilder();for(int i=0;i<DOCUMENT_TYPES.length;i++)in.append(i==0?"?":",?");return MediaStore.MediaColumns.MIME_TYPE+" IN ("+in+")";}
+  if(!"images".equals(category)&&!"videos".equals(category)&&!"audio".equals(category))throw new IllegalArgumentException("Unknown category");
+  return null;
+ }
+ /** Matches the hidden-name and hidden-folder filtering in rows(). */
+ public static final String VISIBLE="relative_path IS NOT NULL AND _display_name IS NOT NULL AND _display_name NOT LIKE '.%' AND ('/'||relative_path) NOT LIKE '%/.%'";
+ /** Browse needs counts without loading and serializing every media row. */
+ public static JSObject count(ContentResolver resolver,StorageBrowser browser,String category)throws java.io.IOException{
+  JSObject out=new JSObject();
+  if("downloads".equals(category)){out.put("count",browser.files(DOWNLOAD_FOLDER,Integer.MAX_VALUE).size());return out;}
+  String selection=selection(category);
+  try(Cursor cursor=resolver.query(collection(category),new String[]{MediaStore.MediaColumns._ID},selection==null?VISIBLE:selection+" AND "+VISIBLE,selection==null?null:DOCUMENT_TYPES,null)){
+   if(cursor==null)throw new IllegalStateException("Media provider unavailable");
+   out.put("count",cursor.getCount());
+  }
+  return out;
+ }
  /** One MediaStore category over the primary volume, newest first. Trash and pending rows are excluded by MediaStore. */
  public static JSObject category(ContentResolver resolver,String category){
-  String selection=null;String[] args=null;
-  if("documents".equals(category)){StringBuilder in=new StringBuilder();for(int i=0;i<DOCUMENT_TYPES.length;i++)in.append(i==0?"?":",?");selection=MediaStore.MediaColumns.MIME_TYPE+" IN ("+in+")";args=DOCUMENT_TYPES;}
-  else if(!"images".equals(category)&&!"videos".equals(category)&&!"audio".equals(category))throw new IllegalArgumentException("Unknown category");
+  String selection=selection(category);String[] args=selection==null?null:DOCUMENT_TYPES;
   Tally tally=new Tally();JSArray entries=rows(resolver,collection(category),selection,args,CATEGORY_MAX,tally);
   JSObject out=new JSObject();out.put("entries",entries);out.put("count",tally.count);out.put("truncated",tally.count>entries.length());
   JSArray folders=new JSArray();
