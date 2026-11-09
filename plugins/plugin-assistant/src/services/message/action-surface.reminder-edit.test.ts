@@ -129,3 +129,35 @@ describe("a reminder edit Stage 1 phrases as delete and set again", () => {
     expect(names.filter((name) => name.includes("UPDATE"))).toEqual([]);
   });
 });
+
+describe("a reminder creation that is not the first Stage-1 intent", () => {
+  it.each([
+    ["list my reminders", "set a reminder for 5pm to call mom"],
+    ["list my reminders", "schedule a reminder for 5pm to call mom"],
+  ])("keeps TRIGGER_CREATE beside TRIGGER_LIST for %s / %s", (...intents) => {
+    const query = "show my reminders and set a reminder for 5pm to call mom";
+    const selectedActions = collectBudgetedStageOneCandidateActions({
+      actions,
+      candidateActions: ["TRIGGER"],
+      contexts: ["tasks"],
+      deferUnselectedContexts: true,
+      deferParentHints: true,
+      intents,
+    });
+    const filled = retrieveContextualPlannerActions({
+      actions,
+      query,
+      intents,
+      contexts: ["tasks"],
+      selectedActions,
+      directRouting: {
+        rules: [],
+        message: { content: { text: query } } as Memory,
+      },
+      contextAliases: (context) => aliases.get(context),
+    }).actions;
+    expect(filled.map((action) => action.name)).toEqual(
+      expect.arrayContaining(["TRIGGER_CREATE", "TRIGGER_LIST"]),
+    );
+  });
+});

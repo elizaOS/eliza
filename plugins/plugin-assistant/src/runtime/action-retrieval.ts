@@ -841,12 +841,14 @@ export function preferredOperationNames(
   }
   // An imperative scheduling outcome creates a record. A schedule mentioned
   // as data ("read my schedule") and rescheduling retain their own operations.
-  if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/iu.test(query))
+  // Callers join the request and Stage-1 intents with "\n", so these imperative
+  // checks anchor at the start of every line, not only the first.
+  if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/imu.test(query))
     wanted.add("create");
   // "Set a reminder" names creation; setting an existing record's fields or
   // configuration does not. Unknown/ambiguous wording keeps full discovery.
   if (
-    /^\s*set\s+(?:(?:an?|new)\s+)?(?:(?:one[- ](?:shot|time)|new|[\p{L}\p{N}-]+[- ](?:minute|hour|day|week)s?)\s+)?(?:reminder|alarm)s?(?=\s+(?:for|to|at|on|in|about|here|there|tomorrow|today|next|every)\b|[\s.!?]*$)/iu.test(
+    /^\s*set\s+(?:(?:an?|new)\s+)?(?:(?:one[- ](?:shot|time)|new|[\p{L}\p{N}-]+[- ](?:minute|hour|day|week)s?)\s+)?(?:reminder|alarm)s?(?=\s+(?:for|to|at|on|in|about|here|there|tomorrow|today|next|every)\b|[\s.!?]*$)/imu.test(
       query,
     )
   )
