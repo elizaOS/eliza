@@ -4,14 +4,23 @@
     "model": "packages/agent/quint/api-approvals.qnt",
     "sources": [
       "packages/agent/src/api/device-action-routes.ts",
-      "packages/agent/src/api/approval-routes.ts"
+      "packages/agent/src/api/approval-routes.ts",
+      "plugins/plugin-assistant/src/services/approval/store.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+      "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts",
+      "plugins/plugin-assistant/test/photos-filter.e2e.test.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "AtMostOneClaim",
+      "DispatchPrecedesReceipt",
+      "PermitRequiresCommittedDispatch"
+    ],
     "status": "partial",
     "limitations": [
-      "One operation and two claims.",
-      "Approval/device services remain external authorities; multiple principals and provider effects are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One device proposal and one claim. Receipt identity and approval expiry are symbolic.",
+      "Real HTTP and SQL checks bind the atomic dispatch and reconciliation boundary. Device effects, enrollment revocation, multiple proposals and arbitrary receipt payloads remain outside this scope.",
+      "The generic list hides device records. Non-device approvals have separate execution authorities."
     ]
   },
   {
