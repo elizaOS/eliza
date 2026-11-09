@@ -69,6 +69,7 @@ describe("cloud inference pre-warm", () => {
     const { warmCloudInference } = await load();
     await warmCloudInference(runtime({apiKey:"first-key"}));
     await warmCloudInference(runtime({apiKey:"second-key"}));
+    expect(await warmCloudInference(runtime({apiKey:"first-key"}))).toEqual({warmed:false,reason:"debounced"});
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer second-key");
   });

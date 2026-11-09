@@ -6,6 +6,7 @@
  * It never schedules periodic traffic or delays the owner's actual request.
  */
 import type http from "node:http";
+import {createHash} from "node:crypto";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import { sendJson } from "../lib/http";
 import { resolveCloudSdkAuthorityTuple } from "../utils/config";
@@ -25,7 +26,8 @@ export type CloudWarmResult =
   | { warmed: true; status: number; durationMs: number }
   | { warmed: false; reason: "not-cloud-text" | "debounced" | "unreachable" };
 
-let lastWarm: { url: string; apiKey: string; at: number } | null = null;
+const recentWarms = new Map<string, number>();
+const MAX_WARM_IDENTITIES = 256;
 
 export async function warmCloudInference(runtime: IAgentRuntime | null): Promise<CloudWarmResult> {
   // Only when this plugin registered a chat-brain handler: with
@@ -38,11 +40,13 @@ export async function warmCloudInference(runtime: IAgentRuntime | null): Promise
   const url = `${tuple.apiBaseUrl.replace(/\/+$/, "")}/inference/warm`;
   if (!/^https?:\/\//.test(url)) return { warmed: false, reason: "unreachable" };
   const now = Date.now();
-  if (lastWarm?.url === url && lastWarm.apiKey === tuple.apiKey && now - lastWarm.at < CLOUD_WARM_INTERVAL_MS) {
-    return { warmed: false, reason: "debounced" };
-  }
+  const identity = createHash("sha256").update(url).update("\0").update(tuple.apiKey).digest("hex");
+  for (const [key, at] of recentWarms) if (now - at >= CLOUD_WARM_INTERVAL_MS) recentWarms.delete(key);
+  if (recentWarms.has(identity)) return { warmed: false, reason: "debounced" };
+  // Bound the cache and retain no raw credential. A changed key gets its own warmup.
+  if (recentWarms.size >= MAX_WARM_IDENTITIES) recentWarms.delete(recentWarms.keys().next().value!);
   // Claimed before the request so concurrent triggers and failures debounce too.
-  lastWarm = { url, apiKey: tuple.apiKey, at: now };
+  recentWarms.set(identity, now);
   try {
     const response = await fetch(url, {
       method: "POST",
