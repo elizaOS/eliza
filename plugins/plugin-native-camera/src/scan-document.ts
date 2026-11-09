@@ -34,6 +34,9 @@ export const SCAN_LIMITS = {
   pixels: 32_000_000,
 } as const;
 
+/** How long removing an automatic draft may run once the document is closed. */
+const DRAFT_REMOVE_TIMEOUT_MS = 10_000;
+
 /** The image facts the rules need; a browser `Blob` satisfies it. */
 export interface ScanImage {
   readonly type: string;
@@ -222,9 +225,33 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
 
   if (options.first) admitScanImage(options.first);
 
+  /**
+   * Remove the automatic draft this document wrote; a saved or loaded one stays. Its signal is
+   * not the document's, so close() right after an export or a last-page removal still ends it.
+   */
+  const removeAutoDraft = async () => {
+    if (!drafts || !autoSaved || !draftRevision) return;
+    const revision = draftRevision;
+    await drafts.remove(revision, AbortSignal.timeout(DRAFT_REMOVE_TIMEOUT_MS));
+    if (draftRevision !== revision) return;
+    draftRevision = undefined;
+    autoSaved = false;
+    if (!closed) changed();
+  };
+
   const autosave = () => {
-    if (!options.autosave || !drafts || closed || exported || !pages.length)
+    if (!options.autosave || !drafts || closed || exported) return;
+    if (!pages.length) {
+      // No pages left: the automatic draft must not keep the ones the person removed.
+      saving = saving.then(async () => {
+        try {
+          await removeAutoDraft();
+        } catch {
+          // The draft stays; deleting it remains available.
+        }
+      });
       return;
+    }
     const images = pages.map((page) => page.image);
     const layers = pages.map((page) => page.textLayer ?? null);
     saving = saving.then(async () => {
@@ -265,14 +292,8 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
   /** A confirmed export ends the automatic draft this document wrote; a saved or loaded one stays. */
   const clearAutoDraft = async () => {
     await settled();
-    if (!drafts || !autoSaved || !draftRevision) return;
     try {
-      await drafts.remove(draftRevision, controller.signal);
-      if (!closed) {
-        draftRevision = undefined;
-        autoSaved = false;
-        changed();
-      }
+      await removeAutoDraft();
     } catch {
       // The draft stays; deleting it remains available.
     }

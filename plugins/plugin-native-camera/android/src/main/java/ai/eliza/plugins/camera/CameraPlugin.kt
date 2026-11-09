@@ -34,6 +34,7 @@ import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -189,6 +190,11 @@ class CameraPlugin : Plugin() {
                 call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
                 return@runOnUiThread
             }
+            // The preview stream runs at CameraX's default rate here; recording honors frameRate.
+            if (!call.data.isNull("frameRate")) {
+                call.reject("Android does not support a preview frame rate; set frameRate when recording", "INVALID_OPTIONS")
+                return@runOnUiThread
+            }
             stopPreviewInternal()
             pendingPreviewCall = call
             if (!hasRequiredPermissions()) {
@@ -217,17 +223,17 @@ class CameraPlugin : Plugin() {
     }
 
     private fun startPreviewInternal(call: PluginCall) {
+        val deviceId = call.getString("deviceId")
         val direction = call.getString("direction") ?: "back"
         val resObj = call.getObject("resolution")
         val width = resObj?.getInteger("width") ?: 1920
         val height = resObj?.getInteger("height") ?: 1080
-        val mirror = call.getBoolean("mirror") ?: (direction == "front")
 
         currentPreviewWidth = width
         currentPreviewHeight = height
 
         try {
-            require(direction == "front" || direction == "back") { "Camera direction must be front or back" }
+            require(deviceId != null || direction == "front" || direction == "back") { "Camera direction must be front or back" }
             require(width > 0 && height > 0) { "Preview dimensions must be positive" }
             cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -238,6 +244,18 @@ class CameraPlugin : Plugin() {
                 try {
                     val provider = cameraProviderFuture.get()
                     cameraProvider = provider
+                    // A deviceId is one of the ids getDevices returns and wins over direction.
+                    val target = deviceId?.let { id ->
+                        provider.availableCameraInfos.firstOrNull { cameraIdOf(it) == id }
+                            ?: throw CameraSettingException("INVALID_OPTIONS", "Unknown camera deviceId $id")
+                    }
+                    val boundDirection = when (target?.lensFacing) {
+                        null -> direction
+                        CameraSelector.LENS_FACING_FRONT -> "front"
+                        CameraSelector.LENS_FACING_BACK -> "back"
+                        else -> "external"
+                    }
+                    val mirror = call.getBoolean("mirror") ?: (boundDirection == "front")
 
                     previewView = androidx.camera.view.PreviewView(context).apply {
                         layoutParams = ViewGroup.LayoutParams(
@@ -266,11 +284,11 @@ class CameraPlugin : Plugin() {
                         )
                         .build()
 
-                    currentDirection = direction
-                    currentCameraSelector = if (direction == "front") {
-                        CameraSelector.DEFAULT_FRONT_CAMERA
-                    } else {
-                        CameraSelector.DEFAULT_BACK_CAMERA
+                    currentDirection = boundDirection
+                    currentCameraSelector = when {
+                        target != null -> target.cameraSelector
+                        direction == "front" -> CameraSelector.DEFAULT_FRONT_CAMERA
+                        else -> CameraSelector.DEFAULT_BACK_CAMERA
                     }
 
                     val previewBuilder = Preview.Builder().setResolutionSelector(resolutionSelector)
@@ -280,10 +298,17 @@ class CameraPlugin : Plugin() {
                             it.setSurfaceProvider(previewView?.surfaceProvider)
                         }
 
+                    // Photos use the largest size the bound stream combination allows,
+                    // not the preview size. switchCamera rebinds this same use case.
+                    val captureSelector = ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                        .build()
+
                     // Build ImageCapture with flash mode from current settings.
                     imageCapture = ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                        .setResolutionSelector(resolutionSelector)
+                        .setResolutionSelector(captureSelector)
                         .setFlashMode(flashModeFromSetting(currentSettings["flash"] as? String ?: "off"))
                         .build()
 
@@ -308,7 +333,8 @@ class CameraPlugin : Plugin() {
                             call.resolve(JSObject().apply {
                                 put("width", width)
                                 put("height", height)
-                                put("deviceId", if (direction == "front") "front" else "back")
+                                put("deviceId", deviceId ?: if (direction == "front") "front" else "back")
+                                putBoundSizes(this)
                             })
                         }
                     }, { error -> failPreview(call, error) })
@@ -323,16 +349,36 @@ class CameraPlugin : Plugin() {
         }
     }
 
+    /** Report the sizes CameraX bound, upright, rather than the requested size. */
+    private fun putBoundSizes(result: JSObject) {
+        fun upright(info: ResolutionInfo?): JSObject? = info?.let {
+            val turned = it.rotationDegrees % 180 != 0
+            JSObject().apply {
+                put("width", if (turned) it.resolution.height else it.resolution.width)
+                put("height", if (turned) it.resolution.width else it.resolution.height)
+            }
+        }
+        upright(preview?.resolutionInfo)?.let { result.put("previewSize", it) }
+        upright(imageCapture?.resolutionInfo)?.let { result.put("captureSize", it) }
+    }
+
     private fun failPreview(call: PluginCall, error: Exception) {
         if (pendingPreviewCall !== call) return
         pendingPreviewCall = null
         stopPreviewInternal()
+        if (error is CameraSettingException && error.code == "INVALID_OPTIONS") {
+            call.reject(error.message, error.code, error)
+            return
+        }
         notifyListeners("error", JSObject().apply {
             put("code", "PREVIEW_ERROR")
             put("message", "Failed to start preview: ${error.message}")
         })
         call.reject("Failed to start preview", "PREVIEW_ERROR", error)
     }
+
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun cameraIdOf(info: CameraInfo): String = Camera2CameraInfo.from(info).cameraId
 
     @PluginMethod
     fun stopPreview(call: PluginCall) {
@@ -411,8 +457,13 @@ class CameraPlugin : Plugin() {
                 finishCameraSwitch()
                 return@runOnUiThread
             }
+            if (call.getString("deviceId") != null) {
+                call.reject("Android switches cameras by direction; pass deviceId to startPreview", "INVALID_OPTIONS")
+                finishCameraSwitch()
+                return@runOnUiThread
+            }
             val direction = call.getString("direction")
-                ?: if (currentCameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) "front" else "back"
+                ?: if (currentDirection == "back") "front" else "back"
             if (direction != "front" && direction != "back") {
                 call.reject("Camera direction must be front or back", "INVALID_OPTIONS")
                 finishCameraSwitch()
@@ -460,6 +511,7 @@ class CameraPlugin : Plugin() {
                         put("width", currentPreviewWidth)
                         put("height", currentPreviewHeight)
                         put("deviceId", direction)
+                        putBoundSizes(this)
                     })
                     finishCameraSwitch()
                 }, { error ->
@@ -571,7 +623,13 @@ class CameraPlugin : Plugin() {
                         val finalWidth = bitmap.width
                         val finalHeight = bitmap.height
                         // Finish fallible metadata work before publishing the external effect.
-                        val galleryPath = if (saveToGallery) saveImageToGallery(outputBytes, format) else null
+                        // An unscaled JPEG saves the camera's own file with its EXIF and full
+                        // encoder quality; a re-encoded image gets the camera's tags copied over.
+                        val galleryPath = if (saveToGallery) {
+                            val galleryBytes = if (format == "jpeg" && targetWidth == null && targetHeight == null) bytes
+                                else withCameraExif(outputBytes, exif, format)
+                            saveImageToGallery(galleryBytes, format)
+                        } else null
 
                         activity.runOnUiThread {
                             call.resolve(JSObject().apply {
@@ -677,6 +735,33 @@ class CameraPlugin : Plugin() {
             exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)?.let { put("GPSLongitude", it) }
         }
     }
+
+    /** Copy the camera's capture tags onto re-encoded bytes, which are upright. GPS is never copied. */
+    private fun withCameraExif(encoded: ByteArray, source: ExifInterface, format: String): ByteArray {
+        val file = File.createTempFile("eliza-exif-", ".$format", context.cacheDir)
+        try {
+            file.writeBytes(encoded)
+            val target = ExifInterface(file.absolutePath)
+            for (tag in copiedExifTags) source.getAttribute(tag)?.let { target.setAttribute(tag, it) }
+            target.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+            target.saveAttributes()
+            return file.readBytes()
+        } finally {
+            file.delete()
+        }
+    }
+
+    private val copiedExifTags = listOf(
+        ExifInterface.TAG_MAKE, ExifInterface.TAG_MODEL, ExifInterface.TAG_SOFTWARE,
+        ExifInterface.TAG_DATETIME, ExifInterface.TAG_DATETIME_ORIGINAL, ExifInterface.TAG_DATETIME_DIGITIZED,
+        ExifInterface.TAG_OFFSET_TIME, ExifInterface.TAG_OFFSET_TIME_ORIGINAL, ExifInterface.TAG_OFFSET_TIME_DIGITIZED,
+        ExifInterface.TAG_SUBSEC_TIME, ExifInterface.TAG_SUBSEC_TIME_ORIGINAL, ExifInterface.TAG_SUBSEC_TIME_DIGITIZED,
+        ExifInterface.TAG_EXPOSURE_TIME, ExifInterface.TAG_F_NUMBER, ExifInterface.TAG_APERTURE_VALUE,
+        ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, ExifInterface.TAG_EXPOSURE_BIAS_VALUE,
+        ExifInterface.TAG_EXPOSURE_PROGRAM, ExifInterface.TAG_METERING_MODE, ExifInterface.TAG_FLASH,
+        ExifInterface.TAG_FOCAL_LENGTH, ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM, ExifInterface.TAG_WHITE_BALANCE,
+        ExifInterface.TAG_LENS_MAKE, ExifInterface.TAG_LENS_MODEL,
+    )
 
     @PermissionCallback
     private fun handlePhotoStoragePermission(call: PluginCall) {
@@ -787,6 +872,7 @@ class CameraPlugin : Plugin() {
         recordingSession = session
         completedRecording = null
         completedRecordingError = null
+        val previousCapture = videoCapture
         try {
             val selector = if (quality == Quality.HIGHEST) QualitySelector.from(quality)
                 else QualitySelector.from(quality, FallbackStrategy.lowerQualityOrHigherThan(quality))
@@ -831,10 +917,15 @@ class CameraPlugin : Plugin() {
                             call.resolve()
                         }
                         is VideoRecordEvent.Finalize -> {
-                            val acceptableLimit = event.error == VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED ||
-                                event.error == VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED
+                            // These end the recording early but still write the output (for
+                            // example the Activity stopped); the readable-output, dimension and
+                            // duration checks below decide whether it is a real recording.
+                            val acceptableEnd = event.error == VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED ||
+                                event.error == VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED ||
+                                event.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE ||
+                                event.error == VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE
                             try {
-                                if (event.hasError() && !acceptableLimit) {
+                                if (event.hasError() && !acceptableEnd) {
                                     throw IllegalStateException("CameraX could not finalize recording (code ${event.error})", event.cause)
                                 }
                                 val outputUri = event.outputResults.outputUri
@@ -873,16 +964,47 @@ class CameraPlugin : Plugin() {
                         put("fileSize", session.fileSize)
                     })
                 }
-            }, { error ->
-                if (recordingSession === session) {
-                    finishRecording(session, null, error)
-                    stopPreviewInternal()
-                }
-            })
+            }, { error -> recoverFromRecordingStart(session, previousCapture, error) })
         } catch (error: Exception) {
             // error-policy:J1 synchronous CameraX admission errors settle the owning call.
-            finishRecording(session, null, error)
+            recoverFromRecordingStart(session, previousCapture, error)
+        }
+    }
+
+    /**
+     * A recording start failed after its rebind may have replaced the use cases. Bind the
+     * previous ones again so the viewfinder stays live, then reject the start with its error.
+     * When that also fails the preview is stopped and the start rejects PREVIEW_STOPPED, so
+     * hosts know to offer a fresh preview start instead of a dead shutter.
+     */
+    private fun recoverFromRecordingStart(session: RecordingSession, previous: VideoCapture<Recorder>?, error: Exception) {
+        if (recordingSession !== session) return
+        val epoch = previewEpoch
+        fun previewStopped(cause: Exception) {
+            if (cause !== error) error.addSuppressed(cause)
+            // The host stopped the preview meanwhile; that stop already settled the start.
+            if (previewEpoch != epoch) {
+                finishRecording(session, null, error)
+                return
+            }
+            if (recordingSession === session) finishRecording(session, null, error, "PREVIEW_STOPPED")
+            else notifyListeners("error", JSObject().apply {
+                put("code", "PREVIEW_STOPPED")
+                put("message", error.message)
+            })
             stopPreviewInternal()
+        }
+        try {
+            val provider = requireNotNull(cameraProvider) { "Camera provider is unavailable" }
+            val prior = requireNotNull(previous) { "No previous video capture to restore" }
+            provider.unbindAll()
+            videoCapture = prior
+            camera = provider.bindToLifecycle(activity as LifecycleOwner, currentCameraSelector,
+                requireNotNull(preview), requireNotNull(imageCapture), prior)
+            restoreCameraSettings(requireNotNull(camera), { finishRecording(session, null, error) }, { previewStopped(it) })
+        } catch (rebindError: Exception) {
+            // error-policy:J1 a failed rebind stops the preview and says so to the caller.
+            previewStopped(rebindError)
         }
     }
 
@@ -896,12 +1018,17 @@ class CameraPlugin : Plugin() {
         return value
     }
 
-    private fun finishRecording(session: RecordingSession, result: JSObject?, error: Exception?) {
+    private fun finishRecording(session: RecordingSession, result: JSObject?, error: Exception?, code: String = "RECORDING_ERROR") {
         if (recordingSession !== session) return
         recordingSession = null
+        // A failed cache recording is never returned, so nothing else would remove it. A
+        // MediaStore output is left alone: it may hold a playable partial clip.
+        if (error != null) session.file?.delete()
         if (!session.startSettled) {
             session.startSettled = true
-            session.startCall.reject("Recording did not start", "RECORDING_ERROR", error)
+            session.startCall.reject(
+                if (code == "PREVIEW_STOPPED") "Recording did not start and the camera preview stopped" else "Recording did not start",
+                code, error)
         }
         if (session.stopCalls.isEmpty()) {
             completedRecording = result
@@ -914,7 +1041,7 @@ class CameraPlugin : Plugin() {
             session.stopCalls.clear()
         }
         if (error != null) notifyListeners("error", JSObject().apply {
-            put("code", "RECORDING_ERROR")
+            put("code", code)
             put("message", error.message)
         })
     }
