@@ -1,0 +1,84 @@
+name: Deploy Valhalla
+run-name: valhalla-${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact source commit SHA for the selected branch
+        required: true
+        type: string
+      environment:
+        description: Approved GitHub deployment environment (github-pages)
+        required: true
+        default: github-pages
+        type: string
+      request_id:
+        description: Unique deployment request ID
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: valhalla-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate source and request
+        env:
+          SOURCE_SHA: ${{ inputs.sha }}
+          RUN_SHA: ${{ github.sha }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$SOURCE_SHA" == "$RUN_SHA" ]] || { echo "Source SHA does not match workflow checkout" >&2; exit 1; }
+          [[ "$REQUEST_ID" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || { echo "Invalid request ID" >&2; exit 1; }
+          [[ "$DEPLOY_ENVIRONMENT" == github-pages ]] || { echo "Unapproved deployment environment" >&2; exit 1; }
+      - name: Download, validate and assemble reviewed release
+        env:
+          SOURCE_SHA: ${{ inputs.sha }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          python3 scripts/release_artifact.py \
+            --manifest .github/valhalla-reviewed-manifest.json \
+            --output "$RUNNER_TEMP/valhalla-public" \
+            --sha "$SOURCE_SHA" --request-id "$REQUEST_ID"
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/valhalla-public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify the custom-domain release marker
+        env:
+          SOURCE_SHA: ${{ inputs.sha }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: python3 scripts/verify_valhalla_release.py --sha "$SOURCE_SHA" --request-id "$REQUEST_ID"

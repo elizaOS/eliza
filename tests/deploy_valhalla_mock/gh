@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Local gh stand-in. Never contacts GitHub."""
+import json
+import os
+import socket
+import sys
+import time
+
+args = sys.argv[1:]
+payload = None
+if args[:1] == ["api"] and "--method" in args:
+    payload = json.load(sys.stdin)
+
+request = {"args": args, "payload": payload, "token": os.environ["MOCK_GH_TOKEN"]}
+with socket.create_connection(("127.0.0.1", int(os.environ["MOCK_GH_PORT"])), timeout=5) as conn:
+    with conn.makefile("rwb") as stream:
+        stream.write((json.dumps(request) + "\n").encode())
+        stream.flush()
+        response = json.loads(stream.readline())
+
+scenario = os.environ.get("MOCK_GH_SCENARIO", "")
+if ((scenario == "branch_hang" and args[:1] == ["api"] and "--method" not in args)
+        or (scenario == "dispatch_hang" and args[:1] == ["api"] and "--method" in args)
+        or (scenario == "list_hang" and args[:2] == ["run", "list"])):
+    time.sleep(10)
+
+sys.stdout.write(response["stdout"])
+sys.stderr.write(response["stderr"])
+sys.exit(response["status"])

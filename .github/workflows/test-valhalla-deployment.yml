@@ -1,0 +1,43 @@
+name: Test Valhalla deployment repair
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/*valhalla*.yml'
+      - 'deploy-valhalla.sh'
+      - 'scripts/*valhalla*.py'
+      - 'scripts/*release_artifact.py'
+      - 'scripts/test_release_browser.py'
+      - 'tests/*valhalla*'
+      - 'tests/deploy_valhalla_mock/**'
+  push:
+    branches: [develop, main]
+    paths:
+      - '.github/workflows/*valhalla*.yml'
+      - 'deploy-valhalla.sh'
+      - 'scripts/*valhalla*.py'
+      - 'scripts/*release_artifact.py'
+      - 'scripts/test_release_browser.py'
+      - 'tests/*valhalla*'
+      - 'tests/deploy_valhalla_mock/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: valhalla-deployment-tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Lint launcher
+        run: shellcheck deploy-valhalla.sh
+      - name: Test release assembly, launcher and marker
+        run: |
+          python3 scripts/test_release_artifact.py
+          python3 scripts/test_release_browser.py
+          python3 tests/test_deploy_valhalla.py
+          python3 tests/test_valhalla_marker.py
