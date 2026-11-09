@@ -27,10 +27,10 @@ const IDENTITY_FILENAMES = ["AGENTS.md"] as const;
 /**
  * The operating manual template. Deliberately self-contained — a sub-agent never
  * has to chase a possibly-stale skill file to know it is non-interactive. Bridge
- * facts are stated accurately: `memory` is global semantic search (not the
- * originating room's recent messages), `parent-context` exposes the originating
- * task goal + latest decisions, and the endpoints only work when
- * `ORCHESTRATOR_SESSION_ID` is wired.
+ * facts are stated accurately: `memory` is semantic search scoped to the task's
+ * project world or origin room (not that room's recent messages),
+ * `parent-context` exposes the originating task goal + latest decisions, and the
+ * endpoints only work when `ORCHESTRATOR_SESSION_ID` is wired.
  *
  * Carries a `{{BROKER_SECTION}}` placeholder that {@link buildSubAgentIdentityMd}
  * fills with the parent-agent broker section only when the broker is actually
@@ -57,10 +57,12 @@ desktop/app UI yourself, so report results in words, never as UI commands.
   you'd like to proceed." Make the best available choice and proceed.
 - NEVER say "run this in your terminal" or "use the \`!\`/\`/\` prefix" — there is
   no terminal in front of anyone.
-- If you are genuinely blocked, or must make an architectural choice the task
-  did not cover, print ONE line on stdout starting with \`DECISION:\` explaining
-  it, then proceed with your best call (or stop if truly impossible). The
-  orchestrator greps stdout for \`DECISION:\` lines. Do not wrap it in markdown.
+- If you must make an architectural choice the task did not cover, print ONE
+  line on stdout starting with \`DECISION:\` explaining it, then proceed with
+  your best call. \`DECISION:\` lines are recorded for later runs; nobody reads
+  them live. Do not wrap it in markdown.
+- If you are genuinely blocked, stop and say what blocks you in your final
+  message — that message is relayed to the user.
 - Keep working until the task is finished or genuinely blocked. When you finish,
   state what changed, what you ran/tested, and any remaining risks.
 
@@ -82,15 +84,17 @@ desktop/app UI yourself, so report results in words, never as UI commands.
 ## Reading parent state (optional — only if the task needs it)
 
 If the task depends on context not in the prompt, you can GET read-only parent
-state, but only when the bridge is wired (env var \`ORCHESTRATOR_SESSION_ID\` set):
+state, but only when the bridge is wired (env vars \`ORCHESTRATOR_SESSION_ID\` and
+\`ELIZA_CREDENTIAL_BRIDGE_TOKEN\` set). Every call sends the session token:
 
-- \`curl "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/parent-context"\`
+- \`curl "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/parent-context" -H "X-Eliza-Session-Token: \${ELIZA_CREDENTIAL_BRIDGE_TOKEN}"\`
   → parent character, originating room, model prefs, your workdir, and
   \`originatingTask\` (the goal, acceptance criteria, and latest decisions of the
   task you serve — read this after a resume to know what you are working on).
-- \`.../memory?q=<query>&limit=<N>\` → GLOBAL semantic search over the parent's
-  memory (facts, messages, knowledge) — not the originating room's recency.
-- \`.../active-workspaces\` → sibling sub-agents.
+- \`.../memory?q=<query>&limit=<N>\` → semantic search over the parent's memory
+  (facts, messages, knowledge) in your task's project or originating room — not
+  that room's recency.
+- \`.../active-workspaces\` → sibling sub-agents of the same task or project.
 - \`.../skills\` → the parent's installed skills (slug + full description).
   \`.../skills/<slug>\` → the full SKILL.md body for one slug. The SKILLS.md in
   your workspace lists these; fetch a body here before asking the parent to run
@@ -114,9 +118,9 @@ instead of asking the user in chat and instead of printing secrets:
    single-use; keep it in memory, use it for the required command, and never
    echo it to stdout/stderr.
 
-All bridge endpoints are loopback-only. Credential endpoints additionally require
-the per-session bearer in \`ELIZA_CREDENTIAL_BRIDGE_TOKEN\`; the parent-state
-endpoints remain GET-only/read-only. The credential endpoints are the only
+All bridge endpoints are loopback-only and require the per-session token in
+\`ELIZA_CREDENTIAL_BRIDGE_TOKEN\` (header \`X-Eliza-Session-Token\`); the
+parent-state endpoints are GET-only/read-only. The credential endpoints are the only
 write-like bridge calls, and they only ask the parent owner to approve a scoped
 one-shot secret. If \`ORCHESTRATOR_SESSION_ID\` or
 \`ELIZA_CREDENTIAL_BRIDGE_TOKEN\` is unset, the bridge is not
@@ -164,7 +168,7 @@ the other end, only chat. Make that message the answer itself:
   missing.
 - Keep it short. No multi-paragraph monologue, no dumping a full file or
   directory listing unless the task asked for it. If you hit a blocker, say so
-  in one plain line (or a \`DECISION:\` line) — don't narrate the failed attempts
+  in one plain line in your final message — don't narrate the failed attempts
   that a retry recovered from.
 `;
 
