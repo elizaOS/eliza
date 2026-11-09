@@ -177,13 +177,23 @@ export function readBrowserWorkspaceElementText(
   return normalizeBrowserWorkspaceText(text.join(""));
 }
 
+const BROWSER_WORKSPACE_PRIVATE_INPUT_TYPES = ["password", "hidden"];
+
 /** Ambient page context may describe these controls, but must not copy values. */
 export function isBrowserWorkspacePrivateControl(element: Element): boolean {
   return (
     element.tagName === "INPUT" &&
-    ["password", "hidden"].includes((element as HTMLInputElement).type)
+    BROWSER_WORKSPACE_PRIVATE_INPUT_TYPES.includes(
+      String((element as HTMLInputElement).type).toLowerCase(),
+    )
   );
 }
+
+/** The same rule as page-script source, for scripts evaluated in a desktop tab. */
+export const BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT = `(element) =>
+    Boolean(element) &&
+    element.tagName === "INPUT" &&
+    ${JSON.stringify(BROWSER_WORKSPACE_PRIVATE_INPUT_TYPES)}.includes(String(element.type).toLowerCase())`;
 
 export function parseBrowserWorkspaceNumberLike(
   value: unknown,

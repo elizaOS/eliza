@@ -7,6 +7,7 @@ import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUserScriptAllowed,
+  BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT,
   BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE,
   createBrowserWorkspaceCommandTargetError,
   createBrowserWorkspaceUnknownElementRefError,
@@ -235,6 +236,9 @@ const DESKTOP_PAGE_HELPERS = `
   const isTag = (element, ...tags) =>
     Boolean(element && typeof element.tagName === "string" && tags.includes(element.tagName));
   const isControl = (element) => isTag(element, "INPUT", "TEXTAREA", "SELECT");
+  // Password and hidden inputs: results name them but never carry their value.
+  const isPrivateControl = ${BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT};
+  const exposedValue = (element) => (isPrivateControl(element) ? null : element.value);
   const cssEscape = (value) => {
     if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(value);
     const text = String(value);
@@ -397,8 +401,6 @@ export function createDesktopBrowserWorkspaceCommandScript(
     truncated = true;
     return text.slice(0, limit);
   };
-  const isPrivateControl = (element) =>
-    isTag(element, "INPUT") && ["password", "hidden"].includes(String(element.type).toLowerCase());
   const serialize = (element) => {
     const value = isControl(element) && !isPrivateControl(element) ? element.value : null;
     return {
@@ -719,7 +721,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     const nextValue = appendMode ? String(element.value ?? "") + String(command.value ?? "") : String(command.value ?? "");
     setNativeValue(element, nextValue);
     dispatchValueEvents(element);
-    return { selector: selectorFor(element), value: element.value };
+    return { selector: selectorFor(element), value: exposedValue(element) };
   };
   const setChecked = (targetValue) => {
     const element = findTarget();
@@ -868,7 +870,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           ),
       ).then(() => ({
         element: serialize(element),
-        value: element.value,
+        value: exposedValue(element),
       }));
     }
     throw new Error("Unsupported realistic subaction: " + subaction);
@@ -883,7 +885,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     // Both keyboard commands insert at the caret or replace the selected text,
     // matching the web backend.
     if (target.readOnly || target.disabled) {
-      return { selector: selectorFor(target), value: target.value };
+      return { selector: selectorFor(target), value: exposedValue(target) };
     }
     let start = null;
     try {
@@ -892,7 +894,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (start === null) return setInputValue(true, target);
     target.setRangeText(command.value ?? "", start, target.selectionEnd ?? start, "end");
     dispatchValueEvents(target);
-    return { selector: selectorFor(target), value: target.value };
+    return { selector: selectorFor(target), value: exposedValue(target) };
   };
   const keyPhase = (phase) => {
     const target = keyboardTarget();
@@ -1013,6 +1015,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "text":
         return readText(element);
       case "value":
+        if (isPrivateControl(element)) return null;
         return element.value ?? element.getAttribute("value");
       case "visible":
         return isVisible(element);
@@ -1326,7 +1329,7 @@ export function createDesktopBrowserWorkspaceUtilityScript(
         target.value = String(target.value || "") + clipboardText;
         target.dispatchEvent(new Event("input", { bubbles: true }));
         target.dispatchEvent(new Event("change", { bubbles: true }));
-        return { selector: selectorFor(target), value: target.value };
+        return { selector: selectorFor(target), value: exposedValue(target) };
       }
       return clipboardText;
     }
@@ -1609,9 +1612,11 @@ export async function getDesktopBrowserWorkspaceSnapshotRecord(
     }
   })();
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+  const isPrivateControl = ${BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT};
   const controlText = Array.from(activeDocument.querySelectorAll("input, textarea, select, option:checked"))
     .map((element) => {
       const name = element.getAttribute("name") || element.getAttribute("id") || element.tagName.toLowerCase();
+      if (isPrivateControl(element)) return name;
       const value =
         element.tagName === "SELECT"
           ? element.value
