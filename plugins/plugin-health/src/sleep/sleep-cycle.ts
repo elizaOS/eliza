@@ -593,7 +593,7 @@ export function resolveLifeOpsSleepCycle(args: {
       currentSleep?.confidence !== undefined && currentSleep.confidence >= 0.55
         ? "sleeping_now"
         : lastCompletedSleep?.endMs &&
-            args.nowMs - lastCompletedSleep.endMs <= 30 * 60 * 60 * 1000
+            args.nowMs - lastCompletedSleep.endMs <= 20 * 60 * 60 * 1000
           ? "slept"
           : lastCompletedSleep?.endMs &&
               args.nowMs - lastCompletedSleep.endMs >= 20 * 60 * 60 * 1000
