@@ -1,5 +1,5 @@
 /**
- * The pre-warm sends exactly one credential-free OPTIONS to the inference URL
+ * The pre-warm sends one authenticated, bodyless POST to the inference URL
  * the text handlers use, only when Cloud serves text, at most once a minute.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,17 +40,16 @@ describe("cloud inference pre-warm", () => {
     process.env = { ...savedEnv };
   });
 
-  it("sends one OPTIONS without credentials or body to the chat/completions URL", async () => {
+  it("sends one explicit authenticated warmup without a prompt", async () => {
     const { warmCloudInference } = await load();
     const result = await warmCloudInference(runtime());
     expect(result).toMatchObject({ warmed: true, status: 204 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${BASE}/chat/completions`);
-    expect(init.method).toBe("OPTIONS");
+    expect(url).toBe(`${BASE}/inference/warm`);
+    expect(init.method).toBe("POST");
     expect(init.body).toBeUndefined();
-    expect(init.headers).toBeUndefined();
-    expect(JSON.stringify(init)).not.toContain("test-key-not-real");
+    expect(init.headers).toEqual({ Authorization: "Bearer test-key-not-real" });
   });
 
   it("debounces to once per 60s, including concurrent triggers", async () => {
@@ -64,6 +63,14 @@ describe("cloud inference pre-warm", () => {
     vi.setSystemTime(1_000_000 + CLOUD_WARM_INTERVAL_MS);
     expect((await warmCloudInference(runtime())).warmed).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not suppress a newly selected account's warmup", async () => {
+    const { warmCloudInference } = await load();
+    await warmCloudInference(runtime({apiKey:"first-key"}));
+    await warmCloudInference(runtime({apiKey:"second-key"}));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer second-key");
   });
 
   it("does nothing when another provider owns text or Cloud has no key", async () => {
@@ -80,6 +87,12 @@ describe("cloud inference pre-warm", () => {
     expect(await warmCloudInference(runtime())).toEqual({ warmed: false, reason: "unreachable" });
     expect(await warmCloudInference(runtime())).toEqual({ warmed: false, reason: "debounced" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report an unsupported warm endpoint as warmed", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, {status: 404}));
+    const {warmCloudInference} = await load();
+    expect(await warmCloudInference(runtime())).toEqual({warmed:false,reason:"unreachable"});
   });
 
   it("is registered as POST /api/cloud/warm on the route plugin", async () => {

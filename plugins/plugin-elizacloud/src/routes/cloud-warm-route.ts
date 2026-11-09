@@ -1,18 +1,9 @@
 /**
- * Cloud inference pre-warm (`POST /api/cloud/warm`).
- *
- * A client that is about to talk (app foregrounded, chat opened, Talk pressed)
- * asks the agent to open its Cloud connection before the first model call.
- * The agent sends ONE unauthenticated `OPTIONS` to the same
- * `<apiBaseUrl>/chat/completions` URL its text handlers use, on the process's
- * global fetch pool, so DNS/TCP/TLS are done and the first real `POST` reuses
- * the socket. No credential, no body, no model prompt. Cloud spreads requests
- * over a pool of workers, so this does not reliably absorb a worker's cold
- * start, and without a credential it cannot warm the gateway's auth cache.
- *
- * At most one warm per inference URL per {@link CLOUD_WARM_INTERVAL_MS}; a
- * debounced or skipped call answers immediately. The route always answers 200
- * with the outcome: a warm is advisory and its failure is never the caller's.
+ * Warm the existing Cloud connection and authenticated admission path before
+ * an interactive turn. No prompt or model call is sent. Public CORS preflight
+ * stays credential-free; this explicit host request warms only its own account.
+ * Runs on foreground/chat/Talk events, once per URL and credential per minute.
+ * It never schedules periodic traffic or delays the owner's actual request.
  */
 import type http from "node:http";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
@@ -34,7 +25,7 @@ export type CloudWarmResult =
   | { warmed: true; status: number; durationMs: number }
   | { warmed: false; reason: "not-cloud-text" | "debounced" | "unreachable" };
 
-let lastWarm: { url: string; at: number } | null = null;
+let lastWarm: { url: string; apiKey: string; at: number } | null = null;
 
 export async function warmCloudInference(runtime: IAgentRuntime | null): Promise<CloudWarmResult> {
   // Only when this plugin registered a chat-brain handler: with
@@ -44,22 +35,24 @@ export async function warmCloudInference(runtime: IAgentRuntime | null): Promise
   }
   const tuple = resolveCloudSdkAuthorityTuple(runtime);
   if (!tuple.outboundAllowed || !tuple.apiKey) return { warmed: false, reason: "not-cloud-text" };
-  const url = `${tuple.apiBaseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const url = `${tuple.apiBaseUrl.replace(/\/+$/, "")}/inference/warm`;
   if (!/^https?:\/\//.test(url)) return { warmed: false, reason: "unreachable" };
   const now = Date.now();
-  if (lastWarm?.url === url && now - lastWarm.at < CLOUD_WARM_INTERVAL_MS) {
+  if (lastWarm?.url === url && lastWarm.apiKey === tuple.apiKey && now - lastWarm.at < CLOUD_WARM_INTERVAL_MS) {
     return { warmed: false, reason: "debounced" };
   }
   // Claimed before the request so concurrent triggers and failures debounce too.
-  lastWarm = { url, at: now };
+  lastWarm = { url, apiKey: tuple.apiKey, at: now };
   try {
     const response = await fetch(url, {
-      method: "OPTIONS",
+      method: "POST",
+      headers: { Authorization: `Bearer ${tuple.apiKey}` },
       redirect: "manual",
       signal: AbortSignal.timeout(CLOUD_WARM_TIMEOUT_MS),
     });
     // Drain so the socket returns to the keep-alive pool for the model call.
     await response.arrayBuffer();
+    if (!response.ok) return { warmed: false, reason: "unreachable" };
     const durationMs = Date.now() - now;
     logger.debug(`[ELIZAOS_CLOUD] inference pre-warm status=${response.status} durationMs=${durationMs}`);
     return { warmed: true, status: response.status, durationMs };
