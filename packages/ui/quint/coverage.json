@@ -280,5 +280,54 @@
       "Message values, overlay lineage/retirement arithmetic, cache eviction and prefetch tokens, active sends, runtime reset, pagination, arbitrary callback exceptions and anchor rendering are outside this instance.",
       "The outer useChatCallbacks selection/fallback and final ChatOverlay anchor/notification settlement still need a composed model. This model covers the loader-owned nested 404 list boundary only."
     ]
+  },
+  {
+    "id": "NativeSignInController",
+    "model": "packages/ui/quint/NativeSignInController.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/AndroidNativeCloudSignInView.tsx",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "DispatchOwnsRequest",
+      "CancellationKeepsItsFence",
+      "ScopedReceiptPreservesForeignAttempt",
+      "AuthenticationUsesDispatchedRequest",
+      "VerificationUsesDisplayedAttempt",
+      "ActivationOwnsStoredOutcome"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The retirement case covers two controller mounts, two unique dispatch IDs and one native slot. It covers delayed host admission, scoped cancellation, lost acknowledgement, explicit cleanup retry and successor isolation.",
+      "The outcome case covers one dispatch, distinct native and credential identities, legacy direct replies, correlated retained outcomes and one retry of the stored account activation.",
+      "Sixteen named checks exercise the controller and canonical broker handoff with controlled native ports. The Android Java bridge and generated model traces require separate conformance.",
+      "The separate NativeSignInResend model covers the bounded resend and admission boundary. Asynchronous MFA resume interleavings, readiness and listener setup, startup recovery, native credential persistence and composed or unbounded histories remain open."
+    ]
+  },
+  {
+    "id": "NativeSignInResend",
+    "model": "packages/ui/quint/NativeSignInResend.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-resend.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "RetirementRequiresReceipts",
+      "ScopedReceiptPreservesOtherAttempt",
+      "VerificationUsesDisplayedOwner",
+      "RetiredOwnsNoNativeAttempt",
+      "NoLateAdmission"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One original code attempt, one replacement dispatch, one native attempt slot and one foreign scope. The model distinguishes admission, lost replies, positive code receipts and partial cancellation receipts.",
+      "The ordered case relies on same-scope start admission preceding cancellation acknowledgement. The reordered case shows an expected looping late-admission counterexample without that condition.",
+      "Six named checks exercise the real controller with controlled native ports. Native device scheduling, transport restart, credential storage, asynchronous MFA and more than two uncertain dispatches remain open."
+    ]
   }
 ]

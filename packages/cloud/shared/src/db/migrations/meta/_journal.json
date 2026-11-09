@@ -3718,6 +3718,27 @@
       "when": 1796083200179,
       "tag": "0561_evm_sweep_nonce_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1796083200180,
+      "tag": "0562_vertex_observation_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1796083200182,
+      "tag": "0564_stripe_legacy_adoption_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1796083200183,
+      "tag": "0565_stripe_legacy_retention_index",
+      "breakpoints": true
     }
   ]
 }

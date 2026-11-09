@@ -41,18 +41,33 @@ import {
   deviceApprovalPersistenceReceipt,
 } from "./effect-receipts.ts";
 import {
+  FILES_CAPABILITY,
+  FILES_GUIDANCE,
+  FILES_OPERATION_SCHEMAS,
+  isFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   isForegroundReviewOperation,
   isForegroundReviewType,
   validateForegroundReviewResult,
 } from "./foreground-review-contract.ts";
 import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
 import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
+import { isNotesOrganizeType, NOTES_KINDS } from "./notes-organize-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
   isPhoneDial,
   phoneDialResultText,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
+import { LIBRARY_LIMITS } from "./photo-library-contract.ts";
+import {
+  isPhotosViewOperation,
+  isPhotosViewType,
+  PHOTOS_FILTER_ALBUMS,
+  PHOTOS_SHARE_MAX,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
 import {
   isReminderOperation,
   validateReminderResult,
@@ -253,6 +268,115 @@ const notesSchemas: ActionParameterSchema[] = [
       : {}),
   },
 }));
+const notesFolderSchema = {
+  type: "string",
+  description: "Folder name as shown in Notes, at most 40 characters",
+};
+const notesOrganizeSchemas: ActionParameterSchema[] = [
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["notes_filter"] },
+      text: { type: "string", description: "At most 200 characters" },
+      folder: notesFolderSchema,
+      kind: { type: "string", enum: [...NOTES_KINDS] },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "target", "folder"],
+    properties: {
+      type: { type: "string", enum: ["notes_move"] },
+      target: notesTargetSchema,
+      folder: { anyOf: [notesFolderSchema, { type: "null" }] },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "name"],
+    properties: {
+      type: { type: "string", enum: ["notes_folder_create"] },
+      name: notesFolderSchema,
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "noteId"],
+    properties: {
+      type: { type: "string", enum: ["notes_restore"] },
+      noteId: { type: "string" },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action"],
+    properties: {
+      type: { type: "string", enum: ["notes_record"] },
+      action: { type: "string", enum: ["start", "stop"] },
+    },
+  },
+];
+const photosIdsSchema = (max: number) => ({
+  type: "array",
+  items: { type: "string" },
+  description: `1 to ${max} distinct library ids the phone returned; never guessed`,
+});
+const photosViewSchemas: ActionParameterSchema[] = [
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["photos_filter"] },
+      from: { type: "integer", description: "Start, epoch milliseconds" },
+      to: { type: "integer", description: "End, epoch milliseconds" },
+      kind: { type: "string", enum: ["image", "video"] },
+      favorite: { type: "boolean" },
+      album: {
+        type: "string",
+        description: `One of ${PHOTOS_FILTER_ALBUMS.join(", ")}, or custom:<album id>`,
+      },
+      text: {
+        type: "string",
+        description: `At most ${LIBRARY_LIMITS.query} characters`,
+      },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "id"],
+    properties: {
+      type: { type: "string", enum: ["photos_open"] },
+      id: { type: "string", description: "One library id" },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "name", "ids"],
+    properties: {
+      type: { type: "string", enum: ["photos_album_create"] },
+      name: { type: "string", description: "Album name, 1 to 80 characters" },
+      ids: photosIdsSchema(LIBRARY_LIMITS.kept),
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "ids"],
+    properties: {
+      type: { type: "string", enum: ["photos_share"] },
+      ids: photosIdsSchema(PHOTOS_SHARE_MAX),
+    },
+  },
+];
 const calendarString = { type: "string" };
 const calendarSource = {
   type: "object",
@@ -590,10 +714,14 @@ export const proposeDeviceAction: Action = {
     "Device Notes/Calendar proposals require the current turn to select native device record/source authority. Ordinary app Notes/Calendar requests, including creation from Home, use their canonical service operations when runtime record authority is selected; a phone capability or missing discovered child does not redirect the record store. " +
     "Reviewed SIM SMS requires sms.send.v1, exact canonical recipients, body and the active subscriptionId shown by the phone. Never invent a SIM ID or substitute an external compose intent. The owner reviews the exact content on the unlocked phone. submitted proves submission only; sent proves all sent callbacks; delivered requires all matching delivery reports. Unknown or partial failure must never be automatically retried. " +
     "A reviewed dial uses phone_dial with target {kind: number, number: digits with optional leading +} (requires phone.dial.v1) or {kind: contact, query: the contact name} (also requires contacts.lookup.v1; the phone looks the contact up locally and the owner picks the number, which is never returned). After the owner's approval the phone opens its dial screen with the number; the owner places the call there. handed-off proves only that the dial screen opened, never a placed, connected or completed call. Never retry automatically. " +
+    "With photos.library.v1 and photos.view.v1: photos_filter {from, to: epoch ms; kind image|video; favorite; album favorites|videos|camera|screenshots|custom:<id>; text} narrows the phone Photos grid behind a clearable chip and returns only how many items it shows; photos_open {id} opens one item in the Photos viewer; both run directly only when the owner's current message asked for them. photos_album_create {name, ids} and photos_share {ids} are reviewed by the owner in Photos; a share then opens Android's share sheet, and review_opened proves neither a created album nor a share. Use only library ids the phone returned; never guess them. " +
     "Native Notes discovery from Home uses notes_query with query {kind: title, text: requested title} or {kind: latest, by: created|updated}, only with notes.query.v1. Candidates remain on the phone; the owner confirms exactly one note to share. Unknown chronology or ties require local owner choice; a returned owner-choice-uncertain basis does not prove latest. Never substitute backend Notes. " +
+    "With notes.organize.v1: notes_filter {text, folder name and/or kind text|list|voice|link} filters the phone Notes list and returns no note content; notes_record {action: start|stop} starts or stops a voice note in the open Notes view; both run directly only when the owner's current message asked for them. notes_move {target: exact selected note identity/revision, folder: folder name or null for no folder}, notes_folder_create {name} and notes_restore {noteId of a note in Recently deleted} are reviewed by the owner. Folder names are at most 40 characters. Never guess note IDs, revisions or folder names. " +
     "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Browser navigation is only for a web address the user typed in this message and asks to open now; never for a deferred, hypothetical, question-about, past or reported mention. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local and calendar.create.v1; the host derives original readable event details through Calendar and code converts the timezone; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve, except that a typed address the user asks to open now may open without a review." +
     " " +
     FOREGROUND_REVIEW_GUIDANCE +
+    " " +
+    FILES_GUIDANCE +
     " " +
     CLOCK_ALARM_GUIDANCE +
     " " +
@@ -665,9 +793,12 @@ export const proposeDeviceAction: Action = {
               },
             },
           },
+          ...FILES_OPERATION_SCHEMAS,
           ...calendarSchemas,
           calendarAvailabilitySchema,
           ...notesSchemas,
+          ...notesOrganizeSchemas,
+          ...photosViewSchemas,
           notesQuerySchema,
           notesSearchSchema,
           ...namedTargetSchemas,
@@ -1054,6 +1185,7 @@ export const proposeDeviceAction: Action = {
         isCalendarOperation(payload.operation) ||
         isNotesOperation(payload.operation) ||
         isNativeNotesQuery(payload.operation) ||
+        isPhotosViewOperation(payload.operation) ||
         isForegroundReviewOperation(payload.operation)) &&
       receipt &&
       typeof receipt === "object" &&
@@ -1085,7 +1217,15 @@ export const proposeDeviceAction: Action = {
                   ? validateReminderResult(payload.operation, receipt.result)
                   : isNotesOperation(payload.operation)
                     ? validateNotesResult(payload.operation, receipt.result)
-                    : validateCalendarResult(payload.operation, receipt.result);
+                    : isPhotosViewOperation(payload.operation)
+                      ? validatePhotosViewResult(
+                          payload.operation,
+                          receipt.result,
+                        )
+                      : validateCalendarResult(
+                          payload.operation,
+                          receipt.result,
+                        );
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -1200,6 +1340,7 @@ export function deviceActionForCapabilities(
 ): Action {
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   const navigation = usesCompletedActionNavigation(messageMetadata);
+  const files = capabilities?.includes(FILES_CAPABILITY) === true;
   return {
     ...action,
     description:
@@ -1212,7 +1353,8 @@ export function deviceActionForCapabilities(
           : action.description.replace(CLOCK_ALARM_GUIDANCE, "")
         : capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
           ? `This connection supports only the Eliza-owned Clock alarm operations in this schema. ${CLOCK_ALARM_GUIDANCE}`
-          : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`),
+          : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`
+      ).replace(files ? "" : ` ${FILES_GUIDANCE}`, ""),
     parameters: action.parameters?.map((parameter) => {
       if (parameter.name !== "operation") return parameter;
       const schema = structuredClone(parameter.schema);
@@ -1274,10 +1416,13 @@ export function deviceActionForCapabilities(
             typeof type === "string" &&
             (capabilities === undefined
               ? type !== "camera_capture_photo" &&
+                !isFilesOperation({ type }) &&
                 type !== "sms_send" &&
                 type !== "phone_dial" &&
                 type !== "clock_alarm" &&
                 type !== "notes_query" &&
+                !isNotesOrganizeType(type) &&
+                !isPhotosViewType(type) &&
                 !isForegroundReviewType(type)
               : deviceOperationSupportedByCapabilities(
                   type === "reminder_create_after" ? "reminder_create" : type,
