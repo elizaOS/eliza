@@ -1,37 +1,14 @@
-/**
- * Alpha routines default-task pack (#31022).
- *
- * Three owner-facing routines for the Alpha phone project — a morning brief, a
- * reminders digest, and an evening nudge — seeded through the generic seed
- * registry exactly once per idempotency key. Every routine ships DISABLED: a
- * `manual` trigger is never due on a tick (`isScheduledTaskDue` returns
- * `manual`), so nothing fires until the owner enables it. Enabling is an
- * ordinary `edit` that swaps in `metadata.enableTrigger`, a cron in the
- * owner's timezone (`owner_local`, resolved from owner facts at due-time).
- *
- * The pack is opt-in per runtime via the `ELIZA_SCHEDULING_DEFAULT_PACKS`
- * setting and registers as a `supplemental` pack, so it seeds alongside either
- * the built-in fallback pack (no consumer host) or a consumer host's pack
- * (e.g. `@elizaos/plugin-personal-assistant`) without suppressing or being
- * suppressed by them.
- */
-
+/** Reusable morning, reminder and evening routines; no product is selected implicitly. */
 import type { DefaultTaskPack } from "./seed-registry.js";
 import { OWNER_LOCAL_TZ } from "./trigger-tz.js";
 import type { ScheduledTaskInput, ScheduledTaskTrigger } from "./types.js";
 
-/** Stable pack id; also the value that opts a runtime into this pack. */
-export const ALPHA_ROUTINES_PACK_ID = "alpha-routines";
-
-/** Setting listing the opt-in default packs (comma-separated pack ids). */
-export const SCHEDULING_DEFAULT_PACKS_SETTING =
-  "ELIZA_SCHEDULING_DEFAULT_PACKS";
-
-export const ALPHA_ROUTINES_IDEMPOTENCY_KEYS = {
-  morningBrief: "scheduling:alpha:morning-brief",
-  reminders: "scheduling:alpha:reminders",
-  nudge: "scheduling:alpha:nudge",
-} as const;
+/** Consumer-owned identifiers; preserve installed values when adopting this builder. */
+export interface DailyRoutineKeys {
+  morningBrief: string;
+  reminders: string;
+  nudge: string;
+}
 
 type CronTrigger = Extract<ScheduledTaskTrigger, { kind: "cron" }>;
 
@@ -40,26 +17,18 @@ function ownerLocalDaily(hour: number): CronTrigger {
 }
 
 /** The schedule each routine adopts when the owner enables it. */
-export const ALPHA_ROUTINES_ENABLE_TRIGGERS = {
+export const DAILY_ROUTINES_ENABLE_TRIGGERS = {
   morningBrief: ownerLocalDaily(8),
   reminders: ownerLocalDaily(12),
   nudge: ownerLocalDaily(18),
-} as const satisfies Record<
-  keyof typeof ALPHA_ROUTINES_IDEMPOTENCY_KEYS,
-  CronTrigger
->;
+} as const satisfies Record<keyof DailyRoutineKeys, CronTrigger>;
 
-/** Parse the opt-in setting into pack ids (trimmed, empty entries dropped). */
-export function parseDefaultPackSetting(value: unknown): string[] {
-  if (typeof value !== "string") return [];
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-export function buildAlphaRoutinesPack(opts: {
+/** Build disabled routines; a consumer registers the result with registerDefaultTaskPack. */
+export function buildDailyRoutinesPack(opts: {
   agentId: string;
+  packId: string;
+  idempotencyKeys: DailyRoutineKeys;
+  recordKeys: DailyRoutineKeys;
 }): DefaultTaskPack {
   const { agentId } = opts;
   const routine = (
@@ -67,8 +36,7 @@ export function buildAlphaRoutinesPack(opts: {
       ScheduledTaskInput,
       "kind" | "promptInstructions" | "priority" | "contextRequest"
     > & {
-      key: keyof typeof ALPHA_ROUTINES_IDEMPOTENCY_KEYS;
-      recordKey: string;
+      key: keyof DailyRoutineKeys;
       slot: string;
     },
   ): ScheduledTaskInput => ({
@@ -81,24 +49,23 @@ export function buildAlphaRoutinesPack(opts: {
     source: "default_pack",
     createdBy: agentId,
     ownerVisible: true,
-    idempotencyKey: ALPHA_ROUTINES_IDEMPOTENCY_KEYS[args.key],
+    idempotencyKey: opts.idempotencyKeys[args.key],
     output: { destination: "channel", target: "in_app" },
     metadata: {
-      defaultPack: ALPHA_ROUTINES_PACK_ID,
-      recordKey: args.recordKey,
+      defaultPack: opts.packId,
+      recordKey: opts.recordKeys[args.key],
       slot: args.slot,
       pausedByDefault: true,
-      enableTrigger: { ...ALPHA_ROUTINES_ENABLE_TRIGGERS[args.key] },
+      enableTrigger: { ...DAILY_ROUTINES_ENABLE_TRIGGERS[args.key] },
     },
   });
 
   return {
-    id: ALPHA_ROUTINES_PACK_ID,
+    id: opts.packId,
     supplemental: true,
     tasks: [
       routine({
         key: "morningBrief",
-        recordKey: "alpha-morning-brief",
         slot: "Morning brief",
         kind: "recap",
         priority: "medium",
@@ -110,7 +77,6 @@ export function buildAlphaRoutinesPack(opts: {
       }),
       routine({
         key: "reminders",
-        recordKey: "alpha-reminders",
         slot: "Reminders",
         kind: "reminder",
         priority: "medium",
@@ -120,7 +86,6 @@ export function buildAlphaRoutinesPack(opts: {
       }),
       routine({
         key: "nudge",
-        recordKey: "alpha-nudge",
         slot: "Nudge",
         kind: "checkin",
         priority: "low",

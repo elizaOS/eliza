@@ -3,6 +3,11 @@
   "target": "pixel10a",
   "sourceProfile": "pixel10a",
   "vendorDirectory": "alphaphone",
+  "pixelConfig": {
+    "moduleName": "AlphaPixelConfig",
+    "packageName": "ai.alphacompute.pixelconfig",
+    "mimeType": "vnd.android.cursor.dir/vnd.alpha.pixel-flags"
+  },
   "productName": "eliza_stallion_phone",
   "model": "Eliza Pixel 10a",
   "brand": "elizaOS",

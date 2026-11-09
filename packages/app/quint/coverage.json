@@ -100,5 +100,26 @@
       "Actual Java intent, conductor, slot mutation, lease and extracted lifecycle binding run in the JVM. The clock, resident inventory, Android dispatch and vault use controlled boundaries.",
       "Real device and storage durability, concurrent out-of-band mutations, reserve-stop failure and arbitrary overlapping owners remain outside this case."
     ]
+  },
+  {
+    "id": "BrowserSignInReturn",
+    "model": "packages/app/quint/BrowserSignInReturn.qnt",
+    "sources": [
+      "packages/app/functions/_middleware.ts",
+      "packages/app/functions/_browser-sign-in.ts",
+      "packages/cloud/scripts/pages-browser-sign-in.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "ExactLiveConsumer",
+      "ConsumedOnce",
+      "IndependentConsumers"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two consumers, one launch per consumer, three logical clock values and no storage failures. Protected configuration is represented by an admitted set, including an empty set. Real parsing and collision checks are exercised by maintained middleware tests.",
+      "The implementation check executes actual middleware responses and their scripts in isolated browser VM contexts. It checks exact callback binding, expiry, state, replay, origin refusal and two independent registrations. It is scenario conformance, not generated-trace equivalence.",
+      "PKCE exchange, OAuth provider correctness, DNS/TLS, browser process death, storage durability, deployment binding transfer and Android App Link verification remain separate contracts. Navigation can fail or never run; no unconditional progress is claimed."
+    ]
   }
 ]

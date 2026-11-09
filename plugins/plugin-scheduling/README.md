@@ -8,10 +8,12 @@ state transitions, registries, and execution. Edge hosts inject the SQL executor
 the package root. Connector delivery uses typed DispatchResult and must not record failed
 delivery as success.
 
-Opt-in default packs are selected with `ELIZA_SCHEDULING_DEFAULT_PACKS`
-(comma-separated). `alpha-routines` seeds a morning brief, reminders and nudge,
-all disabled (`manual`) until enabled with their `metadata.enableTrigger`
-owner-local cron; they seed with or without a consumer host's pack.
+Consumers register optional packs with `registerDefaultTaskPack` before runtime
+initialization. `buildDailyRoutinesPack` supplies a morning brief, reminders and nudge;
+its caller supplies the pack ID, task idempotency keys and record keys. Preserve those
+installed values when adopting the builder. Routines stay disabled (`manual`) until
+the owner enables their `metadata.enableTrigger` owner-local cron. Supplemental packs
+seed alongside the fallback or a host pack. No product pack is selected from settings.
 
 ## Development
 

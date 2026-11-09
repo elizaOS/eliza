@@ -1,7 +1,7 @@
 /**
  * Optional reviewed brand assets of a Pixel 10a product. A composition pins each
- * asset by SHA-256 (`brandAssets.bootAnimation.sha256` in
- * android/products/pixel10a-<brand>.json); staging then requires exactly those bytes
+ * asset by SHA-256 (`brandAssets.bootAnimation.sha256` in the consumer's
+ * composition); staging then requires exactly those bytes
  * and installs them on the product partition. A product without a pin keeps the stock
  * asset. Assets change presentation only, never privileges or hardware.
  */

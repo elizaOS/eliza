@@ -1,5 +1,5 @@
 /**
- * Renders the Alpha agent's measured dstack application (app-compose.json and
+ * Renders an agent's measured dstack application (app-compose.json and
  * its docker compose) from a non-secret deployment record and a digest-pinned
  * image record. Secrets are never rendered: compose only names them in
  * `allowed_envs`, and their values arrive through dstack's KMS-encrypted
@@ -10,14 +10,14 @@ import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 
-export const ALPHA_AGENT_PORT = 2138;
-export const ALPHA_STATE_DIR = "/data/eliza";
-export const ALPHA_LAUNCH_CONFIG_PATH = "/etc/eliza-alpha/launch.json";
-export const ALPHA_DSTACK_SOCKET = "/var/run/dstack.sock";
-export const ALPHA_VERIFIER_PATH = "/opt/dstack/dstack-verifier";
-export const ALPHA_VERIFIER_CONFIG_PATH = "/opt/dstack/dstack-verifier.toml";
-const ENTRY_PATH = "/opt/eliza-alpha/alpha-entry.mjs";
-const BOOTSTRAP_PATH = "/opt/eliza-alpha/confidential-bootstrap.mjs";
+export const DSTACK_AGENT_PORT = 2138;
+export const DSTACK_STATE_DIR = "/data/eliza";
+export const DSTACK_LAUNCH_CONFIG_PATH = "/etc/eliza-dstack/launch.json";
+export const DSTACK_SOCKET = "/var/run/dstack.sock";
+export const DSTACK_VERIFIER_PATH = "/opt/dstack/dstack-verifier";
+export const DSTACK_VERIFIER_CONFIG_PATH = "/opt/dstack/dstack-verifier.toml";
+const ENTRY_PATH = "/opt/eliza-dstack/agent-entry.mjs";
+const BOOTSTRAP_PATH = "/opt/eliza-dstack/confidential-bootstrap.mjs";
 const TSX_LOADER = "/opt/tsx/node_modules/tsx/dist/loader.mjs";
 /** Names dstack injects from the encrypted environment for the bootstrap. */
 const DSTACK_LAUNCH_ENV = [
@@ -47,17 +47,24 @@ const httpsOrigin = z.string().refine((value) => {
 const httpsUrl = z.url().refine((value) => value.startsWith("https://"));
 const modelName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/);
 
-export const alphaDeploymentSchema = z
+export const dstackDeploymentSchema = z
   .object({
     schemaVersion: z.literal(1),
     agentId: z.uuid(),
     deploymentId: identifier,
+    character: z
+      .object({
+        name: z.string().min(1),
+        bio: z.array(z.string()),
+        system: z.string(),
+      })
+      .strict(),
     variant: z.enum(["dstack-tdx", "dstack-nitro-enclave"]),
     osImageHash: sha256,
     release: z
       .object({ notBefore: z.iso.datetime(), expiresAt: z.iso.datetime() })
       .strict(),
-    /** Stable origin the phone APK pins; must survive app-id changes. */
+    /** Stable origin the consumer client pins; must survive app-id changes. */
     publicOrigin: httpsOrigin,
     kms: z
       .object({
@@ -76,6 +83,9 @@ export const alphaDeploymentSchema = z
         diskGb: z.number().int().min(20),
       })
       .strict(),
+    // This renderer currently supports the approved Cerebras backend. The
+    // deployment must select it explicitly; no product chooses a provider.
+    textProvider: z.literal("cerebras"),
     models: z.object({ small: modelName, large: modelName }).strict(),
     embeddings: z.discriminatedUnion("provider", [
       z
@@ -106,7 +116,7 @@ export const alphaDeploymentSchema = z
         allowedRegions: z.array(identifier).min(1),
         cerebras: z
           .object({
-            endpoint: httpsUrl.default("https://api.cerebras.ai/v1"),
+            endpoint: httpsUrl,
             region: identifier,
             contractRef: identifier,
             approvalRef: identifier,
@@ -117,9 +127,9 @@ export const alphaDeploymentSchema = z
       .strict(),
   })
   .strict();
-export type AlphaDeployment = z.output<typeof alphaDeploymentSchema>;
+export type DstackDeployment = z.output<typeof dstackDeploymentSchema>;
 
-export const alphaImageRecordSchema = z
+export const dstackImageRecordSchema = z
   .object({
     schemaVersion: z.literal(1),
     image: z
@@ -134,10 +144,10 @@ export const alphaImageRecordSchema = z
       .strict(),
   })
   .passthrough();
-export type AlphaImageRecord = z.output<typeof alphaImageRecordSchema>;
+export type DstackImageRecord = z.output<typeof dstackImageRecordSchema>;
 
 /** Secret names, in the order operators must supply them. */
-export function alphaSecretNames(deployment: AlphaDeployment): string[] {
+export function dstackSecretNames(deployment: DstackDeployment): string[] {
   return [
     "CEREBRAS_API_KEY",
     "ELIZAOS_CLOUD_API_KEY",
@@ -150,41 +160,41 @@ export function alphaSecretNames(deployment: AlphaDeployment): string[] {
 }
 
 /** Validates operator secrets without ever echoing their values. */
-export function validateAlphaSecrets(
-  deployment: AlphaDeployment,
+export function validateDstackSecrets(
+  deployment: DstackDeployment,
   secrets: unknown,
 ): Array<{ key: string; value: string }> {
-  const names = alphaSecretNames(deployment);
+  const names = dstackSecretNames(deployment);
   const parsed = z.record(z.string(), z.string()).safeParse(secrets);
   if (!parsed.success) {
     throw new ElizaError("Secrets must be a JSON object of strings", {
-      code: "ALPHA_SECRETS_INVALID",
+      code: "DSTACK_SECRETS_INVALID",
     });
   }
   const provided = Object.keys(parsed.data).sort();
   if (JSON.stringify(provided) !== JSON.stringify(names)) {
     throw new ElizaError(`Secrets must name exactly: ${names.join(", ")}`, {
-      code: "ALPHA_SECRETS_INVALID",
+      code: "DSTACK_SECRETS_INVALID",
     });
   }
   for (const name of ["ELIZA_API_TOKEN", "ELIZA_VAULT_PASSPHRASE"]) {
     if ((parsed.data[name] ?? "").length < 32) {
       throw new ElizaError(`${name} must have at least 32 characters`, {
-        code: "ALPHA_SECRETS_INVALID",
+        code: "DSTACK_SECRETS_INVALID",
       });
     }
   }
   if (names.some((name) => parsed.data[name]?.trim() === "")) {
     throw new ElizaError("Secrets must not be empty", {
-      code: "ALPHA_SECRETS_INVALID",
+      code: "DSTACK_SECRETS_INVALID",
     });
   }
   return names.map((key) => ({ key, value: parsed.data[key] as string }));
 }
 
 function measuredEnvironment(
-  deployment: AlphaDeployment,
-  image: AlphaImageRecord,
+  deployment: DstackDeployment,
+  image: DstackImageRecord,
   releaseAuthorityPem: string,
 ): Record<string, string> {
   const embeddings: Record<string, string> =
@@ -210,17 +220,19 @@ function measuredEnvironment(
         };
   return {
     NODE_ENV: "production",
-    ELIZA_STATE_DIR: ALPHA_STATE_DIR,
+    ELIZA_STATE_DIR: DSTACK_STATE_DIR,
     ELIZA_API_BIND: "0.0.0.0",
-    ELIZA_API_PORT: String(ALPHA_AGENT_PORT),
-    ELIZA_PORT: String(ALPHA_AGENT_PORT),
+    ELIZA_API_PORT: String(DSTACK_AGENT_PORT),
+    ELIZA_PORT: String(DSTACK_AGENT_PORT),
     // Ingress arrives through the dstack gateway; no caller is a trusted
     // loopback owner, so every API request needs ELIZA_API_TOKEN.
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
     ELIZA_EXTERNAL_BASE_URL: deployment.publicOrigin,
+    ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(deployment.character),
     // Text: Cerebras only. Eliza Cloud supplies speech (and optionally
     // embeddings) but never text inference.
-    ELIZA_PROVIDER: "cerebras",
+    ELIZA_PROVIDER: deployment.textProvider,
+    CEREBRAS_BASE_URL: deployment.processors.cerebras.endpoint,
     CEREBRAS_SMALL_MODEL: deployment.models.small,
     CEREBRAS_LARGE_MODEL: deployment.models.large,
     ELIZAOS_CLOUD_USE_INFERENCE: "false",
@@ -233,9 +245,6 @@ function measuredEnvironment(
       ? { ELIZAOS_CLOUD_TTS_VOICE: deployment.speech.ttsVoice }
       : {}),
     ...embeddings,
-    // Alpha routines (morning brief, reminders, nudge) seed disabled until
-    // the owner enables them; they fire in the owner's timezone.
-    ELIZA_SCHEDULING_DEFAULT_PACKS: "alpha-routines",
     // Local models disabled: no plugin, no boot-hook registration, no
     // in-process llama loader and no local embedder or warmup.
     ELIZA_SKIP_PLUGINS: "@elizaos/plugin-local-inference",
@@ -247,10 +256,10 @@ function measuredEnvironment(
     ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
     ELIZA_DSTACK_RELEASE_PUBKEY: releaseAuthorityPem,
     ELIZA_DSTACK_EVIDENCE_CONFIG_JSON: JSON.stringify({
-      socketPath: ALPHA_DSTACK_SOCKET,
-      verifierPath: ALPHA_VERIFIER_PATH,
+      socketPath: DSTACK_SOCKET,
+      verifierPath: DSTACK_VERIFIER_PATH,
       verifierSha256: image.verifier.sha256,
-      verifierConfigPath: ALPHA_VERIFIER_CONFIG_PATH,
+      verifierConfigPath: DSTACK_VERIFIER_CONFIG_PATH,
       verifierConfigSha256: image.verifier.configSha256,
       variant: deployment.variant,
     }),
@@ -258,12 +267,12 @@ function measuredEnvironment(
 }
 
 /** Docker compose document (JSON is valid compose YAML) measured by dstack. */
-export function renderAlphaDockerCompose(
-  deployment: AlphaDeployment,
-  image: AlphaImageRecord,
+export function renderDstackDockerCompose(
+  deployment: DstackDeployment,
+  image: DstackImageRecord,
   releaseAuthorityPem: string,
 ): Record<string, unknown> {
-  const secrets = alphaSecretNames(deployment);
+  const secrets = dstackSecretNames(deployment);
   const environment: Record<string, string> = {
     ...measuredEnvironment(deployment, image, releaseAuthorityPem),
   };
@@ -277,7 +286,7 @@ export function renderAlphaDockerCompose(
   });
   return {
     services: {
-      "eliza-alpha": {
+      "eliza-dstack": {
         image: image.image,
         restart: "unless-stopped",
         init: true,
@@ -290,16 +299,18 @@ export function renderAlphaDockerCompose(
           "--import",
           TSX_LOADER,
           BOOTSTRAP_PATH,
-          ALPHA_LAUNCH_CONFIG_PATH,
+          DSTACK_LAUNCH_CONFIG_PATH,
         ],
         command: [],
         environment,
-        configs: [{ source: "alpha-launch", target: ALPHA_LAUNCH_CONFIG_PATH }],
-        volumes: [
-          `eliza-state:${ALPHA_STATE_DIR}`,
-          `${ALPHA_DSTACK_SOCKET}:${ALPHA_DSTACK_SOCKET}`,
+        configs: [
+          { source: "agent-launch", target: DSTACK_LAUNCH_CONFIG_PATH },
         ],
-        ports: [`${ALPHA_AGENT_PORT}:${ALPHA_AGENT_PORT}`],
+        volumes: [
+          `eliza-state:${DSTACK_STATE_DIR}`,
+          `${DSTACK_SOCKET}:${DSTACK_SOCKET}`,
+        ],
+        ports: [`${DSTACK_AGENT_PORT}:${DSTACK_AGENT_PORT}`],
         healthcheck: {
           test: [
             "CMD",
@@ -307,7 +318,7 @@ export function renderAlphaDockerCompose(
             "-fsS",
             "-o",
             "/dev/null",
-            `http://127.0.0.1:${ALPHA_AGENT_PORT}/api/health`,
+            `http://127.0.0.1:${DSTACK_AGENT_PORT}/api/health`,
           ],
           interval: "30s",
           timeout: "10s",
@@ -317,11 +328,11 @@ export function renderAlphaDockerCompose(
       },
     },
     volumes: { "eliza-state": {} },
-    configs: { "alpha-launch": { content: launch } },
+    configs: { "agent-launch": { content: launch } },
   };
 }
 
-export interface RenderedAlphaApplication {
+export interface RenderedDstackApplication {
   /** Exact app-compose.json bytes; the release signature covers these. */
   appCompose: string;
   composeHash: string;
@@ -329,26 +340,30 @@ export interface RenderedAlphaApplication {
   secretNames: string[];
 }
 
-export function renderAlphaApplication(
+export function renderDstackApplication(
   deploymentInput: unknown,
   imageInput: unknown,
   releaseAuthorityPem: string,
-): RenderedAlphaApplication {
-  const deployment = alphaDeploymentSchema.parse(deploymentInput);
-  const image = alphaImageRecordSchema.parse(imageInput);
+): RenderedDstackApplication {
+  const deployment = dstackDeploymentSchema.parse(deploymentInput);
+  const image = dstackImageRecordSchema.parse(imageInput);
   if (!releaseAuthorityPem.startsWith("-----BEGIN PUBLIC KEY-----")) {
     throw new ElizaError("Release authority must be a PEM public key", {
-      code: "ALPHA_RELEASE_AUTHORITY_INVALID",
+      code: "DSTACK_RELEASE_AUTHORITY_INVALID",
     });
   }
-  const secretNames = alphaSecretNames(deployment);
+  const secretNames = dstackSecretNames(deployment);
   const appCompose = `${JSON.stringify(
     {
       manifest_version: "3",
       name: `eliza-${deployment.agentId}`,
       runner: "docker-compose",
       docker_compose_file: JSON.stringify(
-        renderAlphaDockerCompose(deployment, image, releaseAuthorityPem.trim()),
+        renderDstackDockerCompose(
+          deployment,
+          image,
+          releaseAuthorityPem.trim(),
+        ),
         null,
         2,
       ),
@@ -380,11 +395,11 @@ export function renderAlphaApplication(
 }
 
 /** Input accepted by scripts/sign-confidential-release.ts. */
-export function alphaReleaseInput(
+export function dstackReleaseInput(
   deploymentInput: unknown,
-  rendered: RenderedAlphaApplication,
+  rendered: RenderedDstackApplication,
 ) {
-  const deployment = alphaDeploymentSchema.parse(deploymentInput);
+  const deployment = dstackDeploymentSchema.parse(deploymentInput);
   return {
     agentId: deployment.agentId,
     compose: rendered.appCompose,
@@ -396,12 +411,12 @@ export function alphaReleaseInput(
 }
 
 /** Unsigned processor policy (eliza-confidential-processors-v1) payload. */
-export function alphaProcessorPolicy(
+export function dstackProcessorPolicy(
   deploymentInput: unknown,
-  rendered: RenderedAlphaApplication,
+  rendered: RenderedDstackApplication,
   revision: string,
 ) {
-  const deployment = alphaDeploymentSchema.parse(deploymentInput);
+  const deployment = dstackDeploymentSchema.parse(deploymentInput);
   const cerebras = deployment.processors.cerebras;
   const expiresAt = Math.min(
     Date.parse(deployment.release.expiresAt),
@@ -414,28 +429,46 @@ export function alphaProcessorPolicy(
     revision: identifier.parse(revision),
     notBefore: Date.parse(deployment.release.notBefore),
     expiresAt,
-    routes: [
-      {
-        id: "cerebras-text",
-        endpoint: cerebras.endpoint,
-        model: deployment.models.large,
-        modelTypes: ["TEXT_SMALL", "TEXT_LARGE"],
-        adapter: "openai-compatible",
-        transportIdentity: {
-          appId: rendered.appId,
-          composeHash: rendered.composeHash,
-          osImageHash: deployment.osImageHash,
-          variant: deployment.variant,
-        },
-        processorApproval: {
-          provider: "cerebras",
-          service: "inference",
-          region: cerebras.region,
-          contractRef: cerebras.contractRef,
-          approvalRef: cerebras.approvalRef,
-          expiresAt: Date.parse(cerebras.expiresAt),
-        },
+    routes: (deployment.models.small === deployment.models.large
+      ? [
+          {
+            id: "text",
+            model: deployment.models.large,
+            modelTypes: ["TEXT_SMALL", "TEXT_LARGE"],
+          },
+        ]
+      : [
+          {
+            id: "small",
+            model: deployment.models.small,
+            modelTypes: ["TEXT_SMALL"],
+          },
+          {
+            id: "large",
+            model: deployment.models.large,
+            modelTypes: ["TEXT_LARGE"],
+          },
+        ]
+    ).map((route) => ({
+      id: `cerebras-${route.id}`,
+      endpoint: cerebras.endpoint,
+      model: route.model,
+      modelTypes: route.modelTypes,
+      adapter: "openai-compatible",
+      transportIdentity: {
+        appId: rendered.appId,
+        composeHash: rendered.composeHash,
+        osImageHash: deployment.osImageHash,
+        variant: deployment.variant,
       },
-    ],
+      processorApproval: {
+        provider: deployment.textProvider,
+        service: "inference",
+        region: cerebras.region,
+        contractRef: cerebras.contractRef,
+        approvalRef: cerebras.approvalRef,
+        expiresAt: Date.parse(cerebras.expiresAt),
+      },
+    })),
   };
 }
