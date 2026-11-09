@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/services/interactive-task-runtime.ts",
+    "packages/agent/src/services/interactive-task-store.ts",
+    "packages/agent/src/services/interactive-task-http.ts"
+  ],
+  "bounds": {
+    "domain": "One task, epochs 0..2 and revisions 0..8.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_interactive_task",
+      "main": "services_interactive_task",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

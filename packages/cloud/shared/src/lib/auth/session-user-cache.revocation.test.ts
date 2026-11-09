@@ -7,12 +7,14 @@
 import { afterEach, beforeAll, expect, spyOn, test } from "bun:test";
 
 process.env.MOCK_REDIS = "1";
+process.env.STEWARD_JWT_SECRET = "session-user-cache-test-secret-0123456789";
 
 const { cache } = await import("../cache/client");
-const { CacheKeys, CacheTTL } = await import("../cache/keys");
+const { CacheKeys } = await import("../cache/keys");
 const { getCurrentUserFromRequest } = await import("../auth");
 const { usersService } = await import("../services/users");
-const { hashSessionToken } = await import("./session-user-cache");
+const { hashSessionToken, primeVerifiedUserSessionCache } = await import("./session-user-cache");
+const { stewardSessionKeyFingerprint } = await import("./steward-client");
 const { LEGACY_STEWARD_COOKIES } = await import("./steward-cookies");
 
 type SessionUser = NonNullable<Awaited<ReturnType<typeof getCurrentUserFromRequest>>>;
@@ -27,13 +29,30 @@ const member = {
   organization: { id: "org-a", is_active: true },
 } as unknown as SessionUser;
 
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function currentFingerprint(): string {
+  const fingerprint = stewardSessionKeyFingerprint({
+    STEWARD_JWT_SECRET: process.env.STEWARD_JWT_SECRET,
+  });
+  if (!fingerprint) throw new Error("test signing key missing");
+  return fingerprint;
+}
+
+async function primeMember(): Promise<void> {
+  await primeVerifiedUserSessionCache(TOKEN, member, {
+    expiration: nowSeconds() + 3600,
+    signingKeyFingerprint: currentFingerprint(),
+  });
+}
+
 const spies: ReturnType<typeof spyOn>[] = [];
-beforeAll(async () => {
-  await cache.set(CacheKeys.session.user(hashSessionToken(TOKEN)), member, CacheTTL.session.user);
-});
+beforeAll(primeMember);
 afterEach(async () => {
   for (const spy of spies.splice(0)) spy.mockRestore();
-  await cache.set(CacheKeys.session.user(hashSessionToken(TOKEN)), member, CacheTTL.session.user);
+  await primeMember();
 });
 
 function lookupReturns(user: SessionUser | undefined): void {
@@ -62,4 +81,40 @@ test("a deactivated user is not served from the session cache", async () => {
   lookupReturns({ ...member, is_active: false } as SessionUser);
   const user = await getCurrentUserFromRequest(cookieRequest());
   expect(user?.is_active ?? false).toBe(false);
+});
+
+test("a cached session is not served after its token expires", async () => {
+  lookupReturns(member);
+  await cache.set(
+    CacheKeys.session.user(hashSessionToken(TOKEN)),
+    {
+      ...member,
+      session_binding: {
+        expiration: nowSeconds() - 1,
+        signingKeyFingerprint: currentFingerprint(),
+      },
+    },
+    300,
+  );
+  expect(await getCurrentUserFromRequest(cookieRequest())).toBeNull();
+});
+
+test("rotating the signing key drops cached sessions", async () => {
+  lookupReturns(member);
+  const previous = process.env.STEWARD_JWT_SECRET;
+  process.env.STEWARD_JWT_SECRET = "session-user-cache-rotated-secret-0123456789";
+  try {
+    expect(await getCurrentUserFromRequest(cookieRequest())).toBeNull();
+  } finally {
+    process.env.STEWARD_JWT_SECRET = previous;
+  }
+});
+
+test("a session primed after its token expired is not cached", async () => {
+  await cache.del(CacheKeys.session.user(hashSessionToken(TOKEN)));
+  await primeVerifiedUserSessionCache(TOKEN, member, {
+    expiration: nowSeconds() - 1,
+    signingKeyFingerprint: currentFingerprint(),
+  });
+  expect(await cache.get(CacheKeys.session.user(hashSessionToken(TOKEN)))).toBeNull();
 });

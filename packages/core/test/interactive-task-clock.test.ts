@@ -275,7 +275,12 @@ describe("interactive task clock", () => {
 		expect(task.updatedAt).toBe(T + YEAR);
 		expect(() =>
 			run(task, now, { type: "prepare", proposal: proposal(task, 2, now) }),
-		).toThrow(expect.objectContaining({ code: "TASK_STALE_ACTION" }));
+		).toThrow(
+			expect.objectContaining({
+				code: "TASK_STALE_ACTION",
+				message: expect.stringContaining("ahead of this clock"),
+			}),
+		);
 		// A stop still works, and a new task acts on the corrected clock.
 		expect(run(task, now, { type: "cancel" }).task.status).toBe("cancelled");
 		let next = start("task-2", now + 1);

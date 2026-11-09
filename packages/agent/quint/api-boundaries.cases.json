@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/api/attachment-knowledge-ingest.ts",
+    "packages/agent/src/api/runtime-mode/runtime-mode.ts",
+    "packages/agent/src/api/config-routes.ts"
+  ],
+  "bounds": {
+    "domain": "Owner/other, private/public room and one config commit.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_boundaries",
+      "main": "api_boundaries",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

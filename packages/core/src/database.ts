@@ -42,6 +42,7 @@ import type {
 	ListConnectorAccountsParams,
 	Log,
 	LogBody,
+	LogInventoryRow,
 	MessageContentPublicationParams,
 	MessageContentPublicationResult,
 	MessageContentRangeReadParams,
@@ -482,6 +483,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]>;
+
+	abstract getLogInventory(params: {
+		excludeTypes?: readonly string[];
+	}): Promise<LogInventoryRow[]>;
 
 	// ── Log CRUD (batch-only) ────────────────────────────────────────────
 	abstract createLogs(

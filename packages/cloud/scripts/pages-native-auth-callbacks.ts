@@ -49,7 +49,12 @@ export function callbacks(
   const contract = ELIZA_DOMAIN_CONTRACTS[environment];
   const origins = new Set([contract.cloudAppOrigin, contract.marketingOrigin]);
   if (
-    entries.some((entry) => !origins.has(new URL(entry.redirectUri).origin))
+    entries.some(
+      (entry) =>
+        !origins.has(new URL(entry.redirectUri).origin) ||
+        (entry.browserSignIn !== undefined &&
+          entry.browserSignIn.apiOrigin !== contract.cloudApiOrigin),
+    )
   ) {
     throw new Error("native_callback_environment_mismatch");
   }
@@ -141,11 +146,54 @@ export async function verifyCallbacks(
     });
     if (response.status !== 200)
       throw new Error("native_callback_status_mismatch");
+    let expectedBody = await expected.text();
+    let actualBody = await response.text();
+    let expectedCsp = expected.headers.get("content-security-policy");
+    let actualCsp = response.headers.get("content-security-policy");
+    if (callback.browserSignIn) {
+      // Rendering uses a fresh nonce per response. Admit exactly that one
+      // variation, with the same UUID in the CSP and one script attribute.
+      const normalizeNonce = (csp: string | null, body: string) => {
+        const policy = csp ?? "";
+        const policies = [...policy.matchAll(/'nonce-([^']*)'/g)];
+        const scripts = [
+          ...body.matchAll(/<script\b[^>]*\bnonce="([^"]*)"[^>]*>/g),
+        ];
+        const nonce = policies[0]?.[1];
+        if (
+          policies.length !== 1 ||
+          scripts.length !== 1 ||
+          !nonce ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+            nonce,
+          ) ||
+          scripts[0]?.[1] !== nonce
+        )
+          throw new Error("native_callback_nonce_mismatch");
+        return {
+          csp: policy.replace(`'nonce-${nonce}'`, "'nonce-verified'"),
+          body: body.replace(`nonce="${nonce}"`, 'nonce="verified"'),
+        };
+      };
+      ({ csp: expectedCsp, body: expectedBody } = normalizeNonce(
+        expectedCsp,
+        expectedBody,
+      ));
+      ({ csp: actualCsp, body: actualBody } = normalizeNonce(
+        actualCsp,
+        actualBody,
+      ));
+    }
     for (const [key, value] of expected.headers) {
-      if (response.headers.get(key) !== value)
+      if (
+        (key === "content-security-policy"
+          ? actualCsp
+          : response.headers.get(key)) !==
+          (key === "content-security-policy" ? expectedCsp : value)
+      )
         throw new Error("native_callback_headers_mismatch");
     }
-    if ((await response.text()) !== (await expected.text()))
+    if (actualBody !== expectedBody)
       throw new Error("native_callback_body_mismatch");
   }
   return entries.length;

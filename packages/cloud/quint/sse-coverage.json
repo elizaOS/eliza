@@ -1,0 +1,17 @@
+[
+  {
+    "id": "cloud.SseSegmentation",
+    "model": "packages/cloud/quint/sse_segmentation.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/inference-passthrough.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/inference-passthrough-fragments.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two fixed line grammars and three chunk sizes model segmentation, EOF flushing, cancellation and errors after DONE. This projection does not model arbitrary JSON or Unicode decoding.",
+      "The shared runner executes the real meter's five tests, including every byte split of a Unicode response, long complete payloads, malformed events and cancellation. Billing authorization and provider execution remain separate protocols.",
+      "The model permits an indefinitely idle provider. It establishes safety under segmentation, not provider progress or a production performance bound."
+    ]
+  }
+]

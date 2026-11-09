@@ -6,6 +6,7 @@
  * is passed only to the provider and is never logged.
  */
 
+import { Buffer } from "node:buffer";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
@@ -31,6 +32,7 @@ import {
   MAPS_PROVIDER_SETTINGS,
   mapsProviderFromEnv,
 } from "@elizaos/cloud-shared/lib/services/maps/provider-registry";
+import { simplifyRouteGeometry } from "@elizaos/cloud-shared/lib/services/maps/route-geometry";
 import {
   consumePlanRequest,
   readPlanRequestLimitConfig,
@@ -249,10 +251,13 @@ async function dispatch(
       return {
         providerId,
         attribution,
-        routes: await provider.routes(
-          parsed(mapsRoutesRequestSchema, body),
-          signal,
-        ),
+        // Every provider's geometry is bounded here, before the response.
+        routes: (
+          await provider.routes(parsed(mapsRoutesRequestSchema, body), signal)
+        ).map((route) => ({
+          ...route,
+          geometry: simplifyRouteGeometry(route.geometry, route.steps),
+        })),
       };
     case "viewport": {
       const viewport = provider.viewport;
@@ -353,18 +358,28 @@ export function createMapsRoute(
       try {
         completion = await dependencies.admitRequest(c, user, operation);
       } catch (error) {
-        if (error instanceof ApiError || error instanceof MapsAdmissionError)
+        if (error instanceof ApiError || error instanceof MapsAdmissionError) {
+          const retryAfterSeconds = error.details?.retryAfterSeconds;
+          const retry =
+            typeof retryAfterSeconds === "number" &&
+            Number.isFinite(retryAfterSeconds) &&
+            retryAfterSeconds > 0
+              ? Math.ceil(retryAfterSeconds)
+              : undefined;
+          // Like failure(): the header for HTTP clients, the body for native ones.
           return c.json(
             {
               error: error.message,
               code: error.code,
-              ...(error.details?.retryAfterSeconds
-                ? { retryAfterSeconds: error.details.retryAfterSeconds }
-                : {}),
+              ...(retry !== undefined ? { retryAfterSeconds: retry } : {}),
             },
             error.status as 400 | 403 | 408 | 409 | 429 | 503,
-            NO_STORE,
+            {
+              ...NO_STORE,
+              ...(retry !== undefined ? { "Retry-After": String(retry) } : {}),
+            },
           );
+        }
         throw error;
       }
     } else {
@@ -434,10 +449,34 @@ export function createMapsRoute(
         );
       }
       let result: Record<string, unknown> | MapsTile;
+      let tileJson:
+        | { encoding: "base64"; contentType: string; data: string }
+        | undefined;
       if (operation === "tiles") {
         const tileFor = provider.tile;
         if (!tileFor || !tile) throw new Error("Tile provider disappeared");
         result = await tileFor.call(provider, tile, c.req.raw.signal);
+        if (c.req.header("accept") === "application/json") {
+          const image = result as MapsTile;
+          if (
+            image.body.byteLength === 0 ||
+            image.body.byteLength > 1024 * 1024 ||
+            !["image/png", "image/jpeg", "image/webp"].includes(
+              image.contentType,
+            )
+          )
+            throw new MapsServiceError(
+              "provider_invalid_response",
+              "The map tile response is invalid.",
+            );
+          // The native managed-service bridge transports JSON, not arbitrary binary.
+          // Keep the same authenticated route and allowance; never expose Google's key.
+          tileJson = {
+            encoding: "base64",
+            contentType: image.contentType,
+            data: Buffer.from(image.body).toString("base64"),
+          };
+        }
       } else result = await dispatch(operation, provider, c, body);
       if (c.req.raw.signal.aborted) {
         await record("cancelled");
@@ -450,12 +489,15 @@ export function createMapsRoute(
       const outcome = record("succeeded");
       if (!getGenerativeExecutionContext(c)) await outcome;
       if (operation === "tiles") {
+        if (tileJson)
+          return c.json(tileJson, 200, { ...NO_STORE, Vary: "Accept" });
         const image = result as MapsTile;
         return new Response(image.body, {
           status: 200,
           headers: {
             "Content-Type": image.contentType,
             "Cache-Control": TILE_CACHE,
+            Vary: "Accept",
           },
         });
       }

@@ -41,6 +41,26 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
     return;
   }
 
+  // A fresh database has no tables in `public`, so there is nothing from
+  // before 1.6.5 to convert; the RuntimeMigrator creates every table. Without
+  // this check a fresh database fell through the column probe below (which
+  // finds no rows rather than failing) and ran the whole conversion: dozens of
+  // information_schema queries, slow on PGlite, on every in-memory boot.
+  try {
+    const publicTables = await db.execute(sql`
+      SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+      LIMIT 1
+    `);
+    if (!publicTables.rows || publicTables.rows.length === 0) {
+      logger.debug("[Migration] ⊘ No tables in public; nothing to migrate from before 1.6.5");
+      return;
+    }
+  } catch {
+    // error-policy:J4 the probe is an optimization; the checks below decide.
+  }
+
   // Check if schema migration has already been completed
   // We use the presence of snake_case columns as a marker
   let schemaAlreadyMigrated = false;

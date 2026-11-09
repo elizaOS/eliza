@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/services/sandbox-manager.ts",
+    "packages/agent/src/services/sandbox-engine.ts"
+  ],
+  "bounds": {
+    "domain": "One main and one browser container in serialized standard/max mode.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_sandbox",
+      "main": "services_sandbox",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { getRequestTaskDefer } from "@elizaos/cloud-shared/lib/runtime/request-c
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
 import chatCompletionsRoute from "../v1/chat/completions/route";
+import inferenceWarmRoute from "../v1/inference/warm/route";
 import { createInferenceApp } from "./inference-app";
 
 interface AuthErrorBody {
@@ -332,5 +333,43 @@ describe("thin inference shell cookie-mutation CSRF guard", () => {
     // The completions route only defines POST, so the shell's own 404 proves
     // the guard passed the request through to routing.
     expect(res.status).toBe(404);
+  });
+});
+
+describe("inference warmup shell", () => {
+  test("anonymous warmup is refused without entering inference", async () => {
+    const app = createInferenceApp(
+      "/api/v1/inference/warm",
+      inferenceWarmRoute,
+    );
+    const response = await app.fetch(
+      new Request("https://api.eliza.app/api/v1/inference/warm", {
+        method: "POST",
+      }),
+      env,
+      executionCtx,
+    );
+    expect(response.status).toBe(401);
+  });
+  test("a warmup cannot be used to send a model prompt", async () => {
+    const app = createInferenceApp(
+      "/api/v1/inference/warm",
+      inferenceWarmRoute,
+    );
+    const response = await app.fetch(
+      new Request("https://api.eliza.app/api/v1/inference/warm", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-not-a-credential",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "not a warmup" }],
+        }),
+      }),
+      env,
+      executionCtx,
+    );
+    expect(response.status).toBe(400);
   });
 });

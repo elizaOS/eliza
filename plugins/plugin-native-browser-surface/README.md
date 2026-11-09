@@ -140,7 +140,14 @@ loading) and then sends `navigationChanged`, so the host re-reads `progress`.
 
 Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
 `canGoForward`, `progress`, `pageError` and `textZoom`; `setTextZoom` sets the page
-text size from 50 to 300 percent.
+text size from 50 to 300 percent. On Android every `navigationChanged` event also
+carries these fields as they were when it was sent. Listeners receive every surface's
+events, so a host uses them only when `exists` is true and `owner`, `session` and
+`epoch` match its own identity, which `getSurfaceState` checks itself. They are a
+snapshot: one sent before a host command settled can predate it, and a later title or
+progress change sends no event. iOS sends only the identity, so a host falls back to
+`getSurfaceState` when the fields are absent. The bundled `packages/ui` shell still
+re-reads `getSurfaceState` after its queued commands settle.
 
 `parseBrowserAddressInput` (also exported as `./address-input` without bridge
 registration) classifies address-bar text as an HTTP(S) URL, search text, or a
@@ -281,11 +288,35 @@ task authority and wait for a valid action preview before dispatching input.
 
 Android foreground-service hosts can share `ChromiumBrowserConnection`: construct
 it with the service context, call `start()` after entering foreground, and
-`close()` when the service stops. Call its lifecycle methods on the main thread.
+`close()` when the service stops. Its state lives on the main thread: a call
+from another thread is posted there in call order, so call `close()` on the main
+thread (for example in `onDestroy`) when the unbind must happen before it returns.
 It verifies the module's build-pinned package and signing certificate before
 binding and after connection. The priority-preserving Custom Tabs binding keeps
 the browser reachable without opening an activity, tab, URL or debugging port.
 It does not grant task/action authority or claim that a renderer is observable.
+A host that needs the browser only for some work calls `acquire()` instead of
+`start()` and closes the returned lease when that work ends; `stop()` ends a
+`start()`. With no `start()` or open lease, the binding is released after the
+idle delay (the constructor's second argument, 60 s by default), so Android can
+freeze or reclaim the browser. That trades resident memory for latency: the
+next `acquire()` after a release may cold-start Chromium. The memory saving has not been measured on a device yet
+(compare `dumpsys meminfo` and `oom_adj` of the browser with the host idle).
+`lease.whenReady(callback)` is posted to the main thread once the browser
+service is connected, has passed its package and certificate check and was asked
+to warm up; it runs once and is dropped when the lease closes. Warmup is only
+requested (`CustomTabsClient.warmup` is asynchronous), so the first page or
+native-messaging call after a cold start may still wait for Chromium to
+initialise; time that, not only `whenReady`. It never runs when the
+browser refuses the binding or fails its package or certificate check, so a
+host puts its own deadline around it and closes the lease at that deadline.
+A browser that fails verification after connecting closes the connection for
+good: `isClosed()` turns true and `acquire()` returns a lease that is already
+closed (`isOpen()` is false) and binds nothing. The hold, retry, release and
+ready rules live in the plain-JVM `ChromiumBindingDemand`. A host that stages
+`ChromiumBrowserConnection` as a resident helper must also list
+`ChromiumBindingDemand` and `ChromiumBrowserIdentity` in its `helpers`;
+`stageResidentHostSources` refuses the list otherwise.
 
 Android `presentBrowser()` foregrounds the certificate-pinned browser without a
 URL or new website tab. Invoke it from an explicit user interaction before a

@@ -13,7 +13,7 @@ import { digestId, digestKeys, digestRecord, digestText } from '../services/host
 import { hostedNativeSourcesAvailable } from '../services/hosted-native-source';
 import { MAX_WORKFLOW_JSON_BYTES } from '../services/workflow-json';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
-import type { WorkflowDefinition } from '../types/index';
+import type { WorkflowDefinition, WorkflowRunEvent } from '../types/index';
 import { WorkflowApiError } from '../types/index';
 import { getRouteOwnerEntityId } from './_helpers';
 
@@ -70,8 +70,20 @@ async function readBody(
   req: http.IncomingMessage,
   limit = MAX_WORKFLOW_JSON_BYTES
 ): Promise<Record<string, unknown>> {
-  const attached = (req as http.IncomingMessage & { body?: unknown }).body;
-  if (isRecord(attached)) return attached;
+  const { body: attached, rawBody } = req as http.IncomingMessage & {
+    body?: unknown;
+    rawBody?: unknown;
+  };
+  if (isRecord(attached)) {
+    // The dispatcher already read the body under the route's maxBodyBytes; a
+    // route that leaves that at the default must not widen this handler cap.
+    const size =
+      typeof rawBody === 'string'
+        ? Buffer.byteLength(rawBody, 'utf8')
+        : Buffer.byteLength(JSON.stringify(attached), 'utf8');
+    if (size > limit) throw new WorkflowApiError('Request body is too large', 413);
+    return attached;
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -107,34 +119,131 @@ function idMatch(path: string): { id: string; suffix: string } | null {
   return match ? { id: decodePathSegment(match[1]), suffix: match[2] || '' } : null;
 }
 
+const TERMINAL_RUN_EVENTS = new Set([
+  'RunFinished',
+  'RunFailed',
+  'RunCancelled',
+  'RunContinuedAsNew',
+]);
+
 async function streamEvents(
   ctx: WorkflowRouteContext,
   runId: string,
   ownerEntityId: string
 ): Promise<void> {
   const service = embeddedFor(ctx);
-  const execution = await serviceFor(ctx).getExecutionDetail(runId, ownerEntityId);
-  ctx.res.statusCode = 200;
-  ctx.res.setHeader('content-type', 'text/event-stream; charset=utf-8');
-  ctx.res.setHeader('cache-control', 'no-cache, no-transform');
-  ctx.res.setHeader('connection', 'keep-alive');
-  ctx.res.flushHeaders?.();
-  for (const event of execution.events ?? []) {
-    ctx.res.write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
-  }
-  const unsubscribe = service.subscribe(runId, (event) => {
-    ctx.res.write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
+  const { req, res } = ctx;
+  let closed = false;
+  let finish = () => {};
+  const done = new Promise<void>((resolve) => {
+    finish = () => {
+      closed = true;
+      resolve();
+    };
   });
-  const heartbeat = setInterval(() => ctx.res.write(': heartbeat\n\n'), 15_000);
-  await new Promise<void>((resolve) => ctx.req.once('close', resolve)).finally(() => {
+  const end = () => {
+    if (!res.writableEnded && !res.destroyed) res.end();
+    finish();
+  };
+  const write = (chunk: string) => {
+    if (closed || res.writableEnded || res.destroyed) return finish();
+    try {
+      res.write(chunk);
+    } catch {
+      // error-policy:J4 a broken client socket ends this stream only.
+      end();
+    }
+  };
+  const send = (event: WorkflowRunEvent) => {
+    write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
+    if (TERMINAL_RUN_EVENTS.has(event.type)) end();
+  };
+  req.once('close', finish);
+  res.once('close', finish);
+  // Subscribe before the snapshot read so no event lands between the two;
+  // live events wait until the snapshot is written and skip what it holds.
+  let lastSequence: number | null = null;
+  const pending: WorkflowRunEvent[] = [];
+  const unsubscribe = service.subscribe(runId, (event) => {
+    if (lastSequence === null) pending.push(event);
+    else if (event.sequence > lastSequence) {
+      lastSequence = event.sequence;
+      send(event);
+    }
+  });
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  try {
+    const execution = await serviceFor(ctx).getExecutionDetail(runId, ownerEntityId);
+    if (closed || res.destroyed) return;
+    res.statusCode = 200;
+    res.setHeader('content-type', 'text/event-stream; charset=utf-8');
+    res.setHeader('cache-control', 'no-cache, no-transform');
+    res.setHeader('connection', 'keep-alive');
+    res.flushHeaders?.();
+    const snapshot = execution.events ?? [];
+    for (const event of snapshot)
+      write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
+    // The terminal event is recorded before the run is marked finished, so a
+    // snapshot can end with it while finished is still false.
+    const last = snapshot.at(-1);
+    if (execution.finished || (last && TERMINAL_RUN_EVENTS.has(last.type))) return end();
+    lastSequence = snapshot.reduce((max, event) => Math.max(max, event.sequence), 0);
+    for (const event of pending.splice(0)) {
+      if (event.sequence <= lastSequence) continue;
+      lastSequence = event.sequence;
+      send(event);
+    }
+    if (closed) return;
+    heartbeat = setInterval(() => write(': heartbeat\n\n'), 15_000);
+    await done;
+  } finally {
     clearInterval(heartbeat);
     unsubscribe();
-  });
+    req.off('close', finish);
+    res.off('close', finish);
+  }
 }
 
 export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<void> {
   const path = pathFor(ctx.pathname);
   try {
+    if (ctx.method === 'GET' && path === '/status') {
+      // Answer before serviceFor: a missing service is a status, not a 503.
+      // Protocol flags are advertised only when both services are registered.
+      const status = workflowRuntimeStatus(
+        Boolean(ctx.runtime?.getService(WORKFLOW_SERVICE_TYPE)),
+        Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+      );
+      if (status.status !== 'ready') {
+        ctx.json(ctx.res, status);
+        return;
+      }
+      ctx.json(ctx.res, {
+        ...status,
+        manualSubmissionProtocol: 1,
+        approvalReceiptProtocol: 1,
+        approvalPresentationProtocol: 1,
+        metadataMutationProtocol: 1,
+        lifecycleMutationProtocol: 1,
+        typedAuthoringProtocol: 1,
+        // Typed local-time triggers: armed per reviewed version (activate with expectedVersionId),
+        // admitted at exact occurrences while the agent runs, missed occurrences recorded, never replayed.
+        typedScheduleProtocol: 1,
+        hostedDigestProtocol: 1,
+        // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
+        hostedDigestSourcePauseProtocol: 1,
+        ...(hostedNativeSourcesAvailable()
+          ? {
+              hostedNativeSourceProtocol: 1,
+              hostedNativeEveningProtocol: 1,
+              // POST /hosted/dossier runs only against a reviewed native source.
+              hostedDossierProtocol: 1,
+            }
+          : {}),
+      });
+      return;
+    }
+
     const service = serviceFor(ctx);
     const owner = ownerFor(ctx);
     if (path.startsWith('/hosted/')) {
@@ -226,36 +335,6 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       }
       throw new WorkflowApiError('Hosted digest route not found', 404);
     }
-    if (ctx.method === 'GET' && path === '/status') {
-      ctx.json(ctx.res, {
-        ...workflowRuntimeStatus(
-          true,
-          Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
-        ),
-        manualSubmissionProtocol: 1,
-        approvalReceiptProtocol: 1,
-        approvalPresentationProtocol: 1,
-        metadataMutationProtocol: 1,
-        lifecycleMutationProtocol: 1,
-        typedAuthoringProtocol: 1,
-        // Typed local-time triggers: armed per reviewed version (activate with expectedVersionId),
-        // admitted at exact occurrences while the agent runs, missed occurrences recorded, never replayed.
-        typedScheduleProtocol: 1,
-        hostedDigestProtocol: 1,
-        // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
-        hostedDigestSourcePauseProtocol: 1,
-        ...(hostedNativeSourcesAvailable()
-          ? {
-              hostedNativeSourceProtocol: 1,
-              hostedNativeEveningProtocol: 1,
-              // POST /hosted/dossier runs only against a reviewed native source.
-              hostedDossierProtocol: 1,
-            }
-          : {}),
-      });
-      return;
-    }
-
     if (ctx.method === 'GET' && path === '/phone/catalog') {
       ctx.json(ctx.res, service.phoneCatalog());
       return;
@@ -387,7 +466,10 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     if (executionMatch) {
       const runId = decodePathSegment(executionMatch[1]);
       const operation = executionMatch[2];
-      if (ctx.method === 'GET' && operation === 'events') return streamEvents(ctx, runId, owner);
+      if (ctx.method === 'GET' && operation === 'events') {
+        await streamEvents(ctx, runId, owner);
+        return;
+      }
       if (ctx.method === 'POST' && operation === 'cancel') {
         ctx.json(ctx.res, { execution: await service.cancelExecution(runId, owner) }, 202);
         return;
@@ -678,6 +760,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       isRecord(error.response) &&
       [
         'HOSTED_SOURCE_NOT_SAVED',
+        'HOSTED_DIGEST_NOT_ADMITTED',
         'WORKFLOW_VERSION_NOT_ADMITTED',
         'WORKFLOW_METADATA_NOT_APPLIED',
         'WORKFLOW_TYPED_NOT_APPLIED',

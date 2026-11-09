@@ -26,7 +26,12 @@ import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
 } from "@elizaos/host";
-import { readAliasedEnv, resolveSelfApiBaseUrl } from "@elizaos/host/protocol";
+import { isMobilePlatform, readAliasedEnv } from "@elizaos/host/protocol";
+import {
+  hasSelfApiTcpListener,
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "../api/self-api-endpoint.ts";
 import {
   capturedTerminalOutputIsSafe,
   TERMINAL_REJECTIONS,
@@ -70,6 +75,16 @@ type TerminalOutputAttachment = {
 type AbortAwareHandlerOptions = HandlerOptions & {
   abortSignal?: AbortSignal;
 };
+
+/** A refused TCP connect (Node: ECONNREFUSED, Bun: ConnectionRefused). */
+function isConnectionRefused(error: unknown): boolean {
+  for (let current = error, depth = 0; current && depth < 3; depth++) {
+    const code = (current as { code?: unknown }).code;
+    if (code === "ECONNREFUSED" || code === "ConnectionRefused") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
 
 function callerAbortSignal(
   options: HandlerOptions | undefined,
@@ -334,17 +349,6 @@ function normalizeCapturedRun(
     );
   }
 
-  if (value.timedOut) {
-    throw new ElizaError(
-      "Terminal response timed out before complete output was proven",
-      {
-        code: "TERMINAL_OUTPUT_INCOMPLETE",
-        context: { acceptance: "accepted", runId },
-        severity: "fatal",
-      },
-    );
-  }
-
   return {
     command,
     runId,
@@ -370,7 +374,7 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     `Command: ${result.command}`,
     `Exit code: ${result.exitCode}`,
     result.timedOut
-      ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}`
+      ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}; output below is incomplete`
       : "Timed out: no",
     "",
     "STDOUT:",
@@ -416,11 +420,6 @@ function terminalAttachmentReadView(
 /** @internal Exported for deterministic boundary tests. */
 export function completeOutputBlock(content: string): string {
   return formatOutputBlock(content.trimEnd());
-}
-
-/** @internal Exported for deterministic boundary tests. */
-export function normalizeTerminalOutput(text: string): string {
-  return text;
 }
 
 async function createCommandOutputAttachment(
@@ -597,7 +596,12 @@ export const terminalAction: Action = {
   routingHint:
     "run ONE explicit user-provided command and capture its output as an attachment in the terminal view -> TERMINAL_SHELL; general shell/build/history or scripted commands -> SHELL (coding-tools); multi-step dev work -> discover coding-task actions; MCP tools -> MCP",
 
-  validate: async () => isLocalCodeExecutionAllowed(),
+  // Not offered on phones, nor where this process binds no API listener: the
+  // run goes over HTTP to this process's own terminal route.
+  validate: async () =>
+    isLocalCodeExecutionAllowed() &&
+    !isMobilePlatform() &&
+    hasSelfApiTcpListener(),
 
   handler: async (runtime, message, _state, options) => {
     if (!isLocalCodeExecutionAllowed()) {
@@ -608,6 +612,25 @@ export const terminalAction: Action = {
           actionName: TERMINAL_ACTION_NAME,
           suppressPostActionContinuation: true,
           terminal: { storeBuildBlocked: true },
+        },
+      };
+    }
+
+    const apiBase = isMobilePlatform()
+      ? null
+      : resolveSelfApiTcpBaseUrl(process.env);
+    if (apiBase === null) {
+      return {
+        success: false,
+        text: isMobilePlatform()
+          ? "Terminal commands are not available on this device."
+          : SELF_API_UNREACHABLE_TEXT,
+        error: "TERMINAL_UNAVAILABLE",
+        data: {
+          actionName: TERMINAL_ACTION_NAME,
+          suppressPostActionContinuation: true,
+          acceptance: "rejected",
+          executionStatus: "not_started",
         },
       };
     }
@@ -644,21 +667,32 @@ export const terminalAction: Action = {
 
     let response: Response;
     try {
-      response = await fetch(
-        `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            command,
-            clientId: "runtime-terminal-action",
-            captureOutput: true,
-            ...(terminalToken ? { terminalToken } : {}),
-          }),
-          signal: requestSignal,
-        },
-      );
+      response = await fetch(`${apiBase}/api/terminal/run`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          command,
+          clientId: "runtime-terminal-action",
+          captureOutput: true,
+          ...(terminalToken ? { terminalToken } : {}),
+        }),
+        signal: requestSignal,
+      });
     } catch (error) {
+      // A refused connection never reached a server, so nothing ran.
+      if (isConnectionRefused(error)) {
+        return {
+          success: false,
+          error: "TERMINAL_UNAVAILABLE",
+          text: SELF_API_UNREACHABLE_TEXT,
+          data: {
+            actionName: TERMINAL_ACTION_NAME,
+            runId,
+            acceptance: "rejected",
+            executionStatus: "not_started",
+          },
+        };
+      }
       // error-policy:J2 once dispatch begins, a transport failure cannot prove
       // whether the server accepted the command. Preserve the client-selected
       // run identity so the caller can reconcile the operation before retrying.
@@ -787,11 +821,6 @@ export const terminalAction: Action = {
       stdout: redactCapturedTerminalText(runtime, rawRun.stdout),
       stderr: redactCapturedTerminalText(runtime, rawRun.stderr),
     };
-    const completeRun = {
-      ...capturedRun,
-      stdout: normalizeTerminalOutput(capturedRun.stdout),
-      stderr: normalizeTerminalOutput(capturedRun.stderr),
-    };
     const outputAttachment = await createCommandOutputAttachment(
       runtime,
       message,
@@ -828,7 +857,7 @@ export const terminalAction: Action = {
           }),
       data: {
         actionName: TERMINAL_ACTION_NAME,
-        ...completeRun,
+        ...capturedRun,
         outputAttachment: outputAttachment?.attachment,
         outputAttachmentMemoryId: outputAttachment?.memoryId,
         suppressVisibleCallback: true,

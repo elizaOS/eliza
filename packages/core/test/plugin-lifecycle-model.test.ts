@@ -1,4 +1,4 @@
-/** Regression tests for the counterexamples TLC found in tla/PluginLifecycle.tla. */
+/** Regression tests for the counterexamples found by Quint in quint/PluginLifecycle.qnt. */
 import { expect, it } from "vitest";
 import type { Plugin } from "../src/types/plugin";
 import type { IAgentRuntime } from "../src/types/runtime";
@@ -28,7 +28,7 @@ async function newRuntime(name: string) {
 	});
 }
 
-// PluginLifecycle.tla NoOrphanInstance: a getServiceLoadPromise() during unload
+// PluginLifecycle.qnt NoOrphanInstance: a getServiceLoadPromise() during unload
 // must not start a fresh instance of a class the unload is removing.
 it("a service load during unload does not leave a live instance of the unloaded plugin", async () => {
 	const runtime = await newRuntime("Unload resurrection");
@@ -85,7 +85,7 @@ it("a service load during unload does not leave a live instance of the unloaded 
 	expect(live).toEqual([]);
 });
 
-// PluginLifecycle.tla NoOrphanConnector: a service start that was in flight
+// PluginLifecycle.qnt NoOrphanConnector: a service start that was in flight
 // when unload began must not leave its connectors registered.
 it("unload during a service start removes the connectors that start registers", async () => {
 	const runtime = await newRuntime("Unload in-flight start");
@@ -124,7 +124,7 @@ it("unload during a service start removes the connectors that start registers", 
 	).not.toContain("inflight-chat");
 });
 
-// PluginLifecycle.tla NoOrphanConnector: a service started lazily, after its
+// PluginLifecycle.qnt NoOrphanConnector: a service started lazily, after its
 // plugin registered, runs start() in the plugin's context, so unload removes
 // the connector that start() registers.
 it("unload removes a connector registered by a lazily started service", async () => {
@@ -165,7 +165,7 @@ it("unload removes a connector registered by a lazily started service", async ()
 	await runtime.stop();
 });
 
-// PluginLifecycle.tla NoOrphanInstance with StopMayFail: a rejected stop() must
+// PluginLifecycle.qnt NoOrphanInstance with StopMayFail: a rejected stop() must
 // not leave the plugin's other instances running with no lookup to stop them.
 it("unload stops every owned instance when one stop rejects", async () => {
 	const runtime = await newRuntime("Unload failing stop");
@@ -210,7 +210,7 @@ it("unload stops every owned instance when one stop rejects", async () => {
 	expect(stopped).toEqual(["failing", "healthy"]);
 });
 
-// PluginLifecycle.tla StopAtMostOnce: runtime.stop() during an unload must not
+// PluginLifecycle.qnt StopAtMostOnce: runtime.stop() during an unload must not
 // stop the instance the unload is already stopping.
 it("runtime stop during unload stops each service instance once", async () => {
 	const runtime = await newRuntime("Unload and stop");
@@ -243,7 +243,7 @@ it("runtime stop during unload stops each service instance once", async () => {
 	expect(stopCalls).toBe(1);
 });
 
-// PluginLifecycle.tla TeardownExclusive: two concurrent unloads of one plugin
+// PluginLifecycle.qnt TeardownExclusive: two concurrent unloads of one plugin
 // tear it down once.
 it("concurrent unloads of one plugin run its teardown once", async () => {
 	const runtime = await newRuntime("Concurrent unload");
@@ -276,7 +276,7 @@ it("concurrent unloads of one plugin run its teardown once", async () => {
 	expect(disposeCalls).toBe(1);
 });
 
-// PluginLifecycle.tla RegisterHonest: a register that joins an in-flight
+// PluginLifecycle.qnt RegisterHonest: a register that joins an in-flight
 // registration of the same plugin fails when that registration fails.
 it("a duplicate register during a failing init does not report success", async () => {
 	const runtime = await newRuntime("Duplicate register");

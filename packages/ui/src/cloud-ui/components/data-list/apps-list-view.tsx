@@ -41,6 +41,8 @@ export interface AppsListLinkRenderProps {
 export interface AppsListViewProps {
   apps: AppsListItem[];
   deletingId?: string | null;
+  deletingIds?: ReadonlySet<string>;
+  deleteDisabled?: boolean;
   renderAppLink: (props: AppsListLinkRenderProps) => ReactNode;
   onCopyUrl?: (app: AppsListItem) => void;
   onDeleteApp?: (app: AppsListItem) => void;
@@ -75,6 +77,8 @@ function formatRelativeTime(value: string | Date) {
 export function AppsListView({
   apps,
   deletingId,
+  deletingIds,
+  deleteDisabled = false,
   renderAppLink,
   onCopyUrl,
   onDeleteApp,
@@ -87,125 +91,154 @@ export function AppsListView({
 
   return (
     <DashboardDataList className="grid grid-cols-1 gap-2">
-      {apps.map((app) => (
-        <Card
-          key={app.id}
-          variant="panel"
-          className="group relative min-w-0 overflow-hidden transition-colors duration-300"
-        >
-          <div className="px-3 py-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                {onToggleSelect ? (
-                  <Checkbox
-                    aria-label={`Select ${app.name}`}
-                    checked={selectedIds?.has(app.id) ?? false}
-                    onCheckedChange={(checked) =>
-                      onToggleSelect(app, checked === true)
+      {apps.map((app) => {
+        const isDeleting =
+          deletingId === app.id || deletingIds?.has(app.id) === true;
+        return (
+          <Card
+            key={app.id}
+            aria-busy={isDeleting}
+            variant="panel"
+            className="group relative min-w-0 overflow-hidden transition-colors duration-300"
+          >
+            <div className="px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {onToggleSelect ? (
+                    <Checkbox
+                      aria-label={`Select ${app.name}`}
+                      disabled={isDeleting}
+                      checked={selectedIds?.has(app.id) ?? false}
+                      onCheckedChange={(checked) =>
+                        onToggleSelect(app, checked === true)
+                      }
+                    />
+                  ) : null}
+                  {isDeleting ? (
+                    <span className="min-w-0 truncate text-sm font-medium text-white">
+                      {app.name}
+                    </span>
+                  ) : (
+                    renderAppLink({
+                      app,
+                      className:
+                        "min-w-0 truncate text-sm font-medium text-white transition-colors hover:text-txt-strong",
+                      children: app.name,
+                    })
+                  )}
+                  <StatusBadge
+                    status={
+                      isDeleting
+                        ? "processing"
+                        : app.is_active
+                          ? "success"
+                          : "neutral"
+                    }
+                    label={
+                      isDeleting
+                        ? "Deleting…"
+                        : app.is_active
+                          ? "Active"
+                          : "Inactive"
                     }
                   />
-                ) : null}
-                {renderAppLink({
-                  app,
-                  className:
-                    "min-w-0 truncate text-sm font-medium text-white transition-colors hover:text-txt-strong",
-                  children: app.name,
-                })}
-                <StatusBadge
-                  status={app.is_active ? "success" : "neutral"}
-                  label={app.is_active ? "Active" : "Inactive"}
-                />
-                {app.affiliate_code ? (
-                  <Badge
-                    variant="outline"
-                    size="micro"
-                    tone="muted"
-                    className="shrink-0"
-                  >
-                    Affiliate
-                  </Badge>
-                ) : null}
-              </div>
+                  {app.affiliate_code ? (
+                    <Badge
+                      variant="outline"
+                      size="micro"
+                      tone="muted"
+                      className="shrink-0"
+                    >
+                      Affiliate
+                    </Badge>
+                  ) : null}
+                </div>
 
-              <ListActionMenu
-                triggerClassName="h-8 w-8 rounded-sm bg-transparent hover:bg-white/10"
-                contentClassName="w-44"
-                onTriggerClick={(event) => event.preventDefault()}
-                items={[
-                  {
-                    asChild: true,
-                    label: "Manage App",
-                    className: "cursor-pointer",
-                    child: renderAppLink({
-                      app,
-                      children: (
-                        <>
-                          <Settings className="mr-2 size-4" />
-                          Manage App
-                        </>
-                      ),
-                    }),
-                  },
-                  {
-                    label: "Copy URL",
-                    icon: Copy,
-                    className: "cursor-pointer",
-                    onSelect: () => onCopyUrl?.(app),
-                  },
-                  ...(app.website_url
-                    ? [
-                        {
-                          asChild: true as const,
-                          label: "Visit Website",
-                          className: "cursor-pointer",
-                          child: (
-                            <TextLink
-                              href={app.website_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-normal text-inherit no-underline"
-                            >
-                              <ExternalLink className="mr-2  size-4" />
-                              Visit Website
-                            </TextLink>
+                <ListActionMenu
+                  triggerClassName="h-8 w-8 rounded-sm bg-transparent hover:bg-white/10"
+                  contentClassName="w-44"
+                  onTriggerClick={(event) => event.preventDefault()}
+                  items={[
+                    {
+                      asChild: true,
+                      label: "Manage App",
+                      disabled: isDeleting,
+                      className: "cursor-pointer",
+                      child: isDeleting ? (
+                        <span>Manage App</span>
+                      ) : (
+                        renderAppLink({
+                          app,
+                          children: (
+                            <>
+                              <Settings className="mr-2 size-4" />
+                              Manage App
+                            </>
                           ),
-                        },
-                      ]
-                    : []),
-                  { type: "separator" },
-                  {
-                    label: "Delete App",
-                    icon: deletingId === app.id ? Loader2 : Trash2,
-                    disabled: deletingId === app.id,
-                    className:
-                      "cursor-pointer bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 [&_svg]:text-destructive data-[disabled]:opacity-60",
-                    onSelect: () => onDeleteApp?.(app),
-                  },
-                ]}
-              />
-            </div>
+                        })
+                      ),
+                    },
+                    {
+                      label: "Copy URL",
+                      icon: Copy,
+                      className: "cursor-pointer",
+                      onSelect: () => onCopyUrl?.(app),
+                    },
+                    ...(app.website_url
+                      ? [
+                          {
+                            asChild: true as const,
+                            label: "Visit Website",
+                            className: "cursor-pointer",
+                            child: (
+                              <TextLink
+                                href={app.website_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-normal text-inherit no-underline"
+                              >
+                                <ExternalLink className="mr-2  size-4" />
+                                Visit Website
+                              </TextLink>
+                            ),
+                          },
+                        ]
+                      : []),
+                    { type: "separator" },
+                    {
+                      label: "Delete App",
+                      icon: isDeleting ? Loader2 : Trash2,
+                      disabled: isDeleting || deleteDisabled,
+                      className:
+                        "cursor-pointer bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 [&_svg]:text-destructive data-[disabled]:opacity-60",
+                      onSelect: () => onDeleteApp?.(app),
+                    },
+                  ]}
+                />
+              </div>
 
-            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span className="min-w-0 basis-full truncate text-white/74 sm:basis-auto">
-                {app.app_url}
-              </span>
-              <span className="hidden text-white/20 sm:inline">-</span>
-              <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Users className="size-3 text-muted" />
-                <span>{app.total_users.toLocaleString()}</span>
+              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="min-w-0 basis-full truncate text-white/74 sm:basis-auto">
+                  {app.app_url}
+                </span>
+                <span className="hidden text-white/20 sm:inline">-</span>
+                <div className="flex shrink-0 items-center gap-1 text-white/50">
+                  <Users className="size-3 text-muted" />
+                  <span>{app.total_users.toLocaleString()}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 text-white/50">
+                  <Activity className="size-3 text-muted" />
+                  <span>{app.total_requests.toLocaleString()}</span>
+                </div>
+                <span className="text-white/20">-</span>
+                <span className="shrink-0 text-white/60">
+                  {formatRelativeTime(app.updated_at)}
+                </span>
               </div>
-              <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Activity className="size-3 text-muted" />
-                <span>{app.total_requests.toLocaleString()}</span>
-              </div>
-              <span className="text-white/20">-</span>
-              <span className="shrink-0 text-white/60">
-                {formatRelativeTime(app.updated_at)}
-              </span>
             </div>
-          </div>
-        </Card>
-      ))}
+          </Card>
+        );
+      })}
     </DashboardDataList>
   );
 }

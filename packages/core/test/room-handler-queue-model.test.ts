@@ -1,4 +1,4 @@
-/** Regression checks for properties of tla/RoomHandlerQueue.tla that the code once broke. */
+/** Regression checks for properties of quint/RoomHandlerQueue.qnt that the code once broke. */
 import { describe, expect, it } from "vitest";
 import { RoomHandlerQueue } from "../src/runtime/room-handler-queue";
 

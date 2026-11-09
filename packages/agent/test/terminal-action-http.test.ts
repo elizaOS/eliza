@@ -148,3 +148,24 @@ it("keeps terminal authorization failures nonretryable and never executes the co
   });
   await expect(access(filename)).rejects.toThrow();
 });
+
+it("returns a failed receipt with the partial output when the command times out", async () => {
+  vi.stubEnv("ELIZA_TERMINAL_MAX_DURATION_MS", "1000");
+  try {
+    const result = await execute("printf 'partial-line\\n'; sleep 5");
+    expect(result).toMatchObject({
+      success: false,
+      error: "TERMINAL_EXECUTION_TIMED_OUT",
+      data: { timedOut: true, maxDurationMs: 1000 },
+    });
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: { code: "TERMINAL_EXECUTION_TIMED_OUT", acceptance: "unknown" },
+    });
+    expect(result.data?.stdout).toBe("partial-line\n");
+    expect(result.text).toContain("partial-line");
+    expect(result.text).toContain("output below is incomplete");
+  } finally {
+    vi.stubEnv("ELIZA_TERMINAL_MAX_DURATION_MS", undefined);
+  }
+}, 120_000);

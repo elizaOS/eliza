@@ -212,6 +212,8 @@ export async function verifySessionToken(token: string) {
       exp?: number;
       iat?: number;
       authMethod?: string;
+      oauthProviderId?: string;
+      oidcProviderId?: string;
       factorEnrollmentVerifiedAt?: number;
     };
     if (payload.typ === "identity") return null;

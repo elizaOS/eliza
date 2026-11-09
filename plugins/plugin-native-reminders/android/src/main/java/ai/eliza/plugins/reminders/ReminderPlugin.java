@@ -146,7 +146,9 @@ public abstract class ReminderPlugin extends Plugin {
   try{call.resolve(JSObject.fromJSONObject(engine().store.operationReceipt(engine().context,call.getString("operationId"),call.getString("bindingHash"),call.getObject("operation"))));}catch(RuntimeException|org.json.JSONException error){call.reject("Reminder receipt binding unavailable");}
  }
  @PluginMethod public void operateReminder(PluginCall call) {
-  try{call.resolve(JSObject.fromJSONObject(engine().store.operate(engine().context,call.getString("operationId"),call.getString("bindingHash"),call.getObject("operation"))));}catch(RuntimeException|org.json.JSONException error){call.reject("Reminder operation could not be confirmed; review saved state before retrying");}
+  try{call.resolve(JSObject.fromJSONObject(engine().store.operate(engine().context,call.getString("operationId"),call.getString("bindingHash"),call.getObject("operation"))));}
+  catch(ReminderStore.OperationsFull full){call.reject("Too many reminder changes are waiting for review. Nothing was changed.");}
+  catch(RuntimeException|org.json.JSONException error){call.reject("Reminder operation could not be confirmed; review saved state before retrying");}
  }
  @PluginMethod public void listReminders(PluginCall call) {
   try { JSObject value = new JSObject(); value.put("reminders", engine().store.list(engine().context)); value.put("notificationsEnabled", engine().store.allowed(engine().context)); call.resolve(value); }

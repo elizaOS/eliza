@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/cloud/services/vast-pyworker/observability.py",
+    "packages/cloud/services/vast-pyworker/onstart-vllm.sh",
+    "packages/training/scripts/inference/heartbeat.py",
+    "packages/cloud/services/vast-pyworker/tests/test_observability.py"
+  ],
+  "conformance": "packages/cloud/quint/check-vast-worker.mjs",
+  "bounds": "Two observer attempts, one kernel flock, one heartbeat thread per owner, one persisted history bit.",
+  "fairness": "Stopping an owner assumes fair heartbeat termination and fair processing of the final join/lock release. Hard process death atomically stops all of that process threads and releases its flock.",
+  "limitations": [
+    "All persistent writers run in one process. Graceful shutdown joins the heartbeat before releasing the lock; process death ends every thread before kernel release.",
+    "Scheduling fairness, exact metric bytes, disk failures, GPU readiness and Python refinement are not proved.",
+    "The lock is scoped to a shared filesystem inode. Replacing or unlinking that inode externally is outside these cooperating-process bounds.",
+    "Workload token estimation and the pinned Vast SDK are covered by the owning Python test suite, outside the supervision model."
+  ],
+  "cases": [
+    {
+      "name": "cooperating-observers",
+      "main": "vast_worker_supervision",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["StopCompletes"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "StopCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in vast_worker_supervision: StopCompletes = (processes.forall(p => threadExit(p).weakFair(s) and finish(p).weakFair(s))).implies( processes.forall(p => (s.phase.get(p) == \"closing\").leadsTo(Set(\"exited\", \"crashed\").contains(s.phase.get(p)))))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}
