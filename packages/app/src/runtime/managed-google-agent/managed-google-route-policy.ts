@@ -6,6 +6,13 @@ export function object(value: unknown): Record<string, unknown> {
   if (!isObject(value)) throw Error("Invalid Cloud request");
   return value;
 }
+
+/** Admit only the canonical HTTPS origin before a host can send credentials. */
+export function assertManagedGoogleApiOrigin(apiOrigin: string): void {
+  const origin = URL.parse(apiOrigin);
+  if (origin?.protocol !== "https:" || origin.origin !== apiOrigin)
+    throw new TypeError("Invalid Cloud API origin");
+}
 /** Longest Gmail search Cloud admits, including any date clause the host appends. */
 export const GMAIL_QUERY_MAX = 2048;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control bytes in owner-supplied request fields.

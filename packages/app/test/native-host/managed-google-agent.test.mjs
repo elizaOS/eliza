@@ -244,14 +244,24 @@ test("native host refuses foreign callers, browser origins, wrong Cloud owners a
 });
 test("native service port never becomes a general Cloud or credential proxy", async () => {
   let calls = 0;
-  const port = createNativeGoogleCloudPort(binding(), {
+  const options = {
     ...hostOptions,
     assertCurrent() {},
     request: async () => {
       calls++;
       throw Error("No request expected");
     },
-  });
+  };
+  for (const apiOrigin of [
+    "http://api.eliza.app",
+    "https://user:secret@api.eliza.app",
+    "https://api.eliza.app/api/v1",
+  ])
+    assert.throws(
+      () => createNativeGoogleCloudPort(binding(), { ...options, apiOrigin }),
+      /Invalid Cloud API origin/,
+    );
+  const port = createNativeGoogleCloudPort(binding(), options);
   const credential = await port.agentCredential();
   for (const url of [
     "https://api-staging.eliza.app/api/v1/user",

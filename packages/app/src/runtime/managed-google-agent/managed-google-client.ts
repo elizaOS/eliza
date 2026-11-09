@@ -8,6 +8,7 @@ import {
   calendarSyncHttp,
 } from "../../../../../plugins/plugin-calendar/src/linked-sync/google-sync-port.ts";
 import { ManagedGmailMailboxClient } from "../../../../../plugins/plugin-inbox/src/mailbox/managed-gmail-client.ts";
+import { assertManagedGoogleApiOrigin } from "./managed-google-route-policy.ts";
 
 export interface ManagedGoogleCredential {
   credentialId?: string;
@@ -101,9 +102,7 @@ export function createManagedGoogleClient({
   current: () => Promise<void>;
   request: ManagedGoogleRequest;
 }) {
-  const origin = new URL(apiOrigin);
-  if (origin.protocol !== "https:" || origin.origin !== apiOrigin)
-    throw new TypeError("Invalid Cloud API origin");
+  assertManagedGoogleApiOrigin(apiOrigin);
 
   async function read(
     path: string,

@@ -4,6 +4,7 @@ import {
   recordManagedGoogleFailure,
 } from "./managed-google-failure-stage.ts";
 import {
+  assertManagedGoogleApiOrigin,
   boundedServiceJson,
   managedGoogleRequest,
 } from "./managed-google-route-policy.ts";
@@ -39,6 +40,7 @@ export function createNativeGoogleCloudPort(
   },
 ): ManagedGoogleAgentPort {
   const { apiOrigin, userAgent, assertCurrent, request = fetch } = options;
+  assertManagedGoogleApiOrigin(apiOrigin);
   if (
     ![binding.credentialId, binding.userId, binding.organizationId].every(
       (value) => UUID.test(value),
