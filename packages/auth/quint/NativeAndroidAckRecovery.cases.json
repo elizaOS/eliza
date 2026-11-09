@@ -10,7 +10,7 @@
     "assumptions": "A startup worker uses its selected deployment and there is no concurrent replacement of that deployment's receipt or saved key during this case. Receipt read and remove return or fail as one abstract operation. A failed remove leaves the receipt in this model. The acknowledged response includes the exact expected credential ID, or the authenticated server returns its idempotent authorization-complete conflict. Wall-clock backoff and deadlines are projected to retry rounds and the expiry check at receipt read.",
     "limitations": "This case covers the Android Java startup acknowledgement worker. It excludes key issuance, new credential writes, overlapping plugin instances, other deployments' workers, device process death, storage durability, actual transport scheduling, and cleanup of credential-slot records after the receipt is gone. The JVM fixture executes the exact recovery and acknowledgement methods against synthetic slot, HTTPS and lifecycle ports."
   },
-  "conformance": "packages/auth/quint/check-native-android-ack-recovery.mjs",
+  "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
   "cases": [
     {
       "name": "startup-ack-recovery",

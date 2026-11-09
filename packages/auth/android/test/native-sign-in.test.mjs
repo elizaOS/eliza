@@ -255,6 +255,10 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     );
     assert.match(
       output,
+      /^PASS native code verification ownership \(3 scenarios\)$/m,
+    );
+    assert.match(
+      output,
       /^PASS native sign-in chain \(38 scenarios; no browser facilities\)/m,
     );
     assert.match(
