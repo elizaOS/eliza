@@ -99,6 +99,7 @@ module AgentEventSubscriptions {
   action subscribe(channel: str): bool = {
     val current = s.registrations.get(channel)
     all {
+      s.operation != "self-detach",
       current.active != 0 or current.generation < 3,
       s' = { ...s, operation: "subscribe",
         registrations: s.registrations.set(channel, if (current.active != 0) current
@@ -108,6 +109,7 @@ module AgentEventSubscriptions {
   action detach(channel: str, handle: int): bool = {
     val current = s.registrations.get(channel)
     all {
+      s.operation != "self-detach",
       handle <= current.generation,
       s' = { ...s, operation: "detach", channel: channel, handle: handle,
         previous: current.active,
@@ -115,16 +117,40 @@ module AgentEventSubscriptions {
           { ...current, active: 0 } else current) },
     }
   }
-  action heartbeat(status: str): bool = s' = { ...s, operation: "heartbeat",
-    lastHeartbeat: status, indicator: if (status == "failed") "error" else "alert" }
-  action stop = s' = { ...s, operation: "stop", lastHeartbeat: "none",
-    indicator: "none", registrations: Channels.mapBy(channel =>
-      { ...s.registrations.get(channel), active: 0 }) }
+  // The Android IPC observer detaches inside its callback when delivery fails.
+  // Another observer remains registered and receives the same emission.
+  action closeFromCallback = {
+    val current = s.registrations.get("event")
+    all {
+      s.operation != "self-detach",
+      current.active != 0,
+      s' = { ...s, operation: "self-detach",
+        registrations: s.registrations.set("event", { ...current, active: 0 }) },
+    }
+  }
+  action deliverPeer = all {
+    s.operation == "self-detach",
+    s' = { ...s, operation: "peer-delivered" },
+  }
+  action heartbeat(status: str): bool = all {
+    s.operation != "self-detach",
+    s' = { ...s, operation: "heartbeat",
+      lastHeartbeat: status, indicator: if (status == "failed") "error" else "alert" },
+  }
+  action stop = all {
+    s.operation != "self-detach",
+    s' = { ...s, operation: "stop", lastHeartbeat: "none",
+      indicator: "none", registrations: Channels.mapBy(channel =>
+        { ...s.registrations.get(channel), active: 0 }) },
+  }
   action step = {
     nondet channel = Channels.oneOf()
     nondet handle = Set(1, 2, 3).oneOf()
     nondet status = Heartbeats.oneOf()
-    any { subscribe(channel), detach(channel, handle), heartbeat(status), stop, s' = s }
+    any {
+      subscribe(channel), detach(channel, handle), heartbeat(status), stop,
+      closeFromCallback, deliverPeer, s' = s,
+    }
   }
 
   val OneCurrentRegistration = Channels.forall(channel => {
@@ -134,6 +160,8 @@ module AgentEventSubscriptions {
   val DetachRequiresCurrentHandle = (s.operation == "detach").implies(
     s.registrations.get(s.channel).active ==
       (if (s.handle == s.previous) 0 else s.previous))
+  val CallbackDetachesBeforePeer = Set("self-detach", "peer-delivered").contains(s.operation)
+    .implies(s.registrations.get("event").active == 0)
   val HeartbeatStatusMatchesIndicator = all {
     (s.lastHeartbeat == "sent").implies(s.indicator == "alert"),
     (s.lastHeartbeat == "failed").implies(s.indicator == "error"),
@@ -141,6 +169,8 @@ module AgentEventSubscriptions {
   }
   val StopClearsRegistrationsAndHeartbeat = (s.operation == "stop").implies(
     s.lastHeartbeat == "none" and Channels.forall(channel => s.registrations.get(channel).active == 0))
+  temporal PeerStillReceives = deliverPeer.weakFair(s)
+    .implies((s.operation == "self-detach").leadsTo(s.operation == "peer-delivered"))
 
   run staleHandleDoesNotDetachReplacementTest = init.then(subscribe("event"))
     .then(detach("event", 1)).then(subscribe("event")).then(subscribe("event"))
@@ -150,4 +180,8 @@ module AgentEventSubscriptions {
     .then(stop).expect(StopClearsRegistrationsAndHeartbeat)
     .then(subscribe("heartbeat")).then(detach("heartbeat", 1))
     .expect(s.registrations.get("heartbeat").active == 2)
+
+  run callbackDetachDoesNotSkipPeerTest = init.then(subscribe("event"))
+    .then(closeFromCallback).expect(CallbackDetachesBeforePeer)
+    .then(deliverPeer).expect(s.operation == "peer-delivered" and CallbackDetachesBeforePeer)
 }
