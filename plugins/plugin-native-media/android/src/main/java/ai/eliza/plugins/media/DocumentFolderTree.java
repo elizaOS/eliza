@@ -270,20 +270,22 @@ public final class DocumentFolderTree {
         || !DocumentsContract.isTreeUri(uri)
         || (flags & Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0)
       return result("unsupported", "The provider did not grant readable folder access.");
-    String previous = store().getString(KEY, null);
-    resolver()
-        .takePersistableUriPermission(
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                | ((flags & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0
-                    ? Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    : 0));
-    if (!store().edit().putString(KEY, uri.toString()).commit())
-      return result("failed", "Folder access could not be saved. Choose the folder again.");
-    tree = uri;
-    session.clear();
-    if (previous != null && !previous.equals(uri.toString())) release(previous);
-    return list(root());
+    synchronized (store()) {
+      String previous = store().getString(KEY, null);
+      resolver()
+          .takePersistableUriPermission(
+              uri,
+              Intent.FLAG_GRANT_READ_URI_PERMISSION
+                  | ((flags & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0
+                      ? Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                      : 0));
+      if (!store().edit().putString(KEY, uri.toString()).commit())
+        return result("failed", "Folder access could not be saved. Choose the folder again.");
+      tree = uri;
+      session.clear();
+      if (previous != null && !previous.equals(uri.toString())) release(previous);
+      return list(root());
+    }
   }
 
   private void release(String recorded) {
@@ -645,24 +647,32 @@ public final class DocumentFolderTree {
 
   /** Forgets the recorded tree and releases its grant. Selected documents keep their grants. */
   public JSObject forget() throws Exception {
-    Uri old = tree;
-    if (old == null) {
-      String saved = store().getString(KEY, null);
-      if (saved != null) old = Uri.parse(saved);
+    SharedPreferences selected = store();
+    synchronized (selected) {
+      String saved = selected.getString(KEY, null);
+      Uri old = tree;
+      if (old != null && !old.toString().equals(saved))
+        return result("failed", "Folder selection changed. Refresh before retrying.");
+      if (old == null && saved != null) old = Uri.parse(saved);
+      if (old != null) {
+        for (UriPermission permission : resolver().getPersistedUriPermissions())
+          if (old.equals(permission.getUri())) {
+            int flags = (permission.isReadPermission() ? Intent.FLAG_GRANT_READ_URI_PERMISSION : 0)
+                | (permission.isWritePermission() ? Intent.FLAG_GRANT_WRITE_URI_PERMISSION : 0);
+            resolver().releasePersistableUriPermission(old, flags & GRANTS);
+            break;
+          }
+        for (UriPermission permission : resolver().getPersistedUriPermissions())
+          if (old.equals(permission.getUri()))
+            return result("failed", "Folder access could not be released. Retry after refreshing.");
+      }
+      if (!java.util.Objects.equals(saved, selected.getString(KEY, null)))
+        return result("failed", "Folder selection changed. Refresh before retrying.");
+      if (!selected.edit().remove(KEY).commit())
+        return result("failed", "Folder selection could not be forgotten.");
+      tree = null;
+      session.clear();
+      return result("forgotten", "Folder access released.");
     }
-    if (!store().edit().remove(KEY).commit())
-      return result("failed", "Folder selection could not be forgotten.");
-    tree = null;
-    session.clear();
-    if (old != null)
-      for (UriPermission p : resolver().getPersistedUriPermissions())
-        if (old.equals(p.getUri())) {
-          int flags =
-              (p.isReadPermission() ? Intent.FLAG_GRANT_READ_URI_PERMISSION : 0)
-                  | (p.isWritePermission() ? Intent.FLAG_GRANT_WRITE_URI_PERMISSION : 0);
-          resolver().releasePersistableUriPermission(old, flags & GRANTS);
-          break;
-        }
-    return result("forgotten", "Folder access released.");
   }
 }

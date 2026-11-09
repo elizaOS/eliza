@@ -88,6 +88,33 @@ public final class OwnedPhotoEdits {
     this.config = config;
     resolver = c.getContentResolver();
     journal = c.getSharedPreferences(config.preferences("photo-edit-results"), 0);
+    sweepSettledBackups();
+  }
+  private static final java.util.Set<String> SWEPT =
+      java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+  /** Reclaims only verified backups of durable terminal receipts. Unknown records retain bytes. */
+  private void sweepSettledBackups() {
+    File directory = new File(context.getFilesDir(), "photo-replace-backups");
+    if (!SWEPT.add(directory.getAbsolutePath())) return;
+    File[] files = directory.listFiles();
+    if (files == null) return;
+    for (File file : files) {
+      String name = file.getName();
+      int dot = name.lastIndexOf('.');
+      if (dot <= 0) continue;
+      String suffix = name.substring(dot + 1);
+      if (!suffix.equals("original") && !suffix.equals("edited")) continue;
+      try {
+        String text = journal.getString(name.substring(0, dot), null);
+        if (text == null) continue;
+        JSONObject record = new JSONObject(text);
+        String status = record.optString("status");
+        if (!status.equals("saved") && !status.equals("failed")) continue;
+        discardBackup(file, record.optString(suffix.equals("original") ? "original" : "edited"));
+      } catch (Exception unreadable) {
+        // An unreadable receipt cannot authorize deleting a backup.
+      }
+    }
   }
   private Uri source(String id) throws Exception {
     if (sourceAccess != null && sourceAccess.accepts(id)) return sourceAccess.source(id);
