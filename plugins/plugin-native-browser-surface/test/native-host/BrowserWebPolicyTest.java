@@ -133,6 +133,26 @@ public final class BrowserWebPolicyTest {
         "bounded length");
     equal("_.._etc_passwd", BrowserDownloadPolicy.sanitizeName("/../etc/passwd"),
         "no path separators");
+    String longName =
+        BrowserDownloadPolicy.sanitizeName(new String(new char[150]).replace('\0', 'r') + ".pdf");
+    equal(BrowserDownloadPolicy.MAX_NAME, longName.length(), "long name bounded");
+    check(longName.endsWith("rrr.pdf"), "long name keeps its extension");
+    String longExtension = BrowserDownloadPolicy.sanitizeName(
+        "a." + new String(new char[150]).replace('\0', 'x'));
+    equal(BrowserDownloadPolicy.MAX_NAME, longExtension.length(),
+        "an over-long extension is cut like the rest of the name");
+    equal("\u041e\u0442\u0447\u0451\u0442.pdf",
+        BrowserDownloadPolicy.sanitizeName("\u041e\u0442\u0447\u0451\u0442.pdf"),
+        "Cyrillic name survives");
+    equal("\u5831\u544a 2026.pdf", BrowserDownloadPolicy.sanitizeName("\u5831\u544a 2026.pdf"),
+        "CJK name survives");
+    equal("invoicefdp.exe", BrowserDownloadPolicy.sanitizeName("invoice\u202efdp.exe"),
+        "bidi override removed");
+    equal("ab_c.txt", BrowserDownloadPolicy.sanitizeName("a\u2066b/c\u0007.txt"),
+        "isolates and controls removed, separators replaced");
+    String wide = BrowserDownloadPolicy.sanitizeName(
+        new String(new char[99]).replace('\0', 'e') + "\ud840\udc00\ud840\udc00");
+    equal(99, wide.length(), "a cut never leaves half a surrogate pair");
     check(BrowserDownloadPolicy.validMime("application/pdf"), "valid mime");
     check(!BrowserDownloadPolicy.validMime("text/html; charset=utf-8"),
         "parameters are not a mime type");
@@ -216,8 +236,22 @@ public final class BrowserWebPolicyTest {
     for (int i = 0; i < History.MAX_ENTRIES; i++)
       restored.add(new Entry(100 + i, "n", "https://example.com", false, null));
     check(restored.full(), "bounded");
-    check(!restored.add(new Entry(999, "n", "https://example.com", false, null)),
-        "full list refuses");
+    check(restored.add(new Entry(999, "n", "https://example.com", false, null)),
+        "a full list of finished entries admits a new one");
+    equal(History.MAX_ENTRIES, restored.all().size(), "by retiring one row");
+    check(restored.get(100) == null && restored.get(101) != null && restored.get(999) != null,
+        "the oldest finished row is the one retired");
+    check(restored.add(new Entry(998, "n", "https://example.com", false, null), entry -> entry.id == 101),
+        "a busy OS transfer is skipped");
+    check(restored.get(101) != null && restored.get(102) == null, "the next finished row goes instead");
+    check(!restored.hasRoom(entry -> true), "every row in progress leaves no room");
+    check(!restored.add(new Entry(997, "n", "https://example.com", false, null), entry -> true),
+        "a list of fifty transfers in progress refuses");
+    History active = new History();
+    for (int i = 0; i < History.MAX_ENTRIES; i++)
+      active.add(new Entry(-100 - i, "r", "https://example.com", false, null).started());
+    check(!active.hasRoom(entry -> false) && !active.add(new Entry(-1, "n", "https://example.com", false, null)),
+        "running host transfers are never retired");
     List<Entry> retained = new java.util.ArrayList<>();
     for (int i = 0; i < 75; i++)
       retained.add(new Entry(1000 + i, "saved", "https://example.com", false, null));

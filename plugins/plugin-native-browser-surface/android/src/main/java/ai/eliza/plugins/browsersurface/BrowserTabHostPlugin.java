@@ -489,9 +489,10 @@ public abstract class BrowserTabHostPlugin extends Plugin {
      if(t.dead||tabs.get(t.id)!=t)return null;
      try{return WebViewCompat.getProfile(t.web).getCookieManager().getCookie(url);}catch(Exception unavailable){return null;}
     },agent);
-    if(url!=null&&url.regionMatches(true,0,"blob:",0,5))t.capture.capture(url,(file,type)->{
+    // An ignored tab's blob: files are not prepared at all, so a flood writes nothing to disk.
+    if(url!=null&&url.regionMatches(true,0,"blob:",0,5)){if(!downloads.ignoring(t.id))t.capture.capture(url,(file,type)->{
      if(current.getAsBoolean())downloads.reviewCaptured(source,file,BrowserDownloads.safeName("download",disposition,BrowserDownloads.validMime(mime)?mime:type),BrowserDownloads.validMime(mime)?mime:type,current);else file.delete();
-    },reason->notice(t,reason));
+    },reason->notice(t,reason));}
     else downloads.request(source,url,disposition,mime,length,current);
     emit(t);
    });
