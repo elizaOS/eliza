@@ -39,7 +39,7 @@
         "ChildExitSettlesWithoutFairness",
         "RetirementMonotone",
         "ObservedTerminationProgress",
-        "CloseIsNotExitAcknowledgment"
+        "UnconditionalTerminationProgress"
       ],
       "temporalChecks": [
         {
@@ -97,10 +97,10 @@
           ]
         },
         {
-          "property": "CloseIsNotExitAcknowledgment",
+          "property": "UnconditionalTerminationProgress",
           "expect": "counterexample",
           "assumptions": [
-            "No exit fairness. Scope.close can return after requesting destruction while one or both children remain alive. The real JVM tests wait separately for process exit."
+            "No exit-observation fairness. Scope.close can return after requesting destruction; a child exit may remain unobserved forever. Immediate non-quiescence is also covered by the named kill-request scenario."
           ]
         }
       ],
