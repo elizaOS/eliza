@@ -17,9 +17,7 @@ import type {
 	HeartbeatEventPayload,
 	HeartbeatIndicatorType,
 	HeartbeatStatus,
-	MemoryEventData,
 	MessageEventData,
-	ProviderEventData,
 } from "../types/agent-event.ts";
 import type { UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.js";
@@ -46,6 +44,19 @@ export function resolveHeartbeatIndicator(
 	}
 }
 
+function subscribeListener<Listener>(
+	listeners: Map<Listener, () => void>,
+	listener: Listener,
+): () => void {
+	const existing = listeners.get(listener);
+	if (existing) return existing;
+	const unsubscribe = () => {
+		if (listeners.get(listener) === unsubscribe) listeners.delete(listener);
+	};
+	listeners.set(listener, unsubscribe);
+	return unsubscribe;
+}
+
 /**
  * AgentEventService provides a interface for agent event streaming.
  * It manages event emission, subscription, and run context tracking.
@@ -59,10 +70,10 @@ export class AgentEventService extends Service {
 	private seqByRun = new Map<string, number>();
 
 	/** Event listeners */
-	private eventListeners = new Set<AgentEventListener>();
+	private eventListeners = new Map<AgentEventListener, () => void>();
 
 	/** Heartbeat event listeners */
-	private heartbeatListeners = new Set<HeartbeatEventListener>();
+	private heartbeatListeners = new Map<HeartbeatEventListener, () => void>();
 
 	/** Run context by run ID */
 	private runContextById = new Map<string, AgentRunContext>();
@@ -145,14 +156,6 @@ export class AgentEventService extends Service {
 	}
 
 	/**
-	 * Clear all run contexts (useful for testing)
-	 */
-	clearAllRunContexts(): void {
-		this.runContextById.clear();
-		this.seqByRun.clear();
-	}
-
-	/**
 	 * Emit an agent event
 	 */
 	emit(event: AgentEventInput): void {
@@ -172,28 +175,32 @@ export class AgentEventService extends Service {
 			ts: Date.now(),
 		};
 
-		const errors: Array<{ listener: AgentEventListener; error: unknown }> = [];
-		for (const listener of this.eventListeners) {
+		const errors: unknown[] = [];
+		for (const listener of this.eventListeners.keys()) {
 			try {
 				listener(enriched);
 			} catch (error) {
 				// error-policy:J7 Event observers are diagnostics/stream consumers;
 				// report their failure without starving independent listeners.
-				errors.push({ listener, error });
-				this.runtime.reportError("AgentEventService.listener", error, {
+				errors.push(error);
+			}
+		}
+		// Reporting can emit a new event on this run. Finish fan-out first
+		// so observers see the original sequence before its diagnostics.
+		for (const error of errors) {
+			this.runtime.reportError("AgentEventService.listener", error, {
+				stream: enriched.stream,
+				runId: enriched.runId,
+			});
+			logger.error(
+				{
+					src: "service:agent_event",
+					error,
 					stream: enriched.stream,
 					runId: enriched.runId,
-				});
-				logger.error(
-					{
-						src: "service:agent_event",
-						error,
-						stream: enriched.stream,
-						runId: enriched.runId,
-					},
-					"Error in event listener - listener threw exception",
-				);
-			}
+				},
+				"Error in event listener - listener threw exception",
+			);
 		}
 
 		// If any listeners failed, emit an error event (but only if this isn't already an error event)
@@ -217,8 +224,7 @@ export class AgentEventService extends Service {
 	 * @returns Unsubscribe function
 	 */
 	subscribe(listener: AgentEventListener): () => void {
-		this.eventListeners.add(listener);
-		return () => this.eventListeners.delete(listener);
+		return subscribeListener(this.eventListeners, listener);
 	}
 
 	/**
@@ -235,7 +241,7 @@ export class AgentEventService extends Service {
 		this.lastHeartbeat = enriched;
 
 		let heartbeatErrors = 0;
-		for (const listener of this.heartbeatListeners) {
+		for (const listener of this.heartbeatListeners.keys()) {
 			try {
 				listener(enriched);
 			} catch (error) {
@@ -265,8 +271,7 @@ export class AgentEventService extends Service {
 	 * @returns Unsubscribe function
 	 */
 	subscribeHeartbeat(listener: HeartbeatEventListener): () => void {
-		this.heartbeatListeners.add(listener);
-		return () => this.heartbeatListeners.delete(listener);
+		return subscribeListener(this.heartbeatListeners, listener);
 	}
 
 	/**
@@ -314,72 +319,6 @@ export class AgentEventService extends Service {
 	}
 
 	/**
-	 * Helper: Emit a tool event
-	 */
-	emitTool(
-		runId: string,
-		data: {
-			type: "tool_call" | "tool_result" | "tool_error";
-			toolName: string;
-			input?: Record<string, unknown>;
-			output?: Record<string, unknown>;
-			duration?: number;
-			error?: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "tool",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Helper: Emit an assistant event
-	 */
-	emitAssistant(
-		runId: string,
-		data: {
-			type: "message" | "thought" | "plan" | "reflection";
-			content: string;
-			role?: "assistant" | "user" | "system";
-			tokens?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "assistant",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Helper: Emit an error event
-	 */
-	emitError(
-		runId: string,
-		data: {
-			type: "error" | "warning";
-			code?: string;
-			message: string;
-			stack?: string;
-			recoverable?: boolean;
-		},
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "error",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
 	 * Helper: Emit a message event (received, sent, queued, failed)
 	 */
 	emitMessage(
@@ -411,29 +350,6 @@ export class AgentEventService extends Service {
 		sessionKey?: string,
 	): void {
 		this.emitMessage(runId, { type: "received", ...params }, sessionKey);
-	}
-
-	/**
-	 * Convenience: Emit message sent event
-	 */
-	emitMessageSent(
-		runId: string,
-		params: {
-			messageId?: UUID;
-			channel?: string;
-			userId?: UUID;
-			roomId?: UUID;
-			content?: string;
-			hasAttachments?: boolean;
-			deliveredAt?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMessage(
-			runId,
-			{ type: "sent", deliveredAt: Date.now(), ...params },
-			sessionKey,
-		);
 	}
 
 	/**
@@ -483,27 +399,6 @@ export class AgentEventService extends Service {
 	}
 
 	/**
-	 * Convenience: Emit action error event
-	 */
-	emitActionError(
-		runId: string,
-		params: {
-			actionName: string;
-			handler?: string;
-			error: string;
-			duration?: number;
-			memoryId?: UUID;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitAction(
-			runId,
-			{ type: "error", success: false, ...params },
-			sessionKey,
-		);
-	}
-
-	/**
 	 * Helper: Emit an evaluator event (start, complete, error, skipped)
 	 */
 	emitEvaluator(
@@ -548,125 +443,6 @@ export class AgentEventService extends Service {
 		sessionKey?: string,
 	): void {
 		this.emitEvaluator(runId, { type: "complete", ...params }, sessionKey);
-	}
-
-	/**
-	 * Helper: Emit a provider event (start, complete, error, cached)
-	 */
-	emitProvider(
-		runId: string,
-		data: ProviderEventData,
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "provider",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Convenience: Emit provider start event
-	 */
-	emitProviderStart(
-		runId: string,
-		params: {
-			providerName: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitProvider(runId, { type: "start", ...params }, sessionKey);
-	}
-
-	/**
-	 * Convenience: Emit provider complete event
-	 */
-	emitProviderComplete(
-		runId: string,
-		params: {
-			providerName: string;
-			data?: unknown;
-			duration?: number;
-			fromCache?: boolean;
-			tokens?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitProvider(runId, { type: "complete", ...params }, sessionKey);
-	}
-
-	/**
-	 * Helper: Emit a memory event (create, update, delete, search, retrieved)
-	 */
-	emitMemory(runId: string, data: MemoryEventData, sessionKey?: string): void {
-		this.emit({
-			runId,
-			stream: "memory",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Convenience: Emit memory create event
-	 */
-	emitMemoryCreate(
-		runId: string,
-		params: {
-			memoryId: UUID;
-			tableName?: string;
-			roomId?: UUID;
-			preview?: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMemory(
-			runId,
-			{ type: "create", success: true, ...params },
-			sessionKey,
-		);
-	}
-
-	/**
-	 * Convenience: Emit memory search event
-	 */
-	emitMemorySearch(
-		runId: string,
-		params: {
-			tableName?: string;
-			roomId?: UUID;
-			count?: number;
-			duration?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMemory(
-			runId,
-			{ type: "search", success: true, ...params },
-			sessionKey,
-		);
-	}
-
-	/**
-	 * Convenience: Emit memory retrieved event
-	 */
-	emitMemoryRetrieved(
-		runId: string,
-		params: {
-			memoryId?: UUID;
-			tableName?: string;
-			roomId?: UUID;
-			count?: number;
-			preview?: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMemory(
-			runId,
-			{ type: "retrieved", success: true, ...params },
-			sessionKey,
-		);
 	}
 }
 

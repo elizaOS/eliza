@@ -11,7 +11,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>A drain ({@link #beginDrain}) cancels every request and stays closed until the host's serial
  * worker barrier reports that cancelled work and its cleanup have finished ({@link #finishDrain}
- * with {@code complete}); a waiter that times out leaves the drain closed. Each {@link Request}
+ * with {@code complete}); a waiter that times out leaves the drain closed. A barrier that fails
+ * ({@code complete} false) also leaves it closed, and the next {@link #beginDrain} opens a new
+ * barrier instead of joining one that nobody runs. Each {@link Request}
  * carries its own cancellation (an open connection, a native cancel hook) and its outcome.
  *
  * <p>No Android or Capacitor types: host-tested on the JVM.
@@ -47,7 +49,7 @@ public final class SpeechRequestGate {
 
  private final Map<String,Request> pending=new ConcurrentHashMap<>();
  private final Map<Object,Runnable> waiters=new LinkedHashMap<>(); // Guarded by pending.
- private boolean draining,destroyed; // Guarded by pending.
+ private boolean draining,barrier,destroyed; // Guarded by pending. barrier: a drain barrier is in flight.
 
  /** Admits {@code id} when nothing else runs; {@code replace=false} reports a busy speaker as BUSY. */
  public Admission admit(String id,boolean replace){
@@ -65,23 +67,26 @@ public final class SpeechRequestGate {
  public boolean destroyed(){synchronized(pending){return destroyed;}}
  /**
   * Cancels every request and adds {@code waiter} (with the host's {@code timeout}, which the host
-  * schedules) to the drain. Only the first waiter opens it.
+  * schedules) to the drain. Only a waiter that finds no barrier in flight opens one.
   */
  public Drain beginDrain(Object waiter,Runnable timeout){
   synchronized(pending){
    if(destroyed)return Drain.UNAVAILABLE;
    cancelAll();
    waiters.put(waiter,timeout);
-   if(draining)return Drain.JOINED;
-   draining=true;return Drain.OPENED;
+   if(barrier)return Drain.JOINED;
+   draining=true;barrier=true;return Drain.OPENED;
   }
  }
  /** A waiter whose timeout fired leaves; true when it was still waiting. The drain stays closed. */
  public boolean leaveDrain(Object waiter){synchronized(pending){return waiters.remove(waiter)!=null;}}
- /** Releases every waiter (and returns them with their timeouts); {@code complete} reopens admission. */
+ /**
+  * Ends the barrier and releases every waiter (returned with their timeouts). {@code complete}
+  * reopens admission; otherwise it stays closed until a later barrier completes.
+  */
  public Map<Object,Runnable> finishDrain(boolean complete){
   synchronized(pending){
-   if(complete)draining=false;
+   barrier=false;if(complete)draining=false;
    Map<Object,Runnable> released=new LinkedHashMap<>(waiters);waiters.clear();return released;
   }
  }

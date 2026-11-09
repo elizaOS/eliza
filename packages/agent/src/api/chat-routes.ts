@@ -39,7 +39,6 @@ import {
   InferenceTurnTimer,
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
-  isInsufficientCreditsMessage,
   isRateLimitError,
   isTextGenerationModelType,
   type AgentLogEntry as LogEntry,
@@ -141,6 +140,7 @@ import {
   type LocalInferenceRouteApi,
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
+import { captureNativeInferenceTiming } from "./native-inference-timing.ts";
 import {
   decodePathComponent,
   getErrorMessage,
@@ -153,6 +153,7 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
+import { findRecentInsufficientCreditsLog } from "./server-state.ts";
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
@@ -1396,20 +1397,6 @@ function resolveFinalTranscriptVisibility(
 }
 function pickInsufficientCreditsChatReply(): string {
   return INSUFFICIENT_CREDITS_CHAT_REPLY;
-}
-function findRecentInsufficientCreditsLog(
-  logBuffer: LogEntry[],
-  lookbackMs = 60000,
-): LogEntry | null {
-  const now = Date.now();
-  for (let i = logBuffer.length - 1; i >= 0; i--) {
-    const entry = logBuffer[i];
-    if (now - entry.timestamp > lookbackMs) break;
-    if (isInsufficientCreditsMessage(entry.message)) {
-      return entry;
-    }
-  }
-  return null;
 }
 export function resolveNoResponseFallback(
   logBuffer: LogEntry[],
@@ -3636,6 +3623,10 @@ async function generateOwnedChatResponse(
       label: "chat-request",
       roomId: message.roomId,
     });
+  const recordNativeTiming = captureNativeInferenceTiming(
+    runtime,
+    message.entityId,
+  );
   return runWithInferenceTiming(timer, async () => {
     try {
       const result = await runWithGenerationTimeout(
@@ -3655,6 +3646,7 @@ async function generateOwnedChatResponse(
     } finally {
       const summary = emitInferenceTiming(timer);
       if (summary) {
+        recordNativeTiming?.(summary);
         void persistInferenceTimingSummary(runtime, message, summary).catch(
           (error) => {
             // error-policy:J7 latency persistence must not turn a completed

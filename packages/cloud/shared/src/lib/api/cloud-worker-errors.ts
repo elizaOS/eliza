@@ -251,6 +251,19 @@ export function jsonError(
 
 /** Convert any thrown error to a JSON response matching the canonical shape. */
 export function failureResponse(c: Context, error: unknown): Response {
+  if (
+    error instanceof Error &&
+    [
+      "APP_DELETION_IN_PROGRESS",
+      "APP_DELETION_REQUEST_CONFLICT",
+      "APP_DELETION_ADMISSION_CHANGED",
+    ].includes(String((error as { code?: unknown }).code))
+  ) {
+    return c.json(
+      { success: false, error: error.message, code: "identity_conflict" as const },
+      409,
+    );
+  }
   if (error instanceof ZodError) {
     return c.json(
       {
@@ -319,6 +332,17 @@ export function failureResponse(c: Context, error: unknown): Response {
         code: inferCodeFromStatus(error.status),
       },
       error.status as 400,
+    );
+  }
+  if (error instanceof Error && error.name === "InferenceCredentialRevocationUnavailableError") {
+    return c.json(
+      {
+        success: false,
+        error: "Authorization service is temporarily unavailable",
+        code: "service_unavailable" as const,
+      },
+      503,
+      { "Retry-After": "1" },
     );
   }
   const lifecycleConstraint = findAutoTopUpLifecycleGuardConstraint(error);

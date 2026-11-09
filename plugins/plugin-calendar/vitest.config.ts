@@ -1,4 +1,5 @@
 /** Vitest config for the calendar plugin test suite. */
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultExternalConditions, defaultServerConditions } from "vite";
@@ -21,6 +22,26 @@ const pluginSchedulingSrc = path.join(
 );
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
+const coreExports = JSON.parse(
+  readFileSync(
+    path.join(elizaRoot, "packages", "core", "package.json"),
+    "utf8",
+  ),
+).exports as Record<string, string | { "eliza-source"?: string }>;
+const coreSourceSubpathAliases = Object.entries(coreExports).flatMap(
+  ([subpath, target]) => {
+    const source =
+      typeof target === "object" ? target["eliza-source"] : undefined;
+    if (subpath === "." || !source) return [];
+    const name = subpath.slice(2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return [
+      {
+        find: new RegExp(`^@elizaos/core/${name}$`),
+        replacement: path.join(elizaRoot, "packages", "core", source),
+      },
+    ];
+  },
+);
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -156,10 +177,9 @@ export default defineConfig({
         find: /^@elizaos\/core\/atomic-json$/,
         replacement: path.join(coreSrc, "utils", "atomic-json.ts"),
       },
-      {
-        find: /^@elizaos\/core\/(.+)$/,
-        replacement: path.join(coreSrc, "$1"),
-      },
+      // Core subpaths resolve to the source each export declares, not to a
+      // same-named file: several live in subdirectories (task-events, ...).
+      ...coreSourceSubpathAliases,
     ],
   },
 });

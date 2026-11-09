@@ -29,45 +29,35 @@ import { logger } from "../logger.js";
  * `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
  * the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
  */
+import { parseBooleanValue } from "./boolean.js";
 import { toWellFormedUnicode, truncateWellFormed } from "./unicode.js";
 
-function ttsDebugEnabled(): boolean {
-	const truthy = (raw: string | undefined | null): boolean => {
-		if (raw == null) return false;
-		const v = String(raw).trim().toLowerCase();
-		return v === "1" || v === "true" || v === "yes" || v === "on";
-	};
-
-	if (typeof process !== "undefined" && process.env) {
-		if (truthy(process.env.ELIZA_TTS_DEBUG)) return true;
+/** True when `ELIZA_TTS_DEBUG` (or the Vite-defined renderer flag) is `1`/`true`/`yes`/`on`. */
+export function isTtsDebugEnabled(): boolean {
+	if (
+		typeof process !== "undefined" &&
+		parseBooleanValue(process.env?.ELIZA_TTS_DEBUG) === true
+	) {
+		return true;
 	}
 
 	try {
-		// Use static `import.meta.env.*` so Vite `define` can replace ELIZA_TTS_DEBUG at build time.
-		if (
-			truthy(
+		// Keep the full static `import.meta.env.*` expressions so Vite `define`
+		// can replace them at build time.
+		return (
+			parseBooleanValue(
 				String((import.meta as TtsBuildImportMeta).env.ELIZA_TTS_DEBUG ?? ""),
-			)
-		)
-			return true;
-		if (
-			truthy(
+			) === true ||
+			parseBooleanValue(
 				String(
 					(import.meta as TtsBuildImportMeta).env.VITE_ELIZA_TTS_DEBUG ?? "",
 				),
-			)
-		)
-			return true;
+			) === true
+		);
 	} catch {
-		/* no import.meta */
+		// error-policy:J3 no import.meta.env outside Vite builds.
+		return false;
 	}
-
-	return false;
-}
-
-/** Same predicate as `ttsDebug` — use to attach optional debug headers / task metadata. */
-export function isTtsDebugEnabled(): boolean {
-	return ttsDebugEnabled();
 }
 
 const DEFAULT_PREVIEW_MAX = 160;
@@ -118,7 +108,7 @@ export function ttsDebug(
 	phase: string,
 	detail?: Record<string, unknown>,
 ): void {
-	if (!ttsDebugEnabled()) return;
+	if (!isTtsDebugEnabled()) return;
 	const emit = ttsEmit();
 	if (detail && Object.keys(detail).length > 0) {
 		emit(detail, `[eliza][tts] ${phase}`);

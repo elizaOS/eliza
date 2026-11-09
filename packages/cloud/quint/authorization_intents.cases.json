@@ -1,0 +1,69 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/oauth-intents.ts",
+    "packages/cloud/shared/src/db/repositories/approval-requests.ts",
+    "packages/cloud/shared/src/lib/services/oauth-intents.ts",
+    "packages/cloud/shared/src/lib/services/approval-requests.ts",
+    "packages/cloud/shared/src/db/schemas/oauth-intents.ts",
+    "packages/cloud/shared/src/db/schemas/approval-requests.ts",
+    "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-authorization-intents.mjs",
+  "bounds": {
+    "operations": 2,
+    "tenants": 2,
+    "clock": [0, 1, 2, 3],
+    "deadline": 2,
+    "rows": 1
+  },
+  "fairness": "Started operations settle under weak fairness of database completion. Call initiation, sweeper scheduling and permanent infrastructure recovery are not assumed.",
+  "limitations": [
+    "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
+    "Opaque IDs, challenge text, signatures, scopes and event metadata are abstracted. The model records signature presence and automatic lifecycle event order.",
+    "Production decisions use database time. The expiry sweep uses its captured cutoff. Optional explicit test-clock overrides are exercised by implementation tests, outside the production-clock model.",
+    "Signature verification, OAuth provider proof, callback buses, session binding and manual diagnostic event appends are separate protocols and remain outside this SQL model.",
+    "The nine PGlite regressions exercise real repository transactions and rollback. They do not establish PostgreSQL lock scheduling or full TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "oauth-intents",
+      "main": "authorization_intents",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["operationsSettle"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "operationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in authorization_intents: operationsSettle = Callers.forall(c => commit(c).weakFair(s)) implies eventually(always(Idle))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "approval-requests",
+      "main": "approval_requests",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["operationsSettle"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "operationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in approval_requests: operationsSettle = Callers.forall(c => commit(c).weakFair(s)) implies eventually(always(Idle))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 /**
  * POST /api/v1/user/avatar
  *
- * Uploads a user profile image to R2 and updates `users.avatar`.
+ * Uploads a user profile image to R2 and updates `users.avatar`. The
+ * replaced avatar object is deleted and its bytes released afterwards.
  */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
@@ -23,6 +24,10 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { readRequestWithinMultipartBudget } from "@/api/_lib/multipart-body-budget";
+import {
+  scheduleReplacedAvatarCleanup,
+  swapUserAvatar,
+} from "@/api/_lib/user-avatar";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 // The multipart envelope — boundaries, part headers, any additional fields —
@@ -236,19 +241,14 @@ app.post("/", async (c) => {
 
     let updateRowCount: number | undefined;
     let persistedRow: User | undefined;
+    // Unknown when the UPDATE acknowledgement was lost; the old object is
+    // then kept rather than guessed at.
+    let previousAvatar: string | null = null;
     try {
-      const updated = await dbWrite
-        .update(users)
-        .set({ avatar: url })
-        .where(
-          and(
-            eq(users.id, authed.id),
-            eq(users.organization_id, authed.organization_id),
-          ),
-        )
-        .returning();
-      updateRowCount = updated.length;
-      persistedRow = updated[0];
+      const swap = await swapUserAvatar(authed.id, authed.organization_id, url);
+      updateRowCount = swap.updated ? 1 : 0;
+      persistedRow = swap.updated;
+      previousAvatar = swap.previousAvatar;
     } catch (updateError) {
       // error-policy:J1 an UPDATE rejection has an ambiguous acknowledgement;
       // primary readback decides whether the HTTP boundary can report success.
@@ -299,6 +299,14 @@ app.post("/", async (c) => {
 
     // Cached user readers (GET /api/v1/user, app-auth session) still hold the old avatar.
     if (persistedRow) await usersService.invalidateCache(persistedRow);
+
+    await scheduleReplacedAvatarCleanup(
+      c,
+      authed.organization_id,
+      authed.id,
+      previousAvatar,
+      url,
+    );
 
     return c.json({
       success: true,

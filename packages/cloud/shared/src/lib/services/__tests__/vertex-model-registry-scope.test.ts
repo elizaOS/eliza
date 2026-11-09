@@ -97,6 +97,12 @@ beforeAll(async () => {
         organization_id: orgB,
         training_data_path: "gs://bucket/b/train.jsonl",
         status: "JOB_STATE_RUNNING",
+        last_remote_payload: {
+          name: "projects/p/locations/us-central1/tuningJobs/b1",
+          state: "JOB_STATE_RUNNING",
+          createTime: "2026-11-01T00:00:00Z",
+          updateTime: "2026-11-01T00:00:00Z",
+        },
       })
       .returning();
     jobB = job.id;

@@ -213,8 +213,9 @@ export function buildDefaultPackCatalogTasks(
  * Register the catalog as PA's consumer pack on the spine seed registry.
  * Called from PA `init`; the spine seeds after `runtime.initPromise` resolves,
  * so registration here is always ordered before the seed pass. Capability-gated
- * packs (`inbox-triage-starter`) are filtered out until a connector registry
- * with the required capabilities is provided.
+ * packs (`inbox-triage-starter`) are filtered out unless a connector registry
+ * with the required capabilities is passed. PA init passes none, so those packs
+ * are offered at customize time, not seeded at boot.
  */
 export function registerDefaultPackCatalog(
   runtime: IAgentRuntime,

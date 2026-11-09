@@ -13,5 +13,6 @@ public class PluginCall {
  public void resolve(JSObject data){throw new UnsupportedOperationException();}
  public void reject(String message){throw new UnsupportedOperationException();}
  public void reject(String message,String code){throw new UnsupportedOperationException();}
+ public void reject(String message,String code,JSObject data){throw new UnsupportedOperationException();}
  public void reject(String message,String code,Exception error){throw new UnsupportedOperationException();}
 }

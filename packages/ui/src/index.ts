@@ -128,6 +128,7 @@ export {
 } from "./api/remote-control-cloud-default.js";
 export {
   createRuntimeJsonClient,
+  RUNTIME_NOT_READY,
   type RuntimeJsonBridge,
   type RuntimeJsonResponse,
   RuntimeRequestError,
@@ -1498,6 +1499,7 @@ export {
 } from "./voice/draft-transcript-guard.js";
 export {
   audioBlobBase64,
+  type CumulativeCapture,
   type CumulativeCaptureOptions,
   observeMicrophonePause,
   type SpeechPauseOptions,

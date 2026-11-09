@@ -176,7 +176,7 @@ describe("computeTestLaneMembershipReport", () => {
     }
   });
 
-  test("violation: a maintained test file with no test-shaped script (elizaresearch class)", () => {
+  test("violation: a maintained test file with no test-shaped script (alphacompute class)", () => {
     expect(() =>
       computeTestLaneMembershipReport(
         baseOptions({

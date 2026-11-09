@@ -331,6 +331,7 @@ export const handleInboxAndCloudRelayRouteGroup: RouteDispatchModule["handleInbo
       (ctx.pathname.startsWith("/api/notifications") ||
         ctx.pathname.startsWith("/api/inbox") ||
         ctx.pathname === "/api/approvals" ||
+        ctx.pathname.startsWith("/api/approvals/") ||
         ctx.pathname === "/api/cloud/relay-status"),
     async () =>
       (await import("./server-route-dispatch.ts"))

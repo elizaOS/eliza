@@ -9,6 +9,7 @@ import { Miniflare } from "miniflare";
 import { CARTESIA_PUBLISHED_USD_PER_CREDIT } from "../v1/voice/stt/cartesia-pricing";
 
 let worker: Miniflare;
+let bundledSpeechScript: string;
 let outboundAttempts = 0;
 const common = `const stats=()=>globalThis.__speechStats??={};
 const bootstrap=(name)=>{const s=stats();if(s.locked)throw Error('DB/auth/admission on live speech path');s[name]=(s[name]??0)+1;};`;
@@ -115,13 +116,14 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
   });
   if (!result.success)
     throw new AggregateError(result.logs, "Speech worker build failed");
+  bundledSpeechScript = await result.outputs[0].text();
   worker = new Miniflare({
     outboundService() {
       outboundAttempts++;
       throw new Error("Unexpected outbound request in speech fixture");
     },
     modules: true,
-    script: await result.outputs[0].text(),
+    script: bundledSpeechScript,
     compatibilityDate: "2026-04-01",
     compatibilityFlags: ["nodejs_compat"],
     durableObjects: {
@@ -1566,15 +1568,22 @@ test("complete STT drain charges exact PCM once and zero for the unused renewed 
 
 test("a consent warm instantiates the session object without a ledger, and one mint owns it", async () => {
   const session = "44444444-4444-8444-8444-444444444444";
-  const at = (path: string, body?: unknown) =>
-    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-test-session": session,
+  const at = async (path: string, body?: unknown) => {
+    const result = await worker.dispatchFetch(
+      `https://speech-relay.internal${path}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-session": session,
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    );
+    // Consume each response before Bun/Miniflare reuses its loopback connection.
+    await result.arrayBuffer();
+    return result;
+  };
   const warmed = await at("/warm");
   expect(warmed.status).toBe(200);
   // The warm stored nothing: the object still has no session to revoke.
@@ -1601,4 +1610,120 @@ test("a consent warm instantiates the session object without a ledger, and one m
   expect((await mint("first-capability")).status).toBe(200);
   // A replayed consent derives the same name; its new capability is refused.
   expect((await mint("replayed-capability")).status).toBe(409);
+});
+
+test("a new host cannot revoke an old legacy session; the retained namespace can settle it once", async () => {
+  const runtime = new Miniflare({
+    workers: ["old-api", "lean-speech"].map((name) => ({
+      name,
+      modules: true,
+      script: bundledSpeechScript,
+      compatibilityDate: "2026-04-01",
+      compatibilityFlags: ["nodejs_compat"],
+      outboundService() {
+        outboundAttempts++;
+        throw Error("Unexpected provider request in cutover fixture");
+      },
+      durableObjects: {
+        SESSIONS: { className: "TestSpeechRelayCoordinator", useSQLite: true },
+        INFERENCE_ADMISSION_GATES: {
+          className: "InferenceAdmissionGate",
+          useSQLite: true,
+        },
+      },
+      bindings: {
+        VOICE_SPEECH_RELAY_ENABLED: "true",
+        HYPERDRIVE: {
+          connectionString: "postgres://boundary-test.invalid/not-used",
+        },
+        CARTESIA_API_KEY: "test-provider-boundary",
+        VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
+      },
+    })),
+  });
+  try {
+    const oldNamespace = await runtime.getDurableObjectNamespace(
+      "SESSIONS",
+      "old-api",
+    );
+    const newNamespace = await runtime.getDurableObjectNamespace(
+      "SESSIONS",
+      "lean-speech",
+    );
+    const oldSession = oldNamespace.get(oldNamespace.idFromName("cutover"));
+    const newSession = newNamespace.get(newNamespace.idFromName("cutover"));
+    const send = (target: typeof oldSession, path: string, body?: unknown) =>
+      target.fetch(`https://speech-relay.internal${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        ...(body === undefined
+          ? {}
+          : {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }),
+      });
+    const token = "cutover-test-capability";
+    expect(
+      (
+        await send(oldSession, "/initialize", {
+          sessionId: "44444444-4444-4444-8444-444444444444",
+          tokenDigest: new Bun.CryptoHasher("sha256")
+            .update(token)
+            .digest("hex"),
+          expiresAt: Date.now() + 60000,
+          caller: {
+            user: account,
+            apiKeyId: null,
+            authSource: "combined_cache",
+            appScopeId: null,
+            credential: {
+              kind: "api_key",
+              credentialId: "test-key",
+              userId: account.id,
+            },
+          },
+        })
+      ).status,
+    ).toBe(200);
+    const upgraded = await oldSession.fetch(
+      "https://speech-relay.internal/ws",
+      {
+        headers: { Upgrade: "websocket" },
+      },
+    );
+    expect(upgraded.status).toBe(101);
+    const socket = upgraded.webSocket!;
+    socket.accept();
+    const ready = next(
+      socket as unknown as WebSocket,
+      (value) => value.t === "ready",
+    );
+    socket.send(JSON.stringify({ t: "hello", token }));
+    await ready;
+    const owner = {
+      userId: account.id,
+      organizationId: account.organization_id,
+    };
+    expect((await send(newSession, "/revoke", owner)).status).toBe(404);
+    const stillLive = (await (
+      await send(oldSession, "/test-stats")
+    ).json()) as { settlements?: number };
+    expect(stillLive.settlements ?? 0).toBe(0);
+    const retired = await send(oldSession, "/revoke", owner);
+    expect(retired.status).toBe(200);
+    // Legacy mode does not claim a provider/DB retirement proof. This checks
+    // retained namespace reachability and exactly one settlement attempt.
+    expect(await retired.json()).toMatchObject({ revoked: true });
+    const first = (await (await send(oldSession, "/test-stats")).json()) as {
+      settlements?: number;
+    };
+    expect(first.settlements).toBe(2);
+    expect((await send(oldSession, "/revoke", owner)).status).toBe(200);
+    const replayed = (await (await send(oldSession, "/test-stats")).json()) as {
+      settlements?: number;
+    };
+    expect(replayed.settlements).toBe(first.settlements);
+  } finally {
+    await runtime.dispose();
+  }
 });

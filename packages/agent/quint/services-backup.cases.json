@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/services/agent-backup-authority.ts",
+    "packages/agent/src/services/agent-backup.ts"
+  ],
+  "bounds": {
+    "domain": "Two frames and generations 0..2.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_backup",
+      "main": "services_backup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

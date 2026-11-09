@@ -71,9 +71,11 @@ reads the state, so a host whose updater updates itself can recover to one. A
 missing or damaged `refreshed.json` reads as never refreshed, which is stale
 until the next fetch rewrites it.
 
-`TestFreshAdmissionConformance` is a differential test against a hand port of
-the `OtaFreshAdmission` model's predicates, not a run of the model; set
-`OTA_FRESH_CONFORMANCE=full` for every two-step sequence.
+`OtaFreshAdmission.qnt` models the admission ratchets, commit freshness and
+recovery predicates. Run `bun run test:quint OtaFreshAdmission` at the repository
+root for finite verification and generated traces replayed through the real Go
+functions. `OTA_FRESH_CONFORMANCE=full go test -run TestFreshAdmissionConformance`
+additionally checks every two-descriptor sequence in the existing fixture table.
 
 Hosts retain trust-root provisioning, signing authority, repository/package
 binding, update UI, permitted hardware and release/rollout policy. Native callers

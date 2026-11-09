@@ -15,10 +15,12 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Native, one-shot review of a favorite, Recently deleted or permanent-removal change to 1–20
+ * Native, one-shot review of a favorite, Recently deleted or permanent-removal change to selected
  * permitted library items. The owner confirms a native dialog naming every item, then Android's own
  * MediaStore write request; the change is applied only to the reviewed revisions after the activity
- * resumes. Activity recreation discards authority; it never replays a write.
+ * resumes. Activity recreation discards authority; it never replays a write. The same launcher
+ * carries Android's write consent for a photo edit that replaces one permitted original
+ * ({@link #requestWrite}).
  */
 public final class PermittedMediaReview implements AutoCloseable {
   /** Launches an activity request. False, after rejecting the call, when the launcher is gone. */
@@ -51,9 +53,16 @@ public final class PermittedMediaReview implements AutoCloseable {
     final PluginCall call;
     final List<String> ids, revisions;
     final boolean favorite, desired, batch, permanent;
+    /** A write grant's continuation, run on the worker instead of a flag change; else null. */
+    final Runnable granted;
     final long until = SystemClock.elapsedRealtime() + 120000;
     Request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
         boolean desired, boolean batch, boolean permanent) {
+      this(call, ids, revisions, favorite, desired, batch, permanent, null);
+    }
+    Request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
+        boolean desired, boolean batch, boolean permanent, Runnable granted) {
+      this.granted = granted;
       this.call = call;
       this.ids = List.copyOf(ids);
       this.revisions = List.copyOf(revisions);
@@ -117,7 +126,7 @@ public final class PermittedMediaReview implements AutoCloseable {
   }
   private void dispatch(Request request) {
     try {
-      worker.execute(() -> apply(request));
+      worker.execute(request.granted != null ? request.granted : () -> apply(request));
     } catch (RuntimeException unavailable) {
       request.call.reject("Photos closed before dispatch. Review the selection again.");
     }
@@ -132,9 +141,10 @@ public final class PermittedMediaReview implements AutoCloseable {
   private void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
       boolean desired, boolean batch, boolean permanent) {
     Request request = new Request(call, ids, revisions, favorite, desired, batch, permanent);
-    if (closed || Build.VERSION.SDK_INT < 30 || ids.isEmpty() || ids.size() > 20
+    int max = batch && !permanent ? PhotoLibraryAccess.REVIEWED_BATCH : PhotoLibraryAccess.REVIEWED;
+    if (closed || Build.VERSION.SDK_INT < 30 || ids.isEmpty() || ids.size() > max
         || new HashSet<>(ids).size() != ids.size() || ids.size() != revisions.size()) {
-      call.reject("Select 1–20 distinct permitted items.");
+      call.reject("Select 1–" + max + " distinct permitted items.");
       return;
     }
     if (!pending.compareAndSet(null, request)) {
@@ -198,6 +208,47 @@ public final class PermittedMediaReview implements AutoCloseable {
       });
     } catch (Exception unavailable) {
       cancel(request, "Selected media changed or is unavailable. Refresh Photos.", STALE);
+    }
+  }
+  /**
+   * Android's own write consent for one permitted still photo whose reviewed edit replaces the
+   * original. The editor's Replace control is the owner's review of this change, so Android's
+   * MediaStore write request is the only dialog. {@code granted} runs on the worker once, after the
+   * activity resumes; it must recheck the item's revision before writing and answer {@code call}.
+   * Declined, expired or closed requests are rejected with {@link #DECLINED} and write nothing.
+   */
+  public void requestWrite(PluginCall call, String id, String revision, Runnable granted) {
+    Request request =
+        new Request(call, List.of(id), List.of(revision), false, false, false, false, granted);
+    if (closed || Build.VERSION.SDK_INT < 30 || granted == null) {
+      call.reject("Replacing other apps' photos requires Android 11 or later.");
+      return;
+    }
+    if (!pending.compareAndSet(null, request)) {
+      call.reject("Finish the current photo review first.", "LIBRARY_BUSY");
+      return;
+    }
+    try {
+      JSObject row = catalog.mutationSource(id, revision);
+      MediaLibraryKey key = MediaLibraryKey.parse(id);
+      if (key.video || Boolean.TRUE.equals(row.getBoolean("trashed")))
+        throw new IllegalStateException();
+      android.app.PendingIntent grant = MediaStore.createWriteRequest(
+          bridge.getContext().getContentResolver(), List.of(catalog.uri(key)));
+      bridge.getActivity().runOnUiThread(() -> {
+        if (closed || pending.get() != request || !bridge.getActivity().hasWindowFocus()
+            || request.until < SystemClock.elapsedRealtime()) {
+          cancel(request, "Return to Photos to replace this photo.", DECLINED);
+          return;
+        }
+        if (!gate.ask(call,
+                ()
+                    -> launcher.launch(
+                        new IntentSenderRequest.Builder(grant.getIntentSender()).build())))
+          pending.compareAndSet(request, null);
+      });
+    } catch (Exception unavailable) {
+      cancel(request, "Photo changed or is unavailable. Nothing was replaced.", STALE);
     }
   }
   /**

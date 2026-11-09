@@ -497,7 +497,7 @@ export class RemoteHostsRepository {
             eq(remoteSessions.host_id, hostId),
             eq(remoteSessions.organization_id, organizationId),
             eq(remoteSessions.user_id, userId),
-            inArray(remoteSessions.status, ["pending", "activating", "active"]),
+            inArray(remoteSessions.status, ["pending", "claimed", "activating", "active"]),
           ),
         )
         .orderBy(asc(remoteSessions.id))
@@ -556,7 +556,7 @@ export class RemoteHostsRepository {
         .where(
           and(
             eq(remoteSessions.host_id, hostId),
-            inArray(remoteSessions.status, ["pending", "activating", "active"]),
+            inArray(remoteSessions.status, ["pending", "claimed", "activating", "active"]),
           ),
         )
         .limit(1);

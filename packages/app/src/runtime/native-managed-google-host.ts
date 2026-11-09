@@ -59,8 +59,12 @@ export async function startNativeManagedGoogleHost(
     prepareCloud
       ? new ElizaError(message, { code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" })
       : unavailable(message);
+  const inferenceToken = env.ELIZAOS_CLOUD_API_KEY;
+  // Native provider admission supplies a separate Google key. Runtime routing
+  // can replace the inference key while the admitted Google binding stays valid.
   const credentialKey =
-    env.ELIZA_PROVIDER === "cerebras"
+    env.ELIZA_PROVIDER === "cerebras" ||
+    env.ELIZA_NATIVE_GOOGLE_API_KEY !== undefined
       ? "ELIZA_NATIVE_GOOGLE_API_KEY"
       : "ELIZAOS_CLOUD_API_KEY";
   const token = env[credentialKey];
@@ -69,7 +73,7 @@ export async function startNativeManagedGoogleHost(
     !isAndroidMobile(env) ||
     !root ||
     (raw !== undefined && raw.length > 8192) ||
-    !token ||
+    (prepareCloud ? !inferenceToken : !token) ||
     !apiToken ||
     // The managed Gmail and Calendar transports accept only this format; a
     // published endpoint they cannot use would break Gmail reads at plugin init.
@@ -90,13 +94,14 @@ export async function startNativeManagedGoogleHost(
         parseNativeCloudRoutingDeclaration(module.nativeCloudRuntime),
         profileStores,
       );
-      if (env.ELIZAOS_CLOUD_API_KEY !== token)
+      if (env.ELIZAOS_CLOUD_API_KEY !== inferenceToken)
         throw new Error("Native Cloud credential changed during preparation");
     }
   } catch {
     throw admissionFailure("Native runtime preparation failed");
   }
   if (!raw) return;
+  if (!token) throw unavailable("Native Google credential is unavailable");
   let binding: unknown;
   try {
     binding = JSON.parse(raw);

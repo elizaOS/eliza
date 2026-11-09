@@ -23,12 +23,9 @@ import {
 
 /** Resolve task due time (ms) from dueAt or metadata.scheduledAt. Returns null if not set (run immediately). */
 function resolveDueTime(task: Task): number | null {
-	if (task.dueAt != null) {
-		if (typeof task.dueAt === "number") return task.dueAt;
-		if (typeof task.dueAt === "bigint") return Number(task.dueAt);
-		return new Date(String(task.dueAt)).getTime();
-	}
-	const scheduledAt = (task.metadata as TaskMetadata | undefined)?.scheduledAt;
+	// Callers only pass tasks whose dueAt passed invalidScheduleField: a finite number or bigint.
+	if (task.dueAt != null) return Number(task.dueAt);
+	const scheduledAt = task.metadata?.scheduledAt;
 	if (scheduledAt == null) return null;
 	if (typeof scheduledAt === "number") return scheduledAt;
 	const t = new Date(scheduledAt).getTime();
@@ -48,7 +45,7 @@ function lastRanAt(task: Task): number {
 
 /** Earliest time (ms) a repeat task may run: its interval less notBefore, or an atomic wake. */
 function repeatDueAt(task: Task, atomicWake: boolean): number {
-	const meta = task.metadata as TaskMetadata | undefined;
+	const meta = task.metadata;
 	const idealNextRun = lastRanAt(task) + (meta?.updateInterval ?? 0);
 	const wakeAt = atomicWake && !meta?.failureCount ? meta?.wakeAt : undefined;
 	return Math.min(idealNextRun - (meta?.notBefore ?? 0), wakeAt ?? Infinity);
@@ -199,8 +196,8 @@ export class TaskService extends Service {
 	private maxTickMs = DEFAULT_MAX_TICK_MS;
 	private activeTick: Promise<void> | null = null;
 	private readonly clock: TaskServiceTimeoutClock;
-	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
-	private executingTasks: Set<string> = new Set();
+	/** Count overlapping invocations so exclusivity sees every active owner. */
+	private executingTasks = new Map<string, number>();
 	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** Tracks tasks quarantined for missing workers, preventing repeated diagnostics while pause/delete operations settle. */
@@ -249,88 +246,6 @@ export class TaskService extends Service {
 	}
 
 	/**
-	 * Asynchronously creates test tasks by registering task workers for repeating and one-time tasks,
-	 * validates the tasks, executes the tasks, and creates the tasks if they do not already exist.
-	 */
-	async createTestTasks() {
-		// Register task worker for repeating task
-		this.runtime.registerTaskWorker({
-			name: "REPEATING_TEST_TASK",
-			shouldRun: async () => {
-				this.runtime.logger.debug(
-					{
-						src: "plugin:basic-capabilities:service:task",
-						agentId: this.runtime.agentId,
-					},
-					"Validating repeating test task",
-				);
-				return true;
-			},
-			execute: async (_runtime, _options) => {
-				this.runtime.logger.debug(
-					{
-						src: "plugin:basic-capabilities:service:task",
-						agentId: this.runtime.agentId,
-					},
-					"Executing repeating test task",
-				);
-				return undefined;
-			},
-		});
-
-		// Register task worker for one-time task
-		this.runtime.registerTaskWorker({
-			name: "ONETIME_TEST_TASK",
-			shouldRun: async () => {
-				this.runtime.logger.debug(
-					{
-						src: "plugin:basic-capabilities:service:task",
-						agentId: this.runtime.agentId,
-					},
-					"Validating one-time test task",
-				);
-				return true;
-			},
-			execute: async (_runtime, _options) => {
-				this.runtime.logger.debug(
-					{
-						src: "plugin:basic-capabilities:service:task",
-						agentId: this.runtime.agentId,
-					},
-					"Executing one-time test task",
-				);
-				return undefined;
-			},
-		});
-
-		// check if the task exists
-		const tasks = await this.runtime.getTasksByName("REPEATING_TEST_TASK");
-
-		if (tasks.length === 0) {
-			// Create repeating task
-			await this.runtime.createTask({
-				name: "REPEATING_TEST_TASK",
-				description: "A test task that repeats every minute",
-				metadata: {
-					updatedAt: this.clock.now(), // Use timestamp instead of Date object
-					updateInterval: 1000 * 60, // 1 minute
-				},
-				tags: ["queue", "repeat", "test"],
-			});
-		}
-
-		// Create one-time task
-		await this.runtime.createTask({
-			name: "ONETIME_TEST_TASK",
-			description: "A test task that runs once",
-			metadata: {
-				updatedAt: this.clock.now(),
-			},
-			tags: ["queue", "test"],
-		});
-	}
-
-	/**
 	 * Start the task poll timer. Call explicitly in daemon mode; not started automatically.
 	 * WHY public: initialize() does not start the task service or timer. Daemon entry points
 	 * that need scheduled tasks call getService("task") then startTimer(). Edge/ephemeral
@@ -340,6 +255,7 @@ export class TaskService extends Service {
 	 * The local timer sleeps until the earliest due task (at most TASK_TICK_MAX_MS) and markDirty() wakes it.
 	 */
 	startTimer() {
+		if (this.stopped) return;
 		if (this.runtime.serverless === true) {
 			return;
 		}
@@ -451,7 +367,7 @@ export class TaskService extends Service {
 			// Validation can await another worker before reaching this task.
 			if (this.stopped) break;
 			const context = { taskId: task.id, taskName: task.name };
-			const metadata = task.metadata as TaskMetadata | undefined;
+			const metadata = task.metadata;
 			if (metadata?.paused) {
 				// Heal in BOTH directions: a repeat task WE paused for a missing
 				// worker (orphanedNoWorker marker) must resume once a redeploy
@@ -701,7 +617,7 @@ export class TaskService extends Service {
 	private invalidScheduleField(task: Task): string | undefined {
 		const finite = (value: unknown) =>
 			typeof value === "number" && Number.isFinite(value);
-		const metadata = task.metadata as TaskMetadata | undefined;
+		const metadata = task.metadata;
 		if (task.dueAt != null) {
 			const validDueAt =
 				finite(task.dueAt) ||
@@ -808,44 +724,18 @@ export class TaskService extends Service {
 
 		for (const task of validation.tasks) {
 			if (this.stopped) break;
+			// validateTasks already dropped paused tasks (pauseTask() promises later
+			// ticks skip the row; a tick that captured its snapshot before the pause
+			// persisted may still run it once, per pauseTask()).
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
-				// A paused one-shot must not run and must not reach the
-				// execute-and-delete lifecycle — pauseTask() promises that ticks
-				// after the pause skip the row until resumeTask(). The repeat
-				// branch below has its own paused skip; this mirrors it for
-				// one-shots. A tick that captured this snapshot before
-				// pauseTask persisted may still run once — documented as
-				// already-selected-work semantics on pauseTask().
-				if (task.metadata?.paused === true) {
-					continue;
-				}
 				const dueMs = resolveDueTime(task);
 				if (dueMs != null && now < dueMs) continue;
-				try {
-					await this.executeTask(task);
-				} catch (error) {
-					// error-policy:J1 Independent task failures are aggregated into
-					// the structured tick failure after all due tasks run.
-					failures.push(
-						error instanceof ElizaError
-							? error
-							: new ElizaError(`Task ${task.name} execution failed`, {
-									code: "TASK_EXECUTION_FAILED",
-									context: { taskId: task.id, taskName: task.name },
-									cause: error,
-								}),
-					);
-				}
+				await this.executeTaskCollectingFailure(task, failures);
 				continue;
 			}
 
-			// Repeat tasks: skip if paused
-			if (task.metadata?.paused === true) {
-				continue;
-			}
-
-			const taskMetadata = task.metadata as TaskMetadata | undefined;
+			const taskMetadata = task.metadata;
 			const updateIntervalMs = taskMetadata?.updateInterval ?? 0;
 			const notAfterMs = taskMetadata?.notAfter;
 			const idealNextRun = lastRanAt(task) + updateIntervalMs;
@@ -858,11 +748,7 @@ export class TaskService extends Service {
 				continue;
 			}
 
-			if (
-				notAfterMs != null &&
-				typeof notAfterMs === "number" &&
-				now > idealNextRun + notAfterMs
-			) {
+			if (notAfterMs != null && now > idealNextRun + notAfterMs) {
 				this.runtime.logger.warn(
 					{
 						src: "plugin:basic-capabilities:service:task",
@@ -898,21 +784,7 @@ export class TaskService extends Service {
 				},
 				"Executing task - interval elapsed",
 			);
-			try {
-				await this.executeTask(task);
-			} catch (error) {
-				// error-policy:J1 Independent task failures are aggregated into
-				// the structured tick failure after all due tasks run.
-				failures.push(
-					error instanceof ElizaError
-						? error
-						: new ElizaError(`Task ${task.name} execution failed`, {
-								code: "TASK_EXECUTION_FAILED",
-								context: { taskId: task.id, taskName: task.name },
-								cause: error,
-							}),
-				);
-			}
+			await this.executeTaskCollectingFailure(task, failures);
 		}
 		if (failures.length > 0) {
 			throw new ElizaError(`${failures.length} scheduled task failure(s)`, {
@@ -937,6 +809,42 @@ export class TaskService extends Service {
 		}
 	}
 
+	private async executeTaskCollectingFailure(
+		task: Task,
+		failures: ElizaError[],
+	): Promise<void> {
+		try {
+			await this.executeTask(task);
+		} catch (error) {
+			// error-policy:J1 Independent task failures are aggregated into
+			// the structured tick failure after all due tasks run.
+			failures.push(
+				error instanceof ElizaError
+					? error
+					: new ElizaError(`Task ${task.name} execution failed`, {
+							code: "TASK_EXECUTION_FAILED",
+							context: { taskId: task.id, taskName: task.name },
+							cause: error,
+						}),
+			);
+		}
+	}
+
+	private assertAcceptingExecution(): void {
+		if (this.stopped) {
+			throw new ElizaError("Task service has stopped accepting execution", {
+				code: "TASK_SERVICE_STOPPED",
+				severity: "ephemeral",
+			});
+		}
+	}
+
+	private releaseExecution(taskId: string): void {
+		const remaining = (this.executingTasks.get(taskId) ?? 1) - 1;
+		if (remaining > 0) this.executingTasks.set(taskId, remaining);
+		else this.executingTasks.delete(taskId);
+	}
+
 	/**
 	 * Executes a given task asynchronously.
 	 * Tracks execution state to prevent overlapping runs of the same task.
@@ -948,6 +856,7 @@ export class TaskService extends Service {
 	 * @param {Task} task - The task to be executed.
 	 */
 	private async executeTask(task: Task) {
+		this.assertAcceptingExecution();
 		const execution = this.executeTaskInternal(task);
 		this.executingTaskPromises.add(execution);
 		try {
@@ -982,7 +891,35 @@ export class TaskService extends Service {
 			return;
 		}
 
-		this.executingTasks.add(task.id);
+		// One-shots and blocking repeats run exclusively on every path (timer,
+		// daemon, runDueTasks, executeTaskById, resumeTask).
+		const isRepeat = task.tags?.includes("repeat") === true;
+		if (
+			(!isRepeat || task.metadata?.blocking !== false) &&
+			this.executingTasks.has(task.id)
+		) {
+			return;
+		}
+		this.executingTasks.set(
+			task.id,
+			(this.executingTasks.get(task.id) ?? 0) + 1,
+		);
+		if (!isRepeat) {
+			// A one-shot from a stale snapshot may already have run and been
+			// deleted. The read sits outside the failure path below, so a failed
+			// read propagates and leaves the row in place.
+			let current: Task | null;
+			try {
+				current = await this.runtime.getTask(task.id);
+			} catch (error) {
+				this.releaseExecution(task.id);
+				throw error;
+			}
+			if (!current || this.stopped) {
+				this.releaseExecution(task.id);
+				return;
+			}
+		}
 		const startTime = this.clock.now();
 		const observedWakeRevision = task.metadata?.wakeRevision;
 		const observedWakeAt = task.metadata?.wakeAt;
@@ -1010,7 +947,7 @@ export class TaskService extends Service {
 				if (!latestTask) {
 					return;
 				}
-				const meta = latestTask.metadata as TaskMetadata | undefined;
+				const meta = latestTask.metadata;
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
 				const bookkeeping: Partial<TaskMetadata> = {
 					updatedAt: this.clock.now(),
@@ -1041,7 +978,7 @@ export class TaskService extends Service {
 				if (nextInterval != null) {
 					bookkeeping.updateInterval = nextInterval;
 					cleared.push("baseInterval");
-				} else if (baseInterval != null && typeof baseInterval === "number") {
+				} else if (baseInterval != null) {
 					bookkeeping.updateInterval = baseInterval;
 				}
 				const nextWakeAt = result?.nextWakeAt;
@@ -1102,7 +1039,7 @@ export class TaskService extends Service {
 					if (!latestTask) {
 						return;
 					}
-					const meta = latestTask.metadata as TaskMetadata | undefined;
+					const meta = latestTask.metadata;
 					const failureCount = (meta?.failureCount ?? 0) + 1;
 					const rawMax = meta?.maxFailures;
 					// maxFailures <= 0 (or Infinity) = never auto-pause. WHY: critical heartbeats (e.g. the
@@ -1194,7 +1131,7 @@ export class TaskService extends Service {
 			);
 			throw failure;
 		} finally {
-			this.executingTasks.delete(task.id);
+			this.releaseExecution(task.id);
 			const durationMs = this.clock.now() - startTime;
 			this.runtime.logger.debug(
 				{
@@ -1229,9 +1166,11 @@ export class TaskService extends Service {
 	 * WHY separate from timer: serverless has no long-lived process; host drives execution explicitly.
 	 */
 	async runDueTasks(): Promise<void> {
+		if (this.stopped) return;
 		while (this.activeTick) {
 			await this.activeTick;
 		}
+		if (this.stopped) return;
 		const run = (async () => {
 			const allTasks = await this.runtime.getTasks({
 				tags: ["queue"],
@@ -1260,6 +1199,7 @@ export class TaskService extends Service {
 	 * @param taskId - UUID of the task.
 	 */
 	async executeTaskById(taskId: UUID): Promise<void> {
+		this.assertAcceptingExecution();
 		const task = await this.runtime.getTask(taskId);
 		if (!task) {
 			throw new Error(`Task ${taskId} not found`);
@@ -1341,11 +1281,11 @@ export class TaskService extends Service {
 		if (!task) {
 			return { task: null, paused: false, executing: false };
 		}
-		const paused = (task.metadata as TaskMetadata)?.paused === true;
+		const paused = task.metadata?.paused === true;
 		const executing = task.id ? this.executingTasks.has(task.id) : false;
 		let nextRunAt: number | undefined;
 		if (task.tags?.includes("repeat")) {
-			const meta = task.metadata as TaskMetadata | undefined;
+			const meta = task.metadata;
 			const interval = meta?.updateInterval ?? 0;
 			const notBefore = meta?.notBefore ?? 0;
 			nextRunAt = lastRanAt(task) + interval - notBefore;
@@ -1355,7 +1295,7 @@ export class TaskService extends Service {
 			paused,
 			executing,
 			nextRunAt,
-			lastError: (task.metadata as TaskMetadata)?.lastError,
+			lastError: task.metadata?.lastError,
 		};
 	}
 
@@ -1389,7 +1329,7 @@ export class TaskService extends Service {
 		if (inFlight.length > 0) {
 			await Promise.allSettled(inFlight);
 		}
-		// Clear executing tasks set on stop
+		// Every admitted execution has settled.
 		this.executingTasks.clear();
 	}
 }

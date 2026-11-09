@@ -18,7 +18,6 @@ import type {
 import type { UUID } from "./primitives.ts";
 
 export interface MemoryStorageProvider {
-	// ── Long-term memories ──────────────────────────────────────────────
 	/** Supplied IDs are insert-once identities; replay returns the original row. */
 	readonly supportsIdempotentWrites?: true;
 

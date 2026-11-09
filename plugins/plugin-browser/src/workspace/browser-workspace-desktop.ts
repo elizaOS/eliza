@@ -2,11 +2,15 @@
  * Desktop browser workspace client for forwarding commands to the embedded BrowserView.
  */
 
+import { BrowserDispatchFailure } from "../dispatch-types.js";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUserScriptAllowed,
+  BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT,
+  BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE,
   createBrowserWorkspaceCommandTargetError,
+  createBrowserWorkspaceUnknownElementRefError,
   DEFAULT_TIMEOUT_MS,
   isBrowserWorkspaceUserScriptAllowed,
   normalizeEnvValue,
@@ -16,8 +20,11 @@ import {
 import {
   appendBrowserWorkspaceProfilerEntry,
   appendBrowserWorkspaceTraceEntry,
+  browserWorkspaceClipboardText,
   getBrowserWorkspaceRuntimeState,
+  noteBrowserWorkspaceDocumentUrl,
   registerBrowserWorkspaceElementRefs,
+  setBrowserWorkspaceClipboardText,
 } from "./browser-workspace-state.js";
 import type {
   BrowserWorkspaceBridgeConfig,
@@ -175,7 +182,7 @@ function desktopBrowserWorkspaceWaitScriptBranch(
     return `
           if (command.script) {
             const fn = new Function("document", "window", "location", "return (" + command.script + ");");
-            if (fn(document, window, location)) {
+            if (fn(activeDoc(), window, location)) {
               resolve({ ok: true, script: true });
               return;
             }
@@ -183,10 +190,176 @@ function desktopBrowserWorkspaceWaitScriptBranch(
   }
   return `
           if (command.script) {
-            reject(new Error("Browser workspace wait script is disabled (GHSA-mhhr-9ph9-64j7)."));
+            reject(new Error("Wait conditions with a script are disabled in the browser workspace."));
             return;
           }`;
 }
+
+/**
+ * Page-side helpers shared by the command and utility scripts: the selected
+ * frame's document, the element table inspect stamps into the page, a unique
+ * selector builder and a CSS.escape fallback. The table lives on a
+ * non-enumerable Symbol property of the page's window, so any navigation
+ * discards it and a ref from before the navigation cannot resolve.
+ */
+const DESKTOP_PAGE_HELPERS = `
+  const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+  const workspaceState = () =>
+    window.__elizaBrowserWorkspaceState ||
+    (window.__elizaBrowserWorkspaceState = {
+      consoleEntries: [],
+      currentFrame: null,
+      dialog: null,
+      highlightedSelector: null,
+      mouse: { buttons: [], x: 0, y: 0 }
+    });
+  let activeDocumentCache = null;
+  const activeDoc = () => {
+    if (activeDocumentCache) return activeDocumentCache;
+    const frameSelector = (window.__elizaBrowserWorkspaceState || {}).currentFrame;
+    if (!frameSelector) return (activeDocumentCache = document);
+    let frameDocument = null;
+    try {
+      const frame = document.querySelector(frameSelector);
+      frameDocument = frame ? frame.contentDocument : null;
+    } catch {}
+    if (!frameDocument) {
+      throw new Error("The selected frame is not accessible. Select the main frame (frame main) or another frame.");
+    }
+    return (activeDocumentCache = frameDocument);
+  };
+  const isTag = (element, ...tags) =>
+    Boolean(element && typeof element.tagName === "string" && tags.includes(element.tagName));
+  const isControl = (element) => isTag(element, "INPUT", "TEXTAREA", "SELECT");
+  // Password and hidden inputs: results name them but never carry their value.
+  const isPrivateControl = ${BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT};
+  const exposedValue = (element) => (isPrivateControl(element) ? null : element.value);
+  const cssEscape = (value) => {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(value);
+    const text = String(value);
+    let out = "";
+    for (let i = 0; i < text.length; i += 1) {
+      const code = text.charCodeAt(i);
+      if (code === 0) out += "\\uFFFD";
+      else if (
+        (code >= 1 && code <= 31) ||
+        code === 127 ||
+        (i === 0 && code >= 48 && code <= 57) ||
+        (i === 1 && code >= 48 && code <= 57 && text.charCodeAt(0) === 45)
+      ) out += "\\\\" + code.toString(16) + " ";
+      else if (i === 0 && code === 45 && text.length === 1) out += "\\\\-";
+      else if (
+        code >= 128 || code === 45 || code === 95 ||
+        (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+      ) out += text[i];
+      else out += "\\\\" + text[i];
+    }
+    return out;
+  };
+  const uniqueSelectorFor = (element) => {
+    if (!element || !element.tagName) return "";
+    const rootNode = element.getRootNode ? element.getRootNode() : null;
+    const root = rootNode && typeof rootNode.querySelectorAll === "function" ? rootNode : element.ownerDocument;
+    const unique = (selector) => {
+      try {
+        return root.querySelectorAll(selector).length === 1;
+      } catch {
+        return false;
+      }
+    };
+    const tag = element.tagName.toLowerCase();
+    const idSelector = (target) => (target.id ? "#" + cssEscape(target.id) : null);
+    const testId = element.getAttribute("data-testid");
+    const name = element.getAttribute("name");
+    const candidates = [
+      idSelector(element),
+      testId ? "[data-testid=" + JSON.stringify(testId) + "]" : null,
+      name ? tag + "[name=" + JSON.stringify(name) + "]" : null
+    ];
+    for (const candidate of candidates) {
+      if (candidate && unique(candidate)) return candidate;
+    }
+    const nthOfType = (target) => {
+      let index = 1;
+      for (let sibling = target.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+        if (sibling.tagName === target.tagName) index += 1;
+      }
+      return target.tagName.toLowerCase() + ":nth-of-type(" + index + ")";
+    };
+    let selector = nthOfType(element);
+    for (let ancestor = element.parentElement; ancestor && !unique(selector); ancestor = ancestor.parentElement) {
+      const anchor = idSelector(ancestor);
+      if (anchor && unique(anchor)) return anchor + " > " + selector;
+      selector = nthOfType(ancestor) + " > " + selector;
+    }
+    return selector;
+  };
+  // A path such as "label:nth-of-type(2) > input" would read back as a
+  // semantic label: lookup, so it is marked as plain CSS, as on the web backend.
+  const SEMANTIC_PREFIX = /^(alt|css|data-testid|testid|label|placeholder|role|text|title)\\s*[:=]/i;
+  const selectorFor = (element) => {
+    const selector = uniqueSelectorFor(element);
+    return SEMANTIC_PREFIX.test(selector) ? "css:" + selector : selector;
+  };
+  const stripCssPrefix = (selector) => String(selector || "").replace(/^css\\s*[:=]\\s*/i, "");
+  const REF_TABLE_KEY = Symbol.for("elizaos.browserWorkspace.elementRefs");
+  const stampElementRefs = (elements) => {
+    const tableId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    Object.defineProperty(window, REF_TABLE_KEY, {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: { id: tableId, elements: elements.map((element) => new WeakRef(element)) }
+    });
+    return tableId;
+  };
+  const resolveElementRef = (ref) => {
+    const table = window[REF_TABLE_KEY];
+    const entry = table && table.id === ref.tableId ? table.elements[ref.index] : null;
+    const element = entry ? entry.deref() : null;
+    if (!element || !element.isConnected) {
+      throw new Error(
+        "Unknown browser snapshot element ref @e" + (ref.index + 1) +
+          ". Run snapshot or inspect again before reusing element refs."
+      );
+    }
+    return element;
+  };
+  const queryOneWithin = (root, selector) => {
+    try {
+      return root.querySelector(selector);
+    } catch {
+      throw new Error("Invalid selector " + selector);
+    }
+  };
+  // NOTE: these scripts are built inside template literals. The whitespace
+  // class in the split pattern needs a double backslash in this source so the
+  // generated page script sees a single-backslash whitespace class.
+  const walkSelectorChain = (start, segments) => {
+    let current = start;
+    for (let index = 0; current && index < segments.length; index += 1) {
+      const segment = segments[index];
+      if (!segment) continue;
+      if (typeof current.matches === "function" && current.matches(segment)) continue;
+      if (/^(input|textarea|select)(?:\\[[^\\]]+\\])?$/i.test(segment) && isControl(current)) continue;
+      current = queryOneWithin(current, segment);
+    }
+    return current;
+  };
+  const splitSelectorChain = (selector) =>
+    String(selector || "")
+      .split(/\\s*>>\\s*/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+  // A ref may carry a suffix: "@e3 >> input" walks the chain from the element,
+  // "@e3 span" queries inside it.
+  const applyRefSuffix = (element, suffix) => {
+    const rest = String(suffix || "").trim();
+    if (!rest) return element;
+    if (rest.startsWith(">>")) return walkSelectorChain(element, splitSelectorChain(rest.slice(2)));
+    return queryOneWithin(element, ":scope " + rest);
+  };
+`;
 
 export function createDesktopBrowserWorkspaceCommandScript(
   command: BrowserWorkspaceCommand,
@@ -196,15 +369,68 @@ export function createDesktopBrowserWorkspaceCommandScript(
     command.subaction === "upload" ||
     command.subaction === "realistic-upload"
   ) {
-    throw new Error(
-      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-    );
+    throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
   }
   const waitScriptBranch = desktopBrowserWorkspaceWaitScriptBranch(env);
   return `
 (() => {
   const command = ${JSON.stringify(command)};
-  const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+  ${DESKTOP_PAGE_HELPERS}
+  const SKIPPED_TEXT = "script, style, noscript, template";
+  const BLOCK_SELECTOR =
+    "address, article, aside, blockquote, body, caption, dd, details, dialog, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, li, main, nav, ol, option, p, pre, section, summary, table, tbody, td, tfoot, th, thead, tr, ul";
+  // Page prose only, as the web backend reads it: no script, style or noscript text.
+  const readText = (element) => {
+    if (!element || element.closest(SKIPPED_TEXT)) return "";
+    const walker = element.ownerDocument.createTreeWalker(element, 5);
+    const parts = [];
+    let previousBlock;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement && node.parentElement.closest(SKIPPED_TEXT)) continue;
+      if (node.nodeName === "BR" || node.nodeName === "HR") {
+        parts.push(" ");
+      } else if (node.nodeType === 3) {
+        const block = node.parentElement ? node.parentElement.closest(BLOCK_SELECTOR) : null;
+        if (block !== previousBlock) parts.push(" ");
+        previousBlock = block;
+        parts.push(node.nodeValue || "");
+      }
+    }
+    return normalize(parts.join(""));
+  };
+  const truncated = false;
+  const serialize = (element) => {
+    const value = isControl(element) && !isPrivateControl(element) ? element.value : null;
+    return {
+      selector: selectorFor(element),
+      tag: element.tagName.toLowerCase(),
+      text: isControl(element) ? normalize(value) : readText(element),
+      type: element.getAttribute("type"),
+      name: element.getAttribute("name"),
+      href: element.getAttribute("href"),
+      value: typeof value === "string" ? value : null,
+    };
+  };
+  const searchTexts = (element) => {
+    const labelText = element.id
+      ? Array.from(activeDoc().querySelectorAll("label[for=" + JSON.stringify(element.id) + "]"))
+          .map((label) => label.textContent)
+          .join(" ")
+      : "";
+    return [
+      element.textContent,
+      element.getAttribute("aria-label"),
+      element.getAttribute("placeholder"),
+      element.getAttribute("title"),
+      element.getAttribute("name"),
+      element.getAttribute("alt"),
+      element.getAttribute("data-testid"),
+      labelText,
+      element.value,
+    ]
+      .map((value) => normalize(value))
+      .filter(Boolean);
+  };
   const textMatches = (candidate, wanted, exact = false) => {
     const left = normalize(candidate).toLowerCase();
     const right = normalize(wanted).toLowerCase();
@@ -217,73 +443,19 @@ export function createDesktopBrowserWorkspaceCommandScript(
         element.matches("a, button, input, textarea, select, option, [role='button']") ||
         !matches.some((other) => other !== element && element.contains(other))
     );
-  const selectorFor = (element) => {
-    if (!element) return "";
-    if (element.id) return "#" + element.id.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
-    const testId = element.getAttribute?.("data-testid");
-    if (testId) return \`[data-testid="\${testId}"]\`;
-    const name = element.getAttribute?.("name");
-    if (name) return \`\${element.tagName.toLowerCase()}[name="\${name}"]\`;
-    const type = element.getAttribute?.("type");
-    if (type) return \`\${element.tagName.toLowerCase()}[type="\${type}"]\`;
-    let index = 1;
-    let previous = element.previousElementSibling;
-    while (previous) {
-      if (previous.tagName === element.tagName) index += 1;
-      previous = previous.previousElementSibling;
-    }
-    return \`\${element.tagName.toLowerCase()}:nth-of-type(\${index})\`;
-  };
-  const serialize = (element) => {
-    const value =
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement
-        ? element.value
-        : null;
-    return {
-      selector: selectorFor(element),
-      tag: element.tagName.toLowerCase(),
-      text: normalize(value ?? element.textContent),
-      type: element.getAttribute?.("type"),
-      name: element.getAttribute?.("name"),
-      href: element.getAttribute?.("href"),
-      value: typeof value === "string" ? value : null,
-    };
-  };
-  const searchTexts = (element) => {
-    const labelText = element.id
-      ? Array.from(document.querySelectorAll('label[for="' + element.id + '"]'))
-          .map((label) => label.textContent)
-          .join(" ")
-      : "";
-    return [
-      element.textContent,
-      element.getAttribute?.("aria-label"),
-      element.getAttribute?.("placeholder"),
-      element.getAttribute?.("title"),
-      element.getAttribute?.("name"),
-      element.getAttribute?.("alt"),
-      element.getAttribute?.("data-testid"),
-      labelText,
-      element.value,
-    ]
-      .map((value) => normalize(value))
-      .filter(Boolean);
-  };
   const isVisible = (element) => {
     if (!element) return false;
-    if (element.hasAttribute?.("hidden") || element.getAttribute?.("aria-hidden") === "true") {
+    if (element.hasAttribute("hidden") || element.getAttribute("aria-hidden") === "true") {
       return false;
     }
     const style = element.style || {};
     return style.display !== "none" && style.visibility !== "hidden";
   };
   const nativeRole = (element) => {
-    const explicit = element.getAttribute?.("role")?.trim()?.toLowerCase();
+    const explicit = element.getAttribute("role")?.trim()?.toLowerCase();
     if (explicit) return explicit;
     const tag = element.tagName.toLowerCase();
-    if (tag === "a" && element.getAttribute?.("href")) return "link";
+    if (tag === "a" && element.getAttribute("href")) return "link";
     if (tag === "button") return "button";
     if (tag === "select") return "combobox";
     if (tag === "option") return "option";
@@ -299,41 +471,19 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     return null;
   };
-  const findByText = (wanted) => {
-    const needle = normalize(wanted).toLowerCase();
-    if (!needle) return null;
-    const elements = Array.from(document.querySelectorAll(
-      "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
-    ));
-    const matches = elements.filter((element) => {
-      const haystacks = [
-        element.textContent,
-        element.getAttribute?.("aria-label"),
-        element.getAttribute?.("placeholder"),
-        element.getAttribute?.("title"),
-        element.getAttribute?.("name"),
-        element.value,
-      ]
-        .map((value) => normalize(value))
-        .filter(Boolean)
-        .map((value) => value.toLowerCase());
-      return haystacks.some((value) => value.includes(needle));
-    });
-    return innerTextMatches(matches)[0] ?? null;
-  };
   const findAllByText = (wanted, exact = false) => {
     const needle = normalize(wanted).toLowerCase();
     if (!needle) return [];
-    const elements = Array.from(document.querySelectorAll(
+    const elements = Array.from(activeDoc().querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
     return innerTextMatches(elements.filter((element) => {
       const haystacks = [
         element.textContent,
-        element.getAttribute?.("aria-label"),
-        element.getAttribute?.("placeholder"),
-        element.getAttribute?.("title"),
-        element.getAttribute?.("name"),
+        element.getAttribute("aria-label"),
+        element.getAttribute("placeholder"),
+        element.getAttribute("title"),
+        element.getAttribute("name"),
         element.value,
       ]
         .map((value) => normalize(value))
@@ -342,28 +492,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
       return haystacks.some((value) => exact ? value === needle : value.includes(needle));
     }));
   };
-  const findByLabel = (wanted, exact = false) => {
-    const labels = Array.from(document.querySelectorAll("label"));
-    for (const label of labels) {
-      if (!textMatches(label.textContent, wanted, exact)) continue;
-      const forId = label.getAttribute("for");
-      if (forId) {
-        const explicit = document.getElementById(forId);
-        if (explicit) return explicit;
-      }
-      const nested = label.querySelector("input, textarea, select, button");
-      if (nested) return nested;
-    }
-    return null;
-  };
   const findAllByLabel = (wanted, exact = false) => {
     const found = [];
-    const labels = Array.from(document.querySelectorAll("label"));
+    const labels = Array.from(activeDoc().querySelectorAll("label"));
     for (const label of labels) {
       if (!textMatches(label.textContent, wanted, exact)) continue;
       const forId = label.getAttribute("for");
       if (forId) {
-        const explicit = document.getElementById(forId);
+        const explicit = activeDoc().getElementById(forId);
         if (explicit) {
           found.push(explicit);
           continue;
@@ -374,25 +510,10 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     return [...new Set(found)];
   };
-  const findByRole = (role, name, exact = false) => {
-    const candidates = Array.from(
-      document.querySelectorAll(
-        "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]"
-      )
-    );
-    for (const candidate of candidates) {
-      if (nativeRole(candidate) !== role.trim().toLowerCase()) continue;
-      if (!name) return candidate;
-      if (searchTexts(candidate).some((value) => textMatches(value, name, exact))) {
-        return candidate;
-      }
-    }
-    return null;
-  };
   const findAllByRole = (role, name, exact = false) => {
     const found = [];
     const candidates = Array.from(
-      document.querySelectorAll(
+      activeDoc().querySelectorAll(
         "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]"
       )
     );
@@ -472,93 +593,26 @@ export function createDesktopBrowserWorkspaceCommandScript(
         return null;
     }
   };
+  // css: names a plain selector, so it clears any findBy the caller sent.
   const mergeSelectorCommand = (selector) => {
     const parsed = parseSemanticSelector(selector);
     if (!parsed) return null;
-    return { ...command, ...parsed, selector: parsed.selector };
+    return { ...command, ...parsed, findBy: parsed.findBy, selector: parsed.selector };
   };
-  const queryOne = (selector) => {
-    try {
-      return document.querySelector(selector);
-    } catch {
-      throw new Error("Invalid selector " + selector);
-    }
-  };
+  const queryOne = (selector) => queryOneWithin(activeDoc(), selector);
   const queryAll = (selector) => {
     try {
-      return Array.from(document.querySelectorAll(selector));
+      return Array.from(activeDoc().querySelectorAll(selector));
     } catch {
       throw new Error("Invalid selector " + selector);
-    }
-  };
-  const findSemantic = (targetCommand = command) => {
-    switch (targetCommand.findBy) {
-      case "alt":
-        return Array.from(document.querySelectorAll("[alt]")).find((element) =>
-          textMatches(
-            element.getAttribute("alt"),
-            targetCommand.text,
-            targetCommand.exact
-          )
-        ) || null;
-      case "first":
-        return targetCommand.selector ? queryOne(targetCommand.selector) : null;
-      case "label":
-        return targetCommand.text
-          ? findByLabel(targetCommand.text, targetCommand.exact)
-          : null;
-      case "last":
-        return targetCommand.selector
-          ? queryAll(targetCommand.selector).at(-1) || null
-          : null;
-      case "nth":
-        return targetCommand.selector && Number.isInteger(targetCommand.index)
-          ? queryAll(targetCommand.selector).at(targetCommand.index) || null
-          : null;
-      case "placeholder":
-        return Array.from(document.querySelectorAll("[placeholder]")).find((element) =>
-          textMatches(
-            element.getAttribute("placeholder"),
-            targetCommand.text,
-            targetCommand.exact
-          )
-        ) || null;
-      case "role":
-        return targetCommand.role
-          ? findByRole(
-              targetCommand.role,
-              targetCommand.name,
-              targetCommand.exact
-            )
-          : null;
-      case "testid":
-        return targetCommand.text
-          ? document.querySelector('[data-testid="' + targetCommand.text + '"]')
-          : null;
-      case "text":
-        return targetCommand.text ? findByText(targetCommand.text) : null;
-      case "title":
-        return Array.from(document.querySelectorAll("[title]")).find((element) =>
-          textMatches(
-            element.getAttribute("title"),
-            targetCommand.text,
-            targetCommand.exact
-          )
-        ) || null;
-      default:
-        return null;
     }
   };
   const findAllSemantic = (targetCommand = command) => {
     switch (targetCommand.findBy) {
       case "alt":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[alt]")).filter((element) =>
-              textMatches(
-                element.getAttribute("alt"),
-                targetCommand.text,
-                targetCommand.exact
-              )
+          ? Array.from(activeDoc().querySelectorAll("[alt]")).filter((element) =>
+              textMatches(element.getAttribute("alt"), targetCommand.text, targetCommand.exact)
             )
           : [];
       case "first":
@@ -579,141 +633,108 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : [];
       case "placeholder":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[placeholder]")).filter((element) =>
-              textMatches(
-                element.getAttribute("placeholder"),
-                targetCommand.text,
-                targetCommand.exact
-              )
+          ? Array.from(activeDoc().querySelectorAll("[placeholder]")).filter((element) =>
+              textMatches(element.getAttribute("placeholder"), targetCommand.text, targetCommand.exact)
             )
           : [];
       case "role":
         return targetCommand.role
-          ? findAllByRole(
-              targetCommand.role,
-              targetCommand.name,
-              targetCommand.exact
-            )
+          ? findAllByRole(targetCommand.role, targetCommand.name, targetCommand.exact)
           : [];
       case "testid":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[data-testid]")).filter(
+          ? Array.from(activeDoc().querySelectorAll("[data-testid]")).filter(
               (element) => element.getAttribute("data-testid") === targetCommand.text
             )
           : [];
       case "text":
         return targetCommand.text ? findAllByText(targetCommand.text, targetCommand.exact) : [];
       case "title":
-        return Array.from(document.querySelectorAll("[title]")).filter((element) =>
-          textMatches(
-            element.getAttribute("title"),
-            targetCommand.text,
-            targetCommand.exact
-          )
+        return Array.from(activeDoc().querySelectorAll("[title]")).filter((element) =>
+          textMatches(element.getAttribute("title"), targetCommand.text, targetCommand.exact)
         );
       default:
         return [];
     }
   };
+  const findSemantic = (targetCommand = command) => findAllSemantic(targetCommand)[0] || null;
+  const queryTarget = (selector) => {
+    const semantic = mergeSelectorCommand(selector);
+    if (semantic && semantic.findBy) return findSemantic(semantic);
+    return queryOne(semantic ? semantic.selector : selector);
+  };
   const findTarget = () => {
+    if (command.elementRef) {
+      return applyRefSuffix(resolveElementRef(command.elementRef), command.selector);
+    }
     if (command.selector) {
-      const selectorChain = normalizeSelectorSyntax(command.selector)
-        // NOTE: this script is built inside a template literal. The whitespace
-        // class in the split pattern needs a double backslash in this source
-        // so the generated page script sees a single-backslash whitespace
-        // class. A lone letter s here would match literal s characters.
-        .split(/\\s*>>\\s*/)
-        .map((segment) => segment.trim())
-        .filter(Boolean);
+      const selectorChain = splitSelectorChain(normalizeSelectorSyntax(command.selector));
       if (selectorChain.length > 1) {
-        let current = queryTarget(selectorChain[0]);
-        for (let index = 1; current && index < selectorChain.length; index += 1) {
-          const segment = selectorChain[index];
-          if (!segment) continue;
-          if (typeof current.matches === "function" && current.matches(segment)) {
-            continue;
-          }
-          if (
-            /^(input|textarea|select)(?:[[^]]+])?$/i.test(segment) &&
-            (current.tagName === "INPUT" ||
-              current.tagName === "TEXTAREA" ||
-              current.tagName === "SELECT")
-          ) {
-            continue;
-          }
-          current = queryOneWithin(current, segment);
-        }
-        return current;
+        return walkSelectorChain(queryTarget(selectorChain[0]), selectorChain.slice(1));
       }
       return queryTarget(command.selector);
     }
     if (command.findBy) return findSemantic();
-    if (command.text) return findByText(command.text);
+    if (command.text) return findAllByText(command.text, command.exact)[0] || null;
     return null;
   };
-  const queryOneWithin = (root, selector) => {
-    try {
-      return root.querySelector(selector);
-    } catch {
-      throw new Error("Invalid selector " + selector);
-    }
-  };
-  const queryTarget = (selector) => {
-    const semantic = mergeSelectorCommand(selector);
-    if (semantic) return findSemantic(semantic);
-    return queryOne(selector);
-  };
-  const inspect = () =>
-    Array.from(
-      document.querySelectorAll(
+  const inspect = () => {
+    const all = Array.from(
+      activeDoc().querySelectorAll(
         "a, button, input, textarea, select, form, [role='button'], [data-testid]"
       )
-		).map((element) => serialize(element));
-  const snapshot = () => ({
-    title: document.title,
-    url: location.href,
-		bodyText: normalize(document.body?.textContent),
-    elements: inspect(),
-  });
+    );
+    const elements = all;
+    const tableId = stampElementRefs(elements);
+    return { elements: elements.map((element) => serialize(element)), tableId };
+  };
+  const snapshot = () => {
+    const { elements, tableId } = inspect();
+    const bodyText = readText(activeDoc().body);
+    return { title: document.title, url: location.href, bodyText, elements, tableId, truncated };
+  };
+  // Set through the prototype's value setter: frameworks that track the last
+  // value on the element itself (React) then see the change on input/change.
+  const setNativeValue = (element, value) => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+    if (descriptor && typeof descriptor.set === "function") {
+      descriptor.set.call(element, value);
+    } else {
+      element.value = value;
+    }
+  };
+  const dispatchValueEvents = (element) => {
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  };
   const setInputValue = (appendMode, target) => {
     const element = target || findTarget();
     if (!element) {
       throw new Error("Target element was not found.");
     }
-    if (
-      !(
-        element instanceof HTMLInputElement ||
-        element instanceof HTMLTextAreaElement ||
-        element instanceof HTMLSelectElement
-      )
-    ) {
+    if (!isControl(element)) {
       throw new Error("Target element is not an input, textarea, or select.");
     }
-    const nextValue = appendMode ? \`\${element.value ?? ""}\${command.value ?? ""}\` : (command.value ?? "");
-    element.value = nextValue;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    return { selector: selectorFor(element), value: element.value };
+    const nextValue = appendMode ? String(element.value ?? "") + String(command.value ?? "") : String(command.value ?? "");
+    setNativeValue(element, nextValue);
+    dispatchValueEvents(element);
+    return { selector: selectorFor(element), value: exposedValue(element) };
   };
   const setChecked = (targetValue) => {
     const element = findTarget();
     if (!element) throw new Error("Target element was not found.");
-    if (!(element instanceof HTMLInputElement)) {
-      throw new Error("Target element is not a checkbox or radio input.");
-    }
-    const type = (element.type || "").toLowerCase();
+    const type = isTag(element, "INPUT") ? (element.type || "").toLowerCase() : "";
     if (type !== "checkbox" && type !== "radio") {
       throw new Error("Target element is not a checkbox or radio input.");
     }
     element.checked = targetValue;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    dispatchValueEvents(element);
     return { checked: element.checked, selector: selectorFor(element) };
   };
   const setSelectValue = () => {
     const element = findTarget();
     if (!element) throw new Error("Target element was not found.");
-    if (!(element instanceof HTMLSelectElement)) {
+    if (!isTag(element, "SELECT")) {
       throw new Error("Target element is not a select.");
     }
     const targetValue = command.value ?? "";
@@ -724,10 +745,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (!option) {
       throw new Error("Select option was not found.");
     }
-    element.value = option.value;
+    setNativeValue(element, option.value);
     option.selected = true;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    dispatchValueEvents(element);
     return { selector: selectorFor(element), value: element.value };
   };
   const focusElement = (element) => {
@@ -735,7 +755,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (typeof element.focus === "function") {
       element.focus();
       // Match the web backend: typing after focus lands after existing text.
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      if (isTag(element, "INPUT", "TEXTAREA")) {
         try {
           if (element.selectionStart !== null) {
             element.setSelectionRange(element.value.length, element.value.length);
@@ -744,7 +764,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       }
     }
     return {
-      focused: document.activeElement === element,
+      focused: element.ownerDocument.activeElement === element,
       selector: selectorFor(element),
     };
   };
@@ -795,7 +815,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       ).then(() => ({ x: x, y: y }));
     }
     if (subaction === "realistic-press") {
-      const target = findTarget() || document.activeElement || document.body;
+      const target = findTarget() || activeDoc().activeElement || activeDoc().body;
       const key = command.key || "Enter";
       target.dispatchEvent(
         new KeyboardEvent("keydown", {
@@ -847,42 +867,22 @@ export function createDesktopBrowserWorkspaceCommandScript(
           ),
       ).then(() => ({
         element: serialize(element),
-        value: element.value,
-      }));
-    }
-    if (subaction === "realistic-upload") {
-      const url = (command.files && command.files[0]) || command.url || command.value;
-      if (!url) {
-        throw new Error("realistic-upload requires files[0] or url");
-      }
-      if (element.tagName !== "INPUT" || element.type !== "file") {
-        throw new Error("realistic-upload target must be input[type=file]");
-      }
-      kit.cursor.highlight(element);
-      return Promise.resolve(kit.setFileInput(element, url, {})).then((info) => ({
-        element: serialize(element),
-        upload: info,
+        value: exposedValue(element),
       }));
     }
     throw new Error("Unsupported realistic subaction: " + subaction);
   };
-  const keyboardTarget = () => findTarget() || document.activeElement || document.body;
+  const keyboardTarget = () => findTarget() || activeDoc().activeElement || activeDoc().body;
   const keyboardWrite = (appendMode) => {
     const target = keyboardTarget();
-    if (
-      !(
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement
-      )
-    ) {
+    if (!isControl(target)) {
       throw new Error("Keyboard text input requires an input, textarea, or select target.");
     }
-    if (target instanceof HTMLSelectElement) return setInputValue(appendMode, target);
+    if (isTag(target, "SELECT")) return setInputValue(appendMode, target);
     // Both keyboard commands insert at the caret or replace the selected text,
     // matching the web backend.
     if (target.readOnly || target.disabled) {
-      return { selector: selectorFor(target), value: target.value };
+      return { selector: selectorFor(target), value: exposedValue(target) };
     }
     let start = null;
     try {
@@ -890,9 +890,8 @@ export function createDesktopBrowserWorkspaceCommandScript(
     } catch {}
     if (start === null) return setInputValue(true, target);
     target.setRangeText(command.value ?? "", start, target.selectionEnd ?? start, "end");
-    target.dispatchEvent(new Event("input", { bubbles: true }));
-    target.dispatchEvent(new Event("change", { bubbles: true }));
-    return { selector: selectorFor(target), value: target.value };
+    dispatchValueEvents(target);
+    return { selector: selectorFor(target), value: exposedValue(target) };
   };
   const keyPhase = (phase) => {
     const target = keyboardTarget();
@@ -900,14 +899,64 @@ export function createDesktopBrowserWorkspaceCommandScript(
     target.dispatchEvent(new KeyboardEvent(phase, { key, bubbles: true }));
     return { key, phase, selector: selectorFor(target) };
   };
-  const scrollTarget = () => findTarget();
+  // Text controls whose Enter submits the form (implicit submission).
+  const IMPLICIT_SUBMIT_TYPES = [
+    "text", "search", "url", "tel", "email", "password", "date", "month",
+    "week", "time", "datetime-local", "number"
+  ];
+  const blocksImplicitSubmission = (element) =>
+    isTag(element, "INPUT") && IMPLICIT_SUBMIT_TYPES.includes(String(element.type).toLowerCase());
+  // Synthetic key events are untrusted, so the browser runs no default action
+  // for them. Run the one that matters (Enter submits or activates) here and
+  // say when the key did nothing.
+  const press = () => {
+    const doc = activeDoc();
+    const target = findTarget() || doc.activeElement || doc.body;
+    const key = command.key || "Enter";
+    const proceed = target.dispatchEvent(
+      new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+    );
+    target.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
+    if (!proceed) {
+      return { key, effect: "prevented", message: "The page handled the key and cancelled its default action." };
+    }
+    if (key === "Enter" && !target.disabled) {
+      const type = String(target.type || "").toLowerCase();
+      if (isTag(target, "BUTTON") || (isTag(target, "INPUT") && ["submit", "image", "button", "reset"].includes(type))) {
+        target.click();
+        return { key, effect: "clicked", selector: selectorFor(target) };
+      }
+      const form = blocksImplicitSubmission(target) ? target.form : null;
+      if (form) {
+        const controls = Array.from(form.elements);
+        const defaultButton = controls.find(
+          (control) =>
+            (isTag(control, "BUTTON") && control.type === "submit") ||
+            (isTag(control, "INPUT") && ["submit", "image"].includes(control.type))
+        );
+        if (
+          defaultButton
+            ? !defaultButton.disabled
+            : controls.filter(blocksImplicitSubmission).length <= 1
+        ) {
+          if (typeof form.requestSubmit === "function") {
+            form.requestSubmit(defaultButton || undefined);
+          } else {
+            form.submit();
+          }
+          return { key, effect: "submitted", selector: selectorFor(form) };
+        }
+      }
+    }
+    return { key, effect: "none", message: "The key had no default action here; page handlers may still have run." };
+  };
   const scroll = () => {
-    const target = scrollTarget();
+    const target = findTarget();
     const direction = command.direction || "down";
     const pixels = Math.max(1, Math.abs(Number(command.pixels) || 240));
     const axis = direction === "left" || direction === "right" ? "x" : "y";
     const delta = direction === "up" || direction === "left" ? -pixels : pixels;
-    if (target instanceof HTMLElement) {
+    if (target && target.nodeType === 1) {
       if (axis === "y") {
         target.scrollTop = (target.scrollTop || 0) + delta;
         return { axis, selector: selectorFor(target), value: target.scrollTop };
@@ -915,17 +964,19 @@ export function createDesktopBrowserWorkspaceCommandScript(
       target.scrollLeft = (target.scrollLeft || 0) + delta;
       return { axis, selector: selectorFor(target), value: target.scrollLeft };
     }
+    const view = activeDoc().defaultView || window;
     if (axis === "y") {
-      window.scrollBy(0, delta);
-      return { axis, selector: null, value: window.scrollY };
+      view.scrollBy(0, delta);
+      return { axis, selector: null, value: view.scrollY };
     }
-    window.scrollBy(delta, 0);
-    return { axis, selector: null, value: window.scrollX };
+    view.scrollBy(delta, 0);
+    return { axis, selector: null, value: view.scrollX };
   };
   const getResult = () => {
     if (command.getMode === "title") return document.title;
     if (command.getMode === "url") return location.href;
     if (command.getMode === "count") {
+      if (command.elementRef) return findTarget() ? 1 : 0;
       if (!command.selector) throw new Error("count requires selector");
       const semantic = mergeSelectorCommand(command.selector);
       if (semantic && semantic.findBy) return findAllSemantic(semantic).length;
@@ -942,9 +993,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "box":
         return element.getBoundingClientRect();
       case "checked":
-        return element instanceof HTMLInputElement
+        return isTag(element, "INPUT")
           ? Boolean(element.checked)
-          : element instanceof HTMLOptionElement
+          : isTag(element, "OPTION")
             ? Boolean(element.selected)
             : false;
       case "enabled":
@@ -952,7 +1003,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "html":
         return element.innerHTML;
       case "styles": {
-        const computed = getComputedStyle(element);
+        const computed = (element.ownerDocument.defaultView || window).getComputedStyle(element);
         return {
           display: computed.display || null,
           visibility: computed.visibility || null,
@@ -960,19 +1011,21 @@ export function createDesktopBrowserWorkspaceCommandScript(
         };
       }
       case "text":
-        return normalize(element.textContent);
+        return readText(element);
       case "value":
-        return element.value ?? element.getAttribute?.("value");
+        if (isPrivateControl(element)) return null;
+        return element.value ?? element.getAttribute("value");
       case "visible":
         return isVisible(element);
       default:
-        return normalize(element.textContent);
+        return readText(element);
     }
   };
   const waitForCondition = () =>
     new Promise((resolve, reject) => {
       if (
         !command.selector &&
+        !command.elementRef &&
         !command.findBy &&
         !command.text &&
         !command.url &&
@@ -986,8 +1039,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
       const deadline = Date.now() + (Number(command.timeoutMs) || 4000);
       const check = () => {
         try {
-          if (command.selector) {
-            const found = findTarget();
+          if (command.selector || command.elementRef) {
+            let found = null;
+            try {
+              found = findTarget();
+            } catch (error) {
+              // A ref whose element went away counts as hidden, not as an error.
+              if (!command.elementRef || command.state !== "hidden") throw error;
+            }
             const visible =
               command.state === "hidden"
                 ? !found || !isVisible(found)
@@ -1004,7 +1063,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
               return;
             }
           }
-          if (command.text && normalize(document.body?.textContent).includes(command.text)) {
+          if (command.text && normalize(activeDoc().body?.textContent).includes(command.text)) {
             resolve({ ok: true, text: command.text });
             return;
           }
@@ -1025,117 +1084,154 @@ export function createDesktopBrowserWorkspaceCommandScript(
       check();
     });
 
-  switch (command.subaction) {
-    case "inspect":
-      return { title: document.title, url: location.href, elements: inspect() };
-    case "snapshot":
-      return snapshot();
-    case "get":
-      return { value: getResult() };
-    case "find": {
-      const element = findTarget();
-      if (!element) throw new Error("Target element was not found.");
-      switch (command.action) {
-        case "check":
-          return setChecked(true);
-        case "click":
-          return activateElement("click", element);
-        case "fill":
-          return setInputValue(false, element);
-        case "focus":
-          return focusElement(element);
-        case "hover":
-          return hoverElement(element);
-        case "text":
-        case undefined:
-          return { element: serialize(element), value: normalize(element.textContent) };
-        case "type":
-          return setInputValue(true, element);
-        case "uncheck":
-          return setChecked(false);
-        default:
-          throw new Error("Unsupported find action.");
+  const run = () => {
+    switch (command.subaction) {
+      case "inspect": {
+        const { elements, tableId } = inspect();
+        return { title: document.title, url: location.href, elements, tableId, truncated };
       }
-    }
-    case "click": {
-      const element = findTarget();
-      return activateElement("click", element);
-    }
-    case "dblclick": {
-      const element = findTarget();
-      return activateElement("dblclick", element);
-    }
-    case "check":
-      return setChecked(true);
-    case "fill":
-      return setInputValue(false);
-    case "focus": {
-      const element = findTarget();
-      return focusElement(element);
-    }
-    case "hover": {
-      const element = findTarget();
-      return hoverElement(element);
-    }
-    case "keyboardinserttext":
-      return keyboardWrite(false);
-    case "keyboardtype":
-      return keyboardWrite(true);
-    case "keydown":
-      return keyPhase("keydown");
-    case "keyup":
-      return keyPhase("keyup");
-    case "type":
-      return setInputValue(true);
-    case "press": {
-      const target = findTarget() ?? document.activeElement ?? document.body;
-      const key = command.key || "Enter";
-      target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-      target.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
-      return { key, url: location.href };
-    }
-    case "realistic-click":
-    case "realistic-fill":
-    case "realistic-type":
-    case "realistic-press":
-    case "realistic-upload":
-    case "cursor-move":
-    case "cursor-hide":
-      return runRealisticSubaction(command.subaction);
-    case "scroll":
-      return scroll();
-    case "scrollinto": {
-      const element = findTarget();
-      if (!element) throw new Error("Target element was not found.");
-      if (typeof element.scrollIntoView === "function") {
-        element.scrollIntoView();
+      case "snapshot":
+        return snapshot();
+      case "get":
+        return { value: getResult() };
+      case "find": {
+        const element = findTarget();
+        if (!element) throw new Error("Target element was not found.");
+        switch (command.action) {
+          case "check":
+            return setChecked(true);
+          case "click":
+            return activateElement("click", element);
+          case "fill":
+            return setInputValue(false, element);
+          case "focus":
+            return focusElement(element);
+          case "hover":
+            return hoverElement(element);
+          case "text":
+          case undefined:
+            return { element: serialize(element), value: readText(element) };
+          case "type":
+            return setInputValue(true, element);
+          case "uncheck":
+            return setChecked(false);
+          default:
+            throw new Error("Unsupported find action.");
+        }
       }
-      return { scrolled: true, selector: selectorFor(element) };
+      case "click":
+        return activateElement("click", findTarget());
+      case "dblclick":
+        return activateElement("dblclick", findTarget());
+      case "check":
+        return setChecked(true);
+      case "fill":
+        return setInputValue(false);
+      case "focus":
+        return focusElement(findTarget());
+      case "hover":
+        return hoverElement(findTarget());
+      case "keyboardinserttext":
+        return keyboardWrite(false);
+      case "keyboardtype":
+        return keyboardWrite(true);
+      case "keydown":
+        return keyPhase("keydown");
+      case "keyup":
+        return keyPhase("keyup");
+      case "type":
+        return setInputValue(true);
+      case "press":
+        return press();
+      case "realistic-click":
+      case "realistic-fill":
+      case "realistic-type":
+      case "realistic-press":
+      case "cursor-move":
+      case "cursor-hide":
+        return runRealisticSubaction(command.subaction);
+      case "scroll":
+        return scroll();
+      case "scrollinto": {
+        const element = findTarget();
+        if (!element) throw new Error("Target element was not found.");
+        if (typeof element.scrollIntoView === "function") {
+          element.scrollIntoView();
+        }
+        return { scrolled: true, selector: selectorFor(element) };
+      }
+      case "select":
+        return setSelectValue();
+      case "uncheck":
+        return setChecked(false);
+      case "wait":
+        return waitForCondition();
+      // These finish after this script returns; the host reads the tab's new
+      // URL and title once the navigation lands.
+      case "back":
+        history.back();
+        return { navigating: true };
+      case "forward":
+        history.forward();
+        return { navigating: true };
+      case "reload":
+        location.reload();
+        return { navigating: true };
+      default:
+        throw new Error("Unsupported desktop browser subaction: " + command.subaction);
     }
-    case "select":
-      return setSelectValue();
-    case "uncheck":
-      return setChecked(false);
-    case "wait":
-      return waitForCondition();
-    case "back":
-      history.back();
-      return { url: location.href, title: document.title };
-    case "forward":
-      history.forward();
-      return { url: location.href, title: document.title };
-    case "reload":
-      location.reload();
-      return { url: location.href, title: document.title };
-    default:
-      throw new Error(\`Unsupported desktop browser subaction: \${command.subaction}\`);
-  }
+  };
+  // The document URL travels with every result so the host can drop element
+  // refs taken on an earlier document.
+  const finish = (value) => ({ ${DESKTOP_RESULT_MARKER}: true, value, documentUrl: location.href });
+  const result = run();
+  return result && typeof result.then === "function" ? result.then(finish) : finish(result);
 })()
 `.trim();
 }
 
+/** Marks a command script result envelope (value plus the document URL). */
+const DESKTOP_RESULT_MARKER = "__elizaWorkspaceResult";
+
+function unwrapDesktopBrowserWorkspaceResult(result: unknown): {
+  value: unknown;
+  documentUrl: string | null;
+} {
+  if (
+    result &&
+    typeof result === "object" &&
+    (result as Record<string, unknown>)[DESKTOP_RESULT_MARKER] === true
+  ) {
+    const envelope = result as { value?: unknown; documentUrl?: unknown };
+    return {
+      value: envelope.value,
+      documentUrl:
+        typeof envelope.documentUrl === "string" ? envelope.documentUrl : null,
+    };
+  }
+  return { value: result, documentUrl: null };
+}
+
+/**
+ * The page reports a stale ref as a plain script error; give it the same
+ * machine-readable code a stale web ref has.
+ */
+async function withDesktopElementRefErrors<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const ref = message.match(/Unknown browser snapshot element ref (@e\d+)/i);
+    if (ref?.[1]) {
+      throw createBrowserWorkspaceUnknownElementRefError(ref[1]);
+    }
+    throw error;
+  }
+}
+
 export function createDesktopBrowserWorkspaceUtilityScript(
   command: BrowserWorkspaceCommand,
+  options: { clipboardText?: string } = {},
 ): string {
   const parsedDeltaX =
     typeof command.deltaX === "number" && Number.isFinite(command.deltaX)
@@ -1175,82 +1271,14 @@ export function createDesktopBrowserWorkspaceUtilityScript(
   return `
 (() => {
   const command = ${JSON.stringify(command)};
-  const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
-  const state =
-    window.__elizaBrowserWorkspaceState ||
-    (window.__elizaBrowserWorkspaceState = {
-      clipboardText: "",
-      consoleEntries: [],
-      currentFrame: null,
-      dialog: null,
-      errors: [],
-      highlightedSelector: null,
-      mouse: { buttons: [], x: 0, y: 0 },
-      networkHar: { active: false, entries: [], startedAt: null },
-      networkNextRequestId: 1,
-      networkRequests: [],
-      networkRoutes: [],
-      settings: {
-        credentials: null,
-        device: null,
-        geo: null,
-        headers: {},
-        media: null,
-        offline: false,
-        viewport: null
-      }
-    });
-  const patternMatches = (pattern, value) => {
-    const trimmed = String(pattern ?? "").trim();
-    if (!trimmed) return false;
-    if (!trimmed.includes("*")) return String(value ?? "").includes(trimmed);
-    let wildcard = "";
-    for (let i = 0; i < trimmed.length; i += 1) {
-      const char = trimmed[i];
-      if (char === "*") {
-        if (trimmed[i + 1] === "*") {
-          wildcard += ".*";
-          i += 1;
-        } else {
-          wildcard += ".*";
-        }
-      } else {
-        wildcard += char.replace(/[|\\\\{}()[\\]^$+?.]/g, "\\\\$&");
-      }
-    }
-    return new RegExp("^" + wildcard + "$", "i").test(String(value ?? ""));
-  };
-  const buildSelector = (element) => {
-    if (!element || !element.tagName) return null;
-    const testId = element.getAttribute && element.getAttribute("data-testid");
-    if (testId) return '[data-testid="' + testId + '"]';
-    const name = element.getAttribute && element.getAttribute("name");
-    if (name) return element.tagName.toLowerCase() + '[name="' + name + '"]';
-    const title = element.getAttribute && element.getAttribute("title");
-    if (title) return element.tagName.toLowerCase() + '[title="' + title + '"]';
-    return element.tagName.toLowerCase();
-  };
-  const activeDocument = (() => {
-    if (!state.currentFrame) return document;
-    try {
-      const frame = document.querySelector(state.currentFrame);
-      return frame && frame.contentDocument ? frame.contentDocument : document;
-    } catch {
-      return document;
-    }
-  })();
-  const queryOne = (selector, root = activeDocument) => {
-    try {
-      return root.querySelector(selector);
-    } catch {
-      throw new Error("Invalid selector " + selector);
-    }
-  };
+  const clipboardText = ${JSON.stringify(options.clipboardText ?? "")};
+  ${DESKTOP_PAGE_HELPERS}
+  const queryOne = (selector) => queryOneWithin(activeDoc(), stripCssPrefix(selector));
   const findByText = (needle) => {
     const wanted = normalize(needle).toLowerCase();
     if (!wanted) return null;
     const candidates = Array.from(
-      activeDocument.querySelectorAll(
+      activeDoc().querySelectorAll(
         "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
       )
     );
@@ -1277,157 +1305,35 @@ export function createDesktopBrowserWorkspaceUtilityScript(
     );
   };
   const resolveTarget = () => {
+    if (command.elementRef) {
+      return applyRefSuffix(resolveElementRef(command.elementRef), command.selector);
+    }
     if (command.selector) return queryOne(command.selector);
     if (command.text) return findByText(command.text);
-    return activeDocument.activeElement || activeDocument.body;
+    return activeDoc().activeElement || activeDoc().body;
   };
-  const recordRequest = (request) => {
-    const entry = {
-      ...request,
-      id: "req_" + state.networkNextRequestId++,
-      timestamp: new Date().toISOString()
-    };
-    state.networkRequests.push(entry);
-    if (state.networkHar.active) state.networkHar.entries.push(entry);
-    return entry;
-  };
-  if (!state.consoleWrapped) {
-    for (const level of ["log", "info", "warn", "error"]) {
-      console[level] = (...args) => {
-        state.consoleEntries.push({
-          level,
-          message: args.map((value) => normalize(value)).join(" "),
-          timestamp: new Date().toISOString()
-        });
-      };
-    }
-    state.consoleWrapped = true;
-  }
-  if (!state.dialogWrapped) {
-    window.alert = (message) => {
-      state.dialog = { defaultValue: null, message: String(message ?? ""), open: true, type: "alert" };
-    };
-    window.confirm = (message) => {
-      state.dialog = { defaultValue: null, message: String(message ?? ""), open: true, type: "confirm" };
-      return false;
-    };
-    window.prompt = (message, defaultValue) => {
-      state.dialog = {
-        defaultValue: defaultValue ?? null,
-        message: String(message ?? ""),
-        open: true,
-        type: "prompt"
-      };
-      return null;
-    };
-    state.dialogWrapped = true;
-  }
-  if (!state.fetchWrapped) {
-    state.originalFetch = window.fetch ? window.fetch.bind(window) : null;
-    window.fetch = async (input, init = {}) => {
-      const inputUrl =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : typeof input?.url === "string"
-              ? input.url
-              : String(input);
-      const url = new URL(inputUrl, location.href).toString();
-      if (state.settings.offline) {
-        recordRequest({
-          matchedRoute: null,
-          method: String(init.method || "GET").toUpperCase(),
-          resourceType: "fetch",
-          responseBody: null,
-          responseHeaders: {},
-          status: 0,
-          url
-        });
-        throw new Error("Browser workspace is offline.");
-      }
-      const route = [...state.networkRoutes].reverse().find((entry) => patternMatches(entry.pattern, url)) || null;
-      if (route && route.abort) {
-        recordRequest({
-          matchedRoute: route.pattern,
-          method: String(init.method || "GET").toUpperCase(),
-          resourceType: "fetch",
-          responseBody: null,
-          responseHeaders: route.headers || {},
-          status: 0,
-          url
-        });
-        throw new Error("Browser workspace network route aborted request: " + url);
-      }
-      if (route && (route.body !== null || route.status !== null || Object.keys(route.headers || {}).length > 0)) {
-        const response = new Response(route.body || "", {
-          headers: route.headers || {},
-          status: route.status || 200
-        });
-        recordRequest({
-          matchedRoute: route.pattern,
-          method: String(init.method || "GET").toUpperCase(),
-          resourceType: "fetch",
-          responseBody: route.body || "",
-          responseHeaders: route.headers || {},
-          status: route.status || 200,
-          url
-        });
-        return response;
-      }
-      const headers = new Headers(init.headers || {});
-      for (const [key, value] of Object.entries(state.settings.headers || {})) {
-        if (!headers.has(key)) headers.set(key, value);
-      }
-      if (state.settings.credentials && state.settings.credentials.username && !headers.has("Authorization")) {
-        headers.set(
-          "Authorization",
-          "Basic " + btoa(state.settings.credentials.username + ":" + state.settings.credentials.password)
-        );
-      }
-      const response = await state.originalFetch(url, { ...init, headers });
-      recordRequest({
-        matchedRoute: null,
-        method: String(init.method || "GET").toUpperCase(),
-        resourceType: "fetch",
-        responseBody: null,
-        responseHeaders: Object.fromEntries(response.headers.entries()),
-        status: response.status,
-        url: response.url || url
-      });
-      return response;
-    };
-    state.fetchWrapped = true;
-  }
-  Object.defineProperty(navigator, "onLine", {
-    configurable: true,
-    get: () => !state.settings.offline
-  });
   switch (command.subaction) {
     case "clipboard": {
+      // Clipboard text is held by the host; the page only reads or receives it.
       const action = command.clipboardAction || "read";
-      if (action === "read") return state.clipboardText;
-      if (action === "write") {
-        state.clipboardText = command.value || command.text || "";
-        return state.clipboardText;
-      }
       if (action === "copy") {
         const target = resolveTarget();
-        state.clipboardText =
-          target && typeof target.value === "string"
-            ? String(target.value || "")
-            : normalize(target?.textContent || activeDocument.body?.textContent);
-        return state.clipboardText;
+        if (isPrivateControl(target)) throw new Error("Password and hidden fields cannot be copied.");
+        return target && typeof target.value === "string"
+          ? String(target.value || "")
+          : normalize((target && target.textContent) || (activeDoc().body && activeDoc().body.textContent));
       }
       const target = resolveTarget();
       if (target && typeof target.value === "string") {
-        target.value = String(target.value || "") + state.clipboardText;
-        target.setAttribute("value", target.value);
-        return { selector: buildSelector(target), value: target.value };
+        target.value = String(target.value || "") + clipboardText;
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+        target.dispatchEvent(new Event("change", { bubbles: true }));
+        return { selector: selectorFor(target), value: exposedValue(target) };
       }
-      return state.clipboardText;
+      return clipboardText;
     }
     case "mouse": {
+      const state = workspaceState();
       const action = command.mouseAction || "move";
       if (action === "move") {
         state.mouse.x = typeof command.x === "number" ? command.x : state.mouse.x;
@@ -1450,39 +1356,15 @@ export function createDesktopBrowserWorkspaceUtilityScript(
     }
     case "drag": {
       const source = resolveTarget();
-      const target = command.value ? queryOne(command.value) : null;
+      const target = command.valueElementRef
+        ? resolveElementRef(command.valueElementRef)
+        : command.value
+          ? queryOne(command.value)
+          : null;
       if (!source || !target) throw new Error("Eliza browser workspace drag requires source selector and target selector in value.");
       source.setAttribute("data-eliza-dragging", "true");
       target.setAttribute("data-eliza-drop-target", "true");
-      return { source: buildSelector(source), target: buildSelector(target) };
-    }
-    case "upload": {
-      throw new Error("Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.");
-    }
-    case "set": {
-      const action = command.setAction || "viewport";
-      if (action === "viewport") {
-        state.settings.viewport = { width: command.width || 1280, height: command.height || 720, scale: command.scale || 1 };
-      } else if (action === "device") {
-        state.settings.device = command.device || null;
-      } else if (action === "geo") {
-        state.settings.geo =
-          typeof command.latitude === "number" && typeof command.longitude === "number"
-            ? { latitude: command.latitude, longitude: command.longitude }
-            : null;
-      } else if (action === "offline") {
-        state.settings.offline = Boolean(command.offline);
-      } else if (action === "headers") {
-        state.settings.headers = command.headers || {};
-      } else if (action === "credentials") {
-        state.settings.credentials =
-          command.username || command.password
-            ? { username: command.username || "", password: command.password || "" }
-            : null;
-      } else if (action === "media") {
-        state.settings.media = command.media || null;
-      }
-      return state.settings;
+      return { source: selectorFor(source), target: selectorFor(target) };
     }
     case "cookies": {
       const action = command.cookieAction || "get";
@@ -1532,43 +1414,29 @@ export function createDesktopBrowserWorkspaceUtilityScript(
       }
       return out;
     }
-    case "network": {
-      const action = command.networkAction || "requests";
-      if (action === "route") {
-        if (!command.url) throw new Error("Eliza browser workspace network route requires url pattern.");
-        state.networkRoutes.push({
-          abort: Boolean(command.offline),
-          body: command.responseBody ?? null,
-          headers: command.responseHeaders || {},
-          pattern: command.url,
-          status: typeof command.responseStatus === "number" ? command.responseStatus : null
-        });
-        return state.networkRoutes;
-      }
-      if (action === "unroute") {
-        state.networkRoutes = command.url
-          ? state.networkRoutes.filter((entry) => entry.pattern !== command.url)
-          : [];
-        return state.networkRoutes;
-      }
-      if (action === "request") {
-        return state.networkRequests.find((entry) => entry.id === command.requestId) || null;
-      }
-      if (action === "harstart") {
-        state.networkHar = { active: true, entries: [], startedAt: new Date().toISOString() };
-        return state.networkHar;
-      }
-      if (action === "harstop") {
-        state.networkHar.active = false;
-        return { log: { entries: state.networkHar.entries, startedAt: state.networkHar.startedAt } };
-      }
-      let requests = [...state.networkRequests];
-      if (command.filter) requests = requests.filter((entry) => entry.url.includes(command.filter));
-      if (command.method) requests = requests.filter((entry) => entry.method === String(command.method).toUpperCase());
-      if (command.status) requests = requests.filter((entry) => String(entry.status || "") === String(command.status));
-      return requests;
-    }
     case "dialog": {
+      // The page's alert/confirm/prompt are replaced only once the agent asks
+      // about dialogs; from then on confirm() answers false and prompt() null.
+      const state = workspaceState();
+      if (!state.dialogWrapped) {
+        window.alert = (message) => {
+          state.dialog = { defaultValue: null, message: String(message ?? ""), open: true, type: "alert" };
+        };
+        window.confirm = (message) => {
+          state.dialog = { defaultValue: null, message: String(message ?? ""), open: true, type: "confirm" };
+          return false;
+        };
+        window.prompt = (message, defaultValue) => {
+          state.dialog = {
+            defaultValue: defaultValue ?? null,
+            message: String(message ?? ""),
+            open: true,
+            type: "prompt"
+          };
+          return null;
+        };
+        state.dialogWrapped = true;
+      }
       const action = command.dialogAction || "status";
       if (action === "status") return state.dialog;
       if (state.dialog) state.dialog.open = false;
@@ -1579,27 +1447,48 @@ export function createDesktopBrowserWorkspaceUtilityScript(
       state.dialog = null;
       return result;
     }
-    case "console":
+    case "console": {
+      // Console capture starts at the first console command and keeps the
+      // page's own console output.
+      const state = workspaceState();
+      if (!state.consoleWrapped) {
+        for (const level of ["log", "info", "warn", "error"]) {
+          const original = console[level];
+          console[level] = (...args) => {
+            state.consoleEntries.push({
+              level,
+              message: args.map((value) => normalize(value)).join(" "),
+              timestamp: new Date().toISOString()
+            });
+            return typeof original === "function" ? original.apply(console, args) : undefined;
+          };
+        }
+        state.consoleWrapped = true;
+      }
       if (command.consoleAction === "clear") state.consoleEntries = [];
       return state.consoleEntries;
-    case "errors":
-      if (command.consoleAction === "clear") state.errors = [];
-      return state.errors;
+    }
     case "highlight": {
+      const state = workspaceState();
       const target = resolveTarget();
       if (!target) throw new Error("Target element was not found.");
       target.setAttribute("data-eliza-highlight", "true");
-      state.highlightedSelector = buildSelector(target);
+      state.highlightedSelector = selectorFor(target);
       return { selector: state.highlightedSelector };
     }
     case "frame": {
+      const state = workspaceState();
       if ((command.frameAction || "select") === "main") {
         state.currentFrame = null;
         return { frame: null };
       }
-      const frame = command.selector ? document.querySelector(command.selector) : null;
+      const frame = command.elementRef
+        ? resolveElementRef(command.elementRef)
+        : command.selector
+          ? queryOneWithin(document, stripCssPrefix(command.selector))
+          : null;
       if (!frame || frame.tagName !== "IFRAME") throw new Error("Eliza browser workspace frame select requires an iframe selector.");
-      state.currentFrame = command.selector;
+      state.currentFrame = uniqueSelectorFor(frame);
       return { frame: state.currentFrame };
     }
     default:
@@ -1607,6 +1496,30 @@ export function createDesktopBrowserWorkspaceUtilityScript(
   }
 })()
 `.trim();
+}
+
+/**
+ * Desktop settings and network shaping would only patch page globals that the
+ * next navigation discards (and would leave credentials readable by the
+ * page), so they are refused until the host can apply them.
+ */
+function assertDesktopBrowserWorkspaceUtilitySupported(
+  command: BrowserWorkspaceCommand,
+): void {
+  const unsupported =
+    command.subaction === "set"
+      ? `set ${command.setAction ?? "viewport"}`
+      : command.subaction === "network"
+        ? `network ${command.networkAction ?? "requests"}`
+        : command.subaction === "errors"
+          ? "errors"
+          : null;
+  if (unsupported) {
+    throw new BrowserDispatchFailure(
+      "UNSUPPORTED",
+      `Eliza browser workspace ${unsupported} is not available on the desktop browser yet.`,
+    );
+  }
 }
 
 export async function executeDesktopBrowserWorkspaceUtilityCommand(
@@ -1617,35 +1530,49 @@ export async function executeDesktopBrowserWorkspaceUtilityCommand(
     command.subaction === "upload" ||
     command.subaction === "realistic-upload"
   ) {
-    throw new Error(
-      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-    );
+    throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
   }
+  assertDesktopBrowserWorkspaceUtilitySupported(command);
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-  if (
-    command.subaction === "cookies" ||
-    command.subaction === "storage" ||
-    (command.subaction === "set" &&
-      (command.setAction === "credentials" || command.setAction === "headers"))
-  ) {
+  command = resolveBrowserWorkspaceCommandElementRefs(command, "desktop", id);
+  if (command.subaction === "cookies" || command.subaction === "storage") {
     await assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
       id,
       env,
       command.subaction,
     );
   }
+  const clipboardAction = command.clipboardAction ?? "read";
+  if (
+    command.subaction === "clipboard" &&
+    (clipboardAction === "read" || clipboardAction === "write")
+  ) {
+    if (clipboardAction === "write") {
+      setBrowserWorkspaceClipboardText(command.value ?? command.text ?? "");
+    }
+    return {
+      mode: "desktop",
+      subaction: command.subaction,
+      value: browserWorkspaceClipboardText,
+    };
+  }
   const startedAt = Date.now();
-  const result = await evaluateBrowserWorkspaceTab(
-    {
-      id,
-      script: createDesktopBrowserWorkspaceUtilityScript({
-        ...command,
+  const result = await withDesktopElementRefErrors(
+    evaluateBrowserWorkspaceTab(
+      {
         id,
-      }),
-      timeoutMs: resolveBrowserCommandTimeoutMs(command),
-    },
-    env,
+        script: createDesktopBrowserWorkspaceUtilityScript(
+          { ...command, id },
+          { clipboardText: browserWorkspaceClipboardText },
+        ),
+        timeoutMs: resolveBrowserCommandTimeoutMs(command),
+      },
+      env,
+    ),
   );
+  if (command.subaction === "clipboard" && clipboardAction === "copy") {
+    setBrowserWorkspaceClipboardText(typeof result === "string" ? result : "");
+  }
   const runtime = getBrowserWorkspaceRuntimeState("desktop", id);
   appendBrowserWorkspaceTraceEntry(runtime, {
     subaction: command.subaction,
@@ -1684,9 +1611,11 @@ export async function getDesktopBrowserWorkspaceSnapshotRecord(
     }
   })();
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+  const isPrivateControl = ${BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT};
   const controlText = Array.from(activeDocument.querySelectorAll("input, textarea, select, option:checked"))
     .map((element) => {
       const name = element.getAttribute("name") || element.getAttribute("id") || element.tagName.toLowerCase();
+      if (isPrivateControl(element)) return name;
       const value =
         element.tagName === "SELECT"
           ? element.value
@@ -1721,7 +1650,6 @@ export async function getDesktopBrowserWorkspaceSessionState(
       id,
       script: `
 (() => {
-  const state = window.__elizaBrowserWorkspaceState || {};
   const readStorage = (storage) => {
     const out = {};
     for (let i = 0; i < storage.length; i += 1) {
@@ -1740,11 +1668,9 @@ export async function getDesktopBrowserWorkspaceSessionState(
       })
   );
   return {
-    clipboard: state.clipboardText || "",
     cookies,
     localStorage: readStorage(localStorage),
     sessionStorage: readStorage(sessionStorage),
-    settings: state.settings || {},
     url: location.href
   };
 })()
@@ -1752,7 +1678,10 @@ export async function getDesktopBrowserWorkspaceSessionState(
     },
     env,
   );
-  return result as Record<string, unknown>;
+  return {
+    clipboard: browserWorkspaceClipboardText,
+    ...(result as Record<string, unknown>),
+  };
 }
 
 export async function loadDesktopBrowserWorkspaceSessionState(
@@ -1767,10 +1696,11 @@ export async function loadDesktopBrowserWorkspaceSessionState(
       id,
       script: `
 (() => {
-  const payload = ${JSON.stringify(payload)};
-  const state =
-    window.__elizaBrowserWorkspaceState ||
-    (window.__elizaBrowserWorkspaceState = { settings: {} });
+  const payload = ${JSON.stringify({
+    cookies: payload.cookies,
+    localStorage: payload.localStorage,
+    sessionStorage: payload.sessionStorage,
+  })};
   localStorage.clear();
   for (const [key, value] of Object.entries(payload.localStorage || {})) {
     localStorage.setItem(key, String(value ?? ""));
@@ -1782,14 +1712,15 @@ export async function loadDesktopBrowserWorkspaceSessionState(
   for (const [key, value] of Object.entries(payload.cookies || {})) {
     document.cookie = key + "=" + String(value ?? "") + "; path=/";
   }
-  state.clipboardText = typeof payload.clipboard === "string" ? payload.clipboard : "";
-  state.settings = typeof payload.settings === "object" && payload.settings ? payload.settings : state.settings;
   return { loaded: true };
 })()
       `.trim(),
     },
     env,
   );
+  if (typeof payload.clipboard === "string") {
+    setBrowserWorkspaceClipboardText(payload.clipboard);
+  }
 }
 
 export async function executeDesktopBrowserWorkspaceDomCommand(
@@ -1800,9 +1731,7 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
     command.subaction === "upload" ||
     command.subaction === "realistic-upload"
   ) {
-    throw new Error(
-      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
-    );
+    throw new Error(BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE);
   }
   assertBrowserWorkspaceUserScriptAllowed(
     command.script,
@@ -1813,23 +1742,27 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
   const startedAt = Date.now();
   command = resolveBrowserWorkspaceCommandElementRefs(command, "desktop", id);
-  const result = await evaluateBrowserWorkspaceTab(
-    {
-      id,
-      script: createDesktopBrowserWorkspaceCommandScript(
-        {
-          ...command,
-          id,
-        },
-        env,
-      ),
-      // The page script can run as long as the host's eval budget (30s by
-      // default) or the command's own wait; the 12s bridge default would
-      // abort a wait or a long typed fill that is still running.
-      timeoutMs: resolveBrowserCommandTimeoutMs(command),
-    },
-    env,
+  const envelope = await withDesktopElementRefErrors(
+    evaluateBrowserWorkspaceTab(
+      {
+        id,
+        script: createDesktopBrowserWorkspaceCommandScript(
+          {
+            ...command,
+            id,
+          },
+          env,
+        ),
+        // The page script can run as long as the host's eval budget (30s by
+        // default) or the command's own wait; the 12s bridge default would
+        // abort a wait or a long typed fill that is still running.
+        timeoutMs: resolveBrowserCommandTimeoutMs(command),
+      },
+      env,
+    ),
   );
+  const { value: result, documentUrl } =
+    unwrapDesktopBrowserWorkspaceResult(envelope);
 
   if (command.subaction === "inspect" || command.subaction === "snapshot") {
     const value =
@@ -1837,13 +1770,19 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
         ? (result as {
             bodyText?: string;
             elements?: BrowserWorkspaceDomElementSummary[];
+            tableId?: string;
           })
         : null;
-    const elements = registerBrowserWorkspaceElementRefs(
-      "desktop",
-      id,
-      Array.isArray(value?.elements) ? value.elements : [],
-    );
+    const tableId = typeof value?.tableId === "string" ? value.tableId : null;
+    if (value) delete value.tableId;
+    const elements = tableId
+      ? registerBrowserWorkspaceElementRefs(
+          "desktop",
+          id,
+          Array.isArray(value?.elements) ? value.elements : [],
+          { tableId, url: documentUrl },
+        )
+      : registerBrowserWorkspaceElementRefs("desktop", id, []);
     return {
       mode: "desktop",
       subaction: command.subaction,
@@ -1852,6 +1791,9 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
     };
   }
 
+  if (documentUrl) {
+    noteBrowserWorkspaceDocumentUrl("desktop", id, documentUrl);
+  }
   const runtime = getBrowserWorkspaceRuntimeState("desktop", id);
   appendBrowserWorkspaceTraceEntry(runtime, {
     subaction: command.subaction,

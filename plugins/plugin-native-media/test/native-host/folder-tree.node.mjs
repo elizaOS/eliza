@@ -77,12 +77,13 @@ test("folder changes are revision-checked, confirmed and never broaden access", 
     'if(!info.optBoolean("canDelete"))',
     "if(!confirmPermanent)",
     "if(!current(info,expectedRevision))",
-    'list(item);if(contents.getJSONArray("entries").length()>0)',
+    "BooleannonEmpty=hasChildren(item);if(nonEmpty==null)",
+    "if(nonEmpty)",
     "DocumentsContract.deleteDocument(",
   ].map((step) => remove.indexOf(step));
   assert.ok(
     order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])),
-    "capability, confirmation, revision and emptiness are checked before deletion",
+    "capability, confirmation, revision, a finished listing and emptiness are checked before deletion",
   );
   const batch = compact(
     between(tree, "public JSObject changeMany(", "public JSObject shareMany("),
@@ -90,6 +91,12 @@ test("folder changes are revision-checked, confirmed and never broaden access", 
   assert.ok(
     batch.indexOf("if(!move&&!confirmPermanent)") <
       batch.indexOf("DocumentsContract.deleteDocument("),
+  );
+  assert.ok(
+    batch.indexOf("if(nonEmpty==null)") > 0 &&
+      batch.indexOf("if(nonEmpty==null)") <
+        batch.indexOf("DocumentsContract.deleteDocument("),
+    "a folder the provider is still loading is never deleted as empty",
   );
   assert.ok(
     batch.indexOf("if(!current(info,expected))") <
@@ -106,8 +113,8 @@ test("folder changes are revision-checked, confirmed and never broaden access", 
     adopt.indexOf("takePersistableUriPermission(") <
       adopt.indexOf(".putString(KEY,uri.toString()).commit()") &&
       adopt.indexOf(".putString(KEY,uri.toString()).commit()") <
-        adopt.indexOf("release(previous)"),
-    "the new grant is persisted and recorded before the previous tree is released",
+        adopt.indexOf("&&kept==0)release(previous)"),
+    "the new grant is persisted and recorded before an unlinked previous tree is released",
   );
   const share = compact(
     between(

@@ -93,6 +93,7 @@ export class BionicStreamingTranscriber extends BaseStreamingTranscriber {
 	private queue: Float32Array[] = [];
 	private queuedSamples = 0;
 	private droppedSamples = 0;
+	private lastSegmentDropped = 0;
 
 	// Per-segment state.
 	private stream: BionicAsrStreamHandle | null = null;
@@ -122,6 +123,11 @@ export class BionicStreamingTranscriber extends BaseStreamingTranscriber {
 				(opts.maxQueuedSeconds ?? DEFAULT_MAX_QUEUED_SECONDS) * ASR_SAMPLE_RATE,
 			),
 		);
+	}
+
+	/** Samples the last finished segment lost (host behind or over the segment cap). */
+	get droppedSamplesLastSegment(): number {
+		return this.lastSegmentDropped;
 	}
 
 	/** "stream" once the host accepted a stream, "batch" after it reported none. */
@@ -268,6 +274,7 @@ export class BionicStreamingTranscriber extends BaseStreamingTranscriber {
 		this.lastPartial = "";
 		this.batchPcm = [];
 		this.failure = null;
+		this.lastSegmentDropped = this.droppedSamples;
 		if (this.droppedSamples > 0) {
 			logger.warn(
 				`[asr] bionic stream dropped ${this.droppedSamples} samples (host behind or segment over ${BIONIC_ASR_STREAM_MAX_SECONDS} s)`,

@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "packages/agent/src/services/signing-policy.ts",
+    "packages/agent/src/services/remote-signing-service.ts",
+    "packages/agent/test/sandbox-audit-durability.test.ts"
+  ],
+  "conformance": "packages/agent/quint/check-signing-audit.mjs",
+  "bounds": {
+    "domain": "One request operation in flight, two payload values, one policy replacement, clock 0..3 and approval lifetime two ticks. Retains the previous reservation, single-use approval, signer-failure and final-audit obligations.",
+    "boundary": "The policy must still match after submission evidence commits and before dispatch. Policy changes retire pending approval. A change after signer dispatch cannot retract an already dispatched signature.",
+    "assumptions": "Provider cryptography, authorization at HTTP boundaries, concrete policy values, multiple concurrent request/reservation budgets and external signer unknown outcomes remain outside this projection. A rejected signer operation is assumed not to have produced a usable signature.",
+    "progress": "Weak fairness of audit settlement, human decision and signer settlement ensures the current request returns or fails. No progress is asserted for an absent decision or permanently unavailable dependency.",
+    "conformance": "The actual SQLite/ethers suite checks immutable admitted payload, repeated approval, pending-policy invalidation, policy replacement while submission audit waits, durable audit failures and recovery. Scenario conformance does not prove all abstract schedules."
+  },
+  "cases": [
+    {
+      "name": "services_signing",
+      "main": "services_signing",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RequestEventuallySettles"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RequestEventuallySettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in services_signing: RequestEventuallySettles = FairWork.implies(always( not(settledPhases.contains(s.phase)).implies(eventually(settledPhases.contains(s.phase)))))",
+            "Model fairness predicate FairWork = and { submissionSettles.weakFair(s), rejectionSettles.weakFair(s), approvalDecided.weakFair(s), signerSettles.weakFair(s), failureAuditSettles.weakFair(s), finalAuditSettles.weakFair(s), }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

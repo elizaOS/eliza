@@ -22,10 +22,7 @@ import {
   notifyAction,
   PendingPromptsService,
 } from "@elizaos/plugin-assistant";
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "@elizaos/plugin-relationships";
+import { KnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -86,10 +83,10 @@ import {
   setCustomActionsRuntime,
 } from "./custom-actions.ts";
 import { preparePluginForSelectedDatabase } from "./database-selection.ts";
+import { ELIZA_PLUGIN_NAME, elizaPluginSchema } from "./eliza-plugin-schema.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
-import { retainedPendantSchema } from "./retained-pendant-schema.ts";
 import { activeViewSourceEvaluator } from "./view-action-affinity.ts";
 import {
   registerViewNavigationRoutingRule,
@@ -118,11 +115,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createOngoingTasksProvider(),
   ];
   const plugin: Plugin = {
-    name: "eliza",
+    name: ELIZA_PLUGIN_NAME,
     databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-    // Retired feature data remains part of the schema until an explicit retention migration.
-    schema: { ...retainedPendantSchema, ...knowledgeGraphSchema },
+    schema: elizaPluginSchema,
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,

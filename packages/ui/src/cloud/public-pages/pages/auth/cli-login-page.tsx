@@ -35,8 +35,6 @@ type TFn = ReturnType<typeof useCloudT>;
 const COMPLETE_TIMEOUT_MS = 30000;
 const CLI_LOGIN_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TRUSTED_APP_LAUNCH_KEY_PREFIX =
-  "eliza-cloud-cli-login-trusted-app-launch:";
 const pageSessionStorage = (() => {
   if (typeof window === "undefined") return null;
   try {
@@ -139,73 +137,6 @@ function sanitizeCliLoginSessionId(value: string | null): string | null {
     ? sessionId
     : null;
 }
-function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return (
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "[::1]"
-  );
-}
-function trustedAppLaunchKey(sessionId: string): string {
-  return `${TRUSTED_APP_LAUNCH_KEY_PREFIX}${sessionId}`;
-}
-/**
- * The no-extra-click path is deliberately narrower than `returnTo` support:
- * it is only an exact loopback Eliza callback whose completion marker names
- * this session, reached with a browser referrer from that same origin. A
- * copied/phished cli-login URL cannot forge a localhost referrer, so it keeps
- * the normal explicit authorization screen.
- */
-function isMatchingLocalAppLaunch(
-  sessionId: string | null,
-  returnTo: string | null,
-  referrer: string,
-): boolean {
-  if (!sessionId || !returnTo || !referrer) return false;
-  try {
-    const callback = new URL(returnTo);
-    const launch = new URL(referrer);
-    return (
-      isLoopbackHostname(callback.hostname) &&
-      callback.searchParams.get("elizaCloudLogin") === "complete" &&
-      callback.searchParams.get("elizaCloudLoginSession") === sessionId &&
-      launch.origin === callback.origin
-    );
-  } catch (error) {
-    void error;
-    return false;
-  }
-}
-function hasTrustedAppLaunch(sessionId: string | null): boolean {
-  if (!sessionId || !pageSessionStorage) return false;
-  try {
-    return pageSessionStorage.getItem(trustedAppLaunchKey(sessionId)) === "1";
-  } catch (error) {
-    void error;
-    return false;
-  }
-}
-function rememberTrustedAppLaunch(sessionId: string): void {
-  if (!pageSessionStorage) return;
-  try {
-    pageSessionStorage.setItem(trustedAppLaunchKey(sessionId), "1");
-  } catch (error) {
-    void error;
-    // Storage-disabled browsers keep the explicit confirmation fallback.
-  }
-}
-function forgetTrustedAppLaunch(sessionId: string): void {
-  if (!pageSessionStorage) return;
-  try {
-    pageSessionStorage.removeItem(trustedAppLaunchKey(sessionId));
-  } catch (error) {
-    void error;
-    // A stale, session-scoped marker cannot authorize any other session.
-  }
-}
 /**
  * Human-readable label for the client that launched this CLI-login flow, shown
  * on the confirmation interstitial. Only the sanitized `returnTo` origin is
@@ -258,14 +189,12 @@ function getPageState({
   ready,
   sessionId,
   t,
-  trustedAppLaunch,
 }: {
   authenticated: boolean;
   completion: CompletionState;
   ready: boolean;
   sessionId: string | null;
   t: TFn;
-  trustedAppLaunch: boolean;
 }): PageState {
   if (!sessionId) {
     return {
@@ -278,10 +207,10 @@ function getPageState({
   if (completion.status !== "idle") return completion;
   if (!ready) return { status: "initializing" };
   if (!authenticated) return { status: "waiting_auth" };
-  if (trustedAppLaunch) return { status: "completing" };
   // Authenticated with a live session id: hold on the confirmation
   // interstitial. Minting the API key requires the explicit Authorize gesture
-  // — never fire on page load (a clicked link must not mint on its own).
+  // on every path — never fire on page load. A loopback returnTo and Referer
+  // are chosen by whoever serves that local page, so they prove no consent.
   return { status: "confirm" };
 }
 function CliLoginPanel({
@@ -449,7 +378,9 @@ export function cliLoginSignInHref(searchParams: URLSearchParams): string {
   const google =
     query.getAll("provider").length === 1 && query.get("provider") === "google";
   query.delete("provider");
-  const returnTo = `/auth/cli-login${query.size ? `?${query}` : ""}`;
+  // URLSearchParams.size is missing on older engines (Safari 16).
+  const q = query.toString();
+  const returnTo = `/auth/cli-login${q ? `?${q}` : ""}`;
   return `/login?returnTo=${encodeURIComponent(returnTo)}${google ? "&nativeProvider=google" : ""}`;
 }
 
@@ -461,13 +392,6 @@ export default function CliLoginPage() {
   const navigate = useNavigate();
   const sessionId = sanitizeCliLoginSessionId(searchParams.get("session"));
   const launchReturnTo = sanitizeCliLoginReturnTo(searchParams.get("returnTo"));
-  const matchingLocalAppLaunch = isMatchingLocalAppLaunch(
-    sessionId,
-    launchReturnTo,
-    typeof document === "undefined" ? "" : document.referrer,
-  );
-  const trustedAppLaunch =
-    hasTrustedAppLaunch(sessionId) || matchingLocalAppLaunch;
   const [completion, setCompletion] = useState<CompletionState>({
     status: "idle",
   });
@@ -482,13 +406,6 @@ export default function CliLoginPage() {
   const lastSessionId = useRef(sessionId);
   const lastAccountId = useRef(sessionAccountId);
   const completionFiredRef = useRef(false);
-  const [requireFreshConfirmation, setRequireFreshConfirmation] =
-    useState(false);
-  const changingKnownAccount =
-    lastAccountId.current !== null &&
-    lastAccountId.current !== sessionAccountId;
-  const trustedCompletionAllowed =
-    trustedAppLaunch && !requireFreshConfirmation && !changingKnownAccount;
   const completionAuthority = useRef({
     sessionId,
     sessionAccountId,
@@ -531,8 +448,6 @@ export default function CliLoginPage() {
   );
   useEffect(() => {
     if (lastAccountId.current === sessionAccountId) return;
-    if (lastAccountId.current !== null || completionFiredRef.current)
-      setRequireFreshConfirmation(true);
     lastAccountId.current = sessionAccountId;
     setConfirmedSessionId(null);
     setConfirmedAccountId(null);
@@ -544,10 +459,6 @@ export default function CliLoginPage() {
       defaultValue: "Sign in | {{cloudName}}",
     }),
   );
-  useEffect(() => {
-    if (!sessionId || !matchingLocalAppLaunch) return;
-    rememberTrustedAppLaunch(sessionId);
-  }, [matchingLocalAppLaunch, sessionId]);
   useEffect(() => {
     if (lastSessionId.current === sessionId) return;
     lastSessionId.current = sessionId;
@@ -577,16 +488,13 @@ export default function CliLoginPage() {
       if (isCloudAuthHandoffSurface()) tryCloseAuthWindow();
     });
   }, [sessionId]);
-  // Generic CLI/device completion fires only after Authorize. The matching
-  // local-app handoff may finish without another click because its exact
-  // loopback origin + callback markers were proven by the browser referrer
-  // and remembered across the hosted login round trip.
+  // Completion fires only after Authorize, for the session and account the
+  // user confirmed.
   useEffect(() => {
     if (!sessionId || !ready || !authenticated) return;
     if (
-      !trustedCompletionAllowed &&
-      (confirmedSessionId !== sessionId ||
-        confirmedAccountId !== sessionAccountId)
+      confirmedSessionId !== sessionId ||
+      confirmedAccountId !== sessionAccountId
     )
       return;
     if (completionFiredRef.current) return;
@@ -608,7 +516,6 @@ export default function CliLoginPage() {
           keyPrefix: string;
         };
         if (!isCurrentCompletion()) return;
-        forgetTrustedAppLaunch(activeSessionId);
         notifyCliLoginComplete(activeSessionId, launchReturnTo);
         // Handoff surface (live opener OR named cloud-auth popup): the opener
         // poll / BroadcastChannel owns continuation. Never navigate returnTo —
@@ -667,7 +574,6 @@ export default function CliLoginPage() {
     ready,
     sessionId,
     t,
-    trustedCompletionAllowed,
   ]);
   const pageState = getPageState({
     authenticated,
@@ -675,7 +581,6 @@ export default function CliLoginPage() {
     ready,
     sessionId,
     t,
-    trustedAppLaunch: trustedCompletionAllowed,
   });
   const signInHref = cliLoginSignInHref(searchParams);
   // No pre-auth interstitial: when the user isn't signed in yet, forward
@@ -734,10 +639,8 @@ export default function CliLoginPage() {
         }}
         onSwitchAccount={async () => {
           completionAuthority.current.epoch += 1;
-          setRequireFreshConfirmation(true);
           setConfirmedSessionId(null);
           setConfirmedAccountId(null);
-          if (sessionId) forgetTrustedAppLaunch(sessionId);
           const intent = { accountId: sessionAccountId };
           accountSwitch.current = intent;
           try {

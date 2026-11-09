@@ -16,6 +16,7 @@ import {
   SettingsStack,
 } from "../../../components/settings/settings-layout";
 import { Button } from "../../../components/ui/button";
+import { TextLink } from "../../../components/ui/text-link";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { useConsents } from "../data/consent-client";
 import {
@@ -23,6 +24,7 @@ import {
   downloadAccountDataExport,
   saveExportDownload,
 } from "../data/data-export-client";
+import { needsSignInAgain, signInAgainPath } from "../data/sign-in-again";
 import { AccountDeletionDialog } from "./account-deletion-dialog";
 
 function errorMessage(error: unknown): string {
@@ -36,6 +38,7 @@ type ExportState =
   | { kind: "pending" }
   | { kind: "ready" }
   | { kind: "too-large" }
+  | { kind: "sign-in-again" }
   | { kind: "failed"; message: string };
 
 export function PrivacyPanel() {
@@ -58,7 +61,9 @@ export function PrivacyPanel() {
       setExportState(
         error instanceof DataExportTooLargeError
           ? { kind: "too-large" }
-          : { kind: "failed", message: errorMessage(error) },
+          : needsSignInAgain(error)
+            ? { kind: "sign-in-again" }
+            : { kind: "failed", message: errorMessage(error) },
       );
     }
   };
@@ -159,6 +164,19 @@ export function PrivacyPanel() {
                     defaultValue:
                       "Your data is larger than the self-service export limit. Contact support to request a full export.",
                   })}
+                </span>
+              ) : null}
+              {exportState.kind === "sign-in-again" ? (
+                <span
+                  role="alert"
+                  className="block"
+                  data-testid="privacy-export-sign-in-again"
+                >
+                  <TextLink href={signInAgainPath()}>
+                    {t("cloud.privacyPanel.exportSignInAgain", {
+                      defaultValue: "Sign in again to continue",
+                    })}
+                  </TextLink>
                 </span>
               ) : null}
               {exportState.kind === "failed" ? (

@@ -193,6 +193,7 @@ export type LoginMethodName =
   | "siws"
   | "telegram"
   | "farcaster"
+  | "guest"
   | "oauth"
   | "oidc";
 
@@ -206,6 +207,7 @@ const LOGIN_METHOD_NAMES = new Set<string>([
   "siws",
   "telegram",
   "farcaster",
+  "guest",
   "oauth",
   "oidc",
 ]);
@@ -245,6 +247,15 @@ export async function tenantSwitchLoginRefusal(
   claims: Record<string, unknown>,
 ): Promise<string | null> {
   const method = claims.authMethod;
+  const loginMethods = (await authTenantConfigSubject(tenantId))
+    ?.auth_abuse_config?.loginMethods;
+  if (method === undefined) {
+    // A session that does not record how it signed in cannot show the switch
+    // is allowed, so a tenant that turns any method off refuses it.
+    return restrictsLoginMethods(loginMethods)
+      ? "This session cannot switch into a tenant that limits login methods; sign in again"
+      : null;
+  }
   if (typeof method !== "string" || !LOGIN_METHOD_NAMES.has(method)) {
     return null;
   }
@@ -255,9 +266,20 @@ export async function tenantSwitchLoginRefusal(
         ? claims.oauthProviderId
         : undefined;
   return loginMethodRefusal(
-    (await authTenantConfigSubject(tenantId))?.auth_abuse_config?.loginMethods,
+    loginMethods,
     method as LoginMethodName,
     typeof providerId === "string" ? providerId : undefined,
+  );
+}
+
+function restrictsLoginMethods(
+  loginMethods: TenantAuthAbuseConfig["loginMethods"] | undefined,
+): boolean {
+  if (!loginMethods) return false;
+  return Object.values(loginMethods).some((value) =>
+    typeof value === "boolean"
+      ? value === false
+      : Object.values(value ?? {}).includes(false),
   );
 }
 
@@ -294,7 +316,17 @@ export async function createSessionToken(
       }
     }
   }
-  return signAccessToken({ address, tenantId, ...extra }, expiresIn);
+  // auth_time is when the user last authenticated. A caller carrying an
+  // existing session (refresh rotation, tenant switch) passes it through;
+  // every other caller is a sign-in and stamps now.
+  const authTime =
+    typeof extra?.auth_time === "number"
+      ? extra.auth_time
+      : Math.floor(Date.now() / 1000);
+  return signAccessToken(
+    { address, tenantId, ...extra, auth_time: authTime },
+    expiresIn,
+  );
 }
 
 let _nonceBackend: import("../../auth/index.ts").StoreBackend | null = null;
@@ -658,7 +690,13 @@ export function getPasskeyAuth(requestOrigin?: string): PasskeyAuth {
 
 // ─── EmailAuth cache ──────────────────────────────────────────────────────────
 
-const _emailAuthByTenant = new Map<string, Promise<EmailAuth>>();
+// Entries expire so tenant email config edited on another instance is picked
+// up without a restart; the Promise still dedupes concurrent builds.
+const EMAIL_AUTH_CACHE_TTL_MS = 60_000;
+const _emailAuthByTenant = new Map<
+  string,
+  { pending: Promise<EmailAuth>; expiresAt: number }
+>();
 
 let _emailKeyStore: KeyStore | null = null;
 
@@ -983,13 +1021,18 @@ export async function getEmailAuthForTenant(
   tenantId: string,
 ): Promise<EmailAuth> {
   const cached = _emailAuthByTenant.get(tenantId);
-  if (cached) return cached;
+  if (cached && cached.expiresAt > Date.now()) return cached.pending;
 
   const pending = createEmailAuthForTenant(tenantId).catch((error) => {
-    _emailAuthByTenant.delete(tenantId);
+    if (_emailAuthByTenant.get(tenantId)?.pending === pending) {
+      _emailAuthByTenant.delete(tenantId);
+    }
     throw error;
   });
-  _emailAuthByTenant.set(tenantId, pending);
+  _emailAuthByTenant.set(tenantId, {
+    pending,
+    expiresAt: Date.now() + EMAIL_AUTH_CACHE_TTL_MS,
+  });
   return pending;
 }
 
@@ -1079,7 +1122,7 @@ function parseOAuthRedirectUri(redirectUri: string): URL {
   if (redirectUrl.protocol === "http:") {
     const host = redirectUrl.hostname.toLowerCase();
     const isLoopback =
-      host === "localhost" || host === "127.0.0.1" || host === "::1";
+      host === "localhost" || host === "127.0.0.1" || host === "[::1]";
     if (!isLoopback) {
       throw new Error(
         "redirect_uri must use https except for loopback development origins",

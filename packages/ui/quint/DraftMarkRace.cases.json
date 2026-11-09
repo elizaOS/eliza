@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "One deferred hold/mark, one intervening editor/owner/authority/external-store change, one optional reopened-peer edit. Four storage outcomes. No external dispatch before hold fulfillment.",
+  "cases": [
+    {
+      "name": "pending-mark",
+      "main": "DraftMarkRace",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 1000
+    }
+  ]
+}

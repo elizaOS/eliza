@@ -22,6 +22,11 @@ export interface MapsDeviceNavigationStatus {
 }
 
 export interface MapsDeviceNavigation {
+  /**
+   * True when the phone can take a navigation request right now. A host that
+   * does not report it is treated as unavailable for MAPS_NAVIGATE.
+   */
+  available?(): Promise<boolean>;
   /** Shows one place as the selected place on the device map. */
   select(place: PlaceRef): Promise<MapsDeviceNavigationStatus>;
   /** Plans from the device location and starts guidance after the device's own review. */

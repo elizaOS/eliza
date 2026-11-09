@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/plugin-lifecycle.ts",
+    "packages/agent/src/runtime/blocking-core-boot.ts",
+    "packages/agent/src/runtime/plugin-resolver.ts",
+    "packages/agent/src/runtime/load-plugin-from-directory.ts",
+    "packages/agent/src/runtime/load-plugin-from-vfs.ts",
+    "packages/agent/src/runtime/view-scoped-actions.ts"
+  ],
+  "bounds": {
+    "domain": "One plugin lane and one migration.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_plugins",
+      "main": "runtime_plugins",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

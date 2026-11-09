@@ -101,9 +101,14 @@ public final class OwnerProviderTest {
     check(SPEECH.equals(env.get("CARTESIA_API_KEY")) && "1".equals(env.get("ELIZA_SELF_HOSTED_VOICE_ENABLED")), "voice opt-in must bind its exact key");
     check(!env.containsKey("OPENAI_API_KEY") && !env.containsKey("CARTESIA_API_KEY_FILE"), "stale alternate keys must be removed");
     NativeProviderSlot.bindDirectProvider(slot, KEY, NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL);
-    check(!NativeProviderAdmission.providerIdentity(slot.value).getBoolean("voiceConfigured"), "omitting speech turns voice off");
+    check(NativeProviderAdmission.providerIdentity(slot.value).getBoolean("voiceConfigured") && SPEECH.equals(new JSONObject(slot.value).getString("cartesiaKey")), "omitting speech preserves its separately owned key");
     slot.value = NativeProviderAdmission.admit(null, slot.value, null, null);
     check(!generation.equals(NativeProviderAdmission.currentGeneration(slot.value, null)), "credential changes must retire the generation");
+    NativeProviderAdmission.applyProviderEnvironment(new JSONObject(slot.value), null, env, 0);
+    check(SPEECH.equals(env.get("CARTESIA_API_KEY")), "an omitted speech edit preserves its launch binding");
+    NativeProviderSlot.removeKey(slot, NativeProviderSlot.managementRevision(slot.value, slot.authorityEpoch()), "voice");
+    check(!NativeProviderAdmission.providerIdentity(slot.value).getBoolean("voiceConfigured") && KEY.equals(new JSONObject(slot.value).getString("key")), "explicit voice removal preserves the text key");
+    slot.value = NativeProviderAdmission.admit(null, slot.value, null, null);
     NativeProviderAdmission.applyProviderEnvironment(new JSONObject(slot.value), null, env, 0);
     check(!env.containsKey("CARTESIA_API_KEY") && !env.containsKey("ELIZA_SELF_HOSTED_VOICE_ENABLED"), "voice-off launch cannot inherit a speech key");
 

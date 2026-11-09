@@ -38,6 +38,15 @@ const INLINE_CODE_RE = /(`+)[^`\n]+?\1(?!`)/g;
 // saved code re-inserts the matched sentinel itself, delivering a raw
 // NUL-marker on the wire.
 const CODE_SENTINEL_PREFIX = "\x00CB";
+const CODE_SENTINEL_NAMESPACE_RE = new RegExp(
+	`${CODE_SENTINEL_PREFIX}(\\d+):`,
+	"g",
+);
+// A model must not assemble its own control tag across a quoted-data boundary.
+const CONTROL_TAG_RE = new RegExp(
+	`</?(?:${MACHINE_SYNTAX_TAG_ALTERNATION}|final)\\b[^>]*(?:>|$)`,
+	"gi",
+);
 
 // No `g` flag: this backs only the cheap pre-filter, and a global regex carries
 // `lastIndex` across calls. A scan that abandons a marker mid-text (an
@@ -121,6 +130,11 @@ function degradePseudoLinks(text: string): string {
 	return cursor === 0 ? text : output + text.slice(cursor);
 }
 
+export interface OutboundLiteralSpan {
+	start: number;
+	end: number;
+}
+
 /**
  * Strip machine syntax from outbound agent text. Paired tags are removed with
  * their contents; an unclosed tag is removed to end-of-text (the live-observed
@@ -128,14 +142,10 @@ function degradePseudoLinks(text: string): string {
  * fenced ``` blocks and inline `code` spans pass through untouched so
  * documentation examples of the syntax survive. Idempotent — sanitizing
  * already-sanitized text is a no-op.
+ *
+ * Literal ranges are supplied by trusted structured renderers, never inferred
+ * from serialized message metadata. Cosmetic cleanup cannot rewrite their bytes.
  */
-export interface OutboundLiteralSpan {
-	start: number;
-	end: number;
-}
-
-/** Literal ranges are supplied by trusted structured renderers, never inferred
- * from serialized message metadata. Cosmetic cleanup cannot rewrite their bytes. */
 export function sanitizeOutboundTextWithLiterals(
 	text: string,
 	literalSpans: readonly OutboundLiteralSpan[],
@@ -152,12 +162,7 @@ export function sanitizeOutboundTextWithLiterals(
 			throw new TypeError("Invalid outbound literal range");
 		previousEnd = span.end;
 	}
-	// A model must not assemble its own control tag across a quoted-data boundary.
-	const controls = new RegExp(
-		`</?(?:${MACHINE_SYNTAX_TAG_ALTERNATION}|final)\\b[^>]*(?:>|$)`,
-		"gi",
-	);
-	for (const match of text.matchAll(controls)) {
+	for (const match of text.matchAll(CONTROL_TAG_RE)) {
 		const start = match.index;
 		const end = start + match[0].length;
 		if (
@@ -175,9 +180,7 @@ export function sanitizeOutboundTextWithLiterals(
 	}
 
 	const namespaces = new Set(
-		[...text.matchAll(new RegExp(`${CODE_SENTINEL_PREFIX}(\\d+):`, "g"))].map(
-			(match) => match[1],
-		),
+		[...text.matchAll(CODE_SENTINEL_NAMESPACE_RE)].map((match) => match[1]),
 	);
 	let namespace = 0;
 	while (namespaces.has(String(namespace))) namespace++;

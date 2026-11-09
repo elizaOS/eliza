@@ -1,5 +1,5 @@
 // Release descriptors, update channels and distribution gates for both Pixel 10a
-// brands. These check record consistency only: no gate, drill or signing runs here.
+// products. These check record consistency only: no gate, drill or signing runs here.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -32,7 +32,7 @@ const SOURCE =
 
 /**
  * A downstream brand's repository: an application signer file, the shared lock at its
- * vendored path, a release descriptor for the shared alpha composition, a channel and
+ * vendored path, a release descriptor for its own composition, a channel and
  * a gate record whose evidence files exist.
  */
 function brandRoot(t) {
@@ -50,12 +50,12 @@ function brandRoot(t) {
   write(SIGNER, { schema: 1, signerSha256: "d".repeat(64) });
   const descriptor = {
     schema: 1,
-    product: "alpha_stallion_phone",
+    product: "example_stallion_phone",
     target: "pixel10a",
     device: { codename: "stallion", androidRelease: "17" },
     lunch: {
-      development: "alpha_stallion_phone-cp2a-userdebug",
-      production: "alpha_stallion_phone-cp2a-user",
+      development: "example_stallion_phone-cp2a-userdebug",
+      production: "example_stallion_phone-cp2a-user",
     },
     sourceLock: { file: SOURCE, sha256: sha256(lockBytes) },
     signer: {
@@ -79,7 +79,7 @@ function brandRoot(t) {
   write(CHANNEL, {
     schema: 1,
     channel: "stable",
-    product: "alpha_stallion_phone",
+    product: "example_stallion_phone",
     device: "stallion",
     authority: "Brand",
     releaseOwner: "Owner",
@@ -107,7 +107,7 @@ function brandRoot(t) {
   write(GATES, {
     schema: 1,
     target: "pixel10a",
-    product: "alpha_stallion_phone",
+    product: "example_stallion_phone",
     gates: {
       sourceAdmission: {
         status: "passed",
@@ -131,7 +131,16 @@ function brandRoot(t) {
   });
   const readBack = (rel) =>
     JSON.parse(fs.readFileSync(path.join(dir, rel), "utf8"));
-  return { dir, write, readBack };
+  const composition = {
+    ...read("android/products/pixel10a-eliza.json"),
+    productName: "example_stallion_phone",
+    model: "Example Pixel 10a",
+    brand: "Example",
+    vendorDirectory: "example_phone",
+    launcher: { moduleName: "ExamplePhone", packageName: "org.example.phone" },
+  };
+  delete composition.pixelConfig;
+  return { dir, write, readBack, composition };
 }
 const descriptorProblems = (root) =>
   releaseDescriptorProblems(root.readBack(DESCRIPTOR), {
@@ -139,6 +148,7 @@ const descriptorProblems = (root) =>
     file: DESCRIPTOR,
     sourceLockPath: SOURCE,
     applicationSignerFile: SIGNER,
+    composition: root.composition,
   });
 const gateProblems = (root) =>
   qualificationGateProblems(root.readBack(GATES), {
@@ -148,11 +158,10 @@ const gateProblems = (root) =>
     descriptorFile: DESCRIPTOR,
   });
 
-test("both brands' compositions are shared Pixel 10a targets on one source lock", () => {
-  for (const brand of ["alpha", "eliza"]) {
-    const product = read(`android/products/pixel10a-${brand}.json`);
-    assert.deepEqual(pixel10aComposition(product.productName), product);
-  }
+test("Eliza owns its catalog; independent consumers supply their own compositions", () => {
+  const product = read("android/products/pixel10a-eliza.json");
+  assert.deepEqual(pixel10aComposition(product.productName), product);
+  assert.equal(pixel10aComposition("example_stallion_phone"), null);
   assert.equal(pixel10aComposition("aosp_stallion"), null);
   const inventory = read("android/hardware-targets.json").targets.find(
     (target) => target.targetId === "pixel10a-stallion",
@@ -219,14 +228,17 @@ test("a brand's complete release descriptor admits staging inputs; each gap is r
     DESCRIPTOR,
     (p) => ({
       ...p,
-      lunch: { ...p.lunch, production: "alpha_stallion_phone-cp2a-userdebug" },
+      lunch: {
+        ...p.lunch,
+        production: "example_stallion_phone-cp2a-userdebug",
+      },
     }),
-    /user build alpha_stallion_phone-cp2a-user/,
+    /user build example_stallion_phone-cp2a-user/,
   );
   refuse(
     DESCRIPTOR,
-    (p) => ({ ...p, product: "alpha_grizzly_phone" }),
-    /not a shared Pixel 10a composition/,
+    (p) => ({ ...p, product: "example_grizzly_phone" }),
+    /composition.productName must match/,
   );
   refuse(
     DESCRIPTOR,
@@ -261,8 +273,29 @@ test("a brand's complete release descriptor admits staging inputs; each gap is r
       sourceLockPath: SOURCE,
       applicationSignerFile: SIGNER,
       productName,
+      composition: root.composition,
     });
-  assert.deepEqual(bound("alpha_stallion_phone"), []);
+  assert.deepEqual(bound("example_stallion_phone"), []);
+  for (const composition of [
+    { ...root.composition, productName: "foreign_stallion_phone" },
+    { ...root.composition, releaseQualified: true },
+    {
+      ...root.composition,
+      launcher: { ...root.composition.launcher, packageName: "bad/name" },
+    },
+  ]) {
+    assert.ok(
+      releaseDescriptorProblems(root.readBack(DESCRIPTOR), {
+        root: root.dir,
+        file: DESCRIPTOR,
+        sourceLockPath: SOURCE,
+        applicationSignerFile: SIGNER,
+        productName: "example_stallion_phone",
+        composition,
+      }).some((problem) => /composition/.test(problem)),
+      "unvalidated consumer data cannot admit a release",
+    );
+  }
   assert.ok(
     bound("eliza_stallion_phone").some((problem) =>
       /product must be eliza_stallion_phone, this brand's Pixel 10a composition/.test(
@@ -305,7 +338,7 @@ test("the channel binds the product, its AVB key and the locked stock archive", 
     ).join("\n");
   assert.match(
     problems({ product: "eliza_stallion_phone" }),
-    /channel is not for alpha_stallion_phone/,
+    /channel is not for example_stallion_phone/,
   );
   assert.match(
     problems({ avbPublicKeySha256: "f".repeat(64) }),
@@ -468,7 +501,7 @@ test("qualification gates stay distinct, need their own release evidence and mir
         ...root.readBack(GATES),
         product: "eliza_stallion_phone",
       }),
-    /must be schema 1 for alpha_stallion_phone/,
+    /must be schema 1 for example_stallion_phone/,
   );
   assert.deepEqual(Object.keys(root.readBack(GATES).gates), GATE_NAMES);
 });

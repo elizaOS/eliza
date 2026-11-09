@@ -160,6 +160,9 @@ const calendarReadBrokerClasses = [
   "unknown",
 ] as const;
 
+/** Maximum UTF-8 JSON size for a private managed Calendar feed response. */
+export const MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES = 512 * 1024;
+
 /** Authenticated read-refusal diagnostics only. These fields cannot establish
  * identity, authorization, freshness, availability or a committed operation.
  */
@@ -637,7 +640,15 @@ export interface LifeOpsLinkedCalendarEventView
   extends LifeOpsLinkedCalendarLink {
   event: Pick<
     LifeOpsCalendarEvent,
-    "title" | "startAt" | "endAt" | "isAllDay"
+    "title" | "startAt" | "endAt" | "isAllDay" | "location"
+  > | null;
+  /**
+   * Google's copy, read only for conflicted links: null means Google no
+   * longer has the event, absent means it could not be read.
+   */
+  providerEvent?: Pick<
+    LifeOpsCalendarEvent,
+    "title" | "startAt" | "endAt" | "isAllDay" | "location"
   > | null;
 }
 /** Owner-visible sync review; internal dispatch receipts never leave the service. */
@@ -651,6 +662,8 @@ export interface LifeOpsLinkedCalendarControl {
   pendingDispatch: {
     linkId: string;
   } | null;
+  /** Conflicted links for the selected destination, awaiting the owner's choice. */
+  conflicts: number;
 }
 export interface LifeOpsLinkedCalendarControlMutationResult
   extends LifeOpsLinkedCalendarControl {

@@ -1,5 +1,5 @@
 /**
- * Knowledge half of the combined `#<query>` chat search.
+ * Knowledge half of the combined `#all <query>` chat search.
  *
  * The native mobile agent does not serve the documents route, so the request
  * answers 404 there. For the combined search that must not discard the memory

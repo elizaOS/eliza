@@ -434,7 +434,7 @@ export async function timeSpeechPhase<T>(
   phase: (typeof SPEECH_PHASES)[number],
   run: () => Promise<T>,
 ): Promise<T> {
-  let route: "stt" | "tts" | undefined;
+  let route: "stt" | "tts" | "speech-consent" | "speech-session" | undefined;
   let traceId = "unavailable";
   let enabled = false;
   try {
@@ -444,7 +444,11 @@ export async function timeSpeechPhase<T>(
         ? "stt"
         : path === "/api/v1/voice/tts"
           ? "tts"
-          : undefined;
+          : path === "/api/v1/voice/speech/consent"
+            ? "speech-consent"
+            : path === "/api/v1/voice/speech/session"
+              ? "speech-session"
+              : undefined;
     enabled = Boolean(route) && SPEECH_PHASES.includes(phase);
     const candidate = c.get("traceId") ?? c.get("requestId");
     if (isInferenceTraceId(candidate)) traceId = candidate;
