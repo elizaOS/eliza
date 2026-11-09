@@ -424,7 +424,8 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 				if (rawValue.trim().length > 0) {
 					this.appendFieldContent(field, this.parseInlineValue(rawValue));
 					this.fieldStates.set(field, "complete");
-					this.closeCurrentTrackedField();
+					// Keep the field tracked: continuation lines below belong to
+					// this value until the next field boundary or flush.
 				}
 				return;
 			}
@@ -433,7 +434,10 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			if (rawValue.trim().length > 0) {
 				this.appendFieldContent(field, this.parseInlineValue(rawValue));
 				this.completeCurrentField();
-				this.closeCurrentTrackedField();
+				// Keep the field open for continuation lines: the inline value
+				// is only the first line of the value. The next field boundary
+				// or flush completes it and reports the full value.
+				this.currentField = field;
 			}
 			return;
 		}
