@@ -67,6 +67,7 @@ public final class MailBackgroundDelivery {
  private static final String[] SAME_SELECTION={"grantId","credentialDigest","accountRef"};
  private final Host host;private final Scheduler scheduler;private final Notices poster;private final Config config;private final Connections connections;
  private final AtomicLong attempts=new AtomicLong();private long admittedAttempt;
+ private String pendingGrant;
 
  public MailBackgroundDelivery(Host host,Scheduler scheduler,Notices poster,Config config){this(host,scheduler,poster,config,url->(HttpURLConnection)url.openConnection());}
  public MailBackgroundDelivery(Host host,Scheduler scheduler,Notices poster,Config config,Connections connections){
@@ -74,7 +75,17 @@ public final class MailBackgroundDelivery {
  }
  private JSONObject saved()throws Exception{String raw=host.readState();return raw==null?null:new JSONObject(raw);}
  /** Starts a foreground selection attempt; a later attempt supersedes it. */
- public long begin(){synchronized(host.lock()){return attempts.incrementAndGet();}}
+ public long begin(){return begin(null);}
+ /** Records the grant before the bridge queues the selection, so targeted retirement can fence it. */
+ public long begin(String grant){synchronized(host.lock()){
+  pendingGrant=grant!=null&&grant.matches("[A-Za-z0-9_-]{1,256}")?grant:null;
+  return attempts.incrementAndGet();
+ }}
+ private void settleSelection(long attempt){admittedAttempt=attempt;pendingGrant=null;}
+ /** A bridge that could not enqueue this attempt releases only its own unadmitted selection. */
+ public void releaseUnadmittedAttempt(long attempt){synchronized(host.lock()){
+  if(attempts.get()==attempt&&admittedAttempt!=attempt)settleSelection(attempts.incrementAndGet());
+ }}
  private static String cloudId(String value){if(value==null||!value.matches("[A-Za-z0-9_-]{1,128}"))throw new SecurityException("Cloud owner required");return value;}
  private String accountRef(String user,String organization){return new JSONArray().put("cloud").put(config.environment).put(user).put(organization).toString();}
  private String credential(String credentialId)throws Exception{
@@ -101,21 +112,37 @@ public final class MailBackgroundDelivery {
   */
  public JSONObject configure(long attempt,String credentialId,String grant,String userId,String organizationId)throws Exception{
   try{
-   JSONObject binding;synchronized(host.lock()){binding=admission(credentialId,grant,userId,organizationId);}
+   JSONObject binding;synchronized(host.lock()){
+    if(attempts.get()!=attempt||pendingGrant!=null&&!pendingGrant.equals(grant))throw new SecurityException("Mail selection superseded");
+    binding=admission(credentialId,grant,userId,organizationId);
+    pendingGrant=binding.getString("grantId");
+   }
    MailHistoryReconciliation.Guard guard=()->{if(attempts.get()!=attempt)throw new SecurityException("Mail selection superseded");synchronized(host.lock()){admitted(binding);}};
    verify(binding,guard);
    synchronized(host.lock()){
     guard.check();JSONObject previous=saved();
-    if(previous!=null){JSONObject before=previous.getJSONObject("binding");boolean same=true;for(String field:SAME_SELECTION)same&=before.optString(field).equals(binding.getString(field));if(same){admittedAttempt=attempt;scheduler.schedule(before.getString("generation"));return engine(before).status();}}
-    poster.cancelAll();scheduler.cancel();host.writeState(MailHistoryReconciliation.initial(binding).toString());admittedAttempt=attempt;scheduler.schedule(binding.getString("generation"));return engine(binding).status();
+    if(previous!=null){JSONObject before=previous.getJSONObject("binding");boolean same=true;for(String field:SAME_SELECTION)same&=before.optString(field).equals(binding.getString(field));if(same){settleSelection(attempt);scheduler.schedule(before.getString("generation"));return engine(before).status();}}
+    poster.cancelAll();scheduler.cancel();host.writeState(MailHistoryReconciliation.initial(binding).toString());settleSelection(attempt);scheduler.schedule(binding.getString("generation"));return engine(binding).status();
    }
   }catch(Exception failure){
    // A failed selection keeps the saved one checking under its own fences; a newer attempt owns admission.
-   synchronized(host.lock()){if(attempts.get()==attempt)admittedAttempt=attempt;}throw failure;
+   synchronized(host.lock()){if(attempts.get()==attempt)settleSelection(attempt);}throw failure;
   }
  }
  /** Retires the selection (all of it, or only when it is for this grant), its schedule and its notices. */
- public void withdraw(String grant)throws Exception{synchronized(host.lock()){JSONObject s=saved();if(grant!=null&&s!=null&&!grant.equals(s.getJSONObject("binding").getString("grantId")))return;admittedAttempt=begin();host.removeState();poster.cancelAll();scheduler.cancel();}}
+ public void withdraw(String grant)throws Exception{synchronized(host.lock()){
+  JSONObject s=saved();
+  boolean savedMatch=s!=null&&grant!=null&&grant.equals(s.getJSONObject("binding").getString("grantId"));
+  boolean pendingMatch=grant!=null&&grant.equals(pendingGrant);
+  if(grant!=null&&!savedMatch){
+   // Retire the queued selection alone. Keep any other saved grant, cursor, work and notices.
+   if(pendingMatch)settleSelection(begin());
+   return;
+  }
+  // A saved grant can be removed while a different selection is still being verified.
+  if(grant==null||pendingGrant==null||pendingMatch)settleSelection(begin());
+  host.removeState();poster.cancelAll();scheduler.cancel();
+ }}
  /** Host resume: reschedules a still-current selection, retires a stale one. */
  public void resume(){try{synchronized(host.lock()){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null)return;JSONObject binding=s.getJSONObject("binding");current(binding);scheduler.schedule(binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
  public JSONObject status()throws Exception{synchronized(host.lock()){JSONObject s=saved();if(s==null)return new JSONObject().put("status","disabled");return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
@@ -186,5 +213,29 @@ public final class MailBackgroundDelivery {
   foreground.check();synchronized(host.lock()){foreground.check();return engine(binding).pending();}
  }
  public void releaseQuestion(String token,MailHistoryReconciliation.Guard foreground)throws Exception{foreground.check();synchronized(host.lock()){foreground.check();JSONObject s=saved();if(s==null)throw new SecurityException("Mail selection unavailable");engine(s.getJSONObject("binding")).releaseQuestion(token);}}
- public void consume(String token,MailHistoryReconciliation.Guard foreground)throws Exception{foreground.check();synchronized(host.lock()){foreground.check();JSONObject s=saved();if(s==null)throw new SecurityException("Mail selection unavailable");engine(s.getJSONObject("binding")).consume(token);}}
+ /** The exact captured notice must still belong to a verified, foreground owner. */
+ public void consume(String token,MailHistoryReconciliation.Guard foreground)throws Exception{
+  foreground.check();
+  final JSONObject binding;final long epoch;
+  synchronized(host.lock()){
+   foreground.check();
+   JSONObject s=saved();if(s==null)throw new SecurityException("Mail selection unavailable");
+   binding=s.getJSONObject("binding");epoch=attempts.get();requireTap(binding,token);
+  }
+  MailHistoryReconciliation.Guard guard=()->{
+   foreground.check();
+   synchronized(host.lock()){
+    foreground.check();
+    if(attempts.get()!=epoch)throw new SecurityException("Mail selection changed");
+    current(binding);
+   }
+  };
+  verify(binding,guard);
+  synchronized(host.lock()){
+   guard.check();requireTap(binding,token);engine(binding).consume(token);
+  }
+ }
+ private void requireTap(JSONObject binding,String token)throws Exception {
+  if(token==null||!token.equals(engine(binding).pending().optString("token",null)))throw new SecurityException("Gmail tap changed");
+ }
 }
