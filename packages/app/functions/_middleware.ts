@@ -316,7 +316,7 @@ const ALPHA_CALLBACK_PATH = "/alphaphone/auth/callback";
 const ALPHA_BROWSER_START = "/alphaphone/auth/browser-start";
 function alphaBrowserCallback(url: URL, callback: NativeAuthCallback | null) {
   return (
-    callback?.androidPackage === "ai.elizaresearch.alphaphone" &&
+    callback?.androidPackage === "ai.alphacompute.alphaphone" &&
     url.pathname === ALPHA_CALLBACK_PATH &&
     (url.origin === ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin ||
       url.origin === ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin)
