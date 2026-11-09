@@ -10,7 +10,7 @@ import java.util.Set;
 public final class CloudSignInRoutes {
  private CloudSignInRoutes() {}
  /** Readiness reads: service document, App Auth registration and Steward providers. */
- public static final Set<String> READS = Set.of("/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers");
+ public static final Set<String> READS = Set.of("/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers", "/steward/auth/oauth/google/authorize");
  public static final Set<String> WRITES = Set.of(CloudSmsCode.SEND_PATH, CloudSmsCode.VERIFY_PATH, CloudEmailCode.SEND_PATH, CloudEmailCode.VERIFY_PATH,
   "/steward/auth/oauth/exchange", "/steward/auth/oauth/google/native/challenge", "/steward/auth/oauth/google/native/verify",
   "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete", "/steward/auth/logout",

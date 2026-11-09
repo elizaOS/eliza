@@ -11,4 +11,8 @@ public interface CloudCredentialSlots {
  String read(String slot) throws Exception;
  void write(String slot, String value) throws Exception;
  void remove(String slot) throws Exception;
+ /** Browser callback retirement must compare the exact persisted record atomically. */
+ default boolean compareExchange(String slot, String expected, String value) throws Exception {
+  throw new UnsupportedOperationException("Atomic credential retirement is required for browser sign-in");
+ }
 }
