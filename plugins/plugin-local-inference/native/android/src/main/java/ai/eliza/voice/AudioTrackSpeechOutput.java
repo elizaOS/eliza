@@ -46,6 +46,11 @@ public final class AudioTrackSpeechOutput implements StreamingSpeechPlayback.Out
    return VoiceLatencyTrials.frameTimeNs(stamp.nanoTime,stamp.framePosition,frame,rate);
   }catch(RuntimeException unavailable){return VoiceLatencyTrials.UNSET;}
  }
+ /** The start threshold (API 31+), else the whole buffer, which a stream must fill before it plays. */
+ @Override public int startThresholdFrames(){
+  try{return android.os.Build.VERSION.SDK_INT>=31?track.getStartThresholdInFrames():track.getBufferSizeInFrames();}
+  catch(RuntimeException unavailable){return 0;}
+ }
  public void setVolume(float volume){try{track.setVolume(volume);}catch(RuntimeException ignored){/* Released. */}}
  public void abort(){try{track.pause();track.flush();}catch(RuntimeException ignored){/* Already stopped or released. */}}
  public void stop(){try{track.stop();}catch(RuntimeException ignored){/* Already stopped. */}}
