@@ -93,7 +93,7 @@ const ALCHEMY_CHAIN_MAP: Readonly<Record<string, string>> = {
   base: "base-mainnet",
   baseSepolia: "base-sepolia",
   zksync: "zksync-mainnet",
-  zksyncSepolia: "zksync-sepolia",
+  zksyncSepoliaTestnet: "zksync-sepolia",
   linea: "linea-mainnet",
   lineaSepolia: "linea-sepolia",
   scroll: "scroll-mainnet",
@@ -136,9 +136,9 @@ const INFURA_CHAIN_MAP: Readonly<Record<string, string>> = {
   scroll: "scroll-mainnet",
   scrollSepolia: "scroll-sepolia",
   mantle: "mantle-mainnet",
-  mantleSepolia: "mantle-sepolia",
-  zkSyncEra: "zksync-mainnet",
-  zkSyncSepolia: "zksync-sepolia",
+  mantleSepoliaTestnet: "mantle-sepolia",
+  zksync: "zksync-mainnet",
+  zksyncSepoliaTestnet: "zksync-sepolia",
   gnosis: "gnosis-mainnet",
 };
 
