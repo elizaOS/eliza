@@ -213,6 +213,10 @@ test(
         jobsWriter: {
           async insertJob(job) {
             await containerJobsWriter.insertJob(job);
+            await dbWrite
+              .update(apps)
+              .set({ metadata: sql`${apps.metadata} || '{"fixturePreference":"retained"}'::jsonb` })
+              .where(eq(apps.id, input.appId));
             throw new Error("child insert response lost after commit");
           },
         },
@@ -233,9 +237,18 @@ test(
       expect.objectContaining({
         organization_id: input.organizationId,
         user_id: input.userId,
-        data: expect.objectContaining({ deploymentGeneration: deploy.deploymentId }),
+        data: expect.objectContaining({
+          containerId: expect.any(String),
+          deploymentGeneration: deploy.deploymentId,
+        }),
       }),
     ]);
+    const linked = await appsService.findByDeploymentGeneration(input.appId, deploy.deploymentId);
+    expect(linked?.metadata).toMatchObject({
+      containerId: children[0]?.data.containerId,
+      deploymentGeneration: deploy.deploymentId,
+      fixturePreference: "retained",
+    });
   },
   TEST_TIMEOUT,
 );
@@ -265,6 +278,55 @@ test(
       .from(jobs)
       .where(eq(jobs.type, JOB_TYPES.CONTAINER_PROVISION));
     expect(children).toEqual([child]);
+    const linked = await appsService.findByDeploymentGeneration(
+      deployment.appId,
+      deployment.deploymentGeneration,
+    );
+    expect(linked?.metadata.containerId).toBe(containerId);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "app deploy handoff recovery preserves the URL published by its ready child",
+  async () => {
+    const deployment = await seedInterruptedDeployment();
+    const containerId = await persistContainerForDeployment(deployment);
+    await new ContainerJobEnqueuer(containerJobsWriter).enqueueProvision({
+      containerId,
+      organizationId: deployment.organizationId,
+      userId: deployment.userId,
+      deploymentGeneration: deployment.deploymentGeneration,
+    });
+    const publishedUrl = "https://already-published.example.com";
+    await appsService.updateDeploymentGeneration(
+      deployment.appId,
+      deployment.deploymentGeneration,
+      { deployment_status: "deployed", production_url: publishedUrl },
+      ["deploying"],
+    );
+
+    const previousDomain = process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+    process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = "different.example.com";
+    try {
+      await new ProvisioningJobService().processPendingJobs(5, {
+        jobTypes: [JOB_TYPES.APP_DEPLOY],
+      });
+    } finally {
+      if (previousDomain === undefined) delete process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+      else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = previousDomain;
+    }
+
+    const linked = await appsService.findByDeploymentGeneration(
+      deployment.appId,
+      deployment.deploymentGeneration,
+    );
+    expect(linked?.metadata.containerId).toBe(containerId);
+    expect((await readJob(deployment.deploymentGeneration))?.status).toBe("completed");
+    expect(await appDeploymentsService.getLatestDeployment(deployment.appId)).toMatchObject({
+      status: "READY",
+      vercelUrl: publishedUrl,
+    });
   },
   TEST_TIMEOUT,
 );

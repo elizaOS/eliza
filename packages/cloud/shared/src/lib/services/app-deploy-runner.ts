@@ -195,23 +195,54 @@ export function containerNameForApp(appId: string, deploymentGeneration?: string
   return `${base}-g${generationSlug.slice(0, 8)}`;
 }
 
-async function confirmProvisionHandoff(
+async function linkProvisionedContainer(
+  appId: string,
+  generation: string,
+  containerId: string,
+  executionAuthority?: JobExecutionAuthority,
+): Promise<void> {
+  const metadata = { containerId };
+  const endpoint = deriveAppPublicUrl(containerId);
+  if (endpoint) {
+    const linked = await appsService.updateDeploymentGeneration(
+      appId,
+      generation,
+      { metadata, production_url: endpoint.url },
+      ["deploying"],
+      executionAuthority,
+    );
+    if (linked) return;
+  }
+  // A child can publish READY before the parent links it. Preserve its URL.
+  await appsService.updateDeploymentGeneration(
+    appId,
+    generation,
+    { metadata },
+    ["deploying", "deployed"],
+    executionAuthority,
+  );
+}
+
+async function recoverProvisionHandoff(
   app: App,
   generation: string,
+  executionAuthority: JobExecutionAuthority,
   cause?: unknown,
 ): Promise<void> {
-  if (
-    !app.created_by_user_id ||
-    !(await jobsRepository.hasAppDeployProvisionHandoff(
-      app.id,
-      app.organization_id,
-      app.created_by_user_id,
-      generation,
-    ))
-  ) {
+  const containerId = app.created_by_user_id
+    ? await jobsRepository.findAppDeployProvisionHandoff(
+        app.id,
+        app.organization_id,
+        app.created_by_user_id,
+        generation,
+      )
+    : undefined;
+  if (!containerId) {
+    if (app.deployment_status === "deployed") return;
     // The original process may still produce a durable child after lease loss.
     throw new AppDeployHandoffUnconfirmedError(generation, cause);
   }
+  await linkProvisionedContainer(app.id, generation, containerId, executionAuthority);
 }
 
 export class DefaultAppDeployRunner implements AppDeployRunner {
@@ -243,8 +274,12 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       if (current?.deployment_status === "failed" && !current.deletion_job_id) {
         throw new AppDeployGenerationFailedError(deploymentGeneration);
       }
-      if (executionAuthority && current?.deployment_status === "deploying") {
-        await confirmProvisionHandoff(current, deploymentGeneration);
+      if (
+        executionAuthority &&
+        current &&
+        (current.deployment_status === "deploying" || current.deployment_status === "deployed")
+      ) {
+        await recoverProvisionHandoff(current, deploymentGeneration, executionAuthority);
         return;
       }
       logger.info("[AppDeployRunner] ignored stale deployment generation", {
@@ -309,25 +344,8 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
           provisionEnqueueStarted = true;
           return enqueuer.enqueueProvision(p);
         },
-        linkContainerToApp: async (id, containerId) => {
-          // Re-read for the freshest metadata before merging containerId in.
-          const current = await appsService.getById(id);
-          const existingMeta = (current?.metadata as Record<string, unknown>) ?? {};
-          // The public URL is deterministic from the container id (same ingress
-          // derivation as the agent path), so the deploy-status poll can surface
-          // it immediately. Skipped when no public base domain is configured.
-          const endpoint = deriveAppPublicUrl(containerId);
-          await appsService.updateDeploymentGeneration(
-            id,
-            deploymentGeneration,
-            {
-              metadata: { ...existingMeta, containerId },
-              ...(endpoint ? { production_url: endpoint.url } : {}),
-            },
-            ["deploying"],
-            executionAuthority,
-          );
-        },
+        linkContainerToApp: (id, containerId) =>
+          linkProvisionedContainer(id, deploymentGeneration, containerId, executionAuthority),
       };
 
       const result = await deployApp(
@@ -355,7 +373,7 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       });
     } catch (error) {
       if (executionAuthority && provisionEnqueueStarted) {
-        await confirmProvisionHandoff(app, deploymentGeneration, error);
+        await recoverProvisionHandoff(app, deploymentGeneration, executionAuthority, error);
         logger.warn("[AppDeployRunner] recovered durable provision handoff after an error", {
           appId,
           deploymentGeneration,

@@ -6,6 +6,7 @@
         "an interrupted deploy without an exact child retains an unresolved job and app generation",
         "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
         "a lost child insert response retains the committed child without failing the app",
+        "app deploy handoff recovery preserves the URL published by its ready child",
         "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
         "an app deletion claim does not hide its interrupted deployment from recovery",
         "a deploy attempt that fails after the runner claims it leaves the app redeployable",

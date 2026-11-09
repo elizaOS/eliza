@@ -16,10 +16,10 @@
       "One app, two distinct deployment generations, at most two insert attempts, one original job identity, and at most three queue attempts. The second generation only fences the original job.",
       "Primary compare-and-set and exact-intent insert are atomic. Generation IDs are fresh. Worker dispatch and settlement use the separate provisioning execution lease contract.",
       "The original worker can commit a provision handoff after losing its lease. A single exact primary child and owning container row confirms the handoff. Missing or conflicting evidence parks the parent job and retains the original app generation.",
-      "The child is a durable handoff witness only. Image builds, tenant database operations, Docker, ingress, app-link recovery, and child settlement are outside this model."
+      "The exact child identifies the container for the app-link write. Abstract child readiness may race that write. Image builds, tenant database operations, Docker, ingress, and the child execution protocol remain outside the model."
     ],
-    "progress": "Under weakly fair dispatch and settlement, a known failure settles while its generation remains current. A recovered deploying generation either records an exact child handoff or retains an unresolved parent.",
-    "conformance": "The named PGlite scenarios exercise actual app admission, the durable writer, the default runner, and the provisioning worker. Lost transport responses are injected after the real parent and child inserts commit. Workerd routing and live providers are outside this evidence."
+    "progress": "Under weakly fair dispatch, linking, and settlement, a known failure settles while its generation remains current. A recovered parent reaches a linked handoff, an unresolved outcome, or retry exhaustion, unless a newer generation supersedes it.",
+    "conformance": "The named PGlite scenarios exercise actual app admission, the durable writer, the default runner, and the provisioning worker. Lost transport responses are injected after the real parent and child inserts commit. A persisted ready state tests app-link recovery and URL preservation. Workerd routing and live providers are outside this evidence."
   },
   "cases": [
     {
@@ -34,7 +34,9 @@
         "knownFailureNeverCompletes",
         "oldJobCannotSetNewPhase",
         "deployingCompletionRequiresHandoff",
-        "unconfirmedKeepsOriginalFence"
+        "unconfirmedKeepsOriginalFence",
+        "currentHandoffCompletionLinksContainer",
+        "appLinkRequiresHandoff"
       ],
       "temporal": ["KnownFailureSettles", "InterruptedHandoffSettles"],
       "maxSteps": 26,
@@ -53,7 +55,7 @@
           "property": "InterruptedHandoffSettles",
           "expect": "holds",
           "assumptions": [
-            "Pending jobs eventually dispatch. A continuously enabled exact-handoff settlement or unresolved-parent settlement eventually runs.",
+            "Pending jobs eventually dispatch. A continuously enabled exact app link, exact-handoff settlement, or unresolved-parent settlement eventually runs.",
             "An unconfirmed parent may stay parked even if the original child arrives later."
           ]
         }
