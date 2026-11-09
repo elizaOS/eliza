@@ -118,7 +118,13 @@
         "post-ledger failure rolls the grant back and a retry settles cleanly",
         "legacy custom cutover derives from paid cents and packs are durably quarantined",
         "legacy cutover rejects a cross-tenant user before grant or quarantine",
-        "legacy pack quarantine accepts only an exact replay"
+        "legacy pack quarantine accepts only an exact replay",
+        "concurrent identical quote requests return the same durable winner",
+        "concurrent conflicting quote requests cannot replace the winner",
+        "the same quote request key is independent across organizations",
+        "a cache failure after commit preserves the original grant for replay",
+        "a matching late Session acknowledgement preserves a webhook-settled order",
+        "a different late Session acknowledgement cannot replace a settled receipt"
       ]
     }
   ],
@@ -133,7 +139,15 @@
         "recovery searches the entire original retry window, including a late accepted retry",
         "legacy ambiguous orders remain read-only when original creation time is unknown",
         "legacy read-only discovery can recover an old Session outside the last-update window",
-        "multiple matching historical Sessions require reconciliation instead of choosing one"
+        "multiple matching historical Sessions require reconciliation instead of choosing one",
+        "recovery follows later pages before binding the original Session",
+        "a failed later lookup page cannot authorize another create",
+        "competing matching Sessions on separate pages reject recovery",
+        "an empty continuation page cannot authorize another create",
+        "a repeated pagination cursor cannot authorize another create",
+        "lookup deadline expiry cannot authorize another create",
+        "a stale unbound reader adopts the customer already pinned by another caller",
+        "a stale quoted caller can retry the same key after another caller dispatches"
       ]
     },
     {
