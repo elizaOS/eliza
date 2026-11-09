@@ -10,7 +10,7 @@
   "releaseConfig": "cp2a",
   "launcher": {
     "moduleName": "AlphaPhone",
-    "packageName": "ai.elizaresearch.alphaphone",
+    "packageName": "ai.alphacompute.alphaphone",
     "refuseLockScreenSurfaces": true,
     "imageProvisioning": {
       "module": "AlphaImageCapabilityOverlay",
@@ -23,8 +23,8 @@
     "moduleName": "AlphaSense",
     "appName": "Alpha",
     "wakeNames": ["alpha"],
-    "componentPackage": "ai.elizaresearch.alphaphone.sense",
-    "assistActivity": "ai.elizaresearch.alphaphone.AlphaAssistActivity",
+    "componentPackage": "ai.alphacompute.alphaphone.sense",
+    "assistActivity": "ai.alphacompute.alphaphone.AlphaAssistActivity",
     "storageName": "listener-settings"
   }
 }

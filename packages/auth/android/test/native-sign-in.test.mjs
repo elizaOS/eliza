@@ -302,7 +302,7 @@ test("the plugin owns every secret, compares state before burning and logs only 
     /@CapacitorPlugin/,
     "the host subclass declares its plugin name",
   );
-  for (const product of [/Alpha/, /elizaresearch/, /BuildConfig/])
+  for (const product of [/Alpha/, /alphacompute/, /BuildConfig/])
     assert.doesNotMatch(
       plugin,
       product,

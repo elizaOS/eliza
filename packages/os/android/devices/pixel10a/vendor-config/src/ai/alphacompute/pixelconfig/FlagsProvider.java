@@ -1,4 +1,4 @@
-package ai.elizaresearch.pixelconfig;
+package ai.alphacompute.pixelconfig;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
