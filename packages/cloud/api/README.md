@@ -124,9 +124,9 @@ published self-serve overage rate ($65 per million provider credits) in the
 This is an estimate for staging validation, not an assertion about a private
 invoice. Production retains its existing configured account rate.
 
-The speech-only Ink profile uses responsive thresholds and a 1280 ms final-turn
-timeout. `VOICE_SPEECH_END_TIMEOUT_MS` can select an integer clamped to 640–5000
-ms. Eager-end remains a distinct event; it is never promoted to a final transcript.
+Cloud speech uses the shared Cartesia Ink turn-detection settings, just like
+Direct speech. It does not replace them with a faster-ending profile. Eager-end
+remains a distinct event; it is never promoted to a final transcript.
 The streaming route bypasses the legacy SQL audio cache and does not replay
 cached PCM. Its cache stores positive moderation verdicts, not synthesized
 audio. Positive text moderation receipts use a 60-second, exact-input cache bound to
