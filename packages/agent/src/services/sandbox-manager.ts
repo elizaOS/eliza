@@ -2,7 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { redactSensitiveText, resolveStateDir } from "@elizaos/core";
 import {
   createEngine,
   detectBestEngine,
@@ -127,6 +127,17 @@ export interface SandboxEvent {
 }
 
 // ── Implementation ───────────────────────────────────────────────────────────
+
+// The in-memory log is for diagnostics; SandboxAuditLog is the durable record.
+const MAX_EVENT_LOG_ENTRIES = 1000;
+const MAX_EVENT_COMMAND_CHARS = 200;
+
+function describeCommand(command: string): string {
+  const redacted = redactSensitiveText(command);
+  return redacted.length > MAX_EVENT_COMMAND_CHARS
+    ? `${redacted.slice(0, MAX_EVENT_COMMAND_CHARS)}…`
+    : redacted;
+}
 
 export class SandboxManager {
   private state: SandboxState = "uninitialized";
@@ -328,19 +339,7 @@ export class SandboxManager {
           detail: `Container started: ${this.containerId}`,
         });
 
-        // Start browser container if configured
-        if (this.config.browser?.enabled && this.config.browser.autoStart) {
-          try {
-            this.browserContainerId = await this.createBrowserContainer();
-          } catch (err) {
-            this.emitEvent({
-              timestamp: Date.now(),
-              type: "error",
-              detail: `Browser container start failed: ${String(err)}`,
-            });
-            // Non-fatal: sandbox can work without browser
-          }
-        }
+        await this.startBrowserIfConfigured();
 
         // Health check
         const healthy = await this.healthCheck();
@@ -388,6 +387,7 @@ export class SandboxManager {
         }
 
         this.containerId = await this.createMainContainer();
+        await this.startBrowserIfConfigured();
 
         const healthy = await this.healthCheck();
         if (healthy) {
@@ -468,7 +468,7 @@ export class SandboxManager {
     this.emitEvent({
       timestamp: Date.now(),
       type: "exec",
-      detail: options.command,
+      detail: describeCommand(options.command),
       metadata: {
         workdir: options.workdir ?? this.config.workdir ?? "/workspace",
       },
@@ -493,7 +493,7 @@ export class SandboxManager {
         type: "error",
         detail: `Sandbox exec failed: ${String(err)}`,
         metadata: {
-          command: options.command,
+          command: describeCommand(options.command),
         },
       });
       return {
@@ -547,6 +547,20 @@ export class SandboxManager {
     return `http://localhost:${port}/vnc.html?autoconnect=true&resize=scale&view_only=true`;
   }
 
+  private async startBrowserIfConfigured(): Promise<void> {
+    if (!this.config.browser?.enabled || !this.config.browser.autoStart) return;
+    try {
+      this.browserContainerId = await this.createBrowserContainer();
+    } catch (err) {
+      this.emitEvent({
+        timestamp: Date.now(),
+        type: "error",
+        detail: `Browser container start failed: ${String(err)}`,
+      });
+      // Non-fatal: sandbox can work without browser
+    }
+  }
+
   private async createBrowserContainer(): Promise<string> {
     const name = `${this.config.containerPrefix}-browser-${Date.now()}`;
     const cdpPort = this.config.browser?.cdpPort ?? 9222;
@@ -595,6 +609,9 @@ export class SandboxManager {
 
   private emitEvent(event: SandboxEvent): void {
     this.eventLog.push(event);
+    if (this.eventLog.length > MAX_EVENT_LOG_ENTRIES) {
+      this.eventLog.splice(0, this.eventLog.length - MAX_EVENT_LOG_ENTRIES);
+    }
   }
 
   getEventLog(): SandboxEvent[] {
@@ -614,4 +631,16 @@ export class SandboxManager {
       browserContainerId: this.browserContainerId,
     };
   }
+}
+
+// The runtime owns the started manager; the API server reads it from here so
+// terminal and sandbox routes run through the same sandbox.
+let activeSandboxManager: SandboxManager | null = null;
+
+export function setActiveSandboxManager(manager: SandboxManager | null): void {
+  activeSandboxManager = manager;
+}
+
+export function getActiveSandboxManager(): SandboxManager | null {
+  return activeSandboxManager;
 }

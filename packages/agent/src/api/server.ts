@@ -245,6 +245,7 @@ import {
 } from "./runtime-mode/runtime-mode.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
 import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
+import { setSelfApiTcpListenerBound } from "./self-api-endpoint.ts";
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
@@ -5440,6 +5441,7 @@ export async function startApiServer(opts?: {
     logger.info(
       "[eliza-api] Started without binding a TCP listener (skipListen; local-agent IPC mode)",
     );
+    setSelfApiTcpListenerBound(false);
     if (!opts?.skipDeferredStartupWork) {
       void startDeferredStartupWork();
     }
@@ -5510,9 +5512,12 @@ export async function startApiServer(opts?: {
     hostConfig === undefined
       ? setLiveElizaConfigSource(() => state.config, configWritePath)
       : undefined;
+  setSelfApiTcpListenerBound(true);
   return {
     port: listener.port,
     close: async () => {
+      // Once closed, the port is free for any local app to bind.
+      setSelfApiTcpListenerBound(false);
       releaseLiveConfigSource?.();
       await listener.close();
     },
