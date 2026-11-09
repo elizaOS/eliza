@@ -82,7 +82,7 @@ const descriptor = {
   schemaVersion: 1 as const,
   brand: "alpha_phone",
   moduleName: "AlphaPhone",
-  packageName: "ai.elizaresearch.alphaphone",
+  packageName: "ai.alphacompute.alphaphone",
   apkSha256: "a".repeat(64),
   certificateSha256: "b".repeat(64),
 };
@@ -245,7 +245,7 @@ test("reviewed default permissions are declared by the APK and granted revocably
   );
   assert.match(
     generated.permissions ?? "",
-    /<exception package="ai.elizaresearch.alphaphone">/,
+    /<exception package="ai.alphacompute.alphaphone">/,
   );
   assert.equal(
     (generated.permissions ?? "").match(/fixed="false"/g)?.length,
@@ -292,7 +292,7 @@ test("system-only launcher keeps the APK and revocable grants in the same image"
 // A second presigned package (for example an update supervisor) of the same product.
 const updater = {
   moduleName: "AlphaPhoneUpdater",
-  packageName: "ai.elizaresearch.alphaphone.updater",
+  packageName: "ai.alphacompute.alphaphone.updater",
   apkSha256: "c".repeat(64),
 };
 test("companions are pinned, distinct, and staged without grants or privilege", () => {
@@ -304,7 +304,7 @@ test("companions are pinned, distinct, and staged without grants or privilege", 
     [{ ...updater, moduleName: "Launcher" }],
     [{ ...updater, moduleName: "AlphaPhoneDefaultPermissions" }],
     [{ ...updater, packageName: descriptor.packageName }],
-    [updater, { ...updater, packageName: "ai.elizaresearch.other" }],
+    [updater, { ...updater, packageName: "ai.alphacompute.other" }],
     [{ ...updater, apkSha256: "C".repeat(64) }],
     [{ ...updater, moduleName: 'X"/>' }],
     // A companion carries no grants and no signer of its own.
@@ -611,7 +611,7 @@ test("the launcher moves to Android.mk with its JNI; grants and companions stay 
     companions: [
       {
         moduleName: "AlphaPhoneUpdater",
-        packageName: "ai.elizaresearch.alphaphone.updater",
+        packageName: "ai.alphacompute.alphaphone.updater",
         apkSha256: "c".repeat(64),
       },
     ],
@@ -784,7 +784,7 @@ test("a Soong-only product gets prebuilt_app_native rules required by the launch
     companions: [
       {
         moduleName: "AlphaPhoneUpdater",
-        packageName: "ai.elizaresearch.alphaphone.updater",
+        packageName: "ai.alphacompute.alphaphone.updater",
         apkSha256: "c".repeat(64),
       },
     ],

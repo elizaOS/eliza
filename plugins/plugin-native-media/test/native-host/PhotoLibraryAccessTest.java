@@ -123,6 +123,19 @@ public final class PhotoLibraryAccessTest {
     check(PhotoLibraryAccess.anyPermitted(picked));
     check(!PhotoLibraryAccess.anyPermitted(PhotoLibraryAccess.reviewed(items("12", "b", "v:13", "c"), 20)));
 
+    // A permitted bulk change binds all 500 exact ids and revisions in one reviewed request.
+    JSONArray bulk = new JSONArray();
+    for (int i = 0; i < 500; i++) bulk.put(new JSONObject().put("id", "m:external:i:" + (i + 1)).put("revision", "r" + i));
+    List<PhotoLibraryAccess.Reviewed> reviewedBulk = PhotoLibraryAccess.reviewed(bulk, PhotoLibraryAccess.REVIEWED_BATCH);
+    check(reviewedBulk.size() == 500);
+    for (int i = 0; i < 500; i++) {
+      check(reviewedBulk.get(i).id.equals("m:external:i:" + (i + 1)));
+      check(reviewedBulk.get(i).revision.equals("r" + i));
+    }
+    rejects(() -> PhotoLibraryAccess.reviewed(bulk, PhotoLibraryAccess.REVIEWED));
+    bulk.put(new JSONObject().put("id", "m:external:i:501").put("revision", "r500"));
+    rejects(() -> PhotoLibraryAccess.reviewed(bulk, PhotoLibraryAccess.REVIEWED_BATCH));
+
     // Changes: Photos batches and agent album changes; permanent deletion is never an agent change.
     check(Arrays.equals(PhotoLibraryAccess.batchChange("favorite"), new boolean[] {true, true}));
     check(Arrays.equals(PhotoLibraryAccess.batchChange("trash"), new boolean[] {false, true}));

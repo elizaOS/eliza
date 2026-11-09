@@ -22,6 +22,7 @@ import {
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
 import { isNativeBrowserRequest } from "../native-browser-request.js";
+import { observedNativeHistorySelection } from "../native-client-command.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -964,7 +965,14 @@ export const browserAction: Action = {
         `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
       const result = browserService
-        ? await browserService.execute(command, params?.target, nativeClientId)
+        ? await browserService.execute(
+            command,
+            params?.target,
+            nativeClientId,
+            nativeClientId
+              ? observedNativeHistorySelection(message, command.subaction)
+              : undefined,
+          )
         : await executeBrowserWorkspaceCommand(command);
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
       // Page observations feed dependent planning; they do not themselves

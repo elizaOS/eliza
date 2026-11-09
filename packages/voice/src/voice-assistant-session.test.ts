@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { shouldRespondToVoiceTurn } from "./respond-gate";
 import {
   ASSISTANT_TIMING_DEFAULTS,
   type AssistantCapture,
@@ -655,6 +656,39 @@ describe("VoiceAssistantSession interruption and heard content", () => {
     expect(h.log.heard.at(-1)?.interrupted).toBe(false);
   });
 
+  it("answers a short reply that repeats the question's words once the user started after playback ended", async () => {
+    const seen: Parameters<NonNullable<AssistantPorts["shouldRespond"]>>[1][] =
+      [];
+    const h = harness({
+      fullDuplex: false,
+      shouldRespond: (text, context) => {
+        seen.push(context);
+        return shouldRespondToVoiceTurn(text, context);
+      },
+    });
+    await h.session.start();
+    await h.say("call my friend");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Should I call Alex or Sam?");
+    await flush();
+    h.speeches[0]?.input.onStarted();
+    await flush();
+    h.speeches[0]?.done.resolve();
+    await flush();
+    await h.clock.advance(2000);
+    await h.say("Call Alex");
+    await h.clock.advance(longGapMs * 2);
+    expect(seen.at(-1)).toMatchObject({
+      agentSpeaking: false,
+      turnStartedAfterReplyEndMs: 2000,
+      echoCancelled: false,
+    });
+    expect(h.log.sends.map((send) => send.text)).toEqual([
+      "call my friend",
+      "Call Alex",
+    ]);
+  });
+
   it("speech during playback never interrupts, with or without an echo canceller; Stop speaking still does", async () => {
     for (const fullDuplex of [false, true]) {
       const h = harness({ fullDuplex });
@@ -1200,27 +1234,35 @@ describe("VoiceAssistantSession busy hold", () => {
     expect(refused.log.captures).toBe(2);
   });
 
-  it("an AbortError that is not the session's own leaves the turn held with no reopen; only Stop clears it", async () => {
+  it("an AbortError the port raised while the session owns the turn ends it with a failure; Stop reports none", async () => {
     const owned = harness();
     await owned.session.start();
     await owned.say("what is next");
     await owned.clock.advance(longGapMs);
     owned.answer(0, "Done.");
     await flush();
-    at(owned.speeches, 0).done.reject(
-      new DOMException("speech retired", "AbortError"),
-    );
+    const retired = new DOMException("speech retired", "AbortError");
+    at(owned.speeches, 0).done.reject(retired);
     await flush();
+    expect(owned.session.getSnapshot()).toEqual({
+      phase: "error",
+      error: retired,
+    });
     await owned.clock.advance(longGapMs * 2);
     expect(owned.log.captures).toBe(1);
-    expect(owned.session.getSnapshot()).toMatchObject({
-      phase: "thinking",
-      inputHeld: true,
-    });
-    await owned.session.stop();
+
+    const stopped = harness();
+    await stopped.session.start();
+    await stopped.say("what is next");
+    await stopped.clock.advance(longGapMs);
+    stopped.answer(0, "Done.");
     await flush();
-    expect(owned.session.getSnapshot()).toEqual({ phase: "idle" });
-    expect(owned.log.captures).toBe(1);
+    await stopped.session.stop();
+    await flush();
+    expect(stopped.session.getSnapshot()).toEqual({ phase: "idle" });
+    expect(stopped.log.states.some((state) => state.phase === "error")).toBe(
+      false,
+    );
   });
 
   it("closes a capture that finishes opening after submission and holds only after that close", async () => {
@@ -1824,7 +1866,12 @@ describe("VoiceAssistantSession streamed replies", () => {
     expect(h.phase()).toBe("error");
     // The streamed sentence already started, so what was heard is reported.
     expect(h.log.heard).toHaveLength(1);
-    expect(h.log.heard[0]).toMatchObject({ turnId: input.turnId, replyId: "" });
+    expect(h.log.heard[0]).toMatchObject({
+      turnId: input.turnId,
+      replyId: "",
+      replyFailed: true,
+    });
+    expect(h.log.heard[0]?.playbackFailed).toBeUndefined();
   });
 
   it("Stop speaking during a streamed sentence cancels the reply and reports exactly what was heard", async () => {

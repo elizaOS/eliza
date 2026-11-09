@@ -2283,6 +2283,385 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 
+  it("reports a linked conflict, shows Google's copy, and clears it when the owner keeps Google", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Edited on the phone",
+      startAt: "2026-08-16T19:00:00.000Z",
+      endAt: "2026-08-16T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "conflict-review-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    const link = await links.save(
+      await links.create({
+        agentId: AGENT_ID,
+        localEventId: event.id,
+        ...destination,
+        localRevision: 1,
+      }),
+      {
+        state: "conflicted",
+        pendingOperation: null,
+        providerEventId: "google-conflict-event",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: "older-common-version",
+        lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+      },
+    );
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    const googleCopy = {
+      id: "google-conflict-event",
+      calendarId: destination.providerCalendarId,
+      title: "Edited in Google",
+      description: event.description,
+      location: "Room 2",
+      start: event.startAt,
+      end: event.endAt,
+      timeZone: event.timezone,
+      attendees: [],
+      metadata: { etag: '"g2"' },
+    };
+    const google = {
+      getEvent: async () => googleCopy,
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Review calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent: async () => {
+        throw new Error("Keeping Google must not create an event");
+      },
+      updateEvent: async () => {
+        throw new Error("Keeping Google must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Keeping Google must not delete an event");
+      },
+    };
+    const reviewRuntime = {
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime;
+    const review = new CalendarService(reviewRuntime);
+    // Installed while paused, so the gate's bootstrap drain stays idle.
+    review.setGate(connectedGoogleGate());
+
+    expect((await review.getLinkedCalendarControl()).conflicts).toBe(1);
+    const [view] = (await review.listLinkedCalendarEventViews()).filter(
+      (row) => row.id === link.id,
+    );
+    expect(view?.event?.title).toBe("Edited on the phone");
+    expect(view?.providerEvent).toMatchObject({
+      title: "Edited in Google",
+      location: "Room 2",
+    });
+
+    await controls.resume(selected.revision);
+    const resolved = await review.executeLinkedCalendarConflictResolution(
+      link.id,
+      {
+        strategy: "keep_google",
+        expectedUpdatedAt: link.updatedAt,
+        idempotencyKey: "keep-google-review",
+      },
+    );
+    expect(resolved.outcome).toBe("pulled");
+    expect(resolved.link).toMatchObject({
+      state: "clean",
+      providerEtag: '"g2"',
+    });
+    expect((await review.getCalendarEventById(event.id))?.title).toBe(
+      "Edited in Google",
+    );
+    expect((await review.getLinkedCalendarControl()).conflicts).toBe(0);
+  });
+
+  it("restores a deleted Eliza event from Google when the owner keeps Google", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Deleted on the phone",
+      startAt: "2026-08-17T19:00:00.000Z",
+      endAt: "2026-08-17T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "conflict-restore-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "restore-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    const link = await links.save(
+      await links.create({
+        agentId: AGENT_ID,
+        localEventId: event.id,
+        ...destination,
+        localRevision: 1,
+      }),
+      {
+        state: "conflicted",
+        pendingOperation: null,
+        providerEventId: "google-restore-event",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: "older-common-version",
+        lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+      },
+    );
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    await service.deleteCalendarEvent(INTERNAL_URL, {
+      eventId: event.externalId,
+      expectedProviderVersion: event.metadata.etag,
+      calendarId: event.calendarId,
+      grantId: event.grantId,
+    });
+    expect(await service.getCalendarEventById(event.id)).toBeNull();
+    const google = {
+      getEvent: async () => ({
+        id: "google-restore-event",
+        calendarId: destination.providerCalendarId,
+        title: "Kept in Google",
+        description: "",
+        location: "Room 3",
+        start: event.startAt,
+        end: event.endAt,
+        timeZone: event.timezone,
+        attendees: [],
+        metadata: { etag: '"g2"' },
+      }),
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Restore calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent: async () => {
+        throw new Error("Keeping Google must not create an event");
+      },
+      updateEvent: async () => {
+        throw new Error("Keeping Google must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Keeping Google must not delete an event");
+      },
+    };
+    const review = new CalendarService({
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime);
+    review.setGate(connectedGoogleGate());
+    await controls.resume(selected.revision);
+    const current = await links.getById(AGENT_ID, link.id);
+    if (!current) throw new Error("Expected the conflicted link");
+
+    const resolved = await review.executeLinkedCalendarConflictResolution(
+      link.id,
+      {
+        strategy: "keep_google",
+        expectedUpdatedAt: current.updatedAt,
+        idempotencyKey: "keep-google-restore",
+      },
+    );
+    expect(resolved.outcome).toBe("pulled");
+    expect(resolved.link).toMatchObject({ state: "clean" });
+    const restored = await review.getCalendarEventById(event.id);
+    expect(restored).toMatchObject({
+      id: event.id,
+      title: "Kept in Google",
+      location: "Room 3",
+    });
+    expect(Number(restored?.metadata.version)).toBeGreaterThan(
+      Number(event.metadata.version),
+    );
+  });
+
+  it("lets the owner release a create that never reached Google, then sends it once on resume", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Never landed",
+      startAt: "2026-08-15T19:00:00.000Z",
+      endAt: "2026-08-15T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "never-landed-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    let link = await links.create({
+      agentId: AGENT_ID,
+      localEventId: event.id,
+      ...destination,
+      localRevision: 1,
+    });
+    link = await links.save(link, {
+      state: "quarantined",
+      lastErrorCode: "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
+    });
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    const active = await controls.resume(selected.revision);
+    await controls.acquireDispatch(active.revision, link.id, destination);
+    let paused = await controls.pause(active.revision);
+    let googleEvent: Record<string, unknown> | null = null;
+    let releaseCreate: () => void = () => {};
+    let createStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      createStarted = resolve;
+    });
+    const createEvent = vi.fn(async (input: Record<string, unknown>) => {
+      createStarted();
+      await new Promise<void>((release) => {
+        releaseCreate = release;
+      });
+      googleEvent = {
+        id: "resent-event",
+        calendarId: destination.providerCalendarId,
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        start: input.start,
+        end: input.end,
+        timeZone: input.timeZone,
+        attendees: [],
+        metadata: { etag: '"resent-v1"' },
+      };
+      return googleEvent;
+    });
+    const google = {
+      findEventByIdempotencyKey: vi.fn(async () => googleEvent),
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Recovery calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent,
+      updateEvent: async () => {
+        throw new Error("Recovery must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Recovery must not delete an event");
+      },
+    };
+    const recovery = new CalendarService({
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime);
+    recovery.setGate(connectedGoogleGate());
+
+    // Inside the settle window an absent create proves nothing yet.
+    await expect(
+      recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-too-soon",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_RECOVERY_UNRESOLVED",
+    });
+
+    const aged = "2026-08-01T00:00:00.000Z";
+    await pg.query(
+      "UPDATE app_calendar.linked_calendar_control SET dispatch_acquired_at = $1",
+      [aged],
+    );
+    await pg.query(
+      "UPDATE app_calendar.linked_calendar_events SET updated_at = $1 WHERE id = $2",
+      [aged, link.id],
+    );
+    const recovered = await recovery.executeLinkedCalendarControl(
+      INTERNAL_URL,
+      {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-not-landed",
+      },
+    );
+    expect(recovered.paused).toBe(true);
+    expect(recovered.pendingDispatch).toBeNull();
+    expect(createEvent).not.toHaveBeenCalled();
+    expect(await links.getById(AGENT_ID, link.id)).toMatchObject({
+      state: "dirty",
+      pendingOperation: "create",
+      lastErrorCode: "LINKED_CALENDAR_DISPATCH_NOT_LANDED",
+    });
+
+    const resumed = await recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+      operation: "resume",
+      expectedRevision: recovered.revision,
+      idempotencyKey: "resume-after-not-landed",
+    });
+    await started;
+    paused = await controls.pause(resumed.revision);
+    await expect(
+      recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-while-running",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_DISPATCH_ACTIVE",
+    });
+    releaseCreate();
+    await expect
+      .poll(async () => (await links.getById(AGENT_ID, link.id))?.state)
+      .toBe("clean");
+    expect(createEvent).toHaveBeenCalledOnce();
+    expect(createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: link.idempotencyKey }),
+    );
+    expect((await controls.read()).dispatch).toBeNull();
+  });
+
   it("resolves an unscoped mutation target to the built-in event without hijacking external grants", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Unscoped lookup",

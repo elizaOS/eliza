@@ -7,7 +7,9 @@
  * the partial unique index `app_frontend_deployments_active_idx`.
  */
 
-import { and, desc, eq, inArray, max, ne } from "drizzle-orm";
+import { ElizaError } from "@elizaos/core";
+import { and, desc, eq, inArray, isNotNull, isNull, max, ne, or, sql } from "drizzle-orm";
+import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AppFrontendDeployment,
@@ -38,8 +40,12 @@ export class AppFrontendDeploymentsRepository {
    * version rather than a raw 500.
    */
   async create(input: {
+    id?: string;
     appId: string;
+    organizationId: string;
     r2Prefix: string;
+    uploadGeneration?: string;
+    uploadPlan?: FrontendManifest;
     createdByUserId?: string | null;
     buildMeta?: FrontendBuildMeta;
   }): Promise<AppFrontendDeployment> {
@@ -47,6 +53,16 @@ export class AppFrontendDeploymentsRepository {
     for (let attempt = 1; ; attempt++) {
       try {
         return await dbWrite.transaction(async (tx) => {
+          const [app] = await tx
+            .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
+            .from(apps)
+            .where(and(eq(apps.id, input.appId), eq(apps.organization_id, input.organizationId)))
+            .for("update");
+          if (!app)
+            throw new ElizaError("Frontend app owner is unavailable", {
+              code: "FRONTEND_APP_OWNER_UNAVAILABLE",
+            });
+          if (app.deletionJobId) throw new AppDeletionInProgressError(app.id, app.deletionJobId);
           const [maxRow] = await tx
             .select({ maxVersion: max(appFrontendDeployments.version) })
             .from(appFrontendDeployments)
@@ -55,7 +71,10 @@ export class AppFrontendDeploymentsRepository {
           const [row] = await tx
             .insert(appFrontendDeployments)
             .values({
+              id: input.id,
               app_id: input.appId,
+              upload_generation: input.uploadGeneration,
+              upload_plan: input.uploadPlan,
               version,
               status: "pending",
               r2_prefix: input.r2Prefix,
@@ -126,18 +145,114 @@ export class AppFrontendDeploymentsRepository {
         finalized_at: new Date(),
         updated_at: new Date(),
       })
-      .where(and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.status, "uploading")))
+      .where(
+        and(
+          eq(appFrontendDeployments.id, id),
+          eq(appFrontendDeployments.status, "uploading"),
+          or(
+            isNull(appFrontendDeployments.upload_generation),
+            isNotNull(appFrontendDeployments.upload_quiesced_at),
+          ),
+        ),
+      )
       .returning();
     return row;
   }
 
-  async beginUpload(id: string): Promise<AppFrontendDeployment | undefined> {
-    const [row] = await dbWrite
-      .update(appFrontendDeployments)
-      .set({ status: "uploading", updated_at: new Date() })
-      .where(and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.status, "pending")))
-      .returning();
-    return row;
+  private async withUploadApp<T>(
+    owner: Pick<App, "id" | "organization_id">,
+    operation: (tx: import("../client").DbTransaction, deleting: boolean) => Promise<T>,
+  ): Promise<T | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const [app] = await tx
+        .select({ id: apps.id, deleting: apps.deletion_job_id })
+        .from(apps)
+        .where(and(eq(apps.id, owner.id), eq(apps.organization_id, owner.organization_id)))
+        .for("update");
+      if (!app) return undefined;
+      return operation(tx, !!app.deleting);
+    });
+  }
+
+  async beginUpload(
+    owner: Pick<App, "id" | "organization_id">,
+    id: string,
+    generation?: string,
+  ): Promise<AppFrontendDeployment | undefined> {
+    return this.withUploadApp(owner, async (tx, deleting) => {
+      if (deleting) return undefined;
+      const [row] = await tx
+        .update(appFrontendDeployments)
+        .set({ status: "uploading", updated_at: new Date() })
+        .where(
+          and(
+            eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, owner.id),
+            eq(appFrontendDeployments.status, "pending"),
+            generation
+              ? eq(appFrontendDeployments.upload_generation, generation)
+              : isNull(appFrontendDeployments.upload_generation),
+          ),
+        )
+        .returning();
+      return row;
+    });
+  }
+
+  /** Last local admission before each PUT; deletion waits for this writer's quiescence. */
+  async assertUploadAuthority(
+    owner: Pick<App, "id" | "organization_id">,
+    id: string,
+    generation: string,
+  ): Promise<void> {
+    const row = await this.withUploadApp(owner, async (tx, deleting) => {
+      if (deleting) return undefined;
+      const [owned] = await tx
+        .select({ id: appFrontendDeployments.id })
+        .from(appFrontendDeployments)
+        .where(
+          and(
+            eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, owner.id),
+            eq(appFrontendDeployments.upload_generation, generation),
+            eq(appFrontendDeployments.status, "uploading"),
+            isNull(appFrontendDeployments.upload_quiesced_at),
+          ),
+        )
+        .for("update");
+      return owned;
+    });
+    if (!row)
+      throw new ElizaError("Original frontend upload authority is unavailable", {
+        code: "FRONTEND_UPLOAD_AUTHORITY_LOST",
+        context: { deploymentId: id },
+      });
+  }
+
+  /** Only the original writer, after every issued PUT acknowledges, may record no future PUTs. */
+  async quiesceUpload(
+    owner: Pick<App, "id" | "organization_id">,
+    id: string,
+    generation: string,
+  ): Promise<AppFrontendDeployment | undefined> {
+    return this.withUploadApp(owner, async (tx) => {
+      const [row] = await tx
+        .update(appFrontendDeployments)
+        .set({
+          upload_quiesced_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, owner.id),
+            eq(appFrontendDeployments.upload_generation, generation),
+            isNull(appFrontendDeployments.upload_quiesced_at),
+          ),
+        )
+        .returning();
+      return row;
+    });
   }
 
   /** Retire only unpublished work. Its returned row is the object cleanup authority. */
@@ -181,11 +296,12 @@ export class AppFrontendDeploymentsRepository {
       // A mutable active-first ordering alone is insufficient when another
       // activation changes the active row while a deletion snapshot waits.
       const [app] = await tx
-        .select({ id: apps.id })
+        .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
         .from(apps)
         .where(and(eq(apps.id, appId), eq(apps.organization_id, organizationId)))
         .for("update");
       if (!app) throw new DeploymentNotPromotable();
+      if (app.deletionJobId) throw new AppDeletionInProgressError(app.id, app.deletionJobId);
       await tx
         .update(appFrontendDeployments)
         .set({ status: "superseded", updated_at: new Date() })
@@ -229,6 +345,11 @@ export class AppFrontendDeploymentsRepository {
           eq(appFrontendDeployments.id, id),
           eq(appFrontendDeployments.app_id, appId),
           ne(appFrontendDeployments.status, "active"),
+          or(
+            eq(appFrontendDeployments.status, "pending"),
+            inArray(appFrontendDeployments.status, ["ready", "superseded"]),
+            isNotNull(appFrontendDeployments.upload_quiesced_at),
+          ),
         ),
       )
       .returning();

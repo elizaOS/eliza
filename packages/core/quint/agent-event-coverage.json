@@ -1,0 +1,30 @@
+[
+	{
+		"id": "core-AgentEventService",
+		"model": "packages/core/quint/AgentEventService.qnt",
+		"sources": [
+			"packages/core/src/services/agent-event.ts",
+			"packages/core/src/runtime.ts",
+			"packages/core/src/services/agent-event-bridge.ts",
+			"packages/core/test/agent-event-bridge.test.ts"
+		],
+		"invariants": [
+			"SequenceBounds",
+			"PeerReceivesInSequence",
+			"DiagnosticsFollowOriginal",
+			"SessionUsesCallerOrRun",
+			"OneCurrentRegistration",
+			"DetachRequiresCurrentHandle",
+			"CallbackDetachesBeforePeer",
+			"HeartbeatStatusMatchesIndicator",
+			"StopClearsRegistrationsAndHeartbeat"
+		],
+		"status": "partial",
+		"limitations": [
+			"The fan-out trace models a healthy peer and one listener failure on the original event. Multiple failing listeners, failures during diagnostics, and arbitrary nested callback emissions are outside this projection.",
+			"The subscription case includes a callback that detaches itself during dispatch. Adding subscriptions, removing other listeners, stopping the service and tearing down runs from inside callbacks need additional transition coverage.",
+			"The session projection abstracts an absent or blank caller key to one value. Additional run context fields, heartbeat timestamp and explicit indicator overrides are outside the finite state domain.",
+			"The real runtime conformance tests exercise diagnostic forwarding, stale handles, callback self-detach, heartbeat retention, and run cleanup. They do not exhaust callback schedules."
+		]
+	}
+]

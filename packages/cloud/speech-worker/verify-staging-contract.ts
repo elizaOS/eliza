@@ -42,7 +42,6 @@ export const SPEECH_WORKER_REQUIRED_SECRETS = [
 export const COORDINATOR_SOURCES = [
   "api/src/speech-relay-coordinator.ts",
   "api/src/speech-relay-admission.ts",
-  "api/src/speech-relay-ink.ts",
   "api/src/speech-retirement-state.ts",
   "api/src/speech-revocation-subscription.ts",
   "api/v1/voice/session/lib/provider-socket-factory.ts",

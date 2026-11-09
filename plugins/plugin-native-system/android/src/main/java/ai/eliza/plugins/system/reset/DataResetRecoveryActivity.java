@@ -4,6 +4,7 @@ import ai.eliza.plugins.system.SenseListenerClient;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,6 +13,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Visible state for a confirmed reset that could not finish. Declare the host subclass unexported,
@@ -22,12 +25,16 @@ import android.widget.TextView;
  *
  * <p>It never reports the reset as complete: on success Android stops every process of the package
  * and the next launch is a first run. Destinations are fixed and package-specific: the same-signer
- * listener's own validated settings activity, the dialer and Android Settings.
+ * listener's own validated settings activity, a dialer outside this package (hidden when there is
+ * none) and Android Settings.
  */
 public abstract class DataResetRecoveryActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
-    private TextView status;
-    private Button retry;
+    private DataResetCopy text;
+    private TextView body, status;
+    private Button retry, listenerSettings;
+    private String dialer;
+    private DataReset.Outcome retried;
     private boolean destroyed;
 
     /** The host's single reset coordinator. */
@@ -42,9 +49,8 @@ public abstract class DataResetRecoveryActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        DataResetCopy text = copy();
-        SenseListenerClient listener = new SenseListenerClient(this);
-        boolean installed = listener.installed(), controllable = listener.available();
+        text = copy();
+        dialer = dialer();
         int pad = (int) (20 * getResources().getDisplayMetrics().density);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -59,9 +65,8 @@ public abstract class DataResetRecoveryActivity extends Activity {
         title.setPadding(0, 0, 0, pad / 2);
         if (android.os.Build.VERSION.SDK_INT >= 28) title.setAccessibilityHeading(true);
         root.addView(title);
-        TextView body = new TextView(this);
+        body = new TextView(this);
         body.setTextSize(16);
-        body.setText(text.recoveryBody(reset().lastFailure(this), installed, controllable));
         root.addView(body);
         status = new TextView(this);
         status.setTextSize(16);
@@ -69,8 +74,8 @@ public abstract class DataResetRecoveryActivity extends Activity {
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         root.addView(status);
         retry = button(root, text.retryLabel, v -> retry(text));
-        if (controllable) button(root, text.listenerSettingsLabel, v -> open(new SenseListenerClient(this).settingsIntent(), text));
-        button(root, text.phoneLabel, v -> open(new Intent(Intent.ACTION_DIAL), text));
+        listenerSettings = button(root, text.listenerSettingsLabel, v -> open(new SenseListenerClient(this).settingsIntent(), text));
+        if (dialer != null) button(root, text.phoneLabel, v -> open(new Intent(Intent.ACTION_DIAL).setPackage(dialer), text));
         button(root, text.androidSettingsLabel, v -> open(new Intent(android.provider.Settings.ACTION_SETTINGS), text));
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
@@ -84,6 +89,38 @@ public abstract class DataResetRecoveryActivity extends Activity {
         if (!reset().pending(this)) {
             open(getPackageManager().getLaunchIntentForPackage(getPackageName()), null);
             finish();
+            return;
+        }
+        // The listener may have been repaired, or a retry may have changed the cause, while away.
+        DataReset.Outcome recorded = reset().lastFailure(this);
+        explain(retried != null ? retried : recorded, new SenseListenerClient(this).available());
+    }
+
+    /** Body and listener destination from the latest known cause and the listener's current state. */
+    private void explain(DataReset.Outcome cause, boolean controllable) {
+        body.setText(text.recoveryBody(cause, controllable, dialer != null));
+        listenerSettings.setVisibility(controllable ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * The ACTION_DIAL package recovery opens: one outside this package, preferring the system
+     * dialer, or null. This app's own dial pad would start its main process and land back here.
+     */
+    private String dialer() {
+        try {
+            String system = null;
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                android.telecom.TelecomManager telecom = getSystemService(android.telecom.TelecomManager.class);
+                if (telecom != null) system = telecom.getSystemDialerPackage();
+            }
+            List<String> packages = new ArrayList<>();
+            for (ResolveInfo info : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_DIAL), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)) {
+                if (info.activityInfo != null && info.activityInfo.exported) packages.add(info.activityInfo.packageName);
+            }
+            int choice = DataReset.recoveryDialer(getPackageName(), system, packages);
+            return choice < 0 ? null : packages.get(choice);
+        } catch (RuntimeException unavailable) {
+            return null;
         }
     }
 
@@ -114,9 +151,12 @@ public abstract class DataResetRecoveryActivity extends Activity {
         final Context context = getApplicationContext();
         final DataReset reset = reset();
         Thread attempt = new Thread(() -> {
-            DataReset.Outcome outcome = reset.attempt(context, System.currentTimeMillis());
+            // Asks Cloud (or the host's other pre-dispatch step) first unless it already answered,
+            // within a bounded budget, so a retry never hangs and never skips a reachable revocation.
+            DataReset.Outcome outcome = reset.attemptWithRevocation(context, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
             boolean controllable = new SenseListenerClient(context).available();
             boolean pending = reset.pending(context);
+            DataReset.Outcome recorded = reset.lastFailure(context);
             main.post(() -> {
                 if (destroyed) return;
                 if (!pending) {
@@ -125,6 +165,8 @@ public abstract class DataResetRecoveryActivity extends Activity {
                     finish();
                     return;
                 }
+                if (outcome == DataReset.Outcome.LISTENER_UNACKNOWLEDGED || outcome == DataReset.Outcome.ANDROID_REFUSED) retried = outcome;
+                explain(retried != null ? retried : recorded, controllable);
                 status.setText(text.retryResult(outcome, controllable));
                 if (outcome != DataReset.Outcome.DISPATCHED) retry.setEnabled(true);
             });

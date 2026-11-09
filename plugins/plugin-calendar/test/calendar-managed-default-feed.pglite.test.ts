@@ -58,6 +58,7 @@ let pg: PGlite;
 let runtime: IAgentRuntime;
 let shown = new Set<string>();
 const feedReads: string[] = [];
+const standardGoogleAccounts = vi.fn(async () => []);
 
 function event(calendarId: string, externalId: string, title: string) {
   const hour = externalId === "standup" ? 9 : 14;
@@ -179,7 +180,7 @@ function service(
 function calendarService(): CalendarService {
   const calendar = new CalendarService(runtime);
   calendar.setGate({
-    getGoogleConnectorAccounts: async () => [],
+    getGoogleConnectorAccounts: standardGoogleAccounts,
     createReminderPlan: async () => {},
     updateReminderPlan: async () => {},
     deleteReminderPlan: async () => {},
@@ -218,6 +219,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   feedReads.length = 0;
+  standardGoogleAccounts.mockClear();
   shown = new Set(["owner@example.test", "team@group.calendar.google.com"]);
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
@@ -236,6 +238,82 @@ afterAll(async () => {
 describe("managed owner calendars in the aggregate feed", {
   timeout: 30_000,
 }, () => {
+  it("starts managed discovery while standard Google discovery is pending", async () => {
+    let releaseStandard!: () => void;
+    const standard = new Promise<void>((resolve) => {
+      releaseStandard = resolve;
+    });
+    standardGoogleAccounts.mockImplementationOnce(async () => {
+      await standard;
+      return [];
+    });
+    const managedStarted = vi.fn();
+    const calendar = service((input) => {
+      if (input.operation === "sources") managedStarted();
+      return broker(input);
+    });
+    const pending = calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    try {
+      await vi.waitFor(() => expect(managedStarted).toHaveBeenCalledTimes(1));
+      expect(feedReads).toEqual([]);
+    } finally {
+      releaseStandard();
+      await pending;
+    }
+    expect(standardGoogleAccounts).toHaveBeenCalledTimes(1);
+    expect(feedReads.sort()).toEqual([
+      "owner@example.test",
+      "team@group.calendar.google.com",
+    ]);
+  });
+
+  it("cancels a pending managed catalog if standard Google discovery fails", async () => {
+    let rejectStandard!: (error: Error) => void;
+    const standard = new Promise<never[]>((_resolve, reject) => {
+      rejectStandard = reject;
+    });
+    standardGoogleAccounts.mockImplementationOnce(() => standard);
+    const error = new Error("Synthetic standard discovery failure");
+    let managedSignal: AbortSignal | undefined;
+    const calendar = service((input, signal) => {
+      if (input.operation !== "sources") return broker(input);
+      managedSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const pending = calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    try {
+      await vi.waitFor(() => expect(managedSignal).toBeDefined());
+    } finally {
+      rejectStandard(error);
+      await expect(pending).rejects.toBe(error);
+    }
+    expect(managedSignal?.aborted).toBe(true);
+    expect(feedReads).toEqual([]);
+  });
+
+  it("reads an exact managed grant without looking up standard Google accounts", async () => {
+    const calendar = service();
+    const feed = await calendar.getCalendarFeed(INTERNAL_URL, {
+      ...WINDOW,
+      grantId: GRANT,
+      calendarId: "owner@example.test",
+    });
+
+    expect(feed.events.map((entry) => entry.title).sort()).toEqual([
+      "Launch review",
+      "Standup",
+    ]);
+    expect(feedReads).toEqual(["owner@example.test"]);
+    expect(standardGoogleAccounts).not.toHaveBeenCalled();
+
+    await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(standardGoogleAccounts).toHaveBeenCalledTimes(1);
+  });
+
   it("merges the built-in calendar with every calendar the host shows, once each", async () => {
     const calendar = service();
     await calendar.createCalendarEvent(INTERNAL_URL, {

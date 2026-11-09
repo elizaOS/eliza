@@ -28,12 +28,29 @@ const suites = [
     name: "pglite",
     file: "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.pglite.test.ts",
     names: [
-      "failed app deletion must preserve frontend content when the retained app is reactivated",
-      "a concurrent reactivation must not lose content before final deletion rejects the active app",
+      "failed app deletion retains frontend content behind the permanent deletion fence",
+      "a concurrent reactivation is rejected before original-job final deletion",
       "acknowledged app deletion removes frontend rows before their exact objects",
       "a lost committed app deletion reply retains objects without fabricating cleanup authority",
       "app deletion retains every manifest beyond the former thousand-row listing limit",
-      "the final app deletion snapshot includes frontends published after deactivation",
+      "the final app deletion snapshot includes frontends published before the permanent fence",
+      "failed artifact deletion retains the complete original cleanup plan and resumes after cascade",
+      "lost final SQL acknowledgement recovers exact original artifacts from the retained job",
+      "an acknowledged object prefix is not deleted again after a later object fails",
+      "unconfirmed marked cleanup blocks job removal and account provider completion after app cascade",
+      "historical version-one jobs without cleanup manifests do not become permanent account blockers",
+      "suppressed object acknowledgement keeps the cursor unchanged and retries only its original key",
+      "the complete manifest remains inline above the ordinary object-offload ceiling",
+      "the immutable cleanup plan and confirmed receipt cannot be replaced or rewound",
+      "a bounded cleanup invocation retains pending status and resets retry budget only after durable progress",
+      "a locked pending empty draft retires without inventing any uploaded artifacts",
+      "an ambiguous legacy failed empty draft remains explicitly recovery-required",
+      "deletion waits for the original paused uploader and then cleans its complete planned keys",
+      "an unknown PUT outcome retains upload authority and prevents a false cleanup receipt",
+      "invalid bundle validation performs no partial upload or orphan draft creation",
+      "cleanup authority rejects missing or non-typed digest count and confirmation fields",
+      "suppressed writer quiescence cannot publish or authorize app cleanup",
+      "started and failed upload rows cannot regain unstarted deletion authority",
     ],
   },
   {
@@ -101,5 +118,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `App frontend deletion conformance passed six PGlite and two PostgreSQL cases. Evidence ${directory}`,
+  `App frontend deletion conformance passed twenty-three PGlite and two PostgreSQL cases. Evidence ${directory}`,
 );

@@ -16,6 +16,7 @@
  *    view server-side when a document is served (no secret embedded in the page).
  */
 
+import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { stripHtmlRawTextElements } from "@elizaos/core/protocol";
 import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
@@ -226,61 +227,84 @@ export class AppFrontendHostingService {
       throw new Error(`Too many files: ${input.files.length} > ${maxFiles}`);
     }
 
+    // Validate/hash the entire immutable plan before creating an upload or issuing any PUT.
+    const entries: FrontendFileEntry[] = [];
+    const payloads: Uint8Array<ArrayBuffer>[] = [];
+    const seenPaths = new Set<string>();
+    let totalBytes = 0;
+    for (const file of input.files) {
+      const path = normalizeSitePath(file.path);
+      if (!path) throw new Error(`Invalid file path: ${file.path}`);
+      if (seenPaths.has(path)) throw new Error(`Duplicate file path: ${path}`);
+      seenPaths.add(path);
+      const bytes = toBytes(file);
+      if (bytes.byteLength > maxFile)
+        throw new Error(`File too large: ${path} (${bytes.byteLength} > ${maxFile})`);
+      totalBytes += bytes.byteLength;
+      if (totalBytes > maxTotal) throw new Error(`Deployment exceeds size cap (${maxTotal} bytes)`);
+      entries.push({
+        path,
+        hash: await sha256Hex(bytes),
+        contentType: file.contentType ?? inferContentType(path),
+        size: bytes.byteLength,
+      });
+      payloads.push(bytes);
+    }
+    if (!seenPaths.has(entrypoint))
+      throw new Error(`Entrypoint not found in uploaded files: ${entrypoint}`);
+    const manifest: FrontendManifest = { files: entries, entrypoint, spaFallback };
+    const contentHash = await computeManifestHash(manifest);
+    const deploymentId = randomUUID();
+    const generation = randomUUID();
+    const r2Prefix = this.prefixFor(input.app.organization_id, input.app.id, deploymentId);
     const deployment = await appFrontendDeploymentsRepository.create({
+      id: deploymentId,
       appId: input.app.id,
-      r2Prefix: "", // filled once we have the id
+      organizationId: input.app.organization_id,
+      r2Prefix,
+      uploadGeneration: generation,
+      uploadPlan: manifest,
       createdByUserId: input.createdByUserId ?? null,
       buildMeta: input.buildMeta ?? { source: "upload" },
     });
-
-    const r2Prefix = this.prefixFor(input.app.organization_id, input.app.id, deployment.id);
     const writtenKeys: string[] = [];
-
-    // Publication and retirement compete on the same row. Delete prepared
-    // objects only after an acknowledged retirement of unpublished work.
+    let putUnknown = false;
+    let quiesced = false;
     try {
-      const uploading = await appFrontendDeploymentsRepository.beginUpload(deployment.id);
-      if (!uploading) {
+      const uploading = await appFrontendDeploymentsRepository.beginUpload(
+        input.app,
+        deployment.id,
+        generation,
+      );
+      if (!uploading)
         throw new ElizaError("Frontend upload did not return its stored row", {
           code: "FRONTEND_DEPLOYMENT_UPLOAD_NOT_PERSISTED",
           context: { deploymentId: deployment.id },
         });
-      }
-
       const bucket = requireBucket();
-      const entries: FrontendFileEntry[] = [];
-      const seenPaths = new Set<string>();
-      let totalBytes = 0;
-
-      for (const file of input.files) {
-        const path = normalizeSitePath(file.path);
-        if (!path) throw new Error(`Invalid file path: ${file.path}`);
-        if (seenPaths.has(path)) throw new Error(`Duplicate file path: ${path}`);
-        seenPaths.add(path);
-
-        const bytes = toBytes(file);
-        if (bytes.byteLength > maxFile) {
-          throw new Error(`File too large: ${path} (${bytes.byteLength} > ${maxFile})`);
-        }
-        totalBytes += bytes.byteLength;
-        if (totalBytes > maxTotal) {
-          throw new Error(`Deployment exceeds size cap (${maxTotal} bytes)`);
-        }
-
-        const contentType = file.contentType ?? inferContentType(path);
-        const hash = await sha256Hex(bytes);
-        const key = `${r2Prefix}${hash}`;
-        await bucket.put(key, bytes, { httpMetadata: { contentType } });
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i]!;
+        await appFrontendDeploymentsRepository.assertUploadAuthority(
+          input.app,
+          deployment.id,
+          generation,
+        );
+        const key = `${r2Prefix}${entry.hash}`;
+        putUnknown = true;
+        await bucket.put(key, payloads[i]!, { httpMetadata: { contentType: entry.contentType } });
+        putUnknown = false;
         writtenKeys.push(key);
-        entries.push({ path, hash, contentType, size: bytes.byteLength });
       }
-
-      if (!seenPaths.has(entrypoint)) {
-        throw new Error(`Entrypoint not found in uploaded files: ${entrypoint}`);
-      }
-
-      const manifest: FrontendManifest = { files: entries, entrypoint, spaFallback };
-      const contentHash = await computeManifestHash(manifest);
+      const receipt = await appFrontendDeploymentsRepository.quiesceUpload(
+        input.app,
+        deployment.id,
+        generation,
+      );
+      if (!receipt)
+        throw new ElizaError("Frontend writer quiescence was not persisted", {
+          code: "FRONTEND_UPLOAD_QUIESCENCE_UNCONFIRMED",
+        });
+      quiesced = true;
 
       const finalized = await appFrontendDeploymentsRepository.finalize(deployment.id, {
         r2Prefix,
@@ -297,11 +321,18 @@ export class AppFrontendHostingService {
       }
     } catch (error) {
       try {
+        if (!putUnknown && !quiesced) {
+          quiesced = !!(await appFrontendDeploymentsRepository.quiesceUpload(
+            input.app,
+            deployment.id,
+            generation,
+          ));
+        }
         const retired = await appFrontendDeploymentsRepository.markFailed(
           deployment.id,
           error instanceof Error ? error.message : String(error),
         );
-        if (retired) await this.cleanupKeys(writtenKeys);
+        if (retired && quiesced) await this.cleanupKeys(writtenKeys);
       } catch (retirementError) {
         // An unacknowledged SQL outcome cannot authorize deletion. Retain the
         // objects and preserve the original failure for the caller.
@@ -417,8 +448,10 @@ export class AppFrontendHostingService {
   /** Best-effort delete of a deployment's R2 artifacts (call after the row delete). */
   async deleteArtifacts(deployment: AppFrontendDeployment): Promise<void> {
     const bucket = getRuntimeR2Bucket();
-    if (!bucket || !deployment.manifest) return;
-    for (const file of deployment.manifest.files) {
+    const manifest =
+      deployment.manifest ?? (deployment.upload_quiesced_at ? deployment.upload_plan : null);
+    if (!bucket || !manifest) return;
+    for (const file of manifest.files) {
       try {
         await bucket.delete(`${deployment.r2_prefix}${file.hash}`);
       } catch (error) {

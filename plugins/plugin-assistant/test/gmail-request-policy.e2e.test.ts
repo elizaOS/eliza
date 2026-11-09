@@ -6,6 +6,7 @@ import {
   type Memory,
   runWithStreamingContext,
   setTurnActionConstraint,
+  type UUID,
 } from "@elizaos/core";
 import { expect, test, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
@@ -19,7 +20,18 @@ import {
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
 } from "../src/services/device-actions/service.ts";
-import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
+import { withOwnerDeviceActionTurn as ownerTurn } from "./device-owner-turn.ts";
+
+/** Production subjects are auth identities (`gateway:<principal>`), distinct
+ * from the mapped owner entity that the conversation messages carry. */
+function withOwnerDeviceActionTurn<T>(
+  ...[runtime, credential, fn, options]: Parameters<typeof ownerTurn<T>>
+): Promise<T> {
+  return ownerTurn(runtime, credential, fn, {
+    ownerEntityId: credential.subjectUserId.replace(/^gateway:/, "") as UUID,
+    ...options,
+  });
+}
 
 async function setup() {
   const fixture = await createRealTestRuntime({
@@ -30,7 +42,7 @@ async function setup() {
     owner = randomUUID(),
     device = new DeviceActionService(runtime);
   const credential = {
-    subjectUserId: owner,
+    subjectUserId: `gateway:${owner}`,
     installationId: randomUUID(),
     deviceKey: "a".repeat(64),
     capabilities: ["gmail.request-policy.v1"],
@@ -383,7 +395,7 @@ test("the final Gmail reauthorization cannot send an edited or deleted draft", a
   const runtime = fixture.runtime,
     owner = randomUUID();
   const credential = {
-    subjectUserId: owner,
+    subjectUserId: `gateway:${owner}`,
     installationId: randomUUID(),
     deviceKey: "d".repeat(64),
     capabilities: ["gmail.request-policy.v1"],
@@ -545,7 +557,7 @@ test("copied metadata, stale or replaced context and other connectors retain rev
     owner = randomUUID(),
     service = new DeviceActionService(runtime),
     credential = {
-      subjectUserId: owner,
+      subjectUserId: `gateway:${owner}`,
       installationId: randomUUID(),
       deviceKey: "f".repeat(64),
       capabilities: ["gmail.request-policy.v1"],
@@ -668,7 +680,7 @@ test("the HTTP payload command requires an authenticated foreground scope and ne
     owner = randomUUID(),
     service = new DeviceActionService(runtime),
     credential = {
-      subjectUserId: owner,
+      subjectUserId: `gateway:${owner}`,
       installationId: randomUUID(),
       deviceKey: "b".repeat(64),
       capabilities: ["gmail.request-policy.v1"],
@@ -755,7 +767,7 @@ test("retired asynchronous scopes and revoked devices cannot authorize a later s
     owner = randomUUID(),
     service = new DeviceActionService(runtime),
     credential = {
-      subjectUserId: owner,
+      subjectUserId: `gateway:${owner}`,
       installationId: randomUUID(),
       deviceKey: "c".repeat(64),
       capabilities: ["gmail.request-policy.v1"],

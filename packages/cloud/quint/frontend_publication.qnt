@@ -9,8 +9,8 @@ module frontend_publication {
   action init = s' = { row: "pending", objects: false, upload: "idle",
     finalize: "idle", client: "working", retire: "idle", cleanupPermit: false,
     deletePermit: false, otherActive: true, wasPublished: false }
-  action beginUpload = all { s.row == "pending", s.upload == "idle",
-    s' = { ...s, row: "uploading", upload: "pending" } }
+  action beginUpload(organizationMatches) = all { s.row == "pending", s.upload == "idle",
+    s' = if (organizationMatches) { ...s, row: "uploading", upload: "pending" } else s }
   action finishPut(fails, accepted) = all { s.upload == "pending",
     s' = { ...s, objects: accepted, upload: "done",
       client: if (fails) "failed" else s.client } }
@@ -53,7 +53,7 @@ module frontend_publication {
       finishFinalize(true), finishFinalize(false), receiveFinalize,
       finishRetire(mode), cleanup, deleteArtifacts }
   }
-  action step = any { beginUpload, startFinalize, loseFinalizeReply, startRetire,
+  action step = any { beginUpload(true), beginUpload(false), startFinalize, loseFinalizeReply, startRetire,
     finish, activate(true), activate(false), activatePrevious, deleteInactive(false), deleteInactive(true), s' = s }
   val safety = all {
     published.contains(s.row) implies s.objects,
@@ -70,34 +70,36 @@ module frontend_publication {
         s.upload != "pending" and s.finalize != "pending" and s.retire != "pending"
           and not(s.cleanupPermit) and not(s.deletePermit)))
 
-  run successfulPublicationTest = init.then(beginUpload).then(finishPut(false, true))
+  run foreignOrganizationCannotBeginUploadTest = init.then(beginUpload(false))
+    .expect(safety and s.row == "pending" and s.upload == "idle" and not(s.objects) and s.otherActive)
+  run successfulPublicationTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(receiveFinalize)
     .then(activate(true)).expect(safety and s.row == "active")
-  run foreignOrganizationKeepsLiveDeploymentTest = init.then(beginUpload)
+  run foreignOrganizationKeepsLiveDeploymentTest = init.then(beginUpload(true))
     .then(finishPut(false, true)).then(startFinalize).then(finishFinalize(true))
     .then(activate(false)).expect(safety and s.row == "ready" and s.otherActive)
-  run committedReplyLostTest = init.then(beginUpload).then(finishPut(false, true))
+  run committedReplyLostTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(loseFinalizeReply)
     .then(startRetire).then(finishRetire(1)).expect(safety and s.row == "ready" and s.objects)
-  run activationBeforeFailureCleanupTest = init.then(beginUpload).then(finishPut(false, true))
+  run activationBeforeFailureCleanupTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(activate(true)).then(loseFinalizeReply)
     .then(startRetire).then(finishRetire(1)).expect(safety and s.row == "active" and s.objects)
-  run retirementWinsPendingSqlTest = init.then(beginUpload).then(finishPut(false, true))
+  run retirementWinsPendingSqlTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(loseFinalizeReply).then(startRetire).then(finishRetire(1))
     .then(cleanup).then(finishFinalize(true)).expect(safety and s.row == "failed" and not(s.objects))
-  run lostRetirementReceiptTest = init.then(beginUpload).then(finishPut(true, true))
+  run lostRetirementReceiptTest = init.then(beginUpload(true)).then(finishPut(true, true))
     .then(startRetire).then(finishRetire(2)).expect(safety and s.row == "failed" and s.objects)
-  run deleteBeforePublicationTest = init.then(beginUpload).then(finishPut(false, true))
+  run deleteBeforePublicationTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(deleteInactive(false)).then(deleteArtifacts)
     .then(finishFinalize(true)).expect(safety and s.row == "deleted")
-  run rollbackAndDeleteTest = init.then(beginUpload).then(finishPut(false, true))
+  run rollbackAndDeleteTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(activate(true)).then(activatePrevious)
     .then(deleteInactive(false)).then(deleteArtifacts).expect(safety and s.otherActive)
   action oldErrorCleanup = s' = { ...s, row: "failed", objects: false }
-  run oldCleanupWitnessTest = init.then(beginUpload).then(finishPut(false, true))
+  run oldCleanupWitnessTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(activate(true)).then(oldErrorCleanup)
     .expect(not(safety))
-  run oldReadyCleanupWitnessTest = init.then(beginUpload).then(finishPut(false, true))
+  run oldReadyCleanupWitnessTest = init.then(beginUpload(true)).then(finishPut(false, true))
     .then(startFinalize).then(finishFinalize(true)).then(oldErrorCleanup)
     .expect(not(safety))
 }

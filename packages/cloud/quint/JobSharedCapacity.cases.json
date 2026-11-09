@@ -22,12 +22,12 @@
     "callers": 2,
     "requestedBatches": [1, 3, 5],
     "initialRunning": [0, 2, 4],
-    "description": "Two one-shot calls choose a type, optional tenant and batch. Five fixed jobs have strict due ordering; job5 becomes due once, with eligibility frozen at each transaction start (SQL NOW). One external pending-row lock may be held. Each job is claimed at most once; pre-existing and new generation1 is paired with its exact lease, with historical owner3 distinct from callers1/2."
+    "description": "Two one-shot calls choose a type, optional tenant and batch. Five fixed jobs have strict due ordering; job5 becomes due once, with eligibility observed when the claim selects rows after its capacity-lock wait (UTC database clock_timestamp). One external pending-row lock may be held. Each job is claimed at most once; pre-existing and new generation1 is paired with its exact lease, with historical owner3 distinct from callers1/2."
   },
   "limitations": [
     "The production caller supplies the same two shared types and cap3. Arbitrary bypass callers, mutable type/tenant identities and arbitrary sharedTypes arguments are outside the model. Empty/nonpositive inputs collapse to the same observed no-op result.",
     "The count and claim transaction serializes through the global advisory lock. Uncommitted selected rows/installed leases are local until one commit. Concurrent authorized settlement can only reduce occupancy. No SQL isolation refinement is proved.",
-    "Queue due-time comparison uses SQL NOW(), frozen at transaction start even after advisory-lock waiting. A new transaction can observe a job becoming due; the old transaction retains its captured eligibility.",
+    "Queue eligibility uses the current UTC database clock at row selection after advisory-lock waiting. The model abstracts selection as one observation for its one future-due job; it does not prove per-row clock evaluation or general SQL isolation. A deadline crossed only after selection waits for a subsequent claim.",
     "Lease renewal, recovery, requeue budgets and repeated claims are covered by separate models. This model retains generation/lease identity at admission and postcommit hydration failure, and excludes those later transitions.",
     "Requests have one invocation each. Query arguments and transaction snapshots are projected away after commit, when the source uses only returned rows for hydration. Pending/returned IDs, durable claims and capacity-violation evidence remain.",
     "Progress assumes DB and postcommit payload hydration eventually return or fail, plus weak fairness of their local continuations. Source SQL has lock/statement timeouts; object-store response liveness remains an external assumption. A locked queue row need not ever be admitted.",

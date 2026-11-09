@@ -1,0 +1,16 @@
+[
+  {
+    "id": "cloud-onboarding-replay-cleanup",
+    "model": "packages/cloud/quint/OnboardingReplayCleanup.qnt",
+    "sources": [
+      "packages/cloud/api/src/onboarding-session-coordinator.ts",
+      "packages/cloud/api/__tests__/onboarding-coordinator-errors.miniflare.test.ts"
+    ],
+    "invariants": ["AlarmOwnsReplay"],
+    "status": "partial",
+    "limitations": [
+      "One serialized coordinator, three keys and one entry per page. The model checks deadline retention across interleaved writes. Actual Workerd conformance seeds the persisted cursor, executes a foreground turn and runs the next alarm.",
+      "Progress assumes the clock advances, alarms run and storage commits. Cross-session ownership, deployed alarm delivery, storage faults, and transcript and replay-result authorization remain separate."
+    ]
+  }
+]

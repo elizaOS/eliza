@@ -13,7 +13,7 @@ await runPostgresConformance(
         "failed lease installation rolls back both admission and capacity consumption",
         "historical overfull occupancy admits no additional job",
         "postcommit hydration failure retains the exact durable capacity claim",
-        "queue eligibility keeps transaction time after an advisory lock wait",
+        "queue eligibility uses current database time after an advisory lock wait",
         "invalid shared capacity inputs return empty without changing the queue",
       ],
     },

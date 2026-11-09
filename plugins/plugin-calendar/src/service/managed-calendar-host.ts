@@ -39,6 +39,33 @@ export function isLinkedCalendarSemanticEvent(
   );
 }
 
+/**
+ * Every requested guest must be written with its optional flag. Google may echo the
+ * organizer's own attendee row, so an extra row is accepted only for the connected account.
+ */
+function sameGuests(
+  actual: unknown,
+  requested: readonly { email?: string | null; optional?: boolean }[],
+  ownerEmail: string | null,
+): boolean {
+  const rows = (value: unknown) =>
+    (Array.isArray(value) ? value : []).map((a) => ({
+      email: String(a?.email ?? "").toLowerCase(),
+      optional: a?.optional === true,
+    }));
+  const asked = new Map(rows(requested).map((a) => [a.email, a.optional]));
+  const written = rows(actual);
+  const found = new Set(written.map((a) => a.email));
+  return (
+    [...asked.keys()].every((email) => found.has(email)) &&
+    written.every((a) =>
+      asked.has(a.email)
+        ? asked.get(a.email) === a.optional
+        : ownerEmail !== null && a.email === ownerEmail,
+    )
+  );
+}
+
 export type CalendarSyncSelection = {
   grantId: string;
   calendarId: string;
@@ -185,6 +212,10 @@ export async function calendarAgentWrite(
   if (input.operation === "write-capabilities")
     return { ...caps, grantId: source };
   const accountId = caps.accountId;
+  const ownerEmail =
+    typeof caps.accountEmail === "string" && caps.accountEmail.trim()
+      ? caps.accountEmail.trim().toLowerCase()
+      : null;
   const selected = { ...selection, accountId };
   const write = async (command: CalendarSyncRequest) => {
     try {
@@ -339,17 +370,6 @@ export async function calendarAgentWrite(
     const event = feed.events.find(
       (row) => row.externalId === snapshot.eventId,
     );
-    const attendees = (
-      value: readonly { email?: string | null; optional?: boolean }[],
-    ) =>
-      JSON.stringify(
-        value
-          .map((a) => ({
-            email: (a.email ?? "").toLowerCase(),
-            optional: a.optional === true,
-          }))
-          .sort((a, b) => a.email.localeCompare(b.email)),
-      );
     if (
       !event ||
       (event.metadata.etag !== undefined &&
@@ -361,7 +381,7 @@ export async function calendarAgentWrite(
       event.isAllDay !== semantic.isAllDay ||
       Date.parse(event.startAt) !== Date.parse(semantic.startAt) ||
       Date.parse(event.endAt) !== Date.parse(semantic.endAt) ||
-      attendees(event.attendees) !== attendees(semantic.attendees)
+      !sameGuests(event.attendees, semantic.attendees, ownerEmail)
     )
       throw Error("The exact Calendar revision could not be read back");
     return {
@@ -516,22 +536,13 @@ export async function calendarAgentWrite(
     snapshot = record(result.event),
     written = record(snapshot.event);
   const list = (value: unknown) => (Array.isArray(value) ? value : []);
-  const guests = (value: unknown) =>
-    JSON.stringify(
-      list(value)
-        .map((a) => ({
-          email: String(a.email).toLowerCase(),
-          optional: a.optional === true,
-        }))
-        .sort((a, b) => a.email.localeCompare(b.email)),
-    );
   if (
     ["title", "description", "location", "isAllDay", "timeZone"].some(
       (key) => written[key] !== event[key as keyof typeof event],
     ) ||
     Date.parse(String(written.startAt)) !== Date.parse(event.startAt) ||
     Date.parse(String(written.endAt)) !== Date.parse(event.endAt) ||
-    guests(written.attendees) !== guests(event.attendees) ||
+    !sameGuests(written.attendees, event.attendees, ownerEmail) ||
     JSON.stringify(list(written.recurrence).sort()) !==
       JSON.stringify(list(event.recurrence).sort())
   )

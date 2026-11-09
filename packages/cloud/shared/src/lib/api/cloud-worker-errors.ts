@@ -251,6 +251,19 @@ export function jsonError(
 
 /** Convert any thrown error to a JSON response matching the canonical shape. */
 export function failureResponse(c: Context, error: unknown): Response {
+  if (
+    error instanceof Error &&
+    [
+      "APP_DELETION_IN_PROGRESS",
+      "APP_DELETION_REQUEST_CONFLICT",
+      "APP_DELETION_ADMISSION_CHANGED",
+    ].includes(String((error as { code?: unknown }).code))
+  ) {
+    return c.json(
+      { success: false, error: error.message, code: "identity_conflict" as const },
+      409,
+    );
+  }
   if (error instanceof ZodError) {
     return c.json(
       {

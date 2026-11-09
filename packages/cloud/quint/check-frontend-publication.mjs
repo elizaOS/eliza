@@ -30,6 +30,8 @@ const suites = [
     names: [
       "complete frontend publication retains every manifest object and serves it",
       "a foreign organization cannot activate a published deployment",
+      "a foreign organization cannot create an upload or write its objects",
+      "upload and quiescence guards bind both the parent app and organization",
       "a lost finalization acknowledgement preserves the published row and all objects",
       "activation before a lost finalization reply cannot be undone by upload cleanup",
       "a proven unpublished failure retires the row before removing its objects",
@@ -45,6 +47,7 @@ const suites = [
     name: "postgres",
     file: "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts",
     names: [
+      "ownership changed while creation waits cannot allocate a deployment",
       "acknowledged publication wins a waiting retirement and keeps its manifest",
       "acknowledged retirement wins a waiting publication and cannot be revived",
       "activation wins a waiting deletion without losing the active deployment",

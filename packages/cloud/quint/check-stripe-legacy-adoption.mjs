@@ -110,7 +110,7 @@ for (const [index, suite] of suites.entries()) {
   assert.equal(
     result.status,
     0,
-    `Legacy adoption implementation check failed: ${directory}`,
+    `Legacy adoption implementation check failed: ${suite.file}\n${result.stdout ?? ""}${result.stderr ?? ""}\nFull logs: ${directory}`,
   );
   const xml = await readFile(report, "utf8");
   const summary = parseJunitSummary(xml);

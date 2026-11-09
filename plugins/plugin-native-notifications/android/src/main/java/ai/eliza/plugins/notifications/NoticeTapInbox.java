@@ -26,12 +26,18 @@ public final class NoticeTapInbox<I> {
  public interface QuestionNotice {void attach(JSONObject pending)throws Exception;}
  /** Rechecks that the host is in the foreground and unlocked before a tap is consumed. */
  public interface Foreground {void require()throws Exception;}
+ /** Rechecks an uncertain receipt of a tapped notice against what Android shows (NoticeDelivery.recheck). */
+ public interface Recheck {void recheck(String token)throws Exception;}
  private static final int MAXIMUM_RETAINED=512;
- private final NoticeRoutes routes;private final String openAction,askAction,prefix;
+ private final NoticeRoutes routes;private final String openAction,askAction,prefix;private final Recheck recheck;
  private final IdentityHashMap<I,String> retained=new IdentityHashMap<>();
  /** Storage-worker confined: token (or token + ":ask") to the intents that carried it. */
  private final LinkedHashMap<String,List<I>> uncaptured=new LinkedHashMap<>();
- public NoticeTapInbox(NoticeRoutes routes,String openAction,String askAction,String prefix){
+ public NoticeTapInbox(NoticeRoutes routes,String openAction,String askAction,String prefix){this(routes,openAction,askAction,prefix,token->{});}
+ /** `recheck` runs before a refused capture is retried once (a second refusal drops the tap): a tap on a notice whose receipt stayed applying
+  * or unknown (the post was not seen listed in time) proves delivery when the shown notice matches. */
+ public NoticeTapInbox(NoticeRoutes routes,String openAction,String askAction,String prefix,Recheck recheck){
+  this.recheck=Objects.requireNonNull(recheck);
   if(openAction==null||openAction.isBlank()||askAction==null||askAction.isBlank()||openAction.equals(askAction)||prefix==null||prefix.isBlank())throw new IllegalArgumentException("Invalid notice tap configuration");
   this.routes=Objects.requireNonNull(routes);this.openAction=openAction;this.askAction=askAction;this.prefix=prefix;
  }
@@ -59,19 +65,24 @@ public final class NoticeTapInbox<I> {
   uncaptured.computeIfAbsent(Objects.requireNonNull(key),ignored->new ArrayList<>()).add(Objects.requireNonNull(intent));
   return drain(captured);
  }
- /** Storage worker: durably captures each retained tap. An unknown route is dropped; a tap that cannot be
-  * written now stays retained for the next drain. Returns how many are still retained. */
+ /** Storage worker: durably captures each retained tap. An unknown or refused route (its receipt is not
+  * confirmed for the current owner, even after a recheck) is dropped; a tap that cannot be written now stays
+  * retained for the next drain. Returns how many are still retained. */
  public int drain(Captured<I> captured){
   int failed=0;Iterator<Map.Entry<String,List<I>>> entries=uncaptured.entrySet().iterator();
   while(entries.hasNext()){
    Map.Entry<String,List<I>> entry=entries.next();String token=entry.getKey().substring(0,36);
-   try{routes.capture(token,entry.getKey().endsWith(":ask"));}
-   catch(NoticeRoutes.UnknownTap unknown){/* No route: nothing can open it; clear it below. */}
+   try{capture(token,entry.getKey().endsWith(":ask"));}
+   catch(NoticeRoutes.UnknownTap|NoticeRoutes.Refused unopenable){/* Nothing can open it; clear it below. */}
    catch(Exception unavailable){failed++;continue;}
    for(I intent:entry.getValue())captured.captured(intent,token);
    entries.remove();
   }
   return failed;
+ }
+ private void capture(String token,boolean question)throws Exception{
+  try{routes.capture(token,question);}
+  catch(NoticeRoutes.Refused unconfirmed){recheck.recheck(token);routes.capture(token,question);}
  }
  /** Storage worker: the newest pending tap of the current owner, or an empty object. An Ask whose own notice
   * is gone (timed out, swiped or withdrawn) has nothing left to review, so it settles into a plain open tap.
@@ -84,6 +95,12 @@ public final class NoticeTapInbox<I> {
    routes.settleQuestion(pending.getString("token"),false);pending=routes.pending();
   }
   return pending;
+ }
+ /** Storage worker: settles the exact pending tap the renderer found definitively unavailable (its target
+  * is gone). A tap whose receipt is still uncertain stays. Returns the notice ID whose OS notice the host cancels. */
+ public String discard(String token)throws Exception{
+  if(token==null||!token.equals(routes.pending().optString("token")))throw new IllegalStateException("Pending tap changed");
+  return routes.discard(token);
  }
  /** Storage worker: completes the renderer's handling of the exact pending tap. `discard` returns an
   * explicitly cancelled Ask to its untapped state. A question must name the revision of the excerpt it was

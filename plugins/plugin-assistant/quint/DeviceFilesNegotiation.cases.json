@@ -1,0 +1,90 @@
+{
+  "sources": [
+    "packages/agent/src/api/device-action-routes.ts",
+    "packages/app/src/api/auth/sessions.ts",
+    "packages/app/src/services/auth-store.ts",
+    "packages/testing/src/pglite-runtime.ts",
+    "plugins/plugin-assistant/src/index.ts",
+    "plugins/plugin-assistant/src/services/approval/store.ts",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/files-browser-contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/test/device-owner-turn.ts",
+    "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts",
+    "plugins/plugin-assistant/vitest.device-actions.config.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-device-action-flow.mjs",
+  "bounds": {
+    "domain": "One owner and device enrollment, one reviewed Files proposal and one execution attempt. Header inputs are valid Files, legacy or malformed. A verified gateway, ordinary bearer session, retired turn and other scope are distinct symbolic callers.",
+    "abstraction": "The server offers Files capability at registration and to a verified gateway. Capability is request-scoped and never substitutes for enrollment, exact review or a claim. Revocation leaves existing SQL records unavailable to this enrollment.",
+    "limits": "Native file identity, paths and storage effects, direct filter/open handoff, receipt uncertainty, restart, key rotation, multiple devices and HTTP disconnect ordering are outside this negotiation projection. A submitted synthetic receipt is not a filesystem proof.",
+    "conformance": "Real bearer sessions, production loopback HTTP routes and PGlite exercise negotiation, denied requests, stale foreground admission, proposal visibility, review, claim, receipt and revocation. The external gateway field is supplied by the trusted host fixture."
+  },
+  "cases": [
+    {
+      "name": "files-capability-and-owned-visibility",
+      "main": "DeviceFilesNegotiation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ProposalNeedsEnrollment",
+        "VisibilityNeedsLiveEnrollment"
+      ],
+      "temporal": [
+        "LegacyCannotSeeFiles",
+        "LegacyCannotChangeFiles",
+        "InvalidRequestCannotChangeAuthority",
+        "RevocationRetainsProposal",
+        "UnderFairFilesPolling",
+        "VisibleOrRevoked"
+      ],
+      "temporalChecks": [
+        {
+          "property": "LegacyCannotSeeFiles",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The response projects the current authenticated request's capability."
+          ]
+        },
+        {
+          "property": "LegacyCannotChangeFiles",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Existing approval, claim and receipt checks retain their operation capability gate."
+          ]
+        },
+        {
+          "property": "InvalidRequestCannotChangeAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. An invalid capability header, unrelated scope or retired foreground caller cannot change this proposal."
+          ]
+        },
+        {
+          "property": "RevocationRetainsProposal",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Revocation does not reset the scoped approval journal or re-enroll the same identifier."
+          ]
+        },
+        {
+          "property": "UnderFairFilesPolling",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of polling with the correct enrolled device and Files capability. Revocation can end visibility first."
+          ]
+        },
+        {
+          "property": "VisibleOrRevoked",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A phone can leave a valid proposal unpolled indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 300
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import {
   setTurnActionConstraint,
 } from "@elizaos/core";
 import { readViewInteractionClientId } from "@elizaos/core/protocol";
+import { enabledDeviceViews } from "../actions/views.ts";
 import { resolveHostSessionAccessContext } from "../api/host-session-access-context.ts";
 import { listViews } from "../api/views-registry.ts";
 import { getCurrentViewState } from "../api/views-routes.ts";
@@ -23,6 +24,7 @@ import {
   isExplicitBackViewRequest,
   resolveExplicitRegisteredViewRequest,
   resolveViewNavigationTargets,
+  viewEnabledByProfile,
   viewNavigationAvailable,
   viewNavigationDestination,
 } from "./view-navigation-targets.ts";
@@ -106,8 +108,11 @@ export function registerViewNavigationRoutingRule(
       const completedAction =
         isObjectRecord(metadata) &&
         metadata.viewDelivery === "completed-action";
-      const views = listViews(runtime, { viewType: "gui" }).filter((view) =>
-        viewNavigationAvailable(view, completedAction),
+      const enabled = enabledDeviceViews(runtime);
+      const views = listViews(runtime, { viewType: "gui" }).filter(
+        (view) =>
+          viewNavigationAvailable(view, completedAction) &&
+          viewEnabledByProfile(view, enabled),
       );
       return (
         resolveExplicitRegisteredViewRequest(views, text) !== undefined ||
@@ -238,8 +243,13 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     // Stage 1 needs destinations as well as the screen already visible.
     // A delivery marker alone cannot supply an absent hosted view; only a
     // trusted registry-owned native counterpart provides that alternative.
+    const enabled = enabledDeviceViews(runtime);
     const destinations = views
-      .filter((entry) => viewNavigationAvailable(entry, completedAction))
+      .filter(
+        (entry) =>
+          viewNavigationAvailable(entry, completedAction) &&
+          viewEnabledByProfile(entry, enabled),
+      )
       .map(viewNavigationDestination);
     const previous = confirmedPreviousView(
       runtime,
@@ -358,10 +368,12 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     getStreamingContext()?.abortSignal?.throwIfAborted();
     if (!caller?.isOwner || caller.role !== staged.senderRole) return;
     const target = value.viewId.trim().toLowerCase();
+    const enabled = enabledDeviceViews(runtime);
     const availableViews = listViews(runtime, { viewType: "gui" }).filter(
       (view) =>
         viewNavigationAvailable(view, completedAction) &&
-        satisfiesRoleGate([caller.role], view.roleGate),
+        satisfiesRoleGate([caller.role], view.roleGate) &&
+        viewEnabledByProfile(view, enabled),
     );
     const matches = resolveViewNavigationTargets(availableViews, target);
     const viewAction = runtime.actions.find(
