@@ -5,7 +5,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { logger } from "@elizaos/core";
 import { leaseCredentialClipboard } from "./credential-clipboard.js";
 
@@ -375,22 +375,48 @@ async function listItemsViaProtonPass(
     }
   }
 
-  const items: PasswordManagerItem[] = [];
+  return parseStoreListing(stdout).map((id) => ({
+    id,
+    title: id,
+    hasPassword: true,
+  }));
+}
+
+/**
+ * `pass ls` prints the store as a tree: each level is indented four columns
+ * and folders are colored when LS_COLORS is set. `pass show` needs the full
+ * `folder/name` path, so nested names are joined to their folders and folder
+ * rows are dropped. Lines without tree branches are entry names as-is.
+ */
+function parseStoreListing(stdout: string): string[] {
+  const rows: Array<{ depth: number; name: string }> = [];
   for (const rawLine of stdout.split("\n")) {
-    // Strip tree characters from `pass ls` output (├── └── │ etc.).
-    const line = rawLine
-      .replace(/[│├└─]+/g, "")
-      .replace(/\u00a0/g, " ")
+    const line = stripVTControlCharacters(rawLine).replace(/\u00a0/g, " ");
+    const branch = line.search(/[├└]/);
+    if (branch < 0) {
+      const name = line.trim();
+      if (name && !name.toLowerCase().startsWith("password store")) {
+        rows.push({ depth: 0, name });
+      }
+      continue;
+    }
+    const name = line
+      .slice(branch)
+      .replace(/^[├└]─*/, "")
       .trim();
-    if (!line) continue;
-    if (line.toLowerCase().startsWith("password store")) continue;
-    items.push({
-      id: line,
-      title: line,
-      hasPassword: true,
-    });
+    if (name) rows.push({ depth: Math.floor(branch / 4), name });
   }
-  return items;
+  const ids: string[] = [];
+  const folders: string[] = [];
+  rows.forEach((row, index) => {
+    folders.splice(row.depth);
+    if ((rows[index + 1]?.depth ?? 0) > row.depth) {
+      folders.push(row.name);
+    } else {
+      ids.push([...folders, row.name].join("/"));
+    }
+  });
+  return ids;
 }
 
 // ---------------------------------------------------------------------------
