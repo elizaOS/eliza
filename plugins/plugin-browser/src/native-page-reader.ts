@@ -4,6 +4,7 @@ import {
   BROWSER_DISPATCH_FAILURE_KINDS,
   BrowserDispatchFailure,
 } from "./dispatch-types.js";
+import type { NativeHistorySelection } from "./native-client-command.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
@@ -19,10 +20,14 @@ export type NativeBrowserPageReader = (
 export interface NativeBrowserClientTransport {
   readPage: NativeBrowserPageReader;
   navigate: (clientId: string, url?: string) => Promise<void>;
-  /** Authenticated current-client native control; never a server-browser fallback. */
+  /**
+   * Authenticated current-client native control; never a server-browser
+   * fallback. `selection` is the browser tab the agent's turn observed.
+   */
   executeCommand?: (
     clientId: string,
     command: BrowserWorkspaceCommand,
+    selection?: NativeHistorySelection,
   ) => Promise<BrowserWorkspaceCommandResult>;
 }
 

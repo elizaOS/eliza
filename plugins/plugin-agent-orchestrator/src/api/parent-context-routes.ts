@@ -5,14 +5,24 @@
  * routes let that child read narrowly-scoped parent state without exposing any
  * mutation surface back into the parent runtime.
  *
+ * The routes are public to the server's central auth gate (the child has no
+ * owner token), so each request must come from loopback AND carry the session's
+ * own bridge token. Memory search and sibling listing stay inside the session's
+ * task/project unless the host sets ELIZA_SUBAGENT_GLOBAL_MEMORY_SEARCH=1.
+ *
  * @module api/parent-context-routes
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { getProjectById } from "@elizaos/host";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
+import {
+  isLoopbackRemoteAddress,
+  verifySessionBridgeToken,
+} from "../services/credential-bridge-auth.js";
+import { resolveOriginRoomId } from "../services/session-room-binding.js";
 import {
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
@@ -70,6 +80,8 @@ interface OrchestratorTaskServiceShape {
      * (`cloudAppId`) the bridge surfaces so a child updates the existing app
      * instead of creating a duplicate. */
     projectId?: string | null;
+    /** Memory world of the task (the project world when bound). */
+    worldId?: string | null;
     decisions?: Array<{
       id: string;
       sessionId: string;
@@ -100,19 +112,6 @@ function sendBridgeError(
   status: number,
 ): void {
   sendJson(res, { error: message, code }, status);
-}
-
-function isLoopbackRemoteAddress(
-  remoteAddress: string | null | undefined,
-): boolean {
-  if (!remoteAddress) return false;
-  const normalized = remoteAddress.trim().toLowerCase();
-  return (
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized === "::ffff:127.0.0.1" ||
-    normalized === "::ffff:0:127.0.0.1"
-  );
 }
 
 function parseSessionId(raw: string): string | null {
@@ -296,6 +295,24 @@ function normalizeMemoryHit(
   };
 }
 
+function getTaskService(
+  ctx: RouteContext,
+): OrchestratorTaskServiceShape | null {
+  const service = ctx.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
+    | OrchestratorTaskServiceShape
+    | null
+    | undefined;
+  return typeof service?.getTask === "function" ? service : null;
+}
+
+async function loadTask(
+  ctx: RouteContext,
+  taskId: string | null,
+): ReturnType<OrchestratorTaskServiceShape["getTask"]> {
+  if (!taskId) return null;
+  return (await getTaskService(ctx)?.getTask(taskId)) ?? null;
+}
+
 /**
  * Load the originating orchestrator task a session serves — its goal, acceptance
  * criteria, and the latest decisions — so a resumed or child-spawned session can
@@ -308,14 +325,8 @@ async function loadOriginatingTask(
   metadata: Record<string, unknown>,
 ): Promise<JsonValue> {
   const taskId = readString(metadata.taskId);
-  if (!taskId) return null;
-  const service = ctx.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
-    | OrchestratorTaskServiceShape
-    | null
-    | undefined;
-  if (!service?.getTask) return null;
-  const task = await service.getTask(taskId);
-  if (!task) return null;
+  const task = await loadTask(ctx, taskId);
+  if (!taskId || !task) return null;
   const decisions = (task.decisions ?? [])
     .slice(-MAX_ORIGINATING_DECISIONS)
     .map((decision) => ({
@@ -404,11 +415,52 @@ function buildProjectDescriptor(originatingTask: JsonValue): JsonValue {
   return { projectId, cloudAppId: readString(originatingTask.cloudAppId) };
 }
 
+type MemoryScope =
+  | { kind: "global" }
+  | { kind: "world"; worldId: UUID }
+  | { kind: "room"; roomId: UUID }
+  | { kind: "none" };
+
+/** Host opt-in for unscoped memory search; never read from the child's request. */
+function isGlobalMemorySearchEnabled(runtime: IAgentRuntime): boolean {
+  const raw =
+    runtime.getSetting("ELIZA_SUBAGENT_GLOBAL_MEMORY_SEARCH") ??
+    process.env.ELIZA_SUBAGENT_GLOBAL_MEMORY_SEARCH;
+  return raw === true || raw === "1" || raw === "true";
+}
+
+/**
+ * The memory a child may search: its task's world (the project world when the
+ * task is bound to a project), else its origin room. A session with neither
+ * searches nothing.
+ */
+async function resolveMemoryScope(
+  ctx: RouteContext,
+  metadata: Record<string, unknown>,
+): Promise<MemoryScope> {
+  if (isGlobalMemorySearchEnabled(ctx.runtime)) return { kind: "global" };
+  const task = await loadTask(ctx, readString(metadata.taskId));
+  const worldId = readString(task?.worldId);
+  if (worldId) return { kind: "world", worldId: worldId as UUID };
+  const roomId = resolveOriginRoomId(metadata);
+  if (roomId) return { kind: "room", roomId };
+  return { kind: "none" };
+}
+
 async function searchParentMemory(
   ctx: RouteContext,
+  metadata: Record<string, unknown>,
   query: string,
   limit: number,
 ): Promise<JsonValue> {
+  const scope = await resolveMemoryScope(ctx, metadata);
+  if (scope.kind === "none") return { query, limit, scope: "none", hits: [] };
+  const filter =
+    scope.kind === "world"
+      ? { worldId: scope.worldId }
+      : scope.kind === "room"
+        ? { roomId: scope.roomId }
+        : {};
   const embedding = await ctx.runtime.useModel(ModelType.TEXT_EMBEDDING, {
     text: query,
   });
@@ -423,6 +475,7 @@ async function searchParentMemory(
         embedding,
         query,
         limit: perTableLimit,
+        ...filter,
       });
       return hits.map((hit) => normalizeMemoryHit(tableName, hit));
     }),
@@ -435,7 +488,7 @@ async function searchParentMemory(
         (left.similarity ?? Number.NEGATIVE_INFINITY),
     )
     .slice(0, limit);
-  return { query, limit, hits };
+  return { query, limit, scope: scope.kind, hits };
 }
 
 /** Resolve the AgentSkillsService, or null when the skills plugin is not loaded.
@@ -494,8 +547,41 @@ async function readSkillBody(
   };
 }
 
+/**
+ * Sessions a child may see: itself, sessions of the same task, and sessions of
+ * other tasks bound to the same project.
+ */
+async function relatedSessionIds(
+  ctx: RouteContext,
+  session: SessionInfo,
+): Promise<Set<string>> {
+  const ids = new Set([session.id]);
+  const taskId = readString(readSessionMetadata(session).taskId);
+  if (!taskId || !ctx.acpService) return ids;
+  const projectId = readString((await loadTask(ctx, taskId))?.projectId);
+  const projectByTask = new Map<string, string | null>();
+  for (const other of await Promise.resolve(ctx.acpService.listSessions())) {
+    const otherTaskId = readString(readSessionMetadata(other).taskId);
+    if (!otherTaskId) continue;
+    if (otherTaskId === taskId) {
+      ids.add(other.id);
+      continue;
+    }
+    if (!projectId) continue;
+    if (!projectByTask.has(otherTaskId)) {
+      projectByTask.set(
+        otherTaskId,
+        readString((await loadTask(ctx, otherTaskId))?.projectId),
+      );
+    }
+    if (projectByTask.get(otherTaskId) === projectId) ids.add(other.id);
+  }
+  return ids;
+}
+
 async function listActiveWorkspaceContext(
   ctx: RouteContext,
+  session: SessionInfo,
 ): Promise<JsonValue> {
   const result = await activeWorkspaceContextProvider.get(
     ctx.runtime,
@@ -508,7 +594,19 @@ async function listActiveWorkspaceContext(
     } as Memory,
     { values: {}, data: {}, text: "" },
   );
-  return toJsonValue(result.data ?? {});
+  const data = (result.data ?? {}) as {
+    activeSessions?: Array<{ id: string; workdir?: string }>;
+    activeWorkspaces?: Array<{ path?: string }>;
+  };
+  const allowed = await relatedSessionIds(ctx, session);
+  const activeSessions = (data.activeSessions ?? []).filter((entry) =>
+    allowed.has(entry.id),
+  );
+  const workdirs = new Set(activeSessions.map((entry) => entry.workdir));
+  const activeWorkspaces = (data.activeWorkspaces ?? []).filter(
+    (workspace) => workspace.path && workdirs.has(workspace.path),
+  );
+  return toJsonValue({ ...data, activeSessions, activeWorkspaces });
 }
 
 /**
@@ -558,12 +656,21 @@ export async function handleParentContextRoutes(
   }
 
   const session = await getSession(ctx, sessionId);
-  if (!isActiveSession(session)) {
+  if (!session || !isActiveSession(session)) {
     sendBridgeError(
       res,
       "task_no_longer_active",
       "The task-agent session is no longer active in this parent runtime.",
       410,
+    );
+    return true;
+  }
+  if (!verifySessionBridgeToken(req, session.metadata)) {
+    sendBridgeError(
+      res,
+      "unauthorized",
+      "Invalid sub-agent bridge session token.",
+      401,
     );
     return true;
   }
@@ -594,6 +701,7 @@ export async function handleParentContextRoutes(
         await withBridgeTimeout(
           searchParentMemory(
             ctx,
+            readSessionMetadata(session),
             query,
             parseLimit(url.searchParams.get("limit")),
           ),
@@ -624,7 +732,10 @@ export async function handleParentContextRoutes(
       sendJson(res, body);
       return true;
     }
-    sendJson(res, await withBridgeTimeout(listActiveWorkspaceContext(ctx)));
+    sendJson(
+      res,
+      await withBridgeTimeout(listActiveWorkspaceContext(ctx, session)),
+    );
     return true;
   } catch (error) {
     // error-policy:J1 route boundary — translate any failure into a structured

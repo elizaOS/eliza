@@ -13,26 +13,22 @@ import android.net.Uri
 import android.os.Build
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.browser.customtabs.CustomTabsService
-import java.net.URI
 
 class BrowserLaunchException(val code: String, message: String) : IllegalArgumentException(message)
 
 object ChromiumBrowserLauncher {
     const val PACKAGE_NAME = BuildConfig.ELIZA_CHROMIUM_PACKAGE_NAME
 
+    /**
+     * Admits an http(s) address with a host and no embedded credentials. Only the scheme and
+     * authority are checked; the address goes to the browser exactly as given.
+     */
     internal fun validatedUrl(value: String): String {
-        val parsed = try {
-            URI(value)
-        } catch (error: java.net.URISyntaxException) {
+        if (BrowserWebOrigin.of(value) == null) {
             // error-policy:J3 Reject malformed input before sending any browser intent.
-            throw BrowserLaunchException("INVALID_BROWSER_URL", "Enter a complete http or https website address.")
-        }
-        if ((parsed.scheme != "https" && parsed.scheme != "http") ||
-            parsed.host.isNullOrBlank() || parsed.rawUserInfo != null ||
-            parsed.port < -1 || parsed.port > 65535) {
             throw BrowserLaunchException("INVALID_BROWSER_URL", "Enter a complete http or https website address without embedded credentials.")
         }
-        return parsed.toASCIIString()
+        return value
     }
 
     /** Present the pinned browser without navigating or creating a website tab. */

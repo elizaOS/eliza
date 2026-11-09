@@ -35,6 +35,7 @@ import {
   fetchConfiguredOwnerName,
   persistConfiguredOwnerName,
 } from "../services/owner-name.ts";
+import { isHostManagedInference } from "./host-operation-policy.ts";
 
 // ── Op catalog ────────────────────────────────────────────────────────────
 
@@ -144,6 +145,52 @@ function ok(text: string, data: Record<string, unknown>): ActionResult {
     values: { success: true },
     data: { actionName: "SETTINGS", ...data },
   };
+}
+
+/**
+ * Ops a product host manages from its own Settings screen
+ * (`ELIZA_HOST_OPERATION_POLICY=product`).
+ */
+const HOST_MANAGED_OPS: ReadonlySet<string> = new Set([
+  "update_ai_provider",
+  "set_backend",
+  "toggle_capability",
+]);
+
+function hostManagedRefusal(op: string): ActionResult {
+  return {
+    text: "This device manages that setting. Change it in the device's Settings app.",
+    success: false,
+    values: { success: false, error: "SETTINGS_HOST_MANAGED" },
+    data: {
+      actionName: "SETTINGS",
+      op,
+      error: "SETTINGS_HOST_MANAGED",
+      suppressPostActionContinuation: true,
+    },
+  };
+}
+
+/** Remove a secret the caller passed from every string in an action result. */
+function scrubSecret(result: ActionResult, secret: unknown): ActionResult {
+  if (typeof secret !== "string" || !secret.trim()) return result;
+  const needles = [...new Set([secret, secret.trim()])];
+  const scrub = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      return needles.reduce(
+        (out, needle) => out.split(needle).join("[redacted]"),
+        value,
+      );
+    }
+    if (Array.isArray(value)) return value.map(scrub);
+    if (isRecord(value)) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, scrub(entry)]),
+      );
+    }
+    return value;
+  };
+  return scrub(result) as ActionResult;
 }
 
 function readParams(
@@ -306,7 +353,7 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
   }
 
   return ok(
-    `Capability ${capability} is now ${enabled ? "enabled" : "disabled"}.`,
+    `Changed the settings-page preference for ${capability} to ${enabled ? "on" : "off"}. This does not add or remove agent actions.`,
     { op: "toggle_capability", capability, enabled },
   );
 }
@@ -890,9 +937,17 @@ export const settingsAction: Action = {
     const params = readParams(options as HandlerOptions | undefined);
     const op = params.action ?? params.subaction ?? params.op;
 
+    if (
+      typeof op === "string" &&
+      HOST_MANAGED_OPS.has(op) &&
+      isHostManagedInference()
+    ) {
+      return hostManagedRefusal(op);
+    }
+
     switch (op) {
       case "update_ai_provider":
-        return handleUpdateAiProvider(params);
+        return scrubSecret(await handleUpdateAiProvider(params), params.apiKey);
       case "toggle_capability":
         return handleToggleCapability(params);
       case "set_owner_name":
@@ -932,7 +987,9 @@ export const settingsAction: Action = {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Capability wallet is now disabled." },
+        content: {
+          text: "Changed the settings-page preference for wallet to off. This does not add or remove agent actions.",
+        },
       },
     ],
     [

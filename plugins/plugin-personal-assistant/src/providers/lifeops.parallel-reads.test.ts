@@ -277,7 +277,7 @@ const fixture = {
 // What the serial provider rendered for this fixture, from the first owner
 // line to the end of the block (the routing preamble above it is static).
 const EXPECTED_DYNAMIC_LINES = [
-  "Owner profile: name=Ada | relationship=married | partner=Bo | orientation=n/a | gender=n/a | age=41 | location=Lisbon | travelPrefs=aisle seat",
+  "Owner profile: name=Ada",
   "Owner timing facts: timezone=Europe/Lisbon | protected quiet/sleep window=23:00-07:00 Europe/Lisbon",
   "Calendar creates inside the protected quiet/sleep window are conflicts: do not book silently; ask for explicit owner override and propose alternatives outside the protected window.",
   "Owner open occurrences: 2",
@@ -826,7 +826,7 @@ describe("LifeOps bounded branch timing with the real recorder", () => {
     expect(reads.listAccounts).not.toHaveBeenCalled();
     expect(reads.getGoogleConnectorAccounts).not.toHaveBeenCalled();
   });
-  it("records both empty-calendar reads with Gmail between and closes ten spans", async () => {
+  it("reads an empty calendar once with Gmail after it and closes nine spans", async () => {
     wireImmediate();
     const order: string[] = [];
     reads.getNextCalendarEventContext.mockImplementation(async () => {
@@ -845,17 +845,61 @@ describe("LifeOps bounded branch timing with the real recorder", () => {
     const result = await runWithInferenceTiming(timer, () =>
       lifeOpsProvider.get(runtime, message, state),
     );
-    expect(order).toEqual(["calendar", "gmail", "calendar"]);
-    expect(reads.getNextCalendarEventContext).toHaveBeenCalledTimes(2);
+    expect(order).toEqual(["calendar", "gmail"]);
+    expect(reads.getNextCalendarEventContext).toHaveBeenCalledTimes(1);
     expect(reads.getGmailTriage).toHaveBeenCalledTimes(1);
     expect(result.data?.nextEventContext?.event).toBeNull();
     expect(runtime.reportError).not.toHaveBeenCalled();
-    expectSafeBranchSpans(timer, 10);
+    expectSafeBranchSpans(timer, 9);
     expect(
       timer
         .summary()
         .spans.filter((span) => span.name === "provider:lifeops:calendar-next"),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+  });
+});
+
+describe("lifeops owner profile disclosure", () => {
+  const sensitiveProfile = {
+    ...fixture.ownerProfile,
+    orientation: "bisexual",
+    gender: "female",
+    age: "41",
+  } as LifeOpsOwnerProfile;
+  const routedState = (primaryContext: string): State => ({
+    text: "",
+    values: { __contextRouting: { primaryContext } },
+    data: {},
+  });
+
+  it("keeps orientation, gender and age out of a calendar turn", async () => {
+    wireImmediate();
+    reads.readOwnerProfile.mockResolvedValue(sensitiveProfile);
+    const result = await lifeOpsProvider.get(
+      createRuntime(),
+      message,
+      routedState("calendar"),
+    );
+    for (const text of [result.text, result.discoveryText]) {
+      expect(text).toContain("Owner profile: name=Ada");
+      expect(text).not.toContain("bisexual");
+      expect(text).not.toContain("female");
+      expect(text).not.toContain("age=41");
+      expect(text).not.toContain("partner=Bo");
+    }
+  });
+
+  it("renders the full profile on a turn routed to stored personal facts", async () => {
+    wireImmediate();
+    reads.readOwnerProfile.mockResolvedValue(sensitiveProfile);
+    const result = await lifeOpsProvider.get(
+      createRuntime(),
+      { ...message, content: { text: "how old am I?" } } as Memory,
+      routedState("memory"),
+    );
+    expect(result.text).toContain(
+      "Owner profile: name=Ada | relationship=married | partner=Bo | orientation=bisexual | gender=female | age=41 | location=Lisbon | travelPrefs=aisle seat",
+    );
   });
 });
 

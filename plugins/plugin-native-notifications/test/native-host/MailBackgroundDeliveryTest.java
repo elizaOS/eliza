@@ -24,15 +24,15 @@ public class MailBackgroundDeliveryTest {
   public JSONObject verifiedIdentity(JSONObject data)throws Exception{return new JSONObject().put("userId",data.getString("id")).put("organizationId",data.getString("organization_id"));}
  }
  static final class Scheduler implements MailBackgroundDelivery.Scheduler {int schedules,cancels;String generation;public void schedule(String g){schedules++;generation=g;}public void cancel(){cancels++;generation=null;}}
- static final class Poster implements MailBackgroundDelivery.Notices {int posts;Set<String> active=new HashSet<>();public boolean allowed(){return true;}public boolean active(String k){return active.contains(k);}public void post(String k){posts++;active.add(k);}public void cancel(String k){active.remove(k);}public void cancelAll(){active.clear();}}
+ static final class Poster implements MailBackgroundDelivery.Notices {int posts,cancelAlls;Set<String> active=new HashSet<>();public boolean allowed(){return true;}public boolean active(String k){return active.contains(k);}public void post(String k){posts++;active.add(k);}public void cancel(String k){active.remove(k);}public void cancelAll(){cancelAlls++;active.clear();}}
  static final class Transport implements MailBackgroundDelivery.Connections {
-  final Host host;List<String> paths=new ArrayList<>();int historyStatus=200;boolean staleDuringHistory,wrongOwner,noGrant,accountsDown;Runnable onUser;Queue<JSONObject> pages=new ArrayDeque<>();
+  final Host host;List<String> paths=new ArrayList<>();int historyStatus=200;boolean staleDuringHistory,wrongOwner,noGrant,accountsDown,accountsRefused;Runnable onUser;Queue<JSONObject> pages=new ArrayDeque<>();
   Transport(Host host){this.host=host;}
   public HttpURLConnection open(URL url){
    check(url.getHost().equals("cloud.example"),"fixed authority");paths.add(url.getFile());
    return new HttpURLConnection(url){
     public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}
-    public int getResponseCode(){check("GET".equals(getRequestMethod()),"GET only");check(!getInstanceFollowRedirects(),"redirect disabled");check("Bearer secret".equals(getRequestProperty("Authorization")),"existing credential only");return url.getPath().endsWith("history")?historyStatus:url.getPath().endsWith("accounts")&&accountsDown?503:200;}
+    public int getResponseCode(){check("GET".equals(getRequestMethod()),"GET only");check(!getInstanceFollowRedirects(),"redirect disabled");check("Bearer secret".equals(getRequestProperty("Authorization")),"existing credential only");return url.getPath().endsWith("history")?historyStatus:url.getPath().endsWith("accounts")&&accountsDown?503:url.getPath().endsWith("accounts")&&accountsRefused?403:200;}
     public InputStream getInputStream()throws IOException{
      try{
       Object value;
@@ -92,6 +92,15 @@ public class MailBackgroundDeliveryTest {
   other2.delivery.withdraw("next-grant");
   refuses(()->other2.delivery.configure(queued,"credential","next-grant",USER,ORG),"retired queued grant admitted");
   check(other2.saved().getJSONObject("binding").getString("grantId").equals("grant"),"queued retirement keeps the saved grant");
+  Case refused=new Case();String tg=refused.configure();refused.transport.pages.add(MailHistoryReconciliationTest.baseline("100"));refused.delivery.sync(tg,()->{});refused.poster.active.add("shown");refused.poster.cancelAlls=0;
+  refused.transport.historyStatus=409;check(!refused.delivery.sync(tg,()->{})&&refused.delivery.status().getString("status").equals("retrying")&&refused.poster.active.contains("shown"),"history 409 after verify retries and keeps notices");
+  refused.transport.historyStatus=200;refused.transport.pages.add(MailHistoryReconciliationTest.page("100","101",null));check(refused.delivery.sync(tg,()->{}),"accepted page after a refusal");
+  refused.transport.historyStatus=409;check(!refused.delivery.sync(tg,()->{}),"count reset by an accepted page");refused.transport.historyStatus=403;check(!refused.delivery.sync(tg,()->{}),"second refusal retries");
+  check(refused.delivery.sync(tg,()->{})&&refused.delivery.status().getString("status").equals("grant-unavailable"),"third consecutive refusal reports the grant unavailable");
+  check(refused.poster.cancelAlls==0&&refused.poster.active.contains("shown"),"refusals never withdraw shown notices");
+  Case gone=new Case();String gg=gone.configure();gone.poster.active.add("shown");gone.transport.historyStatus=401;check(gone.delivery.sync(gg,()->{})&&gone.delivery.status().getString("status").equals("grant-unavailable")&&gone.poster.active.isEmpty(),"401 still withdraws notices");
+  Case lost=new Case();String lg=lost.configure();lost.poster.active.add("shown");lost.transport.noGrant=true;refuses(()->lost.delivery.sync(lg,()->{}),"verify without grant admitted");check(lost.poster.active.isEmpty()&&lost.delivery.status().getString("status").equals("grant-unavailable"),"verify refusal still withdraws notices");
+  Case denied=new Case();String dg=denied.configure();denied.poster.active.add("shown");denied.transport.accountsRefused=true;check(denied.delivery.sync(dg,()->{})&&denied.delivery.status().getString("status").equals("grant-unavailable")&&denied.poster.active.isEmpty(),"accounts 403 during verify still withdraws notices");
   System.out.println(assertions+" assertions passed");
  }
 }

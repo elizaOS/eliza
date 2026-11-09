@@ -90,12 +90,13 @@ import {
 } from "./action-model-routing";
 import {
 	getActionRoutingContext,
-	runWithoutActionRoutingContext,
+	runWithActionRoutingContext,
 } from "./action-routing-context";
 import { stringifyForModel } from "./json-output";
 import {
 	buildModelInputBudget,
 	DEFAULT_INPUT_RESERVE_TOKENS,
+	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
@@ -421,10 +422,10 @@ export class RuntimeModelDispatch {
 	}
 
 	/**
-	 * The runtime-selected text-model provider (`ELIZA_BRAIN_PROVIDER`), or
-	 * undefined to use the default (highest-priority) handler. It is read on
-	 * every call, so an owner action that changes the setting flips the chat
-	 * brain on the next model call with no restart.
+	 * The runtime-selected text-model provider from `ELIZA_BRAIN_PROVIDER`, read
+	 * on every call so an owner change applies with no restart. It is a strict
+	 * pin: a provider with no handler fails the call (see throwNoModelHandler)
+	 * and its failures never fall over to another provider.
 	 */
 	resolveTextProviderOverride(): string | undefined {
 		const raw = this.runtime.getSetting("ELIZA_BRAIN_PROVIDER");
@@ -533,7 +534,10 @@ export class RuntimeModelDispatch {
 		return isModelProviderFallbackError(error, modelType);
 	}
 
-	throwNoModelHandler(requestedModelKey: string): never {
+	throwNoModelHandler(
+		requestedModelKey: string,
+		pinnedProvider?: string,
+	): never {
 		// If the request is for a text-generation model AND no text-generation
 		// handler is registered for ANY of the text model types, this is the
 		// "no LLM provider configured at all" state — surface a typed error
@@ -548,6 +552,19 @@ export class RuntimeModelDispatch {
 			if (!hasAnyTextHandler) {
 				throw new NoModelProviderConfiguredError();
 			}
+		}
+		if (pinnedProvider !== undefined) {
+			throw new ElizaError(
+				`The selected model provider "${pinnedProvider}" has no ${requestedModelKey} handler. Load its plugin or clear ELIZA_BRAIN_PROVIDER.`,
+				{
+					code: "MODEL_PROVIDER_PIN_UNAVAILABLE",
+					context: {
+						provider: pinnedProvider,
+						modelType: requestedModelKey,
+						setting: "ELIZA_BRAIN_PROVIDER",
+					},
+				},
+			);
 		}
 		throw new Error(`No handler found for delegate type: ${requestedModelKey}`);
 	}
@@ -724,9 +741,9 @@ export class RuntimeModelDispatch {
 
 	/**
 	 * Budget the exact text-generation request after runtime transforms and
-	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound, so the
-	 * runtime can reject before a provider handler without silently rewriting
-	 * any model-facing field.
+	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound. The
+	 * estimate is diagnostic: it never rejects a request or rewrites any
+	 * model-facing field.
 	 */
 	buildFinalModelInputBudget(
 		params: unknown,
@@ -792,6 +809,53 @@ export class RuntimeModelDispatch {
 			),
 			estimationMode: "utf8-upper-bound",
 		});
+	}
+
+	/**
+	 * Attach the final budget to `providerOptions.eliza.modelInputBudget` so the
+	 * estimate includes its own metadata. The request is serialized once, with a
+	 * placeholder budget of the same shape; the real budget differs only in the
+	 * digits of `estimatedInputTokens`, so its size is settled arithmetically.
+	 */
+	attachFinalModelInputBudget(
+		record: Record<string, unknown>,
+		metadata: ModelRegistrationMetadata | undefined,
+	): ModelInputBudget {
+		const providerOptions = isPlainObject(record.providerOptions)
+			? (record.providerOptions as Record<string, unknown>)
+			: {};
+		const attach = (budget: ModelInputBudget) => {
+			Object.assign(
+				providerOptions,
+				withModelInputBudgetProviderOptions(providerOptions, budget),
+			);
+			record.providerOptions = providerOptions;
+		};
+		const placeholder: ModelInputBudget = {
+			estimatedInputTokens: 0,
+			contextWindowTokens: 0,
+			reserveTokens: 0,
+			dispatchThresholdTokens: 0,
+			estimationMode: "utf8-upper-bound",
+		};
+		attach(placeholder);
+		const measured = this.buildFinalModelInputBudget(record, metadata);
+		const utf8Length = (value: unknown) =>
+			new TextEncoder().encode(JSON.stringify(value)).byteLength;
+		const base = measured.estimatedInputTokens - utf8Length(placeholder);
+		let budget = measured;
+		for (let pass = 0; pass < 4; pass += 1) {
+			const next = base + utf8Length(budget);
+			if (next === budget.estimatedInputTokens) {
+				attach(budget);
+				return budget;
+			}
+			budget = { ...measured, estimatedInputTokens: next };
+		}
+		throw new ElizaError(
+			"Final model-input budget metadata did not stabilize",
+			{ code: "MODEL_INPUT_BUDGET_UNSTABLE" },
+		);
 	}
 
 	/** Clone caller-owned request data before runtime transforms. Arrays and
@@ -998,7 +1062,7 @@ export class RuntimeModelDispatch {
 			providerOverride ?? requestedProvider,
 		);
 		if (resolvedModels.length === 0) {
-			this.throwNoModelHandler(requestedModelKey);
+			this.throwNoModelHandler(requestedModelKey, providerOverride);
 		}
 
 		return {
@@ -1009,7 +1073,7 @@ export class RuntimeModelDispatch {
 		};
 	}
 
-	/** Resolve an action chain once; nested attempts clear the routing context. */
+	/** Resolve an action chain once; nested attempts clear only modelClass. */
 	private routeActionModel<T extends keyof ModelParamsMap, R>(
 		modelType: T,
 		params: ModelParamsMap[T],
@@ -1019,7 +1083,8 @@ export class RuntimeModelDispatch {
 		// originates inside an action handler that declared a `modelClass`, and
 		// the requested model type is a text-generation model, we resolve
 		// through a strategy chain instead of the default per-provider path.
-		// The chain implements cost-aware ascending fallback: LOCAL → SMALL → LARGE.
+		// The chain implements cost-aware ascending fallback (SMALL → LARGE);
+		// LOCAL stays on local handlers and never escalates to a cloud one.
 		// Lookup the strategy ourselves rather than recursing on the requested
 		// modelType so the routing decision is made once at the entry point,
 		// not on every nested call.
@@ -1049,19 +1114,28 @@ export class RuntimeModelDispatch {
 						"Per-action model routing applied",
 					);
 					// Execute the chain. Each step recurses into useModel with the
-					// resolved modelType + provider hint, but the action routing
-					// context is cleared so the inner call uses the default path.
+					// resolved modelType + provider hint. Only modelClass is cleared, so
+					// the inner call uses the default path and keeps host provenance.
+					const nestedCtx = { ...actionRoutingCtx, modelClass: undefined };
 					return executeChainWithFallback(
 						resolvedChain,
 						strategy.confidenceThreshold,
 						async (resolved) =>
-							runWithoutActionRoutingContext(() =>
+							runWithActionRoutingContext(nestedCtx, () =>
 								this.useModel<T, R>(
 									resolved.modelType as T,
 									params,
 									resolved.provider,
 								),
 							),
+					);
+				}
+				if (strategy.requireChainMatch) {
+					return Promise.reject(
+						new ElizaError(
+							`No ${actionRoutingCtx.modelClass} model handler is registered for action ${actionRoutingCtx.actionName}`,
+							{ code: "ACTION_MODEL_CLASS_UNAVAILABLE" },
+						),
 					);
 				}
 				this.runtime.logger.debug(
@@ -1220,6 +1294,21 @@ export class RuntimeModelDispatch {
 				const shouldSubstituteSecrets =
 					this.host.isSecretSwapEnabled() &&
 					!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey);
+				// IMAGE requests can carry input images or URLs beside the text prompt;
+				// secrets are swapped in the prompt string only, never in those fields.
+				const secretSwapPromptOnly = resolvedModelKey === ModelType.IMAGE;
+				const substituteSecrets = (
+					session: SecretSwapSession,
+					value: ModelParamsMap[T],
+				): ModelParamsMap[T] => {
+					if (!secretSwapPromptOnly) return session.substituteInValue(value);
+					if (!isPlainObject(value)) return value;
+					const record = value as Record<string, unknown>;
+					if (typeof record.prompt === "string") {
+						record.prompt = session.substituteText(record.prompt);
+					}
+					return value;
+				};
 				const shouldSubstitutePii =
 					this.host.isPiiSwapEnabled() &&
 					!PII_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey);
@@ -1232,7 +1321,7 @@ export class RuntimeModelDispatch {
 				}
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
-					? shouldSubstituteSecrets
+					? shouldSubstituteSecrets && !secretSwapPromptOnly
 						? { ...(params as Record<string, unknown>) }
 						: this.cloneModelRequestGraph(params)
 					: params;
@@ -1576,7 +1665,7 @@ export class RuntimeModelDispatch {
 					if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
 						trajectoryCtx.secretSwapSession = secretSwapSession;
 					}
-					modelParams = secretSwapSession.substituteInValue(modelParams);
+					modelParams = substituteSecrets(secretSwapSession, modelParams);
 					effectiveSystemPrompt =
 						effectiveSystemPrompt === undefined
 							? undefined
@@ -1584,7 +1673,7 @@ export class RuntimeModelDispatch {
 				}
 
 				// PII_SWAP_SKIP_MODEL_TYPES documents which slots stay on real text.
-				let piiIngressText = "";
+				let piiSubstitutedText = "";
 				if (shouldSubstitutePii) {
 					// Turn-scoped like the secret session (same mapping all turn), so the
 					// execution boundary can restore what this call swapped.
@@ -1600,16 +1689,18 @@ export class RuntimeModelDispatch {
 					// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
 					// inference is offloaded to onnxruntime's threadpool, so it overlaps the
 					// event loop rather than blocking other turns.
-					piiIngressText = collectPiiPromptText(
-						modelParams,
-						effectiveSystemPrompt,
+					await piiSwapSession.learn(
+						collectPiiPromptText(modelParams, effectiveSystemPrompt),
 					);
-					await piiSwapSession.learn(piiIngressText);
 					modelParams = piiSwapSession.substituteInValue(modelParams);
 					effectiveSystemPrompt =
 						effectiveSystemPrompt === undefined
 							? undefined
 							: piiSwapSession.substituteText(effectiveSystemPrompt);
+					piiSubstitutedText = collectPiiPromptText(
+						modelParams,
+						effectiveSystemPrompt,
+					);
 				}
 
 				await this.host.invokePipelineHooks(
@@ -1624,7 +1715,7 @@ export class RuntimeModelDispatch {
 					"Pre-model pipeline hook",
 				);
 				if (secretSwapSession) {
-					modelParams = secretSwapSession.substituteInValue(modelParams);
+					modelParams = substituteSecrets(secretSwapSession, modelParams);
 					const postHookSystemPrompt = resolveEffectiveSystemPrompt({
 						params: modelParams,
 						fallback: effectiveSystemPrompt,
@@ -1643,7 +1734,7 @@ export class RuntimeModelDispatch {
 						modelParams,
 						effectiveSystemPrompt,
 					);
-					if (postHookText !== piiIngressText) {
+					if (postHookText !== piiSubstitutedText) {
 						await piiSwapSession.learn(postHookText);
 					}
 					modelParams = piiSwapSession.substituteInValue(modelParams);
@@ -1727,8 +1818,8 @@ export class RuntimeModelDispatch {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
-				// Capture the exact post-hook request before the final budget check so a
-				// typed zero-dispatch rejection records the same complete request.
+				// Capture the exact post-hook request so a failed attempt records the
+				// same complete request the handler would have received.
 				modelParamsRef = modelParams;
 				promptContentRef = promptContent;
 				// Attach only to this attempt's fresh request, before admission freezes
@@ -1741,51 +1832,25 @@ export class RuntimeModelDispatch {
 				}
 
 				if (isTextGenerationModelKey(String(resolvedModelKey))) {
-					let finalBudget = this.buildFinalModelInputBudget(
-						modelParams,
-						resolvedModel.metadata,
-					);
 					if (isPlainObject(modelParams)) {
-						const paramsRecord = modelParams as Record<string, unknown>;
-						const providerOptions = isPlainObject(paramsRecord.providerOptions)
-							? (paramsRecord.providerOptions as Record<string, unknown>)
-							: {};
-						const seenBudgetSignatures = new Set<string>();
-						while (true) {
-							const signature = JSON.stringify(finalBudget);
-							if (seenBudgetSignatures.has(signature)) {
-								throw new ElizaError(
-									"Final model-input budget metadata did not stabilize",
-									{ code: "MODEL_INPUT_BUDGET_UNSTABLE" },
-								);
-							}
-							seenBudgetSignatures.add(signature);
-							Object.assign(
-								providerOptions,
-								withModelInputBudgetProviderOptions(
-									providerOptions,
-									finalBudget,
-								),
-							);
-							paramsRecord.providerOptions = providerOptions;
-							const measuredWithMetadata = this.buildFinalModelInputBudget(
-								modelParams,
-								resolvedModel.metadata,
-							);
-							if (
-								measuredWithMetadata.estimatedInputTokens ===
-								finalBudget.estimatedInputTokens
-							) {
-								finalBudget = measuredWithMetadata;
-								break;
-							}
-							finalBudget = measuredWithMetadata;
-						}
+						this.attachFinalModelInputBudget(
+							modelParams as Record<string, unknown>,
+							resolvedModel.metadata,
+						);
+					} else {
+						this.buildFinalModelInputBudget(
+							modelParams,
+							resolvedModel.metadata,
+						);
 					}
 					this.freezeAdmittedModelRequest(modelParams);
 				}
 
-				if (!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)) {
+				// IMAGE params can hold base64 input images; log only their size.
+				if (
+					!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey) &&
+					resolvedModelKey !== ModelType.IMAGE
+				) {
 					this.runtime.logger.trace(
 						{
 							src: "agent",

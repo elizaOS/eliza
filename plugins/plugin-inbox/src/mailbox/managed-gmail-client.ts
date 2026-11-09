@@ -38,7 +38,8 @@ export interface ManagedGmailTransport {
   /**
    * One authenticated request on the Cloud API origin. A body selects POST.
    * Non-2xx answers must reject with the host's protocol error (code `http`,
-   * numeric `status`). Returns the decoded JSON body.
+   * numeric `status`, and the decoded error body as `data` so its Cloud
+   * `code` classifies the failure). Returns the decoded JSON body.
    */
   request(
     path: string,

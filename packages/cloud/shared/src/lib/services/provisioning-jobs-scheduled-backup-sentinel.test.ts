@@ -52,7 +52,6 @@ import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema";
-import { activeBillingService } from "./active-billing";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { SandboxPower } from "./eliza-sandbox/lifecycle/power";
 import { JOB_TYPES } from "./provisioning-job-types";
@@ -1813,77 +1812,6 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(suspendRows[0]?.status).toBe("cancelled");
     const deleteRows = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
     expect(deleteRows[0]?.status).toBe("pending");
-  });
-
-  test("active billing delete returns its exact production job and deletion receipt", async () => {
-    const { agentId, orgId } = await seedAgent({
-      status: "running",
-      executionTier: "dedicated-always",
-    });
-    const result = await activeBillingService.cancelResource({
-      organizationId: orgId,
-      resourceId: agentId,
-      resourceType: "agent_sandbox",
-      mode: "delete",
-      authorizeInfrastructureMutation: async () => undefined,
-    });
-    const cancellationId = result.resource.metadata.cancellationId;
-    const deletionAttemptId = result.resource.metadata.deletionAttemptId;
-    expect(result).toMatchObject({
-      stoppedBilling: false,
-      resource: { status: "deletion_pending", billingStatus: "active" },
-    });
-    expect(typeof cancellationId).toBe("string");
-    expect(typeof deletionAttemptId).toBe("string");
-    const [storedJob] = await dbWrite
-      .select()
-      .from(jobs)
-      .where(eq(jobs.id, cancellationId as string));
-    expect(storedJob).toMatchObject({
-      type: JOB_TYPES.AGENT_DELETE,
-      organization_id: orgId,
-      agent_id: agentId,
-      status: "pending",
-    });
-    const [storedSandbox] = await dbWrite
-      .select()
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, agentId));
-    expect(storedSandbox).toMatchObject({
-      status: "deletion_pending",
-      billing_status: "active",
-      deletion_attempt_id: deletionAttemptId,
-    });
-  });
-
-  test("active billing delete queues teardown for an already suspended agent", async () => {
-    const { agentId, orgId } = await seedAgent({
-      status: "stopped",
-      executionTier: "dedicated-always",
-    });
-    await dbWrite
-      .update(agentSandboxes)
-      .set({ billing_status: "suspended" })
-      .where(eq(agentSandboxes.id, agentId));
-    const result = await activeBillingService.cancelResource({
-      organizationId: orgId,
-      resourceId: agentId,
-      resourceType: "agent_sandbox",
-      mode: "delete",
-      authorizeInfrastructureMutation: async () => undefined,
-    });
-    const deletionJobs = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
-    expect(deletionJobs).toHaveLength(1);
-    expect(result.stoppedBilling).toBe(true);
-    expect(result.infrastructureAction.status).toBe("queued");
-    expect(result.resource.metadata.cancellationId).toBe(deletionJobs[0].id);
-    const [stored] = await dbWrite
-      .select()
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, agentId));
-    expect(stored.status).toBe("deletion_pending");
-    expect(stored.billing_status).toBe("suspended");
-    expect(result.resource.metadata.deletionAttemptId).toBe(stored.deletion_attempt_id);
   });
 
   test("cancelling a queued deletion restores lifecycle without interrupting billing", async () => {

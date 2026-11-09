@@ -135,11 +135,14 @@ export class PhraseAggregator {
 
   private take(): string | null {
     const trimmed = this.buffer.trim();
-    this.buffer = "";
     this.dotAfterDigit = false;
     if (trimmed.length < this.minEmitChars) {
+      // A short spoken segment ("5\n") joins the next phrase instead of being
+      // dropped; lone punctuation must not prefix it.
+      if (!/[\p{L}\p{N}]/u.test(trimmed)) this.buffer = "";
       return null;
     }
+    this.buffer = "";
     this.emittedCount += 1;
     return trimmed;
   }

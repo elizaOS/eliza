@@ -146,7 +146,7 @@ public final class MailBackgroundDelivery {
  /** Host resume: reschedules a still-current selection, retires a stale one. */
  public void resume(){try{synchronized(host.lock()){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null)return;JSONObject binding=s.getJSONObject("binding");current(binding);scheduler.schedule(binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
  public JSONObject status()throws Exception{synchronized(host.lock()){JSONObject s=saved();if(s==null)return new JSONObject().put("status","disabled");return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
- private static final class HttpFailure extends IOException {final int status;HttpFailure(int status){super("Mail service unavailable");this.status=status;}}
+ private static final class HttpFailure extends IOException {final int status;final boolean history;HttpFailure(int status,boolean history){super("Mail service unavailable");this.status=status;this.history=history;}}
  private String get(JSONObject binding,String path,MailHistoryReconciliation.Guard guard)throws Exception{
   // Constructed paths only, with a fixed service authority. No remote-agent host or redirect.
   if(!(path.equals(USER_ROUTE)||path.equals(ACCOUNTS_ROUTE)||path.startsWith(HISTORY_ROUTE)))throw new SecurityException("Mail route denied");
@@ -154,7 +154,7 @@ public final class MailBackgroundDelivery {
   HttpURLConnection connection=connections.open(java.net.URI.create(config.apiBase+path).toURL());
   try{
    connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);connection.setConnectTimeout(15000);connection.setReadTimeout(30000);connection.setRequestMethod("GET");connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Authorization","Bearer "+credential.getString("token"));
-   guard.check();int status=connection.getResponseCode();if(status<200||status>=300)throw new HttpFailure(status);
+   guard.check();int status=connection.getResponseCode();if(status<200||status>=300)throw new HttpFailure(status,path.startsWith(HISTORY_ROUTE));
    ByteArrayOutputStream bytes=new ByteArrayOutputStream();
    try(InputStream in=connection.getInputStream()){byte[] buffer=new byte[8192];for(int n;(n=in.read(buffer))!=-1;){guard.check();if(bytes.size()+n>1100000)throw new IOException("Mail response exceeds bound");bytes.write(buffer,0,n);}}
    guard.check();return bytes.toString(StandardCharsets.UTF_8.name());
@@ -193,7 +193,10 @@ public final class MailBackgroundDelivery {
    return false;
   }catch(HttpFailure error){
    synchronized(host.lock()){guard.check();
-    if(error.status==401||error.status==403||error.status==409){engine(binding).failure("grant-unavailable");poster.cancelAll();return true;}
+    // verify() just passed, so a 403/409 from the history route is usually Cloud mapping a transient token
+    // failure. Retry, and only report the grant unavailable after consecutive refusals; shown notices time out.
+    if(error.status==401||!error.history&&(error.status==403||error.status==409)){engine(binding).failure("grant-unavailable");poster.cancelAll();return true;}
+    if(error.status==403||error.status==409)return engine(binding).authFailure()>=MailHistoryReconciliation.MAXIMUM_AUTH_FAILURES;
     if(error.status==404||error.status==405||error.status==501){engine(binding).failure("unsupported");return true;}
     engine(binding).failure("retrying");}
    return false;

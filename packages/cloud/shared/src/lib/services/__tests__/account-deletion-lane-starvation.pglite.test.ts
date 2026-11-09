@@ -18,7 +18,7 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 import { createHash, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { accountDeletionPhaseReceipts } from "../../../db/schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../../db/schemas/account-deletion-requests";
 import type { RuntimeR2Bucket } from "../../storage/r2-runtime-binding";
@@ -133,6 +133,15 @@ test("ten requests parked at the backup lane's phase do not starve a request the
 
   expect(inspected).toEqual([{ phase: "steward_deactivation", requestId: starved }]);
   expect(result.progressed).toBe(1);
+  // The ten parked requests are reported, aged from when `domains` completed
+  // for the oldest (T0), and none of them changed status.
+  expect(result.deferredToOtherLane).toBe(10);
+  expect(result.oldestDeferredAgeMs).toBe(24 * 3_600_000);
+  const parked = await dbWrite
+    .select({ status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(ne(accountDeletionRequests.id, starved));
+  expect(parked.map((row) => row.status)).toEqual(Array(10).fill("scheduled"));
   const [receipt] = await dbWrite
     .select({ status: accountDeletionPhaseReceipts.status })
     .from(accountDeletionPhaseReceipts)

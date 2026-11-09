@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LIVE_ASR_PATH, LIVE_ASR_STATUS_PATH } from "./live-voice-session";
 import {
   createNativeLiveVoice,
+  NATIVE_PENDING_FINALS,
   type NativeLiveCapturePort,
   type NativeResidentBinding,
   nativeVoiceStageSink,
@@ -269,6 +270,50 @@ describe("native resident capture", () => {
     expect(out.lost).toEqual([]);
   });
 
+  it("keeps a long conversation alive past the remembered turn ids and still drops a repeated final", async () => {
+    const bridge = fakeBridge();
+    const agent = residentAgent();
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: agent.resident,
+    });
+    const out = handlers();
+    const capture = await voice.open(out.open(new AbortController().signal));
+    const id = bridge.captureId;
+    const turns = 600;
+    for (let i = 0; i < turns; i++) {
+      bridge.emit("liveCaptureFrames", {
+        captureId: id,
+        vad: [
+          { type: "speech-start", timestampMs: i * 10 },
+          { type: "speech-end", timestampMs: i * 10 + 5 },
+        ],
+      });
+      bridge.emit("liveCaptureTranscript", {
+        captureId: id,
+        final: { turnId: `turn-${i}`, text: `line ${i}`, mode: "stream" },
+      });
+    }
+    expect(out.lost).toEqual([]);
+    expect(out.segments).toHaveLength(turns);
+    expect(out.segments.at(-1)).toBe(`line ${turns - 1}`);
+    bridge.emit("liveCaptureFrames", {
+      captureId: id,
+      vad: [
+        { type: "speech-start", timestampMs: turns * 10 },
+        { type: "speech-end", timestampMs: turns * 10 + 5 },
+      ],
+    });
+    bridge.emit("liveCaptureTranscript", {
+      captureId: id,
+      final: { turnId: `turn-${turns - 1}`, text: "again", mode: "stream" },
+    });
+    expect(out.segments).toHaveLength(turns);
+    expect(out.lost).toEqual([]);
+    await capture.cancel();
+  });
+
   it("shows partials only for the open turn, in sequence, and clears them at the final", async () => {
     const bridge = fakeBridge();
     const agent = residentAgent();
@@ -336,6 +381,45 @@ describe("native resident capture", () => {
     });
     expect(out.segments).toEqual([]);
     expect(out.lost).toHaveLength(1);
+  });
+
+  it("ends with a live-asr code when transcription fails or falls behind", async () => {
+    const voice = (bridge: ReturnType<typeof fakeBridge>) =>
+      createNativeLiveVoice({
+        port: bridge.port,
+        available: () => true,
+        resident: residentAgent().resident,
+      });
+    const failing = fakeBridge();
+    const failed = handlers();
+    await voice(failing).open(failed.open(new AbortController().signal));
+    failing.emit("liveCaptureTranscript", {
+      captureId: failing.captureId,
+      error: "MODEL_MISSING",
+    });
+    expect(failed.lost).toHaveLength(1);
+    expect(failed.lost[0]).toMatchObject({
+      message: "Native transcription unavailable.",
+      code: "live-asr",
+      reason: "MODEL_MISSING",
+    });
+
+    const behind = fakeBridge();
+    const out = handlers();
+    await voice(behind).open(out.open(new AbortController().signal));
+    // Finals with no closed segment to answer stay pending until the limit.
+    for (let i = 0; i <= NATIVE_PENDING_FINALS; i++)
+      behind.emit("liveCaptureTranscript", {
+        captureId: behind.captureId,
+        final: { turnId: `t${i}`, text: `line ${i}`, mode: "stream" },
+      });
+    expect(out.segments).toEqual([]);
+    expect(out.lost).toHaveLength(1);
+    expect(out.lost[0]).toMatchObject({
+      message: "Native transcription fell behind.",
+      code: "live-asr",
+      reason: "backlog",
+    });
   });
 
   it("fences events once the owner's session changes", async () => {

@@ -54,6 +54,20 @@ public final class NotificationMirrorPolicyTest {
     NotificationMirrorPolicy.checkSelection(List.of(), visible, Map.of("org.example.bank", false));
     check(true);
 
+    // Active rows: the newest 100 admitted rows, newest first, whatever the order Android lists them in.
+    Long[] posted = new Long[160];
+    for (int i = 0; i < posted.length; i++) posted[i] = (long) ((i * 37) % posted.length);
+    try {
+      List<Map.Entry<Long, String>> shown = NotificationMirrorPolicy.newest(posted, at -> at, at -> at % 16 == 15 ? null : "app" + at);
+      check(shown.size() == NotificationMirrorPolicy.MAX_ACTIVE);
+      check(shown.get(0).getKey() == 158L && shown.get(0).getValue().equals("app158"));
+      boolean ordered = true;
+      for (int i = 1; i < shown.size(); i++) ordered &= shown.get(i).getKey() < shown.get(i - 1).getKey() && shown.get(i).getKey() % 16 != 15;
+      check(ordered);
+      check(shown.get(shown.size() - 1).getKey() == 53L);
+      check(NotificationMirrorPolicy.newest(new Long[] {3L, 1L, 2L}, at -> at, at -> "app").size() == 3);
+    } catch (Exception failure) { throw new AssertionError(failure); }
+
     // Admission: another package, same user, its own uid, still-matching pinned signature.
     check(NotificationMirrorPolicy.admits(true, false, true, true));
     check(!NotificationMirrorPolicy.admits(false, false, true, true));
