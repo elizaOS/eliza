@@ -1,0 +1,42 @@
+[
+  {
+    "q": "What is Valhalla?",
+    "keys": ["what", "valhalla", "product"],
+    "a": "Valhalla™ is the website desk at /app first, then the Chrome extension. Telegram is coming soon. The Android app is in testing. TokenJunction LLC publishes it. It is not financial advice."
+  },
+  {
+    "q": "Can the app move my funds?",
+    "keys": ["send", "withdraw", "funds", "money", "wallet", "key", "seed"],
+    "a": "No. The app never sends, withdraws, or moves funds. Keys stay on your computer. Do not share a seed phrase."
+  },
+  {
+    "q": "Is this a profit promise?",
+    "keys": ["profit", "money", "rich", "gain", "return"],
+    "a": "No. Crypto is risky. You can lose money. Valhalla does not promise profit."
+  },
+  {
+    "q": "What is free and what is Pro?",
+    "keys": ["free", "ads", "trial", "watchlist"],
+    "a": "Free has ads, 1 wallet, 3 watchlist coins, and 1 Brain score a day. A 15 day free Pro trial is included. Pro removes ads. Pro is not a promise of profit."
+  },
+  {
+    "q": "How much is Pro?",
+    "keys": ["pro", "price", "cost", "pay", "lemon"],
+    "a": "Pro is $9.99 a month at the launch price, then the regular monthly price. A 15 day free trial is included. Yearly is $149 when that link is set. The price is a plan, not a promise of profit. Store apps use the app store instead, with the same 15 day trial."
+  },
+  {
+    "q": "Where do I download it?",
+    "keys": ["download", "apk", "android", "windows", "install"],
+    "a": "Open the website desk at valhalla-app.xyz/app. The Chrome extension is the second install. Telegram is coming soon. Android is in testing and is not a public download yet. Windows is coming soon."
+  },
+  {
+    "q": "What if the computer is off?",
+    "keys": ["off", "offline", "pc"],
+    "a": "The website desk still opens in the browser. The Chrome extension needs the computer on. Android is in testing and is not a public download yet."
+  },
+  {
+    "q": "What is the Hive?",
+    "keys": ["hive", "compute", "worker", "extension"],
+    "a": "The Hive is an optional paper-test helper. It is off until a leader turns the feature on, and it stays off for you until you choose Join the Hive. The Chrome extension has a second, separate idle-helper switch. It does not mine and it does not share your internet connection. Points are not cash and not a coin. Rewards are points only for now."
+  }
+]

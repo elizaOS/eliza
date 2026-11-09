@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="google-adsense-account" content="ca-pub-6504655762357230">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6504655762357230" crossorigin="anonymous"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add Valhalla to Chrome</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<main class="wrap" style="padding:32px 0 64px">
+  <p class="kicker">CHROME</p>
+  <h1>Add Valhalla to Chrome</h1>
+  <p>Use a computer. Chrome on Android cannot install extensions.</p>
+  <p><a id="add" class="btn solid" href="#steps">Add to Chrome</a></p>
+  <p id="add-note" class="note">The Chrome Web Store link is not set yet. Follow the three pictures. The button above does not download a file. After the store listing is live, Chrome updates the extension by itself.</p>
+  <img src="guide.gif" alt="Three steps. Download the folder, open chrome://extensions, then Load unpacked." width="960" height="540">
+  <section id="steps">
+    <article class="card"><h2>1. Download the folder</h2><img src="step-1.png" alt="Step 1. Download the folder and open it until you see manifest.json." width="960" height="540"><p>Click the button. Open the download. You should see a file named manifest.json. If you see a zip, double-click it once. Do not look for a second folder inside.</p><p><a class="btn" href="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip">Download the folder</a></p><p class="note">The same files are already unpacked in <a href="folder/manifest.json">this folder list</a>. A website cannot place a folder on your computer, so the button is that folder in one open.</p></article>
+    <article class="card"><h2>2. Open the extensions page</h2><img src="step-2.png" alt="Step 2. Open chrome://extensions and turn on Developer mode." width="960" height="540"><p>Type chrome://extensions in the address bar. Turn on Developer mode.</p></article>
+    <article class="card"><h2>3. Load the folder</h2><img src="step-3.png" alt="Step 3. Choose Load unpacked and select the folder with manifest.json." width="960" height="540"><p>Click Load unpacked. Select the folder that shows manifest.json. Do not select the zip. The extension is read-only. It cannot send or withdraw.</p></article>
+  </section>
+  <p><a href="../">Back to Valhalla</a></p>
+</main>
+<script src="../site-config.js"></script>
+<script>
+(function () {
+  var cfg = window.VALHALLA_SITE || {};
+  var store = (cfg.CHROME_WEB_STORE_URL || "").trim();
+  var button = document.getElementById("add");
+  var note = document.getElementById("add-note");
+  if (store && button) {
+    button.href = store;
+    if (note) note.textContent = "Add to Chrome opens the Chrome Web Store.";
+  }
+})();
+</script>
+
+<script src="/site-config.js"></script>
+<script src="/nacl.min.js"></script>
+<script src="/connect-core.js"></script>
+<script src="/site-wallet.js"></script>
+<script src="/site-chrome.js"></script>
+</body>
+</html>

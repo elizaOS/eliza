@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a0c">
+  <meta name="description" content="ValhallaOS command desk for wallet connections and assistant chat.">
+  <title>ValhallaOS · Command Desk</title>
+  <link rel="stylesheet" href="/os/os.css">
+  <script src="/site-config.js" defer></script>
+  <script src="/os/app.js" defer></script>
+  <script src="/os/bridge.js" defer></script>
+</head>
+<body>
+  <svg class="icon-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-computer" viewBox="0 0 32 32">
+      <path fill="#d4d0c8" stroke="#222" d="M3 4h26v19H3z"/><path fill="#000080" d="M5 6h22v14H5z"/>
+      <path fill="#fff" d="M8 9h6v1H8zm0 3h12v1H8zm0 3h9v1H8z"/>
+      <path fill="#d4d0c8" stroke="#222" d="M12 23h8v4h4v2H8v-2h4z"/>
+    </symbol>
+    <symbol id="icon-network" viewBox="0 0 32 32">
+      <path fill="none" stroke="#111" stroke-width="2" d="M9 10 16 6l7 4v11l-7 5-7-5zM9 10l7 5 7-5M16 15v11"/>
+      <path fill="#00a" stroke="#111" d="M13 3h6v6h-6zM5 18h7v7H5zm15 0h7v7h-7z"/>
+    </symbol>
+    <symbol id="icon-notepad" viewBox="0 0 32 32">
+      <path fill="#fff" stroke="#222" d="M7 3h19v26H7z"/><path fill="#000080" d="M7 3h19v5H7z"/>
+      <path stroke="#555" d="M11 12h11M11 16h11M11 20h11M11 24h8"/>
+    </symbol>
+    <symbol id="icon-browser" viewBox="0 0 32 32">
+      <path fill="#d4d0c8" stroke="#222" d="M3 5h26v22H3z"/><path fill="#000080" d="M5 7h22v5H5z"/>
+      <path fill="#fff" stroke="#777" d="M6 14h20v10H6z"/><path fill="#0a7" d="m11 18 5-3 5 3-5 4z"/>
+    </symbol>
+    <symbol id="icon-wallet" viewBox="0 0 32 32">
+      <path fill="#a0522d" stroke="#222" d="M5 8h21v19H5z"/><path fill="#c08040" stroke="#222" d="M5 8V5h17v4"/>
+      <path fill="#d4d0c8" stroke="#222" d="M19 14h11v8H19z"/><circle cx="23" cy="18" r="1.5" fill="#222"/>
+    </symbol>
+  </svg>
+
+  <main class="desktop" id="desktop">
+    <header class="desktop-heading">
+      <img src="/assets/mark.svg" alt="" width="40" height="40">
+      <div><h1>VALHALLA<span>OS</span></h1>
+      <p>COMMAND DESK / PAPER-FIRST</p></div>
+      <div class="header-state"><span class="state-dot"></span> PUBLIC DESK <span class="paper-badge">LIVE TRADING OFF</span></div>
+    </header>
+
+    <nav class="desktop-icons" aria-label="Desktop applications">
+      <button class="desktop-icon" type="button" data-open="status">
+        <svg aria-hidden="true"><use href="#icon-computer"></use></svg><span>System Status</span>
+      </button>
+      <button class="desktop-icon" type="button" data-open="swarm">
+        <svg aria-hidden="true"><use href="#icon-network"></use></svg><span>A2A Monitor</span>
+      </button>
+      <button class="desktop-icon" type="button" data-open="memory">
+        <svg aria-hidden="true"><use href="#icon-notepad"></use></svg><span>Memory Inspector</span>
+      </button>
+      <button class="desktop-icon" type="button" data-open="browser">
+        <svg aria-hidden="true"><use href="#icon-browser"></use></svg><span>Web Shell</span>
+      </button>
+      <button class="desktop-icon" type="button" data-open="wallet">
+        <svg aria-hidden="true"><use href="#icon-wallet"></use></svg><span>Wallet Bridge</span>
+      </button>
+    </nav>
+
+    <div class="workspace">
+      <section class="workspace-panel overview-panel" aria-labelledby="overview-title">
+        <div class="panel-heading"><h2 id="overview-title">Wallet / overview</h2><span>NON-CUSTODIAL</span></div>
+        <div class="overview-body">
+          <div class="overview-copy">
+            <p class="panel-label">YOUR CONNECTION</p>
+            <p class="overview-value" id="overview-wallet">Not connected</p>
+            <p id="overview-wallet-detail">Connect a wallet to view its public address.</p>
+            <button type="button" class="classic-button accent-button" data-open="wallet">Connect wallet</button>
+            <p class="safety-note">Your keys stay in your wallet. No transaction is requested.</p>
+          </div>
+          <img class="overview-mech" src="/assets/mech.jpg" alt="" loading="lazy">
+        </div>
+        <div class="overview-footer"><span>EXECUTION <b>DISABLED</b></span><span>MODE <b>PAPER-FIRST</b></span></div>
+      </section>
+
+      <section class="workspace-panel chat-panel" aria-labelledby="chat-title">
+        <div class="panel-heading"><h2 id="chat-title">Assistant / chat</h2><span>CONFIGURED CHAT SERVICE</span></div>
+        <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-label="Assistant conversation">
+          <p class="chat-intro"><strong>VALHALLA ASSISTANT</strong><br>Ask about the desk, market concepts, or paper trading. Chat cannot place trades or access your wallet.</p>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <label class="sr-only" for="chat-input">Message the assistant</label>
+          <textarea id="chat-input" maxlength="500" rows="2" placeholder="Ask the assistant…" required></textarea>
+          <button type="submit" class="classic-button accent-button">Send</button>
+        </form>
+        <div class="chat-voice"><button type="button" class="classic-button" id="chat-voice" aria-pressed="false">Voice replies off</button><span>Uses your browser's speech engine.</span></div>
+        <p id="chat-status" class="chat-status" role="status">Never share a seed phrase or private key. Not financial advice.</p>
+      </section>
+
+      <section class="workspace-panel positions-panel" aria-labelledby="positions-title">
+        <div class="panel-heading"><h2 id="positions-title">Positions</h2><span>NOT CONNECTED</span></div>
+        <p>No position data is connected. Wallet connection alone does not load balances or positions.</p>
+      </section>
+      <section class="workspace-panel activity-panel" aria-labelledby="activity-title">
+        <div class="panel-heading"><h2 id="activity-title">System / activity</h2><span>LOCAL SESSION</span></div>
+        <p>Live trading is disabled. Configure the simulated bot in the existing trading desk; sign-in may be required.</p>
+        <div class="tool-row">
+          <a class="classic-button accent-button" href="/app/#botPanel">Paper bot controls</a>
+          <button type="button" class="classic-button" data-open="status">Service status</button>
+          <button type="button" class="classic-button" data-open="swarm">Swarm monitor</button>
+          <button type="button" class="classic-button" data-open="memory">Memory inspector</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="window" id="window-status" data-window="status" aria-labelledby="title-status" hidden
+      style="left:clamp(150px, 24vw, 320px);top:76px;width:min(460px, calc(100vw - 32px));">
+      <header class="title-bar" data-drag-handle>
+        <h2 id="title-status">System Status</h2>
+        <div class="window-controls">
+          <button type="button" data-action="minimize" aria-label="Minimize System Status">_</button>
+          <button type="button" data-action="close" aria-label="Close System Status">×</button>
+        </div>
+      </header>
+      <div class="window-body">
+        <p class="status-banner"><span class="status-light" aria-hidden="true"></span> Read-only service probe</p>
+        <dl class="status-list">
+          <div><dt>Backend</dt><dd id="backend-status" role="status">Checking…</dd></div>
+          <div><dt>Probe</dt><dd><code>/health</code></dd></div>
+          <div><dt>Last checked</dt><dd id="checked-at">—</dd></div>
+        </dl>
+        <button class="classic-button" type="button" data-refresh>Check again</button>
+        <p class="fine-print">This page does not start workers, trading, or remote tasks.</p>
+      </div>
+    </section>
+
+    <section class="window" id="window-swarm" data-window="swarm" aria-labelledby="title-swarm" hidden
+      style="left:clamp(190px, 34vw, 440px);top:128px;width:min(420px, calc(100vw - 32px));">
+      <header class="title-bar" data-drag-handle>
+        <h2 id="title-swarm">A2A Swarm Monitor</h2>
+        <div class="window-controls">
+          <button type="button" data-action="minimize" aria-label="Minimize A2A Swarm Monitor">_</button>
+          <button type="button" data-action="close" aria-label="Close A2A Swarm Monitor">×</button>
+        </div>
+      </header>
+      <div class="window-body">
+        <p class="inset-panel" role="status">No live event connection is configured.</p>
+        <p>The message bus uses server-side Redis Pub/Sub. This browser view does not connect to Redis or display fabricated events.</p>
+        <p class="fine-print">A server-authenticated event stream is required to enable live telemetry.</p>
+      </div>
+    </section>
+
+    <section class="window" id="window-memory" data-window="memory" aria-labelledby="title-memory" hidden
+      style="left:clamp(220px, 40vw, 520px);top:178px;width:min(420px, calc(100vw - 32px));">
+      <header class="title-bar" data-drag-handle>
+        <h2 id="title-memory">Reflexion Memory Inspector</h2>
+        <div class="window-controls">
+          <button type="button" data-action="minimize" aria-label="Minimize Reflexion Memory Inspector">_</button>
+          <button type="button" data-action="close" aria-label="Close Reflexion Memory Inspector">×</button>
+        </div>
+      </header>
+      <div class="window-body">
+        <p class="inset-panel" role="status">Procedural memory service is not connected.</p>
+        <pre class="memory-output">No memory data loaded.</pre>
+        <p class="fine-print">No local or cloud memory is read or changed by this page.</p>
+      </div>
+    </section>
+
+    <section class="window browser-window" id="window-browser" data-window="browser" aria-labelledby="title-browser" hidden
+      style="left:clamp(32px, 12vw, 170px);top:76px;width:min(760px, calc(100vw - 32px));">
+      <header class="title-bar" data-drag-handle>
+        <h2 id="title-browser">Valhalla Web Shell</h2>
+        <div class="window-controls">
+          <button type="button" data-action="minimize" aria-label="Minimize Valhalla Web Shell">_</button>
+          <button type="button" data-action="close" aria-label="Close Valhalla Web Shell">×</button>
+        </div>
+      </header>
+      <div class="window-body browser-body">
+        <div class="address-row">
+          <label for="browser-page">Address</label>
+          <select id="browser-page">
+            <option value="/">Valhalla home</option>
+            <option value="/status/">Service status</option>
+          </select>
+          <a class="classic-button" href="/" target="_blank" rel="noopener noreferrer">Open separately</a>
+        </div>
+        <iframe title="Valhalla site preview" src="/" loading="lazy"
+          sandbox="allow-forms allow-scripts" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </section>
+
+    <section class="window" id="window-wallet" data-window="wallet" aria-labelledby="title-wallet" hidden
+      style="left:clamp(210px, 38vw, 480px);top:100px;width:min(390px, calc(100vw - 32px));">
+      <header class="title-bar" data-drag-handle>
+        <h2 id="title-wallet">Web3 Wallet Bridge</h2>
+        <div class="window-controls">
+          <button type="button" data-action="minimize" aria-label="Minimize Web3 Wallet Bridge">_</button>
+          <button type="button" data-action="close" aria-label="Close Web3 Wallet Bridge">×</button>
+        </div>
+      </header>
+      <div class="window-body">
+        <p>Connect an installed wallet to share its public address. Your wallet controls permissions; this desk will not request a transaction or signature.</p>
+        <div class="wallet-actions">
+          <button type="button" class="classic-button" data-wallet="solflare">Connect Solflare</button>
+          <button type="button" class="classic-button" data-wallet="metamask">Connect MetaMask</button>
+          <button type="button" class="classic-button" disabled>Privy unavailable</button>
+        </div>
+        <p class="fine-print">Privy requires an application ID and a configured integration. MetaMask connects an Ethereum address; Solflare connects a Solana address.</p>
+        <p class="inset-panel" id="wallet-status" role="status">No wallet connected.</p>
+        <button type="button" class="classic-button" id="wallet-disconnect" hidden>Disconnect</button>
+        <p class="fine-print">Live trading is disabled. This bridge does not request, store, or transmit private keys.</p>
+      </div>
+    </section>
+
+    <div class="start-menu" id="start-menu" hidden>
+      <strong>ValhallaOS</strong>
+      <button type="button" data-open="status">System Status</button>
+      <button type="button" data-open="swarm">A2A Monitor</button>
+      <button type="button" data-open="memory">Memory Inspector</button>
+      <button type="button" data-open="browser">Web Shell</button>
+      <button type="button" data-open="wallet">Wallet Bridge</button>
+      <hr>
+      <p>Administrative controls require a verified server session and are not available here.</p>
+    </div>
+
+    <footer class="taskbar">
+      <button class="start-button" id="start-button" type="button" aria-expanded="false" aria-controls="start-menu">
+        Tools
+      </button>
+      <div class="taskbar-apps" id="taskbar-apps" aria-label="Open applications"></div>
+      <time class="taskbar-clock" id="clock"></time>
+    </footer>
+    <p class="sr-only" id="desktop-announcement" aria-live="polite"></p>
+  </main>
+</body>
+</html>

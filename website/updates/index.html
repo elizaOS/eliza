@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Updates · Valhalla™</title>
+<link rel="stylesheet" href="../valhalla-command.css">
+</head>
+<body class="landing">
+<main class="wrap" style="padding:32px 0 64px; width:min(800px,calc(100% - 32px)); margin:0 auto">
+  <p class="kicker">UPDATES</p>
+  <h1>What's new</h1>
+  <div id="log"></div>
+  <p><a href="/">Home</a> · <a href="/faq/">FAQ</a></p>
+</main>
+<script>
+  fetch("/changelog.json").then(function (res) { return res.json(); }).then(function (rows) {
+    document.getElementById("log").innerHTML = (rows || []).map(function (row) {
+      return "<article class=\"card\"><p><b>" + row.date + "</b> " + row.text + "</p></article>";
+    }).join("");
+  });
+</script>
+</body>
+</html>

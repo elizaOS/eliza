@@ -1,0 +1,176 @@
+{
+  "adsenseClient": "ca-pub-6504655762357230",
+  "admobPublisher": "ca-app-pub-6504655762357230",
+  "admobAppId": "",
+  "admobBannerAndroid": "",
+  "admobBannerIos": "",
+  "admobInterstitialAndroid": "",
+  "admobRewardedAndroid": "",
+  "admobRewardedIos": "",
+  "checkoutUrl": "https://valhalla.lemonsqueezy.com/checkout/buy/4f959b69-81ca-45ca-8c3d-c80347b6b439",
+  "checkoutYearlyUrl": "",
+  "checkoutLifetimeUrl": "",
+  "proTradeAllowance": 100,
+  "trialDays": 15,
+  "offers": [
+    {
+      "id": "ledger",
+      "partner": "Ledger",
+      "title": "Protect your coins: hardware wallet",
+      "blurb": "A hardware wallet keeps the signing key off the trading PC.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "footer",
+        "app-banner",
+        "extension",
+        "portal",
+        "telegram",
+        "risk-score"
+      ],
+      "tier": "free",
+      "category": "hardware-wallet",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "trezor",
+      "partner": "Trezor",
+      "title": "Protect your coins: hardware wallet",
+      "blurb": "A second hardware wallet option for the same safety idea.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "app-banner",
+        "extension",
+        "telegram",
+        "risk-score"
+      ],
+      "tier": "free",
+      "category": "hardware-wallet",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "coinbase",
+      "partner": "Coinbase",
+      "title": "Coinbase",
+      "blurb": "A named exchange. Valhalla does not connect your keys to it.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "footer",
+        "telegram"
+      ],
+      "tier": "free",
+      "category": "exchange",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "kraken",
+      "partner": "Kraken",
+      "title": "Kraken",
+      "blurb": "A named exchange. This is not a rating and not a trade.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "footer",
+        "telegram"
+      ],
+      "tier": "free",
+      "category": "exchange",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "tradingview",
+      "partner": "TradingView",
+      "title": "Chart better",
+      "blurb": "Charts are a tool. They are not a promise of profit.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "portal",
+        "extension",
+        "telegram",
+        "report-card"
+      ],
+      "tier": "free",
+      "category": "charts",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "amazon-desk",
+      "partner": "Amazon",
+      "title": "Desk setup",
+      "blurb": "Gear for the desk. This is not a trading signal.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "app-banner",
+        "telegram"
+      ],
+      "tier": "free",
+      "category": "desk",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "temu",
+      "partner": "Temu",
+      "title": "Desk setup",
+      "blurb": "Low-cost desk gear. This is not a trading signal.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "app-banner",
+        "telegram"
+      ],
+      "tier": "free",
+      "category": "desk",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "nordvpn",
+      "partner": "NordVPN",
+      "title": "NordVPN",
+      "blurb": "A network privacy tool. It does not hold a wallet key.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "footer",
+        "portal",
+        "telegram"
+      ],
+      "tier": "free",
+      "category": "privacy",
+      "disclosure": "Affiliate link · we may earn a commission"
+    },
+    {
+      "id": "helius",
+      "partner": "Helius",
+      "title": "Helius",
+      "blurb": "A Solana read API. Valhalla still does not send or withdraw.",
+      "url": "",
+      "image": "",
+      "placements": [
+        "tools",
+        "telegram"
+      ],
+      "tier": "free",
+      "category": "rpc",
+      "disclosure": "Affiliate link · we may earn a commission"
+    }
+  ],
+  "cryptoReceiveAddress": "5GRqH5UQ53JEDdGKxfePq2wy6jT2inNrNGSEQk9fA49f",
+  "usdcMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "priceMonthlyUsd": 9.99,
+  "priceYearlyUsd": 149,
+  "priceLifetimeUsd": 199,
+  "offersSignature": "7OgmGVRNxGh2bIYnS5z6a2C+YK9tWkLnMIgtTBXpupQSWlmqIyS3UuK0ckGLlL3Eq9NpETMt8QX8NxtF6QCkAQ==",
+  "signature": "3tsj6ydndagpUsFg0dV7BRwAeSJ6vXcp1bAS3TKS1yyuz9n3GmIhc0KLffSVlD0XHAJkjjwkJhdDRRWDYnG7Bw=="
+}

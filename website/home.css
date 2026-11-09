@@ -1,0 +1,58 @@
+:root { color-scheme: dark; font-family: "Segoe UI", Tahoma, sans-serif; color: #f6f1e8; background: #121a27; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #121a27; }
+::selection { color: #1a140c; background: #e4c98a; }
+a { color: inherit; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #f3e0b0; outline-offset: 3px; }
+.page { min-height: 100vh; display: flex; flex-direction: column; padding-bottom: 14rem; background: radial-gradient(ellipse 78% 62% at 50% 44%, rgba(228, 194, 122, .28), rgba(228, 194, 122, 0) 64%), linear-gradient(180deg, #1c2838 0%, #121a27 48%, #0e1622 100%); }
+.topbar, footer { width: min(1440px, 100%); margin: 0 auto; padding-left: clamp(20px, 4vw, 56px); padding-right: clamp(20px, 4vw, 56px); }
+.topbar { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: #E8B65A; text-decoration: none; font-size: 13px; font-weight: 650; letter-spacing: .22em; }
+.brand-mark { display: block; width: 28px; height: 28px; flex: 0 0 auto; }
+.topbar nav, footer nav { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; }
+.topbar nav a, footer a { color: #e6dccb; font-size: 13px; text-decoration: none; }
+.topbar nav a:hover, footer a:hover { color: #f0d7a2; }
+.status { width: min(960px, 100%); margin: 18px auto 8px; padding: 0 clamp(16px, 4vw, 56px); color: #f0e2c4; font-size: 14px; letter-spacing: .04em; }
+.stage-wrap { flex: 0 1 auto; width: min(960px, 100%); margin: 0 auto; padding: 8px clamp(16px, 4vw, 56px) 0; max-width: 100%; }
+.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
+.scene { position: absolute; inset: 0; overflow: hidden; background: #101826; }
+.still, .scene video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center center; }
+.scene video { opacity: 0; transition: opacity 1.1s ease; }
+.scene.is-playing video { opacity: 1; }
+.scenes { position: absolute; z-index: 4; left: 12px; top: 12px; margin: 0; padding: 8px 10px; list-style: none; background: #101826; color: #fffaf3; max-width: min(16rem, calc(100% - 24px)); }
+.scenes li { margin: 0; font-size: 16px; line-height: 1.4; }
+.scenes li + li { margin-top: 4px; }
+@media (prefers-reduced-motion: no-preference) {
+  #hero-scene.is-playing .scenes li { animation: scene-hold 15s linear infinite; }
+  #hero-scene.is-playing .scenes li:nth-child(2) { animation-delay: -5s; }
+  #hero-scene.is-playing .scenes li:nth-child(3) { animation-delay: -10s; }
+}
+@keyframes scene-hold {
+  0%, 30% { color: #fffaf3; }
+  34%, 100% { color: #d9cbb8; }
+}
+.tagline { color: #fffaf3; font-size: 18px; }
+figcaption, #hero-fallback, .stage-wrap noscript p { width: min(62ch, 100%); margin: 10px 0 0; color: #f0e2c4; font-size: 16px; line-height: 1.5; }
+h1, h2, p { margin: 0; }
+h1 { margin-bottom: 10px; color: #fffaf3; font-size: clamp(28px, 4vw, 40px); font-weight: 650; letter-spacing: .01em; line-height: 1.2; }
+.motion-slot { position: absolute; z-index: 5; left: 12px; bottom: 12px; top: auto; right: auto; margin: 0; }
+.motion-control { box-sizing: border-box; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px; background: rgba(16, 24, 38, .16); color: rgba(255, 255, 255, .68); opacity: .2; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; }
+.motion-control:hover, .motion-control:focus-visible, .motion-control.is-touched { opacity: 1; }
+.motion-control[hidden] { display: none; }
+.intro-note { width: min(960px, 100%); margin: 22px auto 12px; padding: 0 clamp(16px, 4vw, 56px); color: #f6f1e8; }
+.intro-note h2 { margin-bottom: 6px; font-size: 18px; }
+.intro-note p { max-width: 68ch; margin-top: 10px; color: #f0e2c4; font-size: 16px; line-height: 1.5; }
+.intro-note a { color: #f0d7a2; }
+footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px 22px; padding-top: 18px; padding-bottom: 28px; color: #e6dccb; font-size: 12px; }
+footer p { margin: 0; max-width: 42ch; line-height: 1.5; }
+@media (max-width: 520px) {
+  .topbar { min-height: 0; padding-top: 14px; padding-bottom: 8px; align-items: flex-start; }
+  .topbar nav { gap: 14px; }
+  footer { align-items: flex-start; }
+  footer nav, footer p { width: 100%; max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .scene video { transition: none; }
+}

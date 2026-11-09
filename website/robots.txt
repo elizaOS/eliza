@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://valhalla-app.xyz/sitemap.xml

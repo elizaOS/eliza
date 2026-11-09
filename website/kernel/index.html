@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Educational kernel · ValhallaOS</title>
+<meta name="description" content="Download the isolated V38 educational kernel and boot it in QEMU. Includes source, checksums, real boot logs, and clear limitations.">
+<link rel="canonical" href="https://valhalla-app.xyz/kernel/">
+<style>
+:root{color-scheme:dark;font:17px/1.65 system-ui,sans-serif;background:#121a27;color:#e8edf5}*{box-sizing:border-box}body{margin:0}header,main,footer{max-width:960px;margin:auto;padding:24px}header{display:flex;gap:20px;justify-content:space-between;align-items:center;border-bottom:1px solid #354154}a{color:#f1c978;text-underline-offset:4px}a:hover{color:#fff}a:focus-visible{outline:3px solid #f1c978;outline-offset:5px}h1{font-size:clamp(2rem,6vw,3rem);line-height:1.15}h2{margin-top:2.3rem;line-height:1.3}p,li{max-width:78ch}.label{color:#f1c978;font-weight:700;letter-spacing:.07em;text-transform:uppercase;font-size:.8rem}.notice{padding:18px 22px;background:#1d2a3d;border-left:3px solid #e8b65a}.downloads{display:flex;flex-wrap:wrap;gap:12px}.downloads a{display:block;border:1px solid #8c7244;border-radius:6px;padding:10px 15px;text-decoration:none}pre{padding:20px;background:#0b111b;border:1px solid #354154;border-radius:6px;overflow:auto;max-width:100%;font-size:.85rem;line-height:1.6}p code,li code{overflow-wrap:anywhere}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}li{margin-bottom:9px}footer{margin-top:32px;border-top:1px solid #354154;color:#aebad0;font-size:.9rem}.skip{position:absolute;top:-80px}.skip:focus{top:4px;background:#121a27;padding:12px}nav{display:flex;gap:18px;flex-wrap:wrap}@media(max-width:480px){header,main,footer{padding:18px}header{align-items:flex-start;flex-direction:column}pre{padding:13px}.downloads a{width:100%}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to instructions</a>
+<header><a href="/">VALHALLAOS</a><nav aria-label="Main"><a href="/os/">Explore Desk</a><a href="https://github.com/TokenJunction/eliza-valhalla">Repository</a></nav></header>
+<main id="main">
+<p class="label">Kernel lab · Experimental download</p>
+<h1>Boot the educational kernel in QEMU.</h1>
+<p>An isolated x86-64 learning project: Multiboot2 bootstrap, page allocation and mapping, a cooperative thread scheduler, and versioned daemon messages.</p>
+<p class="notice"><strong>This is not the ValhallaOS application or a production operating system.</strong> It does not replace the trading workspace, Eliza services, Linux images, or the existing V38 application services. Run this experiment in QEMU only, not on physical hardware.</p>
+<h2>Download the verified baseline</h2>
+<p>Release: <strong>educational-kernel-v38-20261108</strong>. Source commit: <code>5847b4587bad60557b367ee59eee8e5b7aef7df7</code>.</p>
+<div class="downloads" aria-label="Kernel downloads">
+<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/valhalla.iso">Bootable ISO</a>
+<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/source.tar.gz">Source archive</a>
+<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/kernel.elf">Debug ELF</a>
+<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/SHA256SUMS">SHA-256 checksums</a>
+</div>
+<p><a href="https://github.com/TokenJunction/eliza-valhalla/releases/tag/educational-kernel-v38-20261108">Release notes and real serial logs</a></p>
+<h2>Run the ISO</h2>
+<p>On Ubuntu/Debian, install the emulator. Then run this command from the folder containing the downloaded <code>valhalla.iso</code>. It uses software emulation and does not attach your host disks.</p>
+<pre><code>sudo apt-get update
+sudo apt-get install qemu-system-x86
+
+qemu-system-x86_64 \
+  -accel tcg -m 128M -smp 1 \
+  -cdrom valhalla.iso -boot d \
+  -display none -serial mon:stdio \
+  -no-reboot -no-shutdown</code></pre>
+<p>Expected terminal output includes:</p>
+<pre><code>ValhallaOS V38 educational baseline
+PASS physical memory and virtual mapping
+PASS heap and daemon boundaries
+memory ready; scheduler ready; logger registered
+worker says hello
+worker says hello
+worker says hello
+PASS scheduler and daemon delivery
+SELFTEST PASS</code></pre>
+<p>There is no shell or desktop. The kernel halts after the checks. To exit, press <strong>Ctrl+A</strong>, release the keys, then press <strong>X</strong>.</p>
+<h2>Build from source</h2>
+<p>Use an <strong>x86-64 Ubuntu/Debian host</strong> for these native-compiler commands. ARM and macOS hosts need a suitable cross-toolchain and GRUB image tools.</p>
+<pre><code>sudo apt-get install build-essential binutils grub-common \
+  grub-pc-bin xorriso mtools qemu-system-x86 gdb
+
+tar -xzf source.tar.gz
+cd valhalla-kernel
+make test
+make iso CROSS=
+make smoke CROSS=
+make run CROSS=</code></pre>
+<p><code>CROSS=</code> selects native x86-64 GCC. If you have the default <code>x86_64-elf-</code> cross-toolchain, omit that argument. The source README documents module contracts and GDB debugging.</p>
+<h2>Verify your downloads</h2>
+<p>Download all files listed in <code>SHA256SUMS</code>, including the three serial logs, into the same folder. Then run:</p>
+<pre><code>sha256sum -c SHA256SUMS</code></pre>
+<p>Checksums detect changed downloads. They are not code signatures or a production security guarantee.</p>
+<h2>What was actually tested</h2>
+<ul>
+<li>Host checks passed for daemon message validation, FIFO wraparound, saturation, and registration.</li>
+<li>The exact merged source compiled with warnings as errors. GRUB recognized its Multiboot2 header and built the ISO.</li>
+<li>Actual QEMU/TCG boots passed with <strong>64, 128, and 256 MiB RAM</strong>. Each guest reached <code>SELFTEST PASS</code> and delivered exactly three worker messages.</li>
+<li>Repository-wide Bun verification was unavailable in the build environment. This does not certify the application stack.</li>
+<li>Automatic kernel CI is <strong>not active</strong>. GitHub rejected workflow creation because the authorized OAuth session lacks workflow scope. A reviewable template is included in the source under <code>ci/</code>; no permission restriction was bypassed.</li>
+</ul>
+<h2>Limits before you experiment</h2>
+<p>Threads and daemons share trusted kernel memory. There is no userspace isolation, exception handling, preemption, SMP, NX enforcement, networking, filesystem, or persistent storage. Interrupts are disabled. Heap allocations, page-table pages, and exited task stacks are not reclaimed.</p>
+<p>Keep this experiment separate from production services. The <a href="https://github.com/TokenJunction/eliza-valhalla/tree/develop/experiments/valhalla-kernel">source and complete architecture notes</a> describe the supported boundaries.</p>
+</main>
+<footer><nav aria-label="Footer"><a href="/">Home</a><a href="/app/">Client access</a><a href="/disclaimer.html">Risk</a></nav><p>© 2026 TokenJunction LLC · Educational experiment, not an installer.</p></footer>
+</body>
+</html>

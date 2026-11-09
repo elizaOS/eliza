@@ -1,0 +1,262 @@
+#leaderOpen {
+  border-color: rgba(0, 255, 136, .38);
+  color: #a4ffd0;
+}
+
+#leadership[hidden] { display: none !important; }
+
+#leadership {
+  min-height: 0;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  padding: 18px clamp(14px, 2.4vw, 30px) 28px;
+  border: 1px solid rgba(255, 179, 71, .2);
+  border-radius: 12px;
+  background: #090a0d;
+  color: #f2ead8;
+  scrollbar-color: #57482f #090a0d;
+  scrollbar-width: thin;
+}
+
+#leadership ::selection {
+  color: #090a0d;
+  background: #ffc66d;
+}
+
+#leadership input,
+#leadership select,
+#leadership button { caret-color: #69ffc0; }
+
+#desk.manager-mode > #connectBanner,
+#desk.manager-mode > #debugPanel,
+#desk.manager-mode > #adTop,
+#desk.manager-mode > .grid,
+#desk.manager-mode > #adSide,
+#desk.manager-mode > #lab {
+  display: none !important;
+}
+
+.leader-heading,
+.leader-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.leader-heading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, .09);
+}
+
+.leader-heading h1 {
+  margin: 0;
+  color: #ffc66d;
+  font-size: 22px;
+  letter-spacing: .03em;
+}
+
+.leader-heading p,
+.leader-section p {
+  margin: 8px 0;
+  color: #b7b1a6;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.leader-heading button,
+.leader-section button,
+.leader-model-controls select {
+  min-height: 42px;
+  border: 1px solid rgba(255, 179, 71, .3);
+  border-radius: 7px;
+  background: #111216;
+  color: #f2ead8;
+  padding: 8px 12px;
+  font: inherit;
+}
+
+.leader-heading button:hover:not(:disabled),
+.leader-section button:hover:not(:disabled) {
+  border-color: #ffc66d;
+  background: #1b1915;
+}
+
+.leader-section button:focus-visible,
+.leader-heading button:focus-visible,
+.leader-model-controls select:focus-visible {
+  outline: 2px solid #69ffc0;
+  outline-offset: 2px;
+}
+
+.leader-section button:disabled,
+.leader-model-controls select:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.leader-status {
+  margin: 10px 0 0;
+  color: #a4ffd0;
+  font-size: 11px;
+}
+
+.leader-status[data-state="error"],
+.leader-note[data-state="error"] { color: #ff9a9f; }
+.leader-note[data-state="warning"] { color: #ffc66d; }
+.leader-note[data-state="loading"] { color: #d3b484; }
+.leader-note[data-state="ok"] { color: #a4ffd0; }
+
+.leader-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px 20px;
+  padding-top: 16px;
+}
+
+.leader-section {
+  min-width: 0;
+  padding: 12px 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .075);
+}
+
+.leader-section h2 {
+  margin: 0;
+  color: #e6dece;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+
+.leader-state {
+  color: #a4ffd0;
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.leader-model,
+.leader-engagement { grid-column: 1 / -1; }
+
+.leader-model-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.leader-model-controls label {
+  color: #b7b1a6;
+  font-size: 12px;
+}
+
+.leader-model-controls select { min-width: 200px; }
+.leader-model-controls button { background: rgba(255, 154, 31, .12); color: #ffc66d; }
+
+.leader-note {
+  color: #a6a195 !important;
+  font-size: 11px !important;
+}
+
+.leader-table { margin-top: 8px; }
+
+.leader-row {
+  display: grid;
+  grid-template-columns: minmax(130px, .75fr) minmax(140px, 1.25fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 34px;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+  color: #cbc4b7;
+  font-size: 11px;
+}
+
+.leader-row strong {
+  color: #d7d0c3;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.leader-row strong[data-state="live"] { color: #a4ffd0; }
+.leader-row strong[data-state="offline"] { color: #ff9a9f; }
+.leader-row strong[data-state="degraded"] { color: #ffc66d; }
+
+.leader-performance-data {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) auto;
+  margin: 12px 0 0;
+  font-size: 11px;
+}
+
+.leader-performance-data dt,
+.leader-performance-data dd {
+  margin: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+
+.leader-performance-data dt { color: #a6a195; }
+.leader-performance-data dd { color: #ffc66d; font-variant-numeric: tabular-nums; }
+
+#leaderEngagementChart {
+  display: block;
+  width: 100%;
+  min-height: 154px;
+  margin-top: 12px;
+  overflow: visible;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+
+.leader-chart-axis { stroke: rgba(255, 255, 255, .16); }
+.leader-bar-views { fill: #ffb347; }
+.leader-bar-chat { fill: #68d7ae; }
+.leader-chart-label,
+.leader-chart-empty {
+  fill: #b7b1a6;
+  font: 10px "IBM Plex Mono", ui-monospace, monospace;
+}
+.leader-chart-empty { font-size: 12px; }
+
+.leader-chart-legend {
+  display: flex;
+  gap: 18px;
+  margin: 6px 0;
+  color: #c4bdaf;
+  font-size: 10px;
+}
+
+.leader-chart-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.leader-chart-legend span::before { width: 9px; height: 9px; background: #ffb347; content: ""; }
+.leader-chart-legend span + span::before { background: #68d7ae; }
+.leader-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.leader-actions button { min-width: 130px; }
+.leader-bot-state { color: #ffc66d !important; }
+
+@media (max-width: 700px) {
+  #leadership {
+    max-height: calc(100dvh - 184px);
+    padding: 14px 12px 20px;
+  }
+  .leader-heading { align-items: flex-start; }
+  .leader-heading h1 { font-size: 19px; }
+  .leader-heading button { flex: 0 0 auto; padding: 7px 9px; }
+  .leader-layout { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .leader-model,
+  .leader-engagement { grid-column: auto; }
+  .leader-model-controls { align-items: stretch; }
+  .leader-model-controls label { flex-basis: 100%; }
+  .leader-model-controls select { flex: 1; min-width: 0; }
+  .leader-row { grid-template-columns: minmax(95px, .65fr) minmax(130px, 1.35fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #leadership *,
+  #leadership *::before,
+  #leadership *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

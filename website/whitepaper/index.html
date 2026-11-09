@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>White paper · Valhalla™</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<header class="bar wrap" data-nav="locked">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="Valhalla™ mech logo" width="32" height="32"> VALHALLA™</a>
+  <a class="btn solid" href="/app/">Launch App</a>
+</header>
+<main class="wrap" style="padding:32px 0 64px">
+  <h1>Valhalla™ and Thales</h1>
+  <p><strong>Product and safety paper · Development update · November 4, 2026</strong></p>
+  <p>This paper describes the current code and its limits. It is not legal, investment, or financial advice. Crypto is risky; you can lose your entire investment. No result or return is promised.</p>
+
+  <h2>Overview</h2>
+  <p>Valhalla is a browser-based, read-only desk with a simulated paper lab. Thales is the name for its conversational market-information assistant. Thales is intended to help users and their own qualified advisers discuss public data, goals, uncertainty, and risk. Thales is not a financial adviser, does not make decisions for a client, and cannot place or withdraw orders.</p>
+  <p>Live-money trading remains disabled. Paper results are simulations, not evidence of future performance. Wallet keys and seed phrases are not required and must never be submitted.</p>
+
+  <h2>Thales chat architecture</h2>
+  <p>The current repository contains a streaming chat Worker configured to use DeepSeek's <code>deepseek-chat</code> API. The provider key is intended to be stored as a Cloudflare secret; it must not be put in browser code or committed to GitHub. DeepSeek API usage may incur provider charges. Free or unlimited access is not guaranteed.</p>
+  <p>The web chat code streams text as the model responds. The desk can read a completed answer aloud when the user turns on browser voice replies. This repository does not establish the Worker’s production deployment status; this environment could not authenticate to Cloudflare to verify or deploy it. Production use requires an authenticated deployment, the provider secret, and end-to-end checks.</p>
+  <p><strong>ElizaOS status:</strong> an ElizaOS runtime or plugin connection is not configured or verified in this repository. The separate Paradev repository previously supplied is a desktop workspace for CLI coding agents, not an ElizaOS runtime. Thales must not be described as connected to ElizaOS until the correct runtime, endpoint, authentication, and tool calls are implemented and tested.</p>
+
+  <h2>Market data and tools</h2>
+  <p>For Solana trend questions, the Worker can request DexScreener's top boosted-token list and pair data, including displayed price, 24-hour change, volume, and liquidity. The result is a snapshot retrieved for that request. Boost activity can be promotional; it does not prove organic popularity, safety, liquidity quality, or suitability. If the source is unavailable, Thales should report that it cannot verify current data rather than guess.</p>
+  <p>The desk also includes a read-only Solana RPC check for a supplied mint address. It reports limited mint-authority and largest-account information and explicitly does not check every risk, including liquidity-pool integrity. It is not a security audit or trading signal. No separate oracle fork is currently configured.</p>
+
+  <h2>Safety and abuse controls</h2>
+  <p>The chat request is limited to 500 characters, rejects common seed-phrase and private-key patterns, and is configured for a per-IP Cloudflare rate limit. These controls are not identity verification and do not eliminate abuse. The browser's free daily counter is client-side and is not a server-enforced account quota. Additional server-side account and human-verification controls remain a deployment consideration.</p>
+  <p>Market names and retrieved token fields are treated as untrusted data. The assistant must not follow instructions embedded in token metadata. The Worker does not execute trades, transfer assets, or ask for wallet secrets.</p>
+
+  <h2>Privacy</h2>
+  <p>When Thales is enabled, the current chat text and up to eight recent turns held in browser memory are sent through Cloudflare to DeepSeek to generate a response. The desk chat does not write conversation history to local storage. The request does not include the user's sign-in email or display name. Cloudflare processes request metadata, including the IP address, for rate limiting and security. Do not enter personal information, account credentials, or confidential client details. DeepSeek's current privacy and processing terms apply to submitted text.</p>
+
+  <h2>Availability and scope</h2>
+  <p>The chat Worker and its tests are present in the Valhalla website repository; its production deployment status could not be verified from this environment. No claim is made that the ElizaOS bridge is live. This update publishes source and documentation only: it does not include Android or Windows downloads, model-weight downloads, or a trained/fine-tuned model. Model responses use an API and are not an upload of a model to the website.</p>
+
+  <h2>Hive and contribution points</h2>
+  <p>The Hive is optional volunteer compute for Forge Lab paper tests. It is off until a leader turns it on, and it stays off for you until you choose it. A job uses public prices and public strategy settings. The work stops when you stop it, when the tab or Chrome closes, or when the computer is busy, on battery, or on a metered connection. It does not mine and does not share your connection.</p>
+  <p>Verified paper work can add contribution points to an account. Points are not a coin, cash, or transferable. Rewards are points only for now. The payout path is switched off; this paper makes no statement of an amount or rate.</p>
+</main>
+<footer><div class="wrap"><p>Crypto is risky, not financial advice.</p><p class="legal-tm">Valhalla™ and the Valhalla mech logo are trademarks of TokenJunction LLC.</p></div></footer>
+<script src="/site-config.js"></script>
+<script src="/site-chrome.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Health · Valhalla™</title>
+<meta name="description" content="Live health of the Valhalla runtime: Supabase, Upstash Redis, elizaOS agents and safety switches.">
+<link rel="icon" href="../assets/favicon.png">
+<link rel="stylesheet" href="health.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="../"><img src="../assets/mark.svg" alt="" width="28" height="28"> VALHALLA™</a>
+  <nav aria-label="Primary">
+    <a href="../app/">Desk</a>
+    <a href="../status/">Status</a>
+    <a href="./" aria-current="page">Health</a>
+  </nav>
+</header>
+<main>
+  <section class="hero" aria-live="polite">
+    <div id="overall" class="pill pill-wait">Checking…</div>
+    <h1>Runtime health</h1>
+    <p id="meta" class="muted">Contacting <code>/api/health</code>…</p>
+    <button id="refresh" type="button">Refresh now</button>
+  </section>
+
+  <section aria-labelledby="sys-h">
+    <h2 id="sys-h">Connected systems</h2>
+    <div id="systems" class="grid"></div>
+  </section>
+
+  <section aria-labelledby="safe-h">
+    <h2 id="safe-h">Safety switches</h2>
+    <div id="safety" class="grid"></div>
+    <p class="muted">Execution is paper-only. Trading, social posting and key storage stay disabled until explicitly enabled server-side.</p>
+  </section>
+
+  <section aria-labelledby="agents-h">
+    <h2 id="agents-h">Agents</h2>
+    <div class="grid">
+      <article class="card"><h3>Zeus</h3><p class="muted">Read-only operations assistant.</p></article>
+      <article class="card"><h3>Gorgo</h3><p class="muted">Read-only assistant for users.</p></article>
+      <article class="card"><h3>Cerberus</h3><p class="muted">Vault guard. Blocks every privileged action and records it in Supabase.</p></article>
+    </div>
+  </section>
+</main>
+<script src="health.js"></script>
+</body>
+</html>

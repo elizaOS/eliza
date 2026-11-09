@@ -1,0 +1,43 @@
+body[data-page="app"] .gate {
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  background: #090a0b;
+}
+body[data-page="app"] .gate .card {
+  width: min(520px, 100%);
+  border: 1px solid #554b3c;
+  border-radius: 0;
+  background: #111213;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, .35);
+}
+body[data-page="app"] .gate .card::before {
+  content: "VALHALLAOS / ACCESS";
+  display: block;
+  margin: calc(clamp(22px, 5vw, 36px) * -1) calc(clamp(22px, 5vw, 36px) * -1) 28px;
+  padding: 13px 18px;
+  border-bottom: 1px solid #484138;
+  color: #ffbc68;
+  font-size: 10px;
+  letter-spacing: .1em;
+}
+body[data-page="app"] .gate .card h1 {
+  color: #f1e9dd;
+  font-size: 26px;
+  letter-spacing: -.02em;
+}
+body[data-page="app"] .gate .card p,
+body[data-page="app"] .gate .card label { color: #d3cabc; }
+body[data-page="app"] .gate .card button,
+body[data-page="app"] .gate .card .btn {
+  min-height: 44px;
+  border-radius: 0;
+}
+body[data-page="app"] .gate .card input:not([type="checkbox"]),
+body[data-page="app"] .gate .card select {
+  min-height: 44px;
+  border: 1px solid #70685c;
+  border-radius: 0;
+  background: #090a0b;
+  color: #f4ede2;
+  font: inherit;
+}
+body[data-page="app"] .gate .card :focus-visible { outline: 2px solid #65efb5; outline-offset: 3px; }

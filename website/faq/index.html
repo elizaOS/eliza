@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ · Valhalla™</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<header class="bar wrap" data-nav="locked">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="Valhalla™ mech logo" width="32" height="32"> VALHALLA™</a>
+  <a class="btn solid" href="/app/">Launch App</a>
+</header>
+<main class="wrap" style="padding:32px 0 64px">
+  <p class="kicker">FAQ</p>
+  <h1>Questions</h1>
+  <p>The website desk comes first. The Chrome extension is second. Telegram is coming soon. Android is in testing. Windows is coming soon.</p>
+  <div id="faqList"></div>
+  <h2>Update log</h2>
+  <div id="logList"></div>
+</main>
+<footer><div class="wrap"><p class="legal-tm">Valhalla™ and the Valhalla mech logo are trademarks of TokenJunction LLC.</p></div></footer>
+<script src="/site-config.js"></script>
+<script src="/site-chrome.js"></script>
+<script>
+  fetch("/faq.json").then(function (res) { return res.json(); }).then(function (rows) {
+    document.getElementById("faqList").innerHTML = rows.map(function (row) {
+      return "<article class=\"card\"><h2>" + row.q + "</h2><p>" + row.a + "</p></article>";
+    }).join("");
+  });
+  fetch("/changelog.json").then(function (res) { return res.json(); }).then(function (rows) {
+    document.getElementById("logList").innerHTML = rows.map(function (row) {
+      return "<p><b>" + row.date + "</b> " + row.text + "</p>";
+    }).join("");
+  });
+</script>
+</body>
+</html>

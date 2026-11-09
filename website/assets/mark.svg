@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="174 186 676 681" fill="none">
+<defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#E8B65A"/>
+    <stop offset="1" stop-color="#C9963E"/>
+  </linearGradient>
+  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>
+    <feFlood flood-color="#9FD4FF" flood-opacity="0.7" result="ice"/>
+    <feComposite in="ice" in2="blur" operator="in" result="soft"/>
+    <feMerge>
+      <feMergeNode in="soft"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+</defs>
+<path d="M198 210 L419 281 L373 327 L397 365 L382 385 L404 417 L378 447 L396 477 L386 489 L385 504 L390 601 L198 211 L198 210 Z" fill="url(#gold)" filter="url(#glow)"/>
+<path d="M824 210 L516 842 L529 696 L681 332 L578 375 L620 284 L626 273 L823 211 L824 210 Z" fill="url(#gold)" filter="url(#glow)"/>
+<path d="M460 343 L462 343 L462 381 L470 382 L470 472 L462 473 L462 504 L460 504 L460 473 L452 472 L452 382 L460 381 L460 344 L460 343 Z" fill="url(#gold)" filter="url(#glow)"/>
+<path d="M434 401 L435 439 L443 440 L443 531 L435 532 L435 566 L433 566 L433 532 L425 531 L425 440 L433 439 L433 402 L434 401 Z" fill="url(#gold)" filter="url(#glow)"/>
+<path d="M406 457 L409 457 L408 491 L416 493 L416 575 L408 577 L408 609 L406 609 L407 577 L399 575 L398 572 L398 493 L406 492 L406 458 L406 457 Z" fill="url(#gold)" filter="url(#glow)"/>
+<path d="M479 506 L478 518 L467 542 L492 582 L472 611 L498 649 L477 679 L495 706 L508 843 L405 633 L452 581 L451 536 L478 507 L479 506 Z" fill="url(#gold)" filter="url(#glow)"/>
+<text x="700" y="250" fill="#E8B65A" font-size="92" font-family="sans-serif">™</text>
+</svg>

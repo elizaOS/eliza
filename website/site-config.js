@@ -1,0 +1,48 @@
+/* Public site settings. These are not secrets.
+   The live Pro checkout is the $9.99/mo launch price.
+   Yearly and Lifetime stay hidden until their URLs are pasted here. */
+window.VALHALLA_SITE = {
+  formspree: "",
+  googleForm: "",
+  x: "",
+  discord: "",
+  telegram: "",
+  adsense: false,
+  ADSENSE_CLIENT: "ca-pub-6504655762357230",
+  adsenseClient: "ca-pub-6504655762357230",
+  SIGNED_IN_EMAIL: "",
+  TRIAL_DAYS: 15,
+  PRO_PRICE: "$9.99/mo launch price",
+  LEMONSQUEEZY_CHECKOUT_URL: "https://valhalla.lemonsqueezy.com/checkout/buy/4f959b69-81ca-45ca-8c3d-c80347b6b439",
+  LEMONSQUEEZY_YEARLY_URL: "",
+  LEMONSQUEEZY_LIFETIME_URL: "",
+  CHROME_WEB_STORE_URL: "",
+  OFFER_CLICK_URL: "",
+  BRAIN_URL: "https://valhalla-brain-api.valhalla-app.workers.dev",
+  handle: "@ValhallaOS",
+  xUrl: "https://x.com/intent/user?user_id=2092719999886475265",
+  dmUrl: "https://x.com/messages/compose?recipient_id=2092719999886475265",
+  TURNSTILE_SITE_KEY: "0x4AAAAAAFygFBUewoXH7oRO",
+  TURNSTILE_VERIFY_URL: "https://valhalla-turnstile-verify.valhalla-app.workers.dev/api/verify",
+  GOOGLE_CLIENT_ID: "1085862906383-cmiqc9bu96uqigm73nb3jkp5vfjf9b7l.apps.googleusercontent.com",
+  MAGIC_LINK_URL: "",
+  AUTH_URL: "https://valhalla-auth.valhalla-app.workers.dev",
+  SPRING_STORE_URL: "",
+  shop: {
+    url: "",
+    code: "VALHALLA25",
+    enabled: false
+  },
+  AGENT_API_URL: "",
+  STATUS_URL: "",
+  HIVE_ENABLED: false,
+  HIVE_URL: "",
+  REWARDS_PAYOUT_ENABLED: false,
+  TERMS_VERSION: "2026-11-03",
+  COINBASE_COMMERCE_URL: "",
+  NOWPAYMENTS_URL: "",
+  LIVE_TRADING: false,
+  /* Public chat uses the deployed Cloudflare Workers AI service. Brain integration is separate. */
+  CHAT_URL: "https://valhalla-chat.valhalla-app.workers.dev",
+  TICKER_URL: ""
+};

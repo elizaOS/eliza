@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in to Valhalla™</title>
+<meta name="description" content="Read-only Solana sign-in for Valhalla. No transaction and no payment.">
+<link rel="canonical" href="https://valhalla-app.xyz/connect/">
+<meta name="twitter:site" content="@ValhallaOS">
+<link rel="stylesheet" href="/valhalla-command.css">
+</head>
+<body>
+<header class="bar wrap">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="Valhalla™ mech logo" width="32" height="32"> VALHALLA™</a>
+</header>
+<main class="wrap" style="padding:32px 0 64px">
+  <p class="kicker">VALHALLA</p>
+  <h1>Sign in to Valhalla™</h1>
+  <p>Choose one wallet. That wallet opens next and asks you to connect, then to sign in. There is no payment on this page. Valhalla™ never asks for a seed phrase.</p>
+  <div id="loginButtons"></div>
+  <p id="loginNote" class="note"></p>
+  <p class="note">On a phone, the button opens Phantom or Solflare and loads this page in that app. On a computer, a missing wallet opens its install page.</p>
+</main>
+<footer><div class="wrap"></div></footer>
+<script src="/site-config.js"></script>
+<script src="/nacl.min.js"></script>
+<script src="/connect-core.js"></script>
+<script src="/site-wallet.js"></script>
+<script src="/site-chrome.js"></script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shop · Valhalla™</title>
+<meta name="description" content="Valhalla™ merch. Hats, a hoodie, tees, and a sticker. The store is not open yet.">
+<link rel="canonical" href="https://valhalla-app.xyz/shop/">
+<meta name="twitter:site" content="@ValhallaOS">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  .hero-shop { display: block; width: min(1600px, 100%); margin: 0 auto; }
+  .products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px 0; }
+  .product { background: #101014; border: 1px solid #2c281f; padding: 12px; }
+  .product img { width: 100%; height: auto; background: #f4f4f4; }
+  .product h2 { font-size: 18px; margin: 10px 0 4px; }
+  .price { color: #ffb347; font-weight: 700; }
+  button[disabled] { opacity: .65; cursor: not-allowed; }
+  .gallery { width: min(1600px, 100%); margin: 12px auto 28px; display: block; }
+  #merchPop { display: none; }
+  @media (max-width: 800px) { .products { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-marketing="1">
+<header class="bar wrap">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="Valhalla™ mech logo" width="32" height="32"> VALHALLA™</a>
+  <nav>
+    <a href="/app/">Launch App</a>
+    <a href="/shop/">Shop</a>
+    <a href="/contact/">Contact</a>
+  </nav>
+</header>
+<main class="wrap" style="padding:24px 0 48px">
+  <p class="kicker">VALHALLA™ SHOP</p>
+  <h1>Merch</h1>
+  <p class="note">The store is not open yet. The merch card stays off until shop.enabled is true and shop.url is a live link. The code VALHALLA25 is stored for that day. Buttons stay on Coming soon.</p>
+  <img class="hero-shop" src="hero.webp" width="1600" height="1600" alt="Valhalla™ merch lineup. Founders hat, mech emblem hat, command center hoodie, founders tee, wordmark tee, and sticker.">
+  <div class="products">
+    <article class="product">
+      <img src="founders-hat.webp" width="600" height="482" alt="Valhalla™ Founders Hat, black cap with a gold mech emblem.">
+      <h2>Founders Hat</h2>
+      <p class="price">$33</p>
+      <button type="button" data-shop disabled>Coming soon</button>
+    </article>
+    <article class="product">
+      <img src="emblem-hat.webp" width="600" height="482" alt="Valhalla™ Mech Emblem Hat, black trucker cap with a gold mech emblem.">
+      <h2>Mech Emblem Hat</h2>
+      <p class="price">$29</p>
+      <button type="button" data-shop disabled>Coming soon</button>
+    </article>
+    <article class="product">
+      <img src="hoodie.webp" width="600" height="482" alt="Valhalla™ Command Center Hoodie, black hoodie with a gold command-center graphic.">
+      <h2>Command Center Hoodie</h2>
+      <p class="price">$42</p>
+      <button type="button" data-shop disabled>Coming soon</button>
+    </article>
+    <article class="product">
+      <img src="founders-tee.webp" width="600" height="503" alt="Valhalla™ Founders 001 Tee, black shirt with gold Founders 001 lettering.">
+      <h2>Founders 001 Tee</h2>
+      <p class="price">$28</p>
+      <button type="button" data-shop disabled>Coming soon</button>
+    </article>
+    <article class="product">
+      <img src="wordmark-tee.webp" width="600" height="503" alt="Valhalla™ Wordmark Tee, black shirt with a small gold wordmark.">
+      <h2>Wordmark Tee</h2>
+      <p class="price">$25</p>
+      <button type="button" data-shop disabled>Coming soon</button>
+    </article>
+    <article class="product">
+      <img src="sticker.webp" width="600" height="503" alt="Valhalla™ sticker, gold mech emblem.">
+      <h2>Sticker</h2>
+      <p class="price">$6</p>
+      <button type="button" data-shop disabled>Coming soon</button>
+    </article>
+  </div>
+  <img class="gallery" src="gallery.webp" width="1600" height="1400" alt="Valhalla™ merch grid. Six products on a dark board.">
+  <p class="note">Valhalla™ and the Valhalla mech logo are trademarks of TokenJunction LLC. Not financial advice.</p>
+</main>
+<dialog id="merchPop">
+  <img src="hero.webp" alt="Valhalla™ merch lineup">
+  <p>The shop is not open yet.</p>
+  <form method="dialog"><button type="submit">Close</button></form>
+</dialog>
+<footer><div class="wrap">
+  <p class="legal-tm">Valhalla™ and the Valhalla mech logo are trademarks of TokenJunction LLC.</p>
+</div></footer>
+<script src="/site-config.js"></script>
+<script src="/site-chrome.js"></script>
+<script>
+  var store = (window.VALHALLA_SITE || {}).SPRING_STORE_URL || "";
+  var pop = document.getElementById("merchPop");
+  if (!store) {
+    if (pop && pop.open) pop.close();
+  }
+</script>
+</body>
+</html>

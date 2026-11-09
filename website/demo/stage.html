@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="google-adsense-account" content="ca-pub-6504655762357230">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6504655762357230" crossorigin="anonymous"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Valhalla demo</title>
+<style>
+  :root {
+    --bg: #07111c;
+    --panel: #102033;
+    --line: #24364c;
+    --gold: #e4c27a;
+    --ice: #8eb7ff;
+    --text: #e7eef8;
+    --muted: #93a4ba;
+    --up: #7dcea0;
+    --down: #e07a7a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  body.story { font-size: 18px; }
+  .app { height: 100%; display: grid; grid-template-rows: auto auto 1fr; }
+  .winbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #0c1828; border-bottom: 1px solid var(--line); }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 12px; height: 12px; border-radius: 50%; background: #3d5168; display: block; }
+  .dots i:first-child { background: var(--gold); }
+  .brand { letter-spacing: .16em; font-weight: 700; color: var(--gold); }
+  .winbar span { color: var(--muted); }
+  .flag { margin-left: auto; border: 1px solid var(--gold); color: var(--gold); padding: 4px 10px; letter-spacing: .14em; font-size: 12px; font-weight: 700; }
+  .tabs { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); overflow: auto; }
+  .tabs button { min-height: 44px; border: 1px solid var(--line); background: transparent; color: var(--text); padding: 8px 12px; font: inherit; cursor: pointer; }
+  .tabs button.on { border-color: var(--gold); color: var(--gold); }
+  .stage { display: grid; grid-template-columns: 1fr 300px; gap: 16px; padding: 16px; min-height: 0; }
+  body.story .stage { grid-template-columns: 1fr; padding: 12px; }
+  body.story .phone-col { order: -1; }
+  body.phone .winbar, body.phone .tabs, body.phone #main { display: none; }
+  body.phone .stage { display: block; padding: 12px; }
+  body.phone .phone { min-height: 520px; font-size: 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); padding: 16px; min-height: 0; overflow: auto; }
+  h2 { margin: 0 0 8px; font-size: 22px; }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .chart { width: 100%; height: 220px; background: #0c1828; border: 1px solid var(--line); }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .kpi { border: 1px solid var(--line); padding: 10px; }
+  .kpi b { display: block; font-size: 22px; color: var(--ice); }
+  .alert { border-left: 3px solid var(--gold); padding: 8px 10px; margin: 8px 0; background: #0c1828; }
+  .tg { border: 1px solid var(--ice); padding: 12px; margin-top: 12px; }
+  .tg strong { color: var(--ice); }
+  .risk button, .pro a { min-height: 44px; display: inline-flex; align-items: center; margin-top: 8px; padding: 8px 12px; border: 1px solid var(--gold); color: var(--gold); background: transparent; text-decoration: none; font: inherit; }
+  .screen { display: none; }
+  .screen.on { display: block; }
+  .phone { width: 100%; border: 8px solid #d7e4f5; border-radius: 28px; background: #07111c; padding: 12px; color: var(--text); }
+  .phone h3 { margin: 8px 0; color: var(--gold); }
+  body.record .tabs { pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="winbar">
+    <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="brand">VALHALLA</div>
+    <span>Windows preview</span>
+    <div class="flag">DEMO DATA</div>
+  </header>
+  <nav class="tabs" aria-label="Demo screens">
+    <button type="button" data-go="dashboard">Dashboard</button>
+    <button type="button" data-go="chart">P&amp;L</button>
+    <button type="button" data-go="alerts">Alerts</button>
+    <button type="button" data-go="risk">Risk guard</button>
+    <button type="button" data-go="pro">Pro</button>
+  </nav>
+  <div class="stage">
+    <section class="panel" id="main">
+      <div class="screen on" id="dashboard">
+        <h2>Open positions</h2>
+        <p class="muted">Sample names only. This is not your book.</p>
+        <div class="kpis">
+          <div class="kpi">Open<b>3</b></div>
+          <div class="kpi">Sample P&amp;L<b>0.00</b></div>
+          <div class="kpi">Stops<b>On</b></div>
+        </div>
+        <table>
+          <thead><tr><th>Sample</th><th>Lane</th><th>Move</th><th>Stop</th></tr></thead>
+          <tbody>
+            <tr><td>MECH</td><td>elite</td><td class="up">+1.2% sample</td><td>on</td></tr>
+            <tr><td>RUNE</td><td>good</td><td class="down">−0.4% sample</td><td>on</td></tr>
+            <tr><td>SKIFF</td><td>watch</td><td class="up">+0.1% sample</td><td>on</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="screen" id="chart">
+        <h2>P&amp;L chart</h2>
+        <p class="muted">Sample curve. Not a result and not a promise.</p>
+        <svg class="chart" viewBox="0 0 640 220" role="img" aria-label="Sample profit and loss curve">
+          <polyline fill="none" stroke="#8eb7ff" stroke-width="3" points="10,160 70,150 130,170 190,140 250,145 310,120 370,130 430,100 490,110 550,90 630,105"/>
+          <text x="16" y="28" fill="#e4c27a" font-size="14">DEMO DATA</text>
+        </svg>
+      </div>
+      <div class="screen" id="alerts">
+        <h2>Alerts</h2>
+        <div class="alert">Sample stop is still on for MECH. No order was sent.</div>
+        <div class="alert">Sample desk is read-only. New buys are paused in this preview.</div>
+        <div class="tg">
+          <strong>Telegram preview</strong>
+          <p>Valhalla: Demo alert. Stops still run. This chat cannot send or withdraw.</p>
+        </div>
+      </div>
+      <div class="screen" id="risk">
+        <h2>Risk guard</h2>
+        <p class="muted">Preview controls. They do not trade.</p>
+        <p>Stop distance <b>12% sample</b></p>
+        <p>Daily loss pause <b>8% sample</b></p>
+        <p>New buys <b id="pause-state">paused in this demo</b></p>
+        <button type="button" id="pause">Pause buys</button>
+        <p class="muted">There is no send and no withdraw on this screen.</p>
+      </div>
+      <div class="screen" id="pro">
+        <h2>Pro</h2>
+        <p>Brain notes, the self-repair log, and Telegram status.</p>
+        <p>Price placeholder {PRO_PRICE}. Checkout is not connected yet.</p>
+        <p class="muted">Pro does not move funds. Not financial advice.</p>
+      </div>
+    </section>
+    <aside class="panel phone-col">
+      <div class="phone">
+        <div class="flag">DEMO DATA</div>
+        <h3 id="phone-title">Dashboard</h3>
+        <p id="phone-copy">3 sample positions. Stops on. P&amp;L sample 0.00.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+<script>
+const order = ["dashboard", "chart", "alerts", "risk", "pro"];
+const phoneCopy = {
+  dashboard: ["Dashboard", "3 sample positions. Stops on. P&L sample 0.00."],
+  chart: ["P&L", "Sample curve. Not a result."],
+  alerts: ["Alerts", "Telegram preview. Status only."],
+  risk: ["Risk", "Stops stay on. Nothing is sent."],
+  pro: ["Pro", "Price {PRO_PRICE}. No fund movement."]
+};
+function show(name) {
+  document.querySelectorAll(".screen").forEach((node) => node.classList.toggle("on", node.id === name));
+  document.querySelectorAll(".tabs button").forEach((node) => node.classList.toggle("on", node.dataset.go === name));
+  const copy = phoneCopy[name];
+  document.getElementById("phone-title").textContent = copy[0];
+  document.getElementById("phone-copy").textContent = copy[1];
+}
+document.querySelectorAll(".tabs button").forEach((button) => {
+  button.addEventListener("click", () => show(button.dataset.go));
+});
+document.getElementById("pause").addEventListener("click", () => {
+  document.getElementById("pause-state").textContent = "paused in this demo";
+});
+window.addEventListener("message", (event) => {
+  if (order.includes(event.data)) show(event.data);
+});
+const params = new URLSearchParams(location.search);
+if (params.get("layout") === "story") document.body.classList.add("story");
+if (params.get("layout") === "phone") document.body.classList.add("phone");
+if (params.get("screen")) show(params.get("screen"));
+if (params.get("record") === "1") {
+  document.body.classList.add("record");
+  const ms = Number(params.get("ms") || "36000");
+  const slice = ms / order.length;
+  const start = performance.now();
+  function tick(now) {
+    const index = Math.min(order.length - 1, Math.floor((now - start) / slice));
+    show(order[index]);
+    if (now - start < ms) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+} else {
+  show("dashboard");
+}
+</script>
+</body>
+</html>

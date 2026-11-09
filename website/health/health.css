@@ -1,0 +1,23 @@
+:root { --bg:#0d0c0a; --card:#16140f; --line:#2a261d; --text:#efe9dc; --muted:#a39b88; --amber:#ffb347; --ok:#5fd38d; --bad:#ff6b6b; --warn:#ffd166; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+a { color:var(--amber); text-decoration:none; }
+a:focus-visible, button:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+.bar { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid var(--line); }
+.brand { display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.08em; color:var(--text); }
+.bar nav { display:flex; gap:18px; }
+.bar nav [aria-current] { color:var(--text); border-bottom:2px solid var(--amber); }
+main { max-width:960px; margin:0 auto; padding:32px 20px 64px; }
+h1 { margin:.4em 0 .2em; font-size:2rem; }
+h2 { margin:2em 0 .6em; font-size:1.15rem; color:var(--amber); }
+.muted { color:var(--muted); }
+code { background:var(--card); padding:1px 6px; border-radius:4px; }
+.hero button { margin-top:8px; background:transparent; color:var(--amber); border:1px solid var(--amber); padding:8px 16px; border-radius:8px; cursor:pointer; font:inherit; }
+.hero button:hover { background:var(--amber); color:#000; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.card h3 { margin:0 0 6px; font-size:1rem; display:flex; justify-content:space-between; align-items:center; }
+.card p { margin:4px 0; }
+.pill { display:inline-block; padding:3px 12px; border-radius:999px; font-size:.85rem; font-weight:600; border:1px solid currentColor; }
+.pill-ok { color:var(--ok); } .pill-bad { color:var(--bad); } .pill-warn { color:var(--warn); } .pill-wait { color:var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .pill { transition:color .2s; } }
