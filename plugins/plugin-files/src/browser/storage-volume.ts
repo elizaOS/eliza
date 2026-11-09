@@ -214,11 +214,17 @@ export class BrowserStorageVolume {
   private async walkFolders(under: string): Promise<StorageEntry[]> {
     const start = validPath(under, true);
     let id: string;
-    try { id = await this.folderId(start); }
-    catch (error) { if (error instanceof Missing) return []; throw error; }
-    const out: StorageEntry[] = [], queue: [string, string][] = [[id, start]];
-    for (let visited = 0; queue.length && visited < WALK_MAX; visited++) {
-      const [folder, path] = queue.shift()!;
+    try {
+      id = await this.folderId(start);
+    } catch (error) {
+      if (error instanceof Missing) return [];
+      throw error;
+    }
+    const out: StorageEntry[] = [],
+      queue: [string, string][] = [[id, start]];
+    let visited = 0;
+    for (const [folder, path] of queue) {
+      if (visited++ >= WALK_MAX) break;
       for (const entry of await this.visible(folder)) {
         if (!entry.directory) continue;
         const child = joinPath(path, entry.name);
@@ -229,10 +235,17 @@ export class BrowserStorageVolume {
     }
     return out;
   }
-  async query(input: { folders?: boolean; folder?: string } = {}): Promise<{ entries: StorageEntry[] }> {
-    return { entries: input.folders === true
-      ? await this.walkFolders(typeof input.folder === "string" ? input.folder : "")
-      : await this.walk() };
+  async query(
+    input: { folders?: boolean; folder?: string } = {},
+  ): Promise<{ entries: StorageEntry[] }> {
+    return {
+      entries:
+        input.folders === true
+          ? await this.walkFolders(
+              typeof input.folder === "string" ? input.folder : "",
+            )
+          : await this.walk(),
+    };
   }
 
   async createFolder(
@@ -275,7 +288,11 @@ export class BrowserStorageVolume {
   }
   /** Moves a row into a folder under a name free there, never replacing (spec MoveOne). */
   private async place(row: Row, targetId: string, name: string): Promise<void> {
-    const move = { id: row.id, expectedRevision: row.revision, destinationId: targetId };
+    const move = {
+      id: row.id,
+      expectedRevision: row.revision,
+      destinationId: targetId,
+    };
     if (name === row.name) await this.library.move(move);
     else await this.library.place({ ...move, name });
   }
@@ -423,7 +440,10 @@ export class BrowserStorageVolume {
 
     const previous = trashFlights.get(key) ?? Promise.resolve();
     const attempt = previous.then(work);
-    const tail = attempt.then(() => {}, () => {});
+    const tail = attempt.then(
+      () => {},
+      () => {},
+    );
     trashFlights.set(key, tail);
     return attempt.finally(() => {
       if (trashFlights.get(key) === tail) trashFlights.delete(key);
@@ -727,7 +747,12 @@ export class BrowserStorageVolume {
           return { status: "ready", ...(await this.list(input.path ?? "")) };
         case "storageCategory": {
           const { entries } = await this.category(input.category);
-          return { status: "ready", ...(input.countOnly === true ? { count: entries.length } : { entries }) };
+          return {
+            status: "ready",
+            ...(input.countOnly === true
+              ? { count: entries.length }
+              : { entries }),
+          };
         }
         case "storageQuery":
           return { status: "ready", ...(await this.query(input)) };

@@ -56,7 +56,10 @@ export type FilesStoragePort<Selection extends FilesSelection> = {
     volume?: string;
   }): Promise<Result & { entries?: StorageEntry[]; truncated?: boolean }>;
   /** `count` and `folders` cover the whole category; `entries` may be its newest part (`truncated`). */
-  storageCategory(input: { category: FilesCategory; countOnly?: boolean }): Promise<
+  storageCategory(input: {
+    category: FilesCategory;
+    countOnly?: boolean;
+  }): Promise<
     Result & {
       entries?: StorageEntry[];
       count?: number;
@@ -299,7 +302,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     return false;
   };
 
-  async function refreshState(current: () => boolean = () => true): Promise<boolean> {
+  async function refreshState(
+    current: () => boolean = () => true,
+  ): Promise<boolean> {
     const ticket = ++stateGeneration;
     try {
       const state = await storage.storageState();
@@ -353,7 +358,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     await Promise.all(
       CATEGORIES.map(async ({ id }) => {
         try {
-          const value = await storage.storageCategory({ category: id, countOnly: true });
+          const value = await storage.storageCategory({
+            category: id,
+            countOnly: true,
+          });
           if (value.status === "ready")
             next[id] = value.count ?? value.entries?.length ?? 0;
         } catch {
@@ -378,7 +386,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     busy = true;
     repaint();
     try {
-      if (!await refreshState(current) || !current()) return;
+      if (!(await refreshState(current)) || !current()) return;
       if (access !== "granted") {
         entries = [];
         trashItems = [];
@@ -787,9 +795,13 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   }
 
   /** Its own counter: a filter never takes a reload's ticket, so the reload still clears `busy`. */
-  async function runFilter(value: FilesFilter, admitted: () => boolean): Promise<number | undefined> {
+  async function runFilter(
+    value: FilesFilter,
+    admitted: () => boolean,
+  ): Promise<number | undefined> {
     const ticket = ++filterGeneration;
-    const current = () => ticket === filterGeneration && filter === value && admitted();
+    const current = () =>
+      ticket === filterGeneration && filter === value && admitted();
     try {
       const query = await storage.storageQuery({
         ...(value.text ? { text: value.text } : {}),
@@ -818,7 +830,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       });
       if (!current()) return;
       if (query.status === "ready") {
-        filterRows = sortEntries((query.entries || []).filter((entry) => filterMatches(value, entry)), "date");
+        filterRows = sortEntries(
+          (query.entries || []).filter((entry) => filterMatches(value, entry)),
+          "date",
+        );
         return filterRows.length;
       }
       filterRows = [];
@@ -835,7 +850,13 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     selection = null;
     dialog = undefined;
     api?.set({ folder: null, open: null, menu: false });
-    if (!current() || !await refreshState(current) || !current() || access !== "granted") return;
+    if (
+      !current() ||
+      !(await refreshState(current)) ||
+      !current() ||
+      access !== "granted"
+    )
+      return;
     const count = await runFilter(value, current);
     if (!current()) return;
     repaint();
@@ -878,22 +899,27 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (!api.isActive?.()) api.open?.("files");
       const refreshed = await refreshState(() => !signal.aborted);
       signal.throwIfAborted();
-      if (!refreshed) return {
-        status: "failed",
-        summary: "Files changed. Nothing was changed.",
-      };
+      if (!refreshed)
+        return {
+          status: "failed",
+          summary: "Files changed. Nothing was changed.",
+        };
       if (access !== "granted")
         return {
           status: "failed",
           summary: "Files needs storage access. Nothing was changed.",
         };
       if (op.type === "files_filter") {
-        const n = await showFilter(validateFilesFilter(filesFilterOf(op)), signal);
+        const n = await showFilter(
+          validateFilesFilter(filesFilterOf(op)),
+          signal,
+        );
         signal.throwIfAborted();
-        if (n === undefined) return {
-          status: "failed",
-          summary: "Files could not read this filter.",
-        };
+        if (n === undefined)
+          return {
+            status: "failed",
+            summary: "Files could not read this filter.",
+          };
         return {
           status: "succeeded",
           summary: `Showing ${countLabel(n)} in Files.`,
@@ -925,8 +951,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         return value.status === "opened"
           ? {
               status: "succeeded",
-              summary:
-                "Opened the share sheet.",
+              summary: "Opened the share sheet.",
             }
           : {
               status: "failed",
@@ -1028,7 +1053,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           .filter(Boolean)
           .join(" · ");
     return {
-      id: JSON.stringify([place.kind === "folder" ? place.volume || "primary" : "primary", entry.path]),
+      id: JSON.stringify([
+        place.kind === "folder" ? place.volume || "primary" : "primary",
+        entry.path,
+      ]),
       name: entry.name,
       sub: meta,
       d: iconFor(entry),
@@ -1081,21 +1109,36 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     const granted = access === "granted";
     // Browse (no search box and no Recents: the agent filters, decision F2).
     const primary = volumes.find((v) => v.primary) ?? volumes[0];
-    const rootFolder: Extract<Place, { kind: "folder" }> = { kind: "folder", path: "" };
+    const rootFolder: Extract<Place, { kind: "folder" }> = {
+      kind: "folder",
+      path: "",
+    };
     const newFolder = () => {
       if (!granted || busy || !primary) return;
       const target = place.kind === "folder" ? place : rootFolder;
       if (place.kind !== "folder") go(target);
       dialogTrigger = null;
-      dialog = { kind: "name", op: "create", path: target.path, value: "", ...onVolume(target.volume) };
+      dialog = {
+        kind: "name",
+        op: "create",
+        path: target.path,
+        value: "",
+        ...onVolume(target.volume),
+      };
       currentApi.set({ menu: false });
     };
     out.toolbar = {
       ready: granted && !busy && !!primary && place.kind !== "trash",
       canCreate: place.kind === "browse" || place.kind === "folder",
       newFolder,
-      sort: () => { if (place.kind === "browse") go(rootFolder); currentApi.set({ menu: true }); },
-      toggleView: () => { if (place.kind === "browse") go(rootFolder); currentApi.set({ grid: !state.grid }); },
+      sort: () => {
+        if (place.kind === "browse") go(rootFolder);
+        currentApi.set({ menu: true });
+      },
+      toggleView: () => {
+        if (place.kind === "browse") go(rootFolder);
+        currentApi.set({ grid: !state.grid });
+      },
       viewLabel: state.grid ? "List view" : "Grid view",
       viewIcon: state.grid ? ICONS.rows : ICONS.grid,
     };
@@ -1191,7 +1234,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
               at.category)
             : at.path
               ? baseName(at.path)
-              : at.volume ? volumeName : "All files";
+              : at.volume
+                ? volumeName
+                : "All files";
       let items: Record<string, unknown>[] = [];
       if (at.kind === "trash") {
         items = trashItems.map((item) => ({
@@ -1251,11 +1296,12 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           tap: () => go({ kind: "folder", path: group.folder }),
         }));
       } else
-        items = sortEntries(entries, sort, state.sortReverse === true).map((entry) =>
-          entryRow(
-            entry,
-            at.kind === "category" && at.category !== "downloads",
-          ),
+        items = sortEntries(entries, sort, state.sortReverse === true).map(
+          (entry) =>
+            entryRow(
+              entry,
+              at.kind === "category" && at.category !== "downloads",
+            ),
         );
       const listed =
         at.kind === "folder" ||
@@ -1303,17 +1349,38 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         menuRows: [
           ...(["name", "date", "size"] as SortMode[]).map((mode) => ({
             id: "sort:" + mode,
-            label: SORT_LABELS[mode] + (sort === mode ? " · " + (mode === "name" ? (state.sortReverse ? "Z–A" : "A–Z") : mode === "date" ? (state.sortReverse ? "Oldest first" : "Newest first") : (state.sortReverse ? "Smallest first" : "Largest first")) : ""),
+            label:
+              SORT_LABELS[mode] +
+              (sort === mode
+                ? " · " +
+                  (mode === "name"
+                    ? state.sortReverse
+                      ? "Z–A"
+                      : "A–Z"
+                    : mode === "date"
+                      ? state.sortReverse
+                        ? "Oldest first"
+                        : "Newest first"
+                      : state.sortReverse
+                        ? "Smallest first"
+                        : "Largest first")
+                : ""),
             d: ICONS.sort,
             on: sort === mode,
-            go: () => currentApi.set({ menu: false, sort: mode, sortReverse: sort === mode ? !state.sortReverse : false }),
+            go: () =>
+              currentApi.set({
+                menu: false,
+                sort: mode,
+                sortReverse: sort === mode ? !state.sortReverse : false,
+              }),
           })),
           {
             id: "reverse-order",
             label: "Reverse order",
             d: ICONS.sort,
             on: state.sortReverse === true,
-            go: () => currentApi.set({ menu: false, sortReverse: !state.sortReverse }),
+            go: () =>
+              currentApi.set({ menu: false, sortReverse: !state.sortReverse }),
           },
           ...(listed && items.length
             ? [

@@ -259,13 +259,14 @@ export function sortEntries<
   return [...entries].sort(
     (a, b) =>
       Number(b.directory) - Number(a.directory) ||
-      (reverse ? -1 : 1) * (a.directory && b.directory
-        ? byName(a, b)
-        : mode === "date"
-          ? b.modified - a.modified || byName(a, b)
-          : mode === "size"
-            ? b.size - a.size || byName(a, b)
-            : byName(a, b)),
+      (reverse ? -1 : 1) *
+        (a.directory && b.directory
+          ? byName(a, b)
+          : mode === "date"
+            ? b.modified - a.modified || byName(a, b)
+            : mode === "size"
+              ? b.size - a.size || byName(a, b)
+              : byName(a, b)),
   );
 }
 export const SORT_LABELS: Record<SortMode, string> = {

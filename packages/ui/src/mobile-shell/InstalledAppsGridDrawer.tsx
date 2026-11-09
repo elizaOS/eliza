@@ -182,8 +182,10 @@ export function InstalledAppsGridDrawer({
 }: InstalledAppsGridDrawerProps) {
   const snapshot = launcher.snapshot();
   const entries = appsDrawerEntries(snapshot, builtinPrefix, query);
-  const menu = requestedMenu && entries.some((entry) => entry.key === requestedMenu)
-    ? requestedMenu : null;
+  const menu =
+    requestedMenu && entries.some((entry) => entry.key === requestedMenu)
+      ? requestedMenu
+      : null;
   const loading = snapshot.status === "idle" || snapshot.status === "loading";
   const status =
     snapshot.status === "failed"
@@ -208,7 +210,10 @@ export function InstalledAppsGridDrawer({
   useLayoutEffect(() => endPress, [endPress]);
   useLayoutEffect(() => {
     if (press.current && !press.current.target.isConnected) endPress();
-    if (swallow.current && !entries.some((entry) => entry.key === swallow.current))
+    if (
+      swallow.current &&
+      !entries.some((entry) => entry.key === swallow.current)
+    )
       swallow.current = "";
     if (requestedMenu && !menu) onMenu(null);
   }, [endPress, entries, menu, onMenu, requestedMenu]);
@@ -224,7 +229,9 @@ export function InstalledAppsGridDrawer({
       if (event.button > 0) return;
       const target = event.currentTarget;
       const pending = {
-        key, pointer, target,
+        key,
+        pointer,
+        target,
         x: event.clientX,
         y: event.clientY,
         timer: setTimeout(() => {

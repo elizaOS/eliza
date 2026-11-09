@@ -868,7 +868,8 @@ test("a reset during the inference check refuses the retired message", async () 
     assert.deepEqual(owners, []);
     assert.equal(messageRequests, 0);
     assert.equal(
-      (await post(`/conversations/${id}/messages`, { text: "new message" })).status,
+      (await post(`/conversations/${id}/messages`, { text: "new message" }))
+        .status,
       200,
     );
     assert.deepEqual([...new Set(owners)], ["second"]);
