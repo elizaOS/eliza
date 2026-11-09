@@ -1,0 +1,53 @@
+name: Verify ValhallaOS website on Node 22
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'website/**'
+      - 'vercel.json'
+      - '.github/workflows/site-node22.yml'
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'website/**'
+      - 'vercel.json'
+      - '.github/workflows/site-node22.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: site-node22-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify runtime
+        run: |
+          node --version
+          node -e "if (process.versions.node.split('.')[0] !== '22') process.exit(1)"
+      - name: Build actual website output
+        run: python3 website/scripts/build-site.py
+      - name: Verify static routes and assets
+        run: python3 website/scripts/test-site.py
+      - name: Verify wallet boundaries
+        run: node website/scripts/test-wallet.cjs
+      - name: Verify gate, OS, and all seven desk tests
+        run: node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs website/scripts/desk.test.cjs
+      - name: Upload verified static build
+        uses: actions/upload-artifact@v4
+        with:
+          name: valhalla-site-node22-${{ github.sha }}
+          path: site-build/
+          if-no-files-found: error
+          retention-days: 7
