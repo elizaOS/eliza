@@ -26,7 +26,7 @@ for (const [web, api, tenant] of [
       ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
         {
           redirectUri,
-          androidPackage: "ai.elizaresearch.alphaphone",
+          androidPackage: "ai.alphacompute.alphaphone",
           appName: "Alpha Phone",
         },
       ]),
