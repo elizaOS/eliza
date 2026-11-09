@@ -241,12 +241,20 @@ export function parseRecurrenceRule(
   let untilDate: ParsedCalendarRecurrenceRule["untilDate"];
   let untilTime: ParsedCalendarRecurrenceRule["untilTime"];
   let beyondExpansionSubset = false;
+  // RFC 5545 §3.3.10: a rule part must not occur more than once. Without
+  // this, a duplicated part silently keeps its last value — a duplicated
+  // FREQ or INTERVAL rewrites the series with no error.
+  const seenParts = new Set<string>();
 
   for (const segment of body.split(";")) {
     if (segment.trim().length === 0) invalidRecurrence("empty part");
     const eq = segment.indexOf("=");
     if (eq <= 0) invalidRecurrence(`malformed part "${segment}"`);
     const key = segment.slice(0, eq).trim().toUpperCase();
+    if (seenParts.has(key)) {
+      invalidRecurrence(`duplicate part "${key}"`);
+    }
+    seenParts.add(key);
     const raw = segment
       .slice(eq + 1)
       .trim()
