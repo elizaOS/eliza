@@ -86,6 +86,8 @@ export class LiveStreamingAsrSession {
 	private partialSeq = 0;
 	private lastPartial = "";
 	private pendingFinal: Promise<LiveTurnResult | null> | null = null;
+	/** A caller already took `pendingFinal`; a later close must not replay it. */
+	private finalDelivered = false;
 	private disposed = false;
 	framesReceived = 0;
 	turnsFinalized = 0;
@@ -125,15 +127,20 @@ export class LiveStreamingAsrSession {
 
 	/** The final for the most recent speech-end, or null when none is pending. */
 	waitForFinal(): Promise<LiveTurnResult | null> {
-		return this.pendingFinal ?? Promise.resolve(null);
+		if (!this.pendingFinal) return Promise.resolve(null);
+		this.finalDelivered = true;
+		return this.pendingFinal;
 	}
 
 	/**
 	 * Close an open segment as if the VAD reported speech-end (client hang-up
-	 * or explicit end). Resolves the final, or null when no turn was open.
+	 * or explicit end). Resolves the final, or null when no turn was open and
+	 * the last final (or its failure) already went to a caller.
 	 */
 	endTurn(): Promise<LiveTurnResult | null> {
-		if (!this.turnId) return this.waitForFinal();
+		if (!this.turnId) {
+			return this.finalDelivered ? Promise.resolve(null) : this.waitForFinal();
+		}
 		this.onVad({
 			type: "speech-end",
 			timestampMs: this.now(),
@@ -178,6 +185,7 @@ export class LiveStreamingAsrSession {
 			this.turnId = null;
 			markLiveVoice(turnId, "vad-speech-end", this.now());
 			this.pendingFinal = this.finishTurn(turnId);
+			this.finalDelivered = false;
 			// The caller may never await it (no HTTP request carried the edge).
 			this.pendingFinal.catch(() => {});
 		}

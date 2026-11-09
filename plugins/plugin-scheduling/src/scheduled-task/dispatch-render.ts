@@ -203,9 +203,10 @@ export function buildScheduledDispatchTitlePrompt(
 /**
  * Render the user-facing message for a dispatch through the runtime's model.
  * On a model-free runtime (no `useModel`) returns the deterministic fallback so
- * stock mobile boots keep their scheduled notifications. Throws `ElizaError`
- * (ephemeral) only when the model surface is present but the call fails or
- * returns blank — callers translate that into a typed dispatch failure.
+ * stock mobile boots keep their scheduled notifications. When the model call
+ * fails, returns blank, or echoes the instruction, the failure is reported and
+ * the deterministic fallback is delivered at once: a reminder must not wait on
+ * the model coming back. This function does not throw for model failures.
  */
 export async function renderScheduledDispatchMessage(
   runtime: IAgentRuntime,
@@ -215,6 +216,20 @@ export async function renderScheduledDispatchMessage(
     // voice-policy:V1 — deterministic fallback preserves model-free hosts.
     return buildDeterministicDispatchBody(record);
   }
+  const errorContext = { taskId: record.taskId, channelKey: record.channelKey };
+  const fallBack = (error: ElizaError): string => {
+    // error-policy:J1 degrade to authored copy — voice-policy:V1 never puts
+    // `promptInstructions` in front of the owner.
+    runtime.reportError?.(
+      "scheduling:scheduled-task:dispatch-render-fallback",
+      error,
+      {
+        ...errorContext,
+        code: error.code,
+      },
+    );
+    return buildDeterministicDispatchBody(record);
+  };
   const promptTask = scheduledDispatchPromptTask(record);
   const prompt = buildScheduledDispatchRenderPrompt(runtime, record);
   let response: unknown;
@@ -223,23 +238,26 @@ export async function renderScheduledDispatchMessage(
       runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
   } catch (error) {
-    // error-policy:J2 context-adding rethrow
-    throw new ElizaError("Scheduled dispatch message rendering failed.", {
-      code: "SCHEDULED_DISPATCH_RENDER_FAILED",
-      cause: error,
-      context: { taskId: record.taskId, channelKey: record.channelKey },
-      severity: "ephemeral",
-    });
+    return fallBack(
+      new ElizaError("Scheduled dispatch message rendering failed.", {
+        code: "SCHEDULED_DISPATCH_RENDER_FAILED",
+        cause: error,
+        context: errorContext,
+        severity: "ephemeral",
+      }),
+    );
   }
   const text = typeof response === "string" ? response.trim() : "";
   if (text.length === 0) {
-    throw new ElizaError(
-      "Model returned empty output for the scheduled dispatch message.",
-      {
-        code: "SCHEDULED_DISPATCH_RENDER_EMPTY",
-        context: { taskId: record.taskId, channelKey: record.channelKey },
-        severity: "ephemeral",
-      },
+    return fallBack(
+      new ElizaError(
+        "Model returned empty output for the scheduled dispatch message.",
+        {
+          code: "SCHEDULED_DISPATCH_RENDER_EMPTY",
+          context: errorContext,
+          severity: "ephemeral",
+        },
+      ),
     );
   }
   const normalizedText = text.replace(/\s+/g, " ").toLowerCase();
@@ -254,13 +272,15 @@ export async function renderScheduledDispatchMessage(
     normalizedInstruction.length > 0 &&
     (normalizedText === normalizedInstruction || containsSubstantialInstruction)
   ) {
-    throw new ElizaError(
-      "Model echoed scheduled-task instructions into owner-facing copy.",
-      {
-        code: "SCHEDULED_DISPATCH_RENDER_INSTRUCTION_ECHO",
-        context: { taskId: record.taskId, channelKey: record.channelKey },
-        severity: "ephemeral",
-      },
+    return fallBack(
+      new ElizaError(
+        "Model echoed scheduled-task instructions into owner-facing copy.",
+        {
+          code: "SCHEDULED_DISPATCH_RENDER_INSTRUCTION_ECHO",
+          context: errorContext,
+          severity: "ephemeral",
+        },
+      ),
     );
   }
   return text;
@@ -301,6 +321,19 @@ export async function renderOwnerNotificationTitle(
     // voice-policy:V1 — the caller owns deterministic category copy.
     return input.fallbackTitle;
   }
+  const fallBack = (error: ElizaError): string => {
+    // error-policy:J1 a title is chrome around an already-rendered body; a
+    // model failure must not cost the owner the notification.
+    runtime.reportError?.(
+      "scheduling:scheduled-task:dispatch-render-fallback",
+      error,
+      {
+        ...(input.errorContext ?? {}),
+        code: error.code,
+      },
+    );
+    return input.fallbackTitle;
+  };
   const prompt = buildScheduledDispatchTitlePrompt(runtime, input, input.body);
   let response: unknown;
   try {
@@ -308,23 +341,26 @@ export async function renderOwnerNotificationTitle(
       runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
     );
   } catch (error) {
-    // error-policy:J2 context-adding rethrow
-    throw new ElizaError("Scheduled dispatch title rendering failed.", {
-      code: "SCHEDULED_DISPATCH_TITLE_RENDER_FAILED",
-      cause: error,
-      context: input.errorContext,
-      severity: "ephemeral",
-    });
+    return fallBack(
+      new ElizaError("Scheduled dispatch title rendering failed.", {
+        code: "SCHEDULED_DISPATCH_TITLE_RENDER_FAILED",
+        cause: error,
+        context: input.errorContext,
+        severity: "ephemeral",
+      }),
+    );
   }
   const text = typeof response === "string" ? response.trim() : "";
   if (text.length === 0) {
-    throw new ElizaError(
-      "Model returned empty output for the scheduled dispatch title.",
-      {
-        code: "SCHEDULED_DISPATCH_TITLE_RENDER_EMPTY",
-        context: input.errorContext,
-        severity: "ephemeral",
-      },
+    return fallBack(
+      new ElizaError(
+        "Model returned empty output for the scheduled dispatch title.",
+        {
+          code: "SCHEDULED_DISPATCH_TITLE_RENDER_EMPTY",
+          context: input.errorContext,
+          severity: "ephemeral",
+        },
+      ),
     );
   }
   return text;
@@ -340,6 +376,8 @@ export function renderFailureDispatchResult(error: unknown): DispatchResult {
   return {
     ok: false,
     reason: "transport_error",
+    // Rendering happens before egress, so nothing left the process.
+    acceptance: "not_accepted",
     userActionable: false,
     retryAfterMinutes: RENDER_FAILURE_RETRY_MINUTES,
     message: `Scheduled dispatch render failed: ${

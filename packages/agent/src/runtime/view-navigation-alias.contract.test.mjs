@@ -47,6 +47,7 @@ function fixture({
       role: owner ? "OWNER" : "USER",
     }),
     getStreamingContext: () => undefined,
+    enabledDeviceViews: () => undefined,
     getUserMessageText: (m) => m.content.text,
     isObjectRecord: (v) =>
       v !== null && typeof v === "object" && !Array.isArray(v),

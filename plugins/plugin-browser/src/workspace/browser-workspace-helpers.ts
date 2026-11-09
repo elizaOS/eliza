@@ -10,10 +10,15 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { browserBridgeDomainFromUrl } from "../bridge-policy.js";
+import { evaluateBrowserDomainPolicies } from "../browser-domain-policy.js";
+import { BrowserDispatchFailure } from "../dispatch-types.js";
+import { buildBrowserWorkspaceElementSelector } from "./browser-workspace-elements.js";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import { resolveBrowserWorkspaceElementRef } from "./browser-workspace-state.js";
 import type {
   BrowserWorkspaceCommand,
+  BrowserWorkspaceDesktopElementRef,
   BrowserWorkspaceMode,
   BrowserWorkspaceSubaction,
 } from "./browser-workspace-types.js";
@@ -69,6 +74,65 @@ export async function browserWorkspaceBoundedPageFetch(
   });
 }
 
+const BROWSER_WORKSPACE_REDIRECT_STATUSES: ReadonlySet<number> = new Set([
+  301, 302, 303, 307, 308,
+]);
+const MAX_BROWSER_WORKSPACE_DOCUMENT_REDIRECTS = 10;
+
+function assertBrowserWorkspaceReadAllowed(url: string, subaction: string) {
+  const decision = evaluateBrowserDomainPolicies({
+    subaction,
+    effect: "read",
+    domain: browserBridgeDomainFromUrl(url),
+    url,
+    targetId: "workspace",
+    phase: "dispatch",
+  });
+  if (decision.verdict !== "allow") {
+    throw new BrowserDispatchFailure(
+      "POLICY_BLOCKED",
+      `Browser read of "${url}" was blocked by domain policy "${decision.policyId}": ${decision.reason}`,
+      { targetId: "workspace" },
+    );
+  }
+}
+
+/**
+ * Fetches a page document for a command that reads a caller-supplied URL
+ * (diff url): http(s) only, redirects followed by hand with the URL check and
+ * the domain policy applied to every hop, each hop under the page deadline.
+ * `fetchHop` lets the web backend record the hops in its network log.
+ */
+export async function browserWorkspaceGuardedDocumentFetch(
+  rawUrl: string,
+  subaction: string,
+  fetchHop: (url: string, init: RequestInit) => Promise<Response> = (
+    url,
+    init,
+  ) => browserWorkspaceBoundedPageFetch(url, init),
+): Promise<{ url: string; text: string }> {
+  let requestUrl = assertBrowserWorkspaceUrl(rawUrl);
+  for (let hop = 0; hop <= MAX_BROWSER_WORKSPACE_DOCUMENT_REDIRECTS; hop += 1) {
+    assertBrowserWorkspaceReadAllowed(requestUrl, subaction);
+    const response = await fetchHop(requestUrl, { redirect: "manual" });
+    if (!BROWSER_WORKSPACE_REDIRECT_STATUSES.has(response.status)) {
+      return { url: requestUrl, text: await response.text() };
+    }
+    const location = response.headers.get("location")?.trim();
+    if (!location) {
+      throw new Error(
+        `Browser workspace redirect (${response.status}) from "${requestUrl}" has no Location header.`,
+      );
+    }
+    requestUrl = assertBrowserWorkspaceUrl(
+      new URL(location, requestUrl).toString(),
+    );
+  }
+  throw new Error(
+    `Browser workspace page read exceeded ${MAX_BROWSER_WORKSPACE_DOCUMENT_REDIRECTS} redirects: ${rawUrl}`,
+  );
+}
+
 export function normalizeEnvValue(value: string | undefined): string | null {
   if (typeof value !== "string") {
     return null;
@@ -113,13 +177,23 @@ export function readBrowserWorkspaceElementText(
   return normalizeBrowserWorkspaceText(text.join(""));
 }
 
+const BROWSER_WORKSPACE_PRIVATE_INPUT_TYPES = ["password", "hidden"];
+
 /** Ambient page context may describe these controls, but must not copy values. */
 export function isBrowserWorkspacePrivateControl(element: Element): boolean {
   return (
     element.tagName === "INPUT" &&
-    ["password", "hidden"].includes((element as HTMLInputElement).type)
+    BROWSER_WORKSPACE_PRIVATE_INPUT_TYPES.includes(
+      String((element as HTMLInputElement).type).toLowerCase(),
+    )
   );
 }
+
+/** The same rule as page-script source, for scripts evaluated in a desktop tab. */
+export const BROWSER_WORKSPACE_PRIVATE_CONTROL_SCRIPT = `(element) =>
+    Boolean(element) &&
+    element.tagName === "INPUT" &&
+    ${JSON.stringify(BROWSER_WORKSPACE_PRIVATE_INPUT_TYPES)}.includes(String(element.type).toLowerCase())`;
 
 export function parseBrowserWorkspaceNumberLike(
   value: unknown,
@@ -380,6 +454,12 @@ export function resolveBrowserWorkspaceFilePath(
   return resolved;
 }
 
+/**
+ * Writes inside the workspace root. Path confinement resolves a dangling
+ * symlink at the leaf to its own name inside the root, so the leaf is checked
+ * here: a symlink is refused, and O_NOFOLLOW (where the platform has it) makes
+ * the open itself refuse one created after the check.
+ */
 export async function writeBrowserWorkspaceFile(
   filePath: string,
   contents: string | Uint8Array,
@@ -387,7 +467,37 @@ export async function writeBrowserWorkspaceFile(
 ): Promise<string> {
   const resolved = resolveBrowserWorkspaceFilePath(filePath, root);
   await fsp.mkdir(path.dirname(resolved), { recursive: true });
-  await fsp.writeFile(resolved, contents);
+  const leaf = await fsp.lstat(resolved).catch(() => null);
+  if (leaf?.isSymbolicLink()) {
+    throw createBrowserWorkspaceError(
+      "path_forbidden",
+      "file_path",
+      `browser workspace will not write through a symbolic link: ${filePath.trim()}`,
+    );
+  }
+  const flags =
+    fs.constants.O_WRONLY |
+    fs.constants.O_CREAT |
+    fs.constants.O_TRUNC |
+    (fs.constants.O_NOFOLLOW ?? 0);
+  let handle: fsp.FileHandle;
+  try {
+    handle = await fsp.open(resolved, flags, 0o666);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+      throw createBrowserWorkspaceError(
+        "path_forbidden",
+        "file_path",
+        `browser workspace will not write through a symbolic link: ${filePath.trim()}`,
+      );
+    }
+    throw error;
+  }
+  try {
+    await handle.writeFile(contents);
+  } finally {
+    await handle.close();
+  }
   return resolved;
 }
 
@@ -428,50 +538,100 @@ export function normalizeBrowserWorkspaceCommand(
   };
 }
 
+const BROWSER_WORKSPACE_ELEMENT_REF_PATTERN = /^(@e\d+)([\s\S]*)$/i;
+
+export function createBrowserWorkspaceUnknownElementRefError(
+  ref: string,
+): Error {
+  return createBrowserWorkspaceError(
+    "unknown_element_ref",
+    "element_ref",
+    `Unknown browser snapshot element ref ${ref}. Run snapshot or inspect again before reusing element refs.`,
+  );
+}
+
+/**
+ * Resolves `@eN` refs in `selector` (and in drag's `value`) to the element the
+ * last inspect or snapshot bound them to. Web refs become a selector built
+ * from the live element; a ref whose element was removed fails. Desktop refs
+ * become an `elementRef` the page script resolves through its own table, so a
+ * navigation, which discards that table, fails closed too. Neither re-queries
+ * the selector recorded at inspect time.
+ */
 export function resolveBrowserWorkspaceCommandElementRefs(
   command: BrowserWorkspaceCommand,
   mode: BrowserWorkspaceMode,
   tabId: string,
 ): BrowserWorkspaceCommand {
-  const selector = command.selector?.trim();
-  if (!selector) {
-    return command;
-  }
-
-  const match = selector.match(/^(@e\d+)([\s\S]*)$/i);
-  if (!match?.[1]) {
-    return command;
-  }
-
-  const resolvedSelector = resolveBrowserWorkspaceElementRef(
-    mode,
-    tabId,
-    match[1],
-  );
-  if (!resolvedSelector) {
-    throw createBrowserWorkspaceError(
-      "unknown_element_ref",
-      "element_ref",
-      `Unknown browser snapshot element ref ${match[1]}. Run snapshot or inspect again before reusing element refs.`,
-    );
-  }
-
-  return {
-    ...command,
-    selector: `${resolvedSelector}${match[2] ?? ""}`,
+  const resolveRef = (
+    raw: string | undefined,
+  ): {
+    selector?: string;
+    elementRef?: BrowserWorkspaceDesktopElementRef;
+  } | null => {
+    const match = raw?.trim().match(BROWSER_WORKSPACE_ELEMENT_REF_PATTERN);
+    if (!match?.[1]) {
+      return null;
+    }
+    const target = resolveBrowserWorkspaceElementRef(mode, tabId, match[1]);
+    const suffix = match[2] ?? "";
+    if (target?.tableId !== undefined && target.index !== undefined) {
+      return {
+        elementRef: { tableId: target.tableId, index: target.index },
+        selector: suffix.trim() || undefined,
+      };
+    }
+    const element = target?.element?.deref();
+    if (!element?.isConnected) {
+      throw createBrowserWorkspaceUnknownElementRefError(match[1]);
+    }
+    return {
+      selector: `${buildBrowserWorkspaceElementSelector(element)}${suffix}`,
+    };
   };
+
+  let resolved = command;
+  const selectorRef = resolveRef(command.selector);
+  if (selectorRef) {
+    resolved = {
+      ...resolved,
+      selector: selectorRef.selector,
+      elementRef: selectorRef.elementRef,
+    };
+  }
+  if (command.subaction === "drag") {
+    const valueRef = resolveRef(command.value);
+    if (valueRef) {
+      resolved = {
+        ...resolved,
+        value: valueRef.selector,
+        valueElementRef: valueRef.elementRef,
+      };
+    }
+  }
+  return resolved;
 }
 
 export function buildBrowserWorkspaceCssStringLiteral(value: string): string {
   return JSON.stringify(value);
 }
 
-/** GHSA-mhhr-9ph9-64j7 / elizaOS/eliza#6767 — arbitrary script must not run in Node (JSDOM). */
+export const BROWSER_WORKSPACE_UPLOAD_UNAVAILABLE =
+  "File upload is not available in this browser. Ask the user to attach the file themselves.";
+
+export const BROWSER_WORKSPACE_FOLLOW_UNAVAILABLE =
+  "Following a link from an earlier page read is only available in the native Browser.";
+
+/** Advisory behind the script blocks; kept in error details, not the message. */
+const BROWSER_WORKSPACE_SCRIPT_ADVISORY = "GHSA-mhhr-9ph9-64j7";
+
+// GHSA-mhhr-9ph9-64j7 / elizaOS/eliza#6767 — arbitrary script must not run in
+// Node (JSDOM).
 export const BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN =
-  "Browser workspace arbitrary script execution is disabled in the JSDOM (web) backend because it runs in the Node.js agent process via unsafe eval patterns (GHSA-mhhr-9ph9-64j7). Use structured subactions (click, fill, get, wait on selector/url/text) or desktop browser workspace mode instead.";
+  "Page scripts cannot run in the web browser backend, which runs inside the agent process. Use structured subactions (click, fill, get, wait on selector/url/text) or the desktop browser instead.";
 
 export const BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN =
-  "Browser workspace arbitrary user script is disabled (GHSA-mhhr-9ph9-64j7). Use structured browser workspace subactions instead.";
+  "Page scripts are disabled in the browser workspace. Use structured subactions instead.";
 
 export function isBrowserWorkspaceUserScriptAllowed(
   env: NodeJS.ProcessEnv = process.env,
@@ -494,15 +654,17 @@ export function assertBrowserWorkspaceUserScriptAllowed(
   if (mode === "web") {
     throw createBrowserWorkspaceJsdomScriptExecutionError(context);
   }
-  if (!isBrowserWorkspaceUserScriptAllowed(env)) {
+  // The flag only ever enables wait-condition scripts; generic eval stays off.
+  if (context === "eval" || !isBrowserWorkspaceUserScriptAllowed(env)) {
     const suffix =
       context === "eval"
-        ? "Eval subactions with a user `script` are disabled by default."
-        : "Wait conditions with a user `script` are disabled by default.";
+        ? "Generic eval is not available."
+        : "Wait conditions with a script are off by default; ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT=1 turns them on, and only belongs on trusted single-user hosts.";
     throw createBrowserWorkspaceError(
       "script_forbidden",
       context,
-      `${BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN} ${suffix} Set ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT=1 only on trusted single-user hosts.`,
+      `${BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN} ${suffix}`,
+      BROWSER_WORKSPACE_SCRIPT_ADVISORY,
     );
   }
 }
@@ -512,12 +674,13 @@ export function createBrowserWorkspaceJsdomScriptExecutionError(
 ): Error {
   const suffix =
     context === "eval"
-      ? "Eval subactions are not supported on the web backend."
-      : "Wait conditions with `script` are not supported on the web backend.";
+      ? "Eval is not available on the web backend."
+      : "Wait conditions with a script are not available on the web backend.";
   return createBrowserWorkspaceError(
     "script_forbidden",
     context,
     `${BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN} ${suffix}`,
+    BROWSER_WORKSPACE_SCRIPT_ADVISORY,
   );
 }
 

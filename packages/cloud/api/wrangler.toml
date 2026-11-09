@@ -592,6 +592,8 @@ routes = [
 type = "durable-object"
 storage = "sqlite"
 
+# Retained (not transferred, not deleted): drains pre-switch session objects
+# and keeps a binding-only rollback. New sessions use eliza-cloud-speech-staging.
 [env.staging.exports.SpeechRelayCoordinator]
 type = "durable-object"
 storage = "sqlite"
@@ -826,7 +828,6 @@ VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_SPEECH_RELAY_ENABLED = "true"
 # Enable only with the matching backend/client retirement protocol release.
 VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "true"
-VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.eliza.app"
 VOICE_REALTIME_ELIZA_MODEL = "qwen-3.8-27b"
@@ -885,9 +886,14 @@ class_name = "HfEgressState"
 name = "AUTHENTICATION_STATE"
 class_name = "AuthenticationState"
 
+# New speech sessions live in the lean staging speech host; its live cold-start
+# latency is not measured yet. The class export above stays so
+# objects created before the switch still finish their retirement alarms here.
+# Production keeps this binding local until staging proves the move.
 [[env.staging.durable_objects.bindings]]
 name = "SPEECH_RELAY_SESSIONS"
 class_name = "SpeechRelayCoordinator"
+script_name = "eliza-cloud-speech-staging"
 
 [[env.staging.durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
@@ -1123,7 +1129,6 @@ VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_SPEECH_RELAY_ENABLED = "true"
 # Enable only with the matching backend/client retirement protocol release.
 VOICE_SPEECH_RETIREMENT_PROOF_ENABLED = "true"
-VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"

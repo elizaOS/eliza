@@ -1,0 +1,132 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts",
+    "packages/cloud/shared/src/db/repositories/webhook-events.ts",
+    "packages/cloud/shared/src/db/repositories/stripe-legacy-adoption-cursors.ts",
+    "packages/cloud/shared/src/db/schemas/webhook-events.ts",
+    "packages/cloud/shared/src/db/schemas/stripe-legacy-adoption-cursors.ts",
+    "packages/cloud/shared/src/db/migrations/0564_stripe_legacy_adoption_cursors.sql",
+    "packages/cloud/shared/src/db/migrations/0565_stripe_legacy_retention_index.sql",
+    "packages/cloud/shared/src/db/migrations/meta/_journal.json",
+    "packages/cloud/scripts/admin/canonical-migration-ledger.ts",
+    "packages/cloud/shared/src/lib/cache/client.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/kv-cache-adapter.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts",
+    "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.pglite.test.ts",
+    "packages/cloud/api/cron/process-stripe-queue/route.ts",
+    "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.postgres.integration.test.ts",
+    "packages/cloud/quint/check-stripe-legacy-adoption.mjs"
+  ],
+  "conformance": "packages/cloud/quint/check-stripe-legacy-adoption.mjs",
+  "bounds": "Two concurrent calls, three initial entries and one concurrent old-writer append, batch size two, matching/unavailable receipts and bounded cursor revisions. Separate serial reliable-progress case has three invocations. Separate list-isolation case has three legacy queues and a persistent first-queue removal failure.",
+  "limitations": [
+    "Two concurrent adoption calls, three initial retained entries (two valid and one malformed), one valid old-writer append, original marker cleanup racing adoption, a two-entry batch and digest ranks rather than cryptographic strings. The conflict case uses an unmatched receipt to represent provider, event, payload or historical digest conflicts.",
+    "KV adoption never removes raw entries because this owner has no durable fence proving old writers quiescent. The model includes one concurrent old-writer append; an explicit negative witness demonstrates how unfenced stale KV read/modify/write deletion would lose it. Redis LREM is atomic. This does not prove old writers safe against each other.",
+    "Retained KV raws are replayed against exact durable SQL receipts without reopening completed work. Cleanup of retained KV entries requires an existing owner with a separately proved writer fence and is not implemented here. KV eventual visibility and durability are external assumptions, not proved by the local namespace fixture.",
+    "The SQL transaction and exact payload/terminal receipt predicates are abstracted as matching, absent or unavailable. A missing historical receipt is quarantined, never inserted or treated as undelivered. PGlite exercises real SQL; PostgreSQL checks actual row-lock waiting, concurrent cursor reservation and retention racing adoption. The production KV adapter exercises retained read-only adoption and isolated loopback Redis exercises atomic removal; TypeScript refinement and production provider behavior are not proved.",
+    "Cursor reservations advance only selection hints. Losing a cursor reply or a progress CAS cannot authorize removal. The SQL receipt, not cursor position, is required before LREM. Scope includes the configured backend/environment and one legacy queue.",
+    "Production limits attempts to 25 per list and uses a separate one-second per-list work budget. The model abstracts this as one or two attempted entries. Full KV-array reads and hashing remain unbounded by the work timer, and a single in-flight SQL or cache call can outlive it.",
+    "The serial progress case assumes a fixed three-entry snapshot, available SQL and original matching markers, three fair cron invocations and returning operations. It establishes transfer of the two valid entries despite a permanent poison entry and one-attempt budgets; it does not promise unconditional backlog clearance or resolution of unavailable historical receipts. The separate three-list progress case assumes each operation returns, but permits a persistent removal failure on the first queue; retained receipts permit the later queues and SQL drain to proceed.",
+    "Outbox handler effects, Stripe signature verification, billing idempotency and retention are separate protocols. StripeDeliveryOutbox retains its existing lease model; a durable handoff here is not proof of end-to-end external delivery.",
+    "Identical raw multiplicity and SHA256 collisions are outside the set abstraction. Actual tests preserve identical copies until a matching receipt and remove them individually; collision resistance is assumed. Unknown or malformed raws remain retained for operator reconciliation with payload-free diagnostics.",
+    "Legacy handoff flags are set under the same row lock as matching adoption and prevent both current webhook cleanup variants from deleting the exact receipt. A row-level BEFORE DELETE guard also retains it under old unfiltered cleanup SQL and direct deletes during rolling deployment. Existing receipts already removed before first adoption cannot be reconstructed; their raws require explicit operator reconciliation. The flag is not automatically cleared after Redis removal, because duplicate raws or lost replies may remain. Retained receipt and KV-raw cleanup are unresolved obligations of the existing owner."
+  ],
+  "cases": [
+    {
+      "name": "redis",
+      "main": "StripeLegacyAdoption_redis",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CallsSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each started cursor, SQL and Redis operation eventually returns or fails; weak fairness of Advance is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "kv",
+      "main": "StripeLegacyAdoption_kv",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CallsSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each started cursor, SQL and KV operation eventually returns or fails; weak fairness of Advance is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "receipt-conflict",
+      "main": "StripeLegacyAdoption_conflict",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CallsSettle"],
+      "temporalChecks": [
+        {
+          "property": "CallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each started operation eventually returns or fails, including explicit unavailable receipt results; weak fairness of Advance is assumed."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "serial-progress",
+      "main": "StripeLegacyAdoption_progress",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["Progress"],
+      "temporalChecks": [
+        {
+          "property": "Progress",
+          "expect": "holds",
+          "assumptions": [
+            "One serial cron makes three invocations on a fixed three-entry snapshot with available SQL and original matching receipts. Start, First and Finish are weakly fair; no old producer writes, and at least the first reserved entry is attempted."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "queue-failure-isolation",
+      "main": "StripeLegacyAdoption_queues",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["LaterListsProgress"],
+      "temporalChecks": [
+        {
+          "property": "LaterListsProgress",
+          "expect": "holds",
+          "assumptions": [
+            "One cron visits its three retained legacy queues. SQL succeeds and each remove operation returns, but removal of the first queue always fails. Adopt, Remove and Next are weakly fair."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

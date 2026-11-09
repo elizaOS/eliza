@@ -146,13 +146,8 @@ export class PluginActivatorService extends Service {
       this.bindToSecretsService();
     }
 
-    // Start polling if auto-activation enabled
-    if (
-      this.activatorConfig.enableAutoActivation &&
-      this.activatorConfig.pollingIntervalMs > 0
-    ) {
-      this.startPolling();
-    }
+    // Polling starts when a plugin is queued (registerPlugin), not here: with
+    // no pending plugin there is nothing to check.
 
     logger.info("[PluginActivator] Initialized");
   }
@@ -226,10 +221,7 @@ export class PluginActivatorService extends Service {
   async stop(): Promise<void> {
     logger.info("[PluginActivator] Stopping");
 
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    }
+    this.stopPolling();
 
     if (this.unsubscribeSecretChanges) {
       this.unsubscribeSecretChanges();
@@ -328,6 +320,7 @@ export class PluginActivatorService extends Service {
       this.pluginSecretMapping.set(secretKey, plugins);
     }
 
+    this.startPolling();
     return false;
   }
 
@@ -689,17 +682,30 @@ export class PluginActivatorService extends Service {
    * Start polling for pending plugins
    */
   private startPolling(): void {
-    if (this.pollingInterval) {
+    if (
+      this.pollingInterval ||
+      !this.activatorConfig.enableAutoActivation ||
+      this.activatorConfig.pollingIntervalMs <= 0
+    ) {
       return;
     }
 
     this.pollingInterval = setInterval(() => {
       this.pollPendingPlugins();
     }, this.activatorConfig.pollingIntervalMs);
+    // A pending activation must not keep the process alive by itself.
+    this.pollingInterval.unref?.();
 
     logger.debug(
       `[PluginActivator] Started polling every ${this.activatorConfig.pollingIntervalMs}ms`,
     );
+  }
+
+  private stopPolling(): void {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
   }
 
   /** Start one observed poll without overlapping a still-running cycle. */
@@ -722,6 +728,11 @@ export class PluginActivatorService extends Service {
       .finally(() => {
         if (this.activePoll === poll) {
           this.activePoll = null;
+        }
+        // Activation, timeout and unregister empty the queue; stop until the
+        // next registerPlugin queues another plugin.
+        if (this.pendingPlugins.size === 0) {
+          this.stopPolling();
         }
       });
     this.activePoll = poll;

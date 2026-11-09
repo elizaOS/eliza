@@ -83,6 +83,13 @@ final class NativeNotificationInbox {
             }
             project(state, copy);
             String phase = seen.getJSONObject(id).getString("phase");
+            // A contiguous live arrival closes its own sequence, so the stream keeps compacting between pages.
+            if (state.isNull("page") && !state.optBoolean("resetEpoch")) {
+                long closed = state.getLong("closedThroughSequence");
+                java.util.Set<Long> settled = settled(seen, state.getString("nativeEpoch"));
+                while (settled.contains(closed + 1)) closed++;
+                if (closed != state.getLong("closedThroughSequence")) { state.put("closedThroughSequence", closed); compact(state); save(state); }
+            }
             return outcome(id, phase, "accepted".equals(phase), false);
         });
     }
@@ -103,11 +110,18 @@ final class NativeNotificationInbox {
             String epoch = page.getString("nativeEpoch");
             if (!epoch.equals(state.optString("nativeEpoch"))) {
                 boolean changedEpoch = !state.isNull("nativeEpoch");
-                JSONObject old = state.getJSONObject("seen"), legacy = state.getJSONObject("legacySeen");
+                JSONObject old = state.getJSONObject("seen"), previous = state.getJSONObject("legacySeen"), legacy = new JSONObject();
                 for (java.util.Iterator<String> keys = old.keys(); keys.hasNext();) {
                     String id = keys.next(); legacy.put(id, old.getJSONObject(id).getString("phase"));
                 }
-                state.put("seen", new JSONObject()).put("nativeEpoch", epoch)
+                // The newest epoch's receipts come first; older ambiguous ones outrank older terminal ones.
+                for (boolean ambiguous : new boolean[]{true, false}) {
+                    for (java.util.Iterator<String> keys = previous.keys(); keys.hasNext() && legacy.length() < MAX_SEEN;) {
+                        String id = keys.next(), phase = previous.getString(id);
+                        if (!legacy.has(id) && ambiguous == ("unknown".equals(phase) || "dispatched".equals(phase))) legacy.put(id, phase);
+                    }
+                }
+                state.put("seen", new JSONObject()).put("legacySeen", legacy).put("nativeEpoch", epoch)
                     .put("closedThroughSequence", 0);
                 if (changedEpoch) state.put("initialized", false);
             }
@@ -176,16 +190,8 @@ final class NativeNotificationInbox {
             } else {
                 state.getJSONObject("page").put("afterSequence", page.getLong("nextSequence"));
             }
-            long closed = page.getLong("nextSequence");
-            state.put("closedThroughSequence", closed);
-            List<String> compact = new ArrayList<>();
-            for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
-                String id = keys.next(); JSONObject receipt = seen.getJSONObject(id);
-                String phase = receipt.getString("phase");
-                if (epoch.equals(receipt.getString("nativeEpoch")) && receipt.getLong("nativeSequence") <= closed
-                    && !"unknown".equals(phase) && !"dispatched".equals(phase)) compact.add(id);
-            }
-            for (String id : compact) seen.remove(id);
+            state.put("closedThroughSequence", page.getLong("nextSequence"));
+            compact(state);
             save(state);
             return complete && !needsNextFence;
         });
@@ -202,13 +208,14 @@ final class NativeNotificationInbox {
 
     JSONObject status() throws Exception {
         return locked(state -> {
-            int accepted = 0, unknown = 0;
+            int accepted = 0, declined = 0, unknown = 0;
             JSONObject seen = state.getJSONObject("seen"), legacy = state.getJSONObject("legacySeen");
             for (JSONObject receipts : new JSONObject[]{seen, legacy}) {
                 for (java.util.Iterator<String> keys = receipts.keys(); keys.hasNext();) {
                     String id = keys.next();
                     String phase = receipts == seen ? receipts.getJSONObject(id).getString("phase") : receipts.getString(id);
                     if ("accepted".equals(phase)) accepted++;
+                    else if ("declined".equals(phase)) declined++;
                     else if ("dispatched".equals(phase) || "unknown".equals(phase)) unknown++;
                 }
             }
@@ -218,7 +225,7 @@ final class NativeNotificationInbox {
                     .put("pendingBuffered", state.getJSONObject("buffered").length())
                     .put("seenCount", seen.length()).put("legacySeenCount", legacy.length())
                     .put("receiptCapacity", MAX_SEEN).put("liveBufferCapacity", MAX_BUFFERED).put("journalMaximumBytes", MAX_BYTES)
-                    .put("acceptedCount", accepted).put("unknownCount", unknown);
+                    .put("acceptedCount", accepted).put("declinedCount", declined).put("unknownCount", unknown);
         });
     }
 
@@ -233,7 +240,8 @@ final class NativeNotificationInbox {
             // error-policy:J1 the durable pre-effect marker survives a partial/ambiguous platform post.
             state.getJSONObject("seen").getJSONObject(id).put("phase", "unknown"); save(state); throw error;
         }
-        state.getJSONObject("seen").getJSONObject(id).put("phase", accepted ? "accepted" : "unknown"); save(state);
+        // False is a definite outcome (permission, switch or channel off, or not shown); it never reposts.
+        state.getJSONObject("seen").getJSONObject(id).put("phase", accepted ? "accepted" : "declined"); save(state);
     }
 
     private static boolean ignored(JSONObject item) throws Exception {
@@ -243,9 +251,46 @@ final class NativeNotificationInbox {
 
     private void remember(JSONObject state, JSONObject item, String phase) throws Exception {
         JSONObject seen = state.getJSONObject("seen"); String id = item.getString("id");
-        if (!seen.has(id) && seen.length() >= MAX_SEEN) throw new IOException("Native notification receipt capacity exhausted");
+        if (!seen.has(id) && seen.length() >= MAX_SEEN) compact(state);
+        if (!seen.has(id) && seen.length() >= MAX_SEEN) {
+            // The closed fence alone rejects a receipt at or below it, so the oldest closed ambiguous one can go.
+            String oldest = null, epoch = state.optString("nativeEpoch");
+            long oldestSequence = Long.MAX_VALUE, closed = state.getLong("closedThroughSequence");
+            for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
+                String key = keys.next(); JSONObject receipt = seen.getJSONObject(key);
+                long sequence = receipt.getLong("nativeSequence");
+                if ("unknown".equals(receipt.getString("phase")) && epoch.equals(receipt.getString("nativeEpoch"))
+                    && sequence <= closed && sequence < oldestSequence) { oldest = key; oldestSequence = sequence; }
+            }
+            if (oldest == null) throw new IOException("Native notification receipt capacity exhausted");
+            seen.remove(oldest);
+        }
         seen.put(id, new JSONObject().put("phase", phase).put("nativeEpoch", item.getString("nativeEpoch"))
             .put("nativeSequence", item.getLong("nativeSequence")));
+    }
+
+    /** Terminal receipts at or below the closed fence are history; the fence alone prevents their replay. */
+    private static void compact(JSONObject state) throws Exception {
+        JSONObject seen = state.getJSONObject("seen");
+        String epoch = state.optString("nativeEpoch"); long closed = state.getLong("closedThroughSequence");
+        List<String> compact = new ArrayList<>();
+        for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
+            String id = keys.next(); JSONObject receipt = seen.getJSONObject(id);
+            String phase = receipt.getString("phase");
+            if (epoch.equals(receipt.getString("nativeEpoch")) && receipt.getLong("nativeSequence") <= closed
+                && !"unknown".equals(phase) && !"dispatched".equals(phase)) compact.add(id);
+        }
+        for (String id : compact) seen.remove(id);
+    }
+
+    private static java.util.Set<Long> settled(JSONObject seen, String epoch) throws Exception {
+        java.util.Set<Long> sequences = new java.util.HashSet<>();
+        for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
+            JSONObject receipt = seen.getJSONObject(keys.next());
+            if (epoch.equals(receipt.getString("nativeEpoch")) && !"dispatched".equals(receipt.getString("phase")))
+                sequences.add(receipt.getLong("nativeSequence"));
+        }
+        return sequences;
     }
 
     static JSONObject checked(JSONObject value) throws Exception {
@@ -307,7 +352,7 @@ final class NativeNotificationInbox {
                 String id = keys.next();
                 String phase = "seen".equals(field) ? receipts.getJSONObject(id).getString("phase") : receipts.getString(id);
                 if (!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-                    || !java.util.Arrays.asList("baseline", "ignored", "dispatched", "accepted", "unknown").contains(phase)) throw new IOException("Invalid inbox receipt phase");
+                    || !java.util.Arrays.asList("baseline", "ignored", "dispatched", "accepted", "declined", "unknown").contains(phase)) throw new IOException("Invalid inbox receipt phase");
                 if ("seen".equals(field)) NativeNotificationWire.sequence(receipts.getJSONObject(id), "nativeSequence", false);
             }
         }

@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/credits.ts",
+    "packages/cloud/shared/src/lib/utils/credit-reservation.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One organization and reservation, integer money units, balance 5, hold 1..3, actual cost 0..8.",
+      "A transition abstracts a committed database transaction; failures before commit roll back.",
+      "Does not prove numeric rounding, SQL isolation, provider outcomes, or TypeScript refinement."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "billing-reservations",
+      "main": "billing_reservations",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

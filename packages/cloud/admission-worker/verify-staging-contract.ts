@@ -183,7 +183,24 @@ requireContract(
     ]),
   "Staging API admission binding must reference the adopted target",
 );
+// The external Maps gate owns these policies. Duplicating them on the API
+// consumes text bindings without changing the policy used by the gate.
+const mapsGateOnlyVariables = new Set([
+  "ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES",
+  "ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS",
+]);
+for (const key of mapsGateOnlyVariables) {
+  requireContract(
+    typeof target.vars?.[key] === "string" && target.vars[key].length > 0,
+    `Maps admission host must configure: ${key}`,
+  );
+  requireContract(
+    stage.vars?.[key] === undefined,
+    `Maps policy must only be configured on the staging admission host: ${key}`,
+  );
+}
 for (const [key, value] of Object.entries(target.vars ?? {})) {
+  if (mapsGateOnlyVariables.has(key)) continue;
   requireContract(
     stage.vars?.[key] === value,
     `Target variable differs from staging: ${key}`,

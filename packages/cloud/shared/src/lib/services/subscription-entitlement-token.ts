@@ -33,7 +33,7 @@
 
 import { eq } from "drizzle-orm";
 import { exportJWK, importPKCS8, importSPKI, type JWK, SignJWT } from "jose";
-import { dbWrite } from "../../db/client";
+import { type DbTransaction, dbWrite } from "../../db/client";
 import {
   observeSubscriptionAllowanceEligibility,
   readEligibleSubscriptionAllowance,
@@ -253,90 +253,92 @@ export function entitlementStatusForSubscription(
  */
 export async function readOrganizationEntitlementSummary(
   organizationId: string,
-  options: { allowance?: boolean } = {},
+  options: { allowance?: boolean; transaction?: DbTransaction } = {},
 ): Promise<EntitlementPlanSummary> {
-  return dbWrite.transaction(
-    async (tx) => {
-      const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
-      const until = policy.authority.effectiveUntil
-        ? new Date(policy.authority.effectiveUntil)
-        : null;
-      const rateTier = policy.tier.status === "available" ? policy.tier.value.tierName : null;
-      let summary: EntitlementPlanSummary | null = null;
-      if (policy.authority.source === "promo_grant" && policy.authority.sourceGrantId) {
-        const [grant] = await tx
-          .select({
-            plan_key: subscriptionGrants.plan_key,
-            catalog_version: subscriptionGrants.catalog_version,
-          })
-          .from(subscriptionGrants)
-          .where(eq(subscriptionGrants.id, policy.authority.sourceGrantId));
-        if (grant)
-          summary = {
-            plan: {
-              id: grant.plan_key,
-              name: planName(grant.plan_key, grant.catalog_version),
-              status: "active",
-            },
-            source: "grant",
-            effectiveUntil: until,
-          };
-      }
-      if (
-        !summary &&
-        policy.authority.source === "subscription" &&
-        policy.authority.sourceSubscriptionId
-      ) {
-        const [subscription] = await tx
-          .select({
-            status: billingSubscriptions.status,
-            plan_key: billingSubscriptions.plan_key,
-            catalog_version: billingSubscriptions.catalog_version,
-          })
-          .from(billingSubscriptions)
-          .where(eq(billingSubscriptions.id, policy.authority.sourceSubscriptionId));
-        if (subscription)
-          summary = {
-            plan: {
-              id: subscription.plan_key,
-              name: planName(subscription.plan_key, subscription.catalog_version),
-              status: entitlementStatusForSubscription(
-                subscription.status,
-                policy.subscriptionFunded,
-              ),
-            },
-            source: "subscription",
-            effectiveUntil: until,
-          };
-      }
-      if (!summary)
-        return {
-          plan: { id: "free", name: planName("free", null), status: "none" },
-          source: "none",
-          effectiveUntil: null,
-          rateTier,
+  const read = async (tx: DbTransaction): Promise<EntitlementPlanSummary> => {
+    const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+    const until = policy.authority.effectiveUntil
+      ? new Date(policy.authority.effectiveUntil)
+      : null;
+    const rateTier = policy.tier.status === "available" ? policy.tier.value.tierName : null;
+    let summary: EntitlementPlanSummary | null = null;
+    if (policy.authority.source === "promo_grant" && policy.authority.sourceGrantId) {
+      const [grant] = await tx
+        .select({
+          plan_key: subscriptionGrants.plan_key,
+          catalog_version: subscriptionGrants.catalog_version,
+        })
+        .from(subscriptionGrants)
+        .where(eq(subscriptionGrants.id, policy.authority.sourceGrantId));
+      if (grant)
+        summary = {
+          plan: {
+            id: grant.plan_key,
+            name: planName(grant.plan_key, grant.catalog_version),
+            status: "active",
+          },
+          source: "grant",
+          effectiveUntil: until,
         };
-      if (!options.allowance || !policy.subscriptionFunded) return { ...summary, rateTier };
-      const eligibility = await observeSubscriptionAllowanceEligibility(
-        tx,
+    }
+    if (
+      !summary &&
+      policy.authority.source === "subscription" &&
+      policy.authority.sourceSubscriptionId
+    ) {
+      const [subscription] = await tx
+        .select({
+          status: billingSubscriptions.status,
+          plan_key: billingSubscriptions.plan_key,
+          catalog_version: billingSubscriptions.catalog_version,
+        })
+        .from(billingSubscriptions)
+        .where(eq(billingSubscriptions.id, policy.authority.sourceSubscriptionId));
+      if (subscription)
+        summary = {
+          plan: {
+            id: subscription.plan_key,
+            name: planName(subscription.plan_key, subscription.catalog_version),
+            status: entitlementStatusForSubscription(
+              subscription.status,
+              policy.subscriptionFunded,
+            ),
+          },
+          source: "subscription",
+          effectiveUntil: until,
+        };
+    }
+    if (!summary)
+      return {
+        plan: { id: "free", name: planName("free", null), status: "none" },
+        source: "none",
+        effectiveUntil: null,
+        rateTier,
+      };
+    if (!options.allowance || !policy.subscriptionFunded) return { ...summary, rateTier };
+    const eligibility = await observeSubscriptionAllowanceEligibility(
+      tx,
+      organizationId,
+      new Date(policy.observedAt),
+      policy,
+    );
+    if (eligibility.status === "unavailable") {
+      // An allowance that needs reconciliation is not shown; the plan state
+      // is still reported and Cloud still decides each request.
+      logger.warn("[SubscriptionEntitlement] Allowance not reported", {
         organizationId,
-        new Date(policy.observedAt),
-        policy,
-      );
-      if (eligibility.status === "unavailable") {
-        // An allowance that needs reconciliation is not shown; the plan state
-        // is still reported and Cloud still decides each request.
-        logger.warn("[SubscriptionEntitlement] Allowance not reported", {
-          organizationId,
-          code: eligibility.code,
-        });
-        return { ...summary, rateTier, allowance: null };
-      }
-      const period = eligibility.period;
-      return { ...summary, rateTier, allowance: period ? allowanceFromPeriod(period) : null };
-    },
-    { isolationLevel: "repeatable read", accessMode: "read only" },
-  );
+        code: eligibility.code,
+      });
+      return { ...summary, rateTier, allowance: null };
+    }
+    const period = eligibility.period;
+    return { ...summary, rateTier, allowance: period ? allowanceFromPeriod(period) : null };
+  };
+  // Maps admission already holds the policy lock. Opening another transaction
+  // would wait for a second connection in the Worker's single-connection pool.
+  return options.transaction
+    ? read(options.transaction)
+    : dbWrite.transaction(read, { isolationLevel: "repeatable read", accessMode: "read only" });
 }
 
 function allowanceFromPeriod(period: {

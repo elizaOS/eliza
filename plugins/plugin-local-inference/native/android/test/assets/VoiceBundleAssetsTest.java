@@ -51,6 +51,47 @@ public final class VoiceBundleAssetsTest {
         return VoiceBundleAssets.REGION_MAGIC + "\noffset=" + offset + "\nlength=" + length + "\npath=" + apk + "\n";
     }
 
+    /** modelRegion gives the bytes a model path stands for, as the native loaders read them. */
+    private static void modelRegion(Path installed, Path file, long offset, long length) throws Exception {
+        VoiceBundleAssets.Region region = VoiceBundleAssets.modelRegion(installed.toFile());
+        check(region.file.toPath().toAbsolutePath().equals(file.toAbsolutePath()) && region.offset == offset
+                && region.length == length, "model region of " + installed);
+    }
+
+    /** Region files the native loaders refuse are refused here too, before any read. */
+    private static void regionFiles(Path temp, Path apk) throws Exception {
+        Path file = temp.resolve("region-check.gguf");
+        long size = Files.size(apk);
+        Files.writeString(file, region(apk, 0, size));
+        modelRegion(file, apk, 0, size);
+        Files.writeString(file, region(apk, 0, size) + "\n\n");
+        modelRegion(file, apk, 0, size);
+        String magic = VoiceBundleAssets.REGION_MAGIC;
+        for (String bad : new String[]{
+                region(apk, 0, size + 1), region(apk, 16, size), region(apk, 8, 4), region(apk, 0, 0),
+                region(temp.resolve("missing.apk").toAbsolutePath(), 0, 4),
+                magic + "\noffset=0\nlength=4\npath=relative.apk\n",
+                magic + "\noffset=0\nlength=4\n",
+                magic + "\noffset=0\noffset=0\nlength=4\npath=" + apk + "\n",
+                magic + "\noffset=-1\nlength=4\npath=" + apk + "\n",
+                magic + "\noffset=0\nlength=4\npath=" + apk + "\nextra=1\n"}) {
+            Files.writeString(file, bad);
+            try { VoiceBundleAssets.modelRegion(file.toFile()); throw new AssertionError("invalid region accepted: " + bad); }
+            catch (java.io.IOException expected) {
+                // A broken region file, or a missing or short APK, is not a missing model.
+                if (expected instanceof java.io.FileNotFoundException) {
+                    throw new AssertionError("invalid region reported as a missing model: " + bad, expected);
+                }
+            }
+        }
+        // A file that only looks like the magic without its newline is a model.
+        Files.writeString(file, magic + " model bytes");
+        modelRegion(file, file, 0, Files.size(file));
+        try { VoiceBundleAssets.modelRegion(temp.resolve("absent.gguf").toFile()); throw new AssertionError("missing model accepted"); }
+        catch (java.io.FileNotFoundException expected) {}
+        Files.delete(file);
+    }
+
     /** MODELS_IN_PLACE: region files for uncompressed, aligned model assets; copies for the rest. */
     private static void inPlace(Path temp, Path assets, Context context) throws Exception {
         context.info.metaData.put(VoiceBundleAssets.DIRECTORY_METADATA, "in-place");
@@ -67,6 +108,9 @@ public final class VoiceBundleAssetsTest {
         check(Files.readString(one.model.toPath()).equals("in-place model bytes"), "unaligned asset copied");
         check(Files.readString(one.lexicon.toPath()).equals("in-place model bytes"), "compressed asset copied");
         check(Files.readString(one.root.toPath().resolve("vad/model.gguf")).equals("in-place model bytes"), "vad copied");
+        modelRegion(asr, first, 4096 + 16, length);
+        modelRegion(one.model.toPath(), one.model.toPath(), 0, length);
+        regionFiles(temp, first);
         long before = asr.toFile().lastModified();
         Thread.sleep(20);
         VoiceBundleAssets.install(context);
@@ -148,6 +192,29 @@ public final class VoiceBundleAssetsTest {
         manifest(assets, "new model bytes");
         VoiceBundleAssets.install(context);
         check(Files.readString(eliza.model.toPath()).equals("new model bytes"), "new manifest installs new bytes");
+        // A copy that throws mid-write leaves no partial file behind.
+        JSONObject oversized = manifest(assets, "oversized model bytes");
+        oversized.getJSONArray("files").getJSONObject(0).put("bytes", 1);
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), oversized.toString());
+        rejected(context);
+        check(!Files.exists(eliza.root.toPath().resolve("tts/paradee/model.gguf.partial")), "a failed copy removes its partial file");
+        // An update that drops a file: a failed install deletes nothing, a verified one removes it.
+        Path vad = eliza.root.toPath().resolve("vad/model.gguf"), stale = eliza.root.toPath().resolve("asr/old.gguf.partial");
+        Files.writeString(stale, "stale");
+        JSONObject dropped = manifest(assets, "new model bytes");
+        dropped.getJSONArray("files").remove(3);
+        dropped.getJSONArray("files").getJSONObject(1).put("sha256", "0".repeat(64));
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), dropped.toString());
+        rejected(context);
+        check(Files.exists(vad) && Files.exists(stale), "an update that never verified deletes nothing");
+        dropped = manifest(assets, "new model bytes");
+        dropped.getJSONArray("files").remove(3);
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), dropped.toString());
+        VoiceBundleAssets.install(context);
+        check(!Files.exists(vad) && !Files.exists(stale), "a dropped file and a stale partial are removed");
+        check(Files.readString(eliza.model.toPath()).equals("new model bytes") && Files.exists(eliza.root.toPath().resolve("asr/model.gguf"))
+            && Files.exists(eliza.root.toPath().resolve("installed-manifest.json")), "listed files and the stamp are kept");
+        check(Files.exists(first.model.toPath()), "another host directory is untouched");
         check(VoiceBundleAssets.install(context).voices.isEmpty(), "a v1 bundle has no extra voices");
         // v2 without the opt-in voices (the default build): English only.
         JSONObject english = manifest(assets, "v2 english bytes").put("format", "eliza-paradee-voice-v2");
@@ -177,6 +244,6 @@ public final class VoiceBundleAssetsTest {
         inPlace(temp, assets, context);
         try { Class.forName("ai.eliza.voice.VoiceNative"); throw new AssertionError("installer required a JNI owner"); }
         catch (ClassNotFoundException expected) {}
-        System.out.println("PASS shared voice asset installation, storage identity, repair, failed-copy preservation, v2 voices and in-place models without JNI");
+        System.out.println("PASS shared voice asset installation, storage identity, repair, failed-copy preservation, v2 voices, in-place models and model regions without JNI");
     }
 }

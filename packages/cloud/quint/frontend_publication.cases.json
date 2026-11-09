@@ -1,0 +1,50 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+    "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.pglite.test.ts",
+    "packages/cloud/quint/check-frontend-publication.mjs",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/cloud/shared/src/db/migrations/0568_app_cleanup_manifest.sql",
+    "packages/cloud/shared/src/db/schemas/apps.ts",
+    "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/activate/route.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-frontend-publication.mjs",
+  "bounds": {
+    "domain": "One immutable deployment with a complete abstract object set and one pre-existing active deployment; one upload, publication request, retirement request and deletion. Both known and transport-ambiguous SQL outcomes are represented.",
+    "atomicity": "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. Activation first locks the parent app in the supplied organization. A nonmatching organization cannot change either deployment. The model assumes immutable deployment IDs and complete acknowledged object writes. The original app and organization guard allocation, each PUT admission and quiescence; a mismatched scope cannot begin an existing upload.",
+    "gaps": "No general TypeScript refinement, live R2 proof, account deletion or request authentication proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid. The separate app_cleanup_manifest model owns upload plans, writer quiescence and app-delete cleanup. This publication projection retains its original manifest/retirement authority.",
+    "progress": "Fair continuation of outstanding storage operations gives a terminal result; success, availability, cleanup after lost receipts and elapsed deadlines are not promised.",
+    "conformance": "Thirteen real PGlite service/repository cases include foreign organization rejection before row allocation or any PUT, and parent/organization checks for upload and quiescence. Six real PostgreSQL cases check contention and acknowledgement loss. Five PG tests observe row-lock wait chains across separate connections, including ownership changing while upload creation waits; the sixth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement."
+  },
+  "cases": [
+    {
+      "name": "frontend-publication-and-retirement",
+      "main": "frontend_publication",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [
+        "StorageOperationsSettle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "StorageOperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Outstanding SQL and object-store operations eventually return under weak fairness of finish. This is not a live provider, deadline or successful-publication claim."
+          ]
+        }
+      ],
+      "maxSteps": 45,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

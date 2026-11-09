@@ -20,7 +20,7 @@ const sources = (dir) =>
     .filter((name) => name.endsWith(".java"))
     .map((name) => path.join(dir, name));
 const config =
-  'package ai.eliza.sense; public final class BuildConfig { public static final String APPLICATION_ID="ai.eliza.sense", SENSE_HOST_PACKAGE="ai.eliza", SENSE_ASSIST_ACTIVITY="ai.eliza.AssistActivity", SENSE_APP_NAME="Eliza", SENSE_WAKE_LABEL="alpha", SENSE_WAKE_NAMES="alpha", SENSE_COMPONENT_PACKAGE="ai.eliza.sense", SENSE_STORAGE_NAME="listener-settings"; }';
+  'package ai.eliza.sense; public final class BuildConfig { public static final String APPLICATION_ID="ai.eliza.sense", SENSE_HOST_PACKAGE="ai.eliza", SENSE_ASSIST_ACTIVITY="ai.eliza.AssistActivity", SENSE_APP_NAME="Eliza", SENSE_WAKE_LABEL="Alpha", SENSE_WAKE_NAMES="alpha", SENSE_COMPONENT_PACKAGE="ai.elizaresearch.alphaphone.sense", SENSE_STORAGE_NAME="listener-settings"; }';
 function compile(files, run, { android = false } = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "shared-sense-"));
   try {
@@ -92,6 +92,7 @@ test("persistence failure and restart cannot revive stale consent", () => {
           "ListenerPolicy",
           "CrashLoopBreaker",
           "ListeningEpoch",
+          "SenseConfig",
         ].map((name) => path.join(source, `${name}.java`)),
       ],
       "ai.eliza.sense.ListenerStoreFailureTest",

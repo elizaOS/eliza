@@ -1,6 +1,6 @@
 // Persists ad transactions records for cloud services through the shared DB boundary.
 import { and, desc, eq, sql, sum } from "drizzle-orm";
-import { db } from "../client";
+import { type DbTransaction, db } from "../client";
 import {
   type AdTransaction,
   type AdTransactionType,
@@ -64,8 +64,8 @@ export class AdTransactionsRepository {
     });
   }
 
-  async create(data: NewAdTransaction): Promise<AdTransaction> {
-    const [transaction] = await db.insert(adTransactions).values(data).returning();
+  async create(data: NewAdTransaction, tx?: DbTransaction): Promise<AdTransaction> {
+    const [transaction] = await (tx ?? db).insert(adTransactions).values(data).returning();
     return transaction;
   }
 

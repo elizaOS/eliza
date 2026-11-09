@@ -559,17 +559,24 @@ export class RemoteCodingCapabilityRouterService
 
   readonly environment = "server";
   readonly fs = {
-    list: (params?: FileListParams) => this.list(params),
-    readText: (params: FileReadTextParams) => this.readText(params),
-    writeText: (params: FileWriteTextParams) => this.writeText(params),
+    list: (params?: FileListParams) =>
+      this.withOperation(() => this.list(params)),
+    readText: (params: FileReadTextParams) =>
+      this.withOperation(() => this.readText(params)),
+    writeText: (params: FileWriteTextParams) =>
+      this.withOperation(() => this.writeText(params)),
   };
   readonly pty = {
-    runCommand: (params: TerminalRunParams) => this.runCommand(params),
+    runCommand: (params: TerminalRunParams) =>
+      this.withOperation(() => this.runCommand(params)),
   };
   readonly git = {
-    status: (params: GitStatusParams) => this.gitStatus(params),
-    diff: (params: GitDiffParams) => this.gitDiff(params),
-    commandRun: (params: GitCommandRunParams) => this.gitCommandRun(params),
+    status: (params: GitStatusParams) =>
+      this.withOperation(() => this.gitStatus(params)),
+    diff: (params: GitDiffParams) =>
+      this.withOperation(() => this.gitDiff(params)),
+    commandRun: (params: GitCommandRunParams) =>
+      this.withOperation(() => this.gitCommandRun(params)),
   };
   readonly model = {
     status: () => this.modelStatus(),
@@ -605,6 +612,9 @@ export class RemoteCodingCapabilityRouterService
   private runnerPromise: Promise<RemoteRunnerClient> | null = null;
   private prepareRunnerPromise: Promise<void> | null = null;
   private createdRunner = false;
+  private stopped = false;
+  private stopPromise: Promise<void> | null = null;
+  private readonly operations = new Set<Promise<unknown>>();
   private readonly routerConfig: RemoteCodingRunnerConfig;
   private readonly factory: RemoteRunnerFactory;
   private readonly workspaceObservationLimits: RemoteWorkspaceObservationLimits;
@@ -644,18 +654,52 @@ export class RemoteCodingCapabilityRouterService
     return service;
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    this.stopped = true;
+    if (!this.stopPromise) {
+      const pending = this.stopRunner();
+      this.stopPromise = pending;
+      // error-policy:J5 Preserve failed cleanup ownership while allowing a retry.
+      void pending.catch(() => {
+        if (this.stopPromise === pending) this.stopPromise = null;
+      });
+    }
+    return this.stopPromise;
+  }
+
+  private async stopRunner(): Promise<void> {
+    await Promise.allSettled(this.operations);
     const sandbox = await this.runnerPromise?.catch(() => null);
+    if (sandbox && !this.routerConfig.keepAlive && this.createdRunner) {
+      await sandbox.kill({
+        requestTimeoutMs: this.routerConfig.requestTimeoutMs,
+      });
+    }
     this.runnerPromise = null;
     this.prepareRunnerPromise = null;
-    if (!sandbox || this.routerConfig.keepAlive || !this.createdRunner) return;
-    await sandbox.kill({
-      requestTimeoutMs: this.routerConfig.requestTimeoutMs,
+  }
+
+  private requireRunning(): void {
+    if (this.stopped)
+      throw new ElizaError("Remote coding runner has stopped", {
+        code: "REMOTE_CODING_RUNNER_STOPPED",
+      });
+  }
+
+  private withOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = Promise.resolve().then(() => {
+      this.requireRunning();
+      return operation();
     });
+    this.operations.add(pending);
+    const release = () => this.operations.delete(pending);
+    // error-policy:J5 The caller observes rejection; shutdown only drains admitted work.
+    void pending.then(release, release);
+    return pending;
   }
 
   async availability(): Promise<CapabilityAvailability> {
-    const available = hasRunnerCredentials(this.routerConfig);
+    const available = !this.stopped && hasRunnerCredentials(this.routerConfig);
     return {
       environment: this.environment,
       available,
@@ -669,7 +713,9 @@ export class RemoteCodingCapabilityRouterService
       ...(available
         ? {}
         : {
-            reason: runnerUnavailableReason(this.routerConfig),
+            reason: this.stopped
+              ? "Remote coding runner has stopped."
+              : runnerUnavailableReason(this.routerConfig),
           }),
     };
   }
@@ -677,6 +723,7 @@ export class RemoteCodingCapabilityRouterService
   private async list(params: FileListParams = {}): Promise<FileListResult> {
     await this.requireAvailable("fs", "fs.list");
     const sandbox = await this.getRunner();
+    this.requireRunning();
     const target = this.mapPath(params.path ?? this.routerConfig.workdir);
     const entries = await sandbox.files.list(target, {
       depth: 1,
@@ -714,6 +761,7 @@ export class RemoteCodingCapabilityRouterService
       });
     }
     const sandbox = await this.getRunner();
+    this.requireRunning();
     const target = this.mapPath(params.path);
     const content = await sandbox.files.read(target, {
       format: "text",
@@ -751,6 +799,7 @@ export class RemoteCodingCapabilityRouterService
       }
     }
     const sandbox = await this.getRunner();
+    this.requireRunning();
     const target = this.mapPath(params.path);
     await sandbox.files.write(target, params.text, {
       requestTimeoutMs: this.routerConfig.requestTimeoutMs,
@@ -780,6 +829,7 @@ export class RemoteCodingCapabilityRouterService
       });
     }
     const sandbox = await this.getRunner();
+    this.requireRunning();
     const command = commandLine(params.command, params.args ?? []);
     const cwd = this.mapPath(params.cwd ?? this.routerConfig.workdir);
     const observationTimeoutMs = Math.min(
@@ -805,6 +855,7 @@ export class RemoteCodingCapabilityRouterService
       ),
     );
     try {
+      this.requireRunning();
       const result = await sandbox.commands.run(command, opts);
       return await commandRunResultWithWorkspaceObservation(
         result,
@@ -942,6 +993,7 @@ export class RemoteCodingCapabilityRouterService
   private async pathExists(path: string): Promise<boolean> {
     try {
       const sandbox = await this.getRunner();
+      this.requireRunning();
       await sandbox.files.read(this.mapPath(path), {
         format: "bytes",
         requestTimeoutMs: this.routerConfig.requestTimeoutMs,
@@ -984,6 +1036,7 @@ export class RemoteCodingCapabilityRouterService
    * call starts a fresh one.
    */
   private async getRunner(): Promise<RemoteRunnerClient> {
+    this.requireRunning();
     if (!this.runnerPromise) {
       const pending = this.factory.create(this.routerConfig);
       this.runnerPromise = pending;
@@ -994,6 +1047,7 @@ export class RemoteCodingCapabilityRouterService
       this.createdRunner = !this.routerConfig.sandboxId;
     }
     const sandbox = await this.runnerPromise;
+    this.requireRunning();
     if (!this.prepareRunnerPromise) {
       const pendingPrepare = this.prepareRunner(sandbox);
       this.prepareRunnerPromise = pendingPrepare;
@@ -1005,6 +1059,7 @@ export class RemoteCodingCapabilityRouterService
       });
     }
     await this.prepareRunnerPromise;
+    this.requireRunning();
     return sandbox;
   }
 
@@ -1018,6 +1073,7 @@ export class RemoteCodingCapabilityRouterService
         },
       );
     }
+    this.requireRunning();
     if (!this.routerConfig.bootstrapGitUrl) return;
     const exists = await sandbox.commands
       .run(
@@ -1029,6 +1085,7 @@ export class RemoteCodingCapabilityRouterService
       )
       .then(() => true)
       .catch(() => false);
+    this.requireRunning();
     if (!exists) {
       await sandbox.commands.run(
         `git clone ${shellQuote(this.routerConfig.bootstrapGitUrl)} ${shellQuote(this.routerConfig.workdir)}`,
@@ -1038,6 +1095,7 @@ export class RemoteCodingCapabilityRouterService
         },
       );
     }
+    this.requireRunning();
     if (this.routerConfig.bootstrapGitRef) {
       await sandbox.commands.run(
         `git fetch --all --tags && git checkout ${shellQuote(this.routerConfig.bootstrapGitRef)}`,

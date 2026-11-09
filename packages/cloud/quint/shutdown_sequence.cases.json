@@ -1,0 +1,31 @@
+{
+  "sources": [
+    "packages/cloud/services/agent-server/src/agent-shutdown.ts",
+    "packages/cloud/services/agent-server/src/index.ts",
+    "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
+    "packages/cloud/services/agent-server/src/agent-manager.ts",
+    "packages/cloud/services/agent-server/src/agent-shutdown.test.ts",
+    "packages/cloud/services/agent-server/src/agent-lifecycle.test.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One absolute deadline and three ordered shutdown phases; each operation may acknowledge, reject or stall.",
+      "The bounded clock abstracts elapsed monotonic scheduling; a disconnected terminal state denotes failed teardown, not proof that runtime effects completed.",
+      "No fairness, operating-system process termination or cleanup of remote provider effects is proved."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "shutdown-sequence",
+      "main": "shutdown_sequence",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 25,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

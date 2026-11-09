@@ -53,6 +53,15 @@ final class BionicDecodeLoop {
         void emit(String text) throws Exception;
     }
 
+    /**
+     * Checked before every native step, without writing to the client. A
+     * buffered generate has nothing to write until the end, so this is how it
+     * learns the caller hung up.
+     */
+    interface Liveness {
+        boolean peerGone();
+    }
+
     static final class Result {
         /** Committed tokens this turn (== eval work performed, <= the cap). */
         final int produced;
@@ -88,6 +97,16 @@ final class BionicDecodeLoop {
      */
     static Result run(StepFn step, int maxTokens, int stepTokens,
                       List<String> stopSequences, TokenSink sink) throws Exception {
+        return run(step, maxTokens, stepTokens, stopSequences, sink, null);
+    }
+
+    /**
+     * As above, and stops before the next native step once {@code liveness}
+     * reports the client gone (finish reason {@code client_gone}). It may be null.
+     */
+    static Result run(StepFn step, int maxTokens, int stepTokens,
+                      List<String> stopSequences, TokenSink sink, Liveness liveness)
+            throws Exception {
         if (maxTokens <= 0) {
             throw new IllegalArgumentException("maxTokens must be a positive real generation boundary");
         }
@@ -101,8 +120,13 @@ final class BionicDecodeLoop {
         boolean stopped = false;
         boolean terminal = false;
         boolean yieldedNoStep = false;
+        boolean clientGone = false;
         int produced = 0;
         while (produced < cap) {
+            if (liveness != null && liveness.peerGone()) {
+                clientGone = true;
+                break;
+            }
             final int stepCap = Math.min(perStep, cap - produced);
             final Step s = step.next(stepCap);
             if (s == null) {
@@ -141,9 +165,11 @@ final class BionicDecodeLoop {
             ? "stop_sequence"
             : terminal
                 ? "model_terminal"
-                : yieldedNoStep
-                    ? "native_no_step"
-                    : "generation_boundary";
+                : clientGone
+                    ? "client_gone"
+                    : yieldedNoStep
+                        ? "native_no_step"
+                        : "generation_boundary";
         return new Result(produced, sb.toString(), incomplete, finishReason);
     }
 

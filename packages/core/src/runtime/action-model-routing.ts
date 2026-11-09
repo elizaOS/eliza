@@ -12,8 +12,11 @@
  * - When `action.modelClass` is absent, the resolver
  * returns `null` and the runtime falls through to its existing behavior.
  *
- * Fallback chain (ascending cost / capability):
- * `LOCAL → TEXT_SMALL → TEXT_LARGE`
+ * Fallback chains (ascending cost / capability):
+ * - `TEXT_SMALL → TEXT_LARGE`
+ * - `LOCAL` is terminal: it resolves only local-provider registrations and
+ * never escalates to a cloud handler. With no local handler registered the
+ * call fails instead of taking the default path.
  *
  * Failure semantics:
  * - If the preferred model handler has a retryable provider failure, escalate
@@ -86,6 +89,9 @@ export interface ActionModelRoutingStep {
 export interface ActionModelRoutingStrategy {
 	readonly chain: readonly ActionModelRoutingStep[];
 	readonly confidenceThreshold?: number;
+	/** When true, a chain that resolves no handler fails the call instead of
+	 * falling back to the default (possibly cloud) resolution. */
+	readonly requireChainMatch?: boolean;
 }
 
 /** Name-based local-provider fallback for registrations without declared locality metadata. Prefer isLocalHandler for capability decisions. */
@@ -147,9 +153,8 @@ const ACTION_MODEL_STRATEGIES: Readonly<
 	LOCAL: {
 		chain: [
 			{ modelType: ModelType.TEXT_SMALL, providerFilter: isLocalHandler },
-			{ modelType: ModelType.TEXT_SMALL },
-			{ modelType: ModelType.TEXT_LARGE },
 		],
+		requireChainMatch: true,
 	},
 	TEXT_SMALL: {
 		chain: [

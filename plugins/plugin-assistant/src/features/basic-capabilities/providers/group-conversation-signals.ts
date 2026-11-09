@@ -271,7 +271,7 @@ export function humanDirectlyAddressesAgent(
   }
   // The user's own words only: connectors may wrap content.text in an
   // external-content envelope whose header names the channel and server
-  // ("[Discord #development | Eliza Research] @user …"), and an agent named
+  // ("[Discord #development | Alpha Compute] @user …"), and an agent named
   // Eliza would otherwise count every message in that server as addressed
   // (live 2026-09-16: an unaddressed question to another member was answered).
   const text = getUserMessageText(message);

@@ -3,11 +3,11 @@ import java.io.IOException;
 import java.util.*;
 /** Drives the real UpdateJournal, with its real codec, through every recipe state
  * crossed with every event, and compares each result with a reference step. The
- * reference started as a copy of the Step operator of the OtaInstallJournal TLA+
- * model and now states this branch's readback rule: durable installer reports,
+ * reference matches plugins/plugin-native-agent/quint/UpdateJournal.qnt, including
+ * durable installer reports,
  * a timed wait before an unreported release and a per-candidate retry budget.
- * Until the consumer adopts the matching model, it is the spec of record here,
- * so a change to either side shows up as a numbered difference.
+ * scripts/check-update-journal.ts also compares the Quint step directly with
+ * the real codec-backed results for this complete table.
  * Model identities are version codes: the baseline is 1, plan p has candidate
  * 2p and recovery 2p+1, and 9 is a package nobody planned. */
 public final class UpdateJournalConformanceTest {

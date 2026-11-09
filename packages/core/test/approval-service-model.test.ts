@@ -1,4 +1,4 @@
-/** Regression checks for properties of tla/ApprovalService.tla that the code once broke. */
+/** Regression checks for properties of quint/ApprovalService.qnt that the code once broke. */
 import { describe, expect, it } from "vitest";
 import { ApprovalService } from "../src/services/approval";
 import type { UUID } from "../src/types/primitives";

@@ -35,9 +35,11 @@ const SSO_BRIDGE_CODE_PREFIX = "esso_";
 // Older generic bridge deployments reject this namespace before any lookup.
 export const NETWORK_SSO_BRIDGE_CODE_PREFIX = "enso_";
 
-/** Matches the Steward access-token TTL (steward-client.ts): once every
- * pre-logout token has expired, the marker has nothing left to block. */
-export const SSO_BRIDGE_LOGOUT_MARKER_TTL_SECONDS = 60 * 60;
+/** The Steward access-token TTL plus the verifier's clock skew
+ * (steward-client.ts accepts a token until exp + 5 min): once every pre-logout
+ * token is past that, the marker has nothing left to block. A shorter TTL would
+ * let a still-accepted pre-logout token restart a bearer-refresh chain. */
+export const SSO_BRIDGE_LOGOUT_MARKER_TTL_SECONDS = 60 * 60 + 5 * 60;
 
 const HEX_64_RE = /^[0-9a-f]{64}$/;
 

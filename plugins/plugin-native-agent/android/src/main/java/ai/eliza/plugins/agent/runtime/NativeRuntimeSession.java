@@ -13,6 +13,12 @@ import java.util.function.BooleanSupplier;
 public final class NativeRuntimeSession implements AutoCloseable {
     @FunctionalInterface public interface Launcher { void launch(Scope scope) throws Exception; }
     @FunctionalInterface public interface Request<T> { T execute() throws Exception; }
+    /** The request was not dispatched because the runtime is not running. A host bridge
+     * rejects with {@link #CODE} so a renderer can wait for startup and send it once. */
+    public static final class NotReadyException extends NativeProcessSupervisor.LifecycleException {
+        public static final String CODE = "RUNTIME_NOT_READY";
+        public NotReadyException(String message) { super(message); }
+    }
     public static final class Snapshot {
         public final NativeProcessSupervisor.Snapshot lifecycle;
         public final String instance;
@@ -74,7 +80,7 @@ public final class NativeRuntimeSession implements AutoCloseable {
     public <T> T request(BooleanSupplier activeHost, Request<T> request, String unavailable, String cancelled) throws Exception {
         NativeProcessSupervisor.Snapshot before = supervisor.snapshot();
         if (!activeHost.getAsBoolean() || before.state != NativeProcessSupervisor.State.RUNNING)
-            throw new NativeProcessSupervisor.LifecycleException(unavailable);
+            throw new NotReadyException(unavailable);
         T response = request.execute();
         NativeProcessSupervisor.Snapshot after = supervisor.snapshot();
         if (!activeHost.getAsBoolean() || before.epoch != after.epoch || after.state != NativeProcessSupervisor.State.RUNNING)

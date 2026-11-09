@@ -1,7 +1,11 @@
 /** Real worker/control subprocesses with durable SQLite decisions across restarts. */
+
+import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   controlSmithersRun,
   resolveSmithersWorkflowDir,
@@ -50,6 +54,9 @@ export default smithers(()=><Workflow name="guarded"><Sequence><Approval id="gat
         (event) => event.nodeId === 'gate' && typeof event.iteration === 'number'
       )?.iteration;
       if (iteration === undefined) throw new Error('Missing durable approval iteration');
+      expect(
+        await controlSmithersRun(tenantId, id, { kind: 'status', runId: request.runId })
+      ).toEqual({ status: 'waiting-approval' });
       await controlSmithersRun(
         tenantId,
         id,
@@ -68,3 +75,57 @@ export default smithers(()=><Workflow name="guarded"><Sequence><Approval id="gat
     }
   }, 100000);
 }
+
+test('status probe reads without creating a store or a run row', async () => {
+  const tenantId = `status-${randomUUID()}`;
+  const id = 'probe';
+  const dir = resolveSmithersWorkflowDir(tenantId, id);
+  try {
+    expect(await controlSmithersRun(tenantId, id, { kind: 'status', runId: 'missing' })).toEqual({
+      status: null,
+    });
+    await expect(stat(join(dir, 'runs.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' });
+
+    const database = new Database(join(dir, 'runs.sqlite'));
+    database.exec(
+      'CREATE TABLE _smithers_runs (run_id TEXT PRIMARY KEY, workflow_name TEXT, status TEXT)'
+    );
+    database.close();
+    expect(await controlSmithersRun(tenantId, id, { kind: 'status', runId: 'missing' })).toEqual({
+      status: null,
+    });
+    const reread = new Database(join(dir, 'runs.sqlite'), { readonly: true });
+    try {
+      expect(reread.query('SELECT COUNT(*) AS count FROM _smithers_runs').get()).toEqual({
+        count: 0,
+      });
+    } finally {
+      reread.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60000);
+
+test('a hung control child is killed at its deadline', async () => {
+  const tenantId = `hung-${randomUUID()}`;
+  const id = 'hung';
+  const scratch = await mkdtemp(join(tmpdir(), 'hung-control-'));
+  const hung = join(scratch, 'hung.sh');
+  await writeFile(hung, '#!/bin/sh\nexec sleep 60\n');
+  await chmod(hung, 0o700);
+  const previous = process.env.BUN_BIN;
+  process.env.BUN_BIN = hung;
+  const startedAt = Date.now();
+  try {
+    await expect(
+      controlSmithersRun(tenantId, id, { kind: 'cancel', runId: 'any' }, { timeoutMs: 500 })
+    ).rejects.toMatchObject({ code: 'SMTHRS_CONTROL_TIMEOUT' });
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+  } finally {
+    if (previous === undefined) delete process.env.BUN_BIN;
+    else process.env.BUN_BIN = previous;
+    await rm(scratch, { recursive: true, force: true });
+    await rm(resolveSmithersWorkflowDir(tenantId, id), { recursive: true, force: true });
+  }
+}, 30000);

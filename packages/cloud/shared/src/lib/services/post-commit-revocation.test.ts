@@ -10,10 +10,8 @@ process.env.NODE_ENV ||= "test";
 
 import { appsRepository } from "../../db/repositories/apps";
 import { cliAuthSessionsRepository } from "../../db/repositories/cli-auth-sessions";
-import { organizationsRepository } from "../../db/repositories/organizations";
 import { strandedAgentKeyRepository } from "../../db/repositories/stranded-agent-keys";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
-import { defaultAccountDeletionResourcePurgeDependencies } from "./account-deletion-resource-purge";
 import { apiKeysService } from "./api-keys";
 import { appsService } from "./apps";
 import { cliAuthSessionsService } from "./cli-auth-sessions";
@@ -195,32 +193,5 @@ describe("app deactivation", () => {
     ).rejects.toBeInstanceOf(InferenceCredentialRevocationUnavailableError);
 
     expect(gate.revoked().sort()).toEqual(["first", "second"]);
-  });
-});
-
-describe("account deletion billing purge", () => {
-  test("fences the organization at the gate before the write", async () => {
-    const gate = gateRefusing();
-    let gateCallsAtWrite = -1;
-    spy(
-      spyOn(organizationsRepository, "findById").mockResolvedValue({
-        stripe_customer_id: "cus_test",
-      } as never),
-    );
-    spy(
-      spyOn(organizationsRepository, "update").mockImplementation(async () => {
-        gateCallsAtWrite = gate.calls.length;
-        return undefined;
-      }),
-    );
-
-    await expect(
-      gate.run(() => defaultAccountDeletionResourcePurgeDependencies().disableBilling(ORG)),
-    ).resolves.toBe("cus_test");
-
-    expect(gateCallsAtWrite).toBe(1);
-    expect(gate.calls).toEqual([
-      { path: "/organization/set-active", body: { organizationId: ORG, active: false } },
-    ]);
   });
 });

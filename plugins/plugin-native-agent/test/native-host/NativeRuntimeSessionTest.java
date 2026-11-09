@@ -24,7 +24,11 @@ public final class NativeRuntimeSessionTest {
     }
     static void rejected(NativeRuntimeSession session, BooleanSupplier active, NativeRuntimeSession.Request<String> action, String expected) throws Exception {
         try { session.request(active, action, "unavailable", "cancelled"); throw new AssertionError("Accepted retired request"); }
-        catch (NativeProcessSupervisor.LifecycleException failure) { check(expected.equals(failure.getMessage())); }
+        catch (NativeProcessSupervisor.LifecycleException failure) {
+            check(expected.equals(failure.getMessage()));
+            // Only an undispatched request is not-ready; a dispatched one may have had effects.
+            check((failure instanceof NativeRuntimeSession.NotReadyException) == expected.equals("unavailable"));
+        }
     }
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && args[0].equals("child")) {
@@ -62,7 +66,7 @@ public final class NativeRuntimeSessionTest {
             catch (ExecutionException failure) { check(failure.getCause() instanceof NativeProcessSupervisor.LifecycleException); }
             check(requests.get() == 2 && released.get() == 1);
             try { session.request(first, active::get, () -> { throw new AssertionError("Stale selected endpoint dispatched"); }, "unavailable", "cancelled"); throw new AssertionError("Old capture admitted after restart"); }
-            catch (NativeProcessSupervisor.LifecycleException expected) { check("unavailable".equals(expected.getMessage())); }
+            catch (NativeRuntimeSession.NotReadyException expected) { check("unavailable".equals(expected.getMessage())); }
             check("current".equals(session.request(session.snapshot(), active::get, () -> "current", "unavailable", "cancelled")));
             rejected(session, active::get, () -> { active.set(false); return "retired host"; }, "cancelled");
             rejected(session, active::get, () -> { throw new AssertionError("Inactive host called transport"); }, "unavailable");

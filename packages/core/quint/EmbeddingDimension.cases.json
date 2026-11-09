@@ -1,0 +1,65 @@
+{
+	"cases": [
+		{
+			"name": "probes",
+			"main": "EmbeddingDimension_probes",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PinMatchesStore",
+				"StoredInColumn",
+				"StoredOneSpace"
+			],
+			"temporal": ["PinSpaceStable", "DeadlockFree"],
+			"maxSteps": 60,
+			"samples": 1000,
+			"legacyConfiguration": {
+				"name": "EmbeddingDimension.probes.cfg",
+				"constants": ["Embedders = {e1, e2}", "MaxProbes = 3"],
+				"specification": ["Spec"],
+				"invariants": ["TypeOK", "PinMatchesStore", "StoredInColumn"],
+				"properties": ["PinSpaceStable"],
+				"checkDeadlock": true
+			},
+			"fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "PinSpaceStable",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in EmbeddingDimension_probes: PinSpaceStable = always((s.pinProv != None implies next(s.pinSpace) == s.pinSpace).orKeep(s))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in EmbeddingDimension_probes: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				}
+			]
+		}
+	],
+	"sources": [
+		"packages/core/src/runtime/embeddings.ts",
+		"plugins/plugin-sql/src/base.ts",
+		"packages/core/src/embedding-vector-space.ts",
+		"packages/core/src/runtime/model-dispatch.ts",
+		"plugins/plugin-sql/src/embedding-space.ts",
+		"plugins/plugin-sql/src/stores/memory.store.ts",
+		"plugins/plugin-sql/src/__tests__/integration/embedding-provenance.real.test.ts"
+	],
+	"resolvedDiagnostic": {
+		"property": "StoredOneSpace",
+		"reason": "Runtime results retain named or explicit unversioned provenance. Persistence captures that identity and rechecks the selected space/column before writes. Previously mislabeled historical rows are not detectable or repaired automatically."
+	},
+	"initialStateAssumptions": [
+		"The index is empty or each existing row is already labeled with its real representation.",
+		"Unmarked direct adapter inputs can enter only unnamed storage. Named storage requires explicit vector provenance.",
+		"Previously mislabeled rows require explicit fresh-index/re-embedding recovery; this change preserves their bytes."
+	]
+}

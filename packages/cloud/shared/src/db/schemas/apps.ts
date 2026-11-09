@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { jobs } from "./jobs";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -102,6 +103,9 @@ export const apps = pgTable(
 
     // API Key
     api_key_id: uuid("api_key_id").unique(),
+
+    /** Permanent deletion authority. It remains bound until the app row is removed. */
+    deletion_job_id: uuid("deletion_job_id").references(() => jobs.id, { onDelete: "restrict" }),
 
     // Affiliate tracking
     affiliate_code: text("affiliate_code").unique(),
