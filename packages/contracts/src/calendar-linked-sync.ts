@@ -618,7 +618,7 @@ export class LinkedCalendarReconciler<
         providerEtag: null,
         lastCommonSemanticHash: null,
         localRevision: local.revision,
-        idempotencyKey: `linked-calendar:recreate:${await sha256Hex(
+        idempotencyKey: `linked-calendar:recreate:${await digestText(
           `${record.idempotencyKey}\n${record.updatedAt}`,
         )}`,
         lastErrorCode: null,
