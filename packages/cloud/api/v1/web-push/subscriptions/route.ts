@@ -3,6 +3,7 @@
  *
  *   POST   /api/v1/web-push/subscriptions   — persist a PushSubscription keyed to (user, agent)
  *   DELETE /api/v1/web-push/subscriptions   — remove a subscription on unsubscribe
+ *                                             (one agent with agentId, else all)
  *
  * The client (PR-1) creates a `PushSubscription` inside a user gesture and
  * POSTs its `toJSON()` here. The private VAPID key never touches this route;
@@ -37,8 +38,11 @@ const subscribeSchema = z.object({
   }),
 });
 
+// With agentId only that agent's subscription for the device is removed. Without
+// it every agent's row for the endpoint goes, for a revoked browser subscription.
 const unsubscribeSchema = z.object({
   endpoint: pushEndpoint,
+  agentId: z.string().uuid().optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -96,6 +100,7 @@ app.delete("/", async (c) => {
     const removed = await webPushSubscriptionsRepository.deleteByEndpoint(
       user.id,
       parsed.data.endpoint,
+      parsed.data.agentId,
     );
 
     return c.json({ ok: true, removed });

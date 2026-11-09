@@ -536,9 +536,11 @@ export async function debitInferenceCost(
 /**
  * Build a settler with the SAME `(actualCost) => Promise<CreditReconciliationResult|null>`
  * shape as the reservation settler, so the route's post-response billing chain is
- * unchanged. It atomically CLAIMS the pending entry (so the cron sweep can't also
- * charge), then debits the actual cost when > 0. Called with 0 on error/abort,
- * which still claims (removing the pending entry) but charges nothing.
+ * unchanged. It CLAIMS the pending entry with getAndDelete (atomic on Redis; on
+ * Cloudflare KV both the inline settle and the sweep can win, and the debit's
+ * per-request idempotency key keeps that to one charge), then debits the actual
+ * cost when > 0. Called with 0 on error/abort, which still claims (removing the
+ * pending entry) but charges nothing.
  */
 export function createOptimisticDebitSettler(
   ctx: DebitContext,
@@ -687,7 +689,8 @@ export async function sweepStalePendingInferenceCharges(opts?: {
         stats.skippedYoung++;
         continue;
       }
-      // Claim atomically; if the inline settle grabbed it first, getAndDelete → null.
+      // Claim; if the inline settle grabbed it first, getAndDelete → null (atomic
+      // on Redis only; on KV the debit's per-request idempotency key dedupes).
       const claimed = await cache.getAndDelete<PendingInferenceCharge>(key);
       if (!claimed || !isPendingInferenceCharge(claimed)) continue;
       if (claimed.estimatedCostUsd > 0) {

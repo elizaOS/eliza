@@ -128,7 +128,7 @@ export class CacheClient {
   private lastFailureTime = 0;
   private readonly MAX_FAILURES = 5;
   private readonly CIRCUIT_BREAKER_TIMEOUT = 60000;
-  private revalidationQueue = new Map<string, Promise<void>>();
+  private revalidationQueue = new Map<string, { promise: Promise<void>; startedAt: number }>();
   private readonly MAX_REVALIDATION_QUEUE_SIZE = 100;
   private readonly REVALIDATION_TIMEOUT_MS = 30000;
   private nativeRedisConnectPromise: Promise<void> | null = null;
@@ -292,8 +292,10 @@ export class CacheClient {
     // `cloudflare:sockets` connection to Railway's public proxy hangs under load
     // (no connect timeout → the whole request stalls). So when a KV namespace is
     // bound (`CACHE_KV`), prefer it for the Worker's cache — KV is HTTP-native
-    // and reliable from Workers. Atomic/list ops degrade (see KvCacheAdapter);
-    // supportsAtomicOperations() reports false so locks use the dummy path.
+    // and reliable from Workers. Atomic/list ops degrade (see KvCacheAdapter):
+    // supportsAtomicOperations() reports false, and callers that need atomicity
+    // (room locks, single-use records) must check it, because setIfNotExists and
+    // getAndDelete still run their racy KV emulation here.
     if (inWorker && backendPreference !== "redis-rest" && backendPreference !== "redis") {
       const kv = this.getKvBinding();
       if (kv) {
@@ -571,6 +573,8 @@ export class CacheClient {
    * @param staleTTL - Time in seconds before data is considered stale.
    * @param revalidate - Function to fetch fresh data.
    * @param ttl - Optional total time to live in seconds. Defaults to staleTTL * 2.
+   * @param options.waitUntil - Keeps the background revalidation alive after the
+   *   response on Workers (pass `executionCtx.waitUntil`).
    * @returns Cached value (stale or fresh) or null.
    */
   async getWithSWR<T>(
@@ -578,6 +582,7 @@ export class CacheClient {
     staleTTL: number,
     revalidate: () => Promise<T>,
     ttl?: number,
+    options?: { waitUntil?: (promise: Promise<unknown>) => void },
   ): Promise<T | null> {
     const effectiveTTL = ttl ?? staleTTL * 2;
     const redis = await this.getRedisClient();
@@ -620,6 +625,14 @@ export class CacheClient {
         // Return stale data immediately
         const staleData = parsed.data;
 
+        // A Worker can cancel work left after the response, so `.finally` may
+        // never run; drop entries that outlived the revalidation timeout.
+        for (const [queuedKey, entry] of this.revalidationQueue) {
+          if (now - entry.startedAt > this.REVALIDATION_TIMEOUT_MS) {
+            this.revalidationQueue.delete(queuedKey);
+          }
+        }
+
         if (this.revalidationQueue.size >= this.MAX_REVALIDATION_QUEUE_SIZE) {
           logger.warn(
             `[Cache] Revalidation queue full (${this.revalidationQueue.size}/${this.MAX_REVALIDATION_QUEUE_SIZE}). ` +
@@ -630,8 +643,9 @@ export class CacheClient {
 
         // Revalidate in background (deduplicated)
         if (!this.revalidationQueue.has(key)) {
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
           const timeoutPromise = new Promise<T | null>((_, reject) => {
-            setTimeout(
+            timeoutId = setTimeout(
               () => reject(new Error("Revalidation timeout")),
               this.REVALIDATION_TIMEOUT_MS,
             );
@@ -663,10 +677,15 @@ export class CacheClient {
               });
             })
             .finally(() => {
-              this.revalidationQueue.delete(key);
+              clearTimeout(timeoutId);
+              if (this.revalidationQueue.get(key) === entry) {
+                this.revalidationQueue.delete(key);
+              }
             });
 
-          this.revalidationQueue.set(key, revalidationPromise);
+          const entry = { promise: revalidationPromise, startedAt: now };
+          this.revalidationQueue.set(key, entry);
+          options?.waitUntil?.(revalidationPromise);
         }
 
         return staleData;
@@ -736,8 +755,12 @@ export class CacheClient {
   }
 
   /**
-   * Atomically set key to value with TTL only if key does not exist (SET NX PX).
-   * Used for single-use nonces to prevent TOCTOU races between getAndDelete and set.
+   * Set key to value with TTL only if key does not exist (SET NX PX).
+   *
+   * Atomic only when {@link supportsAtomicOperations} is true. On Cloudflare KV
+   * this is get-then-put, so two concurrent callers can both get `true`. For
+   * replay nonces and one-time codes use `putSingleUseRecord`
+   * (auth/single-use-records.ts); for locks, gate on supportsAtomicOperations().
    *
    * @param key - Cache key.
    * @param value - Value to set (string or serializable).
@@ -811,8 +834,11 @@ export class CacheClient {
   }
 
   /**
-   * Atomically gets a value and deletes the key using GETDEL (Redis ≥6.2).
-   * Used for single-use values (e.g. SIWE nonce) to prevent replay attacks.
+   * Gets a value and deletes the key using GETDEL (Redis ≥6.2).
+   *
+   * Atomic only when {@link supportsAtomicOperations} is true. On Cloudflare KV
+   * this is get-then-delete, so two concurrent readers can both get the value.
+   * For single-use values use `takeSingleUseRecord` (auth/single-use-records.ts).
    */
   async getAndDelete<T>(key: string): Promise<T | null> {
     const redis = await this.getRedisClient();
