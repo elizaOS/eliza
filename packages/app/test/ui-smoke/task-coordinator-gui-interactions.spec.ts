@@ -396,5 +396,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await page.locator('[data-agent-id="open-task-smoke-1"]').click();
-  await expect(page.getByRole("button", { name: "Archive task" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Archive task" }),
+  ).toBeVisible();
 });

@@ -360,7 +360,7 @@ Android directory, beside its standard `app/src` layout: an existing unmarked
 directory is admitted, but no authored file is ever replaced. The profile can also
 declare, as data:
 
-- `signing`: the four environment variable *names* for the release key store,
+- `signing`: the four environment variable _names_ for the release key store,
   password, alias and key password. Gradle signs releases only when all four are
   set, fails on a partial set by name, and never prints a value. `versionOverride`
   names the release version code/name variables, validated like the identity.

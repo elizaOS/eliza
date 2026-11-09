@@ -372,10 +372,13 @@ export async function fetchWithSsrfGuard(
 			if (lookupFn) {
 				// A DNS lookup is available → pin the resolved address(es). This is
 				// the strongest mode: it also defends against DNS rebinding.
-				pinned = await raceAbort(resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-					lookupFn,
-					policy: params.policy,
-				}), signal);
+				pinned = await raceAbort(
+					resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+						lookupFn,
+						policy: params.policy,
+					}),
+					signal,
+				);
 			} else if (
 				!allowPrivateNetwork &&
 				!allowedHostnames.has(normalizeHostLike(parsedUrl.hostname))

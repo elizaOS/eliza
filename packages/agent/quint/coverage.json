@@ -153,9 +153,7 @@
       "packages/agent/native-host/private-runtime-launch.mjs",
       "packages/agent/native-host/gateway.e2e.test.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owner identities and one child. Repeated arbitrary rotations, stop failures and hung host callbacks require separate state refinements.",

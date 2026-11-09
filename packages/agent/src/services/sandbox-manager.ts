@@ -2,7 +2,11 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { ElizaError, redactSensitiveText, resolveStateDir } from "@elizaos/core";
+import {
+  ElizaError,
+  redactSensitiveText,
+  resolveStateDir,
+} from "@elizaos/core";
 import {
   createEngine,
   detectBestEngine,
