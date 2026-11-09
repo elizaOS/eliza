@@ -19,14 +19,16 @@ const sources = [
   "packages/cloud/api/v1/responses/route.ts",
   "packages/cloud/api/v1/chat/completions/route.ts",
   "packages/cloud/api/v1/responses/route.test.ts",
+  "packages/cloud/api/v1/responses/arguments.test.ts",
   "packages/cloud/api/v1/responses/provider-contract.test.ts",
   "packages/cloud/quint/ResponsesAdaptation.qnt",
   "packages/cloud/quint/ResponsesAdaptation.cases.json",
   "packages/cloud/quint/check-responses-adaptation.ts",
 ];
 const tests = [
-  { file: "v1/responses/route.test.ts", count: 45 },
-  { file: "v1/responses/provider-contract.test.ts", count: 3 },
+  { file: "v1/responses/route.test.ts", count: 48 },
+  { file: "v1/responses/arguments.test.ts", count: 14 },
+  { file: "v1/responses/provider-contract.test.ts", count: 8 },
 ];
 const results = tests.map(({ file, count }, index) => {
   const junit = path.join(directory, `tests-${index}.xml`);

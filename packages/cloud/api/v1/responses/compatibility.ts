@@ -74,6 +74,85 @@ function number(value: unknown, label: string): number | undefined {
   return value;
 }
 
+interface DecimalToken {
+  negative: boolean;
+  digits: string;
+  shift: number;
+  exponent: string;
+}
+
+/** Keep exponents symbolic so even very long input exponents need no expansion. */
+function decimalToken(token: string): DecimalToken {
+  const negative = token.startsWith("-");
+  const unsigned = negative ? token.slice(1) : token;
+  const exponentAt = unsigned.search(/[eE]/);
+  const mantissa = exponentAt < 0 ? unsigned : unsigned.slice(0, exponentAt);
+  const rawExponent = exponentAt < 0 ? "0" : unsigned.slice(exponentAt + 1);
+  const dot = mantissa.indexOf(".");
+  const fractionLength = dot < 0 ? 0 : mantissa.length - dot - 1;
+  const allDigits =
+    dot < 0 ? mantissa : mantissa.slice(0, dot) + mantissa.slice(dot + 1);
+  let start = 0;
+  while (start < allDigits.length && allDigits[start] === "0") start++;
+  let end = allDigits.length;
+  while (end > start && allDigits[end - 1] === "0") end--;
+  const exponentNegative = rawExponent.startsWith("-");
+  const exponentDigits =
+    rawExponent.replace(/^[+-]/, "").replace(/^0+/, "") || "0";
+  return {
+    negative,
+    digits: allDigits.slice(start, end) || "0",
+    shift: allDigits.length - end - fractionLength,
+    exponent:
+      exponentNegative && exponentDigits !== "0"
+        ? `-${exponentDigits}`
+        : exponentDigits,
+  };
+}
+
+function assertNumericRoundTrip(token: string): void {
+  const serialized = JSON.stringify(Number(token));
+  const fail = (): never => {
+    throw new ResponsesInputError(
+      "Function arguments contain a number whose value or sign cannot be preserved by chat admission",
+      "unsupported_parameter",
+    );
+  };
+  if (typeof serialized !== "string" || serialized === "null") fail();
+  const source = decimalToken(token);
+  const target = decimalToken(serialized);
+  if (source.negative !== target.negative || source.digits !== target.digits)
+    fail();
+  if (source.digits === "0") return;
+  // The serialized finite number has a small exponent; the source exponent
+  // remains a string. Only input-length offsets enter bigint arithmetic.
+  const requiredExponent =
+    BigInt(target.exponent) + BigInt(target.shift) - BigInt(source.shift);
+  if (source.exponent !== requiredExponent.toString()) fail();
+}
+
+/** JSON.parse is required by the chat SDK, but it must not silently rewrite numeric history. */
+function assertArgumentNumbersPreserved(source: string): void {
+  const token = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+  for (let index = 0; index < source.length; index++) {
+    if (source[index] === '"') {
+      for (index++; index < source.length; index++) {
+        if (source[index] === "\\") index++;
+        else if (source[index] === '"') break;
+      }
+      continue;
+    }
+    if (source[index] !== "-" && (source[index] < "0" || source[index] > "9"))
+      continue;
+    token.lastIndex = index;
+    const match = token.exec(source);
+    if (!match)
+      throw new ResponsesInputError("Function arguments must be a JSON object");
+    assertNumericRoundTrip(match[0]);
+    index = token.lastIndex - 1;
+  }
+}
+
 function content(
   value: unknown,
   role: ResponsesChatMessage["role"],
@@ -192,6 +271,12 @@ export function parseResponsesRequest(raw: unknown): ParsedResponsesRequest {
   else if (Array.isArray(body.input)) {
     for (const rawItem of body.input) {
       const item = object(rawItem, "Input item");
+      if (item.id !== undefined) identifier(item.id, "Item id");
+      if (item.status !== undefined && item.status !== "completed")
+        throw new ResponsesInputError(
+          "Only completed input items are supported",
+          "unsupported_parameter",
+        );
       if (item.type === "function_call") {
         keys(
           item,
@@ -215,6 +300,7 @@ export function parseResponsesRequest(raw: unknown): ParsedResponsesRequest {
           );
         }
         object(parsed, "Function arguments");
+        assertArgumentNumbersPreserved(args);
         calls.add(id);
         pendingCalls.add(id);
         if (!callBatch || receivingOutputs) {

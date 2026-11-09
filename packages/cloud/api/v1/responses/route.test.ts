@@ -376,6 +376,20 @@ test("leaves absent provider usage unknown", async () => {
 });
 
 const invalidInputs: Array<[string, unknown]> = [
+  [
+    "invalid item identity",
+    request([{ id: {}, role: "assistant", content: "partial" }]),
+  ],
+  [
+    "invalid item status",
+    request([
+      { status: ["in_progress"], role: "assistant", content: "partial" },
+    ]),
+  ],
+  [
+    "unfinished item",
+    request([{ status: "in_progress", role: "assistant", content: "partial" }]),
+  ],
   ["non-string role", request([{ role: ["user"], content: "hello" }])],
   ["non-string tool choice", request("hello", { tool_choice: ["auto"] })],
   [

@@ -1,20 +1,20 @@
 // The stateless Responses -> canonical chat adapter. Single request, three
-// supported transcript kinds and two explicit refusal kinds. Provider truth,
+// supported transcript kinds and two explicit rejection kinds. Provider truth,
 // auth correctness, durable accounting and HTTP transport are outside this model.
 module ResponsesAdaptation {
   pure val Kinds = Set("text", "media", "tools", "unsupported", "invalid")
-  pure val Outcomes = Set("stop", "tools", "length", "filtered", "malformed", "denied", "failed")
+  pure val Outcomes = Set("stop", "tools", "refusal", "empty-refusal", "length", "filtered", "malformed", "denied", "failed")
   pure val Transcript = List(" instruction one \n", "before", "media-or-call", "after", " instruction two \n")
   pure val Output = " output with whitespace \n"
   var s: {
     stage: str, kind: str, auth: bool, input: List[str], forwarded: List[str],
     credential: int, forwardedCredential: int, nativeCalls: int, chatCalls: int,
-    providerOutcome: str, output: str, incompleteReason: str, responseIdentity: int
+    providerOutcome: str, outputKind: str, output: str, incompleteReason: str, responseIdentity: int
   }
   pure val initial = {
     stage: "received", kind: "text", auth: true, input: Transcript, forwarded: List(),
     credential: 1, forwardedCredential: 0, nativeCalls: 0, chatCalls: 0,
-    providerOutcome: "unknown", output: "", incompleteReason: "", responseIdentity: 0
+    providerOutcome: "unknown", outputKind: "none", output: "", incompleteReason: "", responseIdentity: 0
   }
   action init = {
     nondet kind = Kinds.oneOf()
@@ -45,9 +45,10 @@ module ResponsesAdaptation {
       { ...s, stage: "failed" }
     else if (s.providerOutcome == "denied") { ...s, stage: "denied" }
     else { ...s,
-      stage: if (Set("length", "filtered").contains(s.providerOutcome)) "incomplete" else "completed",
-      output: Output, responseIdentity: 1,
-      incompleteReason: if (s.providerOutcome == "length") "max_output_tokens"
+      stage: if (Set("length", "filtered", "empty-refusal").contains(s.providerOutcome)) "incomplete" else "completed",
+      output: if (s.providerOutcome == "empty-refusal") "" else Output, responseIdentity: 1,
+      outputKind: if (s.providerOutcome == "refusal") "refusal" else if (s.providerOutcome == "empty-refusal") "none" else "text",
+      incompleteReason: if (Set("length", "empty-refusal").contains(s.providerOutcome)) "max_output_tokens"
         else if (s.providerOutcome == "filtered") "content_filter" else "" }
   }
   action step = any {
@@ -61,17 +62,21 @@ module ResponsesAdaptation {
   val effectsOnlyForAcceptedInput = (s.nativeCalls > 0 or s.chatCalls > 0) implies
     not(Set("unsupported", "invalid").contains(s.kind))
   val singleCanonicalOwner = s.nativeCalls <= 1 and s.chatCalls <= 1 and s.chatCalls <= s.nativeCalls
-  val noFabricatedCompletion = s.stage == "completed" implies Set("stop", "tools").contains(s.providerOutcome)
+  val noFabricatedCompletion = s.stage == "completed" implies Set("stop", "tools", "refusal").contains(s.providerOutcome)
   val incompleteHasCause = s.stage == "incomplete" implies
-    ((s.providerOutcome == "length" and s.incompleteReason == "max_output_tokens") or
+    ((Set("length", "empty-refusal").contains(s.providerOutcome) and s.incompleteReason == "max_output_tokens") or
      (s.providerOutcome == "filtered" and s.incompleteReason == "content_filter"))
   val outputPreserved = Set("completed", "incomplete").contains(s.stage) implies
-    s.output == Output and s.responseIdentity == 1
+    s.output == (if (s.providerOutcome == "empty-refusal") "" else Output) and s.responseIdentity == 1
+  val refusalTyped = all {
+    s.stage == "completed" and s.providerOutcome == "refusal" implies s.outputKind == "refusal",
+    s.stage == "incomplete" and s.providerOutcome == "empty-refusal" implies s.outputKind == "none"
+  }
   val deniedNeverDispatches = not(s.auth) implies s.providerOutcome == "unknown"
   val unknownNeverCompletes = s.providerOutcome == "unknown" implies
     not(Set("completed", "incomplete").contains(s.stage))
   val safety = contentPreserved and authorityPreserved and effectsOnlyForAcceptedInput and
-    singleCanonicalOwner and noFabricatedCompletion and incompleteHasCause and outputPreserved and
+    singleCanonicalOwner and refusalTyped and noFabricatedCompletion and incompleteHasCause and outputPreserved and
     deniedNeverDispatches and unknownNeverCompletes
   action providerCompletion = { nondet outcome = Outcomes.oneOf(); providerReturns(outcome) }
   temporal FairSteps = validate.weakFair(s) and prepare.weakFair(s) and canonical.weakFair(s)
@@ -92,6 +97,10 @@ module ResponsesAdaptation {
     .then(providerReturns("length")).then(mapResponse).expect(safety and s.stage == "incomplete")
   run malformedOutputFailsTest = initAccepted.then(validate).then(prepare).then(canonical)
     .then(providerReturns("malformed")).then(mapResponse).expect(safety and s.stage == "failed")
+  run refusalHasOriginalContentTest = initAccepted.then(validate).then(prepare).then(canonical)
+    .then(providerReturns("refusal")).then(mapResponse).expect(safety and s.outputKind == "refusal" and s.output == Output)
+  run emptyBilledRefusalIsIncompleteTest = initAccepted.then(validate).then(prepare).then(canonical)
+    .then(providerReturns("empty-refusal")).then(mapResponse).expect(safety and s.stage == "incomplete" and s.output == "")
   run unknownOutputStaysPendingTest = initAccepted.then(validate).then(prepare).then(canonical)
     .expect(safety and not(terminal))
   run droppedContentDetectedTest = initAccepted.then(validate).then(oldDropContent).expect(not(contentPreserved))

@@ -22,8 +22,19 @@ const ledger = await import(
   "@elizaos/cloud-shared/lib/services/ai-billing-settled"
 );
 const wireRequests: Record<string, unknown>[] = [];
+const defaultProviderMessage = {
+  role: "assistant",
+  content: "  exact output \n",
+};
+let providerMessage: Record<string, unknown> = defaultProviderMessage;
+let providerFinishReason = "stop";
+const ledgerInputs: Parameters<
+  typeof ledger.recordSettledInferenceBilling
+>[0][] = [];
 let authCalls = 0;
 let admissions = 0;
+let normalSettlements = 0;
+let unknownSettlements = 0;
 const spies: Array<{ mockRestore(): void }> = [];
 const model = createOpenAI({
   apiKey: "local-test-key",
@@ -42,7 +53,7 @@ const model = createOpenAI({
       return new Response(
         [
           `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: { content: "stream output" }, finish_reason: null }] })}\n\n`,
-          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } })}\n\n`,
+          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: providerFinishReason }], usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } })}\n\n`,
           "data: [DONE]\n\n",
         ].join(""),
         { headers: { "Content-Type": "text/event-stream" } },
@@ -56,8 +67,8 @@ const model = createOpenAI({
       choices: [
         {
           index: 0,
-          message: { role: "assistant", content: "  exact output \n" },
-          finish_reason: "stop",
+          message: providerMessage,
+          finish_reason: providerFinishReason,
         },
       ],
       usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
@@ -97,10 +108,22 @@ beforeAll(() => {
     spyOn(admission, "admitOrganizationInference").mockImplementation(
       async () => {
         admissions++;
+        // Controlled port models the admission owner's shared first-settlement receipt.
+        let settled = false;
         return {
           mode: "durable_object_debit",
-          settle: async () => null,
-          settleUnknown: async () => null,
+          settle: async () => {
+            if (settled) return null;
+            settled = true;
+            normalSettlements++;
+            return null;
+          },
+          settleUnknown: async () => {
+            if (settled) return null;
+            settled = true;
+            unknownSettlements++;
+            return null;
+          },
         } as Awaited<ReturnType<typeof admission.admitOrganizationInference>>;
       },
     ),
@@ -114,12 +137,17 @@ beforeAll(() => {
     } as Awaited<ReturnType<typeof billing.billUsage>>),
   );
   spies.push(
-    spyOn(ledger, "recordSettledInferenceBilling").mockResolvedValue({
-      usageRecord: null,
-      record: {} as Awaited<
-        ReturnType<typeof ledger.recordSettledInferenceBilling>
-      >["record"],
-    }),
+    spyOn(ledger, "recordSettledInferenceBilling").mockImplementation(
+      async (input) => {
+        ledgerInputs.push(input);
+        return {
+          usageRecord: null,
+          record: {} as Awaited<
+            ReturnType<typeof ledger.recordSettledInferenceBilling>
+          >["record"],
+        };
+      },
+    ),
   );
 });
 afterAll(() => {
@@ -259,5 +287,200 @@ test("streaming retains instructions and a stable unique identity per request", 
     expect(requestIds[0]).not.toBe(requestIds[1]);
   } finally {
     frozenClock.mockRestore();
+  }
+});
+
+test("a real SDK refusal keeps its text, status and recorded content", async () => {
+  const { default: app } = await import("./route");
+  const cached = spyOn(
+    catalogue,
+    "getGatewayModelByIdCacheOnly",
+  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
+  const tasks: Promise<unknown>[] = [];
+  providerMessage = {
+    role: "assistant",
+    content: null,
+    refusal: " Original refusal text \n",
+  };
+  try {
+    const response = await app.fetch(
+      new Request("https://cloud.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "openai/test", input: "hello" }),
+      }),
+      {},
+      {
+        props: {},
+        waitUntil(task) {
+          tasks.push(task);
+        },
+        passThroughOnException() {},
+      },
+    );
+    const body = (await response.json()) as {
+      status: string;
+      output: Array<{ content: unknown[] }>;
+      incomplete_details: unknown;
+      output_text: string;
+    };
+    await Promise.all(tasks);
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("completed");
+    expect(body.incomplete_details).toBeNull();
+    expect(body.output_text).toBe("");
+    expect(body.output[0]?.content).toEqual([
+      { type: "refusal", refusal: " Original refusal text \n" },
+    ]);
+    expect(ledgerInputs.at(-1)?.analytics?.content).toBe(
+      " Original refusal text \n",
+    );
+  } finally {
+    providerMessage = defaultProviderMessage;
+    cached.mockRestore();
+  }
+});
+
+test("unknown provider finish reason fails without a fabricated completion", async () => {
+  const { default: app } = await import("./route");
+  const cached = spyOn(
+    catalogue,
+    "getGatewayModelByIdCacheOnly",
+  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
+  const tasks: Promise<unknown>[] = [];
+  providerFinishReason = "provider_error";
+  const normalBefore = normalSettlements;
+  const unknownBefore = unknownSettlements;
+  try {
+    const response = await app.fetch(
+      new Request("https://cloud.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "openai/test", input: "hello" }),
+      }),
+      {},
+      {
+        props: {},
+        waitUntil(task) {
+          tasks.push(task);
+        },
+        passThroughOnException() {},
+      },
+    );
+    await Promise.all(tasks);
+    const body = (await response.json()) as { status?: string };
+    expect(response.status).toBe(503);
+    expect(body.status).toBeUndefined();
+    expect(normalSettlements).toBe(normalBefore);
+    expect(unknownSettlements).toBe(unknownBefore + 1);
+  } finally {
+    providerFinishReason = "stop";
+    cached.mockRestore();
+  }
+});
+
+test("unknown streaming finish reason emits failure instead of a successful stop", async () => {
+  const { handleChatCompletionsPOST } = await import(
+    "../chat/completions/route"
+  );
+  providerFinishReason = "provider_error";
+  const normalBefore = normalSettlements;
+  const unknownBefore = unknownSettlements;
+  try {
+    const response = await handleChatCompletionsPOST(
+      new Request("https://cloud.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai/test",
+          stream: true,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+    );
+    const frames = (await response.text())
+      .split("\n")
+      .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+      .map(
+        (line) =>
+          JSON.parse(line.slice(6)) as {
+            error?: unknown;
+            choices?: Array<{ finish_reason: string }>;
+          },
+      );
+    expect(frames.some((frame) => frame.error !== undefined)).toBe(true);
+    expect(
+      frames
+        .flatMap((frame) => frame.choices ?? [])
+        .some((choice) => choice.finish_reason === "stop"),
+    ).toBe(false);
+    expect(normalSettlements).toBe(normalBefore);
+    expect(unknownSettlements).toBe(unknownBefore + 1);
+  } finally {
+    providerFinishReason = "stop";
+  }
+});
+
+test("malformed provider refusal fails without coercing or discarding it", async () => {
+  const { handleChatCompletionsPOST } = await import(
+    "../chat/completions/route"
+  );
+  providerMessage = {
+    role: "assistant",
+    content: null,
+    refusal: { unexpected: "data" },
+  };
+  try {
+    const response = await handleChatCompletionsPOST(
+      new Request("https://cloud.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai/test",
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+    );
+    expect(response.status).toBeGreaterThanOrEqual(500);
+  } finally {
+    providerMessage = defaultProviderMessage;
+  }
+});
+
+test("an empty provider refusal cannot turn billed empty output into success", async () => {
+  const { default: app } = await import("./route");
+  const cached = spyOn(
+    catalogue,
+    "getGatewayModelByIdCacheOnly",
+  ).mockResolvedValue({ kind: "ready", model: null, stale: false });
+  const tasks: Promise<unknown>[] = [];
+  providerMessage = { role: "assistant", content: null, refusal: "" };
+  try {
+    const response = await app.fetch(
+      new Request("https://cloud.test/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "openai/test", input: "hello" }),
+      }),
+      {},
+      {
+        props: {},
+        waitUntil(task) {
+          tasks.push(task);
+        },
+        passThroughOnException() {},
+      },
+    );
+    const body = (await response.json()) as {
+      status: string;
+      incomplete_details: unknown;
+    };
+    await Promise.all(tasks);
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("incomplete");
+    expect(body.incomplete_details).toEqual({ reason: "max_output_tokens" });
+  } finally {
+    providerMessage = defaultProviderMessage;
+    cached.mockRestore();
   }
 });

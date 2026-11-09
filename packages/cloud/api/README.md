@@ -14,6 +14,7 @@ admission and billing owner. It preserves ordered text, image URLs, inline files
 and function-call histories. Unsupported inputs (including stored response IDs,
 streaming, hosted tools and explicit image detail) return `400` before admission.
 Provider token limits remain `incomplete`; malformed provider output returns `503`.
+Numeric tool arguments that the chat SDK cannot preserve are rejected explicitly.
 The adapter does not persist Responses objects.
 
 Delegated inference budgets are off by default. Apply shared migrations 0544–0545
