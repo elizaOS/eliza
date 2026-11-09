@@ -11,9 +11,12 @@ process.env.MOCK_REDIS = "1";
 import { ProvisioningJobService } from "@elizaos/cloud-shared/node";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { containersRepository } from "../../../db/repositories/containers";
+import { jobsRepository } from "../../../db/repositories/jobs";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appDeploymentStatusEnum, appReviewStatusEnum, apps } from "../../../db/schemas/apps";
+import { containers } from "../../../db/schemas/containers";
 import { generations } from "../../../db/schemas/generations";
 import { jobExecutionLeases } from "../../../db/schemas/job-execution-leases";
 import { jobs } from "../../../db/schemas/jobs";
@@ -21,6 +24,7 @@ import { organizations } from "../../../db/schemas/organizations";
 import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
+import { toNewContainer } from "../app-container-record";
 import {
   configureAppsDeployTrigger,
   enqueueAppDeploy,
@@ -29,6 +33,7 @@ import {
 import { DefaultAppDeployRunner } from "../app-deploy-runner";
 import { appDeploymentsService } from "../app-deployments";
 import { appsService } from "../apps";
+import { ContainerJobEnqueuer } from "../container-job-service";
 import { containerJobsWriter } from "../container-jobs-writer";
 import { JOB_TYPES } from "../provisioning-job-types";
 
@@ -49,6 +54,7 @@ beforeAll(async () => {
     appDeploymentStatusEnum,
     appReviewStatusEnum,
     apps,
+    containers,
     jobs,
     jobExecutionLeases,
     usageRecords,
@@ -112,6 +118,224 @@ async function readJob(id: string) {
   const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, id));
   return job;
 }
+
+async function seedInterruptedDeployment() {
+  const input = await seedApp();
+  const deploy = await appDeploymentsService.createDeployment(input);
+  const claimed = await appsService.updateDeploymentGeneration(
+    input.appId,
+    deploy.deploymentId,
+    { deployment_status: "deploying" },
+    ["building"],
+  );
+  expect(claimed?.deployment_status).toBe("deploying");
+  return { ...input, deploymentGeneration: deploy.deploymentId };
+}
+
+async function persistContainerForDeployment(
+  deployment: Awaited<ReturnType<typeof seedInterruptedDeployment>>,
+) {
+  const [row] = await dbWrite
+    .insert(containers)
+    .values({
+      name: `fixture-${crypto.randomUUID()}`,
+      project_name: deployment.appId,
+      organization_id: deployment.organizationId,
+      user_id: deployment.userId,
+      metadata: { appId: deployment.appId, deploymentGeneration: deployment.deploymentGeneration },
+    })
+    .returning({ id: containers.id });
+  return row.id;
+}
+
+test(
+  "an interrupted deploy without an exact child retains an unresolved job and app generation",
+  async () => {
+    const deployment = await seedInterruptedDeployment();
+    const wrongContainer = await persistContainerForDeployment({
+      ...deployment,
+      deploymentGeneration: crypto.randomUUID(),
+    });
+    await new ContainerJobEnqueuer(containerJobsWriter).enqueueProvision({
+      containerId: wrongContainer,
+      organizationId: deployment.organizationId,
+      userId: deployment.userId,
+      deploymentGeneration: deployment.deploymentGeneration,
+    });
+
+    const worker = new ProvisioningJobService();
+    await worker.processPendingJobs(5, { jobTypes: [JOB_TYPES.APP_DEPLOY] });
+    await worker.processPendingJobs(5, { jobTypes: [JOB_TYPES.APP_DEPLOY] });
+
+    const parent = await readJob(deployment.deploymentGeneration);
+    expect(parent?.status).toBe("failed");
+    expect(parent?.error).toContain("Provision handoff is unconfirmed");
+    expect(parent?.execution_quiesced_at).toBeNull();
+    expect(
+      await jobsRepository.findUnsettledAppDeletionCandidates(deployment.organizationId),
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ id: parent?.id })]));
+    expect((await appDeploymentsService.getLatestDeployment(deployment.appId))?.status).toBe(
+      "BUILDING",
+    );
+    await expect(appDeploymentsService.createDeployment(deployment)).rejects.toThrow(
+      "A deployment is already in progress for this app",
+    );
+    const children = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.CONTAINER_PROVISION));
+    expect(children.map((job) => job.data.containerId)).toEqual([wrongContainer]);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a lost child insert response retains the committed child without failing the app",
+  async () => {
+    const input = await seedApp();
+    await dbWrite
+      .update(apps)
+      .set({
+        metadata: { imageTag: `ghcr.io/elizaos/fixture@sha256:${"a".repeat(64)}` },
+      })
+      .where(eq(apps.id, input.appId));
+    const deploy = await appDeploymentsService.createDeployment(input);
+    setAppDeployRunner(
+      new DefaultAppDeployRunner({
+        ensureTenantDb: async () => {
+          throw new Error("stateless app cannot provision a tenant database");
+        },
+        // Use real container persistence and omit unrelated billing quota fixtures.
+        createContainerRow: async (row) => {
+          const container = await containersRepository.create(toNewContainer(row));
+          return { containerId: container.id };
+        },
+        jobsWriter: {
+          async insertJob(job) {
+            await containerJobsWriter.insertJob(job);
+            throw new Error("child insert response lost after commit");
+          },
+        },
+      }),
+    );
+
+    await new ProvisioningJobService().processPendingJobs(5, { jobTypes: [JOB_TYPES.APP_DEPLOY] });
+
+    const parent = await readJob(deploy.deploymentId);
+    expect(parent?.status).toBe("completed");
+    expect(parent?.execution_quiesced_at).toBeInstanceOf(Date);
+    expect((await appDeploymentsService.getLatestDeployment(input.appId))?.status).toBe("BUILDING");
+    const children = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.CONTAINER_PROVISION));
+    expect(children).toEqual([
+      expect.objectContaining({
+        organization_id: input.organizationId,
+        user_id: input.userId,
+        data: expect.objectContaining({ deploymentGeneration: deploy.deploymentId }),
+      }),
+    ]);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
+  async () => {
+    const deployment = await seedInterruptedDeployment();
+    const containerId = await persistContainerForDeployment(deployment);
+    const child = await new ContainerJobEnqueuer(containerJobsWriter).enqueueProvision({
+      containerId,
+      organizationId: deployment.organizationId,
+      userId: deployment.userId,
+      deploymentGeneration: deployment.deploymentGeneration,
+    });
+
+    await new ProvisioningJobService().processPendingJobs(5, { jobTypes: [JOB_TYPES.APP_DEPLOY] });
+
+    const parent = await readJob(deployment.deploymentGeneration);
+    expect(parent?.status).toBe("completed");
+    expect(parent?.execution_quiesced_at).toBeInstanceOf(Date);
+    expect((await appDeploymentsService.getLatestDeployment(deployment.appId))?.status).toBe(
+      "BUILDING",
+    );
+    const children = await dbWrite
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.CONTAINER_PROVISION));
+    expect(children).toEqual([child]);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
+  async () => {
+    const deployment = await seedInterruptedDeployment();
+    const [claimed] = await jobsRepository.claimPendingJobs({
+      type: JOB_TYPES.APP_DEPLOY,
+      limit: 1,
+      executionOwnerId: crypto.randomUUID(),
+    });
+    const expired = new Date(Date.now() - 86_400_000);
+    await dbWrite
+      .update(jobs)
+      .set({ attempts: 2, started_at: expired })
+      .where(eq(jobs.id, claimed.id));
+    await dbWrite
+      .update(jobExecutionLeases)
+      .set({ expires_at: expired })
+      .where(eq(jobExecutionLeases.job_id, claimed.id));
+
+    await new ProvisioningJobService().processPendingJobs(5, { jobTypes: [JOB_TYPES.APP_DEPLOY] });
+
+    const parent = await readJob(deployment.deploymentGeneration);
+    expect(parent?.status).toBe("failed");
+    expect(parent?.execution_quiesced_at).toBeNull();
+    expect((await appDeploymentsService.getLatestDeployment(deployment.appId))?.status).toBe(
+      "BUILDING",
+    );
+    expect(
+      await jobsRepository.findUnsettledAppDeletionCandidates(deployment.organizationId),
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ id: parent?.id })]));
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "an app deletion claim does not hide its interrupted deployment from recovery",
+  async () => {
+    const deployment = await seedInterruptedDeployment();
+    const deletion = await jobsRepository.create({
+      type: JOB_TYPES.APP_DELETE,
+      organization_id: deployment.organizationId,
+      data: { appId: deployment.appId },
+    });
+    await dbWrite
+      .update(apps)
+      .set({ deletion_job_id: deletion.id })
+      .where(eq(apps.id, deployment.appId));
+    try {
+      await new ProvisioningJobService().processPendingJobs(5, {
+        jobTypes: [JOB_TYPES.APP_DEPLOY],
+      });
+      const parent = await readJob(deployment.deploymentGeneration);
+      expect(parent?.status).toBe("failed");
+      expect(parent?.execution_quiesced_at).toBeNull();
+      expect(parent?.error).toContain("Provision handoff is unconfirmed");
+      expect(
+        await jobsRepository.findUnsettledAppDeletionCandidates(deployment.organizationId),
+      ).toEqual(expect.arrayContaining([expect.objectContaining({ id: parent?.id })]));
+    } finally {
+      await dbWrite
+        .update(apps)
+        .set({ deletion_job_id: null })
+        .where(eq(apps.id, deployment.appId));
+    }
+  },
+  TEST_TIMEOUT,
+);
 
 test(
   "a deploy attempt that fails after the runner claims it leaves the app redeployable",

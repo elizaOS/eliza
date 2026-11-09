@@ -559,8 +559,12 @@ export class AppsService {
     return await appsRepository.claimDeploymentStart(id, generation, data);
   }
 
-  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
-    return await appsRepository.findByDeploymentGeneration(id, generation);
+  async findByDeploymentGeneration(
+    id: string,
+    generation: string,
+    recoveryOrganizationId?: string,
+  ): Promise<App | undefined> {
+    return await appsRepository.findByDeploymentGeneration(id, generation, recoveryOrganizationId);
   }
 
   async updateDeploymentGeneration(

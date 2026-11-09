@@ -949,12 +949,15 @@
       "jobHasAdmission",
       "confirmedHandoffHasClaim",
       "knownFailureNeverCompletes",
-      "oldJobCannotSetNewPhase"
+      "oldJobCannotSetNewPhase",
+      "deployingCompletionRequiresHandoff",
+      "unconfirmedKeepsOriginalFence"
     ],
     "status": "partial",
     "limitations": [
-      "One app and two generations, with the second used only as a fence. The real PGlite checks cover admission and pre-handoff failure settlement.",
-      "A runner interrupted after claiming deploying can still complete a recovered job without a confirmed child handoff. Link failure after child enqueue and live build, Docker, database, ingress, child settlement, and provider publication are outside the checked scope."
+      "One app, two generations, one parent job, two insert attempts, and three queue attempts. The real PGlite checks cover admission, known failures, interrupted handoff, lost child insert responses, and deletion inventory.",
+      "An exact durable child confirms parent handoff. Missing or conflicting evidence retains an unresolved parent and the original generation for operator reconciliation.",
+      "The model does not cover app-link recovery, live image builds, Docker, tenant databases, ingress, child settlement, or provider publication."
     ]
   },
   {

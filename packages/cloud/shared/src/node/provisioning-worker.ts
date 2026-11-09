@@ -61,7 +61,10 @@ import {
 } from "../lib/services/app-deletion-container";
 import { dispatchAppDeletionDatabase } from "../lib/services/app-deletion-database";
 import { dispatchAppDeployJob, readAppDeployJobData } from "../lib/services/app-deploy-job-service";
-import { AppDeployGenerationFailedError } from "../lib/services/app-deploy-orchestrator";
+import {
+  AppDeployGenerationFailedError,
+  AppDeployHandoffUnconfirmedError,
+} from "../lib/services/app-deploy-orchestrator";
 import {
   APP_DEPLOYMENT_GENERATION_KEY,
   deploymentGenerationFromMetadata,
@@ -1684,6 +1687,17 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
           : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
+    if (job.type === JOB_TYPES.APP_DEPLOY && safeErrorKind(err, AppDeployHandoffUnconfirmedError)) {
+      const outcome = await this.retryOwnedWrite(job, "retain-app-deploy-handoff", () =>
+        jobsRepository.rejectClaimedExecution(job, errorMsg, this.executionOwnerId, {
+          retainUnconfirmedEffects: true,
+        }),
+      );
+      const recorded = outcome === "rejected" || outcome === "already-terminal";
+      if (result && recorded) result.failed++;
+      return recorded;
+    }
+
     if (safeErrorKind(err, AppDeletionOperatorRecoveryRequiredError)) {
       const current = await jobsRepository.findByIdForWrite(job.id);
       if (!current || current.execution_generation !== job.execution_generation) return false;
@@ -2010,26 +2024,39 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
           });
         };
       }
-      // Apps / Product 2: a permanently failed deploy must flip the app off
-      // `building`, or the deploy-status route (which echoes
-      // `apps.deployment_status`) reports BUILDING forever — the CLI/dashboard
-      // never sees the failure. A durable cache task is inserted in the same
-      // transaction; its cache deletion runs later outside the transaction.
-      // Especially relevant during the lane-migration window, when the agent
-      // CP worker (still default=all lanes) claims an APP_DEPLOY it can't run
-      // and exhausts retries.
+      // A known failure must reach the deploy-status route. An interrupted
+      // deploying generation keeps its fence until its effects are reconciled.
+      // Cache invalidation for a known failure is queued in the same transaction.
       case JOB_TYPES.APP_DEPLOY: {
         const { appId, deploymentGeneration } = readAppDeployJobData(job);
         return async (tx, failedJob) => {
+          const generation = and(
+            eq(apps.id, appId),
+            eq(apps.organization_id, failedJob.organization_id),
+            sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`,
+          );
+          const [current] = await tx
+            .select({ status: apps.deployment_status })
+            .from(apps)
+            .where(generation)
+            .for("update");
+          if (current?.status === "deploying") {
+            // Exhaustion is not a receipt for stopped provider work. Retain this
+            // generation in the app deletion inventory for reconciliation.
+            await tx
+              .update(jobs)
+              .set({ execution_quiesced_at: null })
+              .where(eq(jobs.id, failedJob.id));
+            return;
+          }
           const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(
               and(
-                eq(apps.id, appId),
-                eq(apps.organization_id, failedJob.organization_id),
+                generation,
                 isNull(apps.deletion_job_id),
-                sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`,
+                inArray(apps.deployment_status, ["building", "failed"]),
               ),
             )
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
@@ -2637,7 +2664,12 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       // the recovery sweep.
       case JOB_TYPES.APP_DEPLOY:
         await this.assertExecutionMutationLease(job);
-        await dispatchAppDeployJob(job);
+        await dispatchAppDeployJob(job, {
+          jobId: job.id,
+          organizationId: job.organization_id,
+          executionGeneration: job.execution_generation!,
+          executionOwnerId: this.executionOwnerId,
+        });
         await this.settleClaimedExecution(job, "completed", {
           completed_at: new Date(),
         });
