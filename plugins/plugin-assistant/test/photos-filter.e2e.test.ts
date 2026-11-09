@@ -111,7 +111,7 @@ test("Photos Filter discovery gates the real proposal and retains one count-only
             params.operationKey,
             params.reason,
           ),
-        ).rejects.toThrow("Original Photos request ended");
+        ).rejects.toThrow("Original foreground request ended");
         expect(await service.list(credential)).toHaveLength(0);
         expect(retired).toMatchObject({ success: false });
         expect((await discover()).some(({ name }) => name === actionName)).toBe(

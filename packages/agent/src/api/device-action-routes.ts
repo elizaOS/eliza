@@ -29,6 +29,7 @@ import {
   type DeviceCredential,
   type DeviceReadCompletionHint,
   deviceProposalDigest,
+  FILES_CAPABILITY,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
@@ -98,6 +99,7 @@ export function deviceRequestCredential(
     "notes.organize.v1",
     "photos.library.v1",
     "photos.view.v1",
+    FILES_CAPABILITY,
     CALENDAR_NAMED_READ_CAPABILITY,
     CALENDAR_AVAILABILITY_CAPABILITY,
     NAMED_TARGET_CAPABILITY,
@@ -188,6 +190,7 @@ export async function handleDeviceActionRoutes(
             "notes.organize.v1",
             "photos.library.v1",
             "photos.view.v1",
+            FILES_CAPABILITY,
             CALENDAR_AVAILABILITY_CAPABILITY,
             NAMED_TARGET_CAPABILITY,
             NOTES_SEARCH_CAPABILITY,

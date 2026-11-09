@@ -99,7 +99,11 @@ import {
   validateDevicePayload,
 } from "./contract.ts";
 import { deviceActionEffectReceipts } from "./effect-receipts.ts";
-import { FILES_OPERATION_TYPES } from "./files-browser-contract.ts";
+import {
+  FILES_CAPABILITY,
+  FILES_OPERATION_TYPES,
+  isFilesOperation,
+} from "./files-browser-contract.ts";
 import {
   FOREGROUND_REVIEW_TYPES,
   foregroundReviewOperationAvailable,
@@ -1790,6 +1794,7 @@ export class DeviceActionService {
           CONTACT_LOOKUP_CAPABILITY,
           PHOTO_LIBRARY_CAPABILITY,
           PHOTOS_VIEW_CAPABILITY,
+          FILES_CAPABILITY,
         ],
       };
     });
@@ -2099,30 +2104,34 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     const browserRequest = validated.type === "browser_navigate";
-    const photosTurn = isPhotosViewOperation(validated)
-      ? getDeviceActionTurn()
-      : undefined;
-    const signal = photosTurn && getStreamingContext()?.abortSignal;
+    const foregroundTurn =
+      isPhotosViewOperation(validated) || isFilesOperation(validated)
+        ? getDeviceActionTurn()
+        : undefined;
+    const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(
       this.runtime,
       c,
       browserRequest,
     );
-    // A reviewed Photos proposal still belongs to its original foreground
-    // turn, even when there is no direct-request message binding.
+    // Reviewed Photos and Files proposals retain their foreground owner
+    // even without a direct-request message binding.
     const assertCurrent =
-      photosTurn?.runtime === this.runtime
+      foregroundTurn?.runtime === this.runtime
         ? () => {
             if (
-              getDeviceActionTurn() !== photosTurn ||
-              photosTurn.credential !== c ||
-              !photosTurn.isCurrent() ||
-              !photosViewCapabilityAvailable(c.capabilities) ||
+              getDeviceActionTurn() !== foregroundTurn ||
+              foregroundTurn.credential !== c ||
+              !foregroundTurn.isCurrent() ||
+              !deviceOperationSupportedByCapabilities(
+                validated.type,
+                c.capabilities,
+              ) ||
               signal?.aborted ||
               getStreamingContext()?.abortSignal?.aborted
             )
               throw new DeviceActionError(
-                "Original Photos request ended; proposal cancelled",
+                "Original foreground request ended; proposal cancelled",
               );
             requestOrigin?.assertCurrent();
           }
@@ -2549,6 +2558,7 @@ export class DeviceActionService {
             isNativeNotesQuery(operation) ||
             isNotesOrganizeOperation(operation) ||
             isPhotosViewOperation(operation) ||
+            isFilesOperation(operation) ||
             isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||
             operation.type === "calendar_read_next") &&
