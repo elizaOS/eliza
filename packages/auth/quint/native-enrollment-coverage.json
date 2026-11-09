@@ -190,15 +190,22 @@
   },
   {
     "id": "auth.NativeAndroidEnrollment",
-    "model": null,
+    "model": "packages/auth/quint/NativeAndroidCodeVerification.qnt",
     "sources": [
       "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
       "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "AttemptBudget",
+      "WaiterHasReadyAttempt",
+      "AtMostOneReply",
+      "PendingHasOneOwner"
+    ],
+    "status": "partial",
     "limitations": [
-      "NativeAndroidAckRecovery covers startup receipt eligibility and acknowledgement retry under separate bounds. Android pending sign-in state, credential issuance and replacement, and composed cancellation or activity recreation remain outside the Node native-host projection."
+      "NativeAndroidCodeVerification covers one plugin instance, one deployment, two code attempts with prior work still draining, twelve admitted RPC identities and the exact five-failure budget. It checks waiter ownership through retry, cancellation, expiry and MFA transitions under weak fairness of the worker.",
+      "The shared JVM harness executes production verify, MFA, cancel and completion methods with synthetic HTTPS, lifecycle, storage and bridge ports. It reproduces the old split-lock waiter race and checks the exact repair, cancellation with a late wrong-code response, and exhaustion.",
+      "NativeAndroidAckRecovery separately covers startup receipt eligibility and acknowledgement retries. Code send and cooldown, Credential Manager admission, legacy browser callbacks, native authorization dialogs, credential issuance and replacement, process death, actual device scheduling and multiple plugin instances remain open."
     ]
   },
   {
