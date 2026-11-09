@@ -62,6 +62,12 @@ public final class NativeNotificationInboxTest {
         check(refused.acceptLive(record(300)).getBoolean("duplicate")); check(refusedPosts.get() == 301);
         finish(refused, 302, new JSONArray().put(record(302))); check(refusedPosts.get() == 302);
 
+        // A live gap keeps the fence open until the missing sequence arrives.
+        Path gapRoot = root(); AtomicInteger gapPosts = new AtomicInteger(); var gap = inbox(gapRoot, OWNER, gapPosts);
+        finish(gap, 0, new JSONArray()); gap.acceptLive(record(2)); check(gap.status().getLong("closedThroughSequence") == 0);
+        check(gap.status().getInt("seenCount") == 1); gap.acceptLive(record(1));
+        check(gap.status().getLong("closedThroughSequence") == 2); check(gap.status().getInt("seenCount") == 0); check(gapPosts.get() == 2);
+
         // A journal already full of closed ambiguous receipts (old refused posts) drops the oldest instead of wedging.
         Path fullRoot = root(); AtomicInteger fullPosts = new AtomicInteger(); var full = inbox(fullRoot, OWNER, fullPosts); full.status();
         JSONObject unknown = new JSONObject(); for (int i = 1; i <= 10000; i++) unknown.put(id(i), receipt("unknown", i));

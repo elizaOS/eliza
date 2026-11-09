@@ -86,7 +86,8 @@ final class NativeNotificationInbox {
             // A contiguous live arrival closes its own sequence, so the stream keeps compacting between pages.
             if (state.isNull("page") && !state.optBoolean("resetEpoch")) {
                 long closed = state.getLong("closedThroughSequence");
-                while (contains(seen, state.getString("nativeEpoch"), closed + 1)) closed++;
+                java.util.Set<Long> settled = settled(seen, state.getString("nativeEpoch"));
+                while (settled.contains(closed + 1)) closed++;
                 if (closed != state.getLong("closedThroughSequence")) { state.put("closedThroughSequence", closed); compact(state); save(state); }
             }
             return outcome(id, phase, "accepted".equals(phase), false);
@@ -282,13 +283,14 @@ final class NativeNotificationInbox {
         for (String id : compact) seen.remove(id);
     }
 
-    private static boolean contains(JSONObject seen, String epoch, long sequence) throws Exception {
+    private static java.util.Set<Long> settled(JSONObject seen, String epoch) throws Exception {
+        java.util.Set<Long> sequences = new java.util.HashSet<>();
         for (java.util.Iterator<String> keys = seen.keys(); keys.hasNext();) {
             JSONObject receipt = seen.getJSONObject(keys.next());
-            if (receipt.getLong("nativeSequence") == sequence && epoch.equals(receipt.getString("nativeEpoch"))
-                && !"dispatched".equals(receipt.getString("phase"))) return true;
+            if (epoch.equals(receipt.getString("nativeEpoch")) && !"dispatched".equals(receipt.getString("phase")))
+                sequences.add(receipt.getLong("nativeSequence"));
         }
-        return false;
+        return sequences;
     }
 
     static JSONObject checked(JSONObject value) throws Exception {
