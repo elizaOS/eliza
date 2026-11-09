@@ -105,6 +105,12 @@ Web subscription settings select a registered product with `VITE_ELIZA_APPLICATI
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
 
+Managed Google hosts return complete Gmail bodies by default. A consumer may set
+`gmailReadBodyMaxCharacters` on `ManagedGoogleAgentHostOptions`, including the
+native host, to a positive safe integer in UTF-16 code units. Limited reads mark
+`truncated: true` and keep surrogate pairs intact. The existing 256 KiB complete
+response bound still refuses oversized results; a body limit does not waive it.
+
 Independent Android consumer profiles may use `main`, `androidTest`, `debug`,
 `release`, and their declared flavor names in `sourceSets`. Keep test trust and
 other debug-only resources in `debug`; they must not enter release artifacts.

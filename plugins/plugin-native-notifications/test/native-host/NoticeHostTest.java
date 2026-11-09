@@ -22,7 +22,7 @@ public final class NoticeHostTest {
  private static void check(boolean value){checks++;if(!value)throw new AssertionError("Check "+checks);}
  private interface Failing{void run()throws Exception;}
  private static void rejects(Failing action)throws Exception{checks++;try{action.run();}catch(IllegalStateException|IllegalArgumentException expected){return;}throw new AssertionError("Expected refusal at check "+checks);}
- static final class Store implements NoticeDelivery.Storage{final Map<String,String> values=new HashMap<>();boolean fail;public String read(String slot){return values.get(slot);}public void write(String slot,String value){if(fail)throw new IllegalStateException("disk");values.put(slot,value);}}
+ static class Store implements NoticeDelivery.Storage{final Map<String,String> values=new HashMap<>();boolean fail;public String read(String slot){return values.get(slot);}public void write(String slot,String value){if(fail)throw new IllegalStateException("disk");values.put(slot,value);}}
  static final class Poster implements NoticeDelivery.Poster{
   int posts,quiet;final Map<String,String> active=new HashMap<>();final List<String> cancelled=new ArrayList<>();
   public boolean allowed(){return true;}
@@ -39,6 +39,55 @@ public final class NoticeHostTest {
  static final NoticeRoutes.Config ROUTES=new NoticeRoutes.Config("host-routes:v1","host-owner:v1",DELIVERY,"workflowId","runId","versionId");
  static JSONObject route(String owner,String run)throws Exception{return new JSONObject().put("scope","a".repeat(64)).put("origin","https://agent.invalid").put("ownerId",owner).put("agentId","agent").put("workflowId","workflow").put("runId",run).put("versionId","v1");}
  static String hash(JSONArray parts)throws Exception{StringBuilder out=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(parts.toString().getBytes(StandardCharsets.UTF_8)))out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();}
+ private static void sameFailure(Exception original,Failing work)throws Exception{checks++;try{work.run();}catch(Exception failure){if(failure==original)return;throw new AssertionError("Original publish failure changed",failure);}throw new AssertionError("Expected original publish failure");}
+ private static void approvalFailureCleanup(String binding,long now,long minute)throws Exception{
+  String id="approval-"+"f".repeat(64);
+  Store full=new Store(){public void write(String slot,String value){if("host-approvals:v1".equals(slot))throw new AssertionError("Full ledger wrote a new approval");super.write(slot,value);}};
+  JSONObject rows=new JSONObject();for(int i=0;i<256;i++)rows.put("approval-"+String.format("%064x",i),new JSONObject().put("status","withdrawn").put("expiresAt",now+minute));
+  String retained=rows.toString();full.values.put("host-approvals:v1",retained);Poster silent=new Poster();
+  for(int attempt=0;attempt<3;attempt++){
+   NoticeRoutes routes=new NoticeRoutes(full,ROUTES);NoticeCoordinator coordinator=new NoticeCoordinator(new NoticeDelivery(DELIVERY,full,silent),routes);
+   try{coordinator.postApproval(id,binding,route("owner","full"),now+minute,now);throw new AssertionError("Expected full approval history");}
+   catch(IllegalStateException failure){check(failure.getClass()==IllegalStateException.class&&failure.getMessage().contains("history is full"));}
+   check(routes.token(id)==null&&routes.pending().length()==0&&retained.equals(full.values.get("host-approvals:v1"))&&silent.posts==0&&silent.cancelled.isEmpty());
+  }
+  String exactDigest=hash(new JSONArray().put("Step waiting for approval").put("Open the app to review it."));
+  // A publish that leaves malformed or foreign storage has no definite cleanup decision.
+  for(Object damaged:new Object[]{"not-an-object",new JSONObject().put("status","failed").put("expiresAt",now+minute),new JSONObject().put("status","failed").put("binding",binding).put("digest","0".repeat(64)).put("expiresAt",now+minute),new JSONObject().put("status","withdrawn").put("expiresAt","not-a-time"),new JSONObject().put("status","failed").put("binding","e".repeat(64)).put("digest",exactDigest).put("expiresAt",now+minute),new JSONObject().put("status","failed").put("binding",binding).put("digest",exactDigest).put("expiresAt",now+2*minute)}){
+   IllegalStateException original=new IllegalStateException("Claim outcome unavailable");
+   Store fault=new Store(){public void write(String slot,String value){if("host-approvals:v1".equals(slot)){values.put(slot,new JSONObject().put(id,damaged).toString());throw original;}super.write(slot,value);}};
+   Poster poster=new Poster();NoticeRoutes routes=new NoticeRoutes(fault,ROUTES);NoticeCoordinator coordinator=new NoticeCoordinator(new NoticeDelivery(DELIVERY,fault,poster),routes);
+   sameFailure(original,()->coordinator.postApproval(id,binding,route("owner","corrupt"),now+minute,now));
+   check(original.getSuppressed().length==1&&routes.token(id)!=null&&poster.posts==0);
+   check(new JSONObject(fault.values.get("host-approvals:v1")).get(id).toString().equals(damaged.toString()));
+  }
+  // Only validated terminal observations can release a route after a lost publication reply.
+  for(String status:new String[]{"failed","withdrawn","withdrawal-intent"}){
+   IllegalStateException original=new IllegalStateException("Terminal receipt committed before lost reply");
+   JSONObject terminal=status.equals("withdrawal-intent")?new JSONObject().put("status","withdrawn").put("expiresAt",now+minute):new JSONObject().put("status",status).put("binding",binding).put("digest",exactDigest).put("expiresAt",now+minute);
+   Store fault=new Store(){public void write(String slot,String value){if("host-approvals:v1".equals(slot)){values.put(slot,new JSONObject().put(id,terminal).toString());throw original;}super.write(slot,value);}};
+   Poster poster=new Poster();NoticeRoutes routes=new NoticeRoutes(fault,ROUTES);NoticeCoordinator coordinator=new NoticeCoordinator(new NoticeDelivery(DELIVERY,fault,poster),routes);
+   sameFailure(original,()->coordinator.postApproval(id,binding,route("owner","terminal"),now+minute,now));
+   check(original.getSuppressed().length==0&&routes.token(id)==null&&poster.posts==0);
+   check(new JSONObject(fault.values.get("host-approvals:v1")).getJSONObject(id).toString().equals(terminal.toString()));
+  }
+  // A committed applying claim remains uncertain and must never post on retry.
+  {IllegalStateException original=new IllegalStateException("Claim committed before lost reply");boolean[] cut={true};
+   Store fault=new Store(){public void write(String slot,String value){super.write(slot,value);if(cut[0]&&"host-approvals:v1".equals(slot)){cut[0]=false;throw original;}}};
+   Poster poster=new Poster();NoticeRoutes routes=new NoticeRoutes(fault,ROUTES);NoticeCoordinator coordinator=new NoticeCoordinator(new NoticeDelivery(DELIVERY,fault,poster),routes);
+   sameFailure(original,()->coordinator.postApproval(id,binding,route("owner","uncertain"),now+minute,now));String token=routes.token(id);
+   check(token!=null&&poster.posts==0&&"applying".equals(new JSONObject(fault.values.get("host-approvals:v1")).getJSONObject(id).getString("status")));
+   check("unknown".equals(coordinator.postApproval(id,binding,route("owner","uncertain"),now+minute,now))&&token.equals(routes.token(id))&&poster.posts==0);
+  }
+  // Failed cleanup reads and writes preserve the exact original publish error.
+  for(boolean readFailure:new boolean[]{true,false}){
+   IllegalStateException original=new IllegalStateException("Claim refused"),cleanup=new IllegalStateException("Cleanup unavailable");boolean[] refused={false};
+   Store fault=new Store(){public String read(String slot){if(refused[0]&&readFailure&&"host-approvals:v1".equals(slot))throw cleanup;return super.read(slot);}public void write(String slot,String value){if("host-approvals:v1".equals(slot)){refused[0]=true;throw original;}if(refused[0]&&!readFailure&&"host-routes:v1".equals(slot))throw cleanup;super.write(slot,value);}};
+   Poster poster=new Poster();NoticeRoutes routes=new NoticeRoutes(fault,ROUTES);NoticeCoordinator coordinator=new NoticeCoordinator(new NoticeDelivery(DELIVERY,fault,poster),routes);
+   sameFailure(original,()->coordinator.postApproval(id,binding,route("owner","cleanup"),now+minute,now));
+   check(original.getSuppressed().length==1&&original.getSuppressed()[0]==cleanup&&routes.token(id)!=null&&poster.posts==0&&!fault.values.containsKey("host-approvals:v1"));
+  }
+ }
  public static void main(String[] args)throws Exception{
   // Configuration keeps routes, owner fence and receipts in distinct deployed slots.
   rejects(()->new NoticeRoutes.Config("host-notices:v1","host-owner:v1",DELIVERY,"runId"));
@@ -74,6 +123,7 @@ public final class NoticeHostTest {
   // A decision withdraws the notice for good and frees its route.
   coordinator.withdrawApproval(approval,now+3*minute);check(routes.token(approval)==null&&poster.cancelled.contains(approval));
   check("withdrawn".equals(coordinator.postApproval(approval,binding,route("owner","run-a"),now+10*minute,now+4*minute)));check(routes.token(approval)==null);
+  approvalFailureCleanup(binding,now,minute);
   // Journal recovery promotes an admitted attempt only from its original receipt and never reposts.
   String scope="c".repeat(64),proposal="proposal",operationId="notice";
   JSONObject operation=new JSONObject().put("type","post_notification").put("title","Reviewed title").put("body","Reviewed body");
