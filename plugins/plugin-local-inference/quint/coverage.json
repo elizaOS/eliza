@@ -12,8 +12,8 @@
 		],
 		"status": "modeled",
 		"limitations": [
-			"One capture and one original host epoch. Delivery may be delayed arbitrarily; there is no liveness claim.",
-			"The JVM fixture uses controlled microphone and transport boundaries. Physical Android audio focus and device acceptance remain outside this evidence."
+			"One capture and one original host epoch. Conditional model progress assumes weakly fair terminal delivery; without fairness, delivery can wait forever.",
+			"The JVM fixture uses controlled microphone and transport boundaries. Real executor fairness, transport progress, physical Android audio focus and device acceptance remain outside this evidence."
 		]
 	}
 ]
