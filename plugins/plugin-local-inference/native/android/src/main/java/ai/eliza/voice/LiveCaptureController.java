@@ -40,6 +40,8 @@ public final class LiveCaptureController {
  public interface Host {
   /** True while the host may deliver events for a capture admitted at {@code epoch}. */
   boolean open(long epoch);
+  /** Startup may be stricter than delivery of an interrupted capture. */
+  default boolean canStart(long epoch){return open(epoch);}
   /** The capture for {@code id} (normally {@code new LiveVoiceCapture(context,inference,id,sink,echoCancel)}). */
   LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel)throws Exception;
   void frames(String id,JSONArray frames,JSONArray vad,float peak);
@@ -90,7 +92,7 @@ public final class LiveCaptureController {
    String since=interrupted;
    if(reopen&&since!=null){result.refused(CANCELLED.equals(since)?CANCELLED:"Voice was interrupted",CANCELLED.equals(since)?null:since);return;}
    if(!reopen)interrupted=null;
-   if(!host.open(epoch)||!admission.current(ticket)){result.refused(CANCELLED,null);return;}
+   if(!host.canStart(epoch)||!admission.current(ticket)){result.refused(CANCELLED,null);return;}
    if(live!=null){String old=live.captureId();live.stop();live=null;current=null;closePipe(old,true,now());}
    final LiveSegmentPipe pipe;
    try{
@@ -106,8 +108,9 @@ public final class LiveCaptureController {
    }catch(Exception unavailable){
     closePipe(id,true,now());
     // A Stop, pause or replacement while the agent session warmed is a cancellation, not an enrollment failure.
-    result.refused(host.open(epoch)&&admission.current(ticket)?"Native voice enrollment unavailable":CANCELLED,null);return;
+    result.refused(host.canStart(epoch)&&admission.current(ticket)?"Native voice enrollment unavailable":CANCELLED,null);return;
    }
+   if(!host.canStart(epoch)||!admission.current(ticket)){closePipe(id,true,now());result.refused(CANCELLED,null);return;}
    final LiveVoiceCapture next;
    try{
     next=host.capture(id,new LiveVoiceCapture.Sink(){
@@ -120,9 +123,13 @@ public final class LiveCaptureController {
    if(!admission.attach(ticket,()->{next.cancelPending();if(pipe!=null&&!admission.events(ticket))pipe.close(true,now());submit(stopWorker,next::requestStop,()->{/* The capture worker's cleanup still stops this source. */});})){closePipe(id,true,now());result.refused(CANCELLED,null);return;}
    try{
     next.start();
-    if(!host.open(epoch)||!admission.current(ticket)){next.stop();closePipe(id,true,now());result.refused(CANCELLED,null);return;}
+    if(!host.canStart(epoch)||!admission.current(ticket)){next.stop();closePipe(id,true,now());result.refused(CANCELLED,null);return;}
     live=next;current=next;result.started(id,LiveVoiceCapture.SAMPLE_RATE,next.echoCancelled(),pipe!=null);
-   }catch(Exception|Error failure){next.stop();closePipe(id,true,now());result.refused("Live capture could not start",CAPTURE);}
+   }catch(Exception|Error failure){
+    next.stop();closePipe(id,true,now());
+    boolean current=host.canStart(epoch)&&admission.current(ticket);
+    result.refused(current?"Live capture could not start":CANCELLED,current?CAPTURE:null);
+   }
   },()->result.refused("Voice unavailable",null));
  }
 
@@ -136,7 +143,7 @@ public final class LiveCaptureController {
   if(pipe!=null)pipe.cutoff(cutoff);
   // Cancelling transport can immediately wake the startup worker. Publish Stop first so that
   // worker observes cancellation when classifying an interrupted warm-up.
-  admission.stop(id);
+  admission.stop(id,discard);
   if(pipe!=null&&(discard||!pipe.ready().isDone()))pipe.close(true,cutoff);
   submit(worker,()->{
    long duration=0;

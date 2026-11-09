@@ -29,10 +29,7 @@ describe("files.browser.v1 operations", () => {
     }
   });
   it("carries the reviewed identity of each moved or trashed file", () => {
-    const reviewed = [
-      { size: 3, modified: 1_800_000_000_000 },
-      { size: 0, modified: 1 },
-    ];
+    const reviewed = ["a".repeat(43), "b".repeat(43)];
     for (const op of [
       {
         type: "files_move",

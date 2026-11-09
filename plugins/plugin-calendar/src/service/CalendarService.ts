@@ -36,6 +36,7 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsGoogleConnectorStatus,
   LifeOpsIcsCalendarSource,
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsLinkedCalendarControl,
@@ -3775,15 +3776,49 @@ export class CalendarService extends Service {
     signal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
     const side = normalizeOptionalConnectorSide(request?.side, "side");
-    const targetsNonGoogleProvider =
+    const managedCalendar = this.managedCalendar;
+    const exactManagedGrant =
+      !!request?.grantId && managedCalendar?.acceptsGrantId(request.grantId);
+    // A managed grant belongs to the owner broker's own namespace. The
+    // standard connector catalog cannot supply it, but an aggregate read
+    // still discovers both sources.
+    const skipStandardGoogle =
+      exactManagedGrant ||
       isMicrosoftCalendarGrantId(request?.grantId) ||
       isAppleCalendarGrant(request?.grantId) ||
       isElizaCalendarGrant(request?.grantId);
-    const statuses = targetsNonGoogleProvider
-      ? []
-      : await timeInferenceSpan("calendar:discovery:google-accounts", () =>
-          this.gate.getGoogleConnectorAccounts(requestUrl, side),
-        );
+    const discoverManaged =
+      managedCalendar?.acceptsGrantId(request?.grantId) &&
+      side !== "agent" &&
+      (!mode || mode === "cloud_managed");
+    // The standard account catalog and managed owner broker are independent.
+    // Keep their results separate and cancel the broker if standard discovery fails.
+    const managedAbort =
+      discoverManaged && !skipStandardGoogle
+        ? new AbortController()
+        : undefined;
+    const managedSignal =
+      managedAbort && signal
+        ? AbortSignal.any([managedAbort.signal, signal])
+        : (managedAbort?.signal ?? signal);
+    const [statuses, managedDiscovery] = await Promise.all([
+      skipStandardGoogle
+        ? Promise.resolve<LifeOpsGoogleConnectorStatus[]>([])
+        : timeInferenceSpan("calendar:discovery:google-accounts", () =>
+            this.gate.getGoogleConnectorAccounts(requestUrl, side),
+          ),
+      discoverManaged && managedCalendar
+        ? timeInferenceSpan("calendar:discovery:managed-sources", () =>
+            managedCalendar.sources(managedSignal),
+          ).then(
+            (calendars) => ({ calendars }),
+            (error: unknown) => ({ error }),
+          )
+        : null,
+    ]).catch((error: unknown) => {
+      managedAbort?.abort(error);
+      throw error;
+    });
     const grants = statuses
       .filter(hasGoogleConnectorGrant)
       .map((status) => status.grant)
@@ -3979,7 +4014,10 @@ export class CalendarService extends Service {
         );
       }
     }
-    if (shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })) {
+    if (
+      !exactManagedGrant &&
+      shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })
+    ) {
       const icsSources = await timeInferenceSpan(
         "calendar:discovery:ics-sources",
         () => this.repo.listIcsCalendarSources(this.agentId()),
@@ -3992,20 +4030,12 @@ export class CalendarService extends Service {
           .map(icsCalendarSummary),
       );
     }
-    const managedCalendar = this.managedCalendar;
-    if (
-      managedCalendar?.acceptsGrantId(request?.grantId) &&
-      side !== "agent" &&
-      (!mode || mode === "cloud_managed")
-    ) {
+    if (managedDiscovery) {
       try {
         signal?.throwIfAborted();
-        const managed = await timeInferenceSpan(
-          "calendar:discovery:managed-sources",
-          () => managedCalendar.sources(signal),
-        );
+        if ("error" in managedDiscovery) throw managedDiscovery.error;
         summaries.push(
-          ...managed.filter(
+          ...managedDiscovery.calendars.filter(
             (calendar) =>
               !request?.grantId || calendar.grantId === request.grantId,
           ),

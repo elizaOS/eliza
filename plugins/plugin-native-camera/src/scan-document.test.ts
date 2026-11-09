@@ -289,6 +289,54 @@ describe("drafts", () => {
     expect(other.snapshot().controls.deleteDraft).toBe(false);
   });
 
+  it.each(["saved", "loaded"] as const)(
+    "retains a %s draft after later autosaves and confirmed export",
+    async (kind) => {
+      const drafts = memoryDrafts();
+      const doc = createScanDocument<Image, string>({
+        drafts: drafts.port,
+        autosave: true,
+      });
+      if (kind === "saved") {
+        doc.put(image("a"));
+        expect(await doc.saveDraft()).toBe(true);
+      } else {
+        drafts.stored = { revision: "r0", pages: [image("a")] };
+        expect(await doc.loadDraft(() => true)).toBe("loaded");
+      }
+      doc.put(image("b"));
+      doc.setTextLayers(["first", "second"]);
+      await doc.settled();
+      expect(doc.snapshot().autoSaved).toBe(false);
+      await doc.exportPages(async () => ({ status: "exported", message: "" }));
+      await doc.settled();
+      expect(drafts.stored?.pages.map((page) => page.name)).toEqual(["a", "b"]);
+      expect(drafts.stored?.textLayers).toEqual(["first", "second"]);
+      expect(drafts.port.remove).not.toHaveBeenCalled();
+    },
+  );
+
+  it("only an accepted draft deletion resets explicit ownership for later autosaves", async () => {
+    const drafts = memoryDrafts();
+    const doc = createScanDocument<Image, string>({
+      drafts: drafts.port,
+      autosave: true,
+    });
+    doc.put(image("a"));
+    expect(await doc.saveDraft()).toBe(true);
+    expect(await doc.deleteDraft(() => false)).toBe(false);
+    doc.put(image("b"));
+    await doc.settled();
+    expect(doc.snapshot().autoSaved).toBe(false);
+    expect(await doc.deleteDraft(() => true)).toBe(true);
+    doc.put(image("c"));
+    await doc.settled();
+    expect(doc.snapshot().autoSaved).toBe(true);
+    await doc.exportPages(async () => ({ status: "exported", message: "" }));
+    await vi.waitFor(() => expect(drafts.stored).toBeUndefined());
+    expect(drafts.port.remove).toHaveBeenCalledTimes(2);
+  });
+
   it("refuses a draft over the document limits before asking to replace the open pages", async () => {
     const tooMany: ScanDraftPort<Image, string> = {
       save: vi.fn(async () => ({ revision: "r" })),

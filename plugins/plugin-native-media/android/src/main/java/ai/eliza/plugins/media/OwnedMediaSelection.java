@@ -12,7 +12,10 @@ public final class OwnedMediaSelection {
     return "owner_package_name=? AND is_pending=0"
         + (sdk >= 30 ? " AND is_trashed=" + (trashed ? 1 : 0) : "");
   }
-  /** Owned images and videos in the Files catalog, newest first by id, before a cursor. */
+  /**
+   * Owned images and videos in the Files catalog, newest first by id, before a cursor. {@code
+   * album} is {@code ""}, {@code videos}, {@code favorites}, {@code camera} or {@code screenshots}.
+   */
   public static String page(int sdk, boolean trashed, String album) {
     String filter;
     switch (album == null ? "" : album) {
@@ -27,12 +30,44 @@ public final class OwnedMediaSelection {
           throw new IllegalArgumentException("Favorites require Android 11 or later");
         filter = " AND is_favorite=1";
         break;
+      case "camera":
+      case "screenshots":
+        filter = folderSelection(album);
+        break;
       default:
         throw new IllegalArgumentException("Unknown album");
     }
     if (trashed && !filter.isEmpty())
       throw new IllegalArgumentException("Trash has no albums");
     return owned(sdk, trashed) + " AND media_type IN (1,3)" + filter + " AND _id<?";
+  }
+  /**
+   * The MediaStore folder condition of a folder album: {@code camera} is the camera's
+   * {@code DCIM/Camera/} folder and {@code screenshots} any {@code Screenshots/} folder (Android
+   * keeps them under Pictures/ or DCIM/). Empty for every other name. The values are constants,
+   * never caller text.
+   */
+  public static String folderSelection(String album) {
+    switch (album == null ? "" : album) {
+      case "camera":
+        return " AND relative_path LIKE 'DCIM/Camera/%'";
+      case "screenshots":
+        return " AND relative_path LIKE '%Screenshots/%'";
+      default:
+        return "";
+    }
+  }
+  /**
+   * The folder album, {@code camera} or {@code screenshots}, a MediaStore relative path is in; the
+   * same rule as {@link #folderSelection}, whose LIKE ignores ASCII case.
+   */
+  public static String folderAlbum(String relativePath) {
+    String path = relativePath == null ? "" : relativePath.toLowerCase(java.util.Locale.ROOT);
+    if (path.startsWith("dcim/camera/"))
+      return "camera";
+    if (path.contains("screenshots/"))
+      return "screenshots";
+    return "";
   }
   /** Revision of one row: date added, size and, on API 30+, generation and trash state. */
   public static String revision(

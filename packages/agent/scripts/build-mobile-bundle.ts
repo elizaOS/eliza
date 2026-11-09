@@ -34,6 +34,10 @@ import {
   mergeMobileStubPlugins,
   parseMobileStubPlugins,
 } from "./mobile-stub-plugins.ts";
+import {
+  createMobileUuidExportsPlugin,
+  type MobileUuidTransform,
+} from "./mobile-uuid-exports.ts";
 import { mobileWalletConnectorStubPlugin } from "./mobile-wallet-connectors.ts";
 import {
   canUseWorkspaceEntry,
@@ -1409,6 +1413,7 @@ const localInferenceDedupePlugin = {
 console.log("[build-mobile] starting Bun.build...");
 // Bun metadata paths are relative to the caller, including direct script runs.
 const buildWorkingDirectory = process.cwd();
+const uuidNodeExports: MobileUuidTransform[] = [];
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
@@ -1461,6 +1466,9 @@ const buildResult = await Bun.build({
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
     viemCjsResolverPlugin,
+    ...(TARGET === "android"
+      ? [createMobileUuidExportsPlugin(repoRoot, uuidNodeExports)]
+      : []),
     stubCssPlugin,
     // Before the generic resolvers: no wallet-connector closure reaches a mobile bundle.
     mobileWalletConnectorStubPlugin(path.join(stubsDir, "null-plugin.ts")),
@@ -1718,6 +1726,7 @@ const manifest = {
     "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
   ...(bundleDependencies ? { bundleDependencies } : {}),
+  ...(TARGET === "android" ? { uuidNodeExports } : {}),
   bunTarget: bunBuildTarget,
   platform: TARGET,
   pglite: {

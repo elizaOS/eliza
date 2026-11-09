@@ -55,6 +55,23 @@ public final class CloudSignInFlow {
  public static boolean validVerifier(String value) { return value != null && value.matches("[A-Za-z0-9._~-]{43,128}"); }
  public static boolean validState(String value) { return value != null && value.matches("[A-Za-z0-9_-]{43}"); }
 
+ /** Exact browser authorization request; state and verifier remain owned by the native attempt. */
+ public static String authorizeUrl(CloudSignInEnvironment environment, String challenge, String state) {
+  if (!validState(state) || !validState(challenge)) throw new IllegalArgumentException("Invalid browser proof");
+  return environment.api() + "/steward/auth/oauth/google/authorize?response_type=code&tenant_id=" + percent(environment.tenant)
+   + "&redirect_uri=" + percent(environment.callback())
+   + "&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state + "&prompt=select_account&mfa=exchange";
+ }
+ private static String percent(String value) {
+  StringBuilder out = new StringBuilder();
+  for (byte valueByte : value.getBytes(StandardCharsets.UTF_8)) {
+   int c = valueByte & 0xff;
+   if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') out.append((char) c);
+   else out.append('%').append(String.format(java.util.Locale.ROOT, "%02X", c));
+  }
+  return out.toString();
+ }
+
  /** What a return to the callback URL carries (shared callback contract). */
  public enum ReturnKind { SUCCESS, ERROR, RETURN }
  /** A return to this environment's callback. SUCCESS sets code and state, ERROR sets error and state, RETURN sets neither. */
