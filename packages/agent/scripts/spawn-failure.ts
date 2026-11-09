@@ -22,7 +22,8 @@ export function describeSpawnFailure(
     if (error.code === "ETIMEDOUT") {
       return `${command} timed out and was killed`;
     }
-    return `${command} could not be started: ${error.code ? `${error.code} ` : ""}${error.message}`;
+    // ENOBUFS (output over maxBuffer) and similar arrive after the child ran.
+    return `${command} failed: ${error.code ? `${error.code} ` : ""}${error.message}`;
   }
   if (result.signal) return `${command} was killed by ${result.signal}`;
   if (result.status !== 0)
