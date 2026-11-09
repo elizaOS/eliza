@@ -932,6 +932,32 @@
     ]
   },
   {
+    "id": "cloud-app-deploy-generation",
+    "model": "packages/cloud/quint/app_deploy_generation.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/app-deployments.ts",
+      "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
+      "packages/cloud/shared/src/lib/services/app-deploy-orchestrator.ts",
+      "packages/cloud/shared/src/lib/services/app-deploy-runner.ts",
+      "packages/cloud/shared/src/lib/services/container-jobs-writer.ts",
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts"
+    ],
+    "invariants": [
+      "jobHasAdmission",
+      "confirmedHandoffHasClaim",
+      "knownFailureNeverCompletes",
+      "oldJobCannotSetNewPhase"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One app and two generations, with the second used only as a fence. The real PGlite checks cover admission and pre-handoff failure settlement.",
+      "A runner interrupted after claiming deploying can still complete a recovered job without a confirmed child handoff. Link failure after child enqueue and live build, Docker, database, ingress, child settlement, and provider publication are outside the checked scope."
+    ]
+  },
+  {
     "id": "cloud-flow-app-build-and-deployment",
     "model": null,
     "sources": [
@@ -945,6 +971,7 @@
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
       "FrontendActivationSwap checks rollback racing one inactive deployment deletion. frontend_publication checks bounded upload, finalization and publication. app_frontend_deletion checks final app deletion and its shared parent lock. Build job orchestration and composition across these models remain open.",
+      "App deployment job admission and known failure settlement are tracked under cloud-app-deploy-generation. This entry tracks the full app build and deployment flow.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Only complete artifacts are published | Active deployment changes atomically | Rollback retains immutable artifact identity",
       "Abstract states: queued, building, uploading, finalizing, ready, active, superseded, failed, deleted"
@@ -1366,7 +1393,8 @@
     "status": "unmodeled",
     "limitations": [
       "Reviewed source families: shared/src/lib/services/app-deploy, shared/src/lib/services/apps-deploy, shared/src/db/repositories/app-frontend",
-      "FrontendActivationSwap, frontend_publication and app_frontend_deletion cover bounded frontend row swaps, publication and whole-app deletion. Backend deployment orchestration, ingress publication and concurrent activations beyond the bounded lock projection remain open."
+      "FrontendActivationSwap, frontend_publication and app_frontend_deletion cover bounded frontend row swaps, publication and whole-app deletion. Backend deployment orchestration, ingress publication and concurrent activations beyond the bounded lock projection remain open.",
+      "App deployment job admission and known failure settlement are tracked under cloud-app-deploy-generation."
     ]
   },
   {

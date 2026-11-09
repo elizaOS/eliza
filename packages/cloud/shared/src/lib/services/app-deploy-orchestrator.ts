@@ -11,6 +11,7 @@
  * the shared agent DATABASE_URL — is asserted as a unit test.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { type AppDatabaseMode, DEFAULT_APP_DATABASE_MODE } from "./app-database-mode";
 import { RESERVED_PLATFORM_ENV_KEYS, stripReservedEnvKeys } from "./reserved-env-keys";
 
@@ -83,6 +84,17 @@ export interface DeployAppResult {
  */
 export interface AppDeployRunner {
   run(appId: string, deploymentGeneration: string, options?: AppDeployRunOptions): Promise<void>;
+}
+
+/** The app already has a durable failed outcome for this generation. */
+export class AppDeployGenerationFailedError extends ElizaError {
+  constructor(deploymentGeneration: string, cause?: unknown) {
+    super(`App deployment generation ${deploymentGeneration} failed`, {
+      code: "APP_DEPLOY_GENERATION_FAILED",
+      severity: "ephemeral",
+      cause,
+    });
+  }
 }
 
 /**

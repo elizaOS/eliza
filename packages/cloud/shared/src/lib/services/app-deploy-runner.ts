@@ -34,6 +34,7 @@ import { toNewContainer } from "./app-container-record";
 import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
   type AppDeployDeps,
+  AppDeployGenerationFailedError,
   type AppDeployRunner,
   type AppDeployRunOptions,
   deployApp,
@@ -209,6 +210,10 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       ["building"],
     );
     if (!app) {
+      const current = await appsService.findByDeploymentGeneration(appId, deploymentGeneration);
+      if (current?.deployment_status === "failed") {
+        throw new AppDeployGenerationFailedError(deploymentGeneration);
+      }
       logger.info("[AppDeployRunner] ignored stale deployment generation", {
         appId,
         deploymentGeneration,
@@ -311,12 +316,13 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
         image,
       });
     } catch (error) {
-      await appsService.updateDeploymentGeneration(
+      const failed = await appsService.updateDeploymentGeneration(
         appId,
         deploymentGeneration,
         { deployment_status: "failed" },
         ["deploying"],
       );
+      if (failed) throw new AppDeployGenerationFailedError(deploymentGeneration, error);
       throw error;
     }
   }
