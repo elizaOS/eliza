@@ -400,11 +400,12 @@ public final class DataResetTest {
         reset.attemptWithRevocation(app, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
         check(order.equals(List.of("revoke", "listener", "clear")) && reset.revocationAnswered(app), "retry revokes before clearing: " + order);
         // Answered once: later starts and retries do not send the key again.
-        order.clear(); new File(data, "reset-example.failures").delete();
+        order.clear(); Files.writeString(new File(data, "reset-example.failures").toPath(), "0:0");
         stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "startup");
         reset.attemptWithRevocation(app, System.currentTimeMillis(), DataReset.INTERACTIVE_DEADLINE_MS);
         check(order.equals(List.of("listener", "clear", "listener", "clear")), "answered revocation is not repeated: " + order);
-        // A new confirmation asks again.
+        // A completed reset followed by a new confirmation asks again.
+        new File(data, "reset-example.pending").delete();
         reset.record(app);
         check(!reset.revocationAnswered(app), "new confirmation clears the answer");
         // A step that never returns cannot hold the retry past its budget.

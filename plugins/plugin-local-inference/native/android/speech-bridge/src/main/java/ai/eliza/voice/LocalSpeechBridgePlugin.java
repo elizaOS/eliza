@@ -155,10 +155,6 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   main.post(()->{if(capture!=null)capture.stopAutomatically();clearPlayback();});
  }
  protected boolean sensitiveSurfaceActive(){return false;}
- @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
- @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){
-  destroyed=true;gate.destroy();main.post(()->{closeOutputWarmup();if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);resumeLive();super.handleOnResume();}
  /**
   * A permission prompt pauses the activity: the reservations and epoch it holds survive the pause
@@ -166,7 +162,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   */
  @Override protected void handleOnPause(){speechForeground=false;rejectResumedLive();live.pause(livePermissionEpochs.values());scheduleLocalRelease(30000);if(permissionEpochs.isEmpty()&&livePermissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
-  destroyed=true;gate.destroy();main.post(()->{if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();rejectResumedLive();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
+  destroyed=true;gate.destroy();main.post(()->{closeOutputWarmup();if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();rejectResumedLive();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
   if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);
   submitWork(localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();
  }
