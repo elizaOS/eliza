@@ -84,6 +84,25 @@ public final class NativeRuntimeSessionTest {
             until(() -> failed.snapshot().processes.values().stream().noneMatch(Process::isAlive));
             check(owned.get() != null && !owned.get().isAlive());
         }
+        // start/awaitReady: two children spawned before either is awaited; a process the scope did
+        // not start is refused; a failed wait ends both children with the launch.
+        AtomicReference<Process> foreign = new AtomicReference<>(), early = new AtomicReference<>();
+        AtomicBoolean refused = new AtomicBoolean();
+        try (NativeRuntimeSession split = new NativeRuntimeSession(scope -> {
+            Process agent = scope.start("agent", child(), log, Arrays.asList("synthetic-private-token"));
+            early.set(scope.start("gateway", child(), log, Arrays.asList("synthetic-private-token")));
+            foreign.set(child().start());
+            try { scope.awaitReady(foreign.get(), () -> true, 2000, 10); }
+            catch (IllegalArgumentException expected) { refused.set(true); }
+            finally { foreign.get().destroyForcibly(); }
+            scope.awaitReady(agent, () -> true, 2000, 10);
+            scope.awaitReady(early.get(), () -> { throw new IllegalStateException("failed readiness"); }, 2000, 10);
+        }, 10, 10, 0)) {
+            split.start(); until(() -> split.snapshot().lifecycle.state == NativeProcessSupervisor.State.FAILED);
+            check(refused.get());
+            until(() -> split.snapshot().processes.size() == 2 && split.snapshot().processes.values().stream().noneMatch(Process::isAlive));
+            check(early.get() != null && !early.get().isAlive());
+        }
         // Test-build fault injection ends one named child; the supervisor's own retry restarts it.
         AtomicInteger launches = new AtomicInteger();
         try (NativeRuntimeSession faulted = new NativeRuntimeSession(scope -> {
