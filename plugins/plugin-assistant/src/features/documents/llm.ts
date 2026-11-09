@@ -662,69 +662,49 @@ async function generateClaudeWithCaching(
   modelName: string,
   documentForCaching: string,
 ): Promise<TextGenerationResult> {
-  const messages = [
-    system
-      ? {
-          role: "system",
-          content: [
-            {
-              type: "text",
-              text: system,
-            },
-            {
-              type: "text",
-              text: documentForCaching,
-              cache_control: {
-                type: "ephemeral",
-              },
-            },
-          ],
-        }
-      : {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Document for context:",
-            },
-            {
-              type: "text",
-              text: documentForCaching,
-              cache_control: {
-                type: "ephemeral",
-              },
-            },
-            {
-              type: "text",
-              text: promptText,
-            },
-          ],
+  // The AI SDK accepts only string content on system messages and drops
+  // unknown part keys, so the cache breakpoint is set through the OpenRouter
+  // provider option on the document part.
+  const messages: ModelMessage[] = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Document for context:",
         },
-    system
-      ? {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: promptText,
+        {
+          type: "text",
+          text: documentForCaching,
+          providerOptions: {
+            openrouter: {
+              cacheControl: {
+                type: "ephemeral",
+              },
             },
-          ],
-        }
-      : null,
-  ].filter(Boolean);
+          },
+        },
+        {
+          type: "text",
+          text: promptText,
+        },
+      ],
+    },
+  ];
 
   const result = await generateLoggedText({
     runtime,
     modelName,
     systemPrompt: system ?? "",
-    userPrompt: serializeMessages(messages as ModelMessage[]),
+    userPrompt: serializeMessages(messages),
     temperature: 0.3,
     purpose: "documents",
     actionType: "documents.openrouter.generate_text.claude_cached",
     invoke: () =>
       aiGenerateText({
         model: modelInstance,
-        messages: messages as ModelMessage[],
+        system: system,
+        messages,
         temperature: 0.3,
         providerOptions: {
           openrouter: {
