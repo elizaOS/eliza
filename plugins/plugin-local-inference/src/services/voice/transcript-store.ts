@@ -788,6 +788,10 @@ export class TranscriptStore {
 		const metadata = row.metadata as Record<string, unknown> | undefined;
 		let grants = parseArtifactShareMetadata(metadata).grants;
 		for (const entityId of entityIds) {
+			// The roster usually lists the recording's author. A grant always wins
+			// over the scope ladder, so a redacted one would cut the author down
+			// to the variant of their own transcript and refuse edit and revoke.
+			if (entityId === row.entityId) continue;
 			grants = mergedGrant(grants, {
 				entityId,
 				mode: input.mode,
