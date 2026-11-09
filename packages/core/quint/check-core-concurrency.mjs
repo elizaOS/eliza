@@ -44,6 +44,83 @@ const suites = new Map([
 			].map((title) => `RoomHandlerQueue model properties ${title}`),
 		},
 	],
+	[
+		"ProviderExecution.qnt",
+		{
+			file: "test/compose-state-provider-execution.test.ts",
+			tests: [
+				"starts sibling providers concurrently",
+				"uses position only for render order and gives siblings the same pre-compose state",
+				"coalesces duplicate in-flight provider work for the same message",
+				"defers reference bodies only for named owner-exclusive providers and never joins a complete run",
+				"does not reuse cached provider state for the same message id in another room",
+				"does not coalesce concurrent provider work across rooms with the same message id",
+				"throws and reports provider failures instead of caching empty context",
+				"keeps a provider-originated AbortError observable as an ordinary failure",
+				"keeps a provider-originated TimeoutError observable as an ordinary failure",
+				"passes the active turn signal to providers and reports cancellation",
+				"stops awaiting non-cooperative work and observes its detached rejection",
+				"observes host cancellation through the merged owner inside a room turn",
+				"keeps nested model work on the shared execution when its creator cancels",
+				"keeps nested provider model tokens out of the visible reply stream",
+				"keeps provider-internal model calls off the streaming path for a caller with no streaming context",
+				"starts one trajectory step per provider at its first model call when provider calls run concurrently",
+				"does not start provider work for an owner that was already cancelled",
+				"does not cache state when the owner aborts after providers settle",
+				"does not finish composition after runtime shutdown begins post-settlement",
+				"lets a coalesced waiter cancel its own turn without killing the owner (#17602)",
+				"counts signal-less callers so a waiter's abort cannot kill their shared work",
+				"keeps the shared provider alive when the owner aborts while a waiter remains (#17602)",
+				"aborts the shared provider exactly when the last interested caller aborts (#17602)",
+				"does not hand a fresh caller a departed owner's abort reason while eviction lags settlement",
+				"runtime stop releases a signal-less caller from non-cooperative work",
+				"runtime stop also releases one-off provider work for explicit refresh",
+				"runtime stop also releases one-off provider work for message without id",
+			].map((title) => `composeState provider execution ${title}`),
+		},
+	],
+	[
+		"RuntimeLifecycle.qnt",
+		{
+			file: "test/runtime-lifecycle-model.test.ts",
+			tests: [
+				"does not start a plugin service when initialize() fails",
+				"aborts a turn that was queued behind the room owner when stop() began",
+				"does not return a stopped service from getService after stop()",
+			],
+		},
+	],
+	[
+		"ServiceLifecycle.qnt",
+		{
+			file: "test/service-lifecycle-model.test.ts",
+			tests: [
+				"reports a running sibling as registered when another sibling failed",
+				"stops a service once when plugin unload races runtime stop",
+				"keeps a sibling that started while plugin unload was stopping its class",
+				"stops the unloaded instance when runtime stop runs while unload awaits a sibling start",
+				"leaves no registration status when unload runs while the only class is mid-start",
+				"leaves no registration status when unload runs while the only class emits its start event",
+				"leaves no registration status at any tick after the only class's start settled",
+			],
+		},
+	],
+	[
+		"PluginLifecycle.qnt",
+		{
+			file: "test/plugin-lifecycle-model.test.ts",
+			tests: [
+				"a service load during unload does not leave a live instance of the unloaded plugin",
+				"unload during a service start removes the connectors that start registers",
+				"unload removes a connector registered by a lazily started service",
+				"unload stops every owned instance when one stop rejects",
+				"runtime stop during unload stops each service instance once",
+				"concurrent unloads of one plugin run its teardown once",
+				"a duplicate register during a failing init does not report success",
+				"a register whose rollback also fails rejects with the init error",
+			],
+		},
+	],
 ]);
 
 const model = path.resolve(root, process.argv[2] ?? "");

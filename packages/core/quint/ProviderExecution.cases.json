@@ -1,8 +1,14 @@
 {
   "sources": [
     "packages/core/src/runtime/provider-execution.ts",
-    "packages/core/src/runtime/state-composition.ts"
+    "packages/core/src/runtime/state-composition.ts",
+    "packages/core/test/compose-state-provider-execution.test.ts"
   ],
+  "bounds": {
+    "domain": "One provider key, three one-shot callers and up to three executions. Two callers have cancellation signals. The second case allows a one-off caller. Promise settlement and cleanup are separate.",
+    "limitations": "The real state-composition suite checks coalescing, isolation, cancellation, eviction, shutdown and provider failures. Provider payloads, cache keys and provider streaming and tracing are outside the finite execution model."
+  },
+  "conformance": "packages/core/quint/check-core-concurrency.mjs",
   "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
   "cases": [
     {
@@ -17,12 +23,14 @@
         "UnwantedWorkAborted",
         "NoJoinAborting",
         "StopReachesAll",
-        "MapActive"
+        "MapActive",
+        "ExecutionPhaseConsistent"
       ],
       "temporal": [
         "DeadlockFree",
         "AbortedCallerLeaves",
-        "StopReleasesCallers"
+        "StopReleasesCallers",
+        "SettledCallerLeaves"
       ],
       "maxSteps": 100,
       "samples": 1000,
@@ -59,6 +67,14 @@
             "Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
             "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
           ]
+        },
+        {
+          "property": "SettledCallerLeaves",
+          "expect": "holds",
+          "assumptions": [
+            "Cleanup and caller settlement callbacks are weakly fair once enabled.",
+            "Provider work is not assumed to settle on its own."
+          ]
         }
       ]
     },
@@ -74,12 +90,14 @@
         "UnwantedWorkAborted",
         "NoJoinAborting",
         "StopReachesAll",
-        "MapActive"
+        "MapActive",
+        "ExecutionPhaseConsistent"
       ],
       "temporal": [
         "DeadlockFree",
         "AbortedCallerLeaves",
-        "StopReleasesCallers"
+        "StopReleasesCallers",
+        "SettledCallerLeaves"
       ],
       "maxSteps": 100,
       "samples": 1000,
@@ -115,6 +133,14 @@
             "Checked formula in ProviderExecutionOneoff: StopReleasesCallers = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.stopped).leadsTo(s.pc.get(c) == \"done\")))",
             "Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
             "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "SettledCallerLeaves",
+          "expect": "holds",
+          "assumptions": [
+            "Cleanup and caller settlement callbacks are weakly fair once enabled.",
+            "Provider work is not assumed to settle on its own."
           ]
         }
       ]

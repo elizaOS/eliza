@@ -2,8 +2,14 @@
   "sources": [
     "packages/core/src/plugin-lifecycle.ts",
     "packages/core/src/runtime/service-lifecycle.ts",
-    "packages/core/src/runtime.ts"
+    "packages/core/src/runtime.ts",
+    "packages/core/test/plugin-lifecycle-model.test.ts"
   ],
+  "bounds": {
+    "domain": "The unload cases have two service classes, two unloaders, one or two loaders, one runtime stopper and one competing connector owner. The registration case has no service classes and two registrars. The manifest records which failures are enabled.",
+    "limitations": "The real runtime suite checks concurrent unload and stop, late connectors, failed service teardown and registration rollback. It does not exhaustively replay the bounded actor schedules."
+  },
+  "conformance": "packages/core/quint/check-core-concurrency.mjs",
   "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
   "cases": [
     {
@@ -34,8 +40,7 @@
         "StartsInFlight": false,
         "InitMayFail": true,
         "StopMayFail": true,
-        "StartMayFail": true,
-        "None": "None"
+        "StartMayFail": true
       },
       "deadlock": true,
       "temporalChecks": [
@@ -86,8 +91,7 @@
         "StartsInFlight": true,
         "InitMayFail": true,
         "StopMayFail": true,
-        "StartMayFail": true,
-        "None": "None"
+        "StartMayFail": true
       },
       "deadlock": true,
       "temporalChecks": [
@@ -138,8 +142,7 @@
         "StartsInFlight": false,
         "InitMayFail": true,
         "StopMayFail": false,
-        "StartMayFail": false,
-        "None": "None"
+        "StartMayFail": false
       },
       "deadlock": true,
       "propertyMapping": {

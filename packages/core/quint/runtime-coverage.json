@@ -62,12 +62,13 @@
 			"UnwantedWorkAborted",
 			"NoJoinAborting",
 			"StopReachesAll",
-			"MapActive"
+			"MapActive",
+			"ExecutionPhaseConsistent"
 		],
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter."
+			"The conformance hook runs 27 named state-composition tests, including shared and one-off shutdown. The model covers one provider key and bounded callers. It does not replay every generated schedule."
 		],
 		"implementationTests": [
 			"packages/core/test/compose-state-provider-execution.test.ts"
@@ -117,7 +118,7 @@
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter."
+			"The conformance hook runs three real runtime tests covering initialization failure, cancellation of queued work and post-stop visibility. It does not replay the formal stop schedules."
 		],
 		"implementationTests": [
 			"packages/core/test/runtime-lifecycle-model.test.ts"
@@ -144,7 +145,7 @@
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter."
+			"The conformance hook runs seven real service lifecycle tests, including sibling publication and late starts under concurrent stop or unload. It does not replay every formal schedule."
 		],
 		"implementationTests": [
 			"packages/core/test/service-lifecycle-model.test.ts"
@@ -171,7 +172,7 @@
 		"status": "modeled",
 		"limitations": [
 			"Finite parameter domains are preserved in the case manifest.",
-			"All declared cases pass exhaustive safety, deadlock and listed temporal checks. Implementation regression tests remain distinct from a generated-trace conformance adapter."
+			"The conformance hook runs eight real plugin lifecycle tests covering unload, connector ownership, stop, and registration failure. The formal model retains separate configuration bounds."
 		],
 		"implementationTests": ["packages/core/test/plugin-lifecycle-model.test.ts"]
 	}

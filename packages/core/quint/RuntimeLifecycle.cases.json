@@ -3,8 +3,14 @@
     "packages/core/src/runtime.ts",
     "packages/core/src/runtime/service-lifecycle.ts",
     "packages/core/src/runtime/room-handler-queue.ts",
-    "packages/core/src/runtime/turn-controller.ts"
+    "packages/core/src/runtime/turn-controller.ts",
+    "packages/core/test/runtime-lifecycle-model.test.ts"
   ],
+  "bounds": {
+    "domain": "One runtime, one eager service, two turns, two stop callers and at most two stop attempts. The model retains await boundaries in initialization, turn admission and shutdown.",
+    "limitations": "The real runtime suite checks failed initialization, cancellation of a queued turn and service visibility after shutdown. The full best-effort and strict stop interleavings are formal in this bound."
+  },
+  "conformance": "packages/core/quint/check-core-concurrency.mjs",
   "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
   "cases": [
     {
@@ -34,8 +40,7 @@
       "constants": {
         "Turns": ["t1", "t2"],
         "Stoppers": ["s1", "s2"],
-        "MaxAttempts": 2,
-        "None": "None"
+        "MaxAttempts": 2
       },
       "deadlock": true,
       "temporalChecks": [
