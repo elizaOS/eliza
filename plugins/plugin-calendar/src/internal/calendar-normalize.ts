@@ -98,7 +98,7 @@ export function normalizeCalendarDateTimeInTimeZone(
   }
 
   const localMatch = text.match(
-    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/,
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?$/,
   );
   if (localMatch) {
     let date = {
@@ -109,7 +109,10 @@ export function normalizeCalendarDateTimeInTimeZone(
     let hour = Number(localMatch[4] ?? "0");
     const minute = Number(localMatch[5] ?? "0");
     const second = Number(localMatch[6] ?? "0");
-    const millisecond = Number((localMatch[7] ?? "0").padEnd(3, "0"));
+    // Keep millisecond precision: extra digits are truncated, not rounded.
+    const millisecond = Number(
+      (localMatch[7] ?? "0").slice(0, 3).padEnd(3, "0"),
+    );
     // ISO 24:00 denotes the following civil midnight, even across a DST change.
     if (hour === 24 && minute === 0 && second === 0 && millisecond === 0) {
       date = addDaysToLocalDate(date, 1);
