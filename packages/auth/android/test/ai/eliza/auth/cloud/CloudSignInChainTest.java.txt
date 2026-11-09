@@ -301,8 +301,14 @@ public class CloudSignInChainTest {
   check("invalid-code".equals(first.error)&&first.rejections==1,"first reply rejected once");
   PluginCall cancel=new PluginCall();cancel.input.put("requestId",REQUEST);
   host.cancel(cancel);
-  check(cancel.result!=null && host.attempt==null,"scoped cancel retires the right attempt");
+  check(owner.cancelled && host.attempt==null && host.pendingRetirementUnconfirmed,"scoped cancel retires the right attempt");
+  check(cancel.result==null && cancel.error==null,"cancel acknowledgement waits for persisted retirement");
   check("cancelled".equals(host.retry.error) && host.retry.rejections==1,"retry retains its cancellation reply");
+  host.queued.remove().run();
+  check(cancel.result==null && host.pendingRetirementUnconfirmed && host.retry.rejections==1,"late retry cannot acknowledge cancellation or deliver twice");
+  while(!host.queued.isEmpty())host.queued.remove().run();
+  check(cancel.result!=null && cancel.error==null && !host.pendingRetirementUnconfirmed,"cancel acknowledgement follows persisted retirement");
+  check("cancelled".equals(host.retry.error) && host.retry.rejections==1,"drained retry retains its original cancellation reply");
  }
  static void cancellationBeatsWrongCode(){
   CloudSignInChainTest host=new CloudSignInChainTest();
