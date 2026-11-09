@@ -147,6 +147,79 @@ describe("Stripe Checkout order authority", () => {
     );
   });
 
+  test("concurrent identical quote requests return the same durable winner", async () => {
+    const input = {
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      clientRequestKey: "request-concurrent-same",
+      requestDigest: "d".repeat(64),
+      purchaseType: "custom_amount" as const,
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+    };
+    const quotes = await Promise.all([service.create(input), service.create({ ...input })]);
+    expect(quotes[0]?.id).toBe(quotes[1]?.id);
+    expect((await rows()).orders).toHaveLength(1);
+  });
+
+  test("concurrent conflicting quote requests cannot replace the winner", async () => {
+    const otherMember = "20000000-0000-4000-8000-000000000003";
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id) VALUES (${otherMember}, ${ORG_A})`,
+    );
+    for (const conflict of ["user", "digest"] as const) {
+      const input = {
+        organizationId: ORG_A,
+        initiatedByUserId: USER_A,
+        clientRequestKey: `request-concurrent-${conflict}`,
+        requestDigest: "e".repeat(64),
+        purchaseType: "custom_amount" as const,
+        creditsToGrant: "5.000000",
+        chargeAmountCents: 500,
+        currency: "usd",
+      };
+      const alternate = {
+        ...input,
+        ...(conflict === "user"
+          ? { initiatedByUserId: otherMember }
+          : { requestDigest: "f".repeat(64) }),
+      };
+      const outcomes = await Promise.allSettled([service.create(input), service.create(alternate)]);
+      expect(outcomes.filter((value) => value.status === "fulfilled")).toHaveLength(1);
+      const rejected = outcomes.find((value) => value.status === "rejected");
+      expect(rejected?.status === "rejected" && rejected.reason).toMatchObject({
+        code: "STRIPE_CHECKOUT_IDEMPOTENCY_CONFLICT",
+      });
+      const winner = outcomes.find((value) => value.status === "fulfilled");
+      if (winner?.status !== "fulfilled") throw new Error("Missing quote winner");
+      expect(await service.get(winner.value.id)).toMatchObject({
+        initiated_by_user_id: winner.value.initiated_by_user_id,
+        request_digest: winner.value.request_digest,
+      });
+    }
+    expect((await rows()).orders).toHaveLength(2);
+  });
+
+  test("the same quote request key is independent across organizations", async () => {
+    const base = {
+      clientRequestKey: "request-two-organizations",
+      requestDigest: "a".repeat(64),
+      purchaseType: "custom_amount" as const,
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+    };
+    const [first, second] = await Promise.all([
+      service.create({ ...base, organizationId: ORG_A, initiatedByUserId: USER_A }),
+      service.create({ ...base, organizationId: ORG_B, initiatedByUserId: USER_B }),
+    ]);
+    expect(first.id).not.toBe(second.id);
+    expect(first.organization_id).toBe(ORG_A);
+    expect(second.organization_id).toBe(ORG_B);
+    expect((await rows()).orders).toHaveLength(2);
+  });
+
   test("new orders are $5-$1,000 pay-as-you-go top-ups with no pack or bonus (#22963)", async () => {
     const base = {
       organizationId: ORG_A,

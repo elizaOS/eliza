@@ -9,7 +9,8 @@
     "packages/cloud/api/stripe/create-checkout-session/route.ts",
     "packages/cloud/api/v1/credits/checkout/route.ts",
     "packages/cloud/api/src/checkout-reconciliation.ts",
-    "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts"
+    "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql"
   ],
   "bounds": {
     "domain": "One immutable organization-credit quote, two competing settlement callers, two customer identities, one original Session and PaymentIntent, one conflicting prior ledger intent, credit value 2, six clock values and a three-tick original dispatch window. Fresh quotes, historical ambiguous rows with missing first-dispatch evidence, and failed historical rows have separate initial states.",

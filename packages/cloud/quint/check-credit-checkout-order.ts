@@ -8,7 +8,11 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 assert.ok(
-  ["CreditCheckoutOrder.qnt", "LegacyCheckoutSettlement.qnt"].some(
+  [
+    "CreditCheckoutOrder.qnt",
+    "LegacyCheckoutSettlement.qnt",
+    "CreditCheckoutQuote.qnt",
+  ].some(
     (model) =>
       path.resolve(root, process.argv[2] ?? "") ===
       path.join(root, "packages/cloud/quint", model),
