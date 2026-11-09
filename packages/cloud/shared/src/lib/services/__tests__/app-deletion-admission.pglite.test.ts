@@ -44,13 +44,13 @@ beforeAll(async () => {
     await dbWrite.execute(statement);
   }
   const migration = readFileSync(
-    new URL("../../../db/migrations/0563_app_deletion_authority.sql", import.meta.url),
+    new URL("../../../db/migrations/0566_app_deletion_authority.sql", import.meta.url),
     "utf8",
   );
   for (const statement of migration.split("--> statement-breakpoint"))
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
   for (const statement of readFileSync(
-    new URL("../../../db/migrations/0567_app_cleanup_manifest.sql", import.meta.url),
+    new URL("../../../db/migrations/0568_app_cleanup_manifest.sql", import.meta.url),
     "utf8",
   ).split("--> statement-breakpoint"))
     if (statement.trim()) await getPgliteClientForTests().exec(statement);

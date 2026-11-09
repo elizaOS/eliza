@@ -177,6 +177,7 @@ export class AppsRepository {
   /** Primary identity for trusted internal deletion callers; routes pass their own scope. */
   async findByIdForWrite(id: string): Promise<App | undefined> {
     if (!UUID_PATTERN.test(id)) return undefined;
+    /* global-scope: Trusted internal cleanup resolves the primary identity here; HTTP deletion uses scoped requestDeletion admission. */
     const [app] = await dbWrite.select().from(apps).where(eq(apps.id, id));
     return app;
   }
@@ -728,6 +729,7 @@ export class AppsRepository {
   }
 
   async assertNotDeleting(id: string): Promise<void> {
+    /* global-scope: Internal container-job lifecycle guard only; it returns no app data and grants no tenant access. */
     const [app] = await dbWrite
       .select({ deletionJobId: apps.deletion_job_id })
       .from(apps)

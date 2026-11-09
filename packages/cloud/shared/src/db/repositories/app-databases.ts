@@ -1,4 +1,5 @@
 // Persists app databases records for cloud services through the shared DB boundary.
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
 import {
@@ -15,12 +16,13 @@ import { apps } from "../schemas/apps";
 import { tenantDbClusters } from "../schemas/tenant-db-clusters";
 
 async function lockProvisionableApp(tx: DbTransaction, appId: string): Promise<void> {
+  /* global-scope: Lifecycle-only lock for internal database provisioning; caller admission owns tenant authorization. */
   const [app] = await tx
     .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
     .from(apps)
     .where(eq(apps.id, appId))
     .for("update");
-  if (!app) throw new Error("App no longer exists");
+  if (!app) throw new ElizaError("App no longer exists", { code: "APP_NOT_FOUND" });
   if (app.deletionJobId) throw new AppDeletionInProgressError(appId, app.deletionJobId);
 }
 

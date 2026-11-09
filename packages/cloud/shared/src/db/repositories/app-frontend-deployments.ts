@@ -42,6 +42,7 @@ export class AppFrontendDeploymentsRepository {
   async create(input: {
     id?: string;
     appId: string;
+    organizationId: string;
     r2Prefix: string;
     uploadGeneration?: string;
     uploadPlan?: FrontendManifest;
@@ -55,9 +56,12 @@ export class AppFrontendDeploymentsRepository {
           const [app] = await tx
             .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
             .from(apps)
-            .where(eq(apps.id, input.appId))
+            .where(and(eq(apps.id, input.appId), eq(apps.organization_id, input.organizationId)))
             .for("update");
-          if (!app) throw new DeploymentNotPromotable();
+          if (!app)
+            throw new ElizaError("Frontend app owner is unavailable", {
+              code: "FRONTEND_APP_OWNER_UNAVAILABLE",
+            });
           if (app.deletionJobId) throw new AppDeletionInProgressError(app.id, app.deletionJobId);
           const [maxRow] = await tx
             .select({ maxVersion: max(appFrontendDeployments.version) })
@@ -156,27 +160,26 @@ export class AppFrontendDeploymentsRepository {
   }
 
   private async withUploadApp<T>(
-    id: string,
+    owner: Pick<App, "id" | "organization_id">,
     operation: (tx: import("../client").DbTransaction, deleting: boolean) => Promise<T>,
   ): Promise<T | undefined> {
-    const [identity] = await dbWrite
-      .select({ appId: appFrontendDeployments.app_id })
-      .from(appFrontendDeployments)
-      .where(eq(appFrontendDeployments.id, id));
-    if (!identity) return undefined;
     return dbWrite.transaction(async (tx) => {
       const [app] = await tx
         .select({ id: apps.id, deleting: apps.deletion_job_id })
         .from(apps)
-        .where(eq(apps.id, identity.appId))
+        .where(and(eq(apps.id, owner.id), eq(apps.organization_id, owner.organization_id)))
         .for("update");
       if (!app) return undefined;
       return operation(tx, !!app.deleting);
     });
   }
 
-  async beginUpload(id: string, generation?: string): Promise<AppFrontendDeployment | undefined> {
-    return this.withUploadApp(id, async (tx, deleting) => {
+  async beginUpload(
+    owner: Pick<App, "id" | "organization_id">,
+    id: string,
+    generation?: string,
+  ): Promise<AppFrontendDeployment | undefined> {
+    return this.withUploadApp(owner, async (tx, deleting) => {
       if (deleting) return undefined;
       const [row] = await tx
         .update(appFrontendDeployments)
@@ -184,6 +187,7 @@ export class AppFrontendDeploymentsRepository {
         .where(
           and(
             eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, owner.id),
             eq(appFrontendDeployments.status, "pending"),
             generation
               ? eq(appFrontendDeployments.upload_generation, generation)
@@ -196,8 +200,12 @@ export class AppFrontendDeploymentsRepository {
   }
 
   /** Last local admission before each PUT; deletion waits for this writer's quiescence. */
-  async assertUploadAuthority(id: string, generation: string): Promise<void> {
-    const row = await this.withUploadApp(id, async (tx, deleting) => {
+  async assertUploadAuthority(
+    owner: Pick<App, "id" | "organization_id">,
+    id: string,
+    generation: string,
+  ): Promise<void> {
+    const row = await this.withUploadApp(owner, async (tx, deleting) => {
       if (deleting) return undefined;
       const [owned] = await tx
         .select({ id: appFrontendDeployments.id })
@@ -205,6 +213,7 @@ export class AppFrontendDeploymentsRepository {
         .where(
           and(
             eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, owner.id),
             eq(appFrontendDeployments.upload_generation, generation),
             eq(appFrontendDeployments.status, "uploading"),
             isNull(appFrontendDeployments.upload_quiesced_at),
@@ -221,8 +230,12 @@ export class AppFrontendDeploymentsRepository {
   }
 
   /** Only the original writer, after every issued PUT acknowledges, may record no future PUTs. */
-  async quiesceUpload(id: string, generation: string): Promise<AppFrontendDeployment | undefined> {
-    return this.withUploadApp(id, async (tx) => {
+  async quiesceUpload(
+    owner: Pick<App, "id" | "organization_id">,
+    id: string,
+    generation: string,
+  ): Promise<AppFrontendDeployment | undefined> {
+    return this.withUploadApp(owner, async (tx) => {
       const [row] = await tx
         .update(appFrontendDeployments)
         .set({
@@ -232,6 +245,7 @@ export class AppFrontendDeploymentsRepository {
         .where(
           and(
             eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, owner.id),
             eq(appFrontendDeployments.upload_generation, generation),
             isNull(appFrontendDeployments.upload_quiesced_at),
           ),

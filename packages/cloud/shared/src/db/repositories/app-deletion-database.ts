@@ -99,7 +99,7 @@ export async function confirmDeletionDatabase(authority: JobExecutionAuthority):
         user_database_error: null,
         updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
       })
-      .where(eq(appDatabases.id, database.id))
+      .where(and(eq(appDatabases.id, database.id), eq(appDatabases.app_id, context.data.appId)))
       .returning();
     if (!cleared || cleared.tenant_db_cluster_id !== null || cleared.user_database_uri !== null)
       throw new AppDeletionRecoveryPendingError(

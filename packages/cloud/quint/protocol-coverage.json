@@ -801,7 +801,7 @@
       "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
       "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
       "packages/cloud/quint/check-job-time.ts",
-      "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
+      "packages/cloud/shared/src/db/migrations/0567_job_utc_clock_defaults.sql",
       "packages/cloud/shared/src/db/repositories/job-execution-authority.ts"
     ],
     "invariants": [
@@ -2027,8 +2027,8 @@
     "status": "partial",
     "limitations": [
       "One immutable deployment with a complete abstract object set and one pre-existing active deployment; one upload, publication request, retirement request and deletion. Both known and transport-ambiguous SQL outcomes are represented.",
-      "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. Activation first locks the parent app in the supplied organization. A nonmatching organization cannot change either deployment. The model assumes immutable deployment IDs and complete acknowledged object writes.",
-      "Eleven real PGlite service/repository cases include rejection of a foreign organization. Five real PostgreSQL cases check contention and acknowledgement loss. Four PG tests observe row-lock wait chains across separate connections; the fifth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement.",
+      "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. Activation first locks the parent app in the supplied organization. A nonmatching organization cannot change either deployment. The model assumes immutable deployment IDs and complete acknowledged object writes. The original app and organization guard allocation, each PUT admission and quiescence; a mismatched scope cannot begin an existing upload.",
+      "Thirteen real PGlite service/repository cases include foreign organization rejection before row allocation or any PUT, and parent/organization checks for upload and quiescence. Six real PostgreSQL cases check contention and acknowledgement loss. Five PG tests observe row-lock wait chains across separate connections, including ownership changing while upload creation waits; the sixth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement.",
       "No general TypeScript refinement, live R2 proof, account deletion or request authentication proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid. The separate app_cleanup_manifest model owns upload plans, writer quiescence and app-delete cleanup. This publication projection retains its original manifest/retirement authority.",
       "Fair continuation of outstanding storage operations gives a terminal result; success, availability, cleanup after lost receipts and elapsed deadlines are not promised."
     ]
@@ -2337,7 +2337,7 @@
     "id": "cloud-protocol-app-teardown-authority",
     "model": "packages/cloud/quint/app_teardown_authority.qnt",
     "sources": [
-      "packages/cloud/shared/src/db/migrations/0563_app_deletion_authority.sql",
+      "packages/cloud/shared/src/db/migrations/0566_app_deletion_authority.sql",
       "packages/cloud/shared/src/db/schemas/apps.ts",
       "packages/cloud/shared/src/db/schemas/jobs.ts",
       "packages/cloud/shared/src/db/schemas/app-databases.ts",
@@ -2378,7 +2378,7 @@
       "packages/scripts/lib/test-output.ts",
       "packages/cloud/shared/src/lib/api/cloud-worker-errors.ts",
       "packages/cloud/api/test/e2e/group-i-apps-lifecycle.test.ts",
-      "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
+      "packages/cloud/shared/src/db/migrations/0567_job_utc_clock_defaults.sql",
       "packages/cloud/shared/src/db/repositories/app-deletion-quiescence.ts"
     ],
     "invariants": [
@@ -2402,7 +2402,7 @@
       "packages/cloud/shared/src/db/repositories/app-deletion-cleanup.ts",
       "packages/cloud/shared/src/db/repositories/app-deletion-execution.ts",
       "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
-      "packages/cloud/shared/src/db/migrations/0567_app_cleanup_manifest.sql",
+      "packages/cloud/shared/src/db/migrations/0568_app_cleanup_manifest.sql",
       "packages/cloud/shared/src/lib/services/app-deletion.ts",
       "packages/cloud/shared/src/lib/services/app-deletion-authority.ts",
       "packages/cloud/shared/src/lib/services/app-deletion-cleanup.ts",

@@ -260,6 +260,7 @@ export class AppFrontendHostingService {
     const deployment = await appFrontendDeploymentsRepository.create({
       id: deploymentId,
       appId: input.app.id,
+      organizationId: input.app.organization_id,
       r2Prefix,
       uploadGeneration: generation,
       uploadPlan: manifest,
@@ -271,6 +272,7 @@ export class AppFrontendHostingService {
     let quiesced = false;
     try {
       const uploading = await appFrontendDeploymentsRepository.beginUpload(
+        input.app,
         deployment.id,
         generation,
       );
@@ -282,7 +284,11 @@ export class AppFrontendHostingService {
       const bucket = requireBucket();
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i]!;
-        await appFrontendDeploymentsRepository.assertUploadAuthority(deployment.id, generation);
+        await appFrontendDeploymentsRepository.assertUploadAuthority(
+          input.app,
+          deployment.id,
+          generation,
+        );
         const key = `${r2Prefix}${entry.hash}`;
         putUnknown = true;
         await bucket.put(key, payloads[i]!, { httpMetadata: { contentType: entry.contentType } });
@@ -290,6 +296,7 @@ export class AppFrontendHostingService {
         writtenKeys.push(key);
       }
       const receipt = await appFrontendDeploymentsRepository.quiesceUpload(
+        input.app,
         deployment.id,
         generation,
       );
@@ -316,6 +323,7 @@ export class AppFrontendHostingService {
       try {
         if (!putUnknown && !quiesced) {
           quiesced = !!(await appFrontendDeploymentsRepository.quiesceUpload(
+            input.app,
             deployment.id,
             generation,
           ));

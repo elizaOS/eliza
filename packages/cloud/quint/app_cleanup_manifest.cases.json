@@ -5,7 +5,7 @@
     "packages/cloud/shared/src/db/repositories/app-deletion-cleanup.ts",
     "packages/cloud/shared/src/db/repositories/app-deletion-execution.ts",
     "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
-    "packages/cloud/shared/src/db/migrations/0567_app_cleanup_manifest.sql",
+    "packages/cloud/shared/src/db/migrations/0568_app_cleanup_manifest.sql",
     "packages/cloud/shared/src/lib/services/app-deletion.ts",
     "packages/cloud/shared/src/lib/services/app-deletion-authority.ts",
     "packages/cloud/shared/src/lib/services/app-deletion-cleanup.ts",

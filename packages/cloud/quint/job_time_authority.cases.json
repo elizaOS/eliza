@@ -7,7 +7,7 @@
     "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
     "packages/cloud/quint/check-job-time.ts",
     "packages/scripts/lib/junit-summary.ts",
-    "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
+    "packages/cloud/shared/src/db/migrations/0567_job_utc_clock_defaults.sql",
     "packages/cloud/shared/src/db/repositories/job-execution-authority.ts"
   ],
   "conformance": "packages/cloud/quint/check-job-time.ts",

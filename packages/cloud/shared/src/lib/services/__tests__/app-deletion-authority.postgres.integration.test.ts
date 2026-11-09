@@ -242,9 +242,9 @@ async function seedMobileExchange() {
       "0545_inference_policy_mutation_fences.sql",
       "0552_inference_rate_policy_fences.sql",
       "0553_inference_policy_snapshot_fence.sql",
-      "0563_app_deletion_authority.sql",
-      "0566_job_utc_clock_defaults.sql",
-      "0567_app_cleanup_manifest.sql",
+      "0566_app_deletion_authority.sql",
+      "0567_job_utc_clock_defaults.sql",
+      "0568_app_cleanup_manifest.sql",
     ]) {
       for (const statement of readFileSync(
         new URL(`../../../db/migrations/${name}`, import.meta.url),

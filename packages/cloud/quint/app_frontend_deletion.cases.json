@@ -14,7 +14,7 @@
     "packages/scripts/lib/test-output.ts",
     "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.postgres.integration.test.ts",
     "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
-    "packages/cloud/shared/src/db/migrations/0567_app_cleanup_manifest.sql",
+    "packages/cloud/shared/src/db/migrations/0568_app_cleanup_manifest.sql",
     "packages/cloud/shared/src/db/repositories/app-deletion-cleanup.ts",
     "packages/cloud/shared/src/lib/services/app-deletion-cleanup.ts",
     "packages/cloud/shared/src/lib/services/app-deletion-cleanup-plan.ts",

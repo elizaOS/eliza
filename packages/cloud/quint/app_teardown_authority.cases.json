@@ -1,6 +1,6 @@
 {
   "sources": [
-    "packages/cloud/shared/src/db/migrations/0563_app_deletion_authority.sql",
+    "packages/cloud/shared/src/db/migrations/0566_app_deletion_authority.sql",
     "packages/cloud/shared/src/db/schemas/apps.ts",
     "packages/cloud/shared/src/db/schemas/jobs.ts",
     "packages/cloud/shared/src/db/schemas/app-databases.ts",
@@ -41,9 +41,9 @@
     "packages/scripts/lib/test-output.ts",
     "packages/cloud/shared/src/lib/api/cloud-worker-errors.ts",
     "packages/cloud/api/test/e2e/group-i-apps-lifecycle.test.ts",
-    "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
+    "packages/cloud/shared/src/db/migrations/0567_job_utc_clock_defaults.sql",
     "packages/cloud/shared/src/db/repositories/app-deletion-quiescence.ts",
-    "packages/cloud/shared/src/db/migrations/0567_app_cleanup_manifest.sql",
+    "packages/cloud/shared/src/db/migrations/0568_app_cleanup_manifest.sql",
     "packages/cloud/shared/src/db/repositories/app-deletion-cleanup.ts",
     "packages/cloud/shared/src/lib/services/app-deletion-cleanup.ts",
     "packages/cloud/shared/src/lib/services/app-deletion-cleanup-plan.ts"

@@ -26,7 +26,9 @@ let beforeDelete: (() => Promise<void>) | undefined;
 const spies: Array<{ mockRestore(): void }> = [];
 
 beforeAll(async () => {
-  await dbWrite.execute("CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL, deletion_job_id uuid)");
+  await dbWrite.execute(
+    "CREATE TABLE apps(id uuid PRIMARY KEY, organization_id uuid NOT NULL, deletion_job_id uuid)",
+  );
   await dbWrite.execute(
     sql`INSERT INTO apps(id, organization_id) VALUES (${app.id}, ${app.organization_id})`,
   );
@@ -116,6 +118,50 @@ test("a foreign organization cannot activate a published deployment", async () =
   expect((await repository.getById(ready.id))?.status).toBe("ready");
 
   expect((await hosting.activate(app, ready.id))?.id).toBe(ready.id);
+});
+
+test("a foreign organization cannot create an upload or write its objects", async () => {
+  await expect(
+    hosting.deployBundle({
+      app: { ...app, organization_id: randomUUID() },
+      files,
+      activate: false,
+    }),
+  ).rejects.toThrow();
+  expect(await dbWrite.select().from(appFrontendDeployments)).toHaveLength(0);
+  expect(objects.size).toBe(0);
+});
+
+test("upload and quiescence guards bind both the parent app and organization", async () => {
+  const generation = randomUUID();
+  const row = await repository.create({
+    appId: app.id,
+    organizationId: app.organization_id,
+    r2Prefix: "owned/",
+    uploadGeneration: generation,
+  });
+  const other = { id: randomUUID(), organization_id: app.organization_id };
+  await dbWrite.execute(
+    sql`INSERT INTO apps(id, organization_id) VALUES (${other.id}, ${other.organization_id})`,
+  );
+  const refused = [{ ...app, organization_id: randomUUID() }, other];
+  try {
+    for (const owner of refused)
+      expect(await repository.beginUpload(owner, row.id, generation)).toBeUndefined();
+    expect((await repository.getById(row.id))?.status).toBe("pending");
+    expect((await repository.beginUpload(app, row.id, generation))?.status).toBe("uploading");
+    for (const owner of refused) {
+      await expect(repository.assertUploadAuthority(owner, row.id, generation)).rejects.toThrow();
+      expect(await repository.quiesceUpload(owner, row.id, generation)).toBeUndefined();
+    }
+    expect((await repository.getById(row.id))?.upload_quiesced_at).toBeNull();
+    await repository.assertUploadAuthority(app, row.id, generation);
+    expect(
+      (await repository.quiesceUpload(app, row.id, generation))?.upload_quiesced_at,
+    ).not.toBeNull();
+  } finally {
+    await dbWrite.execute(sql`DELETE FROM apps WHERE id = ${other.id}`);
+  }
 });
 
 test("a lost finalization acknowledgement preserves the published row and all objects", async () => {
