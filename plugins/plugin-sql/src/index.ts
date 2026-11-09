@@ -78,6 +78,11 @@ export type {
   PgliteSingletonCache,
   PgliteSingletonManager,
 } from "./pglite/manager-cache";
+export {
+  createMigratedSnapshot,
+  MIGRATED_SNAPSHOT_FILE,
+  type SnapshotPluginSchema,
+} from "./pglite/migrated-snapshot";
 export { schema } from "./schema";
 export { agentTable } from "./schema/agent";
 export { approvalDispatchControlTable } from "./schema/approvalDispatchControl";
