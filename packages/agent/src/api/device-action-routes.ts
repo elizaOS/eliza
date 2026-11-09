@@ -26,10 +26,10 @@ import {
   DEVICE_VIEWS,
   DeviceActionError,
   DeviceActionService,
-  FILES_CAPABILITY,
   type DeviceCredential,
   type DeviceReadCompletionHint,
   deviceProposalDigest,
+  FILES_CAPABILITY,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";

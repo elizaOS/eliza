@@ -21,7 +21,7 @@
  * Operations keep one flat shape, so a validated operation validates again
  * unchanged (journal recovery re-reads it).
  */
-import type { ActionParameterSchema } from "@elizaos/core";
+import type { ActionParameterSchema } from "@elizaos/core/schema-types";
 
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES = [

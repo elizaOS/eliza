@@ -72,12 +72,6 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
-  FILES_CAPABILITY,
-  type FilesAgentOperation,
-  isFilesOperation,
-  validateFilesOperation,
-} from "./files-browser-contract.ts";
-import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
   type WorkflowDeviceBinding,

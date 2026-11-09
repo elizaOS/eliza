@@ -88,10 +88,6 @@ import {
   validateClockResult,
 } from "./clock-contract.ts";
 import {
-  FILES_CAPABILITY,
-  FILES_OPERATION_TYPES,
-} from "./files-browser-contract.ts";
-import {
   DeviceActionError,
   type DeviceActionPayload,
   deviceOperationSupportedByCapabilities,
@@ -103,7 +99,10 @@ import {
   validateDevicePayload,
 } from "./contract.ts";
 import { deviceActionEffectReceipts } from "./effect-receipts.ts";
-import { FILES_OPERATION_TYPES } from "./files-browser-contract.ts";
+import {
+  FILES_CAPABILITY,
+  FILES_OPERATION_TYPES,
+} from "./files-browser-contract.ts";
 import {
   FOREGROUND_REVIEW_TYPES,
   foregroundReviewOperationAvailable,
