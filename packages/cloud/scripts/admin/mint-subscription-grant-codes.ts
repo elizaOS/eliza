@@ -1,6 +1,5 @@
 /**
- * Mints Cloud subscription grant codes (for example Alpha Phone six-month
- * Plus codes). Only an HMAC of each code is stored; the plaintext codes are
+ * Mints Cloud subscription grant codes for an explicit campaign family. Only an HMAC of each code is stored; the plaintext codes are
  * printed once to stdout and cannot be recovered later.
  *
  * Requires DATABASE_URL and ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER (the same
@@ -9,8 +8,8 @@
  * Usage:
  *   bun --conditions=eliza-source packages/cloud/scripts/admin/mint-subscription-grant-codes.ts \
  *     --count 100 [--max-redemptions 1] [--duration-days 183 | --duration-months 6 | --lifetime] \
- *     [--plan plus_monthly] [--family alpha_phone] [--requires-no-paid-plan] \
- *     [--expires-at 2027-12-31T00:00:00Z] [--label "Alpha Phone batch 1"]
+ *     [--plan plus_monthly] --family campaign_id [--requires-no-paid-plan] \
+ *     [--expires-at 2027-12-31T00:00:00Z] [--label "Campaign batch 1"]
  *
  * `--duration-months` grants UTC calendar months from redemption (a month end
  * clamps, so Aug 31 + 6 is the end of February). `--requires-no-paid-plan`
@@ -67,7 +66,7 @@ export function parseMintOptions(argv: string[]): MintOptions {
       "requires-no-paid-plan": { type: "boolean", default: false },
       lifetime: { type: "boolean", default: false },
       plan: { type: "string", default: "plus_monthly" },
-      family: { type: "string", default: "alpha_phone" },
+      family: { type: "string" },
       "expires-at": { type: "string" },
       label: { type: "string" },
     },
@@ -100,7 +99,8 @@ export function parseMintOptions(argv: string[]): MintOptions {
     values["duration-months"] === undefined
       ? null
       : integer(values["duration-months"], "duration-months", 1, 24);
-  if (!/^[a-z0-9_]{1,64}$/.test(values.family ?? ""))
+  const family = values.family;
+  if (!family || !/^[a-z0-9_]{1,64}$/.test(family))
     throw new Error("--family must match ^[a-z0-9_]{1,64}$");
   const expiresAt = values["expires-at"]
     ? new Date(values["expires-at"])
@@ -124,7 +124,7 @@ export function parseMintOptions(argv: string[]): MintOptions {
     durationMonths,
     requiresNoPaidPlan: values["requires-no-paid-plan"] === true,
     planKey: values.plan,
-    family: values.family ?? "alpha_phone",
+    family,
     expiresAt,
     label: values.label ?? null,
   };

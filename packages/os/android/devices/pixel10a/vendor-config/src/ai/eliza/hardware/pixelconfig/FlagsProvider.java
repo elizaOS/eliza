@@ -1,4 +1,4 @@
-package ai.alphacompute.pixelconfig;
+package ai.eliza.hardware.pixelconfig;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -16,7 +16,7 @@ import java.nio.file.Files;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Read-only extracted eSIM configuration for Alpha's AOSP image without GSF.
+/** Read-only extracted eSIM configuration for AOSP images without GSF.
  * Gservices key/prefix cursor protocol: GrapheneOS GmsCompat GservicesProvider,
  * tag 2026100600. No accounts, network, mutable flags, or Google service APIs.
  */
@@ -76,7 +76,7 @@ public final class FlagsProvider extends ContentProvider {
         }
         return cursor;
     }
-    @Override public String getType(Uri uri) { enforceCaller(); return "vnd.android.cursor.dir/vnd.alpha.pixel-flags"; }
+    @Override public String getType(Uri uri) { enforceCaller(); return "vnd.android.cursor.dir/vnd.eliza.pixel-flags"; }
     @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException("Read-only vendor configuration"); }
     @Override public int update(Uri uri, ContentValues values, String selection, String[] args) { throw new UnsupportedOperationException("Read-only vendor configuration"); }
     @Override public int delete(Uri uri, String selection, String[] args) { throw new UnsupportedOperationException("Read-only vendor configuration"); }

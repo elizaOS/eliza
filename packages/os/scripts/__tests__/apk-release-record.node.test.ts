@@ -45,7 +45,7 @@ const cloudChecks = {
   stopReleased: true,
 };
 const cloudReceipt = (change = {}) => ({
-  format: "alpha-cloud-voice-qualification-v1",
+  format: "cloud-voice-qualification-v1",
   results: [
     {
       apkSha256: "a".repeat(64),
@@ -67,6 +67,27 @@ const cloudPolicy = { cloudVoiceProvider: "cartesia" as const };
 
 test("explicit Cloud release uses exact-artifact Cartesia evidence without claiming native voice", () => {
   assert.deepEqual(apkReleaseBlockers(cloudRow(), cloudPolicy), []);
+  for (const [qualificationFormat, admissionFormat] of [
+    ["cloud-voice-qualification-v1", "cloud-voice-admission-v1"],
+    ["alpha-cloud-voice-qualification-v1", "alpha-cloud-voice-admission-v1"],
+  ]) {
+    const receipt = { ...cloudReceipt(), format: qualificationFormat };
+    const candidate = cloudRow(receipt);
+    assert.deepEqual(candidate.cloudVoice, {
+      format: admissionFormat,
+      apkSha256: "a".repeat(64),
+      evidenceSha256: "b".repeat(64),
+      provider: "cartesia",
+      outcome: "passed",
+      checks: cloudChecks,
+    });
+    assert.deepEqual(apkReleaseBlockers(candidate, cloudPolicy), []);
+    receipt.results[0].outcome = "failed";
+    assert.match(
+      apkReleaseBlockers(cloudRow(receipt), cloudPolicy).join("\n"),
+      /did not pass/,
+    );
+  }
   assert.match(
     apkReleaseBlockers(cloudRow()).join("\n"),
     /Cloud speech release policy/,
