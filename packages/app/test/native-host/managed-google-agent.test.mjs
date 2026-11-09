@@ -35,7 +35,8 @@ async function fixture({
   let current = true,
     otherOwner = false,
     dispatches = 0,
-    messageBody = "A complete message";
+    messageBody = "A complete message",
+    messageSubject = "A &amp; B";
   const request = async (url, init = {}) => {
     const u = new URL(url);
     calls.push(u.pathname);
@@ -89,7 +90,7 @@ async function fixture({
         message: {
           externalId: "mail1",
           threadId: "thread1",
-          subject: "A &amp; B",
+          subject: messageSubject,
           from: "Sender",
           to: [],
           snippet: "Hello",
@@ -187,6 +188,9 @@ async function fixture({
     messageBody: (value) => {
       messageBody = value;
     },
+    messageSubject: (value) => {
+      messageSubject = value;
+    },
     retire: () => {
       current = false;
     },
@@ -206,12 +210,21 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
     f.messageBody(fullBody);
     const message = await f.call({ messageId });
     assert.equal(message.status, 200);
-    assert.equal(message.data.message.bodyText, fullBody);
+    assert.equal(message.data.message.bodyText, "complete message 😀 ".repeat(1600));
+    assert.equal(message.data.message.truncated, true);
     f.messageBody("x".repeat(256 * 1024));
+    const bounded = await f.call({ messageId });
+    assert.equal(bounded.status, 200);
+    assert.equal(bounded.data.message.bodyText, "x".repeat(32_000));
+    assert.equal(bounded.data.message.truncated, true);
+    // The body cap does not waive the complete response bound for other fields.
+    f.messageBody("A complete message");
+    f.messageSubject("x".repeat(256 * 1024));
     const oversized = await f.call({ messageId });
     assert.equal(oversized.status, 409);
     assert.equal(oversized.data.reason, "result-too-large");
     assert.equal(oversized.data.message, undefined);
+    f.messageSubject("A &amp; B");
     const calendars = await f.call({ calendar: { operation: "sources" } });
     assert.equal(calendars.status, 200);
     assert.equal(calendars.data.calendars[0].calendarId, "primary");
@@ -243,6 +256,28 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
         .providerResult.messageId,
       "accepted-mail",
     );
+  } finally {
+    await f.host.close();
+  }
+});
+test("native Gmail body limits mark truncation without splitting a Unicode character", async () => {
+  const f = await fixture();
+  try {
+    const messageId = (await f.call({ limit: 1 })).data.items[0].id;
+    for (const [body, expected, truncated] of [
+      ["a".repeat(32_000), "a".repeat(32_000), false],
+      ["a".repeat(32_001), "a".repeat(32_000), true],
+      ["a".repeat(31_999) + "😀tail", "a".repeat(31_999), true],
+      ["a".repeat(31_998) + "😀", "a".repeat(31_998) + "😀", false],
+    ]) {
+      f.messageBody(body);
+      const result = await f.call({ messageId });
+      assert.equal(result.status, 200);
+      assert.equal(result.data.message.bodyText, expected);
+      assert.equal(Object.hasOwn(result.data.message, "truncated"), truncated);
+      if (truncated) assert.equal(result.data.message.truncated, true);
+    }
+    assert.equal(f.dispatches(), 0);
   } finally {
     await f.host.close();
   }

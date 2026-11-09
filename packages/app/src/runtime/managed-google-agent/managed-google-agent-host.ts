@@ -51,6 +51,8 @@ export class GoogleAgentRefusal extends Error {
 }
 /** The agent transport reads at most this much of one result. */
 export const GOOGLE_AGENT_RESULT_MAX = 256 * 1024;
+/** An exact read returns at most this much body text; the rest is marked truncated. */
+const GMAIL_BODY_MAX = 32_000;
 const permissionText: Record<string, string> = {
   "google.gmail.mailbox":
     "Gmail mailbox changes need permission. Enable Gmail changes in Settings → Connections.",
@@ -808,12 +810,18 @@ export function createManagedGoogleAgentHost(
               "invalid-request",
               "Invalid Gmail message identity.",
             );
-          const result = await client.gmailRead(grantId, providerId, signal);
+          const result = await client.gmailRead(grantId, providerId, signal),
+            truncated = result.bodyText.length > GMAIL_BODY_MAX;
           return {
             id: messageId,
             from: result.message.from,
             subject: decodeBasicHtmlEntities(result.message.subject),
-            bodyText: result.bodyText,
+            bodyText: truncated
+              ? result.bodyText
+                  .slice(0, GMAIL_BODY_MAX)
+                  .replace(/[\uD800-\uDBFF]$/, "")
+              : result.bodyText,
+            ...(truncated ? { truncated: true } : {}),
             receivedAt: result.message.receivedAt,
             unread: result.message.unread,
             hasAttachments: result.message.hasAttachments === true,

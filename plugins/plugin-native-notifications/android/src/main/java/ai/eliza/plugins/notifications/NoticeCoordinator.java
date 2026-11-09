@@ -42,7 +42,14 @@ public final class NoticeCoordinator {
   routes.prepare(id,binding,route);
   String status;
   try{status=delivery.publishApproval(id,binding,expiresAt,now);}
-  catch(Exception refused){if(!LIVE.contains(delivery.approvalStatus(id)))routes.forget(id);throw refused;}
+  catch(Exception refused){
+   try{
+    String retained=delivery.approvalStatus(id,binding,expiresAt);
+    // An absent or terminal receipt is definite; an unreadable or live one keeps its route.
+    if(retained==null||"failed".equals(retained)||"withdrawn".equals(retained))routes.forget(id);
+   }catch(Exception cleanup){if(cleanup!=refused)refused.addSuppressed(cleanup);}
+   throw refused;
+  }
   if(!LIVE.contains(status))routes.forget(id);
   return status;
  });}
