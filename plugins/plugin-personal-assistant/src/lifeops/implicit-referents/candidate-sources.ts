@@ -26,7 +26,11 @@ import type {
   ImplicitReferentSource,
 } from "./index.js";
 
-/** How many recent fact memories to pull before the resolver ranks them. */
+/**
+ * How many recent live fact memories to pull before the resolver ranks them.
+ * Retired rows stay in the table, so the read pages past them: the cap counts
+ * live facts, not rows.
+ */
 const FACT_CANDIDATE_LIMIT = 40;
 
 /**
@@ -151,6 +155,32 @@ async function ownerPreferenceCandidates(
 }
 
 /**
+ * The newest {@link FACT_CANDIDATE_LIMIT} live fact memories. Offset paging is
+ * the pagination the adapter contract guarantees; a short page ends the table.
+ */
+async function recentActiveFactMemories(
+  runtime: IAgentRuntime,
+): Promise<Memory[]> {
+  const active: Memory[] = [];
+  for (let offset = 0; ; offset += FACT_CANDIDATE_LIMIT) {
+    const page = await runtime.getMemories({
+      tableName: "facts",
+      agentId: runtime.agentId,
+      count: FACT_CANDIDATE_LIMIT,
+      offset,
+      includeEmbedding: false,
+    });
+    active.push(...page.filter((memory) => isActiveMemoryEvidence(memory)));
+    if (
+      active.length >= FACT_CANDIDATE_LIMIT ||
+      page.length < FACT_CANDIDATE_LIMIT
+    ) {
+      return active.slice(0, FACT_CANDIDATE_LIMIT);
+    }
+  }
+}
+
+/**
  * Assemble the candidate set for an implicit owner ask from the fact memory
  * table and the owner-fact store. The caller passes the result straight to
  * {@link resolveImplicitReferent}.
@@ -158,14 +188,8 @@ async function ownerPreferenceCandidates(
 export async function gatherImplicitReferentCandidates(
   runtime: IAgentRuntime,
 ): Promise<ImplicitReferentCandidate[]> {
-  const factMemories = await runtime.getMemories({
-    tableName: "facts",
-    agentId: runtime.agentId,
-    count: FACT_CANDIDATE_LIMIT,
-    includeEmbedding: false,
-  });
+  const factMemories = await recentActiveFactMemories(runtime);
   const factCandidates = factMemories
-    .filter((memory) => isActiveMemoryEvidence(memory))
     .map((memory, index) => factToCandidate(memory, index))
     .filter(
       (candidate): candidate is ImplicitReferentCandidate => candidate !== null,

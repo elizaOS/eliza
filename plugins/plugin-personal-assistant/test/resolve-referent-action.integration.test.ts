@@ -61,6 +61,7 @@ async function seedFact(
     extractionStatus?: "source_invalidated";
     extractionReviewRequired?: boolean;
   },
+  createdAt?: number,
 ): Promise<UUID> {
   const id = crypto.randomUUID() as UUID;
   await runtime.createMemory(
@@ -70,6 +71,7 @@ async function seedFact(
       agentId: runtime.agentId as UUID,
       roomId: ROOM_ID,
       content: { text },
+      ...(createdAt === undefined ? {} : { createdAt }),
       metadata: {
         type: "custom",
         source: "test_seed",
@@ -232,5 +234,32 @@ describe("RESOLVE_REFERENT action (real runtime)", () => {
     expect(result?.success).toBe(true);
     expect(String(result?.text)).not.toContain("Kaito");
     expect(String(result?.text)).not.toContain("Tsuta");
+  });
+
+  it("keeps a live fact that is older than a full window of retired facts", async () => {
+    // The facts read is capped newest-first, and retired rows stay in the
+    // table, so more retired rows than the cap must not hide an older live one.
+    const now = Date.now();
+    const live = await seedFact(
+      "Owner's usual breakfast is the counter at Lune at 8am.",
+      { confidence: 0.6, keywords: ["usual", "breakfast", "lune"] },
+      now - 60 * 60 * 1000,
+    );
+    for (let index = 0; index < 45; index += 1) {
+      await seedFact(
+        `Owner's usual breakfast was booth ${index} at Lune.`,
+        {
+          confidence: 0.6,
+          keywords: ["usual", "breakfast", "lune"],
+          extractionStatus: "source_invalidated",
+        },
+        now + index,
+      );
+    }
+
+    const ids = (await gatherImplicitReferentCandidates(runtime)).map(
+      (candidate) => candidate.id,
+    );
+    expect(ids).toContain(live);
   });
 });
