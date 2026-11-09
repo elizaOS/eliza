@@ -2099,12 +2099,35 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     const browserRequest = validated.type === "browser_navigate";
+    const photosTurn = isPhotosViewOperation(validated)
+      ? getDeviceActionTurn()
+      : undefined;
+    const signal = photosTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(
       this.runtime,
       c,
       browserRequest,
     );
-    requestOrigin?.assertCurrent();
+    // A reviewed Photos proposal still belongs to its original foreground
+    // turn, even when there is no direct-request message binding.
+    const assertCurrent =
+      photosTurn?.runtime === this.runtime
+        ? () => {
+            if (
+              getDeviceActionTurn() !== photosTurn ||
+              photosTurn.credential !== c ||
+              !photosTurn.isCurrent() ||
+              !photosViewCapabilityAvailable(c.capabilities) ||
+              signal?.aborted ||
+              getStreamingContext()?.abortSignal?.aborted
+            )
+              throw new DeviceActionError(
+                "Original Photos request ended; proposal cancelled",
+              );
+            requestOrigin?.assertCurrent();
+          }
+        : requestOrigin?.assertCurrent;
+    assertCurrent?.();
     if (validated.type === "browser_navigate") {
       // The durable original request owns the destination: the user's typed
       // address, never the model's spelling of it.
@@ -2127,7 +2150,7 @@ export class DeviceActionService {
     const result = await this.access(
       c,
       async (queue, row, tx) => {
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         const viewProfile = storedDeviceViewProfile(row.view_profile);
         if (
           validated.type === "open_view" &&
@@ -2229,7 +2252,7 @@ export class DeviceActionService {
             }
           }
         }
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         if (!deviceAppRecordOperationAvailable(this.runtime, validated))
           throw new DeviceActionError(
             "Device Notes/Calendar record authority changed before enqueue",
@@ -2248,7 +2271,7 @@ export class DeviceActionService {
           },
           tx,
         );
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         deferredRead = await this.bindNewReadCompletion(
           tx,
           row,
@@ -2268,14 +2291,14 @@ export class DeviceActionService {
               ? availabilityReview.request
               : undefined,
         );
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         return result;
       },
-      requestOrigin?.assertCurrent,
+      assertCurrent,
     );
     // Retain authority only after the proposal and original context committed.
     if (deferredRead) {
-      requestOrigin?.assertCurrent();
+      assertCurrent?.();
       getDeviceActionTurn()?.retainNotesRead?.(deferredRead);
     }
     return result;
