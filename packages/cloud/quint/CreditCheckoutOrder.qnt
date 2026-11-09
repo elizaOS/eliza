@@ -235,4 +235,3 @@ module CreditCheckoutOrder {
     .then(dispatch).then(loseProviderResponse).then(dispatchFromEarlierQuote)
     .expect(s.dispatchCount == 2 and s.firstStart == 0 and not(s.lastRequiredLookup) and safety)
 }
-
