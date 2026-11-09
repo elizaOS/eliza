@@ -8,8 +8,13 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import {
+  type AgentLogEntry,
+  INSUFFICIENT_CREDITS_REPLY,
+  logger,
+} from "@elizaos/core";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { resolveNoResponseFallback } from "../src/api/chat-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 
 const MAX = 50;
@@ -40,17 +45,17 @@ afterAll(async () => {
 it("keeps the newest entries and a recent credits warning", async () => {
   const run = randomUUID();
   // test/setup.ts sets LOG_LEVEL=error, so the lines are logged at error.
+  logger.error(`[retention-test] ${run} Cloud error: insufficient credits`);
   for (let index = 0; index < 400; index += 1) {
     logger.error(`[retention-test] ${run} line ${index}`);
   }
-  logger.error(`[retention-test] ${run} Cloud error: insufficient credits`);
 
   const response = await fetch(`http://127.0.0.1:${server.port}/api/logs`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(response.status).toBe(200);
   const { entries } = (await response.json()) as {
-    entries: Array<{ message: string }>;
+    entries: AgentLogEntry[];
   };
   expect(entries.length).toBeGreaterThanOrEqual(MAX);
   expect(entries.length).toBeLessThanOrEqual(MAX + Math.ceil(MAX / 10));
@@ -60,4 +65,5 @@ it("keeps the newest entries and a recent credits warning", async () => {
   );
   expect(messages).toContain(`[retention-test] ${run} line 399`);
   expect(messages).not.toContain(`[retention-test] ${run} line 0`);
+  expect(resolveNoResponseFallback(entries)).toBe(INSUFFICIENT_CREDITS_REPLY);
 });

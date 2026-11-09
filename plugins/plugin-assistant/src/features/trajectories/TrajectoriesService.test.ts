@@ -97,29 +97,44 @@ describe("TrajectoriesService", () => {
     await service.stop();
   });
 
-  it("runs no table DDL at start while the trajectory gate is off", async () => {
+  it("defers gated-off storage and shares concurrent first reads", async () => {
     vi.stubEnv("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
     const client = new PGlite();
     const db = drizzle(client);
     const statements: string[] = [];
+    let pauseMetadata = false;
+    let metadataReaders = 0;
+    let releaseMetadata = () => {};
+    const metadataBarrier = new Promise<void>((resolve) => {
+      releaseMetadata = resolve;
+    });
     const runtime = {
       ...createRuntimeWithoutSql(),
       runtimeInstanceId: "runtime-instance-1",
       adapter: {
         db: {
-          execute: (query: ReturnType<typeof sql.raw>) => {
+          execute: async (query: ReturnType<typeof sql.raw>) => {
             const chunks = (
               query as unknown as {
                 queryChunks: Array<{ value?: unknown }>;
               }
             ).queryChunks;
-            statements.push(
-              chunks
-                .flatMap((chunk) =>
-                  Array.isArray(chunk.value) ? chunk.value : [],
-                )
-                .join(""),
-            );
+            const text = chunks
+              .flatMap((chunk) =>
+                Array.isArray(chunk.value) ? chunk.value : [],
+              )
+              .join("");
+            statements.push(text);
+            if (
+              pauseMetadata &&
+              text.includes("FROM information_schema.columns") &&
+              metadataReaders < 2
+            ) {
+              metadataReaders += 1;
+              if (metadataReaders === 2) releaseMetadata();
+              else setTimeout(releaseMetadata, 200);
+              await metadataBarrier;
+            }
             return db.execute(query);
           },
           transaction: <T>(
@@ -139,6 +154,16 @@ describe("TrajectoriesService", () => {
       )) as TrajectoriesService;
       expect(service.isEnabled()).toBe(false);
       expect(statements).toEqual([]);
+
+      // An existing database needs a column migration on its first read.
+      const bootstrap = new TrajectoriesService(runtime);
+      await bootstrap.initialize();
+      await db.execute(
+        sql.raw("ALTER TABLE trajectories DROP COLUMN scenario_id"),
+      );
+      await bootstrap.stop();
+      pauseMetadata = true;
+      await Promise.all([service.listTrajectories(), service.getStats()]);
 
       // An operator turns capture on later: the tables exist before the first row.
       service.setEnabled(true);
