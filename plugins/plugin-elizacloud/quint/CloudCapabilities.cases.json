@@ -2,7 +2,9 @@
   "sources": [
     "plugins/plugin-elizacloud/src/index.ts",
     "plugins/plugin-elizacloud/src/utils/config.ts",
-    "plugins/plugin-elizacloud/__tests__/embedding-routing.test.ts"
+    "plugins/plugin-elizacloud/__tests__/embedding-routing.test.ts",
+    "packages/agent/src/runtime/eliza.ts",
+    "packages/agent/test/provider-switch-cloud-proxy-env.test.ts"
   ],
   "conformance": "plugins/plugin-elizacloud/quint/check-cloud-capabilities.mjs",
   "cases": [

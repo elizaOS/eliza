@@ -4,6 +4,11 @@ import { AgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
 import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 import { openaiPlugin } from "@elizaos/plugin-openai";
+import { registerMediaModels } from "../../../plugins/plugin-openai/index.ts";
+import {
+  registerCloudEmbeddingModels,
+  registerCloudMediaModels,
+} from "../../../plugins/plugin-elizacloud/src/index.ts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { handleProviderSwitchRoutes } from "../src/api/provider-switch-routes.ts";
 import type {
@@ -11,6 +16,7 @@ import type {
   StartOperationRequest,
 } from "../src/runtime/operations/types.ts";
 import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
+import { applyCloudConfigToEnv } from "../src/runtime/eliza.ts";
 
 let testVault: TestVault;
 const savedEnv = { ...process.env };
@@ -170,6 +176,36 @@ async function nextModelRequestHost(
 function createRuntime(): AgentRuntime {
   return new AgentRuntime({ character: { name: "ProviderSwitchRouting" } });
 }
+
+it("keeps an embedding-only Cloud route from taking Direct photo and speech slots at boot", () => {
+  process.env.CEREBRAS_API_KEY = "fixture-direct-key";
+  process.env.ELIZA_PROVIDER = "cerebras";
+  process.env.OPENAI_IMAGE_DESCRIPTION_BASE_URL = "https://api.cerebras.ai/v1";
+  process.env.ELIZAOS_CLOUD_USE_STT = "false";
+  const config = {
+    cloud: { enabled: false },
+    linkedAccounts: { elizacloud: { status: "linked", source: "oauth" } },
+    serviceRouting: {
+      llmText: { backend: "cerebras", transport: "direct" },
+      embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  } as ElizaConfig;
+  applyCloudConfigToEnv(config);
+  const runtime = createRuntime();
+  registerCloudEmbeddingModels(runtime);
+  registerCloudMediaModels(runtime);
+  registerMediaModels(runtime);
+  const providers = (type: string) =>
+    runtime
+      .getModelRegistrations()
+      .filter((row) => row.modelType === type)
+      .map((row) => row.provider);
+  expect(providers(ModelType.TEXT_EMBEDDING)).toEqual(["elizaOSCloud"]);
+  expect(providers(ModelType.IMAGE_DESCRIPTION)).toEqual(["openai"]);
+  expect(providers(ModelType.TEXT_TO_SPEECH)).toEqual([]);
+  expect(providers(ModelType.TRANSCRIPTION)).toEqual([]);
+  expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+});
 
 it.each([
   ["openai", openaiPlugin, "sk-user-openai-key", "api.openai.com"],
