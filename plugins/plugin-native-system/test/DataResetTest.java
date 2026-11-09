@@ -129,12 +129,21 @@ public final class DataResetTest {
         // Every launch stops without clearing, shows recovery, and automatic attempts stay bounded.
         SenseListenerClient.acknowledged = false;
         File failures = new File(data, "reset-example.failures");
-        failures.delete();
+        Files.writeString(failures.toPath(), "0:0");
         Context.recoveries = 0; SenseListenerClient.calls = 0; int clears = ActivityManager.calls;
         for (int relaunch = 0; relaunch < 25; relaunch++) stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "unacknowledged reset resumed");
         check(Context.recoveries == 25, "recovery shown each visible launch");
         check(SenseListenerClient.calls == DataReset.AUTOMATIC_ATTEMPTS, "bounded automatic attempts: " + SenseListenerClient.calls);
         check(ActivityManager.calls == clears && reset.pending(app), "fail closed");
+        // A missing legacy reservation cannot grant another automatic attempt.
+        Files.delete(failures.toPath());
+        check(reset.automaticAttempt(app, System.currentTimeMillis()) == DataReset.Outcome.DEFERRED, "missing reservation defers");
+        check(SenseListenerClient.calls == DataReset.AUTOMATIC_ATTEMPTS, "missing reservation keeps listener fenced");
+        try (var file = new java.io.RandomAccessFile(new File(data, "reset-example.lock"), "rw");
+             var lease = file.getChannel().lock()) {
+            check(reset.retry(app, System.currentTimeMillis()) == DataReset.Outcome.DEFERRED, "another process owns the attempt");
+        }
+        check(SenseListenerClient.calls == DataReset.AUTOMATIC_ATTEMPTS, "contending retry keeps listener fenced");
         // A user's retry is a fresh attempt and still fails closed.
         check(reset.attempt(app, System.currentTimeMillis()) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "retry");
         check(SenseListenerClient.calls == DataReset.AUTOMATIC_ATTEMPTS + 1 && ActivityManager.calls == clears, "retry is fresh, no clear");
@@ -190,11 +199,12 @@ public final class DataResetTest {
         stops(() -> reset.dispatchAndExit(app), "interactive");
         check(Context.recoveries == shown + 1, "interactive shows recovery");
         ActivityManager.starts = new ArrayList<>();
-        // A new confirmation starts a fresh budget, so the interactive attempt is never silently deferred.
-        Files.write(failures.toPath(), "garbage".getBytes());
+        // A duplicate record call cannot reset the budget. A newly confirmed dispatch can repair it.
+        Files.writeString(failures.toPath(), "garbage");
         reset.record(app);
-        check(!failures.exists() && DataReset.automaticAttemptAllowed(reset.failureState(app), System.currentTimeMillis()), "fresh budget");
-        check(reset.lastFailure(app) == null, "a new confirmation has no failure yet");
+        check(Files.readString(failures.toPath()).equals("garbage"), "duplicate marker preserves the budget");
+        stops(() -> reset.dispatchAndExit(app), "confirmed retry repairs the budget");
+        check(reset.failureState(app)[0] == 1, "confirmed retry reserved a fresh window");
         // Acknowledged, then Android refused: the next launch completes without showing recovery.
         SenseListenerClient.acknowledged = true; ActivityManager.mode = 2;
         stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "refused");

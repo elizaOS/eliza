@@ -114,7 +114,7 @@ public abstract class DataResetRecoveryActivity extends Activity {
         final Context context = getApplicationContext();
         final DataReset reset = reset();
         Thread attempt = new Thread(() -> {
-            DataReset.Outcome outcome = reset.attempt(context, System.currentTimeMillis());
+            DataReset.Outcome outcome = reset.retry(context, System.currentTimeMillis());
             boolean controllable = new SenseListenerClient(context).available();
             boolean pending = reset.pending(context);
             main.post(() -> {

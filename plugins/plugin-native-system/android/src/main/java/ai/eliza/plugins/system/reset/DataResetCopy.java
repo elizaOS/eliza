@@ -101,6 +101,7 @@ public final class DataResetCopy {
     /** Status after a recovery retry that Android did not dispatch. */
     public String retryResult(DataReset.Outcome outcome, boolean listenerControllable) {
         if (outcome == DataReset.Outcome.DISPATCHED) return dispatched;
+        if (outcome == DataReset.Outcome.DEFERRED) return "Reset preparation is unavailable. Try again after the current attempt finishes or storage is available.";
         if (outcome != DataReset.Outcome.LISTENER_UNACKNOWLEDGED) return androidRefused;
         return listenerControllable ? listenerPending : listenerUnreachable;
     }
