@@ -1338,6 +1338,7 @@ export function stageAndroidPgliteAssets({
     "initdb.wasm",
     "pglite.data",
     "pglite-initdb.bin",
+    "pglite-migrated.bin",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
     "pg_trgm.tar.gz",
