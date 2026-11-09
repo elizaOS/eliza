@@ -71,4 +71,31 @@ describe("experienceText opposite learnings", () => {
       ),
     ).toBe(true);
   });
+
+  // Two negations must not cancel out: "do not X and do not Y" is not "X and Y".
+  it.each([
+    [
+      "Do not run the database migrations before starting the API server and do not restart the worker",
+      "Run the database migrations before starting the API server and restart the worker",
+    ],
+    [
+      "The agent works without coffee and without tea during the nightly build",
+      "The agent works with coffee and with tea during the nightly build",
+    ],
+    [
+      "The agent never retries a 4xx request nor logs the raw token in plaintext",
+      "The agent retries a 4xx request and logs the raw token in plaintext",
+    ],
+  ])("does not merge a learning that negates two clauses: %s", (a, b) => {
+    expect(isDuplicateLearning(a, b)).toBe(false);
+  });
+
+  it("still merges two spellings of the same negation", () => {
+    expect(
+      isDuplicateLearning(
+        "Do not run the database migrations before starting the API server",
+        "Don't run the database migrations before starting the API server",
+      ),
+    ).toBe(true);
+  });
 });

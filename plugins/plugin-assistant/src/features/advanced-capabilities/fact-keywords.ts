@@ -202,22 +202,22 @@ const NEGATION_PATTERN =
 const TEMPORAL_SHIFT_PATTERN =
   /\b(?:used to|no longer|not anymore|anymore|any more|previously|formerly|back then|in the past|these days|nowadays|from now on|switched (?:to|from)|changed (?:to|from))\b/i;
 
-function negationParity(text: string): number {
+function negationMarkerCount(text: string): number {
   const normalized = text.replace(/[\u2018\u2019]/g, "'");
-  const matches = normalized.match(NEGATION_PATTERN);
-  return (matches?.length ?? 0) % 2;
+  return (normalized.match(NEGATION_PATTERN) ?? []).length;
 }
 
 /**
- * True when the two texts cannot be the same claim: their negation parity
- * differs ("likes oat milk" vs "does not like oat milk"; "used to hate oat
- * milk" vs "does not hate oat milk", where the double negation flips back), or
+ * True when the two texts cannot be the same claim: they carry a different
+ * number of negation markers ("likes oat milk" vs "does not like oat milk";
+ * "used to hate oat milk" vs "does not hate oat milk"; "do not X and do not Y"
+ * vs "X and Y", where parity alone would let the two negations cancel), or
  * exactly one side carries a past/reversal marker ("used to prefer" vs
  * "prefers"). Keyword similarity drops stopwords such as "not" and cannot see
  * either, so a lexical match alone is never treated as equivalence.
  */
 export function factPolarityDiffers(left: string, right: string): boolean {
-  if (negationParity(left) !== negationParity(right)) return true;
+  if (negationMarkerCount(left) !== negationMarkerCount(right)) return true;
   return (
     TEMPORAL_SHIFT_PATTERN.test(left) !== TEMPORAL_SHIFT_PATTERN.test(right)
   );
