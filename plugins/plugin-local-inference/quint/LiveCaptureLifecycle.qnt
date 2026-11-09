@@ -68,12 +68,12 @@ module LiveCaptureLifecycle {
   val RefusedStartDiscarded = s.phase == "refused" implies s.discarded and not(s.reported)
   val safety = TerminalDelivered and NoUnreportedEnd and RefusedStartDiscarded
 
-  run phoneCallKeepsTerminalEvent = init.then(nativeStart).then(reportStart)
+  run phoneCallKeepsTerminalEventTest = init.then(nativeStart).then(reportStart)
     .then(protect).then(interrupt).then(deliverEnd).expect(s.delivered and safety)
-  run oldStartupGuardDropsTerminalEvent = init.then(nativeStart).then(reportStart)
+  run oldStartupGuardDropsTerminalEventTest = init.then(nativeStart).then(reportStart)
     .then(protect).then(interrupt).then(obsoleteDelivery).expect(not(TerminalDelivered))
-  run lateProtectionDiscardsUnreportedCapture = init.then(nativeStart).then(protect)
+  run lateProtectionDiscardsUnreportedCaptureTest = init.then(nativeStart).then(protect)
     .then(reportStart).expect(s.discarded and not(s.reported) and safety)
-  run changedHostDoesNotReceiveTerminalEvent = init.then(nativeStart).then(reportStart)
+  run changedHostDoesNotReceiveTerminalEventTest = init.then(nativeStart).then(reportStart)
     .then(interrupt).then(retireHost).then(deliverEnd).expect(not(s.delivered) and safety)
 }
