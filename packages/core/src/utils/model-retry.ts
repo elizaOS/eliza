@@ -85,5 +85,5 @@ export function providerRateLimitRetryAt(
 			? explicit
 			: providerRetryAfterMs(error, now);
 	const deadline = delay === undefined ? NaN : now + delay;
-	return Number.isFinite(deadline) && deadline > now ? deadline : undefined;
+	return Number.isFinite(deadline) && deadline >= now ? deadline : undefined;
 }
