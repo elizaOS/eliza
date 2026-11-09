@@ -8,8 +8,11 @@
  * database.
  */
 
+import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TrajectoriesService } from "./TrajectoriesService.ts";
 
 function createRuntimeWithoutSql(): IAgentRuntime {
@@ -81,12 +84,104 @@ function extractSqlStringAssignment(
 }
 
 describe("TrajectoriesService", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("disables SQL-backed capture when the runtime adapter has no SQL executor", async () => {
+    vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "1");
     const service = await TrajectoriesService.start(createRuntimeWithoutSql());
 
     expect((service as TrajectoriesService).isEnabled()).toBe(false);
 
     await service.stop();
+  });
+
+  it("defers gated-off storage and shares concurrent first reads", async () => {
+    vi.stubEnv("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
+    const client = new PGlite();
+    const db = drizzle(client);
+    const statements: string[] = [];
+    let pauseMetadata = false;
+    let metadataReaders = 0;
+    let releaseMetadata = () => {};
+    const metadataBarrier = new Promise<void>((resolve) => {
+      releaseMetadata = resolve;
+    });
+    const runtime = {
+      ...createRuntimeWithoutSql(),
+      runtimeInstanceId: "runtime-instance-1",
+      adapter: {
+        db: {
+          execute: async (query: ReturnType<typeof sql.raw>) => {
+            const chunks = (
+              query as unknown as {
+                queryChunks: Array<{ value?: unknown }>;
+              }
+            ).queryChunks;
+            const text = chunks
+              .flatMap((chunk) =>
+                Array.isArray(chunk.value) ? chunk.value : [],
+              )
+              .join("");
+            statements.push(text);
+            if (
+              pauseMetadata &&
+              text.includes("FROM information_schema.columns") &&
+              metadataReaders < 2
+            ) {
+              metadataReaders += 1;
+              if (metadataReaders === 2) releaseMetadata();
+              else setTimeout(releaseMetadata, 200);
+              await metadataBarrier;
+            }
+            return db.execute(query);
+          },
+          transaction: <T>(
+            work: (executor: {
+              execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;
+            }) => Promise<T>,
+          ): Promise<T> =>
+            db.transaction((tx) =>
+              work({ execute: (query) => tx.execute(query) }),
+            ),
+        },
+      },
+    } as unknown as IAgentRuntime;
+    try {
+      const service = (await TrajectoriesService.start(
+        runtime,
+      )) as TrajectoriesService;
+      expect(service.isEnabled()).toBe(false);
+      expect(statements).toEqual([]);
+
+      // An existing database needs a column migration on its first read.
+      const bootstrap = new TrajectoriesService(runtime);
+      await bootstrap.initialize();
+      await db.execute(
+        sql.raw("ALTER TABLE trajectories DROP COLUMN scenario_id"),
+      );
+      await bootstrap.stop();
+      pauseMetadata = true;
+      await Promise.all([service.listTrajectories(), service.getStats()]);
+
+      // An operator turns capture on later: the tables exist before the first row.
+      service.setEnabled(true);
+      const trajectoryId = await service.startTrajectory(runtime.agentId);
+      expect(
+        statements.some((text) =>
+          text.includes("CREATE TABLE IF NOT EXISTS trajectories"),
+        ),
+      ).toBe(true);
+      const rows = await db.execute(
+        sql.raw(`SELECT id FROM trajectories WHERE id = '${trajectoryId}'`),
+      );
+      expect(rows.rows).toHaveLength(1);
+
+      await service.stop();
+    } finally {
+      await client.close();
+    }
   });
 
   it("persists complete JSON-safe model request and response payloads", async () => {

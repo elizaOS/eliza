@@ -55,6 +55,9 @@ export class PiiScrubService extends Service {
 		"Runs the corpus PII scrub asynchronously on the core task queue (content-hash idempotent, non-blocking)";
 
 	private batchQueue: BatchQueue<PiiScrubQueueItem> | null = null;
+	private drainStart: Promise<void> | null = null;
+	private stopping = false;
+	private stopPromise: Promise<void> | null = null;
 	private readonly scrubRequestHandler = (payload: PiiScrubRequestPayload) =>
 		this.handleScrubRequest(payload);
 
@@ -74,11 +77,6 @@ export class PiiScrubService extends Service {
 		this.runtime.logger.info(
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Initializing PII scrub service",
-		);
-
-		this.runtime.registerEvent(
-			EventType.PII_SCRUB_REQUESTED,
-			this.scrubRequestHandler,
 		);
 
 		// Same drain/retry/priority model as the embedding service - the task
@@ -105,18 +103,38 @@ export class PiiScrubService extends Service {
 			},
 		});
 
-		await this.batchQueue.start(this.runtime);
-
-		this.runtime.logger.info(
-			{ src: SRC, agentId: this.runtime.agentId },
-			"Started PII scrub drain task",
+		// The drain task starts on the first request, not here. An agent that
+		// never asks for a scrub then has no PII_SCRUB_DRAIN task, and its idle
+		// drain does not read and write the tasks table every 5 s.
+		this.runtime.registerEvent(
+			EventType.PII_SCRUB_REQUESTED,
+			this.scrubRequestHandler,
 		);
+	}
+
+	/** Starts the drain task once; a failed start is retried by the next request. */
+	private startDrain(queue: BatchQueue<PiiScrubQueueItem>): Promise<void> {
+		this.drainStart ??= queue.start(this.runtime).then(
+			() => {
+				this.runtime.logger.info(
+					{ src: SRC, agentId: this.runtime.agentId },
+					"Started PII scrub drain task",
+				);
+			},
+			(error: unknown) => {
+				// error-policy:J2 withdraw the failed start so a later request can
+				// retry; the item stays queued and the caller receives the failure.
+				this.drainStart = null;
+				throw error;
+			},
+		);
+		return this.drainStart;
 	}
 
 	private async handleScrubRequest(
 		payload: PiiScrubRequestPayload,
 	): Promise<void> {
-		if (!this.batchQueue) {
+		if (this.stopping || !this.batchQueue) {
 			return;
 		}
 
@@ -166,16 +184,19 @@ export class PiiScrubService extends Service {
 			itemRef: payload.itemRef,
 		};
 
-		this.batchQueue.enqueue(item);
+		// stop() can run while the done-marker check above is pending.
+		const queue = this.batchQueue;
+		if (this.stopping || !queue?.enqueue(item)) return;
 		this.runtime.logger.debug(
 			{
 				src: SRC,
 				agentId: this.runtime.agentId,
-				queueSize: this.batchQueue.size,
+				queueSize: queue.size,
 				itemRef: payload.itemRef,
 			},
 			"Enqueued scrub item",
 		);
+		await this.startDrain(queue);
 	}
 
 	/**
@@ -369,6 +390,17 @@ export class PiiScrubService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		if (this.stopPromise) return this.stopPromise;
+		this.stopping = true;
+		this.stopPromise = this.finishStop();
+		try {
+			await this.stopPromise;
+		} finally {
+			this.stopPromise = null;
+		}
+	}
+
+	private async finishStop(): Promise<void> {
 		this.runtime.logger.info(
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Stopping PII scrub service",
@@ -377,15 +409,30 @@ export class PiiScrubService extends Service {
 			EventType.PII_SCRUB_REQUESTED,
 			this.scrubRequestHandler,
 		);
-		if (!this.batchQueue) {
+		const queue = this.batchQueue;
+		if (!queue) {
 			return;
 		}
-		const remaining = this.batchQueue.size;
+		try {
+			await this.drainStart;
+		} catch (error) {
+			// error-policy:J6 teardown-only: the request that started the drain
+			// received this failure; dispose below still releases the queue.
+			this.runtime.logger.debug(
+				{
+					src: SRC,
+					agentId: this.runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Drain start failed while stopping",
+			);
+		}
+		const remaining = queue.size;
 		const fastShutdown = process.env.ELIZA_FAST_SHUTDOWN === "1";
 		if (fastShutdown) {
-			this.batchQueue.clear();
+			queue.clear();
 		}
-		await this.batchQueue.dispose(this.runtime, {
+		await queue.dispose(this.runtime, {
 			flushHighPriority: !fastShutdown,
 		});
 		this.runtime.logger.info(
@@ -393,6 +440,7 @@ export class PiiScrubService extends Service {
 			"Stopped",
 		);
 		this.batchQueue = null;
+		this.drainStart = null;
 	}
 
 	getQueueSize(): number {
