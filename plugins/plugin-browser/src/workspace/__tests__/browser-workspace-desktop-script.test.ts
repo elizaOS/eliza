@@ -177,6 +177,39 @@ describe("desktop command script", () => {
     expect(snapshot.bodyText).not.toContain("NOSCRIPT_TEXT");
     expect(snapshot.bodyText).not.toContain("color: red");
   });
+
+  it("marks a label-rooted selector as CSS so it reads back as the same element", () => {
+    const dom = openPage(
+      '<label>A <input type="checkbox"></label><label>B <input type="checkbox"></label>',
+    );
+
+    const inspected = command(dom, { subaction: "inspect" }) as {
+      elements: Array<{ selector: string }>;
+    };
+    const selector = inspected.elements[1]?.selector ?? "";
+    expect(selector).toBe("css:label:nth-of-type(2) > input:nth-of-type(1)");
+
+    command(dom, { subaction: "click", selector });
+    utility(dom, { subaction: "highlight", selector });
+    const second = dom.window.document.querySelectorAll("input")[1];
+    expect((second as HTMLInputElement).checked).toBe(true);
+    expect(second?.getAttribute("data-eliza-highlight")).toBe("true");
+  });
+
+  it("counts an element ref", () => {
+    const dom = openPage("<button>One</button><button>Two</button>");
+    const { tableId } = command(dom, { subaction: "inspect" }) as {
+      tableId: string;
+    };
+
+    expect(
+      command(dom, {
+        subaction: "get",
+        getMode: "count",
+        elementRef: { tableId, index: 1 },
+      }),
+    ).toEqual({ value: 1 });
+  });
 });
 
 describe("desktop settings", () => {

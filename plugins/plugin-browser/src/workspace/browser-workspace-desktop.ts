@@ -261,7 +261,7 @@ const DESKTOP_PAGE_HELPERS = `
     }
     return out;
   };
-  const selectorFor = (element) => {
+  const uniqueSelectorFor = (element) => {
     if (!element || !element.tagName) return "";
     const rootNode = element.getRootNode ? element.getRootNode() : null;
     const root = rootNode && typeof rootNode.querySelectorAll === "function" ? rootNode : element.ownerDocument;
@@ -299,6 +299,14 @@ const DESKTOP_PAGE_HELPERS = `
     }
     return selector;
   };
+  // A path such as "label:nth-of-type(2) > input" would read back as a
+  // semantic label: lookup, so it is marked as plain CSS, as on the web backend.
+  const SEMANTIC_PREFIX = /^(alt|css|data-testid|testid|label|placeholder|role|text|title)\\s*[:=]/i;
+  const selectorFor = (element) => {
+    const selector = uniqueSelectorFor(element);
+    return SEMANTIC_PREFIX.test(selector) ? "css:" + selector : selector;
+  };
+  const stripCssPrefix = (selector) => String(selector || "").replace(/^css\\s*[:=]\\s*/i, "");
   const REF_TABLE_KEY = Symbol.for("elizaos.browserWorkspace.elementRefs");
   const stampElementRefs = (elements) => {
     const tableId = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -979,6 +987,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (command.getMode === "title") return document.title;
     if (command.getMode === "url") return location.href;
     if (command.getMode === "count") {
+      if (command.elementRef) return findTarget() ? 1 : 0;
       if (!command.selector) throw new Error("count requires selector");
       const semantic = mergeSelectorCommand(command.selector);
       if (semantic && semantic.findBy) return findAllSemantic(semantic).length;
@@ -1275,7 +1284,7 @@ export function createDesktopBrowserWorkspaceUtilityScript(
   const command = ${JSON.stringify(command)};
   const clipboardText = ${JSON.stringify(options.clipboardText ?? "")};
   ${DESKTOP_PAGE_HELPERS}
-  const queryOne = (selector) => queryOneWithin(activeDoc(), selector);
+  const queryOne = (selector) => queryOneWithin(activeDoc(), stripCssPrefix(selector));
   const findByText = (needle) => {
     const wanted = normalize(needle).toLowerCase();
     if (!wanted) return null;
@@ -1320,6 +1329,7 @@ export function createDesktopBrowserWorkspaceUtilityScript(
       const action = command.clipboardAction || "read";
       if (action === "copy") {
         const target = resolveTarget();
+        if (isPrivateControl(target)) throw new Error("Password and hidden fields cannot be copied.");
         return target && typeof target.value === "string"
           ? String(target.value || "")
           : normalize((target && target.textContent) || (activeDoc().body && activeDoc().body.textContent));
@@ -1486,10 +1496,10 @@ export function createDesktopBrowserWorkspaceUtilityScript(
       const frame = command.elementRef
         ? resolveElementRef(command.elementRef)
         : command.selector
-          ? queryOneWithin(document, command.selector)
+          ? queryOneWithin(document, stripCssPrefix(command.selector))
           : null;
       if (!frame || frame.tagName !== "IFRAME") throw new Error("Eliza browser workspace frame select requires an iframe selector.");
-      state.currentFrame = selectorFor(frame);
+      state.currentFrame = uniqueSelectorFor(frame);
       return { frame: state.currentFrame };
     }
     default:

@@ -1,7 +1,8 @@
 /**
  * Desktop page scripts never return a password or hidden input value: inspect,
  * snapshot, the snapshot record behind diff and pdf, get value, and the
- * fill/type/paste echoes name the control but leave its value out.
+ * fill/type/paste echoes name the control but leave its value out, and
+ * clipboard copy refuses them.
  */
 
 import http from "node:http";
@@ -136,6 +137,16 @@ describe("desktop private control redaction", () => {
     expectNoSecrets(pasted);
     expect(pasted).toMatchObject({ value: null });
     expect(input.value).toBe("xxxy");
+
+    expect(() =>
+      dom.window.eval(
+        createDesktopBrowserWorkspaceUtilityScript({
+          subaction: "clipboard",
+          clipboardAction: "copy",
+          selector: "#csrf",
+        }),
+      ),
+    ).toThrow("cannot be copied");
   });
 
   it("names private controls in the snapshot record and diff", async () => {
