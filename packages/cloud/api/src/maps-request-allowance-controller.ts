@@ -74,8 +74,19 @@ function refill(
         (Math.max(0, now - (current?.at ?? now)) * limit.refillPerSecond) /
           1000,
     ),
-    at: now,
+    at: Math.max(current?.at ?? now, now),
   };
+}
+function retrySeconds(
+  bucket: Bucket,
+  limit: TokenBucketLimit,
+  now: number,
+): number {
+  if (bucket.tokens >= 1) return 0;
+  return (
+    Math.max(0, bucket.at - now) / 1000 +
+    (1 - bucket.tokens) / limit.refillPerSecond
+  );
 }
 export class MapsRequestAllowanceController {
   constructor(
@@ -215,8 +226,8 @@ export class MapsRequestAllowanceController {
               1,
               Math.ceil(
                 Math.max(
-                  (1 - burst.tokens) / limits.burst.refillPerSecond,
-                  (1 - sustained.tokens) / limits.sustained.refillPerSecond,
+                  retrySeconds(burst, limits.burst, now),
+                  retrySeconds(sustained, limits.sustained, now),
                 ),
               ),
             ),
