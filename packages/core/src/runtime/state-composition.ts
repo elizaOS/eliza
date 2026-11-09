@@ -706,9 +706,16 @@ export class ProviderStateComposer {
 			message.roomId,
 			"conversation",
 		);
-		const aggregatedStateValues: Record<string, StateValue> = {
-			...cachedState.values,
-		};
+		// An explicit narrow selection (`onlyInclude` with a list) owns the
+		// returned state: providers outside it must not contribute values or
+		// provider records, just as their text is already excluded above.
+		// Without this, a stage that composes e.g. ACTION_STATE only receives
+		// values and `data.providers` from providers composed earlier in the
+		// turn that it explicitly excluded. The unrestricted path keeps the
+		// cumulative values so refresh-based reuse still sees earlier results.
+		const explicitNarrowSelection = onlyInclude && includeList !== null;
+		const aggregatedStateValues: Record<string, StateValue> =
+			explicitNarrowSelection ? {} : { ...cachedState.values };
 		for (const provider of providersToGet) {
 			const providerResult = currentProviderResults[provider.name];
 			if (
@@ -720,18 +727,28 @@ export class ProviderStateComposer {
 			}
 		}
 		const providersToGetNames = new Set(providersToGet.map((p) => p.name));
-		for (const providerName in currentProviderResults) {
-			if (!providersToGetNames.has(providerName)) {
-				const providerResult = currentProviderResults[providerName];
-				if (
-					providerResult?.values &&
-					typeof providerResult.values === "object" &&
-					providerResult.values !== null
-				) {
-					Object.assign(aggregatedStateValues, providerResult.values);
+		if (!explicitNarrowSelection) {
+			for (const providerName in currentProviderResults) {
+				if (!providersToGetNames.has(providerName)) {
+					const providerResult = currentProviderResults[providerName];
+					if (
+						providerResult?.values &&
+						typeof providerResult.values === "object" &&
+						providerResult.values !== null
+					) {
+						Object.assign(aggregatedStateValues, providerResult.values);
+					}
 				}
 			}
 		}
+		const publishedProviderResults = explicitNarrowSelection
+			? Object.fromEntries(
+					providersToGet.flatMap((provider) => {
+						const result = currentProviderResults[provider.name];
+						return result ? [[provider.name, result]] : [];
+					}),
+				)
+			: currentProviderResults;
 		const newState = {
 			values: {
 				...aggregatedStateValues,
@@ -745,7 +762,7 @@ export class ProviderStateComposer {
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
-				providers: currentProviderResults,
+				providers: publishedProviderResults,
 			},
 			text: providersText,
 		} as State;
