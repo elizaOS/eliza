@@ -34,7 +34,8 @@ async function fixture({
     receipts = new Map();
   let current = true,
     otherOwner = false,
-    dispatches = 0;
+    dispatches = 0,
+    messageBody = "A complete message";
   const request = async (url, init = {}) => {
     const u = new URL(url);
     calls.push(u.pathname);
@@ -82,6 +83,20 @@ async function fixture({
           },
         ],
         syncedAt: "2026-10-16T00:00:00Z",
+      });
+    if (u.pathname.endsWith("/read"))
+      return Response.json({
+        message: {
+          externalId: "mail1",
+          threadId: "thread1",
+          subject: "A &amp; B",
+          from: "Sender",
+          to: [],
+          snippet: "Hello",
+          receivedAt: "2026-10-16T00:00:00Z",
+          isUnread: true,
+        },
+        bodyText: messageBody,
       });
     if (u.pathname.endsWith("/calendars")) {
       if (retireAfterCalendars) current = false;
@@ -169,6 +184,9 @@ async function fixture({
     calls,
     receipts,
     dispatches: () => dispatches,
+    messageBody: (value) => {
+      messageBody = value;
+    },
     retire: () => {
       current = false;
     },
@@ -183,6 +201,17 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
     const read = await f.call({ limit: 1 });
     assert.equal(read.status, 200);
     assert.equal(read.data.items[0].threadTopic, "A & B");
+    const messageId = read.data.items[0].id;
+    const fullBody = `${"complete message 😀 ".repeat(3000)}End of message`;
+    f.messageBody(fullBody);
+    const message = await f.call({ messageId });
+    assert.equal(message.status, 200);
+    assert.equal(message.data.message.bodyText, fullBody);
+    f.messageBody("x".repeat(256 * 1024));
+    const oversized = await f.call({ messageId });
+    assert.equal(oversized.status, 409);
+    assert.equal(oversized.data.reason, "result-too-large");
+    assert.equal(oversized.data.message, undefined);
     const calendars = await f.call({ calendar: { operation: "sources" } });
     assert.equal(calendars.status, 200);
     assert.equal(calendars.data.calendars[0].calendarId, "primary");
