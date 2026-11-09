@@ -376,6 +376,7 @@ export function createAppUpdateScheduler(options: {
   if (
     !Number.isSafeInteger(interval) ||
     interval <= 0 ||
+    interval > 2_147_483_647 ||
     !Number.isSafeInteger(retry) ||
     retry <= 0 ||
     retry > interval
