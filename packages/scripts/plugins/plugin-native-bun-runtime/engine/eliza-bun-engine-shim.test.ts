@@ -20,11 +20,11 @@ const testsDir = path.resolve(
   "../../../../../plugins/plugin-native-bun-runtime/engine/tests",
 );
 const compiler = process.env.CC || "cc";
-const hasCompiler =
+const compilerAvailable =
   spawnSync(compiler, ["--version"], { stdio: "ignore" }).status === 0;
 
 test("shim harness passes", {
-  skip: hasCompiler ? false : `${compiler} not found`,
+  skip: compilerAvailable ? false : `C compiler unavailable: ${compiler}`,
   timeout: 120_000,
 }, () => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-shim-"));

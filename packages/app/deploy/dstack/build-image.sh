@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds and pushes the digest-pinned Alpha dstack agent image from a clean
-# checkout, then writes <out>/image.json for `alpha-dstack.ts render`.
+# Builds and pushes the digest-pinned dstack agent image from a clean
+# checkout, then writes <out>/image.json for `dstack.ts render`.
 #
-# Usage: bash packages/app/deploy/dstack-alpha/build-image.sh \
-#          --registry ghcr.io/<org>/eliza-alpha --out /secure/alpha-deploy
+# Usage: bash packages/app/deploy/dstack/build-image.sh \
+#          --registry ghcr.io/<org>/eliza-dstack --out /secure/agent-deploy
 #
 # Base images come from image.lock.json by digest; the canonical Dockerfile.ci
 # build runs through scripts/verify-agent-image.sh, and the result is pushed and
@@ -33,7 +33,7 @@ if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
   exit 1
 fi
 SOURCE_SHA="$(git rev-parse HEAD)"
-HERE="packages/app/deploy/dstack-alpha"
+HERE="packages/app/deploy/dstack"
 LOCK="$HERE/image.lock.json"
 lock() { node -e "const l=require('./$LOCK');process.stdout.write(String($1))"; }
 
@@ -44,10 +44,10 @@ BUN_REF="oven/bun:$(lock l.bunVersion)"
 NODE_DIGEST="$(lock "l.baseImages['$NODE_REF']")"
 BUN_DIGEST="$(lock "l.baseImages['$BUN_REF']")"
 VERIFIER_IMAGE="$(lock l.verifierImage.reference)@$(lock l.verifierImage.digest)"
-BASE_TAG="eliza-alpha-base:${SOURCE_SHA}"
+BASE_TAG="eliza-dstack-base:${SOURCE_SHA}"
 TAG="${REGISTRY}:${SOURCE_SHA}"
 
-echo "[alpha-image] building canonical agent image at ${SOURCE_SHA}"
+echo "[dstack-image] building canonical agent image at ${SOURCE_SHA}"
 DOCKER_IMAGE="$BASE_TAG" \
 DOCKER_BUILD_EXTRA_ARGS="--platform=${PLATFORM}
 --build-arg=NODE_VERSION=${NODE_VERSION}
@@ -61,8 +61,8 @@ git checkout -- package.json 2>/dev/null || true
 
 CONTEXT="$(mktemp -d)"
 trap 'rm -rf "$CONTEXT"' EXIT
-cp "$HERE/Dockerfile" "$HERE/alpha-entry.mjs" packages/app/deploy/confidential-bootstrap.mjs "$CONTEXT/"
-echo "[alpha-image] building dstack overlay"
+cp "$HERE/Dockerfile" "$HERE/agent-entry.mjs" packages/app/deploy/confidential-bootstrap.mjs "$CONTEXT/"
+echo "[dstack-image] building dstack overlay"
 docker build --platform="$PLATFORM" \
   --build-arg "AGENT_IMAGE=$BASE_TAG" \
   --build-arg "VERIFIER_IMAGE=$VERIFIER_IMAGE" \
@@ -71,7 +71,7 @@ docker build --platform="$PLATFORM" \
 docker push "$TAG"
 IMAGE="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$TAG" | grep "^${REGISTRY}@sha256:" | head -n1)"
 [[ -n "$IMAGE" ]] || { echo "Pushed image has no registry digest" >&2; exit 1; }
-PINS="$(docker run --rm --platform="$PLATFORM" --entrypoint cat "$IMAGE" /opt/eliza-alpha/pins.sha256)"
+PINS="$(docker run --rm --platform="$PLATFORM" --entrypoint cat "$IMAGE" /opt/eliza-dstack/pins.sha256)"
 VERIFIER_SHA="$(printf '%s\n' "$PINS" | awk '$2 == "dstack/dstack-verifier" { print $1 }')"
 CONFIG_SHA="$(printf '%s\n' "$PINS" | awk '$2 == "dstack/dstack-verifier.toml" { print $1 }')"
 [[ ${#VERIFIER_SHA} -eq 64 && ${#CONFIG_SHA} -eq 64 ]] || { echo "Verifier pins missing" >&2; exit 1; }
@@ -85,4 +85,4 @@ require("node:fs").writeFileSync(out, JSON.stringify({
   lock: JSON.parse(require("node:fs").readFileSync(lock, "utf8")),
 }, null, 2) + "\n", { flag: "wx" });
 ' "$IMAGE" "$SOURCE_SHA" "$VERIFIER_IMAGE" "$VERIFIER_SHA" "$CONFIG_SHA" "$LOCK" "$OUT/image.json"
-echo "[alpha-image] $IMAGE -> $OUT/image.json"
+echo "[dstack-image] $IMAGE -> $OUT/image.json"

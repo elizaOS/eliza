@@ -93,6 +93,7 @@ await run(
     "CLI reveal leaves the claim retryable after a KMS failure",
     "CLI reveal refuses malformed legacy credential bindings before decryption",
     "CLI reveal rechecks revocation, owner and key hash after external decryption",
+    "a session created with a verifier hash releases its key only to that verifier",
   ],
 );
 await run(
@@ -109,5 +110,5 @@ await writeFile(
   `${JSON.stringify({ status: "passed", results }, null, 2)}\n`,
 );
 console.log(
-  `CLI auth conformance passed 8 required tests. Results ${directory}`,
+  `CLI auth conformance passed 9 required tests. Results ${directory}`,
 );

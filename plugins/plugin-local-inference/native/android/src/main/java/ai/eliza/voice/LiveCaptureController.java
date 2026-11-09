@@ -107,7 +107,7 @@ public final class LiveCaptureController {
    final LiveSegmentPipe pipe;
    try{
     pipe=route==null?null:new LiveSegmentPipe(route.open(),new LiveSegmentPipe.Sink(){
-     public void result(JSONObject value){if(host.canStart(epoch)&&admission.events(ticket))host.transcript(id,value,null);}
+     public void result(JSONObject value){if(host.open(epoch)&&admission.events(ticket))host.transcript(id,value,null);}
      public void failed(String code){
       if(!admission.events(ticket))return;
       boolean asr="ASR_FAILED".equals(code);
@@ -129,13 +129,13 @@ public final class LiveCaptureController {
     else refuse(ticket,startup,result);
     return;
    }
-   if(!host.canStart(epoch)||!admission.current(ticket)){closePipe(id,true,now());result.refused(CANCELLED,null);return;}
+   if(!host.canStart(epoch)||!admission.current(ticket)){closePipe(id,true,now());refuse(ticket,startup,result);return;}
    final LiveVoiceCapture next;
    try{
     next=host.capture(id,new LiveVoiceCapture.Sink(){
-     private boolean admitted(){return host.canStart(epoch)&&admission.events(ticket);}
+     private boolean admitted(){return host.open(epoch)&&admission.events(ticket);}
      public void frames(String captureId,JSONArray frames,JSONArray vad,float peak){if(!admitted())return;host.frames(captureId,pipe==null?frames:new JSONArray(),vad,peak);if(pipe!=null)pipe.offer(frames,vad);}
-     public void ended(String captureId,String error){if(!host.canStart(epoch)||!admission.end(ticket))return;host.ended(captureId,error);if(error!=null&&pipe!=null)pipe.close(true,now());}
+     public void ended(String captureId,String error){if(!host.open(epoch)||!admission.end(ticket))return;host.ended(captureId,error);if(error!=null&&pipe!=null)pipe.close(true,now());}
     },echoCancel);
    }catch(Exception|Error unavailable){closePipe(id,true,now());result.refused("Live capture could not start",CAPTURE);return;}
    // Publish cancellation before native startup. The callback only marks and schedules: no join on the caller.
@@ -144,12 +144,12 @@ public final class LiveCaptureController {
     next.start();
     // Published before the ticket runs: an interrupt either refuses this start or reaches the capture.
     current=next;
-    if(!host.canStart(epoch)||!admission.run(ticket)||!startup.report()){current=null;next.stop();closePipe(id,true,now());refuse(ticket,startup,result);return;}
+    if(!host.canStart(epoch)||!admission.run(ticket)||!startup.report()){admission.discard(ticket);current=null;next.stop();closePipe(id,true,now());refuse(ticket,startup,result);return;}
     live=next;result.started(id,LiveVoiceCapture.SAMPLE_RATE,next.echoCancelled(),pipe!=null);
    }catch(Exception|Error failure){
     current=null;next.stop();closePipe(id,true,now());
     // A cancellation or call during native startup fails it on purpose: refuse with that cause.
-    if(admission.current(ticket))result.refused("Live capture could not start",CAPTURE);else refuse(ticket,startup,result);
+    if(host.canStart(epoch)&&admission.current(ticket))result.refused("Live capture could not start",CAPTURE);else refuse(ticket,startup,result);
    }
   },()->result.refused("Voice unavailable",null));
  }

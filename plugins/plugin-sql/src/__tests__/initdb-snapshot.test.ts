@@ -4,6 +4,7 @@ import {
   INITDB_SNAPSHOT_FILE,
   initdbSnapshotPath,
   MAX_INITDB_SNAPSHOT_BYTES,
+  MIGRATED_SNAPSHOT_FILE,
   readInitdbSnapshot,
 } from "../pglite/initdb-snapshot";
 
@@ -18,6 +19,27 @@ describe("initdbSnapshotPath", () => {
     expect(initdbSnapshotPath(options({}), {}, bundleUrl)).toBe(
       `/data/app/bundle/${INITDB_SNAPSHOT_FILE}`
     );
+  });
+
+  it("prefers the pre-migrated snapshot beside the bundle when it is there", () => {
+    const memory = options({ dataDir: "memory://" });
+    const migrated = `/data/app/bundle/${MIGRATED_SNAPSHOT_FILE}`;
+    expect(initdbSnapshotPath(memory, {}, bundleUrl, (file) => file === migrated)).toBe(migrated);
+    expect(initdbSnapshotPath(memory, {}, bundleUrl, () => false)).toBe(
+      `/data/app/bundle/${INITDB_SNAPSHOT_FILE}`
+    );
+    // PGLITE_MIGRATED_SNAPSHOT=0 keeps the plain initdb cluster.
+    expect(
+      initdbSnapshotPath(memory, { PGLITE_MIGRATED_SNAPSHOT: "0" }, bundleUrl, () => true)
+    ).toBe(`/data/app/bundle/${INITDB_SNAPSHOT_FILE}`);
+    // An explicit PGLITE_INITDB_SNAPSHOT wins over both.
+    expect(
+      initdbSnapshotPath(memory, { PGLITE_INITDB_SNAPSHOT: "/opt/snap.bin" }, bundleUrl, () => true)
+    ).toBe("/opt/snap.bin");
+    // On-disk databases never take a snapshot, migrated or not.
+    expect(
+      initdbSnapshotPath(options({ dataDir: "/data/db" }), {}, bundleUrl, () => true)
+    ).toBeNull();
   });
 
   it("leaves on-disk databases and explicit loadDataDir alone", () => {

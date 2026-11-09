@@ -845,6 +845,7 @@ export async function signingProblems({
   descriptorFile,
   sourceLockPath,
   applicationSignerFile = null,
+  composition = null,
   targetFiles,
   targetFilesSha256,
   keysDir,
@@ -866,6 +867,7 @@ export async function signingProblems({
       sourceLockPath,
       applicationSignerFile,
       productName,
+      composition,
     }),
     ...avbDescriptorProblems(product, descriptorFile),
   ];
@@ -948,8 +950,10 @@ export async function signingProblems({
 
 /**
  * Sign a brand's release. `root`, `productName`, `descriptorFile`, `sourceLockPath`
- * and `applicationSignerFile` bind the brand's reviewed release inputs; the
- * remaining options are the signing job's runtime inputs.
+ * and `applicationSignerFile` bind the brand's reviewed release inputs. An external
+ * consumer supplies its validated product data as `composition`; omission selects
+ * only Eliza's own product catalog. This does not replace any signing authority.
+ * Remaining options are the signing job's runtime inputs.
  */
 export async function signRelease(options) {
   const root = options.root ?? process.cwd();
