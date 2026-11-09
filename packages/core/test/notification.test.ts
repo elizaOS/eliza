@@ -639,22 +639,62 @@ describe("NotificationService", () => {
 	});
 
 	it("reports a changed epoch before checking its older cursor against a lower counter", async () => {
-		const current = await service.listNativePage();
-		const oldCursor = {
-			nativeEpoch: "10000000-0000-0000-0000-000000000001",
-			afterSequence: current.throughSequence + 100,
-			throughSequence: current.throughSequence + 100,
-		};
-		await expect(service.listNativePage(oldCursor)).rejects.toMatchObject({
-			code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
-			status: 409,
-		});
-		await expect(
-			service.listNativePage({
-				...oldCursor,
-				nativeEpoch: current.nativeEpoch,
-			}),
-		).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+		const isolated = await createRuntime([NotificationService]);
+		let replacement: NotificationService | undefined;
+		try {
+			const original = (await isolated.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			await original.notify({ title: "Old first row" });
+			await original.notify({ title: "Old second row" });
+			const first = await original.listNativePage({ limit: 1 });
+			expect(first.complete).toBe(false);
+			const oldCursor = {
+				nativeEpoch: first.nativeEpoch,
+				afterSequence: first.nextSequence,
+				throughSequence: first.throughSequence,
+			};
+			await original.stop();
+			expect(
+				await isolated.runtime.deleteCache(
+					`notifications:${isolated.runtime.agentId}`,
+				),
+			).toBe(true);
+
+			replacement = (await NotificationService.start(
+				isolated.runtime,
+			)) as NotificationService;
+			const notice = await replacement.notify({ title: "Replacement row" });
+			expect(notice.nativeSequence).toBe(first.nextSequence);
+			expect(notice.nativeEpoch).not.toBe(first.nativeEpoch);
+			await expect(replacement.listNativePage(oldCursor)).rejects.toMatchObject(
+				{
+					code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+					status: 409,
+				},
+			);
+			await expect(
+				replacement.listNativePage({
+					...oldCursor,
+					nativeEpoch: notice.nativeEpoch,
+				}),
+			).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+			const fresh = await replacement.listNativePage({ limit: 1 });
+			expect(fresh).toMatchObject({
+				nativeEpoch: notice.nativeEpoch,
+				throughSequence: notice.nativeSequence,
+				complete: true,
+			});
+			expect(fresh.notifications.map((row) => row.id)).toEqual([notice.id]);
+			await expect(replacement.listNativePage(oldCursor)).rejects.toMatchObject(
+				{
+					code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+				},
+			);
+		} finally {
+			await replacement?.stop();
+			await isolated.cleanup();
+		}
 	});
 
 	it("pages a fixed append fence including read, low and expired rows despite deleted gaps", async () => {
