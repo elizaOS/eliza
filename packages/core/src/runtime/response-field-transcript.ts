@@ -44,16 +44,17 @@ const LINE_BREAK = /\r?\n/;
 /**
  * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
  * lines inside a fence are QUOTED content — e.g. a reply diagnosing a leaked
- * transcript the user pasted — never envelope structure.
+ * transcript the user pasted — never envelope structure. A backtick run whose
+ * info string holds another backtick is an inline code span
+ * (```npm i``` first), not a fence.
  */
-const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
+const FENCE_LINE = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
 
 /**
- * A fence opener written inline after a field name (`replyText: ```bash`).
- * A backtick run whose info string holds another backtick is an inline code
- * span (`replyText: ```npm i``` first`), not a fence.
+ * A fence opener written inline after a field name (`replyText: ```bash`),
+ * with the same inline-code-span exclusion as {@link FENCE_LINE}.
  */
-const INLINE_FENCE_OPEN = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
+const INLINE_FENCE_OPEN = FENCE_LINE;
 
 /**
  * Cheap skeleton detector for the fail-closed send-boundary guard. Returns true

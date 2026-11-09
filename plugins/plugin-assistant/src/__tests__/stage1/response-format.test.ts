@@ -1643,6 +1643,26 @@ describe("Stage 1 response format", () => {
       expect(result.result.responseContent?.text).toBe(reply);
   });
 
+  it("keeps transcript fields after a replyText line that starts with an inline code span", async () => {
+    // A continuation line can open with an inline ```code``` span. Its info
+    // string holds a backtick, so it is not a fence opener; treating it as one
+    // ships every later field to the user as reply prose.
+    const reply =
+      "Clear the npm cache first:\n```npm cache clean --force``` and then run the install again.";
+    const runtime = makeRuntime([
+      `shouldRespond: RESPOND\ncontexts: simple\nreplyText: ${reply}\ntopics: npm, install\nemotion: neutral`,
+    ]);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({ text: "npm install keeps failing." }),
+    });
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply") {
+      expect(result.result.responseContent?.text).toBe(reply);
+      expect(result.messageHandler.extract?.topics).toEqual(["npm", "install"]);
+    }
+  });
+
   it("keeps a completed fictional-facts answer direct despite incidental coding words", async () => {
     const reply =
       "Noted. Mira = PINE-17, Jonah = COVE-42, both fictional. No notes touched.";
