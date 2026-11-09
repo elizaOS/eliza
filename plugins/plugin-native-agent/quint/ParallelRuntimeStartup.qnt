@@ -117,7 +117,7 @@ module ParallelRuntimeStartup {
   temporal ObservedTerminationProgress =
     (observeAgentTermination.weakFair(s) and observeGatewayTermination.weakFair(s)) implies
       always(s.disposed implies eventually(ChildrenStopped))
-  temporal CloseIsNotExitAcknowledgment = always(s.disposed implies ChildrenStopped)
+  temporal UnconditionalTerminationProgress = s.disposed.leadsTo(ChildrenStopped)
   temporal RetirementMonotone = always((s.retired implies next(s.retired)).orKeep(s))
 
   run startsBothBeforeReadinessTest = init.then(publish).then(publish).then(publish)
