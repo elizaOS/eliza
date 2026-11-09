@@ -3,17 +3,19 @@
  * initialization contract separate from the HTTP listener makes first-run,
  * runtime-backed, and stopped-server states deterministic and testable.
  */
-import type {
-  AgentAutomationMode,
-  AgentRuntime,
-  AgentLogEntry as LogEntry,
+import {
+  type AgentAutomationMode,
+  type AgentRuntime,
+  isInsufficientCreditsMessage,
+  type AgentLogEntry as LogEntry,
 } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
 import type { PluginEntry, ServerState } from "./server-types.ts";
 
 /**
  * Retention of the in-memory diagnostics log (`GET /api/logs`). The buffer
- * keeps the newest `ELIZA_API_LOG_BUFFER_MAX` entries (default 1000). It may
+ * keeps the newest `ELIZA_API_LOG_BUFFER_MAX` entries (default 1000), plus at
+ * most one recent credit warning needed by chat failure replies. It may
  * briefly hold up to 10% more, because eviction runs in batches so that one
  * log line does not shift the whole array. Older entries remain in the log
  * files and the process output. This buffer is diagnostics only; it is never
@@ -21,6 +23,20 @@ import type { PluginEntry, ServerState } from "./server-types.ts";
  */
 export const API_LOG_BUFFER_MAX_ENV = "ELIZA_API_LOG_BUFFER_MAX";
 export const DEFAULT_API_LOG_BUFFER_MAX = 1000;
+
+/** The existing chat fallback reads credit evidence from the last minute. */
+export function findRecentInsufficientCreditsLog(
+  logBuffer: LogEntry[],
+  lookbackMs = 60000,
+): LogEntry | null {
+  const now = Date.now();
+  for (let i = logBuffer.length - 1; i >= 0; i--) {
+    const entry = logBuffer[i];
+    if (now - entry.timestamp > lookbackMs) break;
+    if (isInsufficientCreditsMessage(entry.message)) return entry;
+  }
+  return null;
+}
 
 /** Reads the retention from the environment; a value that is set must be a positive integer. */
 export function resolveApiLogBufferMax(
@@ -44,7 +60,11 @@ export function appendApiLogEntries(
 ): void {
   for (const entry of entries) buffer.push(entry);
   if (buffer.length > max + Math.ceil(max / 10)) {
-    buffer.splice(0, buffer.length - max);
+    const retainedStart = buffer.length - max;
+    const credits = findRecentInsufficientCreditsLog(buffer);
+    const retainCredits = credits && buffer.indexOf(credits) < retainedStart;
+    buffer.splice(0, retainedStart);
+    if (retainCredits) buffer.unshift(credits);
   }
 }
 
