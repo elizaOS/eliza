@@ -18,6 +18,7 @@ export {
   type LinkedCalendarProviderSnapshot,
   type LinkedCalendarReconcileOutcome,
   LinkedCalendarReconciler,
+  type LinkedCalendarRecoveryOutcome,
   type LinkedCalendarSemanticEvent,
   type LinkedCalendarState,
 } from "@elizaos/contracts";

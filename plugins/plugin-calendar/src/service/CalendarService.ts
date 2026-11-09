@@ -243,6 +243,7 @@ import {
 import {
   attachManagedCalendarReadDiagnostic,
   createManagedCalendarRead,
+  MANAGED_CALENDAR_REQUEST_TIMEOUT_MS,
   managedCalendarPlaceholder,
 } from "./managed-calendar-read.js";
 import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
@@ -280,6 +281,9 @@ const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
 /** Managed owner feeds one service reads at once, across every overlapping
  * aggregate read. Each one verifies the owner over the private broker. */
 const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
+/** An uncertain write may still be in flight until twice the request timeout. */
+const LINKED_CALENDAR_RECOVERY_SETTLE_MS =
+  2 * MANAGED_CALENDAR_REQUEST_TIMEOUT_MS;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -2088,11 +2092,20 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_RECOVERY_IDENTITY_MISMATCH",
             );
           }
-          if (
-            !(await this.linkedReconciler(
-              record.connectorAccountId,
-            ).recoverDispatch(record))
-          ) {
+          // Anchor the settle window at the later of dispatch and the row's
+          // last checkpoint, which the quarantine writes after the failure.
+          const anchors = [current.dispatch.acquiredAt, record.updatedAt]
+            .map((value) => (value ? Date.parse(value) : Number.NaN))
+            .filter(Number.isFinite);
+          const recovered = await this.linkedReconciler(
+            record.connectorAccountId,
+          ).recoverDispatch(record, {
+            dispatchedAt: anchors.length
+              ? new Date(Math.max(...anchors))
+              : null,
+            settleMs: LINKED_CALENDAR_RECOVERY_SETTLE_MS,
+          });
+          if (recovered === "unresolved") {
             throw new CalendarServiceError(
               409,
               "The provider outcome is still uncertain or the events differ. Sync remains paused; no provider write was retried.",
