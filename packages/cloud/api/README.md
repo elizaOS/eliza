@@ -9,6 +9,13 @@ local bindings are derived from root .env/.env.local. Add routes in the file-bas
 tree and run the package codegen script. The build script checks types; typecheck also
 validates router and Worker bundling contracts.
 
+`/api/v1/responses` is a synchronous adapter to the same chat authentication,
+admission and billing owner. It preserves ordered text, image URLs, inline files
+and function-call histories. Unsupported inputs (including stored response IDs,
+streaming, hosted tools and explicit image detail) return `400` before admission.
+Provider token limits remain `incomplete`; malformed provider output returns `503`.
+The adapter does not persist Responses objects.
+
 Delegated inference budgets are off by default. Apply shared migrations 0544–0545
 before setting `INFERENCE_FUNDED_BUDGET_ADMISSION=true`. Keep strong revocation
 enabled and configure the same `INFERENCE_FUNDING_BUDGET_SEAL_SECRET` on the

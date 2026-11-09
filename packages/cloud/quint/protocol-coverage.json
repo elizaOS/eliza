@@ -2465,5 +2465,38 @@
       "The strict hook executes the real controller on Miniflare SQLite with a controlled fixture clock; this is scenario correspondence, not general TypeScript refinement.",
       "Only paired refill and retry deadlines within one admitted window are specified; the complete Maps flow remains partial."
     ]
+  },
+  {
+    "id": "cloud-responses-adaptation",
+    "model": "packages/cloud/quint/ResponsesAdaptation.qnt",
+    "sources": [
+      "packages/cloud/api/v1/responses/compatibility.ts",
+      "packages/cloud/api/v1/responses/route.ts",
+      "packages/cloud/api/v1/chat/completions/route.ts",
+      "packages/cloud/api/v1/responses/route.test.ts",
+      "packages/cloud/api/v1/responses/provider-contract.test.ts",
+      "packages/cloud/quint/check-responses-adaptation.ts"
+    ],
+    "invariants": [
+      "contentPreserved",
+      "authorityPreserved",
+      "effectsOnlyForAcceptedInput",
+      "singleCanonicalOwner",
+      "noFabricatedCompletion",
+      "incompleteHasCause",
+      "outputPreserved",
+      "deniedNeverDispatches",
+      "unknownNeverCompletes",
+      "safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One stateless request, fixed full transcript and output atoms; three supported and two rejected input classes, seven canonical outcomes. Real strings, media bytes and parallel tool call grouping are checked by implementation tests, not symbolically proved.",
+      "Canonical authentication, billing, provider truth, native authority, HTTP delivery and cancellation implementation correctness remain outside this adapter model. Tests control those external ports; one integration case runs the actual OpenAI SDK.",
+      "Unsupported items and parameters are explicitly refused before native/canonical effects. Stored responses, background operation, streaming and hosted tools are not implemented by this route.",
+      "Eventual completion requires fair local steps and eventual provider completion or failure. A hung provider can remain pending; unconditional completion has a checked counterexample.",
+      "Finite models and selected executable tests do not establish whole-backend coverage or TypeScript refinement.",
+      "Response identity allocation relies on the platform UUID generator; same-clock request separation has an actual SDK regression, not a proof of random uniqueness."
+    ]
   }
 ]

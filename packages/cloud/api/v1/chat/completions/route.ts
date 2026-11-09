@@ -2184,15 +2184,10 @@ export async function handleChatCompletionsPOST(
     }
     const tAfterReserve = performance.now();
 
-    // 7. Convert messages for AI SDK
-    const systemMessage = request.messages.find((m) => m.role === "system");
-    const systemPrompt = systemMessage
-      ? getMessageContent(systemMessage)
-      : undefined;
-    const nonSystemMessages = request.messages.filter(
-      (m) => m.role !== "system",
-    );
-    const modelMessages = convertToModelMessagesFromOpenAI(nonSystemMessages);
+    // 7. Keep all instruction messages in their original transcript positions.
+    // Selecting one system message and filtering the rest silently loses context.
+    const systemPrompt = undefined;
+    const modelMessages = convertToModelMessagesFromOpenAI(request.messages);
 
     logger.info("[Chat Completions] Request", {
       traceId,
@@ -3283,6 +3278,7 @@ async function handleStreamingRequest(
     ...(sdkTiming ? { includeRawChunks: true } : {}),
     model: languageModel,
     system: systemPrompt,
+    allowSystemInMessages: true,
     messages,
     ...webSearchOptions,
     abortSignal,
@@ -3453,7 +3449,7 @@ async function handleStreamingRequest(
         controller.enqueue(bytes);
         sdkTiming?.enqueue();
       };
-      const responseId = `chatcmpl-${Date.now()}`;
+      const responseId = `chatcmpl-${crypto.randomUUID()}`;
       const toolCallIndexes = new Map<string, number>();
       // Argument chars already delivered per tool call id via
       // `tool-input-delta` fragments. OpenAI streaming clients concatenate
@@ -3862,6 +3858,7 @@ async function handleNonStreamingRequest(
     const result = await invokeGenerateText({
       model: languageModel,
       system: systemPrompt,
+      allowSystemInMessages: true,
       messages,
       ...webSearchOptions,
       abortSignal,
@@ -3992,7 +3989,7 @@ async function handleNonStreamingRequest(
     // Return OpenAI-compatible response
     return addCorsHeaders(
       Response.json({
-        id: `chatcmpl-${Date.now()}`,
+        id: `chatcmpl-${crypto.randomUUID()}`,
         object: "chat.completion",
         created: Math.floor(Date.now() / 1000),
         model,
