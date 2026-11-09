@@ -29,8 +29,19 @@ const principal = {
 let db: typeof import("@elizaos/cloud-shared/db/client");
 let service: typeof import("@elizaos/cloud-shared/lib/services/stripe-checkout-orders").stripeCheckoutOrdersService;
 let route: Hono;
-let beforeCustomer: (() => void) | undefined;
-const calls: Array<{ at: number; key: string | undefined }> = [];
+let beforeCustomer: (() => void | Promise<void>) | undefined;
+let authoritativeCustomer = "cus_test";
+let createdSession: RecoverySession | undefined;
+let lookupPage:
+  | ((
+      params: Stripe.Checkout.SessionListParams,
+    ) => Promise<{ data: RecoverySession[]; has_more: boolean }>)
+  | undefined;
+const calls: Array<{
+  at: number;
+  key: string | undefined;
+  customer: string | undefined;
+}> = [];
 const searches: Stripe.Checkout.SessionListParams[] = [];
 type RecoverySession = Pick<
   Stripe.Checkout.Session,
@@ -56,8 +67,8 @@ mock.module(
   () => ({
     stripeCustomerAuthorityService: {
       ensure: async () => {
-        beforeCustomer?.();
-        return "cus_test";
+        await beforeCustomer?.();
+        return authoritativeCustomer;
       },
     },
   }),
@@ -71,11 +82,17 @@ mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
           _params: Stripe.Checkout.SessionCreateParams,
           options: { idempotencyKey?: string },
         ) => {
-          calls.push({ at: Date.now(), key: options.idempotencyKey });
+          calls.push({
+            at: Date.now(),
+            key: options.idempotencyKey,
+            customer: _params.customer,
+          });
+          if (createdSession) return createdSession;
           throw new Error("Ambiguous provider response");
         },
         list: async (params: Stripe.Checkout.SessionListParams) => {
           searches.push(params);
+          if (lookupPage) return lookupPage(params);
           const range = params.created as { gte: number; lte: number };
           return {
             data: sessions.filter(
@@ -117,6 +134,12 @@ beforeEach(async () => {
   searches.length = 0;
   sessions = [];
   beforeCustomer = undefined;
+  authoritativeCustomer = "cus_test";
+  createdSession = undefined;
+  lookupPage = undefined;
+  await db.dbWrite.execute(
+    sql`UPDATE organizations SET stripe_customer_id='cus_test' WHERE id=${organizationId}`,
+  );
   await db.dbWrite.execute(sql`DELETE FROM stripe_checkout_orders`);
 });
 afterAll(async () => {
@@ -175,7 +198,9 @@ test("repeated failures at0/22/44h never reset the original23-hour creation cuto
 });
 
 test("a delayed first dispatch receives its own full original retry window", async () => {
-  beforeCustomer = () => setSystemTime(epoch + 26 * hour);
+  beforeCustomer = () => {
+    setSystemTime(epoch + 26 * hour);
+  };
   expect((await request()).status).toBe(500);
   beforeCustomer = undefined;
   setSystemTime(epoch + 48 * hour);
@@ -253,7 +278,7 @@ test("recovery searches the entire original retry window, including a late accep
   expect((await order()).provider_started_at?.getTime()).toBe(epoch);
 });
 
-async function legacyOrder() {
+async function quotedOrder() {
   // Existing rows deliberately retain NULL on rollout; this represents an old
   // writer's two transitions, not a fabricated first provider timestamp.
   beforeCustomer = () => {};
@@ -284,6 +309,11 @@ async function legacyOrder() {
     currency: "usd",
     stripeCustomerId: "cus_test",
   });
+  return row;
+}
+
+async function legacyOrder() {
+  const row = await quotedOrder();
   await db.dbWrite.execute(
     sql`UPDATE stripe_checkout_orders SET status='provider_started' WHERE id=${row.id}`,
   );
@@ -324,4 +354,138 @@ test("multiple matching historical Sessions require reconciliation instead of ch
   expect((await request()).status).toBe(500);
   expect(calls).toHaveLength(0);
   expect((await order()).stripe_checkout_session_id).toBeNull();
+});
+
+test("recovery follows later pages before binding the original Session", async () => {
+  await request();
+  const row = await order();
+  lookupPage = async (params) =>
+    params.starting_after
+      ? {
+          data: [providerSession("cs_original_later", row.id, epoch)],
+          has_more: false,
+        }
+      : {
+          data: [providerSession("cs_unrelated_first", "another-order", epoch)],
+          has_more: true,
+        };
+  const response = await request();
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    sessionId: "cs_original_later",
+  });
+  expect(searches.map((query) => query.starting_after)).toEqual([
+    undefined,
+    "cs_unrelated_first",
+  ]);
+  expect(calls).toHaveLength(1);
+  expect((await order()).stripe_checkout_session_id).toBe("cs_original_later");
+});
+
+test("a failed later lookup page cannot authorize another create", async () => {
+  await request();
+  lookupPage = async (params) => {
+    if (params.starting_after) throw new Error("Provider page unavailable");
+    return {
+      data: [providerSession("cs_first", "another-order", epoch)],
+      has_more: true,
+    };
+  };
+  expect((await request()).status).toBe(500);
+  expect(searches).toHaveLength(2);
+  expect(calls).toHaveLength(1);
+  expect((await order()).status).toBe("provider_ambiguous");
+  expect((await order()).stripe_checkout_session_id).toBeNull();
+});
+
+test("competing matching Sessions on separate pages reject recovery", async () => {
+  await request();
+  const row = await order();
+  lookupPage = async (params) => ({
+    data: [
+      providerSession(
+        params.starting_after ? "cs_second" : "cs_first",
+        row.id,
+        epoch,
+      ),
+    ],
+    has_more: !params.starting_after,
+  });
+  expect((await request()).status).toBe(500);
+  expect(searches).toHaveLength(2);
+  expect(calls).toHaveLength(1);
+  expect((await order()).stripe_checkout_session_id).toBeNull();
+});
+
+test("an empty continuation page cannot authorize another create", async () => {
+  await request();
+  lookupPage = async () => ({ data: [], has_more: true });
+  expect((await request()).status).toBe(500);
+  expect(calls).toHaveLength(1);
+});
+
+test("a repeated pagination cursor cannot authorize another create", async () => {
+  await request();
+  lookupPage = async () => ({
+    data: [providerSession("cs_repeated", "another-order", epoch)],
+    has_more: true,
+  });
+  expect((await request()).status).toBe(500);
+  expect(searches).toHaveLength(2);
+  expect(calls).toHaveLength(1);
+});
+
+test("lookup deadline expiry cannot authorize another create", async () => {
+  await request();
+  lookupPage = async () => {
+    setSystemTime(epoch + 10_001);
+    return { data: [], has_more: false };
+  };
+  expect((await request()).status).toBe(500);
+  expect(calls).toHaveLength(1);
+});
+
+test("a stale unbound reader adopts the customer already pinned by another caller", async () => {
+  beforeCustomer = async () => {
+    const row = await order();
+    await service.bindCustomer(row.id, "cus_test");
+    await db.dbWrite.execute(
+      sql`UPDATE organizations SET stripe_customer_id='cus_rotated' WHERE id=${organizationId}`,
+    );
+    authoritativeCustomer = "cus_rotated";
+    createdSession = providerSession("cs_pinned_winner", row.id, epoch);
+  };
+  const response = await request();
+  expect(response.status).toBe(200);
+  expect(calls.map((call) => call.customer)).toEqual(["cus_test"]);
+  expect((await order()).stripe_customer_id).toBe("cus_test");
+  expect((await order()).stripe_checkout_session_id).toBe("cs_pinned_winner");
+});
+
+test("a stale quoted caller can retry the same key after another caller dispatches", async () => {
+  await quotedOrder();
+  const entered = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  let reads = 0;
+  beforeCustomer = async () => {
+    if (++reads === 1) {
+      entered.resolve();
+      await resume.promise;
+    }
+  };
+  const stale = request();
+  try {
+    await entered.promise;
+    expect((await request()).status).toBe(500);
+    expect(calls).toHaveLength(1);
+    resume.resolve();
+    expect((await stale).status).toBe(500);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.key).toBe(calls[1]?.key);
+    expect(searches).toHaveLength(0);
+    expect((await order()).provider_started_at?.getTime()).toBe(epoch);
+  } finally {
+    resume.resolve();
+    await stale;
+  }
 });
