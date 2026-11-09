@@ -36,17 +36,17 @@
     ],
     "invariants": [
       "SequenceBounds",
+      "BlockBelongsToRetainedRow",
       "ReturnedRowsWithinFence",
       "IncompleteAlwaysAdvances",
       "CompleteConsumesFence",
-      "FailedPageDoesNotAdvance"
+      "RejectedPagesReturnNothing"
     ],
     "status": "partial",
     "limitations": [
-      "The finite capacity one represents the item/byte page boundary. Real tests check the actual encoded envelope and native byte limits without truncating records.",
-      "A sequence cursor can skip deleted/expired/superseded rows when no retained row exists at that sequence. The fence remains fixed across later appends.",
-      "Malformed arbitrary cursor numbers, unknown record fields and Unicode byte encoding are checked by existing implementation tests, outside the finite value domain.",
-      "Changing the inbox epoch invalidates old cursors. After that error the client must explicitly begin a new snapshot, which is outside this one-cursor model."
+      "Capacity one represents the item or byte boundary. Actual envelope and Unicode byte limits are implementation tests.",
+      "Deletion or supersession can remove a retained row between pages. A projection error is attached to the current retained row and cannot cross epochs.",
+      "One explicit replacement and restart are checked. Native client scheduling, multiple clients, persistence faults and arbitrary invalid query numbers are outside this finite projection."
     ]
   },
   {
