@@ -56,7 +56,7 @@ export type FilesStoragePort<Selection extends FilesSelection> = {
     volume?: string;
   }): Promise<Result & { entries?: StorageEntry[]; truncated?: boolean }>;
   /** `count` and `folders` cover the whole category; `entries` may be its newest part (`truncated`). */
-  storageCategory(input: { category: FilesCategory }): Promise<
+  storageCategory(input: { category: FilesCategory; countOnly?: boolean }): Promise<
     Result & {
       entries?: StorageEntry[];
       count?: number;
@@ -262,6 +262,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     opened: { path: string; volume?: string; selectionId?: string } | undefined;
   let selectionEpoch = 0;
   let generation = 0,
+    stateGeneration = 0,
     filterGeneration = 0,
     revision = 0,
     watching = "",
@@ -298,17 +299,21 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     return false;
   };
 
-  async function refreshState() {
+  async function refreshState(current: () => boolean = () => true): Promise<boolean> {
+    const ticket = ++stateGeneration;
     try {
       const state = await storage.storageState();
+      if (ticket !== stateGeneration || !current()) return false;
       access = state.access || "denied";
       volumes = [...(state.volumes || [])].sort(
         (a, b) => Number(b.primary) - Number(a.primary),
       );
     } catch {
+      if (ticket !== stateGeneration || !current()) return false;
       access = "unavailable";
       volumes = [];
     }
+    return true;
   }
   const extraVolumes = () =>
     volumes.filter((volume) => !volume.primary).map((volume) => volume.id);
@@ -348,7 +353,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     await Promise.all(
       CATEGORIES.map(async ({ id }) => {
         try {
-          const value = await storage.storageCategory({ category: id });
+          const value = await storage.storageCategory({ category: id, countOnly: true });
           if (value.status === "ready")
             next[id] = value.count ?? value.entries?.length ?? 0;
         } catch {
@@ -359,7 +364,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     let trash = 0;
     const rows = await trashAcross();
     if (rows) trash = rows.length;
-    if (ticket === generation) {
+    if (active && ticket === generation) {
       counts = next;
       trashCount = trash;
     }
@@ -369,10 +374,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   async function reload() {
     const ticket = ++generation,
       at = place;
+    const current = () => active && ticket === generation;
     busy = true;
     repaint();
     try {
-      await refreshState();
+      if (!await refreshState(current) || !current()) return;
       if (access !== "granted") {
         entries = [];
         trashItems = [];
@@ -382,7 +388,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (at.kind === "browse") await loadCounts(ticket);
       else if (at.kind === "trash") {
         const rows = await trashAcross();
-        if (ticket !== generation) return;
+        if (!current()) return;
         if (rows) trashItems = rows;
         else toast("Trash could not be read.");
       } else {
@@ -393,7 +399,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
                 path: at.path,
                 ...onVolume(at.volume),
               });
-        if (ticket !== generation) return;
+        if (!current()) return;
         if (value.status === "missing" && at.kind === "folder") {
           up();
           return;
@@ -410,7 +416,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           categoryFolders = undefined;
         }
       }
-      if (filter) await runFilter(filter);
+      if (!current()) return;
+      if (filter) await runFilter(filter, current);
+      if (!current()) return;
       if (selection) {
         const listed = new Set(entries.map((e) => e.path));
         selection = new Set([...selection].filter((path) => listed.has(path)));
@@ -418,7 +426,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       loaded = true;
       void watch();
     } catch {
-      if (ticket === generation) {
+      if (current()) {
         error = "Files could not be read.";
         entries = [];
       }
@@ -779,8 +787,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   }
 
   /** Its own counter: a filter never takes a reload's ticket, so the reload still clears `busy`. */
-  async function runFilter(value: FilesFilter) {
+  async function runFilter(value: FilesFilter, admitted: () => boolean): Promise<number | undefined> {
     const ticket = ++filterGeneration;
+    const current = () => ticket === filterGeneration && filter === value && admitted();
     try {
       const query = await storage.storageQuery({
         ...(value.text ? { text: value.text } : {}),
@@ -807,31 +816,30 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             }
           : {}),
       });
-      if (ticket !== filterGeneration) return;
-      filterRows =
-        query.status === "ready"
-          ? sortEntries(
-              (query.entries || []).filter((entry) =>
-                filterMatches(value, entry),
-              ),
-              "date",
-            )
-          : [];
-    } catch {
+      if (!current()) return;
+      if (query.status === "ready") {
+        filterRows = sortEntries((query.entries || []).filter((entry) => filterMatches(value, entry)), "date");
+        return filterRows.length;
+      }
       filterRows = [];
+    } catch {
+      if (current()) filterRows = [];
     }
   }
   /** The agent's read-only filter (spec FilterIsReadOnly): it changes only what is shown. */
-  async function showFilter(value: FilesFilter) {
+  async function showFilter(value: FilesFilter, signal: AbortSignal) {
+    const current = () => filter === value && !signal.aborted;
     filter = value;
+    filterRows = [];
     place = { kind: "browse" };
     selection = null;
     dialog = undefined;
     api?.set({ folder: null, open: null, menu: false });
-    await refreshState();
-    await runFilter(value);
+    if (!current() || !await refreshState(current) || !current() || access !== "granted") return;
+    const count = await runFilter(value, current);
+    if (!current()) return;
     repaint();
-    return filterRows.length;
+    return count;
   }
   const reviewingPrimary = () =>
     api?.isActive?.() &&
@@ -868,14 +876,24 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           summary: "Files is unavailable. Nothing was changed.",
         };
       if (!api.isActive?.()) api.open?.("files");
-      await refreshState();
+      const refreshed = await refreshState(() => !signal.aborted);
+      signal.throwIfAborted();
+      if (!refreshed) return {
+        status: "failed",
+        summary: "Files changed. Nothing was changed.",
+      };
       if (access !== "granted")
         return {
           status: "failed",
-          summary: "Files needs all-files access. Nothing was changed.",
+          summary: "Files needs storage access. Nothing was changed.",
         };
       if (op.type === "files_filter") {
-        const n = await showFilter(validateFilesFilter(filesFilterOf(op)));
+        const n = await showFilter(validateFilesFilter(filesFilterOf(op)), signal);
+        signal.throwIfAborted();
+        if (n === undefined) return {
+          status: "failed",
+          summary: "Files could not read this filter.",
+        };
         return {
           status: "succeeded",
           summary: `Showing ${countLabel(n)} in Files.`,
@@ -908,7 +926,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           ? {
               status: "succeeded",
               summary:
-                "Opened the share sheet. Nothing is sent until you pick an app.",
+                "Opened the share sheet.",
             }
           : {
               status: "failed",
@@ -1010,7 +1028,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           .filter(Boolean)
           .join(" · ");
     return {
-      id: entry.path,
+      id: JSON.stringify([place.kind === "folder" ? place.volume || "primary" : "primary", entry.path]),
       name: entry.name,
       sub: meta,
       d: iconFor(entry),
@@ -1106,6 +1124,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       allFiles: () => go(rootFolder),
       allFilesIcon: ICONS.folder,
       cats: CATEGORIES.map(({ id, label }) => ({
+        id,
         name: label,
         d: ICONS[id],
         count: counts[id] === undefined ? "" : String(counts[id]),
@@ -1113,6 +1132,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         go: () => go({ kind: "category", category: id }),
       })),
       vols: volumes.map((volume) => ({
+        id: volume.id,
         name: volume.name,
         free: formatFree(volume),
         barW:
@@ -1255,6 +1275,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         crumbs:
           at.kind === "folder"
             ? breadcrumbs(at.path, volumeName).map((crumb, index, all) => ({
+                id: JSON.stringify([at.volume || "primary", crumb.path]),
                 label: crumb.label,
                 last: index === all.length - 1,
                 notLast: index < all.length - 1,
@@ -1281,12 +1302,14 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         moreD: ICONS.more,
         menuRows: [
           ...(["name", "date", "size"] as SortMode[]).map((mode) => ({
+            id: "sort:" + mode,
             label: SORT_LABELS[mode] + (sort === mode ? " · " + (mode === "name" ? (state.sortReverse ? "Z–A" : "A–Z") : mode === "date" ? (state.sortReverse ? "Oldest first" : "Newest first") : (state.sortReverse ? "Smallest first" : "Largest first")) : ""),
             d: ICONS.sort,
             on: sort === mode,
             go: () => currentApi.set({ menu: false, sort: mode, sortReverse: sort === mode ? !state.sortReverse : false }),
           })),
           {
+            id: "reverse-order",
             label: "Reverse order",
             d: ICONS.sort,
             on: state.sortReverse === true,
@@ -1295,6 +1318,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           ...(listed && items.length
             ? [
                 {
+                  id: "select",
                   label: "Select",
                   d: ICONS.check,
                   on: false,
@@ -1458,6 +1482,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
                       ),
                   )
                   .map((f) => ({
+                    id: JSON.stringify([d.volume || "primary", f.path]),
                     name: f.name,
                     label: "Open " + f.name,
                     d: ICONS.folder,

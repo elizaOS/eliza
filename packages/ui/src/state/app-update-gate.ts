@@ -1,7 +1,7 @@
 type Activation = { activationId: string; bridgeId: string };
 type StartupPort = {
   updateState(): Promise<unknown>;
-  activateUpdate(input: Activation & { ready: boolean }): Promise<unknown>;
+  activateUpdate(input: Activation & { ready: boolean; resumeEligible?: true }): Promise<unknown>;
   continueUpdate(input: Activation): Promise<unknown>;
 };
 type UpdateOutcome = "canceled" | "failed" | "installed";
@@ -255,7 +255,11 @@ export async function watchMountedAppUpdates(
                 reconnect = prepared;
                 localRefusal = !prepared;
                 await port
-                  .activateUpdate({ ...binding, ready: !!prepared })
+                  .activateUpdate({
+                    ...binding,
+                    ready: !!prepared,
+                    ...(prepared ? { resumeEligible: true } : {}),
+                  })
                   .catch(() => {});
               });
             }

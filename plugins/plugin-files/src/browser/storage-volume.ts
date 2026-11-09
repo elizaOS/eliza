@@ -42,6 +42,12 @@ type Library = {
     expectedRevision: string;
     destinationId: string;
   }): Promise<unknown>;
+  place(input: {
+    id: string;
+    expectedRevision: string;
+    destinationId: string;
+    name: string;
+  }): Promise<void>;
   delete(input: {
     id: string;
     expectedRevision: string;
@@ -75,6 +81,8 @@ type TrashRecord = {
   mimeType: string;
   size: number;
 };
+
+const trashFlights = new Map<string, Promise<void>>();
 
 class Missing extends Error {}
 class Exists extends Error {}
@@ -202,8 +210,29 @@ export class BrowserStorageVolume {
         .sort((a, b) => b.modified - a.modified),
     };
   }
-  async query(): Promise<{ entries: StorageEntry[] }> {
-    return { entries: await this.walk() };
+  /** Visible folders under the requested path, bounded like the file walk. */
+  private async walkFolders(under: string): Promise<StorageEntry[]> {
+    const start = validPath(under, true);
+    let id: string;
+    try { id = await this.folderId(start); }
+    catch (error) { if (error instanceof Missing) return []; throw error; }
+    const out: StorageEntry[] = [], queue: [string, string][] = [[id, start]];
+    for (let visited = 0; queue.length && visited < WALK_MAX; visited++) {
+      const [folder, path] = queue.shift()!;
+      for (const entry of await this.visible(folder)) {
+        if (!entry.directory) continue;
+        const child = joinPath(path, entry.name);
+        queue.push([entry.id, child]);
+        out.push(this.row(child, entry, (await this.visible(entry.id)).length));
+        if (out.length >= WALK_MAX) return out;
+      }
+    }
+    return out;
+  }
+  async query(input: { folders?: boolean; folder?: string } = {}): Promise<{ entries: StorageEntry[] }> {
+    return { entries: input.folders === true
+      ? await this.walkFolders(typeof input.folder === "string" ? input.folder : "")
+      : await this.walk() };
   }
 
   async createFolder(
@@ -246,36 +275,9 @@ export class BrowserStorageVolume {
   }
   /** Moves a row into a folder under a name free there, never replacing (spec MoveOne). */
   private async place(row: Row, targetId: string, name: string): Promise<void> {
-    let current = row;
-    const requireRow = async (parentId: string) => {
-      const found = (await this.children(parentId)).find(
-        (e) => e.id === row.id,
-      );
-      if (!found) throw new Missing();
-      return found;
-    };
-    if (name !== row.name) {
-      // A temporary unique name first, so the rename can't clash in the source folder either.
-      await this.library.rename({
-        id: row.id,
-        expectedRevision: row.revision,
-        name: ".moving-" + crypto.randomUUID(),
-      });
-      current = await requireRow(row.parentId);
-    }
-    await this.library.move({
-      id: current.id,
-      expectedRevision: current.revision,
-      destinationId: targetId,
-    });
-    if (name !== row.name) {
-      current = await requireRow(targetId);
-      await this.library.rename({
-        id: current.id,
-        expectedRevision: current.revision,
-        name,
-      });
-    }
+    const move = { id: row.id, expectedRevision: row.revision, destinationId: targetId };
+    if (name === row.name) await this.library.move(move);
+    else await this.library.place({ ...move, name });
   }
   private async copyInto(
     row: Row,
@@ -413,6 +415,21 @@ export class BrowserStorageVolume {
     return { outcomes };
   }
 
+  // A listing may prune the journal, so it must hold the same custody as writers.
+  private withTrashLock<T>(work: () => Promise<T>): Promise<T> {
+    const key = "browser-files-trash:" + this.namespace.trashKey;
+    const locks = globalThis.navigator?.locks;
+    if (locks?.request) return locks.request(key, { mode: "exclusive" }, work);
+
+    const previous = trashFlights.get(key) ?? Promise.resolve();
+    const attempt = previous.then(work);
+    const tail = attempt.then(() => {}, () => {});
+    trashFlights.set(key, tail);
+    return attempt.finally(() => {
+      if (trashFlights.get(key) === tail) trashFlights.delete(key);
+    });
+  }
+
   private records(): Record<string, TrashRecord> {
     try {
       const value = JSON.parse(
@@ -441,7 +458,10 @@ export class BrowserStorageVolume {
     }
   }
   /** The origin is recorded before anything moves, so an interrupted trash never loses the way back. */
-  async trash(
+  trash(paths: unknown, reviewed?: unknown) {
+    return this.withTrashLock(() => this.trashRows(paths, reviewed));
+  }
+  private async trashRows(
     paths: unknown,
     reviewed?: unknown,
   ): Promise<{ outcomes: { path: string; status: string; to?: string }[] }> {
@@ -498,7 +518,10 @@ export class BrowserStorageVolume {
     return { outcomes };
   }
   /** Trash, newest first; items past the 30-day retention are deleted here. */
-  async trashList(): Promise<{ items: TrashEntry[] }> {
+  trashList() {
+    return this.withTrashLock(() => this.listTrashRows());
+  }
+  private async listTrashRows(): Promise<{ items: TrashEntry[] }> {
     const trashId = await this.existingTrashId(),
       rows = trashId ? await this.children(trashId) : [],
       records = this.records(),
@@ -519,7 +542,10 @@ export class BrowserStorageVolume {
     this.save(records);
     return { items: items.sort((a, b) => b.deletedAt - a.deletedAt) };
   }
-  async restore(
+  restore(ids: unknown) {
+    return this.withTrashLock(() => this.restoreRows(ids));
+  }
+  private async restoreRows(
     ids: unknown,
   ): Promise<{ outcomes: { path: string; status: string; to?: string }[] }> {
     if (!Array.isArray(ids) || !ids.length || ids.length > BATCH_MAX)
@@ -584,7 +610,10 @@ export class BrowserStorageVolume {
       });
   }
   /** Permanent deletion, only after the owner confirmed it. */
-  async emptyTrash(
+  emptyTrash(ids: unknown, confirmed: boolean) {
+    return this.withTrashLock(() => this.emptyTrashRows(ids, confirmed));
+  }
+  private async emptyTrashRows(
     ids: unknown,
     confirmed: boolean,
   ): Promise<Status & { count?: number }> {
@@ -696,10 +725,12 @@ export class BrowserStorageVolume {
           return { status: "ready", access: "granted" };
         case "storageList":
           return { status: "ready", ...(await this.list(input.path ?? "")) };
-        case "storageCategory":
-          return { status: "ready", ...(await this.category(input.category)) };
+        case "storageCategory": {
+          const { entries } = await this.category(input.category);
+          return { status: "ready", ...(input.countOnly === true ? { count: entries.length } : { entries }) };
+        }
         case "storageQuery":
-          return { status: "ready", ...(await this.query()) };
+          return { status: "ready", ...(await this.query(input)) };
         case "storageReviewedIdentities":
           return {
             status: "ready",

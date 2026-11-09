@@ -94,7 +94,7 @@ export function mergeWindow<T extends ViewRow>(
  * top as many rows as were loaded (bounded by `limit`), so a row the owner scrolled to, selected or
  * opened is still in the window after an unrelated library change (FixPatch). */
 export async function readWindow<T extends ViewRow>(
-  list: (options: { before?: string }) => Promise<{ items: T[]; next: string }>,
+  list: (options: { before?: string; thumbnails?: boolean }) => Promise<{ items: T[]; next: string }>,
   options: { more: boolean; cursor: string; loaded: number; limit: number },
   current: () => boolean = () => true,
 ): Promise<{ rows: T[]; next: string } | undefined> {
@@ -108,12 +108,25 @@ export async function readWindow<T extends ViewRow>(
     if (visited.has(cursor))
       throw new Error("Photo library pagination repeated a cursor");
     visited.add(cursor);
-    const result = await list(cursor ? { before: cursor } : {});
+    const result = await list({
+      ...(cursor ? { before: cursor } : {}),
+      ...(options.more || !rows.length ? {} : { thumbnails: false }),
+    });
     if (!current()) return undefined;
     rows.push(...result.items);
     cursor = result.next;
   } while (cursor && !options.more && rows.length < want);
   return { rows, next: cursor };
+}
+
+/** Reuse pixels only when every content revision still matches the reloaded row. */
+export function keepThumbnails<T extends ViewRow & { image?: string; contentRevision?: string }>(rows: readonly T[], before: readonly T[]): T[] {
+  const held = new Map(before.filter(row => row.image).map(row => [row.id, row] as const));
+  return rows.map(row => {
+    const old = held.get(row.id);
+    return !row.image && old && old.revision === row.revision && old.mutationRevision === row.mutationRevision && old.contentRevision === row.contentRevision
+      ? { ...row, image: old.image } : row;
+  });
 }
 
 /** Replace changed rows in place; a row that left this list (trashed/restored/deleted) is removed. Never reorders. */
