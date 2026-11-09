@@ -250,7 +250,7 @@ public final class DeferredDeletionCoordinator {
  private boolean admitted(JSONObject owner, JSONObject agent) throws Exception {
   if (!agentKind(owner)) return DeferredDeletionJournal.same(owner, manualOwner());
   if (agent == null) throw new SecurityException("Deletion owner unavailable");
-  return DeferredDeletionJournal.same(owner, agent);
+  return stageOwnerCurrent(owner) && DeferredDeletionJournal.same(owner, agent);
  }
 
  private boolean undoAllowed(JSONObject owner, JSONObject agent) throws Exception {
