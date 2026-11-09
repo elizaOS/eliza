@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import { decodeGmailPartData, extractGmailHtmlLinks } from "../../utils/gmail-mime-text";
 import { InboxGoogleProvider, inboxDigest } from "./inbox-provider";
+import {
+  DefiniteProviderRejection,
+  InboxContractError,
+  inboxErrorResponse,
+} from "./inbox-receipts";
 
 // Closed in-process transport: every request is answered by `route`; nothing reaches Google.
 const owner = {
@@ -450,9 +455,11 @@ test("forward carries source attachments bound to the selected message and histo
   const sendOnly = provider(sourceMessageRoute(state), [
     "https://www.googleapis.com/auth/gmail.send",
   ]);
-  await expect(sendOnly.provider.review(owner, proposal, crypto.randomUUID())).rejects.toThrow(
-    "lacks this capability",
-  );
+  const missing = await sendOnly.provider
+    .review(owner, proposal, crypto.randomUUID())
+    .catch((error) => error);
+  expect(missing.message).toContain("lacks this capability");
+  expect(inboxErrorResponse(missing)?.body.code).toBe("reauth_required");
 });
 
 test("opaque byte copy of an unsupported docx or zip, bound to message, part and historyId", async () => {
@@ -501,4 +508,78 @@ test("draft listing refuses content if consent is withdrawn during its provider 
     return Response.json({ drafts: [] });
   }, scopes);
   await expect(inbox.drafts(owner)).rejects.toThrow();
+});
+
+test("a reply to a message without a subject reviews; a changed reply subject is its own error", async () => {
+  let subject: string | null = null;
+  const { provider: inbox } = provider((url) =>
+    url.pathname.endsWith("/messages/parent")
+      ? Response.json({
+          id: "parent",
+          threadId: "t",
+          payload: {
+            headers: [
+              { name: "Message-ID", value: "<parent@example.invalid>" },
+              ...(subject === null ? [] : [{ name: "Subject", value: subject }]),
+            ],
+          },
+        })
+      : new Response("unexpected", { status: 404 }),
+  );
+  const reply = (text: string) =>
+    inbox.review(
+      owner,
+      {
+        kind: "send",
+        mode: "reply",
+        to: ["friend@example.invalid"],
+        subject: text,
+        bodyText: "Hi",
+        replyMessageId: "parent",
+      },
+      crypto.randomUUID(),
+    );
+  for (const header of [null, "", "  "]) {
+    subject = header;
+    expect((await reply("Re: (no subject)")).review).toBeTruthy();
+    expect((await reply("Re:")).review).toBeTruthy();
+    const refused = await reply("Re: Something else").catch((error) => error);
+    expect(refused).toBeInstanceOf(InboxContractError);
+    expect(inboxErrorResponse(refused)).toEqual({
+      status: 400,
+      body: {
+        error: "Reply subject must match the selected message",
+        code: "reply_subject_mismatch",
+      },
+    });
+  }
+  subject = "Plans";
+  expect((await reply("Re: Plans")).review).toBeTruthy();
+  await expect(reply("Re: (no subject)")).rejects.toThrow("Reply subject must match");
+});
+
+test("inbox-v1 error bodies carry a machine code without changing older statuses", () => {
+  const body = (error: unknown) => inboxErrorResponse(error);
+  expect(body(new DefiniteProviderRejection("401"))).toMatchObject({
+    status: 409,
+    body: { code: "reauth_required" },
+  });
+  expect(body(new DefiniteProviderRejection("403"))).toMatchObject({
+    status: 409,
+    body: { code: "reauth_required" },
+  });
+  expect(body(new DefiniteProviderRejection("404"))).toMatchObject({
+    status: 404,
+    body: { code: "not_found" },
+  });
+  expect(body(new DefiniteProviderRejection("412"))?.body.code).toBeUndefined();
+  expect(body(new InboxContractError(409, "Draft changed", "stale_revision"))).toEqual({
+    status: 409,
+    body: { error: "Draft changed", code: "stale_revision" },
+  });
+  expect(body(new InboxContractError(400, "Invalid mail text"))).toEqual({
+    status: 400,
+    body: { error: "Invalid mail text" },
+  });
+  expect(body(new Error("other"))).toBeNull();
 });
