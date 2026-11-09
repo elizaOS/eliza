@@ -33,7 +33,12 @@ public class CloudSignInReadinessTest {
  final Object lock = new Object(); Attempt attempt; final Queue prober = new Queue();
  final Map<String, CloudSignInReadiness.Result> readiness = new HashMap<>(), stored = new HashMap<>();
  final Map<String, List<PluginCall>> probing = new HashMap<>();
- CloudSignInConfig config() { return TestRegistration.PRODUCT; }
+ boolean browserMode, appLink, assetLinks;
+ CloudSignInConfig config() { return browserMode ? TestRegistration.base().environment(TestRegistration.PRODUCTION).googleSignInMode("browser").build() : TestRegistration.PRODUCT; }
+ String browserPackage() { return "synthetic.browser"; }
+ String defaultBrowserPackage() { return null; }
+ boolean appLinkVerified(CloudSignInEnvironment environment) { return appLink; }
+ boolean assetLinksGrant(CloudSignInEnvironment environment) { return assetLinks; }
  CloudSignInReadiness.Result storedReadiness(CloudSignInEnvironment environment) { return stored.get(environment.name); }
  void storeReadiness(CloudSignInEnvironment environment, CloudSignInReadiness.Result result) { stored.put(environment.name, result); }
 
@@ -43,7 +48,8 @@ public class CloudSignInReadinessTest {
  Response get(String url) throws Exception {
   reads.add(url);
   if (url.contains("/mobile/config?")) return new Response(registered ? 200 : 503, new JSONObject().put("success", true).put("clientId", "ai.example.signin").put("environment", "production").put("redirectUri", "https://eliza.app/example/auth/callback").put("codeChallengeMethod", "S256"), null);
-  if (url.contains("/steward/auth/providers?")) return new Response(200, new JSONObject().put("email", email).put("sms", true).put("googleNative", googleNative), null);
+  if (url.contains("/steward/auth/providers?")) return new Response(200, new JSONObject().put("email", email).put("sms", true).put("googleNative", googleNative).put("google", true), null);
+  if (url.contains("/steward/auth/oauth/google/authorize?")) return new Response(302, new JSONObject(), "https://accounts.google.com/o/oauth2/v2/auth");
   throw new AssertionError("unexpected read " + url);
  }
  int probePost(CloudSignInEnvironment environment, String path) throws Exception {
@@ -75,6 +81,14 @@ public class CloudSignInReadinessTest {
   m.route = "absent"; check(!m.measure(e).email, "absent email route");
   m.route = "present"; m.email = false; CloudSignInReadiness.Result noEmail = m.measure(e); check(!noEmail.email && noEmail.google, "email not offered");
   m.email = true; m.registered = false; CloudSignInReadiness.Result unregistered = m.measure(e); check(!unregistered.inApp && unregistered.until == System.now + CloudSignInReadiness.NOT_READY_TTL_MS, "unregistered app");
+
+  CloudSignInReadinessTest browser = new CloudSignInReadinessTest();
+  browser.browserMode = true;
+  check(!browser.measure(e).google, "browser mode requires verified app link");
+  browser.appLink = true;
+  check(!browser.measure(e).google, "browser mode requires exact Asset Links grant");
+  browser.assetLinks = true;
+  check(browser.measure(e).google, "verified link, supported browser and provider redirect admit browser Google");
 
   // status/probe: fresh caches are served, an explicit retry refreshes only negative or partial answers.
   for (boolean persisted : new boolean[]{false, true}) {
