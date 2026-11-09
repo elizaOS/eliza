@@ -1805,6 +1805,8 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(stagingRoot, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(stagingRoot, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(stagingRoot, "pglite.data"));
+        copyAssetIfPresent(assets, "agent/pglite-initdb.bin", new File(stagingRoot, "pglite-initdb.bin"));
+        copyAssetIfPresent(assets, "agent/pglite-migrated.bin", new File(stagingRoot, "pglite-migrated.bin"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
 
