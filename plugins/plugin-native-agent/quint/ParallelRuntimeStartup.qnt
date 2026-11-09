@@ -33,11 +33,11 @@ module ParallelRuntimeStartup {
     s' = { ...s, gatewayStarted: true, gatewayLive: true, phase: "wait-agent" }
   }
   action observeAgentReady = all {
-    not(s.retired), s.phase == "wait-agent", s.agentLive,
+    not(s.retired), s.phase == "wait-agent", s.agentLive, s.gatewayLive,
     s' = { ...s, agentReady: true, phase: "wait-gateway" }
   }
   action observeGatewayReady = all {
-    not(s.retired), s.phase == "wait-gateway", s.gatewayLive,
+    not(s.retired), s.phase == "wait-gateway", s.agentLive, s.gatewayLive,
     s' = { ...s, gatewayReady: true, phase: "admit" }
   }
   action admitRunning = all {
