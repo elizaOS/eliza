@@ -51,8 +51,6 @@ export class GoogleAgentRefusal extends Error {
 }
 /** The agent transport reads at most this much of one result. */
 export const GOOGLE_AGENT_RESULT_MAX = 256 * 1024;
-/** An exact read returns at most this much body text; the rest is marked truncated. */
-const GMAIL_BODY_MAX = 32_000;
 const permissionText: Record<string, string> = {
   "google.gmail.mailbox":
     "Gmail mailbox changes need permission. Enable Gmail changes in Settings → Connections.",
@@ -108,11 +106,22 @@ export type ManagedGoogleAgentHostOptions = {
   apiOrigin: string;
   access: () => GoogleAgentAccess;
   calendarReadTiming?: boolean;
+  /** Optional product limit in UTF-16 code units. Omit to retain the complete body. */
+  gmailReadBodyMaxCharacters?: number;
 };
 export function createManagedGoogleAgentHost(
   host: ManagedGoogleAgentPort,
   options: ManagedGoogleAgentHostOptions,
 ) {
+  const gmailReadBodyMaxCharacters = options.gmailReadBodyMaxCharacters;
+  if (
+    gmailReadBodyMaxCharacters !== undefined &&
+    (!Number.isSafeInteger(gmailReadBodyMaxCharacters) ||
+      gmailReadBodyMaxCharacters <= 0)
+  )
+    throw new TypeError(
+      "gmailReadBodyMaxCharacters must be a positive safe integer",
+    );
   const timing = createCalendarReadTiming(options.calendarReadTiming === true);
   const allowed = (kind: keyof GoogleAgentAccess) => {
     if (options.access()[kind] !== true)
@@ -811,14 +820,16 @@ export function createManagedGoogleAgentHost(
               "Invalid Gmail message identity.",
             );
           const result = await client.gmailRead(grantId, providerId, signal),
-            truncated = result.bodyText.length > GMAIL_BODY_MAX;
+            truncated =
+              gmailReadBodyMaxCharacters !== undefined &&
+              result.bodyText.length > gmailReadBodyMaxCharacters;
           return {
             id: messageId,
             from: result.message.from,
             subject: decodeBasicHtmlEntities(result.message.subject),
             bodyText: truncated
               ? result.bodyText
-                  .slice(0, GMAIL_BODY_MAX)
+                  .slice(0, gmailReadBodyMaxCharacters)
                   .replace(/[\uD800-\uDBFF]$/, "")
               : result.bodyText,
             ...(truncated ? { truncated: true } : {}),

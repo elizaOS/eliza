@@ -30,9 +30,9 @@ public final class NoticeCoordinator {
   return status;
  });}
  private void release(String id){try{routes.release(id);}catch(Exception kept){/* A route without a receipt is retired by the next sweep. */}}
- /** The whole approval post. The tap route is prepared first because the notice's tap needs it. A route
-  * whose receipt is not live afterwards (withdrawn, failed) or whose publish threw is released again: a
-  * repeated request for a decided approval must not keep a route that no notice can ever open. */
+ /** The whole approval post. The tap route is prepared first because the notice's tap needs it.
+  * After a publication failure, only a definitely absent or validated terminal receipt releases it.
+  * An unreadable or uncertain receipt keeps its route, and cleanup never replaces the publication error. */
  public String postApproval(String id,String binding,JSONObject route,long expiresAt,long now)throws Exception{return delivery.exclusive(()->{
   if(!NoticeDelivery.approvalId(id)||route==null)throw new IllegalArgumentException("Invalid approval notice identity");
   for(String expired:delivery.expireApprovals(now))routes.forget(expired);

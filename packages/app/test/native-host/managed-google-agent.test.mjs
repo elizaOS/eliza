@@ -29,6 +29,7 @@ async function fixture({
   accounts,
   retireAfterCalendars = false,
   access = hostOptions.access,
+  gmailReadBodyMaxCharacters,
 } = {}) {
   const calls = [],
     receipts = new Map();
@@ -157,6 +158,7 @@ async function fixture({
   const host = await startNativeGoogleAgentHost({
     ...hostOptions,
     access,
+    gmailReadBodyMaxCharacters,
     binding: binding(),
     apiToken,
     request,
@@ -210,21 +212,13 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
     f.messageBody(fullBody);
     const message = await f.call({ messageId });
     assert.equal(message.status, 200);
-    assert.equal(message.data.message.bodyText, "complete message 😀 ".repeat(1600));
-    assert.equal(message.data.message.truncated, true);
+    assert.equal(message.data.message.bodyText, fullBody);
+    assert.equal(Object.hasOwn(message.data.message, "truncated"), false);
     f.messageBody("x".repeat(256 * 1024));
-    const bounded = await f.call({ messageId });
-    assert.equal(bounded.status, 200);
-    assert.equal(bounded.data.message.bodyText, "x".repeat(32_000));
-    assert.equal(bounded.data.message.truncated, true);
-    // The body cap does not waive the complete response bound for other fields.
-    f.messageBody("A complete message");
-    f.messageSubject("x".repeat(256 * 1024));
     const oversized = await f.call({ messageId });
     assert.equal(oversized.status, 409);
     assert.equal(oversized.data.reason, "result-too-large");
     assert.equal(oversized.data.message, undefined);
-    f.messageSubject("A &amp; B");
     const calendars = await f.call({ calendar: { operation: "sources" } });
     assert.equal(calendars.status, 200);
     assert.equal(calendars.data.calendars[0].calendarId, "primary");
@@ -260,26 +254,45 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
     await f.host.close();
   }
 });
-test("native Gmail body limits mark truncation without splitting a Unicode character", async () => {
-  const f = await fixture();
-  try {
-    const messageId = (await f.call({ limit: 1 })).data.items[0].id;
-    for (const [body, expected, truncated] of [
-      ["a".repeat(32_000), "a".repeat(32_000), false],
-      ["a".repeat(32_001), "a".repeat(32_000), true],
-      ["a".repeat(31_999) + "😀tail", "a".repeat(31_999), true],
-      ["a".repeat(31_998) + "😀", "a".repeat(31_998) + "😀", false],
-    ]) {
-      f.messageBody(body);
-      const result = await f.call({ messageId });
-      assert.equal(result.status, 200);
-      assert.equal(result.data.message.bodyText, expected);
-      assert.equal(Object.hasOwn(result.data.message, "truncated"), truncated);
-      if (truncated) assert.equal(result.data.message.truncated, true);
+test("configured native Gmail limits mark truncation without splitting a Unicode character", async () => {
+  for (const maximum of [32_000, 7]) {
+    const f = await fixture({ gmailReadBodyMaxCharacters: maximum });
+    try {
+      const messageId = (await f.call({ limit: 1 })).data.items[0].id;
+      for (const [body, expected, truncated] of [
+        ["a".repeat(maximum), "a".repeat(maximum), false],
+        ["a".repeat(maximum + 1), "a".repeat(maximum), true],
+        [`${"a".repeat(maximum - 1)}😀tail`, "a".repeat(maximum - 1), true],
+        [`${"a".repeat(maximum - 2)}😀`, `${"a".repeat(maximum - 2)}😀`, false],
+        ["x".repeat(256 * 1024), "x".repeat(maximum), true],
+      ]) {
+        f.messageBody(body);
+        const result = await f.call({ messageId });
+        assert.equal(result.status, 200);
+        assert.equal(result.data.message.bodyText, expected);
+        assert.equal(
+          Object.hasOwn(result.data.message, "truncated"),
+          truncated,
+        );
+        if (truncated) assert.equal(result.data.message.truncated, true);
+      }
+      // A caller's body limit does not waive the complete response bound.
+      f.messageBody("A complete message");
+      f.messageSubject("x".repeat(256 * 1024));
+      const oversized = await f.call({ messageId });
+      assert.equal(oversized.status, 409);
+      assert.equal(oversized.data.reason, "result-too-large");
+      assert.equal(oversized.data.message, undefined);
+      assert.equal(f.dispatches(), 0);
+    } finally {
+      await f.host.close();
     }
-    assert.equal(f.dispatches(), 0);
-  } finally {
-    await f.host.close();
+  }
+  for (const invalid of [0, -1, 1.5, NaN, Infinity]) {
+    await assert.rejects(
+      fixture({ gmailReadBodyMaxCharacters: invalid }),
+      /gmailReadBodyMaxCharacters must be a positive safe integer/,
+    );
   }
 });
 test("native host refuses foreign callers, browser origins, wrong Cloud owners and retired native bindings", async () => {
