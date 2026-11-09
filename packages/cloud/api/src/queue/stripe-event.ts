@@ -77,6 +77,7 @@ import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
 import { STRIPE_API_VERSION } from "@elizaos/cloud-shared/lib/stripe-api-version";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
+import { ElizaError } from "@elizaos/core/protocol";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { ZodError } from "zod";
@@ -2087,6 +2088,14 @@ async function handleChargeDisputeFundsReinstated(
     );
   }
 
+  const clawbackMicros = parseCreditMicros(clawback.amount);
+  if (clawbackMicros === null || clawbackMicros > 0n) {
+    throw new ElizaError("Invalid credit clawback amount for reinstatement", {
+      code: "PAYMENT_REVERSAL_CLAWBACK_CORRUPT",
+      context: { reference },
+    });
+  }
+
   if (paymentIntentId) {
     const reinstatement = {
       paymentIntentId,
@@ -2148,23 +2157,8 @@ async function handleChargeDisputeFundsReinstated(
   // the pack's credit units and capped at the balance then available). Winning
   // the dispute restores exactly that — never provider dollars, which differ
   // from credit units for packs, and never the unrecovered shortfall. (#31449)
-  const reinstatedUsd = Math.abs(Number(clawback.amount));
-  if (!Number.isFinite(reinstatedUsd) || reinstatedUsd <= 0) {
-    logger.info(
-      `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
-      { clawbackAmount: clawback.amount, disputeAmount: dispute.amount },
-    );
-    await reapplyRefundAfterReinstatement(
-      dispute,
-      paymentIntentId,
-      source,
-      reference,
-    );
-    await settleShortfallsAfterCredit(clawback.organization_id, source);
-    return;
-  }
-
-  const result = await creditsService.refundCredits({
+  const reinstatedUsd = formatCreditMicros(-clawbackMicros);
+  const result = await creditsService.recordDisputeReinstatement({
     organizationId: clawback.organization_id,
     amount: reinstatedUsd,
     description: `Stripe ${source} reinstatement — ${reference}`,
@@ -2172,7 +2166,7 @@ async function handleChargeDisputeFundsReinstated(
     metadata: {
       payment_intent_id: paymentIntentId,
       disputed_usd: (dispute.amount ?? 0) / 100,
-      applied_reinstatement_usd: reinstatedUsd,
+      applied_reinstatement_usd: Number(reinstatedUsd),
       clawback_key: clawbackKey,
       source,
       reference,
@@ -2180,7 +2174,7 @@ async function handleChargeDisputeFundsReinstated(
   });
 
   logger.info(
-    `[Stripe Queue] Reinstated $${reinstatedUsd.toFixed(2)} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
+    `[Stripe Queue] Reinstated $${reinstatedUsd} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
   );
   await reapplyRefundAfterReinstatement(
     dispute,
@@ -2196,8 +2190,9 @@ async function handleChargeDisputeFundsReinstated(
  * nothing back, because the dispute had already reversed the grant and the
  * affiliate fee (one charge reverses them once across its series). Winning the
  * dispute returns that share, but the refund still stands: apply the charge's
- * current cumulative refund again, with the same key and series as
- * `charge.refunded`, so the refund keeps its reversal.
+ * current cumulative refund in the same series. Use a separate receipt for
+ * this reinstatement because the original refund may have booked only the
+ * amount that remained while the dispute was open.
  */
 async function reapplyRefundAfterReinstatement(
   dispute: Stripe.Dispute,
@@ -2215,7 +2210,7 @@ async function reapplyRefundAfterReinstatement(
   await clawbackForReversal({
     paymentIntentId,
     usdReversed: refundedCents / 100,
-    idempotencyKey: `stripe:refund:${charge.id}:${refundedCents}`,
+    idempotencyKey: `stripe:refund:${charge.id}:${refundedCents}:reinstatement:${dispute.id}`,
     reversalSeries: `stripe:refund:${charge.id}:`,
     source,
     reference,

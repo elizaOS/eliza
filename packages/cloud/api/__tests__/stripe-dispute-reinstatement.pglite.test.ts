@@ -304,10 +304,33 @@ test("a dispute with nothing left to claw back reinstates nothing", async () => 
   const buyer = await purchase({ credits: "500", cents: 1000, balance: "0" });
   expect(await disputeRoundTrip(buyer, `dp_${randomUUID()}`, 1000)).toBe(0);
   expect(await balance(buyer.org)).toBe(0);
-  expect((await ledger(buyer.org)).map(([type]) => type)).toEqual([
-    "credit",
-    "clawback",
+  expect(await ledger(buyer.org)).toEqual([
+    ["credit", 500],
+    ["clawback", 0],
+    ["refund", 0],
   ]);
+});
+
+test("a refund after a won zero-balance dispute creates its own shortfall", async () => {
+  const buyer = await purchase({ credits: "500", cents: 1000, balance: "0" });
+  const disputeId = `dp_${randomUUID()}`;
+  await disputeRoundTrip(buyer, disputeId, 1000);
+  expect(await billingHoldService.getState(buyer.org)).toEqual({
+    status: "clear",
+  });
+
+  const refund = refundEvent(`ch_${disputeId}`, 1000, buyer.paymentIntentId);
+  expect(await processStripeEvent(refund)).toBe("ack");
+  expect(await processStripeEvent(refund)).toBe("ack");
+
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await billingHoldService.getState(buyer.org)).toMatchObject({
+    status: "held",
+    outstandingUsd: "500.000000",
+  });
+  expect(
+    (await holdRows(buyer.org)).filter((row) => row.releasedBy === null),
+  ).toMatchObject([{ shortfall: 500, outstanding: 500 }]);
 });
 
 test("a partial refund then a dispute for the remainder claws back the whole grant", async () => {
@@ -888,6 +911,65 @@ test("a refund that lands between a dispute and its reinstatement stays reversed
 
   expect(await affiliatePayable(buyer.affiliate)).toBe(0);
   expect(await balance(buyer.org)).toBe(0);
+});
+
+test("a partially applied refund recovers the rest after the overlapping dispute is won", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  const withdrawal = disputeEvent(
+    "charge.dispute.funds_withdrawn",
+    disputeId,
+    750,
+    buyer.paymentIntentId,
+  );
+  expect(await processStripeEvent(withdrawal)).toBe("ack");
+
+  const refund = refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId);
+  expect(await processStripeEvent(refund)).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    750,
+    buyer.paymentIntentId,
+  );
+  (
+    reinstated.body.event.data.object as unknown as {
+      charge: Record<string, unknown>;
+    }
+  ).charge.amount_refunded = 1500;
+  // Lose the last credit write after the reinstatement receipt has committed.
+  const repairKey = `stripe:refund:ch_${disputeId}:1500:reinstatement:${disputeId}`;
+  await pg().exec(`
+    CREATE FUNCTION fail_test_credit_reversal_repair() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.stripe_payment_intent_id = '${repairKey}' THEN
+        RAISE EXCEPTION 'test interruption before credit reversal repair';
+      END IF;
+      RETURN NEW;
+    END
+    $$;
+    CREATE TRIGGER fail_test_credit_reversal_repair BEFORE INSERT ON credit_transactions
+    FOR EACH ROW EXECUTE FUNCTION fail_test_credit_reversal_repair();
+  `);
+  try {
+    expect(await processStripeEvent(reinstated)).toBe("retry");
+    expect(await balance(buyer.org)).toBe(5);
+    expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+  } finally {
+    await pg().exec(`
+      DROP TRIGGER fail_test_credit_reversal_repair ON credit_transactions;
+      DROP FUNCTION fail_test_credit_reversal_repair();
+    `);
+  }
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await processStripeEvent(refund)).toBe("ack");
+
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
 });
 
 async function affiliateAvailable(userId: string): Promise<number> {

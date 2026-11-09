@@ -65,6 +65,12 @@ const { stripeCheckoutOrders } = await import(
 const { organizationPaymentReversalHolds } = await import(
   "@elizaos/cloud-shared/db/schemas/organization-payment-reversal-holds"
 );
+const {
+  earningsSourceEnum,
+  ledgerEntryTypeEnum,
+  redeemableEarnings,
+  redeemableEarningsLedger,
+} = await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
 const { referralCodes, referralSignups } = await import(
   "@elizaos/cloud-shared/db/schemas/referrals"
 );
@@ -86,6 +92,10 @@ beforeAll(async () => {
         creditTransactions,
         stripeCheckoutOrders,
         organizationPaymentReversalHolds,
+        earningsSourceEnum,
+        ledgerEntryTypeEnum,
+        redeemableEarnings,
+        redeemableEarningsLedger,
         referralCodes,
         referralSignups,
         invoices,

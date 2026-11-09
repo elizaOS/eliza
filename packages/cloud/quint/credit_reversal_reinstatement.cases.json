@@ -1,0 +1,66 @@
+{
+  "sources": [
+    "packages/cloud/api/src/queue/stripe-event.ts",
+    "packages/cloud/shared/src/lib/services/credits.ts",
+    "packages/cloud/shared/src/db/repositories/payment-reversal-holds.ts",
+    "packages/cloud/shared/src/db/schemas/organization-payment-reversal-holds.ts",
+    "packages/cloud/shared/src/lib/services/billing-hold.ts",
+    "packages/cloud/shared/src/lib/services/redeemable-earnings.ts",
+    "packages/cloud/api/__tests__/stripe-dispute-reinstatement.pglite.test.ts",
+    "packages/cloud/api/__tests__/stripe-reversal-before-grant.pglite.test.ts",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "bounds": {
+    "domain": "One organization, one paid Checkout grant of two abstract credit units, one dispute and two cumulative refund targets for the same charge. One additional credit unit can arrive. Outstanding amounts are repaid oldest first. The queue may redeliver any admitted event.",
+    "atomicity": "Each credit and hold mutation represents its own committed SQL transaction. A stopped consumer can leave the durable reinstatement steps partially applied. Retrying them uses the same receipt keys. A committed reinstatement may temporarily reduce covered refunds until the continuation reapplies the provider total.",
+    "conformance": "The required PGlite suites run the production queue consumer and the credits, earnings and hold repositories. The refund repair test interrupts the real last credit insert after the reinstatement receipt has committed. Stripe inputs and external calls are controlled.",
+    "gaps": "No provider identity, signature or live Stripe proof. The model omits provider currency conversion, multi-payment and multi-tenant composition, operator release, affiliate ledger behavior, PostgreSQL isolation, migration of acknowledged historical events, and queue dead-letter budgets. The repayment continuation is bounded to one top-up. The provider refund observation is current when recovery reads it."
+  },
+  "cases": [
+    {
+      "name": "credit-reversal-and-reinstatement",
+      "main": "credit_reversal_reinstatement",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "Conserved",
+        "Capped",
+        "UniqueReceipts",
+        "AcknowledgedCovered"
+      ],
+      "temporal": [
+        "HoldAuthority",
+        "FairReversalDelivery",
+        "ReinstatementSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "HoldAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "The model treats the paid-spend check and its admission as one step. The repository locks the organization and updates only active holds. No fairness assumption is needed for this safety obligation."
+          ]
+        },
+        {
+          "property": "FairReversalDelivery",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the next enabled reinstatement continuation, delivery of the latest observed refund and requested settlement of available repayment. Provider data and SQL are eventually available. The original credit grant and the exact withdrawal row must already exist for their dependent progress obligations."
+          ]
+        },
+        {
+          "property": "ReinstatementSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The withdrawal and reinstatement event can be present while the consumer never resumes."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}
