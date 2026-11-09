@@ -133,8 +133,11 @@ public final class LiveCaptureController {
  public void stop(String id,boolean discard,double cutoffMs,Stopped result){
   final double cutoff=Double.isFinite(cutoffMs)?cutoffMs:now();
   LiveSegmentPipe pipe=pipes.get(id);
-  if(pipe!=null){pipe.cutoff(cutoff);if(discard||!pipe.ready().isDone())pipe.close(true,cutoff);}
+  if(pipe!=null)pipe.cutoff(cutoff);
+  // Cancelling transport can immediately wake the startup worker. Publish Stop first so that
+  // worker observes cancellation when classifying an interrupted warm-up.
   admission.stop(id);
+  if(pipe!=null&&(discard||!pipe.ready().isDone()))pipe.close(true,cutoff);
   submit(worker,()->{
    long duration=0;
    if(live!=null&&live.captureId().equals(id)){duration=live.stop();live=null;current=null;}
