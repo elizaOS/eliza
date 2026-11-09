@@ -713,10 +713,32 @@ export function createCloudRoutes({
           memory = null;
         },
       };
+  // Paid access is answered from a cache, so a paid request never waits on
+  // Cloud once the answer is known. The cache holds the last definite account
+  // answer for one saved key (by fingerprint) in one session generation. A
+  // request that finds an `active` answer is served at once, and a live check
+  // runs after it in the background (single flight) to refresh the cache. Cloud
+  // is asked before a request only when nothing is cached for this key, or
+  // when the cached answer refuses: an upgrade then counts at once. Every
+  // credential write, login, logout, cancel and revocation drops the cache, and
+  // so does a 401 or 402 on a paid Cloud call. Cloud still admits every charge
+  // itself; this check only decides when to show the funding answer.
+  let paidAccess = null; // { generation, fingerprint, access }
+  let paidAccessEpoch = 0;
+  let paidAccessCheck = null; // { epoch, generation, promise }
+  let scheduledRevalidation = null;
+  function invalidatePaidAccess() {
+    paidAccessEpoch++;
+    paidAccess = null;
+  }
+  const credentialFingerprint = (key) =>
+    createHash("sha256").update(key).digest("hex");
   // Native/custom stores need the same ordering as the host file store. A
   // logout must finish clearing a credential whose write was already pending.
   let credentialWrites = Promise.resolve();
   const mutateCredential = (work) => {
+    // A check that started before this write must not fill the cache.
+    invalidatePaidAccess();
     const next = credentialWrites.then(work);
     credentialWrites = next.catch(() => {});
     return next;
@@ -759,6 +781,7 @@ export function createCloudRoutes({
   let speechStreams;
   function advanceGeneration() {
     generation++;
+    invalidatePaidAccess();
     speechStreams?.cancelAll();
     return generation;
   }
@@ -812,6 +835,7 @@ export function createCloudRoutes({
       rawBody,
       headers = {},
       authorityGeneration = generation,
+      accessCheck = false,
     } = {},
   ) {
     const epoch = authorityGeneration;
@@ -834,6 +858,14 @@ export function createCloudRoutes({
             : {}),
       },
     );
+    // Cloud refused a call made with the saved key: the cached paid answer is
+    // no longer trusted, and a live check runs in the background.
+    if (
+      key &&
+      !accessCheck &&
+      (response.status === 401 || response.status === 402)
+    )
+      paidAccessRefused();
     if (epoch !== generation) {
       // A response arriving after account replacement must not retain its stream.
       void response.body?.cancel().catch(() => {});
@@ -881,9 +913,11 @@ export function createCloudRoutes({
         }
       : { state: "signed_out" };
   }
-  async function accountAccess() {
-    if (!billingEnabled)
-      throw fail("Account billing is unavailable in this host", 404);
+  /**
+   * The saved key, read locally (no Cloud call). `answer` is set when the
+   * account is signed out or a disconnect is still pending.
+   */
+  async function savedCredential() {
     await ready;
     const epoch = generation;
     await credentialWrites;
@@ -899,30 +933,45 @@ export function createCloudRoutes({
         throw fail(message("savedSignInNeedsAccountRecovery"), 409);
       }
       if (saved?.kind === "revocation")
-        return { state: "signed_out", disconnectPending: true };
+        return {
+          epoch,
+          key: null,
+          answer: { state: "signed_out", disconnectPending: true },
+        };
     }
-    const key = await usableCredential();
+    const key = await store.read();
     current(epoch);
-    if (!key) return signedOut();
+    if (!key) return { epoch, key: null, answer: await signedOut() };
+    return { epoch, key, answer: null };
+  }
+  /** Asks Cloud for the key's identity and billing snapshot, in parallel. */
+  async function liveAccess(key, epoch) {
     // Only a refusal at the identity check names the stored key as revoked.
     let identityRefused = false;
     try {
-      const user = await parse(
-        await request("/api/v1/user", { key, authorityGeneration: epoch }),
-      ).catch((error) => {
-        identityRefused = error.status === 401;
-        throw error;
-      });
-      const snapshot = await parse(
-        await request("/api/v1/billing/limits", {
+      const [user, snapshot] = await Promise.allSettled([
+        request("/api/v1/user", {
           key,
           authorityGeneration: epoch,
-        }),
-      );
+          accessCheck: true,
+        }).then(parse),
+        request("/api/v1/billing/limits", {
+          key,
+          authorityGeneration: epoch,
+          accessCheck: true,
+        }).then(parse),
+      ]);
+      // The identity answer decides first, as when the two were asked in turn.
+      if (user.status === "rejected") {
+        identityRefused = user.reason?.status === 401;
+        throw user.reason;
+      }
+      if (snapshot.status === "rejected") throw snapshot.reason;
       current(epoch);
-      if (!subscriptionCodes) return projectAccountAccess(user, snapshot);
-      return projectAccountAccess(user, snapshot, {
-        grant: subscriptionGrantFromSnapshot(snapshot, {
+      if (!subscriptionCodes)
+        return projectAccountAccess(user.value, snapshot.value);
+      return projectAccountAccess(user.value, snapshot.value, {
+        grant: subscriptionGrantFromSnapshot(snapshot.value, {
           planKeys: hostPolicy.planKeys,
         }),
       });
@@ -954,6 +1003,91 @@ export function createCloudRoutes({
       }
       return { state: "unavailable" };
     }
+  }
+  /**
+   * One live account check. A definite answer for a saved key fills the paid
+   * access cache, unless the session or the key changed while Cloud answered.
+   */
+  async function checkAccess() {
+    if (!billingEnabled)
+      throw fail("Account billing is unavailable in this host", 404);
+    const cacheEpoch = paidAccessEpoch;
+    const { epoch, key, answer } = await savedCredential();
+    if (answer) return { access: answer, fingerprint: null };
+    const access = await liveAccess(key, epoch);
+    const fingerprint = credentialFingerprint(key);
+    if (
+      access.state !== "unavailable" &&
+      epoch === generation &&
+      cacheEpoch === paidAccessEpoch
+    )
+      paidAccess = { generation: epoch, fingerprint, access };
+    return { access, fingerprint };
+  }
+  /** The live check in flight for this cache epoch, or a new one. */
+  function sharedAccessCheck() {
+    if (
+      paidAccessCheck?.epoch === paidAccessEpoch &&
+      paidAccessCheck.generation === generation
+    )
+      return paidAccessCheck.promise;
+    const flight = { epoch: paidAccessEpoch, generation, promise: null };
+    flight.promise = checkAccess().finally(() => {
+      if (paidAccessCheck === flight) paidAccessCheck = null;
+    });
+    flight.promise.catch(() => {});
+    paidAccessCheck = flight;
+    return flight.promise;
+  }
+  /** Refreshes the cache after the request that used it, off its path. */
+  function scheduleRevalidation() {
+    if (scheduledRevalidation) return;
+    scheduledRevalidation = new Promise((resolve) => {
+      const timer = setTimeout(
+        () => resolve(sharedAccessCheck().catch(() => {})),
+        0,
+      );
+      timer.unref?.();
+    }).finally(() => {
+      scheduledRevalidation = null;
+    });
+  }
+  function paidAccessRefused() {
+    invalidatePaidAccess();
+    scheduleRevalidation();
+  }
+  /** The account answer, asked of Cloud now (the access route). */
+  async function accountAccess() {
+    return (await sharedAccessCheck()).access;
+  }
+  /**
+   * Admits a paid request. A cached `active` answer for the saved key admits
+   * it without a Cloud call and refreshes the cache in the background. With
+   * nothing cached, or a cached refusal, Cloud is asked first.
+   */
+  async function requirePaidAccess() {
+    if (!billingEnabled)
+      throw fail("Account billing is unavailable in this host", 404);
+    const cacheEpoch = paidAccessEpoch;
+    const { epoch, key, answer } = await savedCredential();
+    if (answer) throw hostPolicy.fundingError(answer);
+    const fingerprint = credentialFingerprint(key);
+    const cached = paidAccess;
+    if (
+      cached?.access.state === "active" &&
+      cached.generation === epoch &&
+      epoch === generation &&
+      cached.fingerprint === fingerprint &&
+      cacheEpoch === paidAccessEpoch
+    ) {
+      scheduleRevalidation();
+      return;
+    }
+    let result = await sharedAccessCheck();
+    // A check that began for another key never answers for this one.
+    if (result.fingerprint !== fingerprint) result = await checkAccess();
+    if (result.access.state !== "active")
+      throw hostPolicy.fundingError(result.access);
   }
   /**
    * Redeems a subscription grant code for the saved sign-in. The idempotency
@@ -2369,9 +2503,14 @@ export function createCloudRoutes({
   handleCloudRoute.closeSpeechStreams = () => speechStreams.close();
   handleCloudRoute.ready = ready;
   handleCloudRoute.accountAccess = accountAccess;
-  handleCloudRoute.requirePaidAccess = async () => {
-    const access = await accountAccess();
-    if (access.state !== "active") throw hostPolicy.fundingError(access);
+  handleCloudRoute.requirePaidAccess = requirePaidAccess;
+  // A host that saw Cloud refuse a paid call (401 or 402) made outside these
+  // routes, for example by the agent, drops the cached answer with this.
+  handleCloudRoute.paidAccessRefused = paidAccessRefused;
+  // Resolves once the background check scheduled after a request has finished.
+  handleCloudRoute.paidAccessSettled = async () => {
+    await scheduledRevalidation;
+    await paidAccessCheck?.promise.catch(() => {});
   };
   // This port is never exposed as a renderer route. It shares login/logout
   // epochs. Each read first checks that the owner's connected Google account
