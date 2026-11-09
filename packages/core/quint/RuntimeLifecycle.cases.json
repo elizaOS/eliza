@@ -1,88 +1,93 @@
 {
-  "sources": [
-    "packages/core/src/runtime.ts",
-    "packages/core/src/runtime/service-lifecycle.ts",
-    "packages/core/src/runtime/room-handler-queue.ts",
-    "packages/core/src/runtime/turn-controller.ts"
-  ],
-  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-  "cases": [
-    {
-      "name": "stop",
-      "main": "RuntimeLifecycle",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "PrepareStopOnce",
-        "SingleAttempt",
-        "TurnsAbortedAfterStop",
-        "NoStartOnFailedInit",
-        "NoLiveAfterStopped",
-        "StoppedIsQuiet",
-        "StrictMeansQuiescent"
-      ],
-      "temporal": [
-        "DeadlockFree",
-        "NoAdmissionAfterClose",
-        "StopperReturns",
-        "TurnsFinish",
-        "EagerStartSettles"
-      ],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Turns": ["t1", "t2"],
-        "Stoppers": ["s1", "s2"],
-        "MaxAttempts": 2,
-        "None": "None"
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RuntimeLifecycle: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "NoAdmissionAfterClose",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RuntimeLifecycle: NoAdmissionAfterClose = always(s.closed.implies(next(s.queue).length() <= s.queue.length()).orKeep(s))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "StopperReturns",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RuntimeLifecycle: StopperReturns = Fairness.implies(Stoppers.forall(caller => Set(\"be\", \"drain\", \"awaitStrict\").contains(s.spc.get(caller)).leadsTo(s.spc.get(caller) == \"done\")))",
-            "Model fairness predicate Fairness = and { ICore.weakFair(s), SvcResume.weakFair(s), SvcStarted.weakFair(s), SvcStopDone.weakFair(s), TGrant.weakFair(s), Turns.forall(t => TRun(t).weakFair(s) and TFinish(t).weakFair(s)), ADrained.weakFair(s), AServices.weakFair(s), ASvcDone.weakFair(s), Stoppers.forall(caller => SBestEffortDone(caller).weakFair(s) and SStrictDrain(caller).weakFair(s) and SAwaitStrict(caller).weakFair(s)) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "TurnsFinish",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RuntimeLifecycle: TurnsFinish = Fairness.implies(Turns.forall(t => Set(\"queued\", \"lease\", \"turn\").contains(s.tpc.get(t)).leadsTo(s.tpc.get(t) == \"done\")))",
-            "Model fairness predicate Fairness = and { ICore.weakFair(s), SvcResume.weakFair(s), SvcStarted.weakFair(s), SvcStopDone.weakFair(s), TGrant.weakFair(s), Turns.forall(t => TRun(t).weakFair(s) and TFinish(t).weakFair(s)), ADrained.weakFair(s), AServices.weakFair(s), ASvcDone.weakFair(s), Stoppers.forall(caller => SBestEffortDone(caller).weakFair(s) and SStrictDrain(caller).weakFair(s) and SAwaitStrict(caller).weakFair(s)) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "EagerStartSettles",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in RuntimeLifecycle: EagerStartSettles = Fairness.implies((s.svc == \"waitInit\").leadsTo(Set(\"skipped\", \"live\", \"stopped\").contains(s.svc)))",
-            "Model fairness predicate Fairness = and { ICore.weakFair(s), SvcResume.weakFair(s), SvcStarted.weakFair(s), SvcStopDone.weakFair(s), TGrant.weakFair(s), Turns.forall(t => TRun(t).weakFair(s) and TFinish(t).weakFair(s)), ADrained.weakFair(s), AServices.weakFair(s), ASvcDone.weakFair(s), Stoppers.forall(caller => SBestEffortDone(caller).weakFair(s) and SStrictDrain(caller).weakFair(s) and SAwaitStrict(caller).weakFair(s)) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    }
-  ]
+	"sources": [
+		"packages/core/src/runtime.ts",
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/src/runtime/room-handler-queue.ts",
+		"packages/core/src/runtime/turn-controller.ts",
+		"packages/core/test/runtime-lifecycle-model.test.ts"
+	],
+	"bounds": {
+		"domain": "One runtime, one eager service, two turns, two stop callers and at most two stop attempts. The model retains await boundaries in initialization, turn admission and shutdown.",
+		"limitations": "The real runtime suite checks failed initialization, cancellation of a queued turn and service visibility after shutdown. The full best-effort and strict stop interleavings are formal in this bound."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "stop",
+			"main": "RuntimeLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PrepareStopOnce",
+				"SingleAttempt",
+				"TurnsAbortedAfterStop",
+				"NoStartOnFailedInit",
+				"NoLiveAfterStopped",
+				"StoppedIsQuiet",
+				"StrictMeansQuiescent"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"NoAdmissionAfterClose",
+				"StopperReturns",
+				"TurnsFinish",
+				"EagerStartSettles"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Turns": ["t1", "t2"],
+				"Stoppers": ["s1", "s2"],
+				"MaxAttempts": 2
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RuntimeLifecycle: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "NoAdmissionAfterClose",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RuntimeLifecycle: NoAdmissionAfterClose = always(s.closed.implies(next(s.queue).length() <= s.queue.length()).orKeep(s))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "StopperReturns",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RuntimeLifecycle: StopperReturns = Fairness.implies(Stoppers.forall(caller => Set(\"be\", \"drain\", \"awaitStrict\").contains(s.spc.get(caller)).leadsTo(s.spc.get(caller) == \"done\")))",
+						"Model fairness predicate Fairness = and { ICore.weakFair(s), SvcResume.weakFair(s), SvcStarted.weakFair(s), SvcStopDone.weakFair(s), TGrant.weakFair(s), Turns.forall(t => TRun(t).weakFair(s) and TFinish(t).weakFair(s)), ADrained.weakFair(s), AServices.weakFair(s), ASvcDone.weakFair(s), Stoppers.forall(caller => SBestEffortDone(caller).weakFair(s) and SStrictDrain(caller).weakFair(s) and SAwaitStrict(caller).weakFair(s)) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "TurnsFinish",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RuntimeLifecycle: TurnsFinish = Fairness.implies(Turns.forall(t => Set(\"queued\", \"lease\", \"turn\").contains(s.tpc.get(t)).leadsTo(s.tpc.get(t) == \"done\")))",
+						"Model fairness predicate Fairness = and { ICore.weakFair(s), SvcResume.weakFair(s), SvcStarted.weakFair(s), SvcStopDone.weakFair(s), TGrant.weakFair(s), Turns.forall(t => TRun(t).weakFair(s) and TFinish(t).weakFair(s)), ADrained.weakFair(s), AServices.weakFair(s), ASvcDone.weakFair(s), Stoppers.forall(caller => SBestEffortDone(caller).weakFair(s) and SStrictDrain(caller).weakFair(s) and SAwaitStrict(caller).weakFair(s)) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "EagerStartSettles",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in RuntimeLifecycle: EagerStartSettles = Fairness.implies((s.svc == \"waitInit\").leadsTo(Set(\"skipped\", \"live\", \"stopped\").contains(s.svc)))",
+						"Model fairness predicate Fairness = and { ICore.weakFair(s), SvcResume.weakFair(s), SvcStarted.weakFair(s), SvcStopDone.weakFair(s), TGrant.weakFair(s), Turns.forall(t => TRun(t).weakFair(s) and TFinish(t).weakFair(s)), ADrained.weakFair(s), AServices.weakFair(s), ASvcDone.weakFair(s), Stoppers.forall(caller => SBestEffortDone(caller).weakFair(s) and SStrictDrain(caller).weakFair(s) and SAwaitStrict(caller).weakFair(s)) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				}
+			]
+		}
+	]
 }

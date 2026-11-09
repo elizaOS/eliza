@@ -147,6 +147,79 @@ describe("Stripe Checkout order authority", () => {
     );
   });
 
+  test("concurrent identical quote requests return the same durable winner", async () => {
+    const input = {
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      clientRequestKey: "request-concurrent-same",
+      requestDigest: "d".repeat(64),
+      purchaseType: "custom_amount" as const,
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+    };
+    const quotes = await Promise.all([service.create(input), service.create({ ...input })]);
+    expect(quotes[0]?.id).toBe(quotes[1]?.id);
+    expect((await rows()).orders).toHaveLength(1);
+  });
+
+  test("concurrent conflicting quote requests cannot replace the winner", async () => {
+    const otherMember = "20000000-0000-4000-8000-000000000003";
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id) VALUES (${otherMember}, ${ORG_A})`,
+    );
+    for (const conflict of ["user", "digest"] as const) {
+      const input = {
+        organizationId: ORG_A,
+        initiatedByUserId: USER_A,
+        clientRequestKey: `request-concurrent-${conflict}`,
+        requestDigest: "e".repeat(64),
+        purchaseType: "custom_amount" as const,
+        creditsToGrant: "5.000000",
+        chargeAmountCents: 500,
+        currency: "usd",
+      };
+      const alternate = {
+        ...input,
+        ...(conflict === "user"
+          ? { initiatedByUserId: otherMember }
+          : { requestDigest: "f".repeat(64) }),
+      };
+      const outcomes = await Promise.allSettled([service.create(input), service.create(alternate)]);
+      expect(outcomes.filter((value) => value.status === "fulfilled")).toHaveLength(1);
+      const rejected = outcomes.find((value) => value.status === "rejected");
+      expect(rejected?.status === "rejected" && rejected.reason).toMatchObject({
+        code: "STRIPE_CHECKOUT_IDEMPOTENCY_CONFLICT",
+      });
+      const winner = outcomes.find((value) => value.status === "fulfilled");
+      if (winner?.status !== "fulfilled") throw new Error("Missing quote winner");
+      expect(await service.get(winner.value.id)).toMatchObject({
+        initiated_by_user_id: winner.value.initiated_by_user_id,
+        request_digest: winner.value.request_digest,
+      });
+    }
+    expect((await rows()).orders).toHaveLength(2);
+  });
+
+  test("the same quote request key is independent across organizations", async () => {
+    const base = {
+      clientRequestKey: "request-two-organizations",
+      requestDigest: "a".repeat(64),
+      purchaseType: "custom_amount" as const,
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+    };
+    const [first, second] = await Promise.all([
+      service.create({ ...base, organizationId: ORG_A, initiatedByUserId: USER_A }),
+      service.create({ ...base, organizationId: ORG_B, initiatedByUserId: USER_B }),
+    ]);
+    expect(first.id).not.toBe(second.id);
+    expect(first.organization_id).toBe(ORG_A);
+    expect(second.organization_id).toBe(ORG_B);
+    expect((await rows()).orders).toHaveLength(2);
+  });
+
   test("new orders are $5-$1,000 pay-as-you-go top-ups with no pack or bonus (#22963)", async () => {
     const base = {
       organizationId: ORG_A,
@@ -226,6 +299,30 @@ describe("Stripe Checkout order authority", () => {
     const state = await rows();
     expect(state.credits).toHaveLength(1);
     expect(state.balances[0]?.credit_balance).toBe("5.000000");
+  });
+
+  test("a cache failure after commit preserves the original grant for replay", async () => {
+    const order = await deliveredOrder();
+    const invalidate = creditsService.invalidateCreditCaches;
+    creditsService.invalidateCreditCaches = async () => {
+      throw new Error("cache invalidation unavailable");
+    };
+    try {
+      await expect(service.settle(receipt(order.id))).rejects.toThrow(
+        "cache invalidation unavailable",
+      );
+    } finally {
+      creditsService.invalidateCreditCaches = invalidate;
+    }
+    const committed = await rows();
+    expect(committed.credits).toHaveLength(1);
+    expect(committed.balances[0]?.credit_balance).toBe("5.000000");
+    expect(committed.orders[0]?.status).toBe("settled");
+
+    const replay = await service.settle(receipt(order.id));
+    expect(replay.alreadyApplied).toBe(true);
+    expect(replay.order.credit_transaction_id).toBe(committed.orders[0]?.credit_transaction_id);
+    expect(await rows()).toEqual(committed);
   });
 
   test("trusted webhook or verify receipts recover Session-create ACK loss exactly once", async () => {
@@ -529,4 +626,24 @@ describe("Stripe Checkout order authority", () => {
       },
     ]);
   });
+});
+
+test("a matching late Session acknowledgement preserves a webhook-settled order", async () => {
+  const order = await deliveredOrder();
+  const settled = await service.settle(receipt(order.id));
+  const before = await rows();
+  await service.bindSession(order.id, "cs_a");
+  expect((await service.get(order.id))?.status).toBe("settled");
+  expect((await service.get(order.id))?.credit_transaction_id).toBe(
+    settled.order.credit_transaction_id,
+  );
+  expect(await rows()).toEqual(before);
+});
+
+test("a different late Session acknowledgement cannot replace a settled receipt", async () => {
+  const order = await deliveredOrder();
+  await service.settle(receipt(order.id));
+  const before = await rows();
+  await expect(service.bindSession(order.id, "cs_other")).rejects.toThrow("cannot be bound");
+  expect(await rows()).toEqual(before);
 });

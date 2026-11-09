@@ -39,7 +39,6 @@ import {
   InferenceTurnTimer,
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
-  isInsufficientCreditsMessage,
   isRateLimitError,
   isTextGenerationModelType,
   type AgentLogEntry as LogEntry,
@@ -154,6 +153,7 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
+import { findRecentInsufficientCreditsLog } from "./server-state.ts";
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
 
@@ -1397,20 +1397,6 @@ function resolveFinalTranscriptVisibility(
 }
 function pickInsufficientCreditsChatReply(): string {
   return INSUFFICIENT_CREDITS_CHAT_REPLY;
-}
-function findRecentInsufficientCreditsLog(
-  logBuffer: LogEntry[],
-  lookbackMs = 60000,
-): LogEntry | null {
-  const now = Date.now();
-  for (let i = logBuffer.length - 1; i >= 0; i--) {
-    const entry = logBuffer[i];
-    if (now - entry.timestamp > lookbackMs) break;
-    if (isInsufficientCreditsMessage(entry.message)) {
-      return entry;
-    }
-  }
-  return null;
 }
 export function resolveNoResponseFallback(
   logBuffer: LogEntry[],

@@ -3,6 +3,8 @@
  * Reviewer request on #34465: assert hex (&#x27;), decimal (&#8217;), and an
  * out-of-range reference that must pass through unchanged.
  */
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:dns/promises", () => ({
@@ -10,6 +12,8 @@ vi.mock("node:dns/promises", () => ({
 }));
 
 import {
+  __documentUrlPinnedRequestForTests,
+  __setDocumentUrlBodyDeadlinesForTests,
   __setDocumentUrlFetchImplForTests,
   fetchDocumentFromUrl,
 } from "./url-ingest.ts";
@@ -75,5 +79,109 @@ describe("url-ingest response charset", () => {
       const doc = await fetchDocumentFromUrl("https://example.com/page");
       expect(doc.content.trim()).toBe(expected);
     }
+  });
+});
+
+describe("url-ingest MIME classification", () => {
+  function serve(body: BodyInit, contentType: string) {
+    __setDocumentUrlFetchImplForTests(
+      async () =>
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": contentType },
+        }),
+    );
+  }
+
+  it("stores an Excel workbook as base64 binary", async () => {
+    const bytes = Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1]);
+    serve(bytes, "application/vnd.ms-excel");
+    const doc = await fetchDocumentFromUrl("https://example.com/report.xls");
+    expect(doc.contentType).toBe("binary");
+    expect(doc.contentEncoding).toBe("base64");
+    expect(Buffer.from(doc.content, "base64")).toEqual(Buffer.from(bytes));
+  });
+
+  it("ingests an HTML login page served at a .pdf URL as HTML", async () => {
+    serve("<html><body><p>Please sign in</p></body></html>", "text/html");
+    const doc = await fetchDocumentFromUrl("https://example.com/paper.pdf");
+    expect(doc.contentType).toBe("html");
+    expect(doc.contentEncoding).toBe("utf8");
+    expect(doc.filename).toBe("paper.html");
+    expect(doc.content).toBe("Please sign in");
+  });
+
+  it("rejects audio with a clear message", async () => {
+    serve(Uint8Array.from([0xff, 0xfb]), "audio/mpeg");
+    await expect(
+      fetchDocumentFromUrl("https://example.com/song.mp3"),
+    ).rejects.toThrow("Can't import audio/mpeg files from a URL");
+  });
+});
+
+describe("url-ingest body deadline", () => {
+  let server: http.Server;
+  let port: number;
+  let stallClosed: Promise<void>;
+
+  beforeEach(async () => {
+    __setDocumentUrlBodyDeadlinesForTests({ idleMs: 300, totalMs: 3_000 });
+    server = http.createServer((req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      if (req.url === "/stall") {
+        stallClosed = new Promise((resolve) =>
+          req.socket.once("close", resolve),
+        );
+        res.write("partial");
+        return;
+      }
+      let sent = 0;
+      const timer = setInterval(() => {
+        sent += 1;
+        res.write(`chunk${sent} `);
+        if (sent === 8) {
+          clearInterval(timer);
+          res.end();
+        }
+      }, 100);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    port = (server.address() as AddressInfo).port;
+    // Send the real pinned request to the local server instead of the
+    // public address the URL resolved to.
+    __setDocumentUrlFetchImplForTests((input) =>
+      __documentUrlPinnedRequestForTests({
+        ...input,
+        url: new URL(`http://127.0.0.1:${port}${input.url.pathname}`),
+        target: {
+          ...input.target,
+          hostname: "127.0.0.1",
+          pinnedAddress: "127.0.0.1",
+        },
+      }),
+    );
+  });
+
+  afterEach(async () => {
+    __setDocumentUrlBodyDeadlinesForTests(null);
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("fails a body that stalls after headers", async () => {
+    const started = Date.now();
+    await expect(
+      fetchDocumentFromUrl("https://example.com/stall"),
+    ).rejects.toThrow(/stalled/);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // The client tore the socket down rather than leaving it open.
+    await stallClosed;
+  });
+
+  it("keeps a slow body alive while bytes keep arriving", async () => {
+    const doc = await fetchDocumentFromUrl("https://example.com/slow");
+    expect(doc.content).toContain("chunk8");
   });
 });

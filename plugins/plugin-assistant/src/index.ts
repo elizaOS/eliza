@@ -268,6 +268,7 @@ export {
   type V5MessageHandlerOutput,
 } from "./runtime/message-handler.ts";
 export * from "./runtime/model-pricing";
+export * from "./runtime/native-owned-domains.ts";
 export {
   FAILED_TOOL_FALLBACK_MESSAGE,
   runPlannerLoop,
@@ -289,8 +290,10 @@ export { registerLocalCalendarUpdatePlanner } from "./services/device-actions/ca
 export {
   DEVICE_VIEWS,
   DeviceActionError,
+  deviceOperationSupportedByCapabilities,
   validateDeviceOperation,
 } from "./services/device-actions/contract.ts";
+export { FILES_CAPABILITY } from "./services/device-actions/files-browser-contract.ts";
 export type { DeviceReadCompletionHint } from "./services/device-actions/read-completion.ts";
 export {
   readableReminderOperationSchema,

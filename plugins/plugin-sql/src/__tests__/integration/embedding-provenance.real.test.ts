@@ -152,14 +152,17 @@ test("keeps pending embeddings bound to their original representation", async ()
     expect(
       await runtime.updateMemoryEmbedding({ id: memory.id as UUID, expected, embedding: current })
     ).toBe(true);
-    // Direct legacy callers retain the active-space contract at admission.
-    expect(
-      await adapter.updateMemoryEmbedding({
+    const unmarked = [...vector];
+    await expect(
+      adapter.updateMemoryEmbedding({
         id: memory.id as UUID,
         expected,
-        embedding: [...vector],
+        embedding: unmarked,
       })
-    ).toBe(true);
+    ).rejects.toMatchObject({ code: "EMBEDDING_SPACE_MISMATCH" });
+    await expect(
+      adapter.searchMemories({ tableName: "messages", embedding: unmarked, count: 10 })
+    ).rejects.toMatchObject({ code: "EMBEDDING_SPACE_MISMATCH" });
     expect((await adapter.getMemoryById(memory.id as UUID))?.embedding).toEqual(vector);
     expect(
       getEmbeddingVectorSpace((await adapter.getMemoryById(memory.id as UUID))?.embedding)

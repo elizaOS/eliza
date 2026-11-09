@@ -639,22 +639,62 @@ describe("NotificationService", () => {
 	});
 
 	it("reports a changed epoch before checking its older cursor against a lower counter", async () => {
-		const current = await service.listNativePage();
-		const oldCursor = {
-			nativeEpoch: "10000000-0000-0000-0000-000000000001",
-			afterSequence: current.throughSequence + 100,
-			throughSequence: current.throughSequence + 100,
-		};
-		await expect(service.listNativePage(oldCursor)).rejects.toMatchObject({
-			code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
-			status: 409,
-		});
-		await expect(
-			service.listNativePage({
-				...oldCursor,
-				nativeEpoch: current.nativeEpoch,
-			}),
-		).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+		const isolated = await createRuntime([NotificationService]);
+		let replacement: NotificationService | undefined;
+		try {
+			const original = (await isolated.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			await original.notify({ title: "Old first row" });
+			await original.notify({ title: "Old second row" });
+			const first = await original.listNativePage({ limit: 1 });
+			expect(first.complete).toBe(false);
+			const oldCursor = {
+				nativeEpoch: first.nativeEpoch,
+				afterSequence: first.nextSequence,
+				throughSequence: first.throughSequence,
+			};
+			await original.stop();
+			expect(
+				await isolated.runtime.deleteCache(
+					`notifications:${isolated.runtime.agentId}`,
+				),
+			).toBe(true);
+
+			replacement = (await NotificationService.start(
+				isolated.runtime,
+			)) as NotificationService;
+			const notice = await replacement.notify({ title: "Replacement row" });
+			expect(notice.nativeSequence).toBe(first.nextSequence);
+			expect(notice.nativeEpoch).not.toBe(first.nativeEpoch);
+			await expect(replacement.listNativePage(oldCursor)).rejects.toMatchObject(
+				{
+					code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+					status: 409,
+				},
+			);
+			await expect(
+				replacement.listNativePage({
+					...oldCursor,
+					nativeEpoch: notice.nativeEpoch,
+				}),
+			).rejects.toMatchObject({ code: "INVALID_NATIVE_NOTIFICATION_CURSOR" });
+			const fresh = await replacement.listNativePage({ limit: 1 });
+			expect(fresh).toMatchObject({
+				nativeEpoch: notice.nativeEpoch,
+				throughSequence: notice.nativeSequence,
+				complete: true,
+			});
+			expect(fresh.notifications.map((row) => row.id)).toEqual([notice.id]);
+			await expect(replacement.listNativePage(oldCursor)).rejects.toMatchObject(
+				{
+					code: "NATIVE_NOTIFICATION_EPOCH_CHANGED",
+				},
+			);
+		} finally {
+			await replacement?.stop();
+			await isolated.cleanup();
+		}
 	});
 
 	it("pages a fixed append fence including read, low and expired rows despite deleted gaps", async () => {
@@ -1032,6 +1072,12 @@ describe("NotificationService", () => {
 			sqliteTestAgentId("NotificationIntegrationAgent"),
 		);
 		const unavailable = await createRuntime([NotificationService], adapter);
+		let elapsed = 10_000;
+		let wallTime = Date.now();
+		const elapsedClock = vi
+			.spyOn(performance, "now")
+			.mockImplementation(() => elapsed);
+		const wallClock = vi.spyOn(Date, "now").mockImplementation(() => wallTime);
 		try {
 			await expect(
 				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
@@ -1066,7 +1112,41 @@ describe("NotificationService", () => {
 				true,
 			);
 			expect(adapter.readAttempts).toBe(2);
+
+			const originalWallTime = wallTime;
+			wallTime += 60_000;
+			expect(NotificationService.requestRecovery(unavailable.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			wallTime = originalWallTime - 60_000;
+			for (const seconds of [1, 2, 4, 8, 16, 30, 30]) {
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime),
+				).toEqual({
+					state: "backoff",
+					retryAfterSeconds: seconds,
+				});
+				elapsed += seconds * 1_000 - 1;
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime),
+				).toEqual({
+					state: "backoff",
+					retryAfterSeconds: 1,
+				});
+				elapsed += 1;
+				expect(
+					NotificationService.requestRecovery(unavailable.runtime).state,
+				).toBe("started");
+				await expect(
+					unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+				).rejects.toThrow("failed to start");
+				await Promise.resolve();
+			}
+			expect(adapter.readAttempts).toBe(9);
 		} finally {
+			wallClock.mockRestore();
+			elapsedClock.mockRestore();
 			await unavailable.cleanup();
 		}
 	});
@@ -1133,6 +1213,47 @@ describe("NotificationService", () => {
 		expect(list[0].title).toBe("Persisted");
 		// system defaults to low/silent (§C.1): inbox history, no badge weight.
 		expect(restarted.getUnreadCount()).toBe(0);
+	});
+
+	it("isolates notification payloads from producers and observers across restart", async () => {
+		const input = {
+			title: "Retained notification",
+			groupKey: "retained",
+			data: { labels: ["original"] },
+		};
+		const pending = service.notify(input);
+		input.data.labels.push("producer during admission");
+		const receipt = await pending;
+		expect.soft(receipt.data?.labels).toEqual(["original"]);
+		input.data.labels.push("producer after persistence");
+
+		const mutate = (row: AgentNotification, source: string) => {
+			const labels = row.data?.labels;
+			if (!Array.isArray(labels))
+				throw new Error("Missing notification labels");
+			labels.push(source);
+		};
+		mutate(receipt, "receipt");
+		mutate(emitted[0].data.notification as AgentNotification, "live event");
+		mutate(service.list()[0], "list");
+		mutate(service.listIncludingExpired()[0], "unfiltered list");
+		mutate((await service.listDurableIncludingExpired())[0], "durable list");
+		const grouped = await service.ensureGroupedNotification(input, (row) => {
+			mutate(row, "exact-match callback");
+			return row.id === receipt.id;
+		});
+		mutate(grouped, "grouped receipt");
+		expect.soft(service.list()[0].data?.labels).toEqual(["original"]);
+
+		expect(await service.markRead(receipt.id)).toBe(true);
+		const restarted = (await NotificationService.start(
+			runtime,
+		)) as NotificationService;
+		try {
+			expect(restarted.list()[0].data?.labels).toEqual(["original"]);
+		} finally {
+			await restarted.stop();
+		}
 	});
 
 	it("excludes a notification whose explicit expiresAt has passed", async () => {

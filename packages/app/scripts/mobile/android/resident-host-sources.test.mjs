@@ -39,6 +39,7 @@ const identity = (overrides = {}) => ({
   },
   notification: {
     smallIcon: "notification_icon",
+    primaryAction: "restart",
     color: "0xff0000ff",
     strings,
   },
@@ -120,6 +121,10 @@ test("every current resident anchor matches and the host identity replaces the u
   for (const [, anchor] of RESIDENT_NOTIFICATION_STRINGS)
     assert.ok(!agent.includes(anchor), anchor);
   assert.ok(agent.includes("getString(R.string.host_runtime_channel_name)"));
+  assert.ok(agent.includes("getString(R.string.host_runtime_generic_detail)"));
+  // The notification never shows a raw internal status.
+  assert.doesNotMatch(agent, /text\s*=\s*currentStatus/);
+  assert.ok(agent.includes('NOTIFICATION_PRIMARY_ACTION = "restart";'));
   const connection = fs.readFileSync(
     path.join(
       output,
@@ -138,11 +143,12 @@ test("optional presentation keeps upstream text while sockets and the secure-sto
     "ElizaAgentService",
     service(),
     identity({
-      notification: { smallIcon: "notification_icon" },
+      notification: { smallIcon: "notification_icon", primaryAction: "stop" },
       environmentHook: null,
     }),
   );
   assert.ok(text.includes('"Eliza agent · Running"'));
+  assert.ok(text.includes('NOTIFICATION_PRIMARY_ACTION = "stop";'));
   assert.doesNotMatch(text, /setColor|HostAgentEnvironment/);
   assert.ok(text.includes('"example.host.secure-store"'));
   assert.ok(text.includes('"example.host.agent.v1"'));
@@ -157,6 +163,7 @@ test("a changed anchor fails closed instead of producing a partly branded servic
       /insertion point changed/,
     ],
     [".setSmallIcon(R.mipmap.ic_launcher)", /notification builders/],
+    ['NOTIFICATION_PRIMARY_ACTION = "stop";', /notification action/],
   ]) {
     const changed = source.replace(anchor, "/* reviewed upstream change */");
     assert.notEqual(changed, source, anchor);
@@ -192,7 +199,7 @@ test("lifecycle hooks wrap the one root publication and follow every running pat
     text.split(
       'currentStatus = "running"; HostNotifications.resume(getApplicationContext());',
     ).length,
-    5,
+    3,
   );
   // Without hooks the upstream lifecycle is unchanged.
   const plain = rewriteResidentClass(
@@ -317,6 +324,9 @@ test("identity mappings are complete, distinct and never reuse the upstream iden
     (value) => (value.notification.color = "#0000ff"),
     (value) => (value.notification.smallIcon = "Icon"),
     (value) => delete value.notification.strings.runningDetail,
+    (value) => delete value.notification.strings.genericDetail,
+    (value) => delete value.notification.primaryAction,
+    (value) => (value.notification.primaryAction = "disconnect"),
     (value) => (value.environmentHook.method = "configure()"),
     (value) => (value.environmentHook.unavailableStatus = "$&"),
     (value) => (value.notification.channelLabel = "Host\nalerts"),

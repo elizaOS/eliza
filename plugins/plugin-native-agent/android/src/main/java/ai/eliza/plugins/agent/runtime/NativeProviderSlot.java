@@ -24,6 +24,9 @@ public final class NativeProviderSlot {
   public interface Store {
     String readProvider() throws Exception;
 
+    /** Host credential authority; changes retire status captured under an earlier account. */
+    default long authorityEpoch() { return 0; }
+
     /** Throws when the caller's credential intent or bridge is no longer current. */
     void assertCurrent() throws Exception;
 
@@ -123,45 +126,158 @@ public final class NativeProviderSlot {
     if (!NativeProviderAdmission.validProviderToken(key, 1024)) return "Enter a valid Cerebras key.";
     if (!NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL.equals(model)) return "Choose the supported Cerebras model.";
     if (cartesiaKey != null && !NativeProviderAdmission.validProviderToken(cartesiaKey, 1024)) return "Enter a valid Cartesia key or leave voice off.";
+    String previous = store.readProvider();
+    store.assertCurrent();
     String failure = check.check(key, model);
     if (failure != null) return failure;
     store.assertCurrent();
-    bindDirectProvider(store, key, model, cartesiaKey);
+    String selection = directSelection(previous, key, cartesiaKey);
+    if (store.compareExchangeProvider(previous, selection) == null) throw new IllegalStateException("Provider changed");
     store.assertCurrent();
     JSONObject saved = new JSONObject(store.readProvider());
     if (!key.equals(saved.optString("key")) || !model.equals(saved.optString("model"))
-        || !java.util.Objects.equals(cartesiaKey, saved.has("cartesiaKey") ? saved.getString("cartesiaKey") : null))
+        || !java.util.Objects.equals(new JSONObject(selection).opt("cartesiaKey"), saved.opt("cartesiaKey")))
       throw new IllegalStateException("Provider credentials could not be confirmed");
     return null;
   }
 
-  /** Direct configuration is an explicit native admission; renderer metadata is never accepted. */
+  /** Direct configuration is an explicit native admission; omitted Voice preserves the saved key. */
   public static void bindDirectProvider(Store store, String key, String model) throws Exception {
     bindDirectProvider(store, key, model, null);
   }
 
   public static void bindDirectProvider(Store store, String key, String model, String cartesiaKey) throws Exception {
     if (cartesiaKey != null && !NativeProviderAdmission.validProviderToken(cartesiaKey, 1024)) throw new IllegalArgumentException();
-    if (!NativeProviderAdmission.validProviderToken(key, 1024) || !model.matches(NativeProviderAdmission.PROVIDER_MODEL_PATTERN))
+    if (!NativeProviderAdmission.validProviderToken(key, 1024) || !model.equals(NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL))
       throw new IllegalArgumentException();
     String previous = store.readProvider();
-    String selection =
-        new JSONObject()
-            .put("provider", "cerebras")
-            .put("key", key)
-            .put("cartesiaKey", cartesiaKey)
-            .put("model", model)
-            .put("revision", UUID.randomUUID().toString())
-            .toString();
-    if(previous!=null){JSONObject old=new JSONObject(previous);JSONObject services="elizacloud".equals(old.optString("provider"))?old:old.optJSONObject("cloudServices");if(services!=null)selection=new JSONObject(selection).put("cloudServices",services).toString();}
-    if (store.compareExchangeProvider(previous, selection) == null) throw new IllegalStateException();
+    store.assertCurrent();
+    if (store.compareExchangeProvider(previous, directSelection(previous, key, cartesiaKey)) == null)
+      throw new IllegalStateException("Provider changed");
   }
 
-  /** Deletes the provider slot and confirms by reading it back; returns the unconfigured identity. */
+  private static String directSelection(String previous, String textKey, String voiceKey) throws Exception {
+    JSONObject old = previous == null ? new JSONObject() : new JSONObject(previous);
+    JSONObject selection = new JSONObject().put("provider", "cerebras")
+        .put("model", NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL)
+        .put("revision", UUID.randomUUID().toString());
+    NativeProviderAdmission.retainOwnKeys(old, selection);
+    if (textKey != null) selection.put("key", textKey);
+    if (voiceKey != null) selection.put("cartesiaKey", voiceKey);
+    JSONObject services = "elizacloud".equals(old.optString("provider")) ? cloudServices(old) : old.optJSONObject("cloudServices");
+    if (services != null) selection.put("cloudServices", services);
+    return selection.toString();
+  }
+
+  public static JSONObject cloudServices(JSONObject selected) throws Exception {
+    JSONObject services = new JSONObject(selected.toString());
+    services.remove("key"); services.remove("cartesiaKey"); services.remove("cloudServices");
+    return services;
+  }
+
+  /** An opaque selection/account version; contains no credential or secret-derived digest. */
+  public static String managementRevision(String saved, long epoch) throws Exception {
+    return (saved == null ? "none" : new JSONObject(saved).optString("revision", "legacy")) + ":" + epoch;
+  }
+
+  /** Metadata only. Saved-key presence is separate from the currently selected billing route. */
+  public static JSONObject managementStatus(String saved, String cloud, long now, long epoch) throws Exception {
+    JSONObject result = NativeProviderAdmission.providerStatus(saved, cloud, now);
+    JSONObject selected = saved == null ? new JSONObject() : new JSONObject(saved);
+    result.put("mode", "cerebras".equals(selected.optString("provider")) ? "own" : "cloud")
+        .put("revision", managementRevision(saved, epoch)).put("persistence", "native-secure-store")
+        .put("keys", new JSONObject()
+            .put("text", new JSONObject().put("configured", NativeProviderAdmission.validProviderToken(selected.optString("key", ""), 1024)))
+            .put("voice", new JSONObject().put("configured", NativeProviderAdmission.validProviderToken(selected.optString("cartesiaKey", ""), 1024))));
+    return result;
+  }
+
+  public static String requireManagementRevision(Store store, String expectedRevision) throws Exception {
+    store.assertCurrent();
+    String previous = store.readProvider();
+    if (expectedRevision == null || !expectedRevision.equals(managementRevision(previous, store.authorityEpoch())))
+      throw new IllegalStateException("Provider changed; reload Settings");
+    return previous;
+  }
+
+  /** Validate only supplied Text; a Voice-only edit never resends or replaces saved Text. */
+  public static String editKeys(Store store, String expectedRevision, String textKey, String voiceKey, KeyCheck check) throws Exception {
+    if (textKey == null && voiceKey == null) throw new IllegalArgumentException("Choose a key to edit");
+    if (textKey != null && !NativeProviderAdmission.validProviderToken(textKey, 1024)
+        || voiceKey != null && !NativeProviderAdmission.validProviderToken(voiceKey, 1024))
+      throw new IllegalArgumentException("Enter a valid key");
+    String previous = requireManagementRevision(store, expectedRevision);
+    if (textKey != null) {
+      String failure = check.check(textKey, NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL);
+      if (failure != null) return failure;
+    }
+    if (!java.util.Objects.equals(previous, requireManagementRevision(store, expectedRevision)))
+      throw new IllegalStateException("Provider changed");
+    JSONObject next = previous == null ? new JSONObject().put("provider", "elizacloud")
+        .put("model", NativeProviderAdmission.CLOUD_PROVIDER_MODEL) : new JSONObject(previous);
+    if (textKey != null) next.put("key", textKey);
+    if (voiceKey != null) next.put("cartesiaKey", voiceKey);
+    commitKeys(store, previous, next);
+    return null;
+  }
+
+  public static void removeKey(Store store, String expectedRevision, String key) throws Exception {
+    String field = keyField(key), previous = requireManagementRevision(store, expectedRevision);
+    if (previous == null) return;
+    JSONObject next = new JSONObject(previous);
+    if (!next.has(field)) return;
+    next.remove(field);
+    commitKeys(store, previous, next);
+  }
+
+  private static void commitKeys(Store store, String previous, JSONObject next) throws Exception {
+    next.put("revision", UUID.randomUUID().toString());
+    store.assertCurrent();
+    String committed = store.compareExchangeProvider(previous, next.toString());
+    store.assertCurrent();
+    if (committed == null || !committed.equals(store.readProvider())) throw new IllegalStateException("Provider change unconfirmed");
+  }
+
+  /** Native-only value for an explicit protected reveal surface, never a bridge result. */
+  public static String revealKey(Store store, String expectedRevision, String key) throws Exception {
+    String field = keyField(key), saved = requireManagementRevision(store, expectedRevision);
+    String value = saved == null ? "" : new JSONObject(saved).optString(field, "");
+    if (!NativeProviderAdmission.validProviderToken(value, 1024)) throw new IllegalStateException("Key is not saved");
+    store.assertCurrent();
+    return value;
+  }
+
+  private static String keyField(String key) {
+    if ("text".equals(key)) return "key";
+    if ("voice".equals(key)) return "cartesiaKey";
+    throw new IllegalArgumentException("Choose Text or Voice");
+  }
+
+  /** Selecting saved Own keys never calls a provider and never selects a Cloud account. */
+  public static void selectOwn(Store store, String expectedRevision) throws Exception {
+    String previous = requireManagementRevision(store, expectedRevision);
+    if (previous == null || !NativeProviderAdmission.validProviderToken(new JSONObject(previous).optString("key", ""), 1024))
+      throw new IllegalStateException("Save a Text key first");
+    String selection = directSelection(previous, null, null);
+    store.assertCurrent();
+    String committed = store.compareExchangeProvider(previous, selection);
+    store.assertCurrent();
+    if (committed == null || !committed.equals(store.readProvider())) throw new IllegalStateException("Provider change unconfirmed");
+  }
+
+  /** Retires routing while retaining Own keys; records without keys keep legacy slot removal. */
   public static JSONObject clearProviderSlot(Store store, boolean onlyIfPresent) throws Exception {
-    store.removeProvider(onlyIfPresent);
-    if (store.readProvider() != null) throw new IllegalStateException("Provider key still present");
-    return NativeProviderAdmission.providerIdentity(null);
+    String previous = store.readProvider();
+    store.assertCurrent();
+    String kept = NativeProviderAdmission.unbindProvider(previous);
+    if (kept == null) store.removeProvider(onlyIfPresent);
+    else if (!kept.equals(previous) && store.compareExchangeProvider(previous, kept) == null)
+      throw new IllegalStateException("Provider changed");
+    store.assertCurrent();
+    String retained = store.readProvider();
+    if (kept != null && !kept.equals(retained)) throw new IllegalStateException("Saved keys could not be confirmed");
+    if (retained != null && !new JSONObject(retained).optBoolean("unbound")) throw new IllegalStateException("Provider binding still present");
+    return NativeProviderAdmission.providerIdentity(retained);
   }
 
   /** Provider, Cloud and managed-Google variables an unbound launch must not inherit. */

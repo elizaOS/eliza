@@ -31,6 +31,8 @@ public final class StreamingSpeechPlayback {
   long playedFrames();
   /** CLOCK_MONOTONIC presentation time of {@code frame} from a rendered-output timestamp, or {@link VoiceLatencyTrials#UNSET}. */
   long presentationNs(long frame);
+  /** Frames that must be written before the platform starts a stopped-at-head track playing. */
+  default int startThresholdFrames(){return 0;}
   void setVolume(float volume);
   /** From another thread: discard buffered audio and unblock a pending write. */
   void abort();
@@ -151,6 +153,19 @@ public final class StreamingSpeechPlayback {
     if(!first){first=true;listener.firstFrame(lastChunkAt);}
     written+=chunk.length;
     audible=checkAudible(out,audibleReported,headNs);audibleReported=audible[0]==1;headNs=audible[1];
+   }
+   // An utterance shorter than the track's start threshold would never start playing: pad it with
+   // silence up to the threshold. Only the speech is waited on; stop() cuts the trailing silence.
+   long threshold=out.startThresholdFrames();
+   if(written>0&&written<threshold&&out.playedFrames()==0){
+    float[] pad=new float[(int)(threshold-written)];int offset=0;
+    while(offset<pad.length){
+     if(stopped)throw new CancellationException();
+     int count=out.write(pad,offset,pad.length-offset);
+     if(count<0)throw new IllegalStateException("output-write");
+     if(count==0)Thread.sleep(POLL_MS);
+     offset+=count;
+    }
    }
    // Every frame is queued: wait until the platform has played them, bounded by their duration.
    long played=out.playedFrames();

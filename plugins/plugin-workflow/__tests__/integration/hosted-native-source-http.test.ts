@@ -471,11 +471,17 @@ test('native selected source persists through HTTP; explicit dossier has one mod
       confirmed: true,
     });
     expect(enabled.status).toBe(200);
-    const run = await service.executeWorkflow(enabled.body.receipt.workflowId, {
+    const admitted = await service.executeWorkflow(enabled.body.receipt.workflowId, {
       mode: 'trigger',
       triggerData: { scheduledAtMs: minute, workflowVersionId: enabled.body.receipt.versionId },
       throwOnError: false,
     });
+    // A scheduled digest returns once admitted; its brief finishes in the background.
+    let run = admitted;
+    while (!run.finished) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      run = await service.getExecution(admitted.id);
+    }
     expect(run.status).toBe('finished');
     expect(modelCalls).toBe(3);
     await state.cleanup();

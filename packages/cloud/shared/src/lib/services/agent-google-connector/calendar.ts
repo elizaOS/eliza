@@ -281,6 +281,7 @@ function normalizeGoogleCalendarEvent(
       optional: Boolean(attendee.optional),
     })),
     metadata: {
+      etag: event.etag?.trim() || null,
       iCalUID: event.iCalUID?.trim() || null,
       recurringEventId: event.recurringEventId?.trim() || null,
       createdAt: event.created?.trim() || null,

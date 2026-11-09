@@ -1,4 +1,35 @@
 {
+  "app_deploy_generation.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+      "required": [
+        "an interrupted deploy without an exact child retains an unresolved job and app generation",
+        "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
+        "a lost child insert response retains the committed child without failing the app",
+        "app deploy handoff recovery preserves the URL published by its ready child",
+        "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
+        "an app deletion claim does not hide its interrupted deployment from recovery",
+        "a deploy attempt that fails after the runner claims it leaves the app redeployable",
+        "a worker that sees an already failed current generation settles it failed",
+        "an older queued generation cannot change a newer deployment",
+        "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
+      ]
+    }
+  ],
+  "anonymous_chat_gate.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/anonymous-chat-gate.miniflare.test.ts",
+      "required": [
+        "a replayed lease retains its exact quota and original hydrated owner",
+        "lifetime quota remains capped while the hourly window has room",
+        "an expired undispatched lease cannot start before its alarm refunds it",
+        "dispatch replay keeps the original settlement deadline and expiry commits it",
+        "a delayed old-window refund does not restore the current hourly allowance",
+        "a failed alarm mirror retries its durable latest snapshot after reload",
+        "session expiry and invalidation remain terminal after rehydration"
+      ]
+    }
+  ],
   "container_monitor.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",
@@ -75,6 +106,9 @@
       "file": "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
       "required": [
         "reuses one tenant request and rejects a changed digest or user",
+        "concurrent identical quote requests return the same durable winner",
+        "concurrent conflicting quote requests cannot replace the winner",
+        "the same quote request key is independent across organizations",
         "new orders are $5-$1,000 pay-as-you-go top-ups with no pack or bonus (#22963)",
         "grants exactly the charged amount as credits with no bonus",
         "concurrent webhook and landing verification converge on one grant",
@@ -85,9 +119,12 @@
         "fails closed on tenant, user, amount, currency, customer, session, and payment status",
         "conflicting payment-intent replay cannot reuse a settled order",
         "post-ledger failure rolls the grant back and a retry settles cleanly",
+        "a cache failure after commit preserves the original grant for replay",
         "legacy custom cutover derives from paid cents and packs are durably quarantined",
         "legacy cutover rejects a cross-tenant user before grant or quarantine",
-        "legacy pack quarantine accepts only an exact replay"
+        "legacy pack quarantine accepts only an exact replay",
+        "a matching late Session acknowledgement preserves a webhook-settled order",
+        "a different late Session acknowledgement cannot replace a settled receipt"
       ]
     }
   ],
@@ -102,7 +139,15 @@
         "recovery searches the entire original retry window, including a late accepted retry",
         "legacy ambiguous orders remain read-only when original creation time is unknown",
         "legacy read-only discovery can recover an old Session outside the last-update window",
-        "multiple matching historical Sessions require reconciliation instead of choosing one"
+        "multiple matching historical Sessions require reconciliation instead of choosing one",
+        "recovery follows later pages before binding the original Session",
+        "a failed later lookup page cannot authorize another create",
+        "competing matching Sessions on separate pages reject recovery",
+        "an empty continuation page cannot authorize another create",
+        "a repeated pagination cursor cannot authorize another create",
+        "lookup deadline expiry cannot authorize another create",
+        "a stale unbound reader adopts the customer already pinned by another caller",
+        "a stale quoted caller can retry the same key after another caller dispatches"
       ]
     },
     {

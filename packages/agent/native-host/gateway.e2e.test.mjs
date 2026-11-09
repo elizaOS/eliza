@@ -799,7 +799,7 @@ test("a gateway without a credential gate passes no account check to the host", 
   }
 });
 
-test("a reset during the inference check drops the account check it shared", async () => {
+test("a reset during the inference check refuses the retired message", async () => {
   let owner = "first",
     holdNext = false;
   const owners = [];
@@ -860,11 +860,19 @@ test("a reset during the inference check drops the account check it shared", asy
     assert.equal((await post("/conversations")).status, 200);
     owners.length = 0;
     release.resolve();
-    // The owner is read again after the reset, so the message is admitted for
-    // the account that now holds the conversation, never for the old one.
-    assert.equal((await pending).status, 200);
-    assert.ok(owners.length >= 1);
-    assert.ok(owners.every((value) => value === "second"));
+    // This message began before reset. Never dispatch its old input under
+    // the new account, even when that account holds the same conversation id.
+    const refused = await pending;
+    assert.equal(refused.status, 409);
+    assert.equal((await refused.json()).code, "CONVERSATION_NOT_OWNED");
+    assert.deepEqual(owners, []);
+    assert.equal(messageRequests, 0);
+    assert.equal(
+      (await post(`/conversations/${id}/messages`, { text: "new message" }))
+        .status,
+      200,
+    );
+    assert.deepEqual([...new Set(owners)], ["second"]);
     assert.equal(messageRequests, 1);
   } finally {
     release.resolve();
@@ -1923,6 +1931,35 @@ test("sign-out stops a streamed turn like a buffered one, and never an answered 
     ]);
   } finally {
     never.resolve();
+    await harness.close();
+  }
+});
+
+test("a paid route that Cloud refuses tells the Cloud routes to drop their cached answer", async () => {
+  const refused = [];
+  const harness = await streamHarness({
+    hostPolicy: {
+      ...policy,
+      isPaidAction: (_method, path) => path.endsWith("/messages"),
+    },
+    cloudHandler: Object.assign(async () => false, {
+      requirePaidAccess: async () => {},
+      paidAccessRefused: () => refused.push(true),
+    }),
+  });
+  const { state } = harness;
+  try {
+    assert.equal((await harness.post("/conversations")).status, 200);
+    assert.equal((await harness.buffered()).status, 200);
+    assert.equal(refused.length, 0);
+    for (const status of [402, 401]) {
+      state.status = status;
+      assert.equal((await harness.buffered()).status, status);
+    }
+    state.status = 404;
+    assert.equal((await harness.buffered()).status, 404);
+    assert.equal(refused.length, 2);
+  } finally {
     await harness.close();
   }
 });

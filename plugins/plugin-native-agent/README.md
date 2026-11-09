@@ -23,7 +23,14 @@ update journaling, qualified-clock projection and cancellable job ownership.
 Hosts supply the inventory format, durability/clock adapters and release policy;
 these APIs neither authorize an installation nor expose renderer capabilities.
 `ResidentCredentialStore` shares provider admission, conditional removal and
-credential ownership over the host's protected slots. It composes the generic
+credential ownership over the host's protected slots. `NativeProviderSlot` keeps saved Text and Voice
+keys in that same encrypted slot while the selected route changes. Missing edit fields preserve
+keys; only per-key removal deletes them. Status exposes presence, mode and an opaque credential-
+authority revision. A mode selection requires the current revision and native intent. Cloud
+account rotation preserves local key ownership and retires old requests; it does not choose a
+mode. Unbinding keeps keys but disables routing until explicit selection. Hosts must restrict
+management to their foreground, unlocked owner surface and reveal only through a protected native
+surface, never a credential-bearing bridge response. Cloud service credentials remain separate. It composes the generic
 mutation conductor in `plugin-native-secure-store`. `CredentialShutdownLease`
 retains the service start fence after exact stop acknowledgement until its owner
 releases it after commit or proven pre-commit cancellation. Failed stop or uncertain
@@ -303,14 +310,21 @@ identity. It selects no provider, routes or credentials and never retries reques
 Its portable contract covers replacement during a request and paired startup
 failure; Android service, real runtime and device qualification remain host tests.
 
-`EmbeddedRuntimeGroup` orders agent readiness, private token/binding publication,
-credential-broker attachment and gateway readiness inside one existing session
-scope. Hosts supply commands, readiness probes, a private publisher and broker
-custody. The publisher receives the standard agent-token, gateway-token and
-credential-binding.json names; hosts retain storage layout and binding schema.
-Endpoints alone do not prove readiness: requests still need session fencing.
-Portable tests use real authenticated loopback child processes and verify broker
-cleanup and cancellation between startup stages.
+`EmbeddedRuntimeGroup` publishes the private token/binding files, starts the agent,
+attaches the credential broker and starts the gateway inside one existing session
+scope, then awaits agent readiness and gateway readiness in that order; the session
+reports RUNNING only after both. The two children boot together, so the gateway's
+boot no longer follows the agent's. Hosts supply commands, readiness probes, a
+private publisher and broker custody. The publisher receives the standard
+agent-token, gateway-token and credential-binding.json names before either child
+exists; hosts retain storage layout and binding schema. A gateway must therefore
+start without a live agent (`startLocalGateway` reads only the published files; its
+proxied routes answer "unavailable" until the agent does). Every launch secret is
+redacted from both children's output. Endpoints alone do not prove readiness:
+requests still need session fencing. `NativeRuntimeSession.Scope.start` and
+`awaitReady` are the spawn and readiness halves of `startReady`. Portable tests use
+real authenticated loopback child processes and verify overlap, ordering, broker
+cleanup, redaction and cancellation between startup stages.
 
 `RuntimeAssets` supplies bounded, closing asset reads and presence-only checks.
 `RuntimeBundleStore.prepareFromAsset` bounds inventory reads before invoking the
