@@ -103,17 +103,16 @@ describe("page-scoped source tail", () => {
       {} as never,
     );
 
-    expect(getMemories).toHaveBeenCalledWith(
-      expect.objectContaining({
-        roomId: stringToUuid("web-conv-main-1"),
-        orderDirection: "desc",
-        includeEmbedding: false,
-      }),
-    );
+    expect(getMemories).toHaveBeenCalledWith({
+      roomId: stringToUuid("web-conv-main-1"),
+      tableName: "messages",
+      orderBy: "createdAt",
+      orderDirection: "desc",
+      includeEmbedding: false,
+    });
     const lines = (result.text ?? "")
       .split("\n")
       .filter((line) => line.includes("message "));
-    expect(getMemories.mock.calls[0]?.[0]).not.toHaveProperty("limit");
     expect(lines).toHaveLength(500);
     expect(lines[0]).toContain(rows[0].content.text);
     expect(lines.at(-1)).toContain("message 499");
