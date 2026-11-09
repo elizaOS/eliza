@@ -13,6 +13,7 @@ import { TrajectoryLimitExceeded } from "../runtime/limits.ts";
 import { readActionFailureProvenance } from "../types/action-failure.ts";
 import { ModelType } from "../types/model.ts";
 import {
+	hasModelErrorCode,
 	isModelFundingAuthorityError,
 	isProviderContextOverflowFailure,
 	modelProviderErrorStatus,
@@ -251,7 +252,9 @@ export function isAuthError(error: unknown): boolean {
 	);
 }
 
-/** Socket-level error codes that mean the provider was unreachable, not wrong. */
+/** Socket-level error codes that mean the provider was unreachable, not wrong.
+ * Bun's fetch reports the same failures as ConnectionRefused / ConnectionClosed /
+ * FailedToOpenSocket. */
 const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
 	"ECONNREFUSED",
 	"ECONNRESET",
@@ -259,6 +262,9 @@ const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
 	"EHOSTUNREACH",
 	"EAI_AGAIN",
 	"ETIMEDOUT",
+	"ConnectionRefused",
+	"ConnectionClosed",
+	"FailedToOpenSocket",
 ]);
 
 /**
@@ -305,11 +311,9 @@ export function isModelProviderFallbackError(
 	// envelope also carries input/output validation failures, which must remain
 	// terminal even when another provider could return a plausible response.
 	const localFailure = asErrorObject(unwrapped);
-	if (
-		typeof localFailure?.code === "string" &&
-		TRANSIENT_NETWORK_ERROR_CODES.has(localFailure.code)
-	)
-		return true;
+	// The AI SDK wraps a refused connection in an APICallError ("Cannot connect
+	// to API") and keeps the socket error, with its code, on `.cause`.
+	if (hasModelErrorCode(unwrapped, TRANSIENT_NETWORK_ERROR_CODES)) return true;
 	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
 		return (
 			localFailure.reason === "backend_unavailable" ||
