@@ -287,6 +287,15 @@ flight, so a dispatch failure such as `account_changed` can follow a completed
 write: after any dispatch failure the host reads the receipt with `observe`
 before offering another dispatch.
 
+Credential cleanup passes the refused key to `clear(expectedKey)`. The file
+store checks and clears within its write queue. The verified account adapter
+uses compare-and-exchange. Both return `false` if the saved account changed and
+keep its replacement. Calling `clear()` still clears the current account.
+Custom credential stores should provide the same conditional clear. A legacy
+store that ignores this argument must serialize account changes and revocation
+callbacks with its host guard. The file queue does not lock other processes or
+separate store instances that write the same path.
+
 `createCloudRoutes({ verifiedAccountStore, pendingCredentialStore })` optionally
 uses one native-owned credential/owner snapshot with `read()` and
 `compareExchange(expected, next)`. It requires the verified enrollment callback

@@ -297,19 +297,38 @@
   },
   {
     "id": "cloud-flow-checkout-credit-orders",
-    "model": null,
+    "model": "packages/cloud/quint/CreditCheckoutOrder.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
-      "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts"
+      "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+      "packages/cloud/shared/src/db/migrations/0261_stripe_checkout_orders.sql",
+      "packages/cloud/shared/src/db/migrations/stripe-checkout-orders.test.ts",
+      "packages/cloud/shared/src/db/migrations/stripe-checkout-provider-started-at.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+      "packages/cloud/api/stripe/create-checkout-session/route.ts",
+      "packages/cloud/api/v1/credits/checkout/route.ts",
+      "packages/cloud/api/src/checkout-reconciliation.ts",
+      "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+      "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql",
+      "packages/cloud/shared/src/lib/services/credits.ts",
+      "packages/cloud/shared/src/db/migrations/stripe-checkout-legacy-lock.integration.test.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "CreditPublishedOnce",
+      "SettledHasOriginalReceipt",
+      "PaidMatchingReceiptRequired",
+      "FirstDispatchNeverExtended",
+      "RetryInsideOriginalWindow",
+      "ForeignIntentNeverGranted",
+      "UnknownCacheRetainsSettlement",
+      "RetryRequiresCompletedLookup"
+    ],
+    "status": "partial",
     "limitations": [
-      "Finite models cover only their documented bounds; implementation refinement is not established.",
-      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
-      "Build the finite transition model and connect adversarial implementation tests.",
-      "Required flow invariants: The paid provider session must match the original server quote. | A settled order has one immutable credit receipt.",
-      "Abstract states: quoted, provider_started, delivered, provider_ambiguous, settled, failed"
+      "One immutable organization-credit quote, two competing settlement callers, two customer identities, one original Session and PaymentIntent, one conflicting prior ledger intent, credit value 2, six clock values and a three-tick original dispatch window. Fresh quotes, historical ambiguous rows with missing first-dispatch evidence, and failed historical rows have separate initial states. Provider recovery has up to two pages, an accumulated match, separate scan/failure/conflict/completed states and at most two create dispatches.",
+      "Paid/matching is an equivalence class of every immutable receipt check. The provider preserves its request-key contract inside the supported retry window. The primary transaction atomically publishes the order and credit ledger, and uniqueness failure rolls it back. PostgreSQL/PGlite tests independently exercise actual SQL constraints and selected route/service schedules. An empty result authorizes another create only after the complete page traversal; distinct matching Sessions cause a conflict. Each page projects authenticated provider data, not a proof of remote consistency. A second caller may retain an earlier quoted observation and dispatch the same key after the first caller starts; it still must pass the original database time gate, but does not claim a fresh lookup. The lookup invariant applies to an observed recovery state.",
+      "CreditCheckoutQuote covers competing request identities, retained quote reads and customer pinning. LegacyCheckoutSettlement covers custom-amount grants and immutable pack quarantine. Strict conformance executes 44 named service, route, migration and real PostgreSQL lock cases.",
+      "Composition with complete authentication lifetime, arbitrary provider pagination, external request arrival, reversals, multiple independent orders and numeric domains remains open. Bounded safety and concrete regression correspondence do not establish whole-backend refinement or live Stripe acceptance."
     ]
   },
   {
@@ -2418,6 +2437,39 @@
       "Eventual completion requires fair local steps and eventual provider completion or failure. A hung provider can remain pending; unconditional completion has a checked counterexample.",
       "Finite models and selected executable tests do not establish whole-backend coverage or TypeScript refinement.",
       "Response identity allocation relies on the platform UUID generator; same-clock request separation has an actual SDK regression, not a proof of random uniqueness."
+    ]
+  },
+  {
+    "id": "cloud-protocol-native-paid-access-cache",
+    "model": "packages/cloud/quint/NativePaidAccessCache.qnt",
+    "sources": [
+      "packages/cloud/sdk/native-host/cloud-services.mjs",
+      "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+      "packages/agent/native-host/gateway.mjs",
+      "packages/agent/native-host/gateway.e2e.test.mjs",
+      "packages/cloud/quint/check-native-paid-access-cache.mjs",
+      "packages/cloud/sdk/README.md"
+    ],
+    "invariants": [
+      "TypeOK",
+      "DefiniteCacheOnly",
+      "SingleFlightPerTuple",
+      "NoStaleAdmission",
+      "NoWrongOwnerMutation",
+      "FinalizerKeepsSuccessor"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two credential fingerprints, two callers, two reusable physical-check slots, one account-generation change, one access-revision change, two paid-cache invalidations and two remote plan changes. At most two owner/revision/cache invalidation transitions occur in one run. Slots are reused only after cache, flight, background and caller references all retire.",
+      "A settled active answer is only a local funding UI gate. There is no TTL: a remote plan lapse may precede background refresh, and a warm local call can still pass. Cloud independently authorizes every paid request and charge; this model has no payment effect or authoritative entitlement grant.",
+      "Key fingerprint, account generation, access revision and paid-cache epoch guard joins, fills and warm reuse. Already-joined live callers may receive a prior revision; only owner generation/key fence their local positive decision. The observable key guard is an atomic model boundary, not continuous credential freshness or a lock on external file writers.",
+      "A same-generation identity refusal may conservatively invalidate a replacement account cache, but cannot clear its credential. onRevoked callback completion and guarded conditional clear are separate transitions. An unavailable refresh retains the last definite answer. A definite refusal is checked live before a new local admission, so a later upgrade can take effect. Old finalizers cannot clear successor flights, and an old identity refusal cannot clear a replacement saved key.",
+      "Fairness assumes continuously enabled background timer delivery, completion of the current HTTP check or abort deadline, completion of the host revocation callback, matching finalization and caller observation. It assumes settlement, not network success. CallsSettle and BackgroundSettles are conditional; CallsWithoutFairness requires a temporal loop counterexample.",
+      "Credential startup/write queues have settled before modeled allocation. Conditional clear is an atomic model boundary for the SDK file-store operation queue and verified-account compareExchange. Generic legacy host stores must serialize owner changes through their guard. This does not assert compare-and-swap against arbitrary filesystem writes or independent store instances between read and clear. The revocation path covers replacement already present at the first check and replacement during the awaited host callback, then rechecks owner before conditional clear. Signed-out and revocation side effects are abstracted; real loopback HTTP and private-file tests check identity-401 priority, replacement-key preservation and native gateway refusal. Header/body deadline accuracy, more owners/callers, process restart, arbitrary provider schedules and implementation trace refinement are not proved. A background operation owned by an old epoch need not autonomously refresh a successor; later activity can trigger that refresh."
+    ],
+    "implementationTests": [
+      "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+      "packages/agent/native-host/gateway.e2e.test.mjs"
     ]
   }
 ]
