@@ -20,7 +20,7 @@ writeFileSync(path.join(directory, "speech-output.tap"), log);
 if (run.error) throw run.error;
 assert.equal(run.status, 0, log);
 assert.match(log, /^ok \d+ - the speech output warm-up is bounded, and close stops it at once, also a blocked write or a late open$/m);
-assert.match(log, /^ok \d+ - the bridge starts the warm-up only for a foreground idle speaker and closes it on every stop path$/m);
+assert.match(log, /^ok \d+ - the bridge starts the warm-up only for a foreground idle speaker outside protected surfaces and closes it on every stop path$/m);
 assert.match(log, /^# tests 3$/m);
 assert.match(log, /^# pass 3$/m);
 assert.match(log, /^# skipped 0$/m);
