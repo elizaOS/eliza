@@ -13,7 +13,7 @@
  *   leaves the phone. A move keeps both files when the name is taken; trash is
  *   undoable from Files > Trash. A file that is no longer where the owner
  *   reviewed it is left alone.
- * - A move or trash carries `reviewed`: the identity (size, modified time) of
+ * - A move or trash carries `reviewed`: the opaque storage identity of
  *   each path as the phone read it when the proposal card was built. The agent
  *   never supplies it (the coordinator replaces whatever arrives), and the phone
  *   leaves any file whose identity has changed since then untouched.
@@ -21,7 +21,7 @@
  * Operations keep one flat shape, so a validated operation validates again
  * unchanged (journal recovery re-reads it).
  */
-import type { ActionParameterSchema } from "@elizaos/core";
+import type { ActionParameterSchema } from "@elizaos/core/schema-types";
 
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES = [
@@ -53,9 +53,8 @@ export type FilesFilterOperation = {
   from?: string;
   to?: string;
 };
-/** What the owner reviewed for one path: its size in bytes (0 for a folder)
- * and its modified time in milliseconds since the epoch. */
-export type FilesIdentity = { size: number; modified: number };
+/** Opaque identity of the storage object and revision shown in the review. */
+export type FilesIdentity = string;
 export type FilesAgentOperation =
   | FilesFilterOperation
   | { type: "files_open"; path: string }
@@ -117,18 +116,10 @@ function paths(value: unknown): string[] {
 function identities(value: unknown, count: number): FilesIdentity[] {
   if (!Array.isArray(value) || value.length !== count)
     throw Error("Invalid reviewed files");
-  return value.map((item) => {
-    const identity = row(item);
-    exact(identity, ["size", "modified"]);
-    const { size, modified } = identity;
-    if (
-      !Number.isSafeInteger(size) ||
-      (size as number) < 0 ||
-      !Number.isSafeInteger(modified) ||
-      (modified as number) < 0
-    )
+  return Array.from(value, (token: unknown) => {
+    if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
       throw Error("Invalid reviewed files");
-    return { size: size as number, modified: modified as number };
+    return token;
   });
 }
 /** Files operations that change files the owner reviewed by identity. */

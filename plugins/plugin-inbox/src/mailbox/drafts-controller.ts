@@ -379,6 +379,14 @@ export function createMailDraftsController(
     reviewRevision++;
     if (draft) {
       const { forward: _forward, ...copy } = structuredClone(draft);
+      // Legacy saved references can include readback-only fields such as messageId.
+      // The retained format keeps only the stable provider replacement identity.
+      if (copy.provider) {
+        copy.provider = {
+          draftId: copy.provider.draftId,
+          providerDigest: copy.provider.providerDigest,
+        };
+      }
       retained?.edit({ version: 1, owner, baseRevision, draft: copy, toQ });
     }
   }
@@ -515,6 +523,11 @@ export function createMailDraftsController(
           saved?.id === draftId
             ? "Sent. The sent copy was removed from this device; an earlier saved version of this email is kept."
             : "Sent. The local copy of this email was removed from this device.";
+    } catch {
+      // The send succeeded. Keep remaining copies if a cleanup write fails or loses its reply.
+      if (token === epoch)
+        status =
+          "Sent. A local copy of this email could not be removed from this device.";
     } finally {
       if (token === epoch) {
         busy = false;
@@ -1481,6 +1494,7 @@ export function createMailDraftsController(
     async editProvider(
       proposal: Bag,
       reference: { draftId: string; providerDigest: string },
+      review?: Bag | null,
     ) {
       if (retained?.available && !draft) {
         toast(
@@ -1492,19 +1506,56 @@ export function createMailDraftsController(
         toast("Local draft storage unavailable");
         return false;
       }
-      if (
-        draft &&
-        (draft.body !== proposal.bodyText ||
-          draft.subject !== proposal.subject ||
-          JSON.stringify(draft.to) !== JSON.stringify(proposal.to) ||
-          JSON.stringify(draft.cc || []) !==
-            JSON.stringify(proposal.cc || []) ||
-          JSON.stringify(draft.bcc || []) !==
-            JSON.stringify(proposal.bcc || []) ||
-          JSON.stringify(draft.attachments || []) !==
-            JSON.stringify(proposal.attachments || []))
-      )
+      const mode =
+        proposal.mode || (proposal.replyMessageId ? "reply" : "compose");
+      if (draft && !sentContent(draft, { ...proposal, mode }, true))
         return false;
+      let forward: ForwardSource | undefined;
+      if (proposal.forwardAttachments) {
+        const source = proposal.forwardAttachments;
+        const parts = review?.forwardedAttachments;
+        if (
+          mode !== "forward" ||
+          !Array.isArray(source.partIds) ||
+          !Array.isArray(parts) ||
+          !same(review?.forwardSource, {
+            messageId: source.messageId,
+            historyId: source.historyId,
+          }) ||
+          !same(
+            parts.map((part: Bag) => part?.partId),
+            source.partIds,
+          )
+        ) {
+          throw Error(
+            "Forwarded attachment review is unavailable. Review the original message again.",
+          );
+        }
+        forward = {
+          messageId: source.messageId,
+          historyId: source.historyId,
+          parts: parts.map((part: Bag) => ({
+            partId: part.partId,
+            name: part.name,
+            mimeType: part.mimeType,
+            size: part.size,
+          })),
+        };
+        if (
+          !forwardValid(forward) ||
+          !forward.parts.length ||
+          forward.parts.some(
+            (part) =>
+              !Number.isSafeInteger(part.size) ||
+              part.size < 0 ||
+              part.size > outgoingAttachmentLimits.maximumTotalBytes,
+          )
+        ) {
+          throw Error(
+            "Forwarded attachment review is unavailable. Review the original message again.",
+          );
+        }
+      }
       draft = {
         version: 1,
         id: crypto.randomUUID(),
@@ -1515,9 +1566,13 @@ export function createMailDraftsController(
         bcc: [...(proposal.bcc || [])],
         subject: proposal.subject,
         body: proposal.bodyText,
-        mode: proposal.mode,
+        mode,
         attachments: proposal.attachments || [],
-        provider: reference,
+        provider: {
+          draftId: reference.draftId,
+          providerDigest: reference.providerDigest,
+        },
+        ...(forward ? { forward } : {}),
         ...(proposal.replyMessageId
           ? { reply: { messageId: proposal.replyMessageId, threadId: "" } }
           : {}),

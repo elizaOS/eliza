@@ -137,7 +137,11 @@ test("Files capability negotiation preserves review, proposal visibility, and re
       capabilities: string[];
     }>("/register", { label: "Synthetic Files phone" }, "");
     expect(enrollment.status).toBe(200);
-    expect(enrollment.body.capabilities).toContain(FILES_CAPABILITY);
+    expect(
+      enrollment.body.capabilities.filter(
+        (value) => value === FILES_CAPABILITY,
+      ),
+    ).toEqual([FILES_CAPABILITY]);
     expect((await request("/capabilities", undefined, "")).status).toBe(503);
     verifiedGateway = true;
     const cloud = await request<{ deviceActions: { capabilities: string[] } }>(
@@ -146,7 +150,11 @@ test("Files capability negotiation preserves review, proposal visibility, and re
       "",
     );
     expect(cloud.status).toBe(200);
-    expect(cloud.body.deviceActions.capabilities).toContain(FILES_CAPABILITY);
+    expect(
+      cloud.body.deviceActions.capabilities.filter(
+        (value) => value === FILES_CAPABILITY,
+      ),
+    ).toEqual([FILES_CAPABILITY]);
     verifiedGateway = false;
 
     expect(

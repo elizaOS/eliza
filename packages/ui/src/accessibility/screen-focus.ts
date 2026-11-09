@@ -222,7 +222,8 @@ export function createScreenFocus(options: ScreenFocusOptions): ScreenFocus {
   let remaining = 0;
   let disposed = false;
   /** Whether the cause of the current wait lets focus be moved yet. */
-  let allowed: () => boolean = () => true;
+  const screenChangeAllowed = () => true;
+  let allowed: () => boolean = screenChangeAllowed;
   const step = () => {
     frame = 0;
     // Focus somewhere real (the person or the view put it there) ends the wait.
@@ -232,8 +233,15 @@ export function createScreenFocus(options: ScreenFocusOptions): ScreenFocus {
     if (--remaining <= 0) return;
     frame = view.requestAnimationFrame(step);
   };
-  const schedule = (cause: () => boolean = () => true) => {
+  const schedule = (cause: () => boolean = screenChangeAllowed) => {
     if (disposed || !ready()) return;
+    // A resize can refine its own wait, but cannot narrow a pending screen change.
+    if (
+      frame &&
+      allowed === screenChangeAllowed &&
+      cause !== screenChangeAllowed
+    )
+      return;
     allowed = cause;
     remaining = frames;
     if (frame) view.cancelAnimationFrame(frame);

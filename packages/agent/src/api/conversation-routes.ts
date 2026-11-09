@@ -1251,6 +1251,7 @@ async function resolvePersistedAssistantTurn(
             assertCurrent?.();
             return runtime.updateMemory({
               ...generatedTurn,
+              embedding: undefined,
               content: persistedContent,
             });
           },
@@ -2315,6 +2316,7 @@ async function recoverDurableConversationChatOutcome(
       assertCurrent?.();
       return runtime.updateMemory({
         ...assistant,
+        embedding: undefined,
         content: {
           ...assistant.content,
           inReplyTo: userMessageId,
@@ -6400,6 +6402,7 @@ async function streamConversationMessage(
                       assertLocalVoiceTurnFence();
                       await runtime.updateMemory({
                         ...exactPersistedResponse,
+                        embedding: undefined,
                         content: buildPersistedAssistantContent(
                           generationResolvedText,
                           generationResult,

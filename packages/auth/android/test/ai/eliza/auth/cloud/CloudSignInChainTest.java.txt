@@ -2,6 +2,7 @@ package ai.eliza.auth.cloud;
 
 import java.util.*;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;
 
 /** Executes the exact injected CloudSignInPlugin methods with synthetic HTTPS/store/bridge facades.
@@ -9,6 +10,12 @@ import org.json.JSONObject;
 public class CloudSignInChainTest {
  final Object lock=new Object(); boolean destroyed,defer; Attempt attempt; String mode="valid";
  final ArrayDeque<Runnable> queued=new ArrayDeque<>();
+ final java.util.concurrent.Executor worker=this::run;
+ final Main main=new Main();
+ static class Main { void postDelayed(Runnable task,long delay){/* Run only the immediate callback in this harness. */} }
+ static final long BROWSER_RETURN_GRACE_MS=1000;
+ static final long[] REVOCATION_RETRY_MS={5000,25000};
+ boolean pendingRetirementUnconfirmed; String cancelledBrowserState;
  String issuedState, issuedChallenge; int requests; long intent, reserved;
  final ArrayDeque<String> recoveryReplies = new ArrayDeque<>();
  boolean failReceiptRead, failReceiptRemove;
@@ -38,7 +45,7 @@ public class CloudSignInChainTest {
  static class Attempt {
   final CloudSignInEnvironment environment=TestRegistration.PRODUCTION;
   final String id=UUID.randomUUID().toString();final String requestId;Runnable credentialGuard=()->{};Attempt(){this(null);}Attempt(String requestId){this.requestId=requestId;}String email="owner@example.invalid",emailVerifier=CloudSignInFlow.newVerifier(),mfaType,mfaChallenge,phone;
-  long expiresAt=System.currentTimeMillis()+60000;boolean google,busy,cancelled,callbackReceived;int failedVerifies;PluginCall waiting;
+  long expiresAt=System.currentTimeMillis()+60000;boolean google,busy,cancelled,callbackReceived,browserLaunched,browserPaused,returnClaimed,returnHint,returnHintElapsed;String browserState,pendingRecord;int failedVerifies;PluginCall waiting;
   void cancel(){cancelled=true;}
  }
  static class Response { final int status;final JSONObject data;Response(int s,JSONObject d){status=s;data=d;} }
@@ -53,6 +60,14 @@ public class CloudSignInChainTest {
     return slots.get(key);
    }
    public void write(String key,String value){guard.run();slots.put(key,value);events.add(key.startsWith("cloud:")?"key":"receipt");}
+   public boolean compareExchange(String key,String expected,String value){
+    synchronized(slots){
+     guard.run();
+     if(!Objects.equals(slots.get(key),expected))return false;
+     if(value==null)remove(key);else write(key,value);
+     return true;
+    }
+   }
    public void remove(String key){
     guard.run();
     if(failReceiptRemove && key.equals(config().receiptSlot(TestRegistration.PRODUCTION)))
@@ -217,7 +232,7 @@ public class CloudSignInChainTest {
   slots.clear();events.clear();notifications.clear();CloudSignInChainTest host=new CloudSignInChainTest();
   CloudSignInFlow.Pending pending=CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,System.currentTimeMillis());
   slots.put(host.config().pendingSlot,pending.serialize());
-  Attempt owner=new Attempt(REQUEST);owner.google=true;owner.credentialGuard=host.reserveCredentialCommit();
+  Attempt owner=new Attempt(REQUEST);owner.google=true;owner.browserLaunched=true;owner.browserState=pending.state;owner.pendingRecord=pending.serialize();owner.credentialGuard=host.reserveCredentialCommit();
   PluginCall call=new PluginCall();owner.waiting=call;
   if(!mode.equals("cold-after-signout"))host.attempt=owner;
   if(mode.equals("cold-after-signout"))host.intent++;
@@ -225,7 +240,7 @@ public class CloudSignInChainTest {
   Intent callback=new Intent(TestRegistration.PRODUCTION.callback()+"#code=fixture-code&state="+pending.state);
   check(host.captureCallback(callback)&&callback.getData()==null,"registered callback consumed");
   check(host.reserved==1,"callback never reserves a new credential intent");
-  check(!slots.containsKey(host.config().pendingSlot),"matched legacy pending consumed");
+  check(slots.containsKey(host.config().pendingSlot)!=mode.equals("live"),"only an authorized live return consumes its record");
   if(mode.equals("live"))check(call.result!=null&&"authenticated".equals(call.result.optString("status")),"live supported callback keeps its accepted owner");
   else check(!slots.containsKey("cloud:production"),"newer signout cannot be undone by an old callback");
   if(mode.equals("cold-after-signout"))check(host.requests==0&&events.contains("signInIncomplete"),"unbound cold callback requires fresh sign-in before network");
@@ -243,13 +258,13 @@ public class CloudSignInChainTest {
    check(host.attempt==owner&&!owner.cancelled&&"old-pending".equals(slots.get(host.config().pendingSlot)),"stale/malformed cancel cannot retire MFA or burn state");
    check(mode.equals("malformed")?"invalid-request".equals(cancel.error):cancel.result!=null,"cancel outcome is explicit");
   }else{
-   check(owner.cancelled&&host.attempt==null&&cancel.result!=null,"matching or legacy cancel retires owner");
+   check(owner.cancelled&&host.attempt==null,"matching or legacy cancel retires owner");
    if(mode.startsWith("queued")){
     Attempt newer=new Attempt(ID);newer.credentialGuard=host.reserveCredentialCommit();host.attempt=newer;
     if(mode.equals("queued-completed"))host.attempt=null;
     slots.put(host.config().pendingSlot,"new-pending");while(!host.queued.isEmpty())host.queued.remove().run();
-    check(!newer.cancelled&&"new-pending".equals(slots.get(host.config().pendingSlot)),"queued old cleanup cannot erase remounted owner");
-   }else check(!slots.containsKey(host.config().pendingSlot),"owned pending removed");
+    check(cancel.result!=null&&!newer.cancelled&&"new-pending".equals(slots.get(host.config().pendingSlot)),"queued old cleanup cannot erase remounted owner");
+   }else check(cancel.result!=null&&!slots.containsKey(host.config().pendingSlot),"owned pending removed");
   }
  }
  /** Offer a retry at the first point where the worker allows the bridge to claim the attempt. */
