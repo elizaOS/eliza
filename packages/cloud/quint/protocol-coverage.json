@@ -308,7 +308,10 @@
       "packages/cloud/api/stripe/create-checkout-session/route.ts",
       "packages/cloud/api/v1/credits/checkout/route.ts",
       "packages/cloud/api/src/checkout-reconciliation.ts",
-      "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts"
+      "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+      "packages/cloud/shared/src/db/migrations/0559_stripe_checkout_provider_started_at.sql",
+      "packages/cloud/shared/src/lib/services/credits.ts",
+      "packages/cloud/shared/src/db/migrations/stripe-checkout-legacy-lock.integration.test.ts"
     ],
     "invariants": [
       "CreditPublishedOnce",
@@ -317,14 +320,15 @@
       "FirstDispatchNeverExtended",
       "RetryInsideOriginalWindow",
       "ForeignIntentNeverGranted",
-      "UnknownCacheRetainsSettlement"
+      "UnknownCacheRetainsSettlement",
+      "RetryRequiresCompletedLookup"
     ],
     "status": "partial",
     "limitations": [
-      "One immutable organization-credit quote, two competing settlement callers, two customer identities, one original Session and PaymentIntent, one conflicting prior ledger intent, credit value 2, six clock values and a three-tick original dispatch window. Fresh quotes, historical ambiguous rows with missing first-dispatch evidence, and failed historical rows have separate initial states.",
-      "Paid/matching is an equivalence class of every immutable receipt check. The provider preserves its request-key contract inside the supported retry window. The primary transaction atomically publishes the order and credit ledger, and uniqueness failure rolls it back. PostgreSQL/PGlite tests independently exercise actual SQL constraints and selected route/service schedules.",
-      "This component does not establish full checkout refinement. Legacy custom-amount settlement and pack quarantine, arbitrary monetary values, complete provider pagination, pre-provider membership/role withdrawal, multiple orders, refunds/reversals, external request delivery delay and live Stripe behavior require separate composition. No liveness claim: provider, storage or cache can remain unavailable.",
-      "Legacy settlement/quarantine and end-to-end checkout authorization remain open; a source link and finite instance do not close those obligations."
+      "One immutable organization-credit quote, two competing settlement callers, two customer identities, one original Session and PaymentIntent, one conflicting prior ledger intent, credit value 2, six clock values and a three-tick original dispatch window. Fresh quotes, historical ambiguous rows with missing first-dispatch evidence, and failed historical rows have separate initial states. Provider recovery has up to two pages, an accumulated match, separate scan/failure/conflict/completed states and at most two create dispatches.",
+      "Paid/matching is an equivalence class of every immutable receipt check. The provider preserves its request-key contract inside the supported retry window. The primary transaction atomically publishes the order and credit ledger, and uniqueness failure rolls it back. PostgreSQL/PGlite tests independently exercise actual SQL constraints and selected route/service schedules. An empty result authorizes another create only after the complete page traversal; distinct matching Sessions cause a conflict. Each page projects authenticated provider data, not a proof of remote consistency. A second caller may retain an earlier quoted observation and dispatch the same key after the first caller starts; it still must pass the original database time gate, but does not claim a fresh lookup. The lookup invariant applies to an observed recovery state.",
+      "CreditCheckoutQuote covers competing request identities, retained quote reads and customer pinning. LegacyCheckoutSettlement covers custom-amount grants and immutable pack quarantine. Strict conformance executes 44 named service, route, migration and real PostgreSQL lock cases.",
+      "Composition with complete authentication lifetime, arbitrary provider pagination, external request arrival, reversals, multiple independent orders and numeric domains remains open. Bounded safety and concrete regression correspondence do not establish whole-backend refinement or live Stripe acceptance."
     ]
   },
   {

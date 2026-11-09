@@ -627,3 +627,23 @@ describe("Stripe Checkout order authority", () => {
     ]);
   });
 });
+
+test("a matching late Session acknowledgement preserves a webhook-settled order", async () => {
+  const order = await deliveredOrder();
+  const settled = await service.settle(receipt(order.id));
+  const before = await rows();
+  await service.bindSession(order.id, "cs_a");
+  expect((await service.get(order.id))?.status).toBe("settled");
+  expect((await service.get(order.id))?.credit_transaction_id).toBe(
+    settled.order.credit_transaction_id,
+  );
+  expect(await rows()).toEqual(before);
+});
+
+test("a different late Session acknowledgement cannot replace a settled receipt", async () => {
+  const order = await deliveredOrder();
+  await service.settle(receipt(order.id));
+  const before = await rows();
+  await expect(service.bindSession(order.id, "cs_other")).rejects.toThrow("cannot be bound");
+  expect(await rows()).toEqual(before);
+});

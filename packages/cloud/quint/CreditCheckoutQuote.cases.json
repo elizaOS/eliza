@@ -9,7 +9,7 @@
   ],
   "bounds": {
     "domain": "Two callers, two organization/key slots, two symbolic users, two digests and two published customer identities. Four instances separate exact replay, changed initiator, changed digest and identical request keys in distinct tenants.",
-    "assumptions": "Valid input abstracts the service numeric/string/purchase validation and prior caller authentication. Digests are collision-free identities. Insert plus uniqueness conflict is atomic; lookup observes the winning primary row. Customer authority is read and pinned under the service locks. pinCustomer models the route customer comparison together with the service CAS.",
+    "assumptions": "Valid input abstracts the service numeric/string/purchase validation and prior caller authentication. Digests are collision-free identities. Insert plus uniqueness conflict is atomic; lookup observes the winning primary row. Customer authority is read and pinned under the service locks. pinCustomer models the route customer comparison together with the service CAS. Each caller retains the customer field from its original quote read. If that field was empty, the service may adopt a customer concurrently pinned by another caller; an already observed pin cannot be changed.",
     "limitations": "No cryptographic or TypeScript refinement proof. Symbolic validation classes are connected to concrete SQL/service tests. Backend authorization lifetime, external Stripe behavior, transport uncertainty and recovery after dispatch remain separate models or protocol obligations."
   },
   "conformance": "packages/cloud/quint/check-credit-checkout-order.ts",

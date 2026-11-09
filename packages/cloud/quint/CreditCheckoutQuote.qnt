@@ -7,7 +7,8 @@ module CreditCheckoutQuote {
   type Row = { present: bool, user: int, digest: int, creator: int, customer: int, started: bool }
   var s: {
     rows: int -> Row, original: int -> Row,
-    phase: int -> str, valid: Set[int], organizationCustomer: int -> int, selectedCustomer: int -> int
+    phase: int -> str, valid: Set[int], organizationCustomer: int -> int,
+    selectedCustomer: int -> int, observedCustomer: int -> int
   }
   pure val ids = Set(1, 2)
   pure val empty = { present: false, user: 0, digest: 0, creator: 0, customer: 0, started: false }
@@ -16,7 +17,8 @@ module CreditCheckoutQuote {
   pure def digest(caller) = if (caller == 2 and not(SameDigest)) 2 else 1
   action init = s' = {
     rows: ids.mapBy(_ => empty), original: ids.mapBy(_ => empty),
-    phase: ids.mapBy(_ => "idle"), valid: Set(), organizationCustomer: ids.mapBy(_ => 1), selectedCustomer: ids.mapBy(_ => 0)
+    phase: ids.mapBy(_ => "idle"), valid: Set(), organizationCustomer: ids.mapBy(_ => 1),
+    selectedCustomer: ids.mapBy(_ => 0), observedCustomer: ids.mapBy(_ => 0)
   }
   // valid includes all schema/amount/key/digest checks and the caller's
   // already-established authorization. Invalid input performs no insert.
@@ -39,6 +41,7 @@ module CreditCheckoutQuote {
     val row = s.rows.get(org(caller))
     s' = s.with("phase", s.phase.set(caller,
       if (row.present and row.user == user(caller) and row.digest == digest(caller)) "accepted" else "conflict"))
+      .with("observedCustomer", s.observedCustomer.set(caller, row.customer))
   }
   action rotateCustomer(owner) = s' = s.with("organizationCustomer",
     s.organizationCustomer.set(owner, if (s.organizationCustomer.get(owner) == 1) 2 else 1))
@@ -46,8 +49,11 @@ module CreditCheckoutQuote {
     s.phase.get(caller) == "accepted",
     val owner = org(caller)
     val row = s.rows.get(owner)
-    s' = if (row.customer != 0) s.with("phase", s.phase.set(caller, if (candidate == row.customer) "bound" else "customer_conflict"))
-        .with("selectedCustomer", s.selectedCustomer.set(caller, candidate))
+    s' = if (s.observedCustomer.get(caller) != 0)
+      s.with("phase", s.phase.set(caller, if (candidate == s.observedCustomer.get(caller)) "bound" else "customer_conflict"))
+        .with("selectedCustomer", s.selectedCustomer.set(caller, s.observedCustomer.get(caller)))
+      else if (row.customer != 0) s.with("phase", s.phase.set(caller, "bound"))
+        .with("selectedCustomer", s.selectedCustomer.set(caller, row.customer))
       else if (row.started or candidate != s.organizationCustomer.get(owner))
         s.with("phase", s.phase.set(caller, "customer_conflict"))
       else s.with("rows", s.rows.set(owner, row.with("customer", candidate)))
@@ -110,7 +116,17 @@ module CreditCheckoutQuote {
     .then(pinCustomer(1, 1)).then(rotateCustomer(1)).then(dispatch(1))
     .expect(s.rows.get(1).customer == 1 and s.rows.get(1).started and safety)
 }
-module CreditCheckoutQuoteReplay { import CreditCheckoutQuote(SameUser = true, SameDigest = true, SeparateOrganizations = false).* }
+module CreditCheckoutQuoteReplay {
+  import CreditCheckoutQuote(SameUser = true, SameDigest = true, SeparateOrganizations = false).*
+  run staleQuoteReadAdoptsConcurrentWinnerTest = init.then(validate(1, true)).then(validate(2, true))
+    .then(insert(1, false)).then(insert(2, false)).then(resolveWinner(2))
+    .then(pinCustomer(1, 1)).then(rotateCustomer(1)).then(pinCustomer(2, 2)).then(dispatch(2))
+    .expect(s.selectedCustomer.get(2) == 1 and safety)
+  run alreadyObservedCustomerCannotChangeTest = init.then(validate(1, true)).then(insert(1, false))
+    .then(pinCustomer(1, 1)).then(validate(2, true)).then(insert(2, false)).then(resolveWinner(2))
+    .then(rotateCustomer(1)).then(pinCustomer(2, 2))
+    .expect(s.phase.get(2) == "customer_conflict" and safety)
+}
 module CreditCheckoutQuoteUserConflict { import CreditCheckoutQuote(SameUser = false, SameDigest = true, SeparateOrganizations = false).* }
 module CreditCheckoutQuoteDigestConflict { import CreditCheckoutQuote(SameUser = true, SameDigest = false, SeparateOrganizations = false).* }
 module CreditCheckoutQuoteTenantIsolation { import CreditCheckoutQuote(SameUser = true, SameDigest = true, SeparateOrganizations = true).* }
