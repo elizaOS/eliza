@@ -456,7 +456,18 @@ test("the product-subclassable speech bridge compiles with the library against A
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-bridge-"));
   try {
     // The Cloud bridge uses the same pinned HTTP dependencies as consumer.gradle.
-    const cached = (group, artifact, version, file) => {
+    const dependency = (group, artifact, version, file) => {
+      if (process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR) {
+        const candidate = path.join(
+          process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR,
+          file,
+        );
+        assert.ok(
+          fs.existsSync(candidate),
+          `Missing speech compile dependency ${candidate}`,
+        );
+        return candidate;
+      }
       const directory = path.join(
         os.homedir(),
         ".gradle/caches/modules-2/files-2.1",
@@ -481,7 +492,7 @@ test("the product-subclassable speech bridge compiles with the library against A
       okhttp,
       execFileSync("unzip", [
         "-p",
-        cached(
+        dependency(
           "com.squareup.okhttp3",
           "okhttp-android",
           "5.3.2",
@@ -493,8 +504,13 @@ test("the product-subclassable speech bridge compiles with the library against A
     const dependencies = [
       sdk,
       okhttp,
-      cached("com.squareup.okio", "okio-jvm", "3.16.4", "okio-jvm-3.16.4.jar"),
-      cached(
+      dependency(
+        "com.squareup.okio",
+        "okio-jvm",
+        "3.16.4",
+        "okio-jvm-3.16.4.jar",
+      ),
+      dependency(
         "org.jetbrains.kotlin",
         "kotlin-stdlib",
         "2.2.21",
