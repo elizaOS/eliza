@@ -2316,12 +2316,67 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     });
   }
 
+  /**
+   * Mirrors plugin-sql `resolveMemoryUniqueness`: when neither the call nor
+   * the memory sets `unique` and the memory carries an embedding, a stored
+   * memory in the same table/room/world/entity scope with cosine similarity
+   * >= 0.95 makes this write non-unique. Runs inline on the storage scan
+   * plus exact vector search instead of calling `searchMemories`, which
+   * takes the same mutation lock and would deadlock. Returns `undefined`
+   * when the caller keeps the default (no embedding, or a dimension the
+   * active index cannot compare).
+   */
+  private async resolveMemoryUniqueness(
+    memory: Memory,
+    tableName: string,
+    unique: boolean | undefined,
+  ): Promise<boolean | undefined> {
+    if (unique !== undefined || memory.unique !== undefined) {
+      return unique ?? memory.unique;
+    }
+    const embedding = memory.embedding;
+    if (!embedding || embedding.length === 0) return undefined;
+    if (embedding.length !== this.embeddingDimension) return undefined;
+    const eligible = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (stored) =>
+        storedMemoryTableName(stored) === tableName &&
+        // plugin-sql scopes this read with `agent_id = this.agentId`.
+        (stored.agentId ?? this.agentId) === this.agentId &&
+        (!memory.roomId || stored.roomId === memory.roomId) &&
+        (!memory.worldId || stored.worldId === memory.worldId) &&
+        (!memory.entityId || stored.entityId === memory.entityId),
+    );
+    if (eligible.length === 0) return true;
+    const matches = await this.vectorIndex.searchExact(
+      [...embedding],
+      1,
+      0.95,
+      new Set(
+        eligible.flatMap((stored) => (stored.id ? [stored.id] : [])),
+      ),
+    );
+    return matches.length === 0;
+  }
+
   async createMemories(
     memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
   ): Promise<UUID[]> {
     return this.withMemoryMutationLock(async () => {
+      // Resolve uniqueness for the whole batch against rows stored before
+      // this batch, as plugin-sql does: its `resolveMemoryUniqueness` loop
+      // runs before the batch insert, so identical embeddings inside one
+      // batch all keep their default instead of flagging each other.
+      const resolvedUnique = await Promise.all(
+        memories.map(({ memory, tableName, unique }) =>
+          this.resolveMemoryUniqueness(memory, tableName, unique),
+        ),
+      );
       const ids: UUID[] = [];
-      for (const { memory, tableName, unique } of memories) {
+      for (let index = 0; index < memories.length; index += 1) {
+        const entry = memories[index];
+        if (!entry) continue;
+        const { memory, tableName, unique } = entry;
         const id = (memory.id ?? randomUUID()) as UUID;
         const stored: StoredMemory = {
           ...persistableMemory(memory),
@@ -2330,7 +2385,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           agentId: memory.agentId ?? this.agentId,
           // plugin-sql precedence: explicit flag, then the memory's own, then
           // the column default `true` that `unique: true` reads select on.
-          unique: unique ?? memory.unique ?? true,
+          unique: resolvedUnique[index] ?? unique ?? memory.unique ?? true,
           createdAt: memory.createdAt ?? Date.now(),
           metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
         };
