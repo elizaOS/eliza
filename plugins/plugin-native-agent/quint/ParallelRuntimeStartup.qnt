@@ -6,14 +6,14 @@ module ParallelRuntimeStartup {
     agentStarted: bool, gatewayStarted: bool, brokerOpened: bool,
     agentLive: bool, gatewayLive: bool, brokerLive: bool,
     agentReady: bool, gatewayReady: bool, running: bool,
-    disposed: bool, cleanupFailed: bool
+    disposed: bool, cleanupFailed: bool, killRequested: bool
   }
   action init = s' = {
     publication: 0, phase: "publish", retired: false,
     agentStarted: false, gatewayStarted: false, brokerOpened: false,
     agentLive: false, gatewayLive: false, brokerLive: false,
     agentReady: false, gatewayReady: false, running: false,
-    disposed: false, cleanupFailed: false
+    disposed: false, cleanupFailed: false, killRequested: false
   }
   action publish = all {
     not(s.retired), s.phase == "publish", s.publication < 3,
@@ -63,34 +63,47 @@ module ParallelRuntimeStartup {
       s.gatewayStarted and not(s.gatewayLive)
     }, retire
   }
+  // Scope.close requests destruction. Process.destroyForcibly does not
+  // acknowledge physical exit; the existing JVM tests wait for it separately.
   action cleanupSuccess = all {
     s.retired, s.phase == "cleanup",
-    s' = { ...s, agentLive: false, gatewayLive: false, brokerLive: false,
+    s' = { ...s, brokerLive: false, killRequested: true,
       disposed: true, phase: "closed" }
   }
-  // A broker close failure is reported, not disguised as reclaimed resources.
+  // Failed cleanup may leave the broker and children live. No reclamation
+  // receipt follows merely from attempted destruction or a thrown exception.
   action cleanupFailure = all {
     s.retired, s.phase == "cleanup", s.brokerOpened,
-    s' = { ...s, agentLive: false, gatewayLive: false,
+    s' = { ...s, killRequested: true,
       cleanupFailed: true, phase: "cleanup-failed" }
   }
   action cleanup = any { cleanupSuccess, cleanupFailure }
+  action observeAgentTermination = all {
+    s.retired, s.killRequested, s.agentLive,
+    s' = { ...s, agentLive: false }
+  }
+  action observeGatewayTermination = all {
+    s.retired, s.killRequested, s.gatewayLive,
+    s' = { ...s, gatewayLive: false }
+  }
   action advance = any {
     publish, spawnAgent, openBroker, spawnGateway,
     observeAgentReady, observeGatewayReady, admitRunning, timeout, observeFailure
   }
   action rejectForeignProbe = s' = s
-  action step = any { advance, retire, cleanup, exitAgent, exitGateway, s' = s }
+  action step = any { advance, retire, cleanup, exitAgent, exitGateway,
+    observeAgentTermination, observeGatewayTermination, s' = s }
 
   val PublicationsBeforeChildren =
     (s.agentStarted or s.gatewayStarted) implies s.publication == 3
   val OwnedGateway = s.gatewayStarted implies s.agentStarted and s.brokerOpened
   val ReadinessOrder = s.gatewayReady implies s.agentReady and s.gatewayStarted
   val RunningNeedsReadiness = s.running implies s.agentReady and s.gatewayReady and not(s.retired)
-  val DisposedMeansClosed = s.disposed implies
-    s.retired and not(s.agentLive) and not(s.gatewayLive) and not(s.brokerLive)
+  val DisposedFencesScope = s.disposed implies
+    s.retired and not(s.running) and not(s.brokerLive)
+  val ChildrenStopped = not(s.agentLive) and not(s.gatewayLive)
   val safety = PublicationsBeforeChildren and OwnedGateway and ReadinessOrder and
-    RunningNeedsReadiness and DisposedMeansClosed
+    RunningNeedsReadiness and DisposedFencesScope
 
   temporal StartupSettlesWithoutFairness = true.leadsTo(s.running or s.retired)
   temporal StartupSettles = advance.weakFair(s).implies(StartupSettlesWithoutFairness)
@@ -99,6 +112,12 @@ module ParallelRuntimeStartup {
   temporal ChildExitSettlesWithoutFairness =
     ((s.agentStarted and not(s.agentLive)) or (s.gatewayStarted and not(s.gatewayLive))).leadsTo(s.retired)
   temporal ChildExitSettles = advance.weakFair(s).implies(ChildExitSettlesWithoutFairness)
+  // Physical exit requires independent observations after a kill request.
+  // Fairness here is an environmental assumption, not a property of close().
+  temporal ObservedTerminationProgress =
+    (observeAgentTermination.weakFair(s) and observeGatewayTermination.weakFair(s)) implies
+      always(s.disposed implies eventually(ChildrenStopped))
+  temporal UnconditionalTerminationProgress = s.disposed.leadsTo(ChildrenStopped)
   temporal RetirementMonotone = always((s.retired implies next(s.retired)).orKeep(s))
 
   run startsBothBeforeReadinessTest = init.then(publish).then(publish).then(publish)
@@ -112,8 +131,8 @@ module ParallelRuntimeStartup {
     .then(cleanupSuccess).expect(not(s.agentStarted) and not(s.brokerOpened) and s.disposed and safety)
   run gatewayExitRetiresBothChildrenTest = init.then(publish).then(publish).then(publish)
     .then(spawnAgent).then(openBroker).then(spawnGateway).then(exitGateway)
-    .then(observeFailure).then(cleanupSuccess)
-    .expect(s.disposed and not(s.agentLive) and not(s.brokerLive) and safety)
+    .then(observeFailure).then(cleanupSuccess).then(observeAgentTermination)
+    .expect(s.disposed and ChildrenStopped and not(s.brokerLive) and safety)
   run foreignProbeCannotAdmitReadinessTest = init.then(publish).then(publish).then(publish)
     .then(spawnAgent).then(openBroker).then(spawnGateway).then(rejectForeignProbe)
     .expect(not(s.agentReady) and not(s.gatewayReady) and not(s.running) and safety)
@@ -122,8 +141,17 @@ module ParallelRuntimeStartup {
     .expect(not(s.running) and not(s.agentReady) and safety)
   run timeoutClosesPairTest = init.then(publish).then(publish).then(publish)
     .then(spawnAgent).then(openBroker).then(spawnGateway).then(timeout).then(cleanupSuccess)
-    .expect(s.disposed and safety)
+    .expect(s.disposed and s.agentLive and s.gatewayLive and safety)
+    .then(observeAgentTermination).then(observeGatewayTermination)
+    .expect(ChildrenStopped and safety)
   run cleanupFailureRemainsVisibleTest = init.then(publish).then(publish).then(publish)
     .then(spawnAgent).then(openBroker).then(spawnGateway).then(retire).then(cleanupFailure)
-    .expect(s.cleanupFailed and not(s.disposed) and not(s.running) and safety)
+    .expect(s.cleanupFailed and not(s.disposed) and not(s.running) and
+      s.agentLive and s.gatewayLive and s.brokerLive and safety)
+  run killRequestDoesNotObserveTerminationTest = init.then(publish).then(publish).then(publish)
+    .then(spawnAgent).then(openBroker).then(spawnGateway).then(retire).then(cleanupSuccess)
+    .expect(s.disposed and s.killRequested and s.agentLive and s.gatewayLive and safety)
+    .then(observeAgentTermination).then(observeGatewayTermination)
+    .expect(ChildrenStopped and safety)
+
 }
