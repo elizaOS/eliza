@@ -13,9 +13,9 @@
     "invariants": ["ExactlyOneLive", "CommittedEffectMatchesReceipt"],
     "status": "partial",
     "limitations": [
-      "The parent app stays present. One rollback races one inactive deployment deletion across their initial reads and guarded SQL writes. Activation takes the parent app lock before swapping the active row.",
+      "The parent app stays present and matches the rollback caller's organization. One rollback races one inactive deployment deletion across their initial reads and guarded SQL writes. Activation checks ownership under the parent lock before swapping the active row.",
       "Two maintained PGlite tests exercise both orderings through the real repository, hosting service and delete route with a seeded parent row. The authorization fixture and pre-write pauses are controlled. Independent PostgreSQL connection waits and remote artifacts are outside these tests.",
-      "Progress requires each admitted handler to resume and receive a database outcome. The frontend_publication and app_frontend_deletion models cover bounded upload, publication and whole-app deletion separately. Competing activation writers beyond those bounds, cross-model composition and restart remain open."
+      "Progress requires each admitted handler to resume and receive a database outcome. The frontend_publication model separately covers bounded upload, publication and foreign organization refusal. The app_frontend_deletion model checks whole-app deletion and the shared parent lock. Competing activation writers beyond those bounds, cross-model composition and restart remain open."
     ]
   }
 ]
