@@ -68,6 +68,13 @@ module LiveCaptureLifecycle {
   val RefusedStartDiscarded = s.phase == "refused" implies s.discarded and not(s.reported)
   val safety = TerminalDelivered and NoUnreportedEnd and RefusedStartDiscarded
 
+  // An admitted interruption reaches its still-current host, or that host retires.
+  // This checks model progress under delivery fairness, not the Java executor.
+  temporal TerminalDeliverySettlesWithoutFairness =
+    (s.phase == "pending-end").leadsTo(s.delivered or not(s.hostOpen))
+  temporal TerminalDeliverySettles =
+    deliverEnd.weakFair(s).implies(TerminalDeliverySettlesWithoutFairness)
+
   run phoneCallKeepsTerminalEventTest = init.then(nativeStart).then(reportStart)
     .then(protect).then(interrupt).then(deliverEnd).expect(s.delivered and safety)
   run oldStartupGuardDropsTerminalEventTest = init.then(nativeStart).then(reportStart)
