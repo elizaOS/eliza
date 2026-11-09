@@ -951,13 +951,15 @@
       "knownFailureNeverCompletes",
       "oldJobCannotSetNewPhase",
       "deployingCompletionRequiresHandoff",
-      "unconfirmedKeepsOriginalFence"
+      "unconfirmedKeepsOriginalFence",
+      "currentHandoffCompletionLinksContainer",
+      "appLinkRequiresHandoff"
     ],
     "status": "partial",
     "limitations": [
-      "One app, two generations, one parent job, two insert attempts, and three queue attempts. The real PGlite checks cover admission, known failures, interrupted handoff, lost child insert responses, and deletion inventory.",
-      "An exact durable child confirms parent handoff. Missing or conflicting evidence retains an unresolved parent and the original generation for operator reconciliation.",
-      "The model does not cover app-link recovery, live image builds, Docker, tenant databases, ingress, child settlement, or provider publication."
+      "One app, two generations, one parent job, two insert attempts, and three queue attempts. The real PGlite checks cover admission, known failures, interrupted handoff, app-link recovery, lost child insert responses, and deletion inventory.",
+      "An exact durable child confirms parent handoff and identifies the container for a generation-scoped app link. Missing or conflicting evidence retains an unresolved parent for operator reconciliation.",
+      "The model abstracts child readiness only for the race with app linking. Already terminal parents with missing links require separate reconciliation. Coverage gaps include live image builds, Docker, tenant databases, ingress, and child execution and publication protocols."
     ]
   },
   {

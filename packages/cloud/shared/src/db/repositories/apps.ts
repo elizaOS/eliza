@@ -797,7 +797,7 @@ export class AppsRepository {
     return app;
   }
 
-  /** Applies a generation-owned transition without touching a newer deployment. */
+  /** Applies a generation-owned transition, merging metadata into the locked row. */
   async updateDeploymentGeneration(
     id: string,
     generation: string | null,
@@ -813,7 +813,12 @@ export class AppsRepository {
       : undefined;
     const nextData =
       generation && data.metadata
-        ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
+        ? {
+            ...data,
+            metadata: sql`${apps.metadata} || ${JSON.stringify(
+              metadataForDeploymentGeneration(data.metadata, generation),
+            )}::jsonb`,
+          }
         : data;
     const write = async (database: typeof dbWrite | DbTransaction) => {
       const [updated] = await database

@@ -606,14 +606,14 @@ export class JobsRepository {
   }
 
   /** Positive handoff evidence. Missing or conflicting records cannot prove absence. */
-  async hasAppDeployProvisionHandoff(
+  async findAppDeployProvisionHandoff(
     appId: string,
     organizationId: string,
     userId: string,
     generation: string,
-  ): Promise<boolean> {
+  ): Promise<string | undefined> {
     const receipts = await dbWrite
-      .select({ id: jobs.id })
+      .select({ containerId: containers.id })
       .from(containers)
       .innerJoin(
         jobs,
@@ -637,7 +637,7 @@ export class JobsRepository {
         ),
       )
       .limit(2);
-    return receipts.length === 1;
+    return receipts.length === 1 ? receipts[0].containerId : undefined;
   }
 
   /** Complete primary inventory before an app deletion snapshots owned resources. */
