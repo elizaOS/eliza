@@ -1,0 +1,53 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/app-deployments.ts",
+    "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
+    "packages/cloud/shared/src/lib/services/app-deploy-orchestrator.ts",
+    "packages/cloud/shared/src/lib/services/app-deploy-runner.ts",
+    "packages/cloud/shared/src/lib/services/container-jobs-writer.ts",
+    "packages/cloud/shared/src/db/repositories/apps.ts",
+    "packages/cloud/shared/src/db/repositories/jobs.ts",
+    "packages/cloud/shared/src/node/provisioning-worker.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One app, two distinct deployment generations, at most two insert attempts, one original job identity, and at most three queue attempts. The second generation only fences the original job.",
+      "Primary compare-and-set and exact-intent insert are atomic. Generation IDs are fresh. Worker dispatch and settlement use the separate provisioning execution lease contract.",
+      "A worker-observed failure before the provision handoff is tracked separately from an unconfirmed handoff after worker interruption. The model has no claims about retry safety for that interruption, tenant DB creation, image builders, Docker, ingress, child-job publication, or the deployed status."
+    ],
+    "progress": "A known failed generation with an outstanding job settles failed if it stays current and dispatch and failure settlement are weakly fair. The progress obligation ends if deletion or replacement removes authority over the app row.",
+    "conformance": "The named PGlite scenarios exercise the actual app admission, durable job writer, default runner, and provisioning job worker. Lost transport response is injected after the real insert commits. They do not test Workerd routing or a live deployment provider."
+  },
+  "cases": [
+    {
+      "name": "app-deploy-generation",
+      "main": "app_deploy_generation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "bounds",
+        "jobHasAdmission",
+        "confirmedHandoffHasClaim",
+        "knownFailureNeverCompletes",
+        "oldJobCannotSetNewPhase"
+      ],
+      "temporal": ["KnownFailureSettles"],
+      "maxSteps": 26,
+      "samples": 1000,
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "KnownFailureSettles",
+          "expect": "holds",
+          "assumptions": [
+            "The scheduler eventually dispatches a continuously available job, and a live worker eventually settles a continuously enabled known failure.",
+            "No healthy build, provider response, or confirmed handoff is assumed."
+          ]
+        }
+      ]
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

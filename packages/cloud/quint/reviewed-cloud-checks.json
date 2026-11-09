@@ -1,4 +1,15 @@
 {
+  "app_deploy_generation.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+      "required": [
+        "a deploy attempt that fails after the runner claims it leaves the app redeployable",
+        "a worker that sees an already failed current generation settles it failed",
+        "an older queued generation cannot change a newer deployment",
+        "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
+      ]
+    }
+  ],
   "container_monitor.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",

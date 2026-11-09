@@ -61,6 +61,7 @@ import {
 } from "../lib/services/app-deletion-container";
 import { dispatchAppDeletionDatabase } from "../lib/services/app-deletion-database";
 import { dispatchAppDeployJob, readAppDeployJobData } from "../lib/services/app-deploy-job-service";
+import { AppDeployGenerationFailedError } from "../lib/services/app-deploy-orchestrator";
 import {
   APP_DEPLOYMENT_GENERATION_KEY,
   deploymentGenerationFromMetadata,
@@ -1664,6 +1665,8 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
     result?: ProcessingResult,
   ): Promise<boolean> {
     const appCacheError = safeErrorKind(err, AppCacheInvalidationRetryError) ? err : undefined;
+    const terminalAppDeploy =
+      job.type === JOB_TYPES.APP_DEPLOY && safeErrorKind(err, AppDeployGenerationFailedError);
     const retryableTransportError = safeErrorKind(err, RetryableProvisionTransportError)
       ? err
       : safeErrorKind(err, RetryableReplacementCleanupError)
@@ -1676,7 +1679,9 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       : retryableTransportError instanceof RetryableProvisionTransportError &&
           retryableTransportError.durableErrorText !== undefined
         ? retryableTransportError.durableErrorText
-        : jobErrorText(err);
+        : terminalAppDeploy && err.cause === undefined && job.error
+          ? finalizeJobErrorText(job.error)
+          : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
     if (safeErrorKind(err, AppDeletionOperatorRecoveryRequiredError)) {
@@ -1779,7 +1784,8 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       jobsRepository.incrementAttempt(
         job.id,
         errorMsg,
-        job.max_attempts,
+        // A durably failed app generation cannot be claimed by its runner again.
+        terminalAppDeploy ? 1 : job.max_attempts,
         onFailedInTx,
         job.execution_generation ?? undefined,
         this.executionOwnerId,
@@ -2022,6 +2028,7 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
               and(
                 eq(apps.id, appId),
                 eq(apps.organization_id, failedJob.organization_id),
+                isNull(apps.deletion_job_id),
                 sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`,
               ),
             )
@@ -2625,13 +2632,9 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       // Apps lane (Product 2): the node deploy. The Worker enqueues this; the
       // daemon runs the real isolated provision via the injected AppDeployRunner.
       //
-      // Self-mark completed on success (mirrors the AGENT_* arms). The runner is
-      // NOT idempotent across separate successful runs — it ensures the tenant
-      // DB, creates a `containers` row, and enqueues a CONTAINER_PROVISION. A
-      // slow-but-successful deploy that crosses PER_JOB_TIMEOUT_MS would, without
-      // a terminal row, get re-swept by recoverStaleJobs() and double-provision
-      // (a second container row + a second CONTAINER_PROVISION). A completed row
-      // is the only thing that prevents the re-sweep.
+      // The runner can claim each app generation once. A known failed generation
+      // throws and uses failure settlement. A completed job is excluded from
+      // the recovery sweep.
       case JOB_TYPES.APP_DEPLOY:
         await this.assertExecutionMutationLease(job);
         await dispatchAppDeployJob(job);
