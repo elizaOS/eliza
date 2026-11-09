@@ -266,6 +266,17 @@ it("still retracts the recent save on a bare retraction", async () => {
   expect(await isLive(stretch.definition.id)).toBe(false);
 });
 
+it("retracts the recent save when the planner target is a pronoun", async () => {
+  const stretch = await seed("Stretch");
+  await rememberSave(stretch);
+  const result = await invoke(
+    { action: "delete", target: "that one" },
+    "actually don't save that one",
+  );
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(await isLive(stretch.definition.id)).toBe(false);
+});
+
 it("deletes the named reminder, not the recent save", async () => {
   const dentist = await seed("Dentist");
   const stretch = await seed("Stretch");

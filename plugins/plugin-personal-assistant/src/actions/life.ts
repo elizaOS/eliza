@@ -1214,6 +1214,7 @@ type NamesakeOp = {
 const RETIME_VERB =
   "(?:make|change|move|push|set|switch|bump|shift|reschedule|put)";
 const DEICTIC_REF = String.raw`(?:(?:that|this)(?:\s+one)?|it)`;
+const DEICTIC_TARGET_RE = new RegExp(`^(?:${DEICTIC_REF}|the last one)$`, "i");
 const FOLLOW_UP_LEAD = String.raw`^(?:(?:actually|ok|okay|oh|no|nah|wait|hmm|sorry|so|um|uh|yeah|yes|and|then|hey|oops)[,.!]?\s+)*(?:please\s+)?`;
 const NUMBER_WORDS: Record<string, number> = {
   a: 1,
@@ -5075,9 +5076,12 @@ async function runLifeOperationHandlerInner(
       // Only undo the recent save when the message is about it: a planner
       // target must resolve to that definition, and a different mutation
       // ("never mind the laundry, mark the dishes done") is not a retraction.
+      // A pronoun target ("that one") names the recent save itself.
       const plannerTarget = [params.target, params.title].find(
         (candidate) =>
-          typeof candidate === "string" && candidate.trim().length > 0,
+          typeof candidate === "string" &&
+          candidate.trim().length > 0 &&
+          !DEICTIC_TARGET_RE.test(candidate.trim()),
       );
       const plannerOperation =
         explicitAction !== null && explicitAction !== "phone"
