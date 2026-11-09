@@ -25,7 +25,7 @@
   "conformance": "packages/cloud/quint/check-app-frontend-deletion.mjs",
   "bounds": {
     "domain": "One app, two immutable published deployment identities, reversible app deactivation/reactivation and one final deletion request with rollback, acknowledged commit or lost acknowledgement.",
-    "atomicity": "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows; a missing parent rejects activation.",
+    "atomicity": "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows; a missing parent or nonmatching authorized organization rejects activation.",
     "conformance": "Twenty-three real PGlite original-job service/repository/public-serving cases retain complete objects across rejected and lost final SQL writes, reject reactivation after the permanent deletion fence, and clean all 1002 retained manifests only after acknowledged cascade, with the v2 job retaining cleanup across unknown outcomes. Two separate PostgreSQL parent-lock cases retain the repository concurrency proof. Provider I/O remains controlled.",
     "gaps": "Object-retention projection only; the app_teardown_authority model owns the new irreversible lifecycle, provider receipts and pending API contract. Reactivation in this older model is a conservative overapproximation of unfenced same-owner operations, not permission to reactivate a deletion-fenced app. No general refinement, live R2, arbitrary-count proof or orphan GC; older mixed writers require coordinated rollout.",
     "progress": "A pending SQL operation settles under weak fairness of its continuation; acknowledged cleanup settles under weak fairness of cleanup. No provider availability, successful deletion, orphan cleanup or elapsed deadline guarantee."
@@ -36,8 +36,13 @@
       "main": "app_frontend_deletion",
       "init": "init",
       "step": "step",
-      "invariants": ["safety"],
-      "temporal": ["FinalizationSettles", "AcknowledgedCleanupSettles"],
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [
+        "FinalizationSettles",
+        "AcknowledgedCleanupSettles"
+      ],
       "temporalChecks": [
         {
           "property": "FinalizationSettles",
@@ -63,7 +68,9 @@
       "main": "app_frontend_deletion_locks",
       "init": "init",
       "step": "step",
-      "invariants": ["safety"],
+      "invariants": [
+        "safety"
+      ],
       "maxSteps": 20,
       "samples": 1000,
       "deadlock": false,

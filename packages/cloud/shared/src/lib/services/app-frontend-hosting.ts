@@ -346,10 +346,7 @@ export class AppFrontendHostingService {
     // afterward: an ambiguous reply may have committed the active state.
     if (input.activate ?? true) {
       try {
-        const activated = await appFrontendDeploymentsRepository.activate(
-          input.app.id,
-          deployment.id,
-        );
+        const activated = await appFrontendDeploymentsRepository.activate(input.app, deployment.id);
         if (activated) {
           // Bounded retention: prune superseded deployments (+ their R2 bytes)
           // beyond keep-N so storage doesn't grow without bound. Best-effort.
@@ -422,8 +419,11 @@ export class AppFrontendHostingService {
   }
 
   /** Activate a specific (ready/superseded) deployment — this is rollback too. */
-  async activate(appId: string, deploymentId: string): Promise<AppFrontendDeployment | undefined> {
-    const target = await appFrontendDeploymentsRepository.getByIdForApp(appId, deploymentId);
+  async activate(
+    app: DeployBundleInput["app"],
+    deploymentId: string,
+  ): Promise<AppFrontendDeployment | undefined> {
+    const target = await appFrontendDeploymentsRepository.getByIdForApp(app.id, deploymentId);
     if (!target) return undefined;
     if (
       target.status === "pending" ||
@@ -434,7 +434,7 @@ export class AppFrontendHostingService {
         `Deployment ${deploymentId} is not ready to activate (status: ${target.status})`,
       );
     }
-    return appFrontendDeploymentsRepository.activate(appId, deploymentId);
+    return appFrontendDeploymentsRepository.activate(app, deploymentId);
   }
 
   /** Best-effort delete of a deployment's R2 artifacts (call after the row delete). */

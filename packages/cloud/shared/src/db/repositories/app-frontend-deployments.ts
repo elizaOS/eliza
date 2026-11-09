@@ -17,7 +17,7 @@ import {
   type FrontendBuildMeta,
   type FrontendManifest,
 } from "../schemas/app-frontend-deployments";
-import { apps } from "../schemas/apps";
+import { type App, apps } from "../schemas/apps";
 
 /** True when an error is a unique-violation on the (app_id, version) index. */
 function isVersionRaceConflict(error: unknown): boolean {
@@ -257,20 +257,26 @@ export class AppFrontendDeploymentsRepository {
   }
 
   /**
-   * Atomically make `id` the single active deployment for `appId`: demote any
+   * Atomically make `id` the single active deployment for the owned app: demote any
    * current active to `superseded`, then promote the target to `active`. The
    * partial unique index guarantees no two rows are ever active at once.
    */
-  async activate(appId: string, id: string): Promise<AppFrontendDeployment | undefined> {
+  async activate(
+    app: Pick<App, "id" | "organization_id">,
+    id: string,
+  ): Promise<AppFrontendDeployment | undefined> {
     try {
-      return await this.activateOrRollBack(appId, id);
+      return await this.activateOrRollBack(app, id);
     } catch (error) {
       if (error instanceof DeploymentNotPromotable) return undefined;
       throw error;
     }
   }
 
-  private async activateOrRollBack(appId: string, id: string): Promise<AppFrontendDeployment> {
+  private async activateOrRollBack(
+    { id: appId, organization_id: organizationId }: Pick<App, "id" | "organization_id">,
+    id: string,
+  ): Promise<AppFrontendDeployment> {
     return await dbWrite.transaction(async (tx) => {
       // Share final app deletion's parent lock before touching deployments.
       // A mutable active-first ordering alone is insufficient when another
@@ -278,7 +284,7 @@ export class AppFrontendDeploymentsRepository {
       const [app] = await tx
         .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
         .from(apps)
-        .where(eq(apps.id, appId))
+        .where(and(eq(apps.id, appId), eq(apps.organization_id, organizationId)))
         .for("update");
       if (!app) throw new DeploymentNotPromotable();
       if (app.deletionJobId) throw new AppDeletionInProgressError(app.id, app.deletionJobId);
