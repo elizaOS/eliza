@@ -16,7 +16,8 @@ import android.provider.Settings;
  * public on the lock screen (status text only, never content), with Pause and Stop usable without
  * unlocking and Resume requiring authentication. The system microphone privacy indicator is
  * separate and is not controlled here. Attention states (before unlock, revoked permission,
- * stopped after errors, no speech model) get a quiet non-ongoing status notification.
+ * stopped after errors, no speech model) and a restart that turned listening off get a quiet
+ * non-ongoing status notification.
  */
 final class ListenerNotifications {
  private ListenerNotifications(){}
@@ -28,8 +29,15 @@ final class ListenerNotifications {
  static final String CHANNEL_ACTIVE="listening-indicator",CHANNEL_STATUS="listener-status",CHANNEL_RETIRED="listening";
  static final int ACTIVE_ID=1,STATUS_ID=2;
 
+ private static volatile boolean channelsCreated;
+
+ /**
+  * Creates the channels and deletes the retired one once per process; later calls only look the
+  * indicator channel up, and recreate both when it has gone (the user cleared the app's data).
+  */
  static void channels(Context context){
   NotificationManager manager=context.getSystemService(NotificationManager.class);
+  if(channelsCreated&&manager.getNotificationChannel(CHANNEL_ACTIVE)!=null)return;
   manager.deleteNotificationChannel(CHANNEL_RETIRED);
   NotificationChannel active=new NotificationChannel(CHANNEL_ACTIVE,"Always-on listening",NotificationManager.IMPORTANCE_DEFAULT);
   active.setDescription("Shown whenever always-on listening is on or paused. Blocking it turns listening off.");
@@ -42,6 +50,7 @@ final class ListenerNotifications {
   status.setShowBadge(false);
   manager.createNotificationChannel(active);
   manager.createNotificationChannel(status);
+  channelsCreated=true;
  }
 
  private static PendingIntent action(Context context,String action,int code){
@@ -67,10 +76,10 @@ final class ListenerNotifications {
   Notification.Builder builder=new Notification.Builder(context,CHANNEL_ACTIVE)
    .setSmallIcon(R.drawable.ic_listening)
    .setContentTitle(ListenerPolicy.label(state))
-   .setContentText(ListenerPolicy.processesAudio(state)?"Say “"+BuildConfig.SENSE_WAKE_LABEL+"” to ask. Audio stays on this phone and is not saved."
-    :state==ListenerPolicy.State.PAUSED_DISPLAY_OFF?"Turn on Always-on display to keep listening with the screen off. Listening resumes when the indicator shows."
-    :state==ListenerPolicy.State.PAUSED_FULLSCREEN?"The Listening indicator is hidden by a fullscreen app. Listening resumes when the status bar shows again."
-    :state==ListenerPolicy.State.PAUSED_SHADE?"Listening resumes when the notification shade closes."
+   .setContentText(ListenerPolicy.processesAudio(state)?"Unlock and say “"+BuildConfig.SENSE_WAKE_LABEL+"” to ask. Audio stays on this phone and is not saved."
+    :state==ListenerPolicy.State.PAUSED_DISPLAY_OFF?"Turn on Always-on display to keep listening with the screen off."
+    :state==ListenerPolicy.State.PAUSED_FULLSCREEN?"Resumes when the status bar shows again."
+    :state==ListenerPolicy.State.PAUSED_SHADE?"Resumes when you close the shade."
     :state==ListenerPolicy.State.PAUSED_TRANSITION?"Listening resumes when the Listening indicator shows."
     :"The microphone is not being analysed.")
    .setCategory(Notification.CATEGORY_SERVICE)
@@ -126,18 +135,31 @@ final class ListenerNotifications {
  static void showStatus(Context context,ListenerPolicy.State state){
   NotificationManager manager=context.getSystemService(NotificationManager.class);
   if(manager==null)return;
-  if(!ListenerPolicy.needsAttention(state)){manager.cancel(STATUS_ID);return;}
+  // A process restart drops the opt-in (see ListenerStore); say so once instead of going silently off.
+  boolean lapsed=state==ListenerPolicy.State.OFF&&lapsedAfterRestart(context);
+  // Posted once per process, so dismissing it is not undone by the next screen change.
+  if(lapsed&&lapseNoticePosted)return;
+  if(!ListenerPolicy.needsAttention(state)&&!lapsed){manager.cancel(STATUS_ID);return;}
   channels(context);
   Notification.Builder builder=new Notification.Builder(context,CHANNEL_STATUS)
    .setSmallIcon(R.drawable.ic_listening)
-   .setContentTitle(ListenerPolicy.label(state))
-   .setContentText(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED?"Listening is off until its notification is allowed. Open listening settings."
+   .setContentTitle(lapsed?"Listening off":ListenerPolicy.label(state))
+   .setContentText(lapsed?"Listening turned off after a restart. Tap to turn it on."
+    :state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED?"Listening needs its notification, including on the lock screen. Open listening settings."
+    :state==ListenerPolicy.State.SPEECH_UNAVAILABLE?"The speech model is not ready. Open listening settings to try again."
     :state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone."
     :state==ListenerPolicy.State.INDICATOR_UNAVAILABLE?"The microphone stays off until the system Listening indicator can be shown."
     :state==ListenerPolicy.State.STOPPED_INDICATOR_LOST?"The system Listening indicator was not shown, so the microphone was turned off. Open listening settings to resume.":"The microphone is off. Open listening settings to turn it back on.")
    .setVisibility(Notification.VISIBILITY_PUBLIC)
    .setOnlyAlertOnce(true)
    .setContentIntent(settings(context));
-  try{manager.notify(STATUS_ID,builder.build());}catch(SecurityException notificationsDenied){}
+  try{manager.notify(STATUS_ID,builder.build());lapseNoticePosted|=lapsed;}catch(SecurityException notificationsDenied){}
+ }
+
+ private static volatile boolean lapseNoticePosted;
+
+ /** Unreadable settings count as not lapsed, so nothing is posted. */
+ private static boolean lapsedAfterRestart(Context context){
+  try{return new ListenerStore(context).lapsedAfterRestart();}catch(RuntimeException unreadable){return false;}
  }
 }

@@ -455,13 +455,75 @@ test("the product-subclassable speech bridge compiles with the library against A
   const capacitor = path.join(fixtures, "capacitor-api");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-bridge-"));
   try {
+    // The Cloud bridge uses the same pinned HTTP dependencies as consumer.gradle.
+    const dependency = (group, artifact, version, file) => {
+      if (process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR) {
+        const candidate = path.join(
+          process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR,
+          file,
+        );
+        assert.ok(
+          fs.existsSync(candidate),
+          `Missing speech compile dependency ${candidate}`,
+        );
+        return candidate;
+      }
+      const directory = path.join(
+        os.homedir(),
+        ".gradle/caches/modules-2/files-2.1",
+        group,
+        artifact,
+        version,
+      );
+      const found = fs.existsSync(directory)
+        ? fs
+            .readdirSync(directory)
+            .map((hash) => path.join(directory, hash, file))
+            .find((candidate) => fs.existsSync(candidate))
+        : undefined;
+      assert.ok(
+        found,
+        `Install the native speech dependency ${group}:${artifact}:${version}`,
+      );
+      return found;
+    };
+    const okhttp = path.join(temp, "okhttp.jar");
+    fs.writeFileSync(
+      okhttp,
+      execFileSync("unzip", [
+        "-p",
+        dependency(
+          "com.squareup.okhttp3",
+          "okhttp-android",
+          "5.3.2",
+          "okhttp-release.aar",
+        ),
+        "classes.jar",
+      ]),
+    );
+    const dependencies = [
+      sdk,
+      okhttp,
+      dependency(
+        "com.squareup.okio",
+        "okio-jvm",
+        "3.16.4",
+        "okio-jvm-3.16.4.jar",
+      ),
+      dependency(
+        "org.jetbrains.kotlin",
+        "kotlin-stdlib",
+        "2.2.21",
+        "kotlin-stdlib-2.2.21.jar",
+      ),
+    ].join(path.delimiter);
     execFileSync(
       java("javac"),
       [
         "--release",
         "21",
         "-cp",
-        sdk,
+        dependencies,
         "-d",
         temp,
         ...javaFiles(voice),

@@ -399,6 +399,25 @@ recorded. Legacy identity recovery pages through the complete candidate history.
 Matching original EVM receipts remain recoverable after receive-wallet rotation.
 Resubmission still requires the configured wallet to match the original signer.
 
+App teardown uses one immutable `app_delete` job and a permanent app fence.
+Database and container child jobs retain original resource identities and must
+record confirmed, quiescent outcomes before final cascade. Unknown legacy targets
+remain pending. The job stores no database URI; placement stays in `app_databases`.
+Migration 0566 normalizes future naive job-clock defaults to UTC without rewriting
+historical timestamps whose original timezone is unknown.
+Version-2 roots retain every frontend manifest in immutable job data during the
+metadata cascade. Small progress receipts acknowledge exact object deletes; only
+confirmed cleanup completes the root or permits its organization to disappear.
+Upload rows retain the full planned key set before the first PUT. A matching
+writer must acknowledge every issued PUT and stop before cleanup; unknown PUT
+outcomes and legacy ambiguous uploads require explicit recovery. Time passing
+is not writer quiescence. The generation belongs to one original writer; recovery
+must not share it with a writer that can still issue PUTs. Recovery requires the original storage binding and
+immutable keys. Legacy
+version-1 roots retain their prior best-effort semantics and possible orphan debt.
+Apply the migration before updating all upload/deletion writers; mixed old writers
+do not provide the new cleanup protocol.
+
 Vertex job refresh requires migration 0562. It orders complete provider observations
 by exact nanosecond update time and publishes successful model ownership atomically.
 Payload generations are immutable; incomplete stored payloads fail explicitly.

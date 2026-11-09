@@ -339,7 +339,7 @@ async function claim(type: string, organizationId: string, limit = 5) {
     ).toEqual([{ execution_generation: persisted.execution_generation, owner_id: owner }]);
   });
 
-  test("queue eligibility keeps transaction time after an advisory lock wait", async () => {
+  test("queue eligibility uses current database time after an advisory lock wait", async () => {
     const organizationId = randomUUID();
     const job = await seed(sharedTypes[0], organizationId);
     await setup.query(
@@ -380,11 +380,11 @@ async function claim(type: string, organizationId: string, limit = 5) {
     } finally {
       await locker.query("ROLLBACK");
     }
-    const oldTransaction = await pending;
+    const waitingTransaction = await pending;
     expect(waiting).toBe(true);
     expect(dueAfterStart).toBe(true);
-    expect(oldTransaction).toEqual([]);
-    expect((await claim(sharedTypes[0], organizationId)).map((row) => row.id)).toEqual([job.id]);
+    expect(waitingTransaction.map((row) => row.id)).toEqual([job.id]);
+    expect(await claim(sharedTypes[0], organizationId)).toEqual([]);
   }, 30_000);
 
   test("invalid shared capacity inputs return empty without changing the queue", async () => {

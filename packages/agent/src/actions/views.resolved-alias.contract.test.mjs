@@ -107,6 +107,7 @@ async function execute(
       role: owner ? "OWNER" : "USER",
     }),
     getStreamingContext: () => undefined,
+    getDeviceActionTurn: () => undefined,
     getTurnActionConstraint: () => undefined,
     isObjectRecord: (v) =>
       v !== null && typeof v === "object" && !Array.isArray(v),

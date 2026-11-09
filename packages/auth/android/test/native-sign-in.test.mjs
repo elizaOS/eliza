@@ -194,11 +194,11 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ACTUAL_CALLBACK: between(
       plugin,
       " private boolean captureCallback(",
-      " /** Cancelled, ended or consumed",
+      " /** Retire only the captured record",
     ),
     ACTUAL_BURN: between(
       plugin,
-      " private void burnUnclaimedPending()",
+      " private void burnUnclaimedPending(Attempt owner)",
       " // ── Email code and MFA:",
     ),
     ACTUAL_VERIFY:
@@ -252,6 +252,10 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     const output = runJvm(
       [...pure, ...support, file],
       "ai.eliza.auth.cloud.CloudSignInChainTest",
+    );
+    assert.match(
+      output,
+      /^PASS native code verification ownership \(3 scenarios\)$/m,
     );
     assert.match(
       output,
@@ -312,7 +316,7 @@ test("the plugin owns every secret, compares state before burning and logs only 
     /@CapacitorPlugin/,
     "the host subclass declares its plugin name",
   );
-  for (const product of [/Alpha/, /elizaresearch/, /BuildConfig/])
+  for (const product of [/Alpha/, /alphacompute/, /BuildConfig/])
     assert.doesNotMatch(
       plugin,
       product,
@@ -389,7 +393,7 @@ test("the plugin owns every secret, compares state before burning and logs only 
   const capture = between(
     plugin,
     "private boolean captureCallback(",
-    "private void burnUnclaimedPending()",
+    "private void burnUnclaimedPending(Attempt owner)",
   );
   assert.ok(
     capture.indexOf("intent.setData(null)") > 0 &&
@@ -403,10 +407,12 @@ test("the plugin owns every secret, compares state before burning and logs only 
   assert.doesNotMatch(noResult, /\.remove\(|burnUnclaimedPending/);
   assert.ok(
     capture.indexOf("!pending.sameState(received)) return;") <
-      capture.indexOf("store.remove(config().pendingSlot)"),
+      capture.indexOf(
+        "compareExchange(config().pendingSlot, pendingRaw, null)",
+      ),
   );
   assert.ok(
-    capture.indexOf("store.remove(config().pendingSlot)") <
+    capture.indexOf("compareExchange(config().pendingSlot, pendingRaw, null)") <
       capture.indexOf('"/steward/auth/oauth/exchange"'),
   );
   // Tail: Android authorization before connect; receipt, key, ack; the Steward session is revoked.
@@ -672,6 +678,58 @@ public class ElizaHostContractTest {
         "ai.elizaos.app.ElizaHostContractTest",
       ),
       /^PASS Eliza host contract \(\d+ checks\)/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("actual Android resident credential mutation owns the exact stop and write (plain JVM)", () => {
+  const source = read(join(elizaJava, "ElizaResidentCredentials.java"));
+  const { file, directory } = harness(
+    "ResidentCredentialMutationTest.java.txt",
+    {
+      ACTUAL_LIFECYCLE: between(
+        source,
+        "    private static final Object LIFECYCLE",
+        "    private ElizaResidentCredentials()",
+      ),
+      ACTUAL_RESERVE: between(
+        source,
+        "    static Runnable reserve()",
+        "    /** Read-only request fence",
+      ),
+      ACTUAL_HOST: between(
+        source,
+        "        CredentialMutationConductor.Host host()",
+        "\n    }\n}",
+      ),
+    },
+  );
+  const workspace = resolve(root, "../../..");
+  const storage = join(
+    workspace,
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly",
+  );
+  const lease = join(
+    workspace,
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java",
+  );
+  try {
+    assert.match(
+      runJvm(
+        [
+          ...[
+            "CredentialIntentFence",
+            "CredentialMutationConductor",
+            "CredentialSlotMutation",
+          ].map((name) => join(storage, `${name}.java`)),
+          lease,
+          file,
+        ],
+        "ai.elizaos.app.ResidentCredentialMutationTest",
+      ),
+      /^PASS Android resident credential mutation \(7 scenarios\)/,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

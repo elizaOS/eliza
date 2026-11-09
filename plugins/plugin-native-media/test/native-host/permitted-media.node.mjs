@@ -47,11 +47,16 @@ test("permitted-library identities, video copy rules and host placement", (t) =>
   );
 });
 
-test("exact selected-photo copies, document bytes and source references", (t) => {
+test("exact selected-photo copies, document bytes, source references and PDF bounds", (t) => {
   assert.match(
     run(
       t,
-      ["SelectedPhotoCopy", "DocumentBytes", "SourceReferences"],
+      [
+        "SelectedPhotoCopy",
+        "DocumentBytes",
+        "SourceReferences",
+        "PdfPageLimits",
+      ],
       "SelectedDocumentsTest",
     ),
     /^\d+ assertions passed/,

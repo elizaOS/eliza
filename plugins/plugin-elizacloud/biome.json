@@ -21,7 +21,11 @@
 			"init.ts",
 			"package.json",
 			"tsconfig.json",
-			"tsconfig.build.json"
+			"tsconfig.build.json",
+			"src/routes/cloud-warm-route.ts",
+			"src/routes/cloud-warm-route.test.ts",
+			"quint/**/*.mjs",
+			"quint/**/*.json"
 		]
 	},
 	"assist": {

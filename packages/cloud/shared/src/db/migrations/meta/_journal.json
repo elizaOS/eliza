@@ -3739,6 +3739,34 @@
       "when": 1796083200183,
       "tag": "0565_stripe_legacy_retention_index",
       "breakpoints": true
+    },
+    {
+      "idx": 534,
+      "version": "7",
+      "when": 1796083200184,
+      "tag": "0566_app_deletion_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 535,
+      "version": "7",
+      "when": 1796083200185,
+      "tag": "0567_job_utc_clock_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 536,
+      "version": "7",
+      "when": 1796083200186,
+      "tag": "0568_app_cleanup_manifest",
+      "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1796083200187,
+      "tag": "0569_cli_auth_session_verifier",
+      "breakpoints": true
     }
   ]
 }

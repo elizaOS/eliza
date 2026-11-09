@@ -38,9 +38,11 @@ import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   buildTestHandler,
+  customActionExecutionBlockReason,
   registerCustomActionLive,
   unregisterCustomActionLive,
 } from "../runtime/custom-actions.ts";
+import { getActiveSandboxManager } from "../services/sandbox-manager.ts";
 import { runShell } from "../services/shell-execution-router.ts";
 import { customActionGenerateTemplate } from "./custom-action-prompt.js";
 import { parseOptionalBooleanQuery } from "./query-parameters.ts";
@@ -607,7 +609,7 @@ export async function handleMiscRoutes(
             onStderr: (text) => appendAndEmit("stderr", text),
             toolName: "terminal.run",
           },
-          null,
+          { resolveSandboxManager: async () => getActiveSandboxManager() },
         );
       })
       .then((result) => {
@@ -625,14 +627,6 @@ export async function handleMiscRoutes(
               res,
               `Terminal output exceeded the ${MAX_CAPTURE_BYTES}-byte complete-capture safety limit; no partial result was returned.`,
               413,
-            );
-            return;
-          }
-          if (runTimedOut) {
-            error(
-              res,
-              "Terminal execution timed out; no partial result was returned.",
-              504,
             );
             return;
           }
@@ -722,6 +716,14 @@ export async function handleMiscRoutes(
       return true;
     }
     const body = parsedAction.data;
+    const createBlocked = customActionExecutionBlockReason(
+      body.handler.type,
+      state.shellEnabled,
+    );
+    if (createBlocked) {
+      error(res, createBlocked, 403);
+      return true;
+    }
     if (body.handler.type === "shell" || body.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
@@ -840,6 +842,14 @@ export async function handleMiscRoutes(
       error(res, "Action not found", 404);
       return true;
     }
+    const testBlocked = customActionExecutionBlockReason(
+      def.handler.type,
+      state.shellEnabled,
+    );
+    if (testBlocked) {
+      error(res, testBlocked, 403);
+      return true;
+    }
     if (def.handler.type === "shell" || def.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
@@ -907,6 +917,14 @@ export async function handleMiscRoutes(
     }
     const existing = actions[idx];
     const newHandler = body.handler ?? existing.handler;
+    const updateBlocked = customActionExecutionBlockReason(
+      newHandler.type,
+      state.shellEnabled,
+    );
+    if (updateBlocked) {
+      error(res, updateBlocked, 403);
+      return true;
+    }
     if (newHandler.type === "shell" || newHandler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,

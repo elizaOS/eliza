@@ -14,7 +14,8 @@
  *
  * Correctness leans on invalidation, not the TTL: AgentRuntime busts the
  * relevant key inside every mutation wrapper (createMemory/updateRooms/…).
- * The TTL only bounds staleness from writers outside this process.
+ * The TTL only bounds staleness from writers outside this process. Its clock
+ * measures elapsed time so wall clock adjustments cannot extend the bound.
  */
 export class SingleFlightMemo<V, Meta = undefined> {
 	private readonly entries = new Map<
@@ -30,7 +31,7 @@ export class SingleFlightMemo<V, Meta = undefined> {
 	/** The live (unexpired) entry for `key`, or null. Never triggers a fetch. */
 	peek(key: string): { meta: Meta; promise: Promise<V> } | null {
 		const entry = this.entries.get(key);
-		if (!entry || Date.now() - entry.at >= this.ttlMs) return null;
+		if (!entry || performance.now() - entry.at >= this.ttlMs) return null;
 		return entry;
 	}
 
@@ -53,7 +54,7 @@ export class SingleFlightMemo<V, Meta = undefined> {
 			const oldest = this.entries.keys().next().value;
 			if (oldest !== undefined) this.entries.delete(oldest);
 		}
-		this.entries.set(key, { at: Date.now(), meta, promise });
+		this.entries.set(key, { at: performance.now(), meta, promise });
 		return promise;
 	}
 

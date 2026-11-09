@@ -98,21 +98,6 @@ export function pruneMainChatTail(
     .filter((entry) => (entry.content.text ?? "").trim().length > 0)
     .sort((left, right) => safeCreatedAt(left) - safeCreatedAt(right));
 
-  // Trim trailing assistant-only run (an assistant message that the user never replied to).
-  while (ordered.length > 0) {
-    const last = ordered[ordered.length - 1];
-    if (last && inferRole(last, agentId) === "assistant") {
-      const lastUserBefore = ordered
-        .slice(0, -1)
-        .some((entry) => inferRole(entry, agentId) === "user");
-      if (!lastUserBefore) {
-        ordered.pop();
-        continue;
-      }
-    }
-    break;
-  }
-
   // Require at least one user message somewhere, else there's no real signal.
   const hasUser = ordered.some((entry) => inferRole(entry, agentId) === "user");
   if (!hasUser) {
@@ -143,6 +128,9 @@ async function fetchSourceTail(
   const memories = await runtime.getMemories({
     roomId: sourceRoomId,
     tableName: "messages",
+    orderBy: "createdAt",
+    orderDirection: "desc",
+    includeEmbedding: false,
   });
   const pruned = pruneMainChatTail(memories, runtime.agentId, Date.now());
   if (pruned.length < SOURCE_TAIL_MIN_FOR_INCLUSION) {

@@ -46,7 +46,9 @@ export async function assertJobExecutionAuthority(
         sql`${jobs.execution_quiesced_at} IS NULL`,
         eq(jobExecutionLeases.execution_generation, authority.executionGeneration),
         eq(jobExecutionLeases.owner_id, authority.executionOwnerId),
-        sql`${jobExecutionLeases.expires_at} > clock_timestamp()`,
+        // Lease columns retain UTC without an offset. Do not let a session's
+        // TimeZone reinterpret that deadline as local time.
+        sql`${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')`,
       ),
     )
     .limit(1);

@@ -16,6 +16,9 @@ export default defineConfig({
   resolve: {
     conditions: ["eliza-source"],
     alias: [
+      { find: /^@elizaos\/host$/, replacement: src("host/src/index.ts") },
+      { find: /^@elizaos\/contracts$/, replacement: src("contracts/src/index.ts") },
+      { find: /^@elizaos\/host\/protocol$/, replacement: src("host/src/protocol.ts") },
       {
         find: /^@elizaos\/plugin-elizacloud\/cloud-config\/dev-cloud-env-authority$/,
         replacement: path.join(here, "src/cloud-config/dev-cloud-env-authority.ts"),

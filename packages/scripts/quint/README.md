@@ -47,6 +47,15 @@ implementation conformance or complete coverage. Keep known gaps in package
 coverage manifests and provide real implementation checks with every state
 change, as required by [PRD.md](../../../PRD.md#state-correctness).
 
+When a source review finds that a candidate owns no application state, record
+it in the owning package's `quint/ownerless-sources.json` array. Include the
+exact repository-relative `source` path, the file's `sha256` and a specific
+`reason` based on the source. Review changed files again before updating a
+hash. Remove the review when a model or coverage entry links the source.
+`--require-complete` requires each candidate to have a model link or a valid
+ownerless review. It also requires all declared gaps to be resolved. Review
+application state beyond the candidates found by source patterns.
+
 PR checks run four disjoint partitions. The required Quint check validates
 all four reports against the current source, including every case, invariant,
 temporal check and implementation hook. Missing or interrupted reports fail.

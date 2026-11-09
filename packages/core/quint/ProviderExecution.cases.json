@@ -1,123 +1,149 @@
 {
-  "sources": [
-    "packages/core/src/runtime/provider-execution.ts",
-    "packages/core/src/runtime/state-composition.ts"
-  ],
-  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-  "cases": [
-    {
-      "name": "coalesced",
-      "main": "ProviderExecution",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "WaiterCount",
-        "AbortOnlyWhenUnwanted",
-        "UnwantedWorkAborted",
-        "NoJoinAborting",
-        "StopReachesAll",
-        "MapActive"
-      ],
-      "temporal": [
-        "DeadlockFree",
-        "AbortedCallerLeaves",
-        "StopReleasesCallers"
-      ],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Callers": ["a", "b", "c"],
-        "Signalled": ["a", "b"],
-        "Keyed": ["a", "b", "c"],
-        "MaxExec": 3
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ProviderExecution: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "AbortedCallerLeaves",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ProviderExecution: AbortedCallerLeaves = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.cause.get(s.exec.get(c)) != \"none\").leadsTo(s.pc.get(c) == \"done\")))",
-            "Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "StopReleasesCallers",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ProviderExecution: StopReleasesCallers = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.stopped).leadsTo(s.pc.get(c) == \"done\")))",
-            "Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    },
-    {
-      "name": "oneoff",
-      "main": "ProviderExecutionOneoff",
-      "init": "init",
-      "step": "step",
-      "invariants": [
-        "TypeOK",
-        "WaiterCount",
-        "AbortOnlyWhenUnwanted",
-        "UnwantedWorkAborted",
-        "NoJoinAborting",
-        "StopReachesAll",
-        "MapActive"
-      ],
-      "temporal": [
-        "DeadlockFree",
-        "AbortedCallerLeaves",
-        "StopReleasesCallers"
-      ],
-      "maxSteps": 100,
-      "samples": 1000,
-      "constants": {
-        "Callers": ["a", "b", "c"],
-        "Signalled": ["a", "c"],
-        "Keyed": ["a", "b"],
-        "MaxExec": 3
-      },
-      "deadlock": true,
-      "temporalChecks": [
-        {
-          "property": "DeadlockFree",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ProviderExecutionOneoff: DeadlockFree = always(enabled(nextStep))",
-            "No scheduler fairness is assumed by this property."
-          ]
-        },
-        {
-          "property": "AbortedCallerLeaves",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ProviderExecutionOneoff: AbortedCallerLeaves = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.cause.get(s.exec.get(c)) != \"none\").leadsTo(s.pc.get(c) == \"done\")))",
-            "Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        },
-        {
-          "property": "StopReleasesCallers",
-          "expect": "holds",
-          "assumptions": [
-            "Checked formula in ProviderExecutionOneoff: StopReleasesCallers = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.stopped).leadsTo(s.pc.get(c) == \"done\")))",
-            "Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
-            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
-          ]
-        }
-      ]
-    }
-  ]
+	"sources": [
+		"packages/core/src/runtime/provider-execution.ts",
+		"packages/core/src/runtime/state-composition.ts",
+		"packages/core/test/compose-state-provider-execution.test.ts"
+	],
+	"bounds": {
+		"domain": "One provider key, three one-shot callers and up to three executions. Two callers have cancellation signals. The second case allows a one-off caller. Promise settlement and cleanup are separate.",
+		"limitations": "The real state-composition suite checks coalescing, isolation, cancellation, eviction, shutdown and provider failures. Provider payloads, cache keys and provider streaming and tracing are outside the finite execution model."
+	},
+	"conformance": "packages/core/quint/check-core-concurrency.mjs",
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "coalesced",
+			"main": "ProviderExecution",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"WaiterCount",
+				"AbortOnlyWhenUnwanted",
+				"UnwantedWorkAborted",
+				"NoJoinAborting",
+				"StopReachesAll",
+				"MapActive",
+				"ExecutionPhaseConsistent"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"AbortedCallerLeaves",
+				"StopReleasesCallers",
+				"SettledCallerLeaves"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Callers": ["a", "b", "c"],
+				"Signalled": ["a", "b"],
+				"Keyed": ["a", "b", "c"],
+				"MaxExec": 3
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ProviderExecution: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "AbortedCallerLeaves",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ProviderExecution: AbortedCallerLeaves = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.cause.get(s.exec.get(c)) != \"none\").leadsTo(s.pc.get(c) == \"done\")))",
+						"Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "StopReleasesCallers",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ProviderExecution: StopReleasesCallers = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.stopped).leadsTo(s.pc.get(c) == \"done\")))",
+						"Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "SettledCallerLeaves",
+					"expect": "holds",
+					"assumptions": [
+						"Cleanup and caller settlement callbacks are weakly fair once enabled.",
+						"Provider work is not assumed to settle on its own."
+					]
+				}
+			]
+		},
+		{
+			"name": "oneoff",
+			"main": "ProviderExecutionOneoff",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"WaiterCount",
+				"AbortOnlyWhenUnwanted",
+				"UnwantedWorkAborted",
+				"NoJoinAborting",
+				"StopReachesAll",
+				"MapActive",
+				"ExecutionPhaseConsistent"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"AbortedCallerLeaves",
+				"StopReleasesCallers",
+				"SettledCallerLeaves"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Callers": ["a", "b", "c"],
+				"Signalled": ["a", "c"],
+				"Keyed": ["a", "b"],
+				"MaxExec": 3
+			},
+			"deadlock": true,
+			"temporalChecks": [
+				{
+					"property": "DeadlockFree",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ProviderExecutionOneoff: DeadlockFree = always(enabled(nextStep))",
+						"No scheduler fairness is assumed by this property."
+					]
+				},
+				{
+					"property": "AbortedCallerLeaves",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ProviderExecutionOneoff: AbortedCallerLeaves = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.cause.get(s.exec.get(c)) != \"none\").leadsTo(s.pc.get(c) == \"done\")))",
+						"Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "StopReleasesCallers",
+					"expect": "holds",
+					"assumptions": [
+						"Checked formula in ProviderExecutionOneoff: StopReleasesCallers = Fairness.implies(Callers.forall(c => (s.pc.get(c) == \"attached\" and s.stopped).leadsTo(s.pc.get(c) == \"done\")))",
+						"Model fairness predicate Fairness = and { Execs.forall(e => SettleAborted(e).weakFair(s) and Cleanup(e).weakFair(s)), Callers.forall(c => CallerSettle(c).weakFair(s)), StopComposer.weakFair(s) }",
+						"The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+					]
+				},
+				{
+					"property": "SettledCallerLeaves",
+					"expect": "holds",
+					"assumptions": [
+						"Cleanup and caller settlement callbacks are weakly fair once enabled.",
+						"Provider work is not assumed to settle on its own."
+					]
+				}
+			]
+		}
+	]
 }

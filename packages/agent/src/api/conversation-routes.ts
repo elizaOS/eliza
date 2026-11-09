@@ -1251,6 +1251,7 @@ async function resolvePersistedAssistantTurn(
             assertCurrent?.();
             return runtime.updateMemory({
               ...generatedTurn,
+              embedding: undefined,
               content: persistedContent,
             });
           },
@@ -1433,10 +1434,14 @@ export async function ensureConversationRoom(
 async function syncConversationRoomState(
   state: ConversationRouteState,
   conv: ConversationMeta,
+  connection?: ConversationConnectionDescriptor,
 ): Promise<void> {
-  if (!state.runtime) return;
-  const runtime = state.runtime;
+  const runtime = connection?.runtime ?? state.runtime;
+  if (!runtime) return;
   const room = await runtime.getRoom(conv.roomId);
+  if (connection) {
+    assertConversationConnectionRuntime(state.runtime, connection);
+  }
   if (!room) return;
   const ownerId = ensureAdminEntityId(state);
   const nextMetadata = buildConversationRoomMetadata(
@@ -2311,6 +2316,7 @@ async function recoverDurableConversationChatOutcome(
       assertCurrent?.();
       return runtime.updateMemory({
         ...assistant,
+        embedding: undefined,
         content: {
           ...assistant.content,
           inReplyTo: userMessageId,
@@ -3422,13 +3428,13 @@ async function createConversation(
   if (runtime) {
     try {
       prepareConversationConnectionRoom(runtime, conv.roomId);
-      await ensureConversationRoom(
+      const connection = await ensureConversationRoom(
         state,
         runtime,
         conv,
         resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
       );
-      await syncConversationRoomState(state, conv);
+      await syncConversationRoomState(state, conv, connection);
       if (body.includeGreeting === true) {
         const storedGreeting = await ensureConversationGreetingStored(
           state,
@@ -3444,6 +3450,9 @@ async function createConversation(
           };
         }
       }
+      // Deletion or runtime replacement can win while metadata or the greeting
+      // is read. Revalidate the descriptor before reporting creation success.
+      assertConversationConnectionRuntime(state.runtime, connection);
     } catch (err) {
       // error-policy:J1 boundary translation — withdraw the registration
       // so the failed room setup leaves no listed conversation without a
@@ -3525,13 +3534,14 @@ export async function ensureOwnerConversation(
     state.conversations.set(id, conv);
     try {
       prepareConversationConnectionRoom(runtime, conv.roomId);
-      await ensureConversationRoom(state, runtime, conv, {
+      const connection = await ensureConversationRoom(state, runtime, conv, {
         entityId: ensureAdminEntityIdForRuntime(state, runtime),
         role: "OWNER",
         userName: resolveAppUserName(state.config),
         grantSource: "owner",
       });
-      await syncConversationRoomState(state, conv);
+      await syncConversationRoomState(state, conv, connection);
+      assertConversationConnectionRuntime(state.runtime, connection);
     } catch (err) {
       // error-policy:J1 withdraw the registration so a failed room setup
       // leaves no listed conversation without a backing room; the caller
@@ -6392,6 +6402,7 @@ async function streamConversationMessage(
                       assertLocalVoiceTurnFence();
                       await runtime.updateMemory({
                         ...exactPersistedResponse,
+                        embedding: undefined,
                         content: buildPersistedAssistantContent(
                           generationResolvedText,
                           generationResult,

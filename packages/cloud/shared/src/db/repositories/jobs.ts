@@ -15,6 +15,7 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "../../lib/services/admin-canary-image";
+import { APP_DEPLOYMENT_GENERATION_KEY } from "../../lib/services/app-deployment-generation";
 import { configureElizaLifecycleTransaction } from "../../lib/services/eliza-provision-lock";
 import {
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
@@ -33,6 +34,7 @@ import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
+import { containers } from "../schemas/containers";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
@@ -107,7 +109,7 @@ function hasRecoveryProtectedExecutionLease(): SQL {
     WHERE ${jobExecutionLeases.job_id} = ${jobs.id}
       AND ${jobExecutionLeases.execution_generation} = ${jobs.execution_generation}
       AND ${jobExecutionLeases.expires_at} >
-        NOW() - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')
+        (clock_timestamp() AT TIME ZONE 'UTC') - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')
   )`;
 }
 
@@ -603,6 +605,63 @@ export class JobsRepository {
     return job ? await hydrateJob(job) : undefined;
   }
 
+  /** Positive handoff evidence. Missing or conflicting records cannot prove absence. */
+  async findAppDeployProvisionHandoff(
+    appId: string,
+    organizationId: string,
+    userId: string,
+    generation: string,
+  ): Promise<string | undefined> {
+    const receipts = await dbWrite
+      .select({ containerId: containers.id })
+      .from(containers)
+      .innerJoin(
+        jobs,
+        and(
+          eq(jobs.type, JOB_TYPES.CONTAINER_PROVISION),
+          eq(jobs.organization_id, containers.organization_id),
+          eq(jobs.user_id, containers.user_id),
+          sql`${jobs.data}->>'containerId' = ${containers.id}::text`,
+          sql`${jobs.data}->>'organizationId' = ${containers.organization_id}::text`,
+          sql`${jobs.data}->>'userId' = ${containers.user_id}::text`,
+          sql`${jobs.data}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
+        ),
+      )
+      .where(
+        and(
+          eq(containers.organization_id, organizationId),
+          eq(containers.user_id, userId),
+          eq(containers.project_name, appId),
+          sql`${containers.metadata}->>'appId' = ${appId}`,
+          sql`${containers.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
+        ),
+      )
+      .limit(2);
+    return receipts.length === 1 ? receipts[0].containerId : undefined;
+  }
+
+  /** Complete primary inventory before an app deletion snapshots owned resources. */
+  async findUnsettledAppDeletionCandidates(organizationId: string): Promise<Job[]> {
+    const rows = await dbWrite
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, organizationId),
+          inArray(jobs.type, [
+            JOB_TYPES.APP_DEPLOY,
+            JOB_TYPES.APP_DB_DEPROVISION,
+            JOB_TYPES.CONTAINER_PROVISION,
+            JOB_TYPES.CONTAINER_RESTART,
+            JOB_TYPES.CONTAINER_UPGRADE,
+            JOB_TYPES.CONTAINER_DELETE,
+          ]),
+          sql`(${jobs.status} IN ('pending','in_progress') OR (${jobs.execution_generation} IS NOT NULL AND ${jobs.execution_quiesced_at} IS NULL))`,
+        ),
+      );
+    return Promise.all(rows.map((job) => hydrateJob(job, { strict: true })));
+  }
+
   /**
    * Reads every durable job in one admin canary rollout from the primary.
    * Canary payloads are forced inline, so the JSON predicate is authoritative.
@@ -855,7 +914,7 @@ export class JobsRepository {
           WHERE type = ${filters.type}
             AND status = 'pending'
             ${orgFilter}
-            AND scheduled_for <= NOW()
+            AND scheduled_for <= (clock_timestamp() AT TIME ZONE 'UTC')
           ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
           LIMIT ${filters.limit}
           FOR UPDATE SKIP LOCKED
@@ -863,10 +922,10 @@ export class JobsRepository {
         UPDATE ${jobs}
         SET
           status = 'in_progress',
-          started_at = NOW(),
+          started_at = (clock_timestamp() AT TIME ZONE 'UTC'),
           execution_generation = gen_random_uuid(),
           execution_quiesced_at = NULL,
-          updated_at = NOW()
+          updated_at = (clock_timestamp() AT TIME ZONE 'UTC')
         WHERE id IN (SELECT id FROM claimed)
         RETURNING *
       `,
@@ -926,7 +985,7 @@ export class JobsRepository {
             WHERE type = ${filters.type}
               AND status = 'pending'
               ${orgFilter}
-              AND scheduled_for <= NOW()
+              AND scheduled_for <= (clock_timestamp() AT TIME ZONE 'UTC')
             ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
             LIMIT ${claimLimit}
             FOR UPDATE SKIP LOCKED
@@ -934,10 +993,10 @@ export class JobsRepository {
           UPDATE ${jobs}
           SET
             status = 'in_progress',
-            started_at = NOW(),
+            started_at = (clock_timestamp() AT TIME ZONE 'UTC'),
             execution_generation = gen_random_uuid(),
             execution_quiesced_at = NULL,
-            updated_at = NOW()
+            updated_at = (clock_timestamp() AT TIME ZONE 'UTC')
           WHERE id IN (SELECT id FROM claimed)
           RETURNING *
         `,
@@ -963,7 +1022,7 @@ export class JobsRepository {
         job_id: job.id,
         execution_generation: generation,
         owner_id: ownerId,
-        expires_at: sql<Date>`NOW() + (${leaseMs} * INTERVAL '1 millisecond')`,
+        expires_at: sql<Date>`(clock_timestamp() AT TIME ZONE 'UTC') + (${leaseMs} * INTERVAL '1 millisecond')`,
         heartbeat_at: new Date(),
       };
     });
@@ -1022,8 +1081,8 @@ export class JobsRepository {
         .set({
           // The job row may have waited behind a resource writer. A renewed
           // lease begins after that lock, not at this transaction's start.
-          expires_at: sql`clock_timestamp() + (${leaseMs} * INTERVAL '1 millisecond')`,
-          heartbeat_at: sql`clock_timestamp()`,
+          expires_at: sql`(clock_timestamp() AT TIME ZONE 'UTC') + (${leaseMs} * INTERVAL '1 millisecond')`,
+          heartbeat_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
         })
         .where(
           and(
@@ -1055,7 +1114,7 @@ export class JobsRepository {
           sql`${jobs.execution_quiesced_at} IS NULL`,
           eq(jobExecutionLeases.execution_generation, generation),
           eq(jobExecutionLeases.owner_id, ownerId),
-          sql`${jobExecutionLeases.expires_at} > NOW()`,
+          sql`${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')`,
         ),
       )
       .limit(1);
@@ -1063,10 +1122,9 @@ export class JobsRepository {
   }
 
   /**
-   * Terminally rejects an invalid claimed execution before it can acquire a
-   * resource fence. The exact generation and live owner lease are the only
-   * authority; no dependent-row callback or sandbox mutation participates in
-   * this pre-dispatch transition.
+   * Terminally rejects a claimed execution under its exact generation and live
+   * owner lease. Unconfirmed effects retain their non-quiescent marker for
+   * resource reconciliation. No dependent-row or sandbox mutation participates.
    *
    * A same-generation terminal row is classified before its lease is read so
    * a retry after an ambiguous commit acknowledgement reconstructs success
@@ -1076,6 +1134,7 @@ export class JobsRepository {
     claimedJob: Job,
     error: string,
     ownerId: string,
+    options?: { retainUnconfirmedEffects: true },
   ): Promise<ClaimedExecutionRejection> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!ownerId) {
@@ -1109,7 +1168,7 @@ export class JobsRepository {
             eq(jobExecutionLeases.job_id, claimedJob.id),
             eq(jobExecutionLeases.execution_generation, generation),
             eq(jobExecutionLeases.owner_id, ownerId),
-            sql`${jobExecutionLeases.expires_at} > NOW()`,
+            sql`${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')`,
           ),
         )
         .for("update")
@@ -1124,7 +1183,7 @@ export class JobsRepository {
           ...payload,
           attempts: sql`${jobs.attempts} + 1`,
           completed_at: settledAt,
-          execution_quiesced_at: settledAt,
+          execution_quiesced_at: options?.retainUnconfirmedEffects ? null : settledAt,
           updated_at: settledAt,
         })
         .where(
@@ -1139,7 +1198,7 @@ export class JobsRepository {
               WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
                 AND ${jobExecutionLeases.execution_generation} = ${generation}
                 AND ${jobExecutionLeases.owner_id} = ${ownerId}
-                AND ${jobExecutionLeases.expires_at} > NOW()
+                AND ${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')
             )`,
           ),
         )
@@ -1447,7 +1506,7 @@ export class JobsRepository {
               eq(jobExecutionLeases.job_id, params.job.id),
               eq(jobExecutionLeases.execution_generation, params.job.execution_generation),
               sql`${jobExecutionLeases.expires_at} >
-                NOW() - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')`,
+                (clock_timestamp() AT TIME ZONE 'UTC') - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')`,
             ),
           )
           .limit(1);
@@ -1482,7 +1541,7 @@ export class JobsRepository {
                   WHERE ${jobExecutionLeases.job_id} = ${params.job.id}
                     AND ${jobExecutionLeases.execution_generation} = ${params.job.execution_generation}
                     AND ${jobExecutionLeases.expires_at} >
-                      NOW() - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')
+                      (clock_timestamp() AT TIME ZONE 'UTC') - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')
                 )`
               : sql`TRUE`,
           ),
@@ -1586,7 +1645,7 @@ export class JobsRepository {
             WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
               AND ${jobExecutionLeases.execution_generation} = ${generation}
               AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
-              AND ${jobExecutionLeases.expires_at} > NOW()
+              AND ${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')
           )`,
         ),
       )
@@ -1633,8 +1692,8 @@ export class JobsRepository {
             ? {
                 completed_at: sql`CASE
                   WHEN ${jobs.status} IN ('completed', 'failed', 'cancelled')
-                    THEN COALESCE(${jobs.completed_at}, NOW())
-                  ELSE NOW()
+                    THEN COALESCE(${jobs.completed_at}, (clock_timestamp() AT TIME ZONE 'UTC'))
+                  ELSE (clock_timestamp() AT TIME ZONE 'UTC')
                 END`,
               }
             : {}),
@@ -1716,7 +1775,7 @@ export class JobsRepository {
               WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
                 AND ${jobExecutionLeases.execution_generation} = ${generation}
                 AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
-                AND ${jobExecutionLeases.expires_at} > NOW()
+                AND ${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')
             )`,
           ),
         )
@@ -1839,7 +1898,7 @@ export class JobsRepository {
           updated_at: new Date(),
           scheduled_for: isFailed
             ? sql`${jobs.scheduled_for}`
-            : sql`clock_timestamp() + (${backoffMs} * INTERVAL '1 millisecond')`,
+            : sql`(clock_timestamp() AT TIME ZONE 'UTC') + (${backoffMs} * INTERVAL '1 millisecond')`,
         })
         .where(
           and(
@@ -1857,7 +1916,7 @@ export class JobsRepository {
                     WHERE ${jobExecutionLeases.job_id} = ${id}
                       AND ${jobExecutionLeases.execution_generation} = ${expectedExecutionGeneration}
                       AND ${jobExecutionLeases.owner_id} = ${expectedExecutionOwnerId}
-                      AND ${jobExecutionLeases.expires_at} > NOW()
+                      AND ${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')
                   )`,
                 ]
               : []),
@@ -1982,7 +2041,7 @@ export class JobsRepository {
           // Preserve the stored timestamp exactly when the retry budget ends.
           scheduled_for: exhausted
             ? sql`${jobs.scheduled_for}`
-            : sql`clock_timestamp() + (${delayMs} * INTERVAL '1 millisecond')`,
+            : sql`(clock_timestamp() AT TIME ZONE 'UTC') + (${delayMs} * INTERVAL '1 millisecond')`,
         })
         .where(
           and(
@@ -1998,7 +2057,7 @@ export class JobsRepository {
                     WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
                       AND ${jobExecutionLeases.execution_generation} = ${generation}
                       AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
-                      AND ${jobExecutionLeases.expires_at} > NOW()
+                      AND ${jobExecutionLeases.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')
                   )`,
                 ]
               : []),

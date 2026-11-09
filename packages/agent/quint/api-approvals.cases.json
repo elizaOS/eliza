@@ -1,11 +1,20 @@
 {
   "sources": [
     "packages/agent/src/api/device-action-routes.ts",
-    "packages/agent/src/api/approval-routes.ts"
+    "packages/agent/src/api/approval-routes.ts",
+    "plugins/plugin-assistant/src/services/approval/store.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+    "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts",
+    "plugins/plugin-assistant/test/photos-filter.e2e.test.ts",
+    "plugins/plugin-assistant/vitest.device-actions.config.ts"
   ],
+  "conformance": "plugins/plugin-assistant/quint/check-device-action-flow.mjs",
   "bounds": {
-    "domain": "One operation and two claims.",
-    "scope": "Finite protocol safety; no temporal/fairness claim."
+    "domain": "One persisted device approval and one dispatch attempt. Owner, digest, attempt and exact receipt equality are symbolic. The approval expiry boundary is a Boolean clock event.",
+    "abstraction": "Claim and dispatch commit together before the permit. A lost reply or restart cannot create a new claim. A confirmed non-delivery record is retryable in the shared store and remains closed to device HTTP claim.",
+    "limits": "The generic approval list is modeled only for exclusion of device approvals. Non-device execution, enrollment revocation, multiple proposals, transaction failures, provider effects and arbitrary receipt payloads remain separate.",
+    "conformance": "Existing loopback HTTP and PGlite exercise the atomic dispatch mark, an applied receipt and repeat-claim denial. The real Photos service and PGlite exercise exact replay, foreign binding, wrong attempt and rejection after confirmed non-delivery. The broader device REST test covers the generic list and restart after dispatch."
   },
   "cases": [
     {
@@ -13,8 +22,63 @@
       "main": "api_approvals",
       "init": "init",
       "step": "step",
-      "invariants": ["safety"],
-      "temporal": [],
+      "invariants": [
+        "AtMostOneClaim",
+        "DispatchPrecedesReceipt",
+        "PermitRequiresCommittedDispatch"
+      ],
+      "temporal": [
+        "ClaimCommitsDispatch",
+        "TerminalRecordIsStable",
+        "RefusalsKeepDurableState",
+        "UnderFairDeviceReceipt",
+        "UnderFairConfirmedReview",
+        "DispatchClassified"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ClaimCommitsDispatch",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The device claim and dispatch mark share a durable transaction."
+          ]
+        },
+        {
+          "property": "TerminalRecordIsStable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Only the device HTTP authority can act on this record."
+          ]
+        },
+        {
+          "property": "RefusalsKeepDurableState",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. An invalid binding, attempt, expiry or transition grants no write."
+          ]
+        },
+        {
+          "property": "UnderFairDeviceReceipt",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of receiving and committing a valid device receipt. It may establish application or uncertainty."
+          ]
+        },
+        {
+          "property": "UnderFairConfirmedReview",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of an authenticated owner confirming and committing the outcome of an uncertain dispatch."
+          ]
+        },
+        {
+          "property": "DispatchClassified",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A dispatched device effect can remain unreported indefinitely."
+          ]
+        }
+      ],
       "maxSteps": 50,
       "samples": 1000
     }

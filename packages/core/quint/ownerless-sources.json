@@ -1,0 +1,17 @@
+[
+	{
+		"source": "packages/core/src/types/agent-event.ts",
+		"sha256": "5cc08f64661cf4451a7becca2c12e01f6941c8a65163c2c5979175aa94b8c33f",
+		"reason": "Declares event payloads and listener signatures. The agent event service owns per-run sequencing, listener registration, and the last heartbeat."
+	},
+	{
+		"source": "packages/core/src/types/connector-account-policy.ts",
+		"sha256": "2e5bff2e7d99df34c8c48285b453b95ec9a1a5fc0fb98ff6302c778ac3e278fe",
+		"reason": "Declares connector account status labels and policy input shapes. The connector account manager reads and changes account status."
+	},
+	{
+		"source": "packages/core/src/types/connector-setup.ts",
+		"sha256": "0ff9d0ec41efc7b30ed74dc52714b832970ccdee59d3981c96553bc81699ac91",
+		"reason": "Declares the serialized setup response and constructs error envelopes from its inputs. Connector setup handlers own the pairing and configuration transitions."
+	}
+]

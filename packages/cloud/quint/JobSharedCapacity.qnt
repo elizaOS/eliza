@@ -9,7 +9,7 @@ module JobSharedCapacity {
   pure val jobTypes = Map(1 -> 1, 2 -> 2, 3 -> 1, 4 -> 2, 5 -> 1)
   pure val organizations = Map(1 -> 1, 2 -> 2, 3 -> 2, 4 -> 1, 5 -> 1)
   type Call = {
-    phase: int, jobType: int, organization: int, requested: int, dueAtStart: bool,
+    phase: int, jobType: int, organization: int, requested: int, dueAtSelection: bool,
     observed: int, limit: int, eligible: Set[int], selected: Set[int],
     returned: Set[int]
   }
@@ -22,7 +22,7 @@ module JobSharedCapacity {
   var s: State
   // Phases:0 not called,1 waiting,2 counted,3 selected,4 leases installed,
   // 5 committed awaiting hydration,6 returned,7 failed.
-  pure val emptyCall = {phase: 0, jobType: 0, organization: 0, requested: 0, dueAtStart: false,
+  pure val emptyCall = {phase: 0, jobType: 0, organization: 0, requested: 0, dueAtSelection: false,
     observed: 0, limit: 0, eligible: Set(), selected: Set(), returned: Set()}
   pure def initialState(running: int): State = {
     status: Jobs.mapBy(j => if (j <= running) 1 else 0),
@@ -40,7 +40,7 @@ module JobSharedCapacity {
   def budget(requested: int, observed: int): int =
     if (observed >= 3) 0 else if (requested < 3 - observed) requested else 3 - observed
   def eligible(c: int): Set[int] = Jobs.filter(j => all {
-    s.status.get(j) == 0, s.externalLocked != j, j != 5 or s.calls.get(c).dueAtStart,
+    s.status.get(j) == 0, s.externalLocked != j, j != 5 or s.futureDue,
     jobTypes.get(j) == s.calls.get(c).jobType,
     s.calls.get(c).organization == 0 or organizations.get(j) == s.calls.get(c).organization
   })
@@ -51,8 +51,7 @@ module JobSharedCapacity {
   action begin(c: int, jobType: int, organization: int, requested: int): bool = all {
     s.calls.get(c).phase == 0,
     s' = s.with("calls", s.calls.set(c, {...emptyCall, phase: 1,
-      jobType: jobType, organization: organization, requested: requested,
-      dueAtStart: s.futureDue}))
+      jobType: jobType, organization: organization, requested: requested}))
   }
   // Empty shared types, nonpositive maxRunning or nonpositive limit return
   // no claims before entering the transaction. Their observable result agrees.
@@ -68,7 +67,7 @@ module JobSharedCapacity {
   }
   action selectRows(c: int): bool = all {
     s.calls.get(c).phase == 2, s.lockOwner == c,
-    s' = s.with("calls", s.calls.set(c, {...s.calls.get(c), phase: 3,
+    s' = s.with("calls", s.calls.set(c, {...s.calls.get(c), phase: 3, dueAtSelection: s.futureDue,
       eligible: eligible(c), selected: prefix(eligible(c), s.calls.get(c).limit)}))
   }
   action installLeases(c: int): bool = all {
@@ -146,7 +145,7 @@ module JobSharedCapacity {
     (s.calls.get(c).phase >= 3 and s.calls.get(c).phase <= 4) implies all {
       s.calls.get(c).selected == prefix(s.calls.get(c).eligible, s.calls.get(c).limit),
       s.calls.get(c).selected.forall(j => s.status.get(j) == 0 and s.externalLocked != j),
-      s.calls.get(c).eligible.forall(j => s.status.get(j) == 0 and (j != 5 or s.calls.get(c).dueAtStart) and
+      s.calls.get(c).eligible.forall(j => s.status.get(j) == 0 and (j != 5 or s.calls.get(c).dueAtSelection) and
         jobTypes.get(j) == s.calls.get(c).jobType and
         (s.calls.get(c).organization == 0 or organizations.get(j) == s.calls.get(c).organization))
     })
@@ -197,10 +196,16 @@ module JobSharedCapacity {
     .then(acquireAndCount(1)).then(selectRows(1)).then(installLeases(1))
     .then(commit(1)).then(hydrate(1, true))
     .expect(s.calls.get(1).returned == Set(5) and runningJobs.size() == 3 and safety)
-  run transactionStartRetainsDueSnapshotTest = occupiedInit.then(begin(1, 1, 1, 5))
+  run selectionObservesDueAfterLockWaitTest = occupiedInit.then(begin(1, 1, 1, 5))
     .then(dueTimeArrives).then(acquireAndCount(1)).then(selectRows(1)).then(installLeases(1))
     .then(commit(1)).then(hydrate(1, true))
-    .expect(s.calls.get(1).returned == Set() and runningJobs.size() == 2 and safety)
+    .expect(s.calls.get(1).returned == Set(5) and runningJobs.size() == 3 and safety)
+  run dueAfterSelectionWaitsForNextClaimTest = occupiedInit.then(begin(1, 1, 1, 5))
+    .then(acquireAndCount(1)).then(selectRows(1)).then(dueTimeArrives).then(installLeases(1))
+    .then(commit(1)).then(hydrate(1, true)).then(begin(2, 1, 1, 5))
+    .then(acquireAndCount(2)).then(selectRows(2)).then(installLeases(2)).then(commit(2))
+    .then(hydrate(2, true)).expect(s.calls.get(1).returned == Set() and
+      s.calls.get(2).returned == Set(5) and runningJobs.size() == 3 and safety)
   run invalidCapacityReturnsEmptyTest = emptyInit.then(invalidRequest(1))
     .expect(s.calls.get(1).phase == 6 and runningJobs == Set() and safety)
 }

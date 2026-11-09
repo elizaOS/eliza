@@ -87,6 +87,8 @@ export interface AppContainerStore {
 export interface ContainerExecutorDeps {
   /** Preflight authority for new provider effects; not proof of remote quiescence. */
   assertExecutionCurrent?: () => Promise<void>;
+  /** A pending app deletion rejects new create/restart/upgrade effects. */
+  assertAppNotDeleting?: (appId: string) => Promise<void>;
   provider: AppContainerProvider;
   store: AppContainerStore;
   /** Rejects stale app-container work before provider or app-state mutation. */
@@ -326,6 +328,7 @@ export async function executeContainerProvision(
   let result: Awaited<ReturnType<typeof deps.provider.provision>>;
   try {
     await deps.assertExecutionCurrent?.();
+    await deps.assertAppNotDeleting?.(row.appId);
     result = await deps.provider.provision({
       appId: row.appId,
       containerName: row.containerName,
@@ -594,6 +597,7 @@ export async function executeContainerRestart(
   const { containerId } = readContainerRestartJobData(job);
   const row = await requireRow(deps.store, containerId);
   await deps.assertExecutionCurrent?.();
+  await deps.assertAppNotDeleting?.(row.appId);
   await deps.provider.restart(row.containerName);
 }
 
@@ -619,6 +623,7 @@ export async function executeContainerUpgrade(
   const data = readContainerUpgradeJobData(job);
   const row = await requireRow(deps.store, data.containerId);
   await deps.assertExecutionCurrent?.();
+  await deps.assertAppNotDeleting?.(row.appId);
   await deps.provider.delete(row.containerName).catch(() => {
     // old container may already be gone; provisioning replaces it regardless
   });
@@ -634,6 +639,7 @@ export async function executeContainerUpgrade(
   let result: Awaited<ReturnType<AppContainerProvider["provision"]>> | undefined;
   try {
     await deps.assertExecutionCurrent?.();
+    await deps.assertAppNotDeleting?.(row.appId);
     result = await deps.provider.provision({
       appId: row.appId,
       containerName: row.containerName,

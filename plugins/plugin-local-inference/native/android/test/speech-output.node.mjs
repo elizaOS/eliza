@@ -75,7 +75,7 @@ test("the speech output warm-up is bounded, and close stops it at once, also a b
   }
 });
 
-test("the bridge starts the warm-up only for a foreground idle speaker and closes it on every stop path", () => {
+test("the bridge starts the warm-up only for a foreground idle speaker outside protected surfaces and closes it on every stop path", () => {
   const bridge = fs.readFileSync(
     path.join(
       here,
@@ -90,7 +90,7 @@ test("the bridge starts the warm-up only for a foreground idle speaker and close
   };
   assert.match(
     bridge,
-    /if\(!destroyed&&speechForeground&&\(focus==null\|\|!focus\.callActive\(\)\)&&!speakerBusy\(\)\)\{closeOutputWarmup\(\);outputWarmup=new SpeechOutputWarmup\(LocalSpeechEngine\.STREAM_RATE\);\}/,
+    /if\(!destroyed&&speechForeground&&!sensitiveSurfaceActive\(\)&&\(focus==null\|\|!focus\.callActive\(\)\)&&!speakerBusy\(\)\)\{closeOutputWarmup\(\);outputWarmup=new SpeechOutputWarmup\(LocalSpeechEngine\.STREAM_RATE\);\}/,
   );
   // Stop, pause, a published clip and release all go through clearPlayback; a call and focus loss through stopSpeechFor.
   assert.match(
