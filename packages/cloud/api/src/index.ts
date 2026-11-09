@@ -187,6 +187,10 @@ function exactInferenceRoute(
   };
 }
 const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
+  exactInferenceRoute(
+    "/api/v1/inference/warm",
+    () => import("../v1/inference/warm/route"),
+  ),
   {
     key: "/api/v1/voice/speech",
     mountPath: "/api/v1/voice/speech",
