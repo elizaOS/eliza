@@ -53,10 +53,11 @@ public final class LiveSegmentPipe {
  private void fail(String code){
   boolean report;
   synchronized(this){report=!cancelled&&!finished;cancelled=true;closing=true;queued.clear();notifyAll();}
-  transport.cancelInFlight();
-  if(report)sink.failed(code);
-  // Rejected worker has no drainer to acknowledge its end.
-  if("BUSY".equals(code)){synchronized(this){finished=true;}ready.complete(false);closed.complete(false);}
+  try{transport.cancelInFlight();if(report)sink.failed(code);}
+  finally{
+   // Rejected work has no drainer. Failed cancellation or notification cannot strand these futures.
+   if("BUSY".equals(code)){synchronized(this){finished=true;}ready.complete(false);closed.complete(false);}
+  }
  }
  private JSONObject body(JSONObject batch)throws JSONException{
   JSONObject body=new JSONObject().put("sessionId",sessionId);if(roomId!=null)body.put("roomId",roomId);
