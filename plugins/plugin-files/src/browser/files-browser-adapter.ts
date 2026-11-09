@@ -259,6 +259,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     error = "";
   let selection: Set<string> | null = null,
     filter: FilesFilter | null = null,
+    pendingFilter: FilesFilter | null = null,
     filterRows: StorageEntry[] = [];
   let dialog: Dialog | undefined,
     dialogTrigger: HTMLElement | null = null,
@@ -425,7 +426,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         }
       }
       if (!current()) return;
-      if (filter) await runFilter(filter, current);
+      if (filter && !pendingFilter) await runFilter(filter, current);
       if (!current()) return;
       if (selection) {
         const listed = new Set(entries.map((e) => e.path));
@@ -841,26 +842,53 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (current()) filterRows = [];
     }
   }
-  /** The agent's read-only filter (spec FilterIsReadOnly): it changes only what is shown. */
-  async function showFilter(value: FilesFilter, signal: AbortSignal) {
-    const current = () => filter === value && !signal.aborted;
-    filter = value;
-    filterRows = [];
-    place = { kind: "browse" };
-    selection = null;
-    dialog = undefined;
-    api?.set({ folder: null, open: null, menu: false });
-    if (
-      !current() ||
-      !(await refreshState(current)) ||
-      !current() ||
-      access !== "granted"
-    )
-      return;
-    const count = await runFilter(value, current);
-    if (!current()) return;
-    repaint();
-    return count;
+  const accessRequired = {
+    status: "failed" as const,
+    summary: "Files needs storage access. Nothing was changed.",
+  };
+  /** Own the read-only request independently of the reload that opens Files. */
+  async function showFilter(
+    value: FilesFilter,
+    signal: AbortSignal,
+  ): ReturnType<FilesAgentRunner["run"]> {
+    const epoch = selectionEpoch;
+    const current = () =>
+      pendingFilter === value &&
+      epoch === selectionEpoch &&
+      !!api?.isActive() &&
+      !signal.aborted;
+    const unavailable = {
+      status: "failed" as const,
+      summary: "Files could not read this filter.",
+    };
+    pendingFilter = value;
+    try {
+      // The reload owns shared access and volume state. The filter only needs
+      // its own read admission and must survive that reload's state ticket.
+      const state = await storage.storageState().catch(() => undefined);
+      signal.throwIfAborted();
+      if (!current()) return unavailable;
+      if (state?.access !== "granted") return accessRequired;
+      filter = value;
+      filterRows = [];
+      place = { kind: "browse" };
+      selection = null;
+      dialog = undefined;
+      api?.set({ folder: null, open: null, menu: false });
+      const count = await runFilter(value, current);
+      signal.throwIfAborted();
+      if (!current() || count === undefined) return unavailable;
+      return {
+        status: "succeeded",
+        summary: `Showing ${countLabel(count)} in Files.`,
+      };
+    } finally {
+      if (pendingFilter === value) {
+        const needsRepaint = current() && filter === value;
+        pendingFilter = null;
+        if (needsRepaint) repaint();
+      }
+    }
   }
   const reviewingPrimary = () =>
     api?.isActive?.() &&
@@ -897,6 +925,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           summary: "Files is unavailable. Nothing was changed.",
         };
       if (!api.isActive?.()) api.open?.("files");
+      if (op.type === "files_filter")
+        return showFilter(validateFilesFilter(filesFilterOf(op)), signal);
       const refreshed = await refreshState(() => !signal.aborted);
       signal.throwIfAborted();
       if (!refreshed)
@@ -904,27 +934,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           status: "failed",
           summary: "Files changed. Nothing was changed.",
         };
-      if (access !== "granted")
-        return {
-          status: "failed",
-          summary: "Files needs storage access. Nothing was changed.",
-        };
-      if (op.type === "files_filter") {
-        const n = await showFilter(
-          validateFilesFilter(filesFilterOf(op)),
-          signal,
-        );
-        signal.throwIfAborted();
-        if (n === undefined)
-          return {
-            status: "failed",
-            summary: "Files could not read this filter.",
-          };
-        return {
-          status: "succeeded",
-          summary: `Showing ${countLabel(n)} in Files.`,
-        };
-      }
+      if (access !== "granted") return accessRequired;
       if (op.type === "files_open") {
         const currentApi = api,
           ticket = selectionEpoch;
