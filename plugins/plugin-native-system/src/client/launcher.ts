@@ -663,10 +663,12 @@ export function observeLauncher(
     subscription = null;
   }
   return () => {
+    if (!active) return;
     active = false;
     document.removeEventListener("visibilitychange", visible);
     document.removeEventListener("resume", refresh);
     if (pending) clearTimeout(pending);
+    pending = null;
     void Promise.resolve(subscription)
       .then((handle) => {
         if (
@@ -675,7 +677,7 @@ export function observeLauncher(
           "remove" in handle &&
           typeof handle.remove === "function"
         )
-          handle.remove();
+          return handle.remove();
       })
       .catch(() => {});
   };

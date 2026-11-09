@@ -24,6 +24,11 @@ const idle = <T>(value: T): ResultState<T> => ({
   value,
   error: null,
 });
+/** Exact ready or refused publication by one still-admitted route request. */
+export type RoutePlanReceipt = Readonly<{
+  revision: number;
+  error: MapsFailure | null;
+}>;
 export type MapsState = Readonly<{
   revision: number;
   provider: ProviderConfig;
@@ -347,7 +352,7 @@ export class MapsController {
       });
     }
   }
-  async planRoute() {
+  async planRoute(): Promise<RoutePlanReceipt | undefined> {
     this.invalidateRoute();
     const request = new AbortController();
     this.routeRequest = request;
@@ -401,15 +406,23 @@ export class MapsController {
           "invalid-response",
           "The provider returned duplicate routes.",
         );
+      const revision = this.state.revision + 1;
       this.update({
         route: { phase: "ready", value: routes[0] ?? null, error: null },
         routeOptions: routes.length > 1 ? routes : [],
       });
+      return { revision, error: null };
     } catch (error) {
-      if (!request.signal.aborted && this.active)
-        this.update({
-          route: { phase: "error", value: null, error: failure(error) },
-        });
+      if (
+        request.signal.aborted ||
+        !this.active ||
+        this.routeRequest !== request
+      )
+        return;
+      const revision = this.state.revision + 1;
+      const refused = failure(error);
+      this.update({ route: { phase: "error", value: null, error: refused } });
+      return { revision, error: refused };
     }
   }
   /** Choose one of the offered routes. Nothing is requested again. */
