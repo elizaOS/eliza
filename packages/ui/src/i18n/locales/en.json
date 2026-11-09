@@ -3468,7 +3468,6 @@
   "gameview.UpdatingSession": "Updating session…",
   "gameview.ViewerAttached": "Viewer attached.",
   "gameview.ViewerAttachFailed": "Failed to attach viewer: {{message}}",
-  "gameview.ViewerAuthSent": "Viewer auth sent.",
   "gameview.ViewerDetached": "Viewer detached.",
   "gameview.ViewerDetachFailed": "Failed to detach viewer: {{message}}",
   "gameview.ViewerUnavailable": "No viewer or launch URL is available for this run.",

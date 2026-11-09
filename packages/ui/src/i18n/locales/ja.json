@@ -2974,7 +2974,6 @@
   "gameview.UpdatingSession": "セッションを更新中…",
   "gameview.ViewerAttached": "ビューアがアタッチされました。",
   "gameview.ViewerAttachFailed": "ビューアをアタッチできませんでした: {{message}}",
-  "gameview.ViewerAuthSent": "ビューア認証を送信しました。",
   "gameview.ViewerDetached": "ビューアがデタッチされました。",
   "gameview.ViewerDetachFailed": "ビューアをデタッチできませんでした: {{message}}",
   "gameview.ViewerUnavailable": "この実行で利用可能なビューアまたは起動URLはありません。",

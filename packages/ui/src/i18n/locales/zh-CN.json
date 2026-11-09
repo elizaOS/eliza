@@ -2974,7 +2974,6 @@
   "gameview.UpdatingSession": "正在更新会话…",
   "gameview.ViewerAttached": "查看器已附加。",
   "gameview.ViewerAttachFailed": "无法附加查看器：{{message}}",
-  "gameview.ViewerAuthSent": "查看者身份验证已发送。",
   "gameview.ViewerDetached": "查看器已分离。",
   "gameview.ViewerDetachFailed": "无法分离查看器：{{message}}",
   "gameview.ViewerUnavailable": "此运行没有可用的查看器或启动 URL。",

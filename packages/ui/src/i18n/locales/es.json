@@ -2974,7 +2974,6 @@
   "gameview.UpdatingSession": "Actualizando sesión…",
   "gameview.ViewerAttached": "Visor adjunto.",
   "gameview.ViewerAttachFailed": "No se pudo adjuntar el visor: {{message}}",
-  "gameview.ViewerAuthSent": "Se envió la autenticación del espectador.",
   "gameview.ViewerDetached": "Visor desacoplado.",
   "gameview.ViewerDetachFailed": "No se pudo desacoplar el visor: {{message}}",
   "gameview.ViewerUnavailable": "No hay un visor ni una URL de inicio disponibles para esta ejecución.",

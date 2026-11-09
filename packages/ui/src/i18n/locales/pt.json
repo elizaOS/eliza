@@ -2974,7 +2974,6 @@
   "gameview.UpdatingSession": "Atualizando sessão…",
   "gameview.ViewerAttached": "Visualizador anexado.",
   "gameview.ViewerAttachFailed": "Falha ao anexar o visualizador: {{message}}",
-  "gameview.ViewerAuthSent": "Autenticação do visualizador enviada.",
   "gameview.ViewerDetached": "Visualizador desanexado.",
   "gameview.ViewerDetachFailed": "Falha ao desanexar o visualizador: {{message}}",
   "gameview.ViewerUnavailable": "Nenhum visualizador ou URL de inicialização está disponível para esta execução.",

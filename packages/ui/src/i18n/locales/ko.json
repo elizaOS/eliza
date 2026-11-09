@@ -2974,7 +2974,6 @@
   "gameview.UpdatingSession": "세션 업데이트 중…",
   "gameview.ViewerAttached": "뷰어가 연결되었습니다.",
   "gameview.ViewerAttachFailed": "뷰어를 연결하지 못했습니다: {{message}}",
-  "gameview.ViewerAuthSent": "뷰어 인증이 전송되었습니다.",
   "gameview.ViewerDetached": "뷰어가 분리되었습니다.",
   "gameview.ViewerDetachFailed": "뷰어를 분리하지 못했습니다: {{message}}",
   "gameview.ViewerUnavailable": "이 실행에는 사용할 수 있는 뷰어나 실행 URL이 없습니다.",
