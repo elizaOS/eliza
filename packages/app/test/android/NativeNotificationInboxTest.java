@@ -36,6 +36,65 @@ public final class NativeNotificationInboxTest {
         return new NativeNotificationInbox(root, owner, item -> { effects.incrementAndGet(); return true; }, NativeNotificationInboxTest::sync);
     }
     private static Path journal(Path root) { return root.resolve("native-notification-inbox").resolve(OWNER + ".json"); }
+    private static JSONObject journalWith(JSONObject seen, JSONObject legacy, long closed) throws Exception {
+        return new JSONObject().put("version", 2).put("owner", OWNER).put("initialized", true).put("baselineReady", true)
+            .put("seen", seen).put("legacySeen", legacy).put("nativeEpoch", EPOCH).put("closedThroughSequence", closed)
+            .put("page", JSONObject.NULL).put("buffered", new JSONObject()).put("bufferedMatches", new JSONObject());
+    }
+    private static JSONObject receipt(String phase, long sequence) throws Exception {
+        return new JSONObject().put("phase", phase).put("nativeEpoch", EPOCH).put("nativeSequence", sequence);
+    }
+
+    /** Refused posts, long live streams and closed ambiguous receipts never exhaust receipt capacity. */
+    private static void bounded() throws Exception {
+        // Refused posts close like accepted ones, so a refusing stream never accumulates receipts.
+        Path refusedRoot = root(); AtomicInteger refusedPosts = new AtomicInteger(); var allowed = new java.util.concurrent.atomic.AtomicBoolean();
+        var refused = new NativeNotificationInbox(refusedRoot, OWNER, item -> { refusedPosts.incrementAndGet(); return allowed.get(); }, NativeNotificationInboxTest::sync);
+        finish(refused, 0, new JSONArray());
+        JSONArray refusedPage = new JSONArray(); for (int i = 1; i <= 100; i++) refusedPage.put(record(i));
+        finish(refused, 100, refusedPage); check(refused.status().getInt("seenCount") == 0);
+        for (int i = 101; i <= 300; i++) {
+            check(refused.acceptLive(record(i)).getString("state").equals("declined")); check(refused.status().getInt("seenCount") == 0);
+        }
+        check(refusedPosts.get() == 300); check(refused.status().getLong("closedThroughSequence") == 300);
+        allowed.set(true);
+        check(refused.acceptLive(record(301)).getBoolean("presented")); check(refusedPosts.get() == 301);
+        check(refused.acceptLive(record(300)).getBoolean("duplicate")); check(refusedPosts.get() == 301);
+        finish(refused, 302, new JSONArray().put(record(302))); check(refusedPosts.get() == 302);
+
+        // A live gap keeps the fence open until the missing sequence arrives.
+        Path gapRoot = root(); AtomicInteger gapPosts = new AtomicInteger(); var gap = inbox(gapRoot, OWNER, gapPosts);
+        finish(gap, 0, new JSONArray()); gap.acceptLive(record(2)); check(gap.status().getLong("closedThroughSequence") == 0);
+        check(gap.status().getInt("seenCount") == 1); gap.acceptLive(record(1));
+        check(gap.status().getLong("closedThroughSequence") == 2); check(gap.status().getInt("seenCount") == 0); check(gapPosts.get() == 2);
+
+        // A journal already full of closed ambiguous receipts (old refused posts) drops the oldest instead of wedging.
+        Path fullRoot = root(); AtomicInteger fullPosts = new AtomicInteger(); var full = inbox(fullRoot, OWNER, fullPosts); full.status();
+        JSONObject unknown = new JSONObject(); for (int i = 1; i <= 10000; i++) unknown.put(id(i), receipt("unknown", i));
+        Files.writeString(journal(fullRoot), journalWith(unknown, new JSONObject(), 10000).toString());
+        full.acceptLive(record(10002)); check(fullPosts.get() == 1); check(full.status().getInt("seenCount") == 10000);
+        JSONObject kept = new JSONObject(Files.readString(journal(fullRoot))).getJSONObject("seen");
+        check(!kept.has(id(1))); check(kept.has(id(2))); check(kept.has(id(10002)));
+        full.acceptLive(record(1)); check(fullPosts.get() == 1);
+        finish(full, 10002, new JSONArray().put(record(10001))); check(fullPosts.get() == 2);
+
+        // Receipts above the closed fence are still open; they are never dropped.
+        Path openRoot = root(); AtomicInteger openPosts = new AtomicInteger(); var open = inbox(openRoot, OWNER, openPosts); open.status();
+        Files.writeString(journal(openRoot), journalWith(unknown, new JSONObject(), 0).toString());
+        rejects(() -> open.acceptLive(record(10001))); check(openPosts.get() == 0); check(open.status().getInt("seenCount") == 10000);
+
+        // An epoch change keeps the newest receipts and the old ambiguous ones within capacity.
+        Path epochRoot = root(); AtomicInteger epochPosts = new AtomicInteger(); var epoch = inbox(epochRoot, OWNER, epochPosts); epoch.status();
+        JSONObject legacy = new JSONObject(); for (int i = 1; i <= 10000; i++) legacy.put(id(i), i == 1 ? "unknown" : "accepted");
+        JSONObject recent = new JSONObject(); for (int i = 20001; i <= 20003; i++) recent.put(id(i), receipt("unknown", i));
+        Files.writeString(journal(epochRoot), journalWith(recent, legacy, 20003).toString());
+        String next = "50000000-0000-0000-0000-000000000001";
+        epoch.restartEpoch();
+        check(epoch.acceptPage(page(0, 0, true, new JSONArray()).put("nativeEpoch", next), epoch.pageCursor()));
+        JSONObject moved = new JSONObject(Files.readString(journal(epochRoot))).getJSONObject("legacySeen");
+        check(moved.length() == 10000); check(moved.has(id(1))); check(moved.has(id(20001))); check(moved.has(id(20003)));
+        check(epoch.status().getInt("unknownCount") == 4); check(epochPosts.get() == 0);
+    }
 
     public static void main(String[] args) throws Exception {
         if (args.length > 1 && "buffer-page".equals(args[1])) {
@@ -223,9 +282,11 @@ public final class NativeNotificationInboxTest {
         // Authority is checked inside the journal lock and directly before the OS callback.
         AtomicInteger guards = new AtomicInteger(); var guarded = new NativeNotificationInbox(concurrentRoot, OWNER, item -> { throw new AssertionError(); }, NativeNotificationInboxTest::sync,
             () -> { guards.incrementAndGet(); throw new SecurityException("Revoked"); });
-        rejects(() -> guarded.acceptLive(record(2))); check(guards.get() == 1); check(one.status().getInt("seenCount") == 1);
+        rejects(() -> guarded.acceptLive(record(2))); check(guards.get() == 1);
+        check(one.status().getInt("seenCount") == 0); check(one.status().getLong("closedThroughSequence") == 1);
         JSONObject corrupted = new JSONObject(Files.readString(journal(concurrentRoot))).put("owner", OTHER);
         Files.writeString(journal(concurrentRoot), corrupted.toString()); rejects(() -> one.status());
+        bounded();
         System.out.println("Native notification journal/paging passed: " + checks + " checks; no Android/network effects");
     }
 }

@@ -497,3 +497,60 @@ describe("account deletion restrictive-grant terminal absence", () => {
     expect(await adapter.inspect(context)).toMatchObject({ state: "complete" });
   });
 });
+
+describe("account deletion primary object storage", () => {
+  test("lists only the tenant's own prefixes and deletes only its objects", async () => {
+    const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
+    const stored = new Map<string, Record<string, string>>([
+      [`org/${ORGANIZATION_ID}/notes.txt`, {}],
+      [
+        `generations/images/${ORGANIZATION_ID}/${USER_ID}/a.png`,
+        { organizationId: ORGANIZATION_ID },
+      ],
+      [`${ORGANIZATION_ID}/2026-10-01/trajectory.json`, {}],
+      [`documents-pre-upload/${USER_ID}/notes.txt`, { organizationId: ORGANIZATION_ID }],
+      [`cloud-files/${ORGANIZATION_ID}/2026-10-01/file.bin`, { organizationId: ORGANIZATION_ID }],
+      [`org/${otherOrganizationId}/notes.txt`, {}],
+      [`generations/images/${otherOrganizationId}/b.png`, { organizationId: otherOrganizationId }],
+      ["website-reputation/snapshot.json", {}],
+    ]);
+    const listed: Array<string | undefined> = [];
+    const blob = {
+      async list(options?: { prefix?: string }) {
+        listed.push(options?.prefix);
+        return {
+          objects: [...stored]
+            .filter(([key]) => key.startsWith(options?.prefix ?? ""))
+            .map(([key, customMetadata]) => ({ key, customMetadata })),
+          truncated: false,
+        };
+      },
+      async delete(key: string) {
+        stored.delete(key);
+      },
+    };
+    const adapter = createAccountDeletionProviderAdapters({
+      trajectoryStore: {
+        reachable: async () => true,
+        listOrganizationKeys: async () => [],
+        deleteObject: async () => undefined,
+      },
+    }).primary_object_storage;
+
+    await adapter.execute({ ...context, blob } as AccountDeletionProviderContext, "storage");
+
+    expect(listed.length).toBeGreaterThan(0);
+    expect(
+      listed.every(
+        (prefix) => prefix?.includes(`${ORGANIZATION_ID}/`) || prefix?.includes(`${USER_ID}/`),
+      ),
+    ).toBe(true);
+    expect([...stored.keys()].sort()).toEqual(
+      [
+        `generations/images/${otherOrganizationId}/b.png`,
+        `org/${otherOrganizationId}/notes.txt`,
+        "website-reputation/snapshot.json",
+      ].sort(),
+    );
+  });
+});

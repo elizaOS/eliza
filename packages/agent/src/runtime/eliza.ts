@@ -75,6 +75,7 @@ import {
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
 } from "@elizaos/plugin-sql/errors";
+import { validateDbHost } from "../api/database.ts";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -130,6 +131,7 @@ import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adap
 import {
   SandboxManager,
   type SandboxMode,
+  setActiveSandboxManager,
 } from "../services/sandbox-manager.ts";
 import {
   evaluateTeeBootGate,
@@ -2737,8 +2739,14 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  * Keeping env authoritative makes the env-only Postgres path consistent across
  * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
  */
-/** @internal Exported for testing. */
-export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
+/**
+ * Returns the Postgres URL when it was built from `config.database` (the
+ * value the database API saves), or null when it came from the environment
+ * or the provider is not Postgres.
+ *
+ * @internal Exported for testing.
+ */
+export function applyDatabaseConfigToEnv(config: ElizaConfig): string | null {
   const db = config.database;
   const provider = resolveEffectiveDbProvider(config);
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -2753,11 +2761,12 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
     delete process.env.PGLITE_DATA_DIR;
-    return;
+    return null;
   }
   if (provider === "postgres") {
     const pg = db?.postgres;
     let url = pg?.connectionString ?? postgresUrl ?? databaseUrl;
+    let fromConfig = Boolean(url) && url === pg?.connectionString;
     if (!url && pg) {
       const host = pg.host ?? "localhost";
       const port = pg.port ?? 5432;
@@ -2767,6 +2776,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       const auth = password ? `${user}:${password}` : user;
       const sslParam = pg.ssl ? "?sslmode=verify-full" : "";
       url = `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
+      fromConfig = true;
     }
     process.env.POSTGRES_URL = url;
     // Clear PGLite dir so plugin-sql does not fall back to PGLite
@@ -2778,6 +2788,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     ) {
       logger.info("[eliza] DATABASE_URL detected: using Postgres database");
     }
+    return fromConfig && url ? url : null;
   } else {
     // PGLite mode (default): ensure no leftover POSTGRES_URL and pin
     // PGLite to the workspace path unless overridden by config/env.
@@ -2814,6 +2825,52 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       // recovery enabled, triggers the resetPgliteDataDir path.
       cleanStalePglitePid(dataDir);
     }
+  }
+  return null;
+}
+/**
+ * Re-validate a configured Postgres URL at boot and pin it to the validated
+ * address. The hostname stays in the URL so TLS verify-full and SNI check
+ * the real name; `hostaddr` carries the address libpq-compatible clients
+ * connect to. node-postgres ignores `hostaddr` and resolves the name again,
+ * so for it this check narrows, but does not close, a DNS-rebinding window.
+ * Unix sockets and multi-host lists are validated but not pinned.
+ *
+ * @internal Exported for testing.
+ */
+export async function pinConfiguredPostgresUrl(url: string): Promise<string> {
+  if (isUnixSocketPostgresUrl(url)) return url;
+  const validation = await validateDbHost({ connectionString: url });
+  if (validation.error || !validation.pinnedHost) {
+    throw new ElizaError(
+      `The configured Postgres host failed validation: ${validation.error ?? "no address to connect to"}`,
+      { code: "POSTGRES_HOST_REJECTED" },
+    );
+  }
+  const parsed = new URL(url);
+  const hostParam = parsed.searchParams.get("host");
+  if (hostParam?.includes(",") || parsed.searchParams.has("hostaddr")) {
+    return url;
+  }
+  parsed.searchParams.set(
+    "hostaddr",
+    validation.pinnedHost.replace(/^::ffff:/i, ""),
+  );
+  return parsed.toString();
+}
+function isUnixSocketPostgresUrl(url: string): boolean {
+  try {
+    // node-postgres accepts an empty host ("user@/db?host=/run/postgresql")
+    // by parsing it with a placeholder host; do the same here.
+    const parsed = URL.canParse(url)
+      ? new URL(url)
+      : new URL(url.replace("@/", "@placeholder/"));
+    return (
+      parsed.searchParams.get("host")?.startsWith("/") === true ||
+      /^%2f/i.test(parsed.hostname)
+    );
+  } catch {
+    return false;
   }
 }
 type PglitePidFileStatus =
@@ -4160,7 +4217,12 @@ export async function startEliza(
   // 2c. Propagate x402 config into process.env
   applyX402ConfigToEnv(config);
   // 2d. Propagate database config into process.env for plugin-sql
-  applyDatabaseConfigToEnv(config);
+  const configuredPostgresUrl = applyDatabaseConfigToEnv(config);
+  if (configuredPostgresUrl) {
+    process.env.POSTGRES_URL = await pinConfiguredPostgresUrl(
+      configuredPostgresUrl,
+    );
+  }
   // Boot-time vault hydration is DEFERRED off the blocking path. The desktop
   // flow (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
   // reaches the OS keychain through `defaultMasterKey().load()` and opens a
@@ -4771,6 +4833,7 @@ export async function startEliza(
       });
       try {
         await sandboxManager.start();
+        setActiveSandboxManager(sandboxManager);
         logger.info("[eliza] Sandbox manager started");
       } catch (err) {
         logger.error(
@@ -6066,6 +6129,7 @@ export async function startEliza(
     },
     disposeSandbox: sandboxManager
       ? async () => {
+          setActiveSandboxManager(null);
           await sandboxManager?.stop();
         }
       : undefined,

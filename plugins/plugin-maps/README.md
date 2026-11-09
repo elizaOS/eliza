@@ -83,6 +83,12 @@ registers a `MapsDeviceNavigation` with `MapsService.registerDeviceNavigation`; 
 report its state. Without one they return `MAPS_DEVICE_UNAVAILABLE`. GPS, the active
 route and guidance stay on the device; `MAPS_SHARE` still needs the user's confirmation.
 
+The Cloud adapter waits up to 20 seconds for an answer (Cloud's own provider
+timeout is 10 seconds), accepts route bodies up to 5 MiB, and asks for at most 20
+places per search. Breaking change: the unused `google`, `transport` and
+`JsonMapsHttpAdapter` modules and the managed-provider SDK exports are removed;
+an importer of `@elizaos/plugin-maps/google` must supply its own adapter.
+
 The agent host loads Maps on mobile and lean chat profiles. A phone can offer
 its navigation through the authenticated `/api/client-devices/maps-navigation`
 route while it sends a conversation turn. The shared client helper binds the

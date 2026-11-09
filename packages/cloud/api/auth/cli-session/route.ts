@@ -3,6 +3,8 @@
  * Creates a new CLI authentication session for command-line tool authentication.
  * Session ids are server-generated UUIDs: accepting client-chosen ids let any
  * unauthenticated caller squat ids and insert unbounded rows (row-spam).
+ * An optional `verifierHash` (hex SHA-256 of a client-held secret) binds key
+ * release to the creating client; see GET /api/auth/cli-session/:id.
  */
 
 import {
@@ -10,7 +12,10 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { cliAuthSessionsService } from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import {
+  cliAuthSessionsService,
+  looksLikeCliAuthSessionVerifierHash,
+} from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
 import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -42,10 +47,22 @@ app.options("/", (c) => {
 app.post("/", async (c) => {
   const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
   try {
+    const body = (await c.req.json().catch(() => null)) as {
+      verifierHash?: unknown;
+    } | null;
+    const verifierHash = body?.verifierHash;
+    if (
+      verifierHash !== undefined &&
+      (typeof verifierHash !== "string" ||
+        !looksLikeCliAuthSessionVerifierHash(verifierHash))
+    ) {
+      return c.json({ error: "Invalid verifier hash" }, 400, corsHeaders);
+    }
     // A client-supplied sessionId is deliberately ignored; the poll/complete
     // routes only accept the server-issued UUID format.
     const session = await cliAuthSessionsService.createSession(
       crypto.randomUUID(),
+      verifierHash ?? null,
     );
 
     return c.json(

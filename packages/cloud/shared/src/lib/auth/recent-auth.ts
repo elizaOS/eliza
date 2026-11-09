@@ -11,12 +11,15 @@ export function isRecentDestructiveAuth(input: {
 }): boolean {
   const { claims } = input;
   if (!claims || !input.expectedStewardUserId) return false;
-  const ageSeconds = input.nowSeconds - claims.issuedAt;
+  // auth_time survives re-mints and refresh rotation; iat does not. Sessions
+  // signed before auth_time existed fall back to iat until they expire.
+  const authenticatedAt = claims.authTime ?? claims.issuedAt;
+  const ageSeconds = input.nowSeconds - authenticatedAt;
   const stagingSessionAllowed = input.allowStagingSession && Boolean(claims.stagingSessionBinding);
   return (
     claims.userId === input.expectedStewardUserId &&
     claims.bridged !== true &&
-    claims.issuedAt > 0 &&
+    authenticatedAt > 0 &&
     ageSeconds >= -30 &&
     ageSeconds <= input.maxAgeSeconds &&
     (stagingSessionAllowed || Boolean(claims.authMethod))

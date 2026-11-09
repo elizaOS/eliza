@@ -2,9 +2,9 @@
  * Provider that injects recent messages from the terminal conversation linked
  * to the current automation room, giving an automation-context agent visibility
  * into the operator-facing terminal side. Reads the linked conversation id from
- * the room's automation metadata, loads that room's latest messages, and renders
- * them oldest-first. Gated to ADMIN and scoped to the automation /
- * agent_internal contexts.
+ * the room's automation metadata, loads that room's newest messages (bounded by
+ * count and characters), and renders them oldest-first. Gated to ADMIN and
+ * scoped to the automation / agent_internal contexts.
  */
 import type {
   IAgentRuntime,
@@ -23,6 +23,9 @@ import {
   formatRelativeTimestampPrefix,
   formatSpeakerLabel,
 } from "../shared/conversation-format.ts";
+
+const TERMINAL_BRIDGE_LIMIT = 24;
+const TERMINAL_BRIDGE_MAX_ENTRY_CHARS = 600;
 
 /**
  * Normalizes a memory timestamp for ordering. A missing or non-finite
@@ -77,13 +80,19 @@ export const automationTerminalBridgeProvider: Provider = {
       const memories = await runtime.getMemories({
         roomId: sourceRoomId,
         tableName: "messages",
+        limit: TERMINAL_BRIDGE_LIMIT,
+        orderBy: "createdAt",
+        orderDirection: "desc",
+        includeEmbedding: false,
       });
       const visibleMessages = memories
         .filter((entry) => entry.content.text)
         .sort(
           (left, right) =>
             safeCreatedAt(left.createdAt) - safeCreatedAt(right.createdAt),
-        );
+        )
+        // Slice again in case an adapter ignores the limit.
+        .slice(-TERMINAL_BRIDGE_LIMIT);
 
       if (visibleMessages.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -93,7 +102,11 @@ export const automationTerminalBridgeProvider: Provider = {
       for (const mem of visibleMessages) {
         const speaker = formatSpeakerLabel(runtime, mem);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const text = toWellFormedUnicode(mem.content.text ?? "");
+        const full = toWellFormedUnicode(mem.content.text ?? "");
+        const text =
+          full.length > TERMINAL_BRIDGE_MAX_ENTRY_CHARS
+            ? `${full.slice(0, TERMINAL_BRIDGE_MAX_ENTRY_CHARS)}…`
+            : full;
         lines.push(`${age}${speaker}: ${text}`);
       }
 

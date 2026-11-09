@@ -9,7 +9,10 @@ import {
   ORCHESTRATOR_CAPABILITY_IDS,
   runOrchestratorCapability,
 } from "./orchestrator-capabilities";
-import { isHumanOnlyOrchestratorCapability } from "./orchestrator-capability-authority";
+import {
+  isHumanOnlyOrchestratorCapability,
+  isHumanOnlyTaskCoordinatorCapability,
+} from "./orchestrator-capability-authority";
 
 export async function interact(
   capability: string,
@@ -24,6 +27,12 @@ export async function interact(
     return runOrchestratorCapability(capability, params);
   }
 
+  if (isHumanOnlyTaskCoordinatorCapability(capability)) {
+    throw new Error(
+      `Task Coordinator capability "${capability}" requires direct human interaction.`,
+    );
+  }
+
   if (capability === "list-sessions" || capability === "refresh") {
     return client.getCodingAgentStatus();
   }
@@ -36,7 +45,7 @@ export async function interact(
     });
   }
 
-  if (capability === "open-thread") {
+  if (capability === "get-thread") {
     const threadId =
       typeof params?.threadId === "string" ? params.threadId.trim() : "";
     if (threadId) {
@@ -47,18 +56,6 @@ export async function interact(
       limit: 1,
     });
     return firstThread ? client.getCodingAgentTaskThread(firstThread.id) : null;
-  }
-
-  if (capability === "stop-session") {
-    const sessionId =
-      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
-    if (!sessionId) {
-      return {
-        stopped: false,
-        reason: "sessionId is required to stop a coding agent session",
-      };
-    }
-    return client.stopCodingAgent(sessionId);
   }
 
   throw new Error(`Task Coordinator TUI does not support "${capability}".`);

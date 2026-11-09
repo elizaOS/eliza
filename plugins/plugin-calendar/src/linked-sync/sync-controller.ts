@@ -247,7 +247,7 @@ export class CalendarSyncController {
       for (let row of await store.list()) {
         await opted();
         if (row.state === "quarantined") {
-          if (await engine.recoverDispatch(row)) {
+          if ((await engine.recoverDispatch(row)) === "landed") {
             report.clean++;
             continue;
           }

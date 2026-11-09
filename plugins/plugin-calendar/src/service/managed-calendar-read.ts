@@ -60,6 +60,8 @@ const scoped = (v: unknown): v is string =>
   typeof v === "string" && /^alpha-google:[a-f0-9]{64}$/.test(v);
 
 const MANAGED_CALENDAR_BROKER_GRANT_ID = "alpha-google:broker";
+/** Per-request limit for every broker call, including Calendar writes. */
+export const MANAGED_CALENDAR_REQUEST_TIMEOUT_MS = 30_000;
 
 function diagnosticCode(value: unknown): value is ReadDiagnostic["code"] {
   return Object.keys(diagnosticStages).some((code) => code === value);
@@ -268,8 +270,11 @@ export function createManagedCalendarRead(
       method: "POST",
       redirect: "error",
       signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(30000)])
-        : AbortSignal.timeout(30000),
+        ? AbortSignal.any([
+            signal,
+            AbortSignal.timeout(MANAGED_CALENDAR_REQUEST_TIMEOUT_MS),
+          ])
+        : AbortSignal.timeout(MANAGED_CALENDAR_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",

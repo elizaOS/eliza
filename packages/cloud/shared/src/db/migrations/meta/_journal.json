@@ -3760,6 +3760,13 @@
       "when": 1796083200186,
       "tag": "0568_app_cleanup_manifest",
       "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1796083200187,
+      "tag": "0569_cli_auth_session_verifier",
+      "breakpoints": true
     }
   ]
 }

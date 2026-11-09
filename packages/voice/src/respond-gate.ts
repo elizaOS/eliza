@@ -38,8 +38,20 @@ const DISFLUENCIES = new Set([
   "eh",
 ]);
 
-/** How recent the agent's reply must be for the echo guard to apply. */
+/** How recent the agent's reply must be for the acoustic self-voice check to apply. */
 export const ECHO_WINDOW_MS = 9000;
+/**
+ * After playback ended, a turn whose speech started more than this long after
+ * the reply finished is the user talking, not the reply's tail in the mic.
+ */
+export const ECHO_TAIL_MS = 1500;
+/**
+ * Echo window measured at the final when the turn's start is unknown. An echo's
+ * final lands after VAD hangover and ASR finalization, so this is longer than
+ * {@link ECHO_TAIL_MS}; past it a short answer that repeats the reply's words
+ * ("Call Alex" after "Should I call Alex or Sam?") is a real turn.
+ */
+export const ECHO_FALLBACK_WINDOW_MS = 3000;
 /** Word-overlap fraction above which a turn is treated as TTS echo. */
 export const ECHO_OVERLAP_THRESHOLD = 0.7;
 
@@ -67,6 +79,15 @@ export interface ShouldRespondContext {
    * age-only window would have already expired mid-speech).
    */
   agentSpeaking?: boolean;
+  /**
+   * When this turn's speech started, in ms after the reply's playback ended
+   * (negative when the user started during playback). Narrows the post-playback
+   * echo guard to {@link ECHO_TAIL_MS}; without it the guard uses
+   * {@link ECHO_FALLBACK_WINDOW_MS} measured by `replyAgeMs`.
+   */
+  turnStartedAfterReplyEndMs?: number;
+  /** The capture cancels the device's own playback: no echo after playback ends. */
+  echoCancelled?: boolean;
 }
 
 /**
@@ -85,11 +106,11 @@ export function shouldRespondToVoiceTurn(
   if (w.every((word) => DISFLUENCIES.has(word))) return false;
 
   // Self-echo: the agent's own TTS heard back through the mic. Only consider it
-  // while the reply is recent, and only for multi-word turns (a one-word answer
-  // shouldn't be suppressed just because the word also appears in the reply).
+  // while the reply plays or for its short tail, and only for multi-word turns
+  // (a one-word answer shouldn't be suppressed just because the word also
+  // appears in the reply). After playback an echo-cancelled capture has no tail.
   const reply = context.recentAgentReply?.trim();
-  const age = context.replyAgeMs ?? Number.POSITIVE_INFINITY;
-  const echoActive = context.agentSpeaking === true || age <= ECHO_WINDOW_MS;
+  const echoActive = context.agentSpeaking === true || echoTail(context);
   if (reply && echoActive && w.length >= 2) {
     const replyWords = new Set(words(reply));
     if (replyWords.size > 0) {
@@ -100,6 +121,16 @@ export function shouldRespondToVoiceTurn(
   }
 
   return true;
+}
+
+function echoTail(context: ShouldRespondContext): boolean {
+  if (context.echoCancelled === true) return false;
+  const started = context.turnStartedAfterReplyEndMs;
+  if (typeof started === "number" && Number.isFinite(started))
+    return started <= ECHO_TAIL_MS;
+  return (
+    (context.replyAgeMs ?? Number.POSITIVE_INFINITY) <= ECHO_FALLBACK_WINDOW_MS
+  );
 }
 
 /** Mirrors the server-side VoiceTurnSignalMetadata shape the gate parses. */
