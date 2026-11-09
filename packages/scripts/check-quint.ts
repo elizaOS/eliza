@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -86,6 +87,15 @@ const coverageSchema = z.array(
     status: z.enum(["modeled", "partial", "unmodeled"]),
     limitations: z.array(z.string()),
   }),
+);
+const ownerlessSourceSchema = z.array(
+  z
+    .object({
+      source: z.string().min(1),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      reason: z.string().trim().min(1),
+    })
+    .strict(),
 );
 type ModelCase = z.infer<typeof caseSchema>;
 type TemporalCheck = z.infer<typeof temporalCheckSchema>;
@@ -320,10 +330,12 @@ export function createQuintInventory(directory: string, models: Model[]) {
         JSON.parse(readFileSync(path.join(directory, file), "utf8")),
       ),
     );
+  const coverageSources = new Set<string>();
   for (const entry of coverage) {
     const sources = entry.sources.map((source) =>
       existingSource(directory, source),
     );
+    for (const source of sources) coverageSources.add(source);
     const modelFile =
       entry.model &&
       path
@@ -382,6 +394,56 @@ export function createQuintInventory(directory: string, models: Model[]) {
         .filter((model) => model.sources.includes(file))
         .map((model) => model.file),
     }));
+  const candidatesByFile = new Map(
+    candidates.map((candidate) => [candidate.file, candidate]),
+  );
+  const repositoryPath = realpathSync(directory);
+  const ownerlessSources = files
+    .filter((file) => file.endsWith("/quint/ownerless-sources.json"))
+    .flatMap((file) => {
+      const reviewPath = path.join(repositoryPath, file);
+      if (realpathSync(reviewPath) !== reviewPath) {
+        throw new Error(
+          `Quint ownerless review must use its real path: ${file}`,
+        );
+      }
+      return ownerlessSourceSchema.parse(
+        JSON.parse(readFileSync(reviewPath, "utf8")),
+      );
+    });
+  const reviewed = new Set<string>();
+  for (const { source, sha256 } of ownerlessSources) {
+    if (reviewed.has(source)) {
+      throw new Error(`Duplicate Quint ownerless source review: ${source}`);
+    }
+    const candidate = candidatesByFile.get(source);
+    if (!candidate) {
+      throw new Error(
+        `Quint ownerless source is not an inventory candidate: ${source}`,
+      );
+    }
+    if (candidate.referencedBy.length || coverageSources.has(source)) {
+      throw new Error(
+        `Quint ownerless source conflicts with a model or coverage entry: ${source}`,
+      );
+    }
+    const sourcePath = path.join(repositoryPath, source);
+    if (realpathSync(sourcePath) !== sourcePath) {
+      throw new Error(
+        `Quint ownerless source must use its real path: ${source}`,
+      );
+    }
+    const actualHash = createHash("sha256")
+      .update(readFileSync(sourcePath))
+      .digest("hex");
+    if (actualHash !== sha256) {
+      throw new Error(`Stale Quint ownerless source review: ${source}`);
+    }
+    reviewed.add(source);
+  }
+  const unreferencedCandidates = candidates.filter(
+    (item) => item.referencedBy.length === 0,
+  ).length;
   const inventory = {
     revision: execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: directory,
@@ -393,9 +455,9 @@ export function createQuintInventory(directory: string, models: Model[]) {
     coverage,
     declaredGaps: coverage.filter((entry) => entry.status !== "modeled").length,
     candidates,
-    unreferencedCandidates: candidates.filter(
-      (item) => item.referencedBy.length === 0,
-    ).length,
+    unreferencedCandidates,
+    ownerlessSources,
+    unreviewedCandidates: unreferencedCandidates - reviewed.size,
   };
   return inventory;
 }
@@ -487,15 +549,15 @@ export async function main(
   requireQuintRepositoryFingerprint(directory, repositorySha256);
   if (
     args.includes("--require-complete") &&
-    (inventory.unreferencedCandidates > 0 || inventory.declaredGaps > 0)
+    (inventory.unreviewedCandidates > 0 || inventory.declaredGaps > 0)
   ) {
     throw new Error(
-      `${inventory.unreferencedCandidates} unreferenced state candidates and ${inventory.declaredGaps} declared gaps still need coverage review; see test-results/quint/inventory.json`,
+      `${inventory.unreviewedCandidates} unreviewed source candidates and ${inventory.declaredGaps} declared gaps still need coverage review. See test-results/quint/inventory.json`,
     );
   }
   if (args.includes("--inventory")) {
     console.log(
-      `${allModels.length} models; ${inventory.unreferencedCandidates} unreferenced source candidates`,
+      `${allModels.length} models, ${inventory.ownerlessSources.length} reviewed ownerless sources, ${inventory.unreviewedCandidates} unreviewed source candidates`,
     );
     return;
   }
