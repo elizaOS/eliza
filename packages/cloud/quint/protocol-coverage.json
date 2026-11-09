@@ -821,7 +821,7 @@
       "The time-authority model covers retry/read/renewal boundaries only; complete scheduler and remote-effect protocols remain open.",
       "Required flow invariants: Leases fence stale workers | Retry budgets remain bounded | Cancellation establishes quiescence before replacement",
       "Abstract states: pending, claimed, running, retrying, completed, canceled, failed, expired",
-      "Future naive SQL defaults, lease/claim comparisons and retry clocks use explicit UTC. Migration 0566 does not rewrite ambiguous historical values; any earlier local-wall-time rows need separate operational diagnosis."
+      "Future naive SQL defaults, lease/claim comparisons and retry clocks use explicit UTC. Migration 0567 does not rewrite ambiguous historical values; any earlier local-wall-time rows need separate operational diagnosis."
     ]
   },
   {
@@ -2445,6 +2445,25 @@
       "One UI row projection; actual two-row React/HTTP conformance retains pending rows and disables conflicting actions until confirmed completion.",
       "Pending display belongs to one mounted user/organization scope. Auth changes retire that local display without cancelling the server job; no cross-session UI or query-cache publication is allowed.",
       "UI observer failure retains the accepted original app/job identity and pending snapshot within the same mounted user/org scope. Explicit resume polls that job only; completed status without cleanupConfirmed cannot remove the row or navigate. Initial admission response loss and browser-reload restoration remain outside this UI model."
+    ]
+  },
+  {
+    "id": "cloud-maps-request-buckets",
+    "model": "packages/cloud/quint/maps_request_buckets.qnt",
+    "sources": [
+      "packages/cloud/api/src/maps-request-allowance-controller.ts",
+      "packages/cloud/api/__tests__/maps-request-allowance.miniflare.test.ts",
+      "packages/cloud/api/test/fixtures/maps-request-allowance-worker.ts"
+    ],
+    "invariants": [
+      "safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "No proof of JavaScript floating-point rounding or arbitrary numeric limits.",
+      "Credential ownership, subscription policy, allowance-window transitions, tombstone retention and cross-organization routing remain separate obligations.",
+      "The strict hook executes the real controller on Miniflare SQLite with a controlled fixture clock; this is scenario correspondence, not general TypeScript refinement.",
+      "Only paired refill and retry deadlines within one admitted window are specified; the complete Maps flow remains partial."
     ]
   }
 ]

@@ -26,13 +26,27 @@ export class MapsTestGate {
         await this.state.storage.put(`revoked:${body.credentialId}`, true);
         return Response.json({ committed: true });
       }
-      return new MapsRequestAllowanceController(this.state.storage, this.env, {
-        credential: async (value) =>
-          value.kind === "api_key" &&
-          (await this.state.storage.get(`revoked:${value.credentialId}`))
-            ? new Response(null, { status: 403 })
-            : null,
-      }).handle(path, body);
+      const controller = new MapsRequestAllowanceController(
+        this.state.storage,
+        this.env,
+        {
+          credential: async (value) =>
+            value.kind === "api_key" &&
+            (await this.state.storage.get(`revoked:${value.credentialId}`))
+              ? new Response(null, { status: 403 })
+              : null,
+        },
+      );
+      const clock = request.headers.get("x-test-clock-ms");
+      if (clock === null) return controller.handle(path, body);
+      // Only this isolated test worker accepts a controlled wall clock.
+      const originalClock = Date.now;
+      Date.now = () => Number(clock);
+      try {
+        return await controller.handle(path, body);
+      } finally {
+        Date.now = originalClock;
+      }
     });
     this.queue = result.then(
       () => undefined,
