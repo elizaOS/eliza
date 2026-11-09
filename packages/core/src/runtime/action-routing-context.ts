@@ -57,17 +57,6 @@ export function getActionRoutingContext(): ActionRoutingContext | undefined {
 }
 
 /**
- * Run `fn` with the action routing context temporarily cleared. Used by the
- * runtime's `useModel` to invoke a routed sub-call without re-entering the
- * routing seam (which would otherwise loop on the same chain).
- */
-export function runWithoutActionRoutingContext<T>(
-	fn: () => T | Promise<T>,
-): T | Promise<T> {
-	return getOrCreate().run(undefined, fn);
-}
-
-/**
  * Test-only helper to inject a context manager (e.g. a deterministic stack
  * implementation). Not used in production.
  */
