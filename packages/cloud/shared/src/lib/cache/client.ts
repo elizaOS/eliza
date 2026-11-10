@@ -126,7 +126,7 @@ export class CacheClient {
   private backendConfigured = false;
   private initialized = false;
   private failureCount = 0;
-  private lastFailureTime = 0;
+  private lastFailureElapsedMs = 0;
   private readonly MAX_FAILURES = 5;
   private readonly CIRCUIT_BREAKER_TIMEOUT = 60000;
   // A timed-out delivery can still own an uncancellable loader. Retain that
@@ -1248,7 +1248,9 @@ export class CacheClient {
       return false;
     }
 
-    const timeSinceLastFailure = Date.now() - this.lastFailureTime;
+    // This breaker belongs to one live client, so its cooldown uses elapsed
+    // process time. Wall-clock correction cannot authorize or delay a retry.
+    const timeSinceLastFailure = performance.now() - this.lastFailureElapsedMs;
     if (timeSinceLastFailure > this.CIRCUIT_BREAKER_TIMEOUT) {
       logger.info("[Cache] Circuit breaker timeout expired, attempting to reconnect");
       this.failureCount = 0;
@@ -1262,7 +1264,7 @@ export class CacheClient {
 
   private recordFailure(): void {
     this.failureCount++;
-    this.lastFailureTime = Date.now();
+    this.lastFailureElapsedMs = performance.now();
 
     // Log exactly on the closed->open transition (failureCount keeps climbing past
     // MAX_FAILURES while open, so `=== MAX_FAILURES` fires once per open). Include the

@@ -1,4 +1,19 @@
 {
+  "cache_breaker_receipts.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/cache/client-circuit.test.ts",
+      "required": [
+        "a forward wall-clock jump cannot bypass the cache breaker cooldown",
+        "elapsed cooldown permits a confirmed delete after a backward wall-clock jump",
+        "the exact cooldown boundary stays blocked and a later probe can fail",
+        "cache hits reset failures while successful misses retain them",
+        "a rejected backend delete is unconfirmed and preserves the cached value",
+        "already admitted reads can settle after the cache breaker opens",
+        "a lost reply after a real backend delete remains unconfirmed",
+        "a client with no selected backend confirms that it has nothing to invalidate"
+      ]
+    }
+  ],
   "app_deploy_generation.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",

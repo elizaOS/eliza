@@ -1,5 +1,31 @@
 [
   {
+    "id": "cloud-protocol-cache-breaker-receipts",
+    "model": "packages/cloud/quint/cache_breaker_receipts.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/cache/client.ts",
+      "packages/cloud/shared/src/lib/cache/client-circuit.test.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/wadis-redis-adapter.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/types.ts",
+      "packages/cloud/quint/check-reviewed-cloud.mjs",
+      "packages/cloud/quint/reviewed-cloud-checks.json"
+    ],
+    "invariants": [
+      "counterBound",
+      "cooldownUsesElapsedTime",
+      "confirmedDeletionHasBackendAbsence",
+      "unconfiguredConfirmationHasNoBackend",
+      "noCommandWithoutBackend"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One client and cached value, two reusable in-flight commands, threshold two and cooldown two elapsed ticks. Production tests retain the actual five-failure threshold and 60,000 ms cooldown.",
+      "getWithOutcome and delConfirmed share process-local failure state. Clock corrections cannot bypass or prolong the cooldown. A blocked or rejected delete stays unconfirmed, and an observed backend acknowledgement grants its confirmed receipt.",
+      "Existing commands can finish after opening and a late hit can close the breaker. Recovery requires a fair eligible probe; later failures can restart the wait and backend success is not guaranteed.",
+      "Conformance uses actual Redis WASM through the production Wadis adapter, with separate controlled clocks and an injected lost response after a real DEL. Native transport reconnects, backend migration, other cache operations, cache fills, SWR invalidation races, cross-client coordination and persisted policy deadlines remain outside this model."
+    ]
+  },
+  {
     "id": "cloud-protocol-billing-reservations",
     "model": "packages/cloud/quint/billing_reservations.qnt",
     "sources": [
