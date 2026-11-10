@@ -2129,6 +2129,25 @@
     ]
   },
   {
+    "id": "cloud-flow-shared-conversation-mirror-retirement",
+    "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/shared/src/db/repositories/shared-runtime-history.ts",
+      "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts"
+    ],
+    "invariants": [
+      "RetiresMirrorConfirmedSnapshot",
+      "RetiresSelectedVersion",
+      "RetiresCurrentDueDeadline"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One non-Personal conversation, two snapshot versions and one mirror failure. A stale alarm cannot retire a renewed or replaced snapshot. A due snapshot and its replay claims retire together after mirror acknowledgement.",
+      "Real Workerd alarms and SQLite storage exercise two save interleavings and a failure followed by a successful retry. The test controls repository outcomes and deadline advancement. Applied-but-unacknowledged Postgres writes, tombstone cleanup, active claims without a saved snapshot and independent workers remain outside this bound."
+    ]
+  },
+  {
     "id": "cloud-flow-personal-shared-conversation",
     "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
     "sources": [

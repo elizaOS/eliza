@@ -342,6 +342,9 @@
     {
       "file": "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
       "required": [
+        "a stale idle alarm retains a newer saved turn and its replay claim",
+        "idle expiry rechecks its deadline after awaiting the dirty snapshot mirror",
+        "idle expiry retains a failed mirror and retires only after an acknowledged retry",
         "a committed seal rejects a reminder before history mutation or inference",
         "fallback recovery seals its imported snapshot and retains admission fencing after failed import",
         "an evicted object reloads a checkpointed interrupted turn before admission",
