@@ -24,6 +24,7 @@ import {
   createReleaseState,
   deriveReleaseCandidateTag,
   deriveReleaseCohortIntegrity,
+  publishedExports,
   publishedWorkspaceRange,
   RELEASE_PLAN_SCHEMA_VERSION,
   resolveReleaseCohort,
@@ -92,6 +93,9 @@ function assertManifestsUnchanged(snapshots) {
 
 function publishedManifest(sourceBytes, packageRecord) {
   const manifest = JSON.parse(sourceBytes.toString("utf8"));
+  if (manifest.exports !== undefined) {
+    manifest.exports = publishedExports(manifest.exports);
+  }
   for (const dependency of packageRecord.internalDependencies) {
     manifest[dependency.section][dependency.name] = publishedWorkspaceRange(
       dependency.range,
