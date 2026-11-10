@@ -34,7 +34,11 @@ it("packs the cold trigger API with its real paused-prompt handler and retains o
   const output = await mkdtemp(path.join(outputRoot, "run-"));
   // The generated probe lives outside the package. Resolve its imports against
   // the agent's declared dependencies, including isolated workspace installs.
-  await symlink(path.join(root, "packages/agent/node_modules"), path.join(output, "node_modules"), "dir");
+  await symlink(
+    path.join(root, "packages/agent/node_modules"),
+    path.join(output, "node_modules"),
+    "dir",
+  );
   const corePort = path.join(output, "core-port.ts"),
     entry = path.join(output, "probe.ts"),
     builder = path.join(output, "build.ts");
