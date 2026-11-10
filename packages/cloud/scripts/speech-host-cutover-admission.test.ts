@@ -84,6 +84,116 @@ function fixture(
 }
 
 describe("staging speech host cutover admission", () => {
+  test("retains the live API namespace without provisioning, freezing or attesting a cutover", async () => {
+    const { calls, fetcher } = fixture({
+      api: [speech(oldId)],
+      pages: [
+        {
+          result: [namespaces[0]],
+          result_info: {
+            page: 1,
+            per_page: 1000,
+            count: 1,
+            total_pages: 1,
+            total_count: 1,
+          },
+        },
+      ],
+    });
+    const retained = {
+      ...environment,
+      STAGING_SPEECH_HOST: "api",
+      STAGING_SPEECH_CUTOVER_ATTESTATION: "",
+    };
+    const missingTarget = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      expect(String(url)).not.toContain(`/scripts/${newWorker}/settings`);
+      return fetcher(url, init);
+    }) as typeof fetch;
+    const result = await admitSpeechHostCutover(retained, missingTarget);
+    expect(result).toEqual({
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      alreadyActive: true,
+    });
+    expect(calls).toEqual([
+      `/client/v4/accounts/${"a".repeat(32)}/workers/scripts/${oldWorker}/settings`,
+      `/client/v4/accounts/${"a".repeat(32)}/workers/durable_objects/namespaces?page=1&per_page=1000`,
+    ]);
+    expect(
+      await admitSpeechHostCutover(
+        {
+          ...retained,
+          SPEECH_CUTOVER_EXPECTED_FINGERPRINT: result.fingerprint,
+        },
+        missingTarget,
+      ),
+    ).toEqual(result);
+    await expect(
+      admitSpeechHostCutover(
+        {
+          ...retained,
+          GITHUB_SHA: "e".repeat(40),
+          SPEECH_CUTOVER_EXPECTED_FINGERPRINT: result.fingerprint,
+        },
+        missingTarget,
+      ),
+    ).rejects.toThrow("cutover_identity_changed");
+  });
+
+  test("API retention rejects a reverse cutover from the live speech namespace", async () => {
+    await expect(
+      admitSpeechHostCutover(
+        { ...environment, STAGING_SPEECH_HOST: "api" },
+        fixture({ api: [speech(newId)] }).fetcher,
+      ),
+    ).rejects.toThrow("api_retention_requires_local_namespace");
+  });
+
+  test("API retention rechecks the exact namespace before publishing", async () => {
+    const retained = { ...environment, STAGING_SPEECH_HOST: "api" };
+    const first = await admitSpeechHostCutover(retained, fixture().fetcher);
+    const replacement = "f".repeat(32);
+    await expect(
+      admitSpeechHostCutover(
+        {
+          ...retained,
+          SPEECH_CUTOVER_EXPECTED_FINGERPRINT: first.fingerprint,
+        },
+        fixture({
+          api: [speech(replacement)],
+          pages: [
+            {
+              result: [{ ...namespaces[0], id: replacement }],
+              result_info: {
+                page: 1,
+                per_page: 1000,
+                count: 1,
+                total_pages: 1,
+                total_count: 1,
+              },
+            },
+          ],
+        }).fetcher,
+      ),
+    ).rejects.toThrow("cutover_identity_changed");
+  });
+
+  test.each(["", "API", "other"])(
+    "rejects an invalid desired host %s before provider reads",
+    async (host) => {
+      const { calls, fetcher } = fixture();
+      await expect(
+        admitSpeechHostCutover(
+          { ...environment, STAGING_SPEECH_HOST: host },
+          fetcher,
+        ),
+      ).rejects.toThrow("invalid_desired_host");
+      expect(calls).toEqual([]);
+    },
+  );
+
   test("reads actual Worker/namespace metadata and admits the frozen, attested first switch", async () => {
     const { calls, fetcher } = fixture();
     const result = await admitSpeechHostCutover(
