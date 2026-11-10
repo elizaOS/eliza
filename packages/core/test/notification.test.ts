@@ -876,6 +876,263 @@ describe("NotificationService", () => {
 		}
 	});
 
+	it("rejects malformed persisted coordinates without overwriting the inbox", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const first: AgentNotification = {
+				id: sqliteTestAgentId("hydration-first"),
+				title: "First",
+				category: "general",
+				priority: "normal",
+				source: "fixture",
+				createdAt: 1,
+			};
+			const second: AgentNotification = {
+				...first,
+				id: sqliteTestAgentId("hydration-second"),
+				title: "Second",
+			};
+			const valid: NotificationInboxSnapshot = {
+				version: 2,
+				nativeEpoch: sqliteTestAgentId("hydration-epoch"),
+				nativeSequence: 7,
+				notifications: [first, second],
+				nativeSequences: { [first.id]: 2, [second.id]: 5 },
+			};
+			const invalid: Array<[string, unknown]> = [
+				["unsupported version", { ...valid, version: 1 }],
+				["invalid epoch", { ...valid, nativeEpoch: "not-an-epoch" }],
+				["negative watermark", { ...valid, nativeSequence: -1 }],
+				[
+					"unsafe watermark",
+					{ ...valid, nativeSequence: Number.MAX_SAFE_INTEGER + 1 },
+				],
+				["non-array rows", { ...valid, notifications: {} }],
+				["array coordinate map", { ...valid, nativeSequences: [2, 5] }],
+				[
+					"missing coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 2 } },
+				],
+				[
+					"extra coordinate",
+					{ ...valid, nativeSequences: { ...valid.nativeSequences, extra: 6 } },
+				],
+				[
+					"unassigned key",
+					{ ...valid, nativeSequences: { [first.id]: 2, extra: 5 } },
+				],
+				["duplicate row id", { ...valid, notifications: [first, first] }],
+				[
+					"descending coordinates",
+					{ ...valid, nativeSequences: { [first.id]: 5, [second.id]: 2 } },
+				],
+				[
+					"repeated coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 2, [second.id]: 2 } },
+				],
+				[
+					"zero coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 0, [second.id]: 5 } },
+				],
+				[
+					"fractional coordinate",
+					{ ...valid, nativeSequences: { [first.id]: 2.5, [second.id]: 5 } },
+				],
+				[
+					"coordinate past watermark",
+					{ ...valid, nativeSequences: { [first.id]: 2, [second.id]: 8 } },
+				],
+				["duplicate legacy id", [first, first]],
+			];
+			for (const [shape, snapshot] of invalid) {
+				await fixture.runtime.setCache(key, snapshot);
+				await expect(
+					NotificationService.start(fixture.runtime),
+					shape,
+				).rejects.toMatchObject({
+					code: "NOTIFICATION_INBOX_INVALID",
+					status: 503,
+				});
+				expect(await fixture.runtime.getCache(key), shape).toEqual(snapshot);
+			}
+		} finally {
+			await fixture.cleanup();
+		}
+	});
+
+	it("retains valid coordinate gaps and empty inbox watermarks across startup", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const row: AgentNotification = {
+				id: sqliteTestAgentId("hydration-gap"),
+				title: "Retained row",
+				category: "general",
+				priority: "normal",
+				source: "fixture",
+				createdAt: 1,
+			};
+			for (const notifications of [[row], []]) {
+				const snapshot: NotificationInboxSnapshot = {
+					version: 2,
+					nativeEpoch: sqliteTestAgentId("retained-epoch"),
+					nativeSequence: 7,
+					notifications,
+					nativeSequences: notifications.length ? { [row.id]: 2 } : {},
+				};
+				await fixture.runtime.setCache(key, snapshot);
+				const loaded = (await NotificationService.start(
+					fixture.runtime,
+				)) as NotificationService;
+				const page = await loaded.listNativePage();
+				expect(page.nativeEpoch).toBe(snapshot.nativeEpoch);
+				expect(page.throughSequence).toBe(7);
+				expect(
+					page.notifications.map(({ nativeSequence }) => nativeSequence),
+				).toEqual(notifications.length ? [2] : []);
+				const next = await loaded.notify({ title: "After startup" });
+				expect(next.nativeEpoch).toBe(snapshot.nativeEpoch);
+				expect(next.nativeSequence).toBe(8);
+				await loaded.stop();
+			}
+		} finally {
+			await fixture.cleanup();
+		}
+	});
+
+	it("recovers a repaired coordinate snapshot through the runtime lifecycle", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const invalid = {
+				version: 2,
+				nativeEpoch: "broken",
+				nativeSequence: 0,
+				notifications: [],
+				nativeSequences: {},
+			};
+			await fixture.runtime.setCache(key, invalid);
+			await fixture.runtime.registerPlugin({
+				name: "hydration-repair",
+				description: "Notification hydration recovery",
+				services: [NotificationService],
+			});
+			await expect(
+				fixture.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			expect(
+				fixture.runtime.getServiceRegistrationStatus(ServiceType.NOTIFICATION),
+			).toBe("failed");
+			expect(await fixture.runtime.getCache(key)).toEqual(invalid);
+			const repaired: NotificationInboxSnapshot = {
+				...invalid,
+				version: 2,
+				nativeEpoch: sqliteTestAgentId("repaired-epoch"),
+			};
+			await fixture.runtime.setCache(key, repaired);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			const recovered = (await fixture.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			expect((await recovered.listNativePage()).nativeEpoch).toBe(
+				repaired.nativeEpoch,
+			);
+			expect(
+				fixture.runtime.getServiceRegistrationStatus(ServiceType.NOTIFICATION),
+			).toBe("registered");
+		} finally {
+			await fixture.cleanup();
+		}
+	});
+
+	it("restores committed migration coordinates after a lost acknowledgement", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		let recovered: NotificationService | undefined;
+		const write = fixture.runtime.setCache.bind(fixture.runtime);
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const legacy = [
+				{
+					id: sqliteTestAgentId("migration-ack"),
+					title: "Migration receipt",
+					category: "general",
+					priority: "normal",
+					source: "fixture",
+					createdAt: 1,
+				},
+			];
+			await write(key, legacy);
+			fixture.runtime.setCache = async (cacheKey, value) => {
+				expect(await write(cacheKey, value)).toBe(true);
+				throw new Error("Migration acknowledgement lost");
+			};
+			await expect(NotificationService.start(fixture.runtime)).rejects.toThrow(
+				"acknowledgement lost",
+			);
+			fixture.runtime.setCache = write;
+			const committed =
+				await fixture.runtime.getCache<NotificationInboxSnapshot>(key);
+			recovered = (await NotificationService.start(
+				fixture.runtime,
+			)) as NotificationService;
+			const page = await recovered.listNativePage();
+			expect(page.nativeEpoch).toBe(committed?.nativeEpoch);
+			expect(page.throughSequence).toBe(1);
+			expect(
+				page.notifications.map(({ id, nativeSequence }) => [
+					id,
+					nativeSequence,
+				]),
+			).toEqual([[legacy[0]?.id, 1]]);
+		} finally {
+			fixture.runtime.setCache = write;
+			await recovered?.stop();
+			await fixture.cleanup();
+		}
+	});
+
+	it("refuses an unencodable legacy coordinate map before replacing history", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		let recovered: NotificationService | undefined;
+		try {
+			const key = `notifications:${fixture.runtime.agentId}`;
+			const legacy = [
+				{
+					id: "__proto__",
+					title: "Legacy map key",
+					category: "general",
+					priority: "normal",
+					source: "legacy",
+					createdAt: 1,
+				},
+			];
+			await fixture.runtime.setCache(key, legacy);
+			await expect(
+				NotificationService.start(fixture.runtime),
+			).rejects.toMatchObject({
+				code: "SQLITE_RECORD_ENCODING_UNSUPPORTED",
+			});
+			expect(await fixture.runtime.getCache(key)).toEqual(legacy);
+			const repaired = legacy.map((row) => ({
+				...row,
+				id: sqliteTestAgentId("portable-legacy-id"),
+			}));
+			await fixture.runtime.setCache(key, repaired);
+			recovered = (await NotificationService.start(
+				fixture.runtime,
+			)) as NotificationService;
+			expect((await recovered.listNativePage()).notifications).toEqual([
+				expect.objectContaining({ id: repaired[0]?.id, nativeSequence: 1 }),
+			]);
+		} finally {
+			await recovered?.stop();
+			await fixture.cleanup();
+		}
+	});
+
 	it("migrates legacy insertion order atomically and retains coordinates across restart", async () => {
 		const fixture = await createRuntime([AgentEventService]);
 		try {

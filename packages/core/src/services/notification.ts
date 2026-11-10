@@ -210,7 +210,7 @@ export class NotificationService extends Service {
 	private notifications: AgentNotification[] = [];
 	private nativeEpoch: string = crypto.randomUUID();
 	private nativeSequence = 0;
-	private nativeSequences: Record<string, number> = {};
+	private nativeSequences: Record<string, number> = Object.create(null);
 	private persistenceUncertain = false;
 	private notificationWriteTail: Promise<void> = Promise.resolve();
 	/**
@@ -418,7 +418,7 @@ export class NotificationService extends Service {
 	}
 
 	private snapshot(): NotificationInboxSnapshot {
-		const nativeSequences: Record<string, number> = {};
+		const nativeSequences: Record<string, number> = Object.create(null);
 		for (const n of this.notifications)
 			nativeSequences[n.id] = this.nativeSequences[n.id];
 		return {
