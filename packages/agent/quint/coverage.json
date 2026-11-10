@@ -149,6 +149,23 @@
     ]
   },
   {
+    "id": "AgentNativeAccountMigration",
+    "model": "packages/agent/quint/NativeAccountMigration.qnt",
+    "sources": ["packages/agent/native-host/account-state.mjs"],
+    "invariants": [
+      "TypeOK",
+      "CompletedPrefixIsClean",
+      "OnlyDirtyFilesAreStaged",
+      "SuccessHasNoSelectedCredential"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One serialized host, three selected configuration files, one credential and two calls. Real disk cases cover namespace/profile selection, nested scrub, malformed-file repair/retry, unsafe-file rejection and idempotency; the existing real child-process case covers prepared account storage.",
+      "Per-file atomic rename is assumed and settles with its acknowledgement. Multiple writers/processes, applied-but-unacknowledged effects, crash/fsync durability, temporary-file cleanup, hostile parent paths and arbitrary JSON roots/nesting remain open.",
+      "Progress assumes admitted filesystem calls settle and continuation is fair; neither success nor retry is guaranteed. The model excludes namespace creation/chmod failures. The documented downstream source API has no in-tree migration caller, so this does not prove downstream invocation, credential verification or broader account authorization."
+    ]
+  },
+  {
     "id": "AgentApiNativeSupervisor",
     "model": "packages/agent/quint/api-native-supervisor.qnt",
     "sources": [
