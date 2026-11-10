@@ -840,13 +840,17 @@
     "sources": [
       "packages/agent/src/api/conversation-routes.ts",
       "packages/agent/src/api/server.ts",
-      "plugins/plugin-workflow/src/trigger-routes.ts"
+      "plugins/plugin-workflow/src/trigger-routes.ts",
+      "packages/agent/src/triggers/runtime.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "safety"
+    ],
     "status": "partial",
     "limitations": [
-      "Two owner conversations and one asynchronous selection. An explicit missing or non-owner selection never falls back to another active window.",
-      "Existing HTTP/SQL delivery suite proves persisted target and callback delivery. Real provider outputs, native packaging and unbounded concurrency remain outside this scope."
+      "Two owner conversations, one selection/persistence attempt and one host replacement. Explicit missing or non-owner selection never falls back; a host change after the room read rejects persistence.",
+      "Four terminal prompt outcomes with or without prior reply delivery. HTTP/SQL tests cover cancelled, denied and failed turns, retained delivered replies and completed turns without chat text.",
+      "Room reads are atomic snapshots. Concurrent deletion after the read, in-flight database commits, real model/provider output, native packaging and unbounded concurrency remain outside this scope. No liveness claim."
     ]
   }
 ]

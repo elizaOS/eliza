@@ -1,4 +1,4 @@
-/** Existing HTTP/SQL trigger suite, including two-window selection and no fallback. */
+/** HTTP/SQL trigger suite: selection, host retirement and terminal prompt outcomes. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile } from "node:fs/promises";
@@ -47,6 +47,26 @@ for (const scenario of ["two-windows", "missing-selected"]) {
         test.fullName ===
           `delivers an API Once reply through the persisted owner room (${scenario})` &&
         test.status === "passed",
+    ).length,
+    1,
+  );
+}
+for (const name of [
+  ...["POST", "PUT"].map(
+    (method) =>
+      `refuses ${method} persistence when the runtime changes during the delivery-room read`,
+  ),
+  ...["failed", "cancelled", "denied"].map(
+    (status) =>
+      `records the resolved prompt turn outcome ${status} with prior delivery false`,
+  ),
+  "records the resolved prompt turn outcome failed with prior delivery true",
+  "records the resolved prompt turn outcome completed with prior delivery false",
+]) {
+  assert.equal(
+    cases.filter(
+      (test: { fullName: string; status: string }) =>
+        test.fullName === name && test.status === "passed",
     ).length,
     1,
   );

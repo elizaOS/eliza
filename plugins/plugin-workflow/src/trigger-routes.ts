@@ -203,6 +203,8 @@ export interface TriggerRouteContext extends RouteRequestContext {
   ownerEntityId?: string;
   /** Canonical local owner for ownerless legacy trigger compatibility. */
   localOwnerEntityId?: string;
+  /** Synchronous host lease check, called immediately before task persistence. */
+  assertCurrentRuntime: (runtime: IAgentRuntime) => void;
   /** Host resolves an optional app conversation selector; a client never supplies a delivery room. */
   resolvePromptDeliveryRoom: (runtime: IAgentRuntime, conversationId?: string) => Promise<UUID>;
   executeTriggerTask: (
@@ -352,6 +354,15 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     error(res, 'Owner role required', 403);
     return true;
   }
+  const canPersist = (): boolean => {
+    try {
+      ctx.assertCurrentRuntime(runtime);
+      return true;
+    } catch {
+      error(res, 'Agent changed before saving automation', 409);
+      return false;
+    }
+  };
   const listOwnedTriggerTasks = async (currentRuntime: IAgentRuntime): Promise<Task[]> =>
     (await listTriggerTasks(currentRuntime)).filter((task) =>
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
@@ -522,6 +533,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Prompt automation delivery conversation is unavailable', 503);
       return true;
     }
+    if (!canPersist()) return true;
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,
@@ -877,6 +889,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
             }
           : built;
     }
+    if (!canPersist()) return true;
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
       metadata: nextMeta as Task['metadata'],

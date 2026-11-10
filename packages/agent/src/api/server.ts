@@ -2286,6 +2286,16 @@ async function handleRequestForViewClient(
       pathname,
       runtime: state.runtime,
       ownerEntityId: automationOwnerEntityId,
+      assertCurrentRuntime: (runtime: IAgentRuntime) => {
+        if (
+          runtime !== state.runtime ||
+          resolveOwnerEntityIdOrDefault(runtime) !== automationOwnerEntityId
+        ) {
+          throw new ElizaError("Agent changed before saving automation", {
+            code: "AUTOMATION_RUNTIME_CHANGED",
+          });
+        }
+      },
       resolvePromptDeliveryRoom: (
         runtime: IAgentRuntime,
         conversationId?: string,
