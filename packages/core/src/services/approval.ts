@@ -276,20 +276,18 @@ export class ApprovalService extends Service {
 				this.requireRunning();
 			}
 
-			// Store callbacks for async handling
-			if (request.onSelect || request.onTimeout) {
-				const pending: PendingApproval = {
-					taskId,
-					request,
-					createdAt: Date.now(),
-					resolve: () => {},
-					reject: () => {},
-				};
-				// error-policy:J1 Fire-and-forget approvals have no awaiting caller,
-				// so the diagnostic channel is their observable failure boundary.
-				this.armTimeout(pending, "ApprovalService.asyncTimeout");
-				this.pendingApprovals.set(taskId, pending);
-			}
+			// Track every live request: callback-free requests still own their deadline.
+			const pending: PendingApproval = {
+				taskId,
+				request,
+				createdAt: Date.now(),
+				resolve: () => {},
+				reject: () => {},
+			};
+			// error-policy:J1 Fire-and-forget approvals have no awaiting caller,
+			// so the diagnostic channel is their observable failure boundary.
+			this.armTimeout(pending, "ApprovalService.asyncTimeout");
+			this.pendingApprovals.set(taskId, pending);
 
 			logger.info(
 				{
@@ -331,13 +329,13 @@ export class ApprovalService extends Service {
 					createdAt: Date.now(),
 					...(isAsync ? { isAsync: true } : {}),
 				},
+				...(request.metadata ?? {}),
 				...(isAsync
 					? {
 							onSelectCallback: !!request.onSelect,
 							onTimeoutCallback: !!request.onTimeout,
 						}
 					: {}),
-				...(request.metadata ?? {}),
 			},
 		});
 	}
@@ -518,6 +516,21 @@ export class ApprovalService extends Service {
 			// Take the approval before onSelect runs: a racing timeout, cancel or
 			// second selection then finds nothing (quint/ApprovalService.qnt).
 			const pending = this.pendingApprovals.get(taskId);
+			const persistedRequest = task.metadata?.approvalRequest as
+				| Record<string, unknown>
+				| undefined;
+			const callbackFreeAsync =
+				persistedRequest?.isAsync === true &&
+				task.metadata?.onSelectCallback === false &&
+				task.metadata?.onTimeoutCallback === false;
+			// Functions are not durable task data. Never acknowledge an orphaned or
+			// already-claimed callback task as if its required effect had completed.
+			if (!pending && !callbackFreeAsync) {
+				throw new ElizaError("Approval callback is no longer available", {
+					code: "APPROVAL_CALLBACK_UNAVAILABLE",
+					context: { taskId },
+				});
+			}
 			if (pending) {
 				this.pendingApprovals.delete(taskId);
 				if (pending.timeoutHandle) clearTimeout(pending.timeoutHandle);

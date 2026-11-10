@@ -121,7 +121,7 @@ module ApprovalService {
       sHas: s.sHas.set(i, s.inMap),
       inMap: false,
       timer: if (s.inMap and s.timer == "armed") "cleared" else s.timer,
-      spc: s.spc.set(i, if (s.inMap) "onSelect" else "deleteTask"),
+      spc: s.spc.set(i, if (s.inMap) "onSelect" else if (s.stopped) "deleteTask" else "done"),
       selRuns: if (s.inMap) s.selRuns + 1 else s.selRuns
     }
   }
@@ -428,4 +428,103 @@ module ApprovalRetirement {
     .then(BeginSelection).then(SelectionReadFails).expect(inMap and s.result == "none")
     .then(Stop).then(Retire).expect(s.result == "cancelled")
 
+}
+
+// One persisted asynchronous task. The maintained coding-tools caller supplies
+// both callbacks; the other finite case has none. Task lookup succeeds here;
+// the existing race/retirement modules cover read admission and claimed errors.
+// Callback functions remain local; neither runtime restart nor worker-name
+// registration recreates them. Deadline timers are owned only by the live
+// instance. Startup timer reconstruction and durable callback retry are gaps.
+module ApprovalPersisted {
+  const NeedsCallbacks: bool
+  type State = { phase: str, effect: str, restarted: bool, worker: bool }
+  var s: State
+  pure val phases = Set("live", "selectEffect", "timeoutEffect", "selectDelete",
+    "timeoutDelete", "orphan", "selected", "deleted")
+  val taskPresent = not(Set("selected", "deleted").contains(s.phase))
+  val finished = Set("orphan", "selected", "deleted").contains(s.phase)
+
+  action init = s' = { phase: "live", effect: "idle", restarted: false, worker: true }
+  action Select = all {
+    s.worker, s.phase == "live",
+    s' = { ...s, phase: if (NeedsCallbacks) "selectEffect" else "selectDelete",
+      effect: if (NeedsCallbacks) "running" else "idle" }
+  }
+  action Timeout = all {
+    s.phase == "live",
+    s' = { ...s, phase: if (NeedsCallbacks) "timeoutEffect" else "timeoutDelete",
+      effect: if (NeedsCallbacks) "running" else "idle" }
+  }
+  action EffectDone = all {
+    Set("selectEffect", "timeoutEffect").contains(s.phase),
+    s' = { ...s, effect: "success",
+      phase: if (s.phase == "selectEffect") "selectDelete" else "timeoutDelete" }
+  }
+  action EffectFailed = all {
+    Set("selectEffect", "timeoutEffect").contains(s.phase),
+    s' = { ...s, phase: "orphan", effect: "failure" }
+  }
+  action DeleteDone = all {
+    Set("selectDelete", "timeoutDelete").contains(s.phase),
+    s' = { ...s, phase: if (s.phase == "selectDelete") "selected" else "deleted" }
+  }
+  action DeleteFailed = all {
+    Set("selectDelete", "timeoutDelete").contains(s.phase),
+    s' = { ...s, phase: "orphan" }
+  }
+  action Restart = all {
+    not(s.restarted), Set("live", "orphan").contains(s.phase),
+    s' = { ...s, phase: "orphan", restarted: true, worker: false }
+  }
+  action RegisterSameName = all {
+    s.restarted, not(s.worker),
+    s' = { ...s, worker: true }
+  }
+  action SelectPersistedFree = all {
+    not(NeedsCallbacks), s.worker, s.phase == "orphan",
+    s' = { ...s, phase: "selectDelete" }
+  }
+  action RejectUnavailable = all {
+    NeedsCallbacks, s.worker, s.phase == "orphan", s' = s
+  }
+  action Cancel = all {
+    Set("live", "orphan").contains(s.phase),
+    s' = { ...s, phase: "deleted" }
+  }
+  action step = any {
+    Select, Timeout, EffectDone, EffectFailed, DeleteDone, DeleteFailed,
+    Restart, RegisterSameName, SelectPersistedFree, RejectUnavailable, Cancel, s' = s
+  }
+  val TypeOK = phases.contains(s.phase) and Set("idle", "running", "success", "failure").contains(s.effect)
+  val AcknowledgedSelectionHasEffect = (NeedsCallbacks and s.phase == "selected") implies s.effect == "success"
+  val NoInventedFreeEffects = not(NeedsCallbacks) implies s.effect == "idle"
+  val RestartCannotAcknowledgeCallback = (NeedsCallbacks and s.restarted) implies s.phase != "selected"
+  temporal OrphanCannotResume = always(((NeedsCallbacks and s.phase == "orphan") implies
+    (next(s.phase) == "orphan" or next(s.phase) == "deleted")).orKeep(s))
+  temporal LostCallbackHasNoNewEffects = always(((NeedsCallbacks and s.phase == "orphan") implies
+    next(s.effect) == s.effect).orKeep(s))
+  temporal CompletionFairness = and {
+    Timeout.weakFair(s), any { EffectDone, EffectFailed }.weakFair(s),
+    any { DeleteDone, DeleteFailed }.weakFair(s)
+  }
+  temporal FairOutcome = CompletionFairness implies eventually(finished)
+  temporal UnfairOutcome = eventually(finished)
+
+
+}
+module ApprovalPersisted_callbacks {
+  import ApprovalPersisted(NeedsCallbacks = true).*
+  run failedEffectIsNotAcknowledgedTest = init.then(Select).then(EffectFailed)
+    .then(RejectUnavailable).expect(taskPresent and s.effect == "failure")
+  run reRegistrationDoesNotRestoreCallbackTest = init.then(Restart).then(RegisterSameName)
+    .then(RejectUnavailable).expect(taskPresent and s.effect == "idle")
+  run completedEffectWithFailedDeleteIsNotRetriedTest = init.then(Select).then(EffectDone)
+    .then(DeleteFailed).then(RejectUnavailable).expect(taskPresent and s.effect == "success")
+}
+module ApprovalPersisted_callbackFree {
+  import ApprovalPersisted(NeedsCallbacks = false).*
+  run callbackFreeTimerRemovesTaskTest = init.then(Timeout).then(DeleteDone).expect(not(taskPresent))
+  run persistedFreeTaskCanBeSelectedTest = init.then(Restart).then(RegisterSameName)
+    .then(SelectPersistedFree).then(DeleteDone).expect(s.phase == "selected")
 }

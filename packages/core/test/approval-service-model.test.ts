@@ -94,30 +94,70 @@ describe("ApprovalService model properties", () => {
 		);
 		return service.listPendingUserActions()[0].id as UUID;
 	}
+	async function restartWithPersistedTasks() {
+		const adapter = runtime.adapter;
+		await runtime.stop(); // Retire the original owner; keep its actual SQLite handle and rows.
+		runtime = new AgentRuntime({
+			character: createCharacter({ name: "ApprovalModelIntegrationAgent" }),
+			adapter,
+			logLevel: "fatal",
+			enableAutonomy: false,
+		});
+		await runtime.initialize();
+		await runtime.registerPlugin({
+			name: pluginName,
+			description: "Approval conformance after runtime restart",
+			services: [ApprovalService],
+		});
+		service = (await runtime.getServiceLoadPromise(
+			ServiceType.APPROVAL,
+		)) as ApprovalService;
+	}
+
 	it("runs onTimeout or onSelect, never both (AtMostOneCallback)", async () => {
 		const calls: string[] = [];
 		const held = gate();
 		const getTask = runtime.getTask.bind(runtime);
+		vi.spyOn(runtime, "getTask").mockImplementation(async (id) => {
+			await held.wait();
+			return getTask(id);
+		});
 		const taskId = await service.requestApprovalAsync(request(calls, 5));
 		const task = await getTask(taskId);
 		assert(task);
 		const worker = runtime.getTaskWorker("MODEL_APPROVAL");
 		assert(worker);
-		vi.spyOn(runtime, "getTask").mockImplementation(async (id) => {
-			await held.wait();
-			return getTask(id);
-		});
 		await held.entered;
-		const selection = worker.execute(runtime, { option: "approve" }, task);
+		const selection = observe(
+			worker.execute(runtime, { option: "approve" }, task),
+		);
 		held.release();
-		await selection;
+		expect((await selection).error).toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
 		await vi.waitFor(() => expect(calls).toHaveLength(1));
 		expect(calls).toEqual(["timeout"]);
 	});
 	it("runs onSelect once for two concurrent selections (AtMostOneCallback)", async () => {
 		const calls: string[] = [];
-		const taskId = await service.requestApprovalAsync(request(calls));
-		await Promise.all([select(taskId), select(taskId)]);
+		const held = gate();
+		const taskId = await service.requestApprovalAsync({
+			...request(calls),
+			onSelect: async (option) => {
+				calls.push(`select:${option}`);
+				await held.wait();
+			},
+		});
+		const first = select(taskId);
+		await held.entered;
+		try {
+			await expect(select(taskId)).rejects.toMatchObject({
+				code: "APPROVAL_CALLBACK_UNAVAILABLE",
+			});
+		} finally {
+			held.release();
+		}
+		await first;
 		expect(calls).toEqual(["select:approve"]);
 		expect(await runtime.getTask(taskId)).toBeNull();
 	});
@@ -376,5 +416,98 @@ describe("ApprovalService model properties", () => {
 		await runtime.unloadPlugin(pluginName);
 		expect(await result).toMatchObject({ cancelled: true, success: false });
 		expect(calls).toEqual([]);
+	});
+
+	it("expires a callback-free asynchronous approval through its real timer", async () => {
+		const taskId = await service.requestApprovalAsync({
+			...request([], 5),
+			onSelect: undefined,
+			onTimeout: undefined,
+		});
+		await vi.waitFor(async () =>
+			expect(await runtime.getTask(taskId)).toBeNull(),
+		);
+		expect(service.listPendingUserActions()).toEqual([]);
+	});
+	it("refuses to acknowledge a retry after its required callback failed", async () => {
+		let attempts = 0;
+		const taskId = await service.requestApprovalAsync({
+			...request([]),
+			metadata: { onSelectCallback: false, onTimeoutCallback: false },
+			onSelect: async () => {
+				attempts += 1;
+				await runtime.setCache("approval-partial-effect", { attempts });
+				throw new Error("required approval effect failed");
+			},
+		});
+		expect((await runtime.getTask(taskId))?.metadata?.onSelectCallback).toBe(
+			true,
+		);
+		await expect(select(taskId)).rejects.toThrow(
+			"required approval effect failed",
+		);
+		expect(await runtime.getTask(taskId)).not.toBeNull();
+		await expect(select(taskId)).rejects.toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
+		expect(attempts).toBe(1);
+		expect(await runtime.getCache("approval-partial-effect")).toEqual({
+			attempts: 1,
+		});
+		expect(await runtime.getTask(taskId)).not.toBeNull();
+	});
+	it("retains an orphaned callback task after runtime restart and permits explicit cancellation", async () => {
+		const oldCalls: string[] = [];
+		const taskId = await service.requestApprovalAsync(request(oldCalls));
+		expect((await runtime.getTask(taskId))?.metadata?.onSelectCallback).toBe(
+			true,
+		);
+		await restartWithPersistedTasks();
+		const newCalls: string[] = [];
+		const freshId = await service.requestApprovalAsync(request(newCalls)); // The real first-party worker name is registered again.
+		await expect(select(taskId)).rejects.toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
+		expect(oldCalls).toEqual([]);
+		expect(newCalls).toEqual([]);
+		expect(await runtime.getTask(taskId)).not.toBeNull();
+		await select(freshId);
+		expect(newCalls).toEqual(["select:approve"]);
+		await service.cancelApproval(taskId);
+		expect(await runtime.getTask(taskId)).toBeNull();
+	});
+	it("selects a persisted callback-free task after runtime restart", async () => {
+		const taskId = await service.requestApprovalAsync({
+			...request([]),
+			onSelect: undefined,
+			onTimeout: undefined,
+		});
+		await restartWithPersistedTasks();
+		const freshId = await service.requestApprovalAsync(request([]));
+		await select(taskId);
+		expect(await runtime.getTask(taskId)).toBeNull();
+		await service.cancelApproval(freshId);
+	});
+
+	it("retains the row when deletion fails after a completed approval effect", async () => {
+		const taskId = await service.requestApprovalAsync({
+			...request([]),
+			onSelect: async () => {
+				await runtime.setCache("approval-complete-effect", "completed");
+			},
+		});
+		const failure = new ElizaError("approval task delete failed", {
+			code: "DB_QUERY_FAILED",
+		});
+		vi.spyOn(runtime.adapter, "deleteTasks").mockRejectedValueOnce(failure);
+		await expect(select(taskId)).rejects.toBe(failure);
+		expect(await runtime.getCache("approval-complete-effect")).toBe(
+			"completed",
+		);
+		expect(await runtime.getTask(taskId)).not.toBeNull();
+		await expect(select(taskId)).rejects.toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
+		expect(await runtime.getTask(taskId)).not.toBeNull();
 	});
 });

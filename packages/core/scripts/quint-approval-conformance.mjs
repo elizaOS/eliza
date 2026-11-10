@@ -21,6 +21,11 @@ const required = [
 	"cancels an unclaimed selection and drains its admitted SQLite read",
 	"drains admitted list and worker permission queries on plugin unload",
 	"retains an unclaimed approval after selection read failure until unload",
+	"expires a callback-free asynchronous approval through its real timer",
+	"refuses to acknowledge a retry after its required callback failed",
+	"retains an orphaned callback task after runtime restart and permits explicit cancellation",
+	"selects a persisted callback-free task after runtime restart",
+	"retains the row when deletion fails after a completed approval effect",
 ];
 
 const output = testOutputPath("quint-approval");

@@ -164,6 +164,110 @@
 					]
 				}
 			]
+		},
+		{
+			"name": "persisted-callbacks",
+			"main": "ApprovalPersisted_callbacks",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"AcknowledgedSelectionHasEffect",
+				"NoInventedFreeEffects",
+				"RestartCannotAcknowledgeCallback"
+			],
+			"temporal": [
+				"OrphanCannotResume",
+				"LostCallbackHasNoNewEffects",
+				"FairOutcome",
+				"UnfairOutcome"
+			],
+			"maxSteps": 30,
+			"samples": 1000,
+			"temporalChecks": [
+				{
+					"property": "OrphanCannotResume",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness is assumed. A task with an unavailable required callback can remain retained or be explicitly cancelled; re-registering a worker does not restore the callback."
+					]
+				},
+				{
+					"property": "LostCallbackHasNoNewEffects",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness is assumed. An orphaned task cannot retry its required callback, including a callback that completed before task deletion failed."
+					]
+				},
+				{
+					"property": "FairOutcome",
+					"expect": "holds",
+					"assumptions": [
+						"CompletionFairness weakly fairly fires a continuously enabled live deadline and settles callbacks and task deletion. Failure counts as an outcome with the task retained.",
+						"This does not assume provider success, a wall-clock bound, or timer reconstruction after runtime restart.",
+						"Each persisted finite case assumes a positive live timeout. Requests without a timeout require an external selection or cancellation and have no automatic-progress claim."
+					]
+				},
+				{
+					"property": "UnfairOutcome",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness is assumed. An unselected live request or its admitted callback may stutter forever."
+					]
+				}
+			]
+		},
+		{
+			"name": "persisted-callback-free",
+			"main": "ApprovalPersisted_callbackFree",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"AcknowledgedSelectionHasEffect",
+				"NoInventedFreeEffects",
+				"RestartCannotAcknowledgeCallback"
+			],
+			"temporal": [
+				"OrphanCannotResume",
+				"LostCallbackHasNoNewEffects",
+				"FairOutcome",
+				"UnfairOutcome"
+			],
+			"maxSteps": 30,
+			"samples": 1000,
+			"temporalChecks": [
+				{
+					"property": "OrphanCannotResume",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness is assumed. A task with an unavailable required callback can remain retained or be explicitly cancelled; re-registering a worker does not restore the callback."
+					]
+				},
+				{
+					"property": "LostCallbackHasNoNewEffects",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness is assumed. An orphaned task cannot retry its required callback, including a callback that completed before task deletion failed."
+					]
+				},
+				{
+					"property": "FairOutcome",
+					"expect": "holds",
+					"assumptions": [
+						"CompletionFairness weakly fairly fires a continuously enabled live deadline and settles callbacks and task deletion. Failure counts as an outcome with the task retained.",
+						"This does not assume provider success, a wall-clock bound, or timer reconstruction after runtime restart.",
+						"Each persisted finite case assumes a positive live timeout. Requests without a timeout require an external selection or cancellation and have no automatic-progress claim."
+					]
+				},
+				{
+					"property": "UnfairOutcome",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness is assumed. An unselected live request or its admitted callback may stutter forever."
+					]
+				}
+			]
 		}
 	],
 	"sources": [
@@ -174,11 +278,12 @@
 		"packages/core/test/approval-service-model.test.ts"
 	],
 	"conformance": "packages/core/scripts/quint-approval-conformance.mjs",
-	"bounds": "The existing race/failure cases start with one published approval and two selectors. The retirement case has one request in one instance, one creation receipt, one selecting worker or claimed timer, one stop and a replacement admission boundary, or one admitted list/worker-permission query. Callback and storage completion may succeed or fail.",
+	"bounds": "The existing race/failure cases start with one published approval and two selectors. The retirement case has one request in one instance, one creation receipt, one selecting worker or claimed timer, one stop and a replacement admission boundary, or one admitted list/worker-permission query. Callback and storage completion may succeed or fail. Persisted cases project one async task with either both callbacks (the coding-tools caller) or none, one positive live deadline, one runtime restart, and one same-name worker re-registration. Callback completion and task deletion can succeed or fail. Task reads succeed in this projection.",
 	"limitations": [
-		"Role authorization, option validation, asynchronous requests without callbacks, multiple pending approvals, durable recovery of task rows and process restart are outside these projections.",
-		"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. No retry ownership or cross-instance callback recovery is proved.",
+		"Role authorization, option validation, multiple pending approvals, durable recovery of task rows and process restart are outside these projections.",
+		"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. Unavailable callbacks now fail closed. There is no durable callback retry or function reconstruction.",
 		"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
-		"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections."
+		"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections.",
+		"Persisted callback requirements use the existing boolean metadata. Mixed callback shapes, legacy or externally changed metadata, automatic worker registration and startup reconstruction of deadline timers remain outside these two persisted projections."
 	]
 }
