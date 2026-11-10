@@ -1495,10 +1495,11 @@ async function findIneffectiveSelfControlTargets(
       website,
       config,
     );
-    if (
-      addresses.length === 0 ||
-      addresses.some((address) => !isWebsiteBlockSinkholeAddress(address))
-    ) {
+    // No address means the lookup gave no answer (offline machine, DNS outage,
+    // or a name with no record). The hosts entry still sinks the name, so an
+    // unanswered lookup cannot prove the block is ineffective. Flag the site
+    // only when a real address still resolves past the sinkhole.
+    if (addresses.some((address) => !isWebsiteBlockSinkholeAddress(address))) {
       ineffective.push(website);
     }
   }
