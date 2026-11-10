@@ -8,6 +8,8 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+test.use({ timezoneId: "UTC" });
+
 async function fixture(page: Page, receiptLinks = false) {
   const apiBase = test.info().project.use.baseURL;
   if (!apiBase) throw new Error("Mobile entry fixture requires a base URL");
