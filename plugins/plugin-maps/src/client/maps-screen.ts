@@ -431,6 +431,13 @@ export class MapsScreenController {
       this.invalidate();
       return;
     }
+    if (this.navigating) {
+      void this.stopGuidance().catch((error) => {
+        this.message = failure(error).message;
+      });
+      this.message =
+        "Navigation paused while the app is in the background. Tap Start to resume.";
+    }
     this.leaveView();
   }
 

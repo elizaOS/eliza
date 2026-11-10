@@ -378,7 +378,13 @@ export class MapsController {
     this.invalidateRoute();
     const request = new AbortController();
     this.routeRequest = request;
-    this.update({ route: { phase: "loading", value: null, error: null } });
+    this.update({
+      route: {
+        phase: "loading",
+        value: kept?.route.value ?? null,
+        error: null,
+      },
+    });
     try {
       // Directions can be submitted while the native detail request is still
       // resolving. Keep that user's request, but never route a stale selection.
@@ -567,10 +573,15 @@ export class MapsController {
     this.originRequest?.abort();
     const settled = <T>(result: ResultState<T>): ResultState<T> =>
       result.phase === "loading" ? idle(result.value) : result;
+    const interrupted =
+      this.state.route.phase === "loading" ? this.state.route.value : null;
     this.update({
+      ...(interrupted ? { origin: interrupted.from, originLabel: null } : {}),
       search: settled(this.state.search),
       selection: settled(this.state.selection),
-      route: settled(this.state.route),
+      route: interrupted
+        ? { phase: "ready", value: interrupted, error: null }
+        : settled(this.state.route),
       originSearch: settled(this.state.originSearch),
       position: settled(this.state.position),
     });

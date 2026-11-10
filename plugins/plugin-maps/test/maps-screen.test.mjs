@@ -1070,3 +1070,53 @@ test("a location callback after the timeout cannot replace the retained origin",
   assert.match(f.screen.view().status.text, /Couldn't find your location/);
   f.screen.dispose();
 });
+
+test("a hidden page without background admission stops guidance and keeps its route for explicit resume", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    route = surface.snapshot().route.value;
+  f.screen.hidden();
+  await settle();
+  assert.equal(f.screen.isNavigating(), false);
+  assert.equal(f.screen.view().mode, "directions");
+  assert.deepEqual(surface.snapshot().route.value, route);
+  assert.equal(f.stops(), 1);
+  assert.match(f.screen.view().status.text, /Tap Start to resume/);
+  f.screen.refresh();
+  assert.equal(
+    f.screen.isNavigating(),
+    false,
+    "foreground return does not restart guidance",
+  );
+  f.screen.dispose();
+});
+
+test("hiding without background admission during reroute retains the admitted route and ignores its late answer", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    route = surface.snapshot().route.value;
+  let finish;
+  f.host.connection().provider.route = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  f.screen.reroute();
+  await settle();
+  f.screen.hidden();
+  await settle();
+  finish({ ...route, id: "late_route_0123456789", from: OFF_ROUTE });
+  await settle();
+  assert.equal(f.screen.isNavigating(), false);
+  assert.equal(f.screen.view().directions.routeReady, true);
+  assert.deepEqual(surface.snapshot().route.value, route);
+  assert.deepEqual(surface.snapshot().origin, route.from);
+  f.screen.dispose();
+});
