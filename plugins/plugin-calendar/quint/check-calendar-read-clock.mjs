@@ -12,7 +12,7 @@ const result = spawnSync(
     "plugins/plugin-personal-assistant/vitest.config.ts",
     "plugins/plugin-personal-assistant/test/calendar-action-effect-receipts.pglite.test.ts",
     "-t",
-    "aliased read bounds",
+    "aliased read bounds|elapsed daily feed",
   ],
   { stdio: "inherit" },
 );

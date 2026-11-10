@@ -32,10 +32,17 @@ export function calendarReadPromptProjection(
     context && typeof context === "object" && !Array.isArray(context)
       ? (context as ProviderDataRecord).timeZone
       : undefined;
+  const nextClock = data.timeReference;
+  const nextZone =
+    nextClock && typeof nextClock === "object" && !Array.isArray(nextClock)
+      ? (nextClock as ProviderDataRecord).timeZone
+      : undefined;
   const displayZone =
     typeof contextZone === "string" && isValidTimeZone(contextZone)
       ? contextZone
-      : undefined;
+      : typeof nextZone === "string" && isValidTimeZone(nextZone)
+        ? nextZone
+        : undefined;
   const modelEvent = (event: ProviderValue): ProviderValue => {
     if (!event || typeof event !== "object" || Array.isArray(event))
       return event;

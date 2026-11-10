@@ -749,6 +749,8 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         title: "Tomorrow upcoming event",
         startAt: "2028-09-25T18:00:00.000Z",
       });
+      expect(JSON.stringify(next.promptData)).toContain("11:00 AM");
+      expect(JSON.stringify(next.promptData)).toContain("PDT");
       expect(next.effectReceipts?.[0]?.operation).not.toBe(
         "calendar.feed.read",
       );
