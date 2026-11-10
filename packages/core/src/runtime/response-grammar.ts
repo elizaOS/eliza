@@ -1291,9 +1291,13 @@ export function buildPlannerActionGrammarStrict(
 	// per-action params rule — the model could legally pair `MESSAGE_READ` with
 	// `paramsofaction-MESSAGE-SEND`. Each branch must encode the full action
 	// name as a literal, then bind to its own params rule.
+	const usedActionRuleNames = new Set<string>();
 	for (const descriptor of sortedDescriptors) {
 		const fullName = descriptor.name;
-		const sanitized = sanitizeGbnfRuleName(fullName);
+		const sanitized = uniqueGbnfRuleName(
+			sanitizeGbnfRuleName(fullName),
+			usedActionRuleNames,
+		);
 		const paramsRuleName = `paramsofaction-${sanitized}`;
 		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
 		const branchRuleName = `callofaction-${sanitized}`;
@@ -1339,6 +1343,30 @@ const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
 function sanitizeGbnfRuleName(name: string): string {
 	const cleaned = name.replace(/[^A-Za-z0-9-]/g, "-").replace(/-+/g, "-");
 	return /^[A-Za-z0-9]/.test(cleaned) ? cleaned : `r-${cleaned}`;
+}
+
+/**
+ * Disambiguate a sanitized GBNF rule-name segment against the names already
+ * used in the same scope. `sanitizeGbnfRuleName` is lossy (`_`, `.`, and `-`
+ * all collapse to `-`), so two distinct keys can sanitize to one name — and
+ * `GbnfBuilder.rule` keeps only the first definition, so the second
+ * property/action would silently inherit the first one's key literal and
+ * value rule. The first name is kept unchanged, so grammars without a
+ * collision are byte-identical.
+ */
+function uniqueGbnfRuleName(base: string, used: Set<string>): string {
+	if (!used.has(base)) {
+		used.add(base);
+		return base;
+	}
+	let suffix = 2;
+	let candidate = `${base}-${suffix}`;
+	while (used.has(candidate)) {
+		suffix += 1;
+		candidate = `${base}-${suffix}`;
+	}
+	used.add(candidate);
+	return candidate;
 }
 
 /**
@@ -1393,8 +1421,12 @@ function emitObjectRule(
 	const optionalKeys = propertyNames.filter((k) => !required.has(k));
 
 	const propertyTokens: Record<string, string> = {};
+	const usedPropertyRuleNames = new Set<string>();
 	for (const key of propertyNames) {
-		const sanitizedKey = sanitizeGbnfRuleName(key);
+		const sanitizedKey = uniqueGbnfRuleName(
+			sanitizeGbnfRuleName(key),
+			usedPropertyRuleNames,
+		);
 		const propertyRuleName = `${ruleName}-p-${sanitizedKey}`;
 		const contextRuleName = `${ruleName}-${sanitizedKey}`;
 		const valueExpr = propertyValueGbnf(
