@@ -2026,6 +2026,71 @@ describe("durable background memory", () => {
     expect(runtime.useModel).toHaveBeenCalledTimes(stored.length);
   });
 
+  it("keeps the backfill job for a lane's next page when another lane stops at the output limit", async () => {
+    const { runtime, service, message } = await setup();
+    const earlier = Array.from({ length: 2 }, (_, i) => ({
+      ...message,
+      id: stringToUuid(`output-limited-backfill:${i}`),
+      createdAt: i,
+      content: { text: `Complete record ${i}\n${"source ".repeat(15)}` },
+    }));
+    for (const source of earlier)
+      await runtime.upsertMemory(source, "messages");
+    const stored = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      unique: false,
+      includeEmbedding: false,
+      orderDirection: "asc",
+    });
+    const budget =
+      Math.max(
+        ...stored.map(
+          (row) => new TextEncoder().encode(JSON.stringify(row)).byteLength,
+        ),
+      ) + 1;
+    vi.spyOn(runtime, "getSetting").mockImplementation((key) =>
+      key === "MEMORY_EVIDENCE_BATCH_BYTES" ? String(budget) : null,
+    );
+    const resolved: Memory["id"][] = [];
+    // Resolves its pages without inference, like the reflection lanes on
+    // pages that have no personal extraction source.
+    const settled = evaluator();
+    settled.name = "settled";
+    settled.priority = 90;
+    settled.resolveOutput = () => ({ ok: true });
+    settled.processors = [
+      {
+        process: async ({ options }) => {
+          resolved.push(
+            ...(options.extraction?.messages ?? []).map((row) => row.id),
+          );
+          return undefined;
+        },
+      },
+    ];
+    runtime.registerEvaluator(settled);
+    runtime.registerEvaluator(evaluator());
+    // A native text handler that stopped at max tokens: not retryable.
+    runtime.useModel = vi.fn(async () => ({
+      text: '{"memory":',
+      toolCalls: [],
+      finishReason: "length",
+    })) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    const task = await job(runtime);
+    await execute(runtime, task);
+    expect(runtime.useModel).toHaveBeenCalledTimes(1);
+    expect(resolved).toEqual([earlier[0].id]);
+    expect(await runtime.getTask(task.id)).not.toBeNull();
+    for (let i = 0; i < stored.length && (await runtime.getTask(task.id)); i++)
+      await execute(runtime, task);
+    expect(resolved).toEqual(stored.map((row) => row.id));
+    // One request per page the settled lane advanced; then the job ends.
+    expect(runtime.useModel).toHaveBeenCalledTimes(stored.length);
+    expect(await runtime.getTask(task.id)).toBeNull();
+  });
+
   it.each([
     { changeReference: false, recoveryCarrier: false },
     { changeReference: true, recoveryCarrier: false },

@@ -1145,6 +1145,9 @@ export class EvaluatorService extends BaseService {
               result.errors.length &&
               result.errors.every((entry) => entry.retryable === false)
             ) {
+              // Other evidence pages are still waiting. They are new input, so
+              // the job runs again for them; it ends here once none remain.
+              if (result.hasMoreEvidence) return undefined;
               this.runtime.logger.warn(
                 {
                   src: "service:evaluator",
