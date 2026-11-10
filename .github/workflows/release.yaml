@@ -28,6 +28,11 @@ on:
         description: Exact npm username represented by NPM_TOKEN
         required: true
         type: string
+      publish_stores:
+        description: Also publish configured app stores after the npm release
+        required: false
+        type: boolean
+        default: false
       candidate_run_id:
         description: Prior workflow run whose immutable candidate should be resumed
         required: false
@@ -593,6 +598,7 @@ jobs:
 
   publish-snap:
     name: Publish Snap Store release
+    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read
@@ -606,6 +612,7 @@ jobs:
 
   publish-mobile-stores:
     name: Publish Google Play and Apple App Store releases
+    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read
@@ -619,6 +626,7 @@ jobs:
 
   publish-microsoft-store:
     name: Publish Microsoft Store release
+    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read
