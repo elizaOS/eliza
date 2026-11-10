@@ -102,7 +102,6 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
@@ -164,6 +163,11 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
+import {
+  ClientClosedBeforeDispatchError,
+  joinProviderBoundary,
+  OrgRateLimitedBeforeDispatchError,
+} from "./provider-boundary";
 import {
   type CallerLlmPurpose,
   getSafeCallerLlmPurpose,
@@ -1489,14 +1493,17 @@ export async function handleChatCompletionsPOST(
           }
         : undefined;
 
-    // 1b. Per-org tier rate limit. Start the authoritative decision now, then
-    // overlap it with the independent cache-only preparation below. We still
-    // inspect and return this result first, preserving the existing denial
-    // precedence without serializing an unrelated Durable Object round trip
-    // ahead of every dependency read. The billing gate wakes at the same time
-    // so dispatch does not pay its activation in series after idle.
-    if (options.executionCtx && user.organization_id)
-      wakeInferenceAdmissionGate(user.organization_id, options.executionCtx);
+    // 1b. Per-org tier rate limit. Start the authoritative decision now and
+    // overlap it with the cache-only preparation below. On a Worker the
+    // verdict is joined with the lease commit at the provider boundary (see
+    // `markProviderDispatched` below), so the rate object and the billing gate
+    // cost one Durable Object round trip of wall time. The rate windows live
+    // in their own object (`rate-limit:v2:<org>`), shared with every other
+    // inference route, so they are not folded into the lease operation. A
+    // funded-budget request still decides here: its admission consumes the
+    // rate receipt.
+    const rateVerdictJoinsDispatch =
+      Boolean(options.executionCtx) && !fundedBudget;
     const orgRateLimitPromise = observeConcurrentPromise(
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
@@ -1709,10 +1716,15 @@ export async function handleChatCompletionsPOST(
       ]),
     );
 
-    const orgRateLimited = await resolveOrgRateLimit();
-    if (orgRateLimited) {
-      captureEarlyPreforwardTiming();
-      return attachPreforwardTelemetry(orgRateLimited);
+    if (rateVerdictJoinsDispatch) {
+      // A response returned before dispatch must not cancel the window count.
+      options.executionCtx?.waitUntil(orgRateLimitPromise);
+    } else {
+      const orgRateLimited = await resolveOrgRateLimit();
+      if (orgRateLimited) {
+        captureEarlyPreforwardTiming();
+        return attachPreforwardTelemetry(orgRateLimited);
+      }
     }
 
     const [resolvedApp, pooledCredential, modelCatalogResolution] =
@@ -2205,6 +2217,19 @@ export async function handleChatCompletionsPOST(
     }
     const tAfterReserve = performance.now();
 
+    // The provider boundary. The lease commit and the rate verdict started
+    // after auth settle together, and both must allow before the provider is
+    // invoked. A rate denial keeps its precedence over a balance or standing
+    // refusal. A client that left before or during the commit never reaches
+    // the provider. Each refusal is thrown to the catch below, which settles
+    // the reservation at zero because the provider was not invoked.
+    markProviderDispatched = joinProviderBoundary({
+      signal: req.signal,
+      rateVerdict: rateVerdictJoinsDispatch ? resolveOrgRateLimit : undefined,
+      commit: markProviderDispatched,
+      onRateDenied: captureEarlyPreforwardTiming,
+    });
+
     // 7. Keep all instruction messages in their original transcript positions.
     // Selecting one system message and filtering the rest silently loses context.
     const systemPrompt = undefined;
@@ -2330,6 +2355,24 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    if (error instanceof OrgRateLimitedBeforeDispatchError)
+      return attachPreforwardTelemetry(error.response);
+    if (error instanceof ClientClosedBeforeDispatchError) {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: error.message,
+                type: "api_error",
+                code: "client_closed_request",
+              },
+            },
+            { status: 499 },
+          ),
+        ),
+      );
+    }
     const appFundingFailure = appInferenceErrorResponse(error);
     if (appFundingFailure) return addCorsHeaders(appFundingFailure);
     const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
