@@ -16,15 +16,17 @@ import {
 } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
+import { sql } from "drizzle-orm";
 import type Stripe from "stripe";
+import { stripeReversalTestDatabase } from "./fixtures/stripe-reversal-database";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
-process.env.NODE_ENV = "test";
+const testDatabase = await stripeReversalTestDatabase("reinstatement");
 setDefaultTimeout(60_000);
 
-const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@elizaos/cloud-shared/db/client");
+const { closeDatabaseConnectionsForTests, dbWrite } = await import(
+  "@elizaos/cloud-shared/db/client"
+);
+const { sqlRows } = await import("@elizaos/cloud-shared/db/execute-helpers");
 const { organizations } = await import(
   "@elizaos/cloud-shared/db/schemas/organizations"
 );
@@ -38,6 +40,7 @@ const { creditTransactions } = await import(
 const { stripeCheckoutOrders } = await import(
   "@elizaos/cloud-shared/db/schemas/stripe-checkout-orders"
 );
+const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
 const { organizationPaymentReversalHolds } = await import(
   "@elizaos/cloud-shared/db/schemas/organization-payment-reversal-holds"
 );
@@ -63,7 +66,7 @@ const { reserveFlatUsageCredits } = await import(
   "@elizaos/cloud-shared/lib/services/ai-billing"
 );
 async function paidFlatReservation(org: string, amount: number) {
-  const owner = await getPgliteClientForTests().query<{ id: string }>(
+  const owner = await testDatabase.query<{ id: string }>(
     "SELECT id FROM users WHERE organization_id=$1 AND role='owner' LIMIT 1",
     [org],
   );
@@ -82,11 +85,57 @@ async function paidFlatReservation(org: string, amount: number) {
 }
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
-const pg = () => getPgliteClientForTests();
+const pg = () => testDatabase;
+
+function pauseNextReinstatement() {
+  const entered = Promise.withResolvers<number>();
+  const release = Promise.withResolvers<void>();
+  const record = creditsService.recordDisputeReinstatement.bind(creditsService);
+  const paused = spyOn(
+    creditsService,
+    "recordDisputeReinstatement",
+  ).mockImplementationOnce(async (params) => {
+    const result = await record(params);
+    const rows =
+      testDatabase.native && params.db
+        ? await sqlRows<{ pid: number }>(
+            params.db,
+            sql`SELECT pg_backend_pid() AS pid`,
+          )
+        : [];
+    entered.resolve(rows[0]?.pid ?? 0);
+    await release.promise;
+    return result;
+  });
+  return {
+    entered: entered.promise,
+    release: release.resolve,
+    restore: () => paused.mockRestore(),
+  };
+}
+
+async function blockedPaidReservation(org: string, ownerPid: number) {
+  let settled = false;
+  const outcome = paidFlatReservation(org, 5).then(
+    (reservation) => {
+      settled = true;
+      return { kind: "reserved" as const, reservation };
+    },
+    (error: unknown) => {
+      settled = true;
+      return { kind: "rejected" as const, error };
+    },
+  );
+  if (testDatabase.native) await testDatabase.waitForBlockedMutation(ownerPid);
+  else await new Promise((resolve) => setTimeout(resolve, 25));
+  expect(settled).toBe(false);
+  return { outcome };
+}
 
 beforeAll(async () => {
   // Touch the lazy client so the PGlite instance exists.
   await dbWrite.execute("SELECT 1");
+  await testDatabase.verifyProductionConnection(dbWrite);
   const empty = generateDrizzleJson({});
   for (const statement of await generateMigration(
     empty,
@@ -97,6 +146,7 @@ beforeAll(async () => {
         creditPacks,
         creditTransactions,
         stripeCheckoutOrders,
+        invoices,
         organizationPaymentReversalHolds,
         earningsSourceEnum,
         ledgerEntryTypeEnum,
@@ -113,6 +163,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
+  await testDatabase.close();
 });
 
 interface Purchase {
@@ -617,6 +668,7 @@ function topUpEvent(org: string, credits: number) {
             amount: credits * 100,
             amount_received: credits * 100,
             currency: "usd",
+            customer: `cus_fixture_${org.replaceAll("-", "")}`,
             invoice: null,
             metadata: {
               organization_id: org,
@@ -990,7 +1042,28 @@ test("a partially applied refund recovers the rest after the overlapping dispute
     FOR EACH ROW EXECUTE FUNCTION fail_test_credit_reversal_repair();
   `);
   try {
-    expect(await processStripeEvent(reinstated)).toBe("retry");
+    const paused = pauseNextReinstatement();
+    const recovery = processStripeEvent(reinstated);
+    const ownerPid = await paused.entered;
+    let paid: Awaited<ReturnType<typeof blockedPaidReservation>> | undefined;
+    try {
+      paid = await blockedPaidReservation(buyer.org, ownerPid);
+    } finally {
+      paused.release();
+      await recovery;
+      paused.restore();
+    }
+    expect(await recovery).toBe("retry");
+    const outcome = await paid!.outcome;
+    expect(outcome.kind).toBe("rejected");
+    if (outcome.kind === "rejected")
+      expect(outcome.error).toBeInstanceOf(InsufficientCreditsError);
+    testDatabase.record({
+      event: "rollback-rejects-paid-reservation",
+      ownerPid,
+      recovery: "retry",
+      outcome: outcome.kind,
+    });
     expect(await balance(buyer.org)).toBe(0);
     expect(await affiliatePayable(buyer.affiliate)).toBe(0);
     expect(
@@ -1122,45 +1195,29 @@ test("a concurrent paid reservation cannot observe an uncommitted reinstatement 
       charge: Record<string, unknown>;
     }
   ).charge.amount_refunded = 1500;
-  const entered = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const record = creditsService.recordDisputeReinstatement.bind(creditsService);
-  const paused = spyOn(
-    creditsService,
-    "recordDisputeReinstatement",
-  ).mockImplementationOnce(async (params) => {
-    const result = await record(params);
-    entered.resolve();
-    await release.promise;
-    return result;
-  });
+  const paused = pauseNextReinstatement();
   const recovery = processStripeEvent(reinstated);
-  await entered.promise;
-  let admissionSettled = false;
-  const paid = paidFlatReservation(buyer.org, 5).then(
-    (reservation) => {
-      admissionSettled = true;
-      return { kind: "reserved" as const, reservation };
-    },
-    (error) => {
-      admissionSettled = true;
-      return { kind: "rejected" as const, error };
-    },
-  );
+  const ownerPid = await paused.entered;
+  let paid: Awaited<ReturnType<typeof blockedPaidReservation>> | undefined;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(admissionSettled).toBe(false);
+    paid = await blockedPaidReservation(buyer.org, ownerPid);
   } finally {
-    release.resolve();
-    await Promise.allSettled([recovery, paid]);
-    paused.mockRestore();
+    paused.release();
+    await recovery;
+    paused.restore();
   }
   expect(await recovery).toBe("ack");
-  const outcome = await paid;
+  const outcome = await paid!.outcome;
   expect(outcome.kind).toBe("rejected");
   if (outcome.kind === "rejected")
     expect(outcome.error).toBeInstanceOf(InsufficientCreditsError);
   expect(await balance(buyer.org)).toBe(0);
+  testDatabase.record({
+    event: "commit-rejects-paid-reservation",
+    ownerPid,
+    recovery: "ack",
+    outcome: outcome.kind,
+  });
 });
 
 test("a committed refund during preparation aborts reinstatement before paid credit becomes visible", async () => {
@@ -1217,9 +1274,18 @@ test("a committed refund during preparation aborts reinstatement before paid cre
   expect(await processStripeEvent(reinstated)).toBe("ack");
   expect(await balance(buyer.org)).toBe(0);
   expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+  testDatabase.record({
+    event: "newer-committed-refund-invalidates-preparation",
+    finalBalance: await balance(buyer.org),
+  });
 });
 
-test("a lost post-commit cache acknowledgement retains one complete reinstatement", async () => {
+test("a lost reinstatement acknowledgement retains one complete reinstatement", async () => {
+  await reinstatementAcknowledgementLoss(false);
+  if (testDatabase.native) await reinstatementAcknowledgementLoss(true);
+});
+
+async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
   const buyer = await affiliateTopUp();
   const disputeId = `dp_${randomUUID()}`;
   expect(
@@ -1246,24 +1312,56 @@ test("a lost post-commit cache acknowledgement retains one complete reinstatemen
     }
   ).charge.amount_refunded = 1500;
   const invalidate = creditsService.invalidateCreditCaches.bind(creditsService);
-  const lost = spyOn(
+  const record = creditsService.recordDisputeReinstatement.bind(creditsService);
+  let ownerPid = 0;
+  const owner = spyOn(
     creditsService,
-    "invalidateCreditCaches",
-  ).mockImplementationOnce(async (org) => {
-    await invalidate(org);
-    throw new Error("test lost post-commit cache acknowledgement");
+    "recordDisputeReinstatement",
+  ).mockImplementationOnce(async (params) => {
+    const result = await record(params);
+    if (testDatabase.native && params.db) {
+      const rows = await sqlRows<{ pid: number }>(
+        params.db,
+        sql`SELECT pg_backend_pid() AS pid`,
+      );
+      ownerPid = rows[0]!.pid;
+      if (commitReplyLost) testDatabase.loseCommitAck(ownerPid);
+    }
+    return result;
   });
+  const lost = commitReplyLost
+    ? undefined
+    : spyOn(creditsService, "invalidateCreditCaches").mockImplementationOnce(
+        async (org) => {
+          await invalidate(org);
+          throw new Error("test lost post-commit cache acknowledgement");
+        },
+      );
   try {
     expect(await processStripeEvent(reinstated)).toBe("retry");
   } finally {
-    lost.mockRestore();
+    lost?.mockRestore();
+    owner.mockRestore();
   }
+  if (commitReplyLost)
+    expect(testDatabase.didLoseCommitAck(ownerPid)).toBe(true);
   expect(await balance(buyer.org)).toBe(0);
   expect(
     await creditsService.getTransactionByStripePaymentIntent(
       `stripe:dispute:${disputeId}:reinstated`,
     ),
   ).toMatchObject({ amount: "5.000000" });
+  const observedReceipts = await pg().query<{ type: string; amount: string }>(
+    `SELECT type,amount FROM credit_transactions WHERE stripe_payment_intent_id IN ($1,$2) ORDER BY type`,
+    [
+      `stripe:dispute:${disputeId}:reinstated`,
+      `stripe:refund:ch_${disputeId}:1500:reinstatement:${disputeId}`,
+    ],
+  );
+  expect(observedReceipts.rows).toEqual([
+    { type: "clawback", amount: "-5.000000" },
+    { type: "refund", amount: "5.000000" },
+  ]);
   const committed = await ledger(buyer.org);
   expect(await processStripeEvent(reinstated)).toBe("ack");
   expect(await processStripeEvent(reinstated)).toBe("ack");
@@ -1272,7 +1370,15 @@ test("a lost post-commit cache acknowledgement retains one complete reinstatemen
   await expect(paidFlatReservation(buyer.org, 5)).rejects.toBeInstanceOf(
     InsufficientCreditsError,
   );
-});
+  testDatabase.record({
+    event: commitReplyLost
+      ? "lost-native-commit-reply-retains-complete-receipts"
+      : "lost-post-commit-cache-acknowledgement-retains-complete-receipts",
+    ownerPid,
+    finalBalance: await balance(buyer.org),
+    creditRows: committed.length,
+  });
+}
 
 test("a retained partial reinstatement repairs its refund without returning credit twice", async () => {
   const buyer = await affiliateTopUp();
@@ -1464,14 +1570,16 @@ async function referredCheckout(
   );
   await pg().query(
     `INSERT INTO referral_signups(referral_code_id,referrer_user_id,referred_user_id,app_owner_id,creator_id,created_at)
-     VALUES ($1,$2,$3,$4,$2,$5)`,
+     SELECT $1,$2,$3,$4,$2,created_at + $5::integer * interval '1 hour'
+     FROM credit_transactions WHERE stripe_payment_intent_id=$6`,
     [
       code,
       creator,
       order.rows[0]?.initiated_by_user_id,
       appOwner,
-      // The buyer was referred before the purchase, or after it.
-      new Date(Date.now() + (referredLater ? 3_600_000 : -3_600_000)),
+      // Order the two stored timestamps in the same database clock domain.
+      referredLater ? 1 : -1,
+      buyer.paymentIntentId,
     ],
   );
   const referred = { ...buyer, appOwner, creator };

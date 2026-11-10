@@ -430,7 +430,11 @@
       "packages/cloud/api/__tests__/stripe-webhook-outbox.pglite.test.ts",
       "packages/cloud/shared/src/db/helpers.ts",
       "packages/cloud/shared/src/lib/services/inference-policy-fence.ts",
-      "packages/cloud/shared/src/lib/services/ai-billing.ts"
+      "packages/cloud/shared/src/lib/services/ai-billing.ts",
+      "packages/cloud/api/__tests__/fixtures/stripe-reversal-database.ts",
+      "packages/cloud/api/__tests__/fixtures/postgres-commit-ack-relay.ts",
+      "packages/cloud/shared/src/db/client.ts",
+      "packages/cloud/shared/src/db/repositories/credit-transactions.ts"
     ],
     "invariants": [
       "Conserved",
@@ -445,7 +449,8 @@
       "One organization/payment/charge/dispute, two cumulative refund targets, one repayment top-up and one optional pre-commit failure.",
       "One existing managed organization transaction publishes hold release, repayment return, reinstatement receipt, refund repair and shortfall settlement. New paid credit is never published ahead of that repair. Capped cumulative events retain zero-delta receipts, and the locked durable high-water mark rejects stale preparation.",
       "Real PGlite checks actual paid reservations, rollback, newer refunds during preparation, post-COMMIT acknowledgement loss, signed intake, neighboring tenant isolation, corrupt retained inputs and historical partial-receipt convergence.",
-      "Provider truth, arbitrary tenant and affiliate composition, native PostgreSQL scheduling, operator release and historical backfill remain separate. Historical partial credit that was already visible before its original delivery resumes is not retroactively fenced. Outbox delivery budgets and multi-charge/multi-dispute composition remain separate."
+      "Optional authenticated native PostgreSQL16 conformance uses independent recovery, admission and observer sessions, proves lock waits across commit and rollback, and withholds the real COMMIT response before safe retry.",
+      "Provider truth, arbitrary tenant and affiliate composition, arbitrary PostgreSQL scheduling, Worker standing-fence recovery after unknown COMMIT, operator release and historical backfill remain separate. Historical partial credit that was already visible before its original delivery resumes is not retroactively fenced. Outbox delivery budgets and multi-charge/multi-dispute composition remain separate."
     ]
   },
   {

@@ -35,7 +35,7 @@
         "a retained 1.000000 clawback cannot release its hold or reinstate affiliate earnings",
         "a failed reinstatement rolls back hold release and repayment return together",
         "a committed refund during preparation aborts reinstatement before paid credit becomes visible",
-        "a lost post-commit cache acknowledgement retains one complete reinstatement",
+        "a lost reinstatement acknowledgement retains one complete reinstatement",
         "a retained partial reinstatement repairs its refund without returning credit twice",
         "a concurrent paid reservation cannot observe an uncommitted reinstatement receipt"
       ]

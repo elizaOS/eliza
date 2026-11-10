@@ -807,16 +807,9 @@ export class CreditsService {
 
   async getTransactionByStripePaymentIntent(
     paymentIntentId: string,
-    executor?: SqlExecutor,
+    executor?: typeof dbWrite | DbTransaction,
   ): Promise<CreditTransaction | undefined> {
-    if (executor) {
-      const [row] = await sqlRows<CreditMutationRow>(
-        executor,
-        sql`SELECT * FROM credit_transactions WHERE stripe_payment_intent_id = ${paymentIntentId} LIMIT 1`,
-      );
-      return row ? toCreditTransaction(row) : undefined;
-    }
-    return await creditTransactionsRepository.findByStripePaymentIntent(paymentIntentId);
+    return creditTransactionsRepository.findByStripePaymentIntent(paymentIntentId, executor);
   }
 
   async listTransactionsByOrganization(

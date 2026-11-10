@@ -17,10 +17,9 @@ import {
 import { randomUUID } from "node:crypto";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import type Stripe from "stripe";
+import { stripeReversalTestDatabase } from "./fixtures/stripe-reversal-database";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
-process.env.NODE_ENV = "test";
+const testDatabase = await stripeReversalTestDatabase("before-grant");
 setDefaultTimeout(60_000);
 
 /** Checkout sessions Stripe would list for a payment intent. */
@@ -47,8 +46,9 @@ mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
   }),
 }));
 
-const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@elizaos/cloud-shared/db/client");
+const { closeDatabaseConnectionsForTests, dbWrite } = await import(
+  "@elizaos/cloud-shared/db/client"
+);
 const { organizations } = await import(
   "@elizaos/cloud-shared/db/schemas/organizations"
 );
@@ -77,10 +77,11 @@ const { referralCodes, referralSignups } = await import(
 const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
-const pg = () => getPgliteClientForTests();
+const pg = () => testDatabase;
 
 beforeAll(async () => {
   await dbWrite.execute("SELECT 1");
+  await testDatabase.verifyProductionConnection(dbWrite);
   const empty = generateDrizzleJson({});
   for (const statement of await generateMigration(
     empty,
@@ -108,6 +109,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
+  await testDatabase.close();
 });
 
 interface PendingOrder {

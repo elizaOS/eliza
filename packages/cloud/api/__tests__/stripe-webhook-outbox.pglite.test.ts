@@ -13,10 +13,9 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
 import Stripe from "stripe";
+import { stripeReversalTestDatabase } from "./fixtures/stripe-reversal-database";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
-process.env.NODE_ENV = "test";
+const testDatabase = await stripeReversalTestDatabase("outbox");
 setDefaultTimeout(60_000);
 
 const WEBHOOK_SECRET = "whsec_outbox_replay";
@@ -61,8 +60,9 @@ const bindings = {
 const { runWithCloudBindingsAsync } = await import(
   "@elizaos/cloud-shared/lib/runtime/cloud-bindings"
 );
-const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@elizaos/cloud-shared/db/client");
+const { closeDatabaseConnectionsForTests, dbWrite } = await import(
+  "@elizaos/cloud-shared/db/client"
+);
 const { authEvents, webhookEvents } = await import(
   "@elizaos/cloud-shared/db/schemas"
 );
@@ -81,12 +81,13 @@ const inWorker = <T>(fn: () => Promise<T>) =>
 
 beforeAll(async () => {
   await dbWrite.execute("SELECT 1");
+  await testDatabase.verifyProductionConnection(dbWrite);
   const empty = generateDrizzleJson({});
   for (const statement of await generateMigration(
     empty,
     generateDrizzleJson({ authEvents, webhookEvents }, empty.id),
   ))
-    await getPgliteClientForTests().exec(statement.replaceAll('"public".', ""));
+    await testDatabase.exec(statement.replaceAll('"public".', ""));
   // The cache client and the database client both detect a Worker by this
   // global. The cache picks its backend once, as the Worker does; the global is
   // then removed because PGlite refuses to open inside a Worker.
@@ -97,6 +98,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
+  await testDatabase.close();
 });
 
 function event(id: string, type: string, object: Record<string, unknown>) {
@@ -255,14 +257,14 @@ test("unverified or wrongly scoped Stripe payloads never enter the delivery outb
     expect(response.status).toBe(400);
     expect(
       (
-        await getPgliteClientForTests().query(
+        await testDatabase.query(
           "SELECT event_id FROM webhook_events WHERE event_id=$1",
           ["evt_private_auth_boundary"],
         )
       ).rows,
     ).toEqual([]);
   }
-  const audits = await getPgliteClientForTests().query<{
+  const audits = await testDatabase.query<{
     result: string;
     reason: string;
   }>(

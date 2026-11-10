@@ -237,6 +237,15 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
       error: err instanceof Error ? err.message : String(err),
     });
   });
+  // pg-pool owns the idle error listener only while a client is in the pool.
+  // During a checkout node-pg rejects active queries and separately emits the
+  // same transport error. Observe that event so the rejected transaction can
+  // reach its owner instead of becoming an uncaught process exception.
+  const observeCheckedOutError = (error: Error) => {
+    logger.warn("[db] checked-out pg client disconnected", { error: error.message });
+  };
+  pool.on("acquire", (client) => client.on("error", observeCheckedOutError));
+  pool.on("release", (_error, client) => client.off("error", observeCheckedOutError));
   if (isLocalTcp) {
     disableLocalPreparedStatements(pool, { simpleQueryMode: inWorkerRuntime });
   }

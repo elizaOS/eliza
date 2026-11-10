@@ -1,5 +1,6 @@
 // Persists credit transactions records for cloud services through the shared DB boundary.
 import { and, desc, eq, sql } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type CreditTransaction,
@@ -32,8 +33,11 @@ export class CreditTransactionsRepository {
   /**
    * Finds a credit transaction by Stripe payment intent ID.
    */
-  async findByStripePaymentIntent(paymentIntentId: string): Promise<CreditTransaction | undefined> {
-    return await dbRead.query.creditTransactions.findFirst({
+  async findByStripePaymentIntent(
+    paymentIntentId: string,
+    executor: typeof dbRead | DbTransaction = dbRead,
+  ): Promise<CreditTransaction | undefined> {
+    return await executor.query.creditTransactions.findFirst({
       where: eq(creditTransactions.stripe_payment_intent_id, paymentIntentId),
     });
   }
@@ -45,9 +49,7 @@ export class CreditTransactionsRepository {
   async findByStripePaymentIntentForWrite(
     paymentIntentId: string,
   ): Promise<CreditTransaction | undefined> {
-    return await dbWrite.query.creditTransactions.findFirst({
-      where: eq(creditTransactions.stripe_payment_intent_id, paymentIntentId),
-    });
+    return this.findByStripePaymentIntent(paymentIntentId, dbWrite);
   }
 
   /**
