@@ -18,13 +18,16 @@ export function findBasicEmailSpans(
 ): ReadonlyArray<{ value: string; start: number; end: number }> {
 	const spans: Array<{ value: string; start: number; end: number }> = [];
 	let i = 0;
+	// A local part never reaches back into the previous accepted address.
+	let floor = 0;
 
 	while (i < text.length) {
 		const at = text.indexOf("@", i);
 		if (at === -1) break;
 
 		let start = at - 1;
-		while (start >= 0 && isEmailAtomChar(text.charCodeAt(start))) start -= 1;
+		while (start >= floor && isEmailAtomChar(text.charCodeAt(start)))
+			start -= 1;
 		start += 1;
 
 		let end = at + 1;
@@ -39,6 +42,7 @@ export function findBasicEmailSpans(
 			const value = text.slice(start, end);
 			if (basicEmailValid(value)) {
 				spans.push({ value, start, end });
+				floor = end;
 			}
 		}
 
