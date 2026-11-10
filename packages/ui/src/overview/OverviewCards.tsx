@@ -275,7 +275,6 @@ export function OverviewBriefCard(props: OverviewBriefCardProps) {
       {...hostDataAttributes(props.dataAttributes)}
       aria-label={props.label}
       aria-description={props.description || undefined}
-      aria-haspopup="dialog"
       onClick={props.onActivate}
       style={props.style}
     >
