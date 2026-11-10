@@ -60,8 +60,8 @@ function makeFixture() {
     exports: {
       ".": {
         "eliza-source": "./src/index.ts",
-        default: "./dist/index.js",
         node: "./dist/node.js",
+        default: "./dist/index.js",
       },
       "./nested": [
         {
@@ -169,13 +169,13 @@ describe("immutable release candidate", () => {
     );
     expect(packedManifest.dependencies["@release-fixture/b"]).toBe("1.2.3");
     expect(packedManifest.exports).toEqual({
-      ".": { default: "./dist/index.js", node: "./dist/node.js" },
+      ".": { node: "./dist/node.js", default: "./dist/index.js" },
       "./nested": [{ default: "./dist/index.js" }],
     });
     expect(packedA.entrypoints.exports).toEqual(packedManifest.exports);
     expect(Object.keys(packedManifest.exports["."])).toEqual([
-      "default",
       "node",
+      "default",
     ]);
     expect(
       fs.readFileSync(sourceManifestPath).equals(sourceManifestBytes),
@@ -204,7 +204,7 @@ describe("immutable release candidate", () => {
         ],
         { cwd: consumer, encoding: "utf8" },
       ),
-    ).toBe("a:a");
+    ).toBe("node:a");
     expect(
       fs.readFileSync(path.join(fixture.repoRoot, "build-count"), "utf8"),
     ).toBe("1");
