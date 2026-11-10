@@ -23,6 +23,7 @@ import { startApiServer } from "../src/api/server.ts";
 import {
   closeRuntimeAdapter,
   disposeReplacedRuntime,
+  shutdownRuntime,
 } from "../src/runtime/eliza.ts";
 import { MemoryRetentionService } from "../src/runtime/memory-retention-service.ts";
 
@@ -364,3 +365,408 @@ it("host replacement drains a detached adapter query outside the dirty snapshot"
     await Promise.all([owner.cleanup(), consumer.cleanup()]);
   }
 }, 120_000);
+
+// The scheduler may query on an adapter whose runtime is not among its dirty
+// service owners. Replacement aliases must inherit that physical query lease.
+for (const scenario of [
+  {
+    name: "shared adapter handoff transfers the live scheduler and drains its old query before replacement close",
+    current: "old",
+    chain: false,
+    fail: false,
+  },
+  {
+    name: "shared adapter handoff preserves an active replacement scheduler and its future work",
+    current: "replacement",
+    chain: false,
+    fail: false,
+  },
+  {
+    name: "chained shared adapter handoffs drain failed old queries and preserve an unrelated scheduler",
+    current: "unrelated",
+    chain: true,
+    fail: true,
+  },
+  {
+    name: "identical adapter handoff preserves the active scheduler registration and future work",
+    current: "identical",
+    chain: false,
+    fail: false,
+  },
+] as const) {
+  it(scenario.name, async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "eliza-shared-query-"));
+    directories.push(dataDir);
+    // Initialize the real SQL schema once. The other handles reuse the same
+    // plugin-sql manager, exactly as initialized CLI replacements do.
+    const previous = await runtimeOn(dataDir);
+    const { plugin: sqlPlugin } = await import("@elizaos/plugin-sql");
+    Object.assign(previous, { serverless: true });
+    await previous.registerPlugin(sqlPlugin);
+    await previous.initialize();
+    const replacement =
+      scenario.current === "identical"
+        ? new AgentRuntime({
+            agentId,
+            character: { name: "Same handle owner" },
+            adapter: previous.adapter,
+            logLevel: "fatal",
+          })
+        : await runtimeOn(dataDir);
+    const last = scenario.chain ? await runtimeOn(dataDir) : replacement;
+    const unrelated =
+      scenario.current === "unrelated"
+        ? await createTestRuntime({
+            characterName: "Unrelated scheduler owner",
+          })
+        : undefined;
+    const consumer = unrelated?.runtime ?? replacement;
+    const service = new TaskService(consumer);
+    let entered!: () => void, release!: () => void;
+    const admitted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let runs = 0,
+      closes = 0,
+      completed = false,
+      queryFailed = false;
+    let disposing: Promise<void> | undefined,
+      secondDisposal: Promise<void> | undefined,
+      closing: Promise<void> | undefined;
+    try {
+      const raw = (runtime: AgentRuntime) =>
+        (
+          runtime.adapter as unknown as {
+            getRawConnection(): { exec(sql: string): Promise<unknown> };
+          }
+        ).getRawConnection();
+      expect(raw(previous)).toBe(raw(replacement));
+      expect(previous.adapter === replacement.adapter).toBe(
+        scenario.current === "identical",
+      );
+      consumer.registerTaskWorker({
+        name: "SHARED_QUERY_HANDOFF",
+        execute: async () => {
+          runs++;
+        },
+      });
+      await consumer.createTask({
+        name: "SHARED_QUERY_HANDOFF",
+        tags: ["queue"],
+        metadata: {},
+      });
+      const getTasks = previous.adapter.getTasks.bind(previous.adapter);
+      vi.spyOn(previous.adapter, "getTasks").mockImplementationOnce(
+        async (params) => {
+          expect(params.agentIds).toEqual([consumer.agentId]);
+          entered();
+          await held;
+          try {
+            return await getTasks(params);
+          } catch (error) {
+            queryFailed = true;
+            throw error;
+          } finally {
+            completed = true;
+          }
+        },
+      );
+      const close = last.adapter.close.bind(last.adapter);
+      vi.spyOn(last.adapter, "close").mockImplementation(async () => {
+        closes++;
+        await close();
+      });
+      startTaskScheduler(previous.adapter);
+      service.startTimer();
+      await admitted;
+      if (scenario.current === "replacement")
+        startTaskScheduler(replacement.adapter);
+      if (unrelated) startTaskScheduler(unrelated.runtime.adapter);
+      disposing = disposeReplacedRuntime(previous, replacement);
+      const current = unrelated?.runtime.adapter ?? replacement.adapter;
+      expect(getTaskSchedulerAdapter()).toBe(current);
+      if (scenario.chain) {
+        secondDisposal = disposeReplacedRuntime(replacement, last);
+        expect(getTaskSchedulerAdapter()).toBe(current);
+      }
+      if (scenario.current === "identical") {
+        // There is no retiring handle. Existing registrations remain live.
+        await disposing;
+        expect(getTaskSchedulerAdapter()).toBe(previous.adapter);
+        release();
+      }
+      await expect.poll(() => runs, { timeout: 10_000 }).toBe(1);
+      if (scenario.fail) await raw(previous).exec("DROP TABLE tasks CASCADE");
+      closing = closeRuntimeAdapter(last, "shared alias final close");
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (scenario.current !== "identical") {
+        expect(completed).toBe(false);
+        expect(closes).toBe(0);
+      }
+      release();
+      await Promise.all([disposing, secondDisposal, closing]);
+      expect(completed).toBe(true);
+      expect(queryFailed).toBe(scenario.fail);
+      expect(closes).toBe(1);
+      expect(runs).toBe(1);
+      if (unrelated) {
+        expect(getTaskSchedulerAdapter()).toBe(unrelated.runtime.adapter);
+        await consumer.createTask({
+          name: "SHARED_QUERY_HANDOFF",
+          tags: ["queue"],
+          metadata: {},
+        });
+        service.markDirty();
+        await expect.poll(() => runs, { timeout: 10_000 }).toBe(2);
+      }
+    } finally {
+      release();
+      await Promise.allSettled([disposing, secondDisposal, closing]);
+      await service.stop();
+      await stopTaskScheduler();
+      vi.restoreAllMocks();
+      await Promise.allSettled([
+        previous.stop({ requireQuiescence: true }),
+        replacement.stop({ requireQuiescence: true }),
+        last.stop({ requireQuiescence: true }),
+      ]);
+      await Promise.allSettled([
+        previous.close(),
+        replacement.close(),
+        last.close(),
+        unrelated?.cleanup(),
+      ]);
+    }
+  }, 180_000);
+}
+
+for (const scenario of [
+  {
+    name: "published replacement stop retains the outgoing shared retention callback",
+    chain: false,
+    fail: false,
+    fast: false,
+    identicalAdapter: false,
+  },
+  {
+    name: "fast replacement close retains a failed callback through an identical adapter handle",
+    chain: false,
+    fail: true,
+    fast: true,
+    identicalAdapter: true,
+  },
+  {
+    name: "chained published replacements retain the original shared callback before final close",
+    chain: true,
+    fail: false,
+    fast: true,
+    identicalAdapter: false,
+  },
+] as const) {
+  it(scenario.name, async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "eliza-shared-retirement-"),
+    );
+    directories.push(directory);
+    const token = randomUUID();
+    for (const [key, value] of Object.entries({
+      ELIZA_STATE_DIR: directory,
+      ELIZA_CONFIG_PATH: path.join(directory, "eliza.json"),
+      ELIZA_API_TOKEN: token,
+      ELIZA_REQUIRE_LOCAL_AUTH: "1",
+    }))
+      vi.stubEnv(key, value);
+    const dataDir = path.join(directory, "shared");
+    const previous = await runtimeOn(dataDir);
+    const { plugin: sqlPlugin } = await import("@elizaos/plugin-sql");
+    await previous.registerPlugin(sqlPlugin);
+    await previous.initialize();
+    const replacement = scenario.identicalAdapter
+      ? new AgentRuntime({
+          agentId,
+          character: { name: "Shared handle replacement" },
+          adapter: previous.adapter,
+          logLevel: "fatal",
+        })
+      : await runtimeOn(dataDir);
+    const last = scenario.chain ? await runtimeOn(dataDir) : replacement;
+    let enter!: () => void, release!: () => void, observeStop!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const stopEntered = new Promise<void>((resolve) => {
+      observeStop = resolve;
+    });
+    let closes = 0,
+      writes = 0,
+      activations = 0;
+    const activationFailures: unknown[] = [];
+    let sweep: Promise<unknown> | undefined,
+      restarting: Promise<Response> | undefined,
+      secondRestart: Promise<Response> | undefined,
+      stopping: Promise<Response> | undefined;
+    let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+    try {
+      const worldId = randomUUID() as UUID,
+        roomId = randomUUID() as UUID;
+      const ids = [randomUUID() as UUID, randomUUID() as UUID];
+      await previous.createWorld({
+        id: worldId,
+        agentId,
+        name: "Shared callback ownership",
+      });
+      await previous.createRoom({
+        id: roomId,
+        worldId,
+        agentId,
+        source: "test",
+        type: ChannelType.DM,
+      });
+      await previous.createMemories(
+        ids.map((id, index) => ({
+          tableName: "messages",
+          memory: {
+            id,
+            roomId,
+            entityId: agentId,
+            agentId,
+            createdAt: index + 1,
+            content: { text: `durable row ${index}` },
+          },
+        })),
+      );
+      previous.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "1");
+      await previous.registerService(MemoryRetentionService);
+      const retention = (await previous.getServiceLoadPromise(
+        MemoryRetentionService.serviceType,
+      )) as MemoryRetentionService;
+      const remove = previous.adapter.deleteMemories.bind(previous.adapter);
+      const raw = (
+        previous.adapter as unknown as {
+          getRawConnection(): { exec(sql: string): Promise<unknown> };
+        }
+      ).getRawConnection();
+      vi.spyOn(previous.adapter, "deleteMemories").mockImplementation(
+        async (requested) => {
+          expect(requested).toEqual([ids[0]]);
+          enter();
+          await held;
+          if (scenario.fail)
+            await raw.exec("SET default_transaction_read_only = on");
+          await remove(requested);
+          writes++;
+        },
+      );
+      const close = last.adapter.close.bind(last.adapter);
+      vi.spyOn(last.adapter, "close").mockImplementation(async () => {
+        closes++;
+        await close();
+      });
+      sweep = retention.sweep();
+      void sweep.catch(() => undefined);
+      await entered;
+      let builds = 0;
+      server = await startApiServer({
+        port: 0,
+        runtime: previous,
+        skipDeferredStartupWork: true,
+        onRestart: async () => (++builds === 1 ? replacement : last),
+        onStop: async (runtime) => {
+          expect(runtime).toBe(last);
+          observeStop();
+          await shutdownRuntime(
+            runtime,
+            "HTTP shared replacement stop",
+            scenario.fast ? { fast: true } : { requireQuiescence: true },
+          );
+        },
+        onRuntimeActivated: async (outgoing, active) => {
+          if (!outgoing) throw new Error("Missing outgoing runtime");
+          activations++;
+          try {
+            await disposeReplacedRuntime(outgoing, active);
+          } catch (error) {
+            activationFailures.push(error);
+            active.reportError("eliza.hotReload.disposePrevious", error);
+          }
+        },
+      });
+      const serverPort = server.port;
+      const request = (action: string) =>
+        fetch(`http://127.0.0.1:${serverPort}/api/agent/${action}`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+        });
+      restarting = request("restart");
+      await vi.waitFor(() => expect(previous.getAllServices().size).toBe(0), {
+        timeout: 10_000,
+      });
+      expect(activations).toBe(1);
+      if (scenario.chain) {
+        secondRestart = request("restart");
+        await vi.waitFor(() => expect(activations).toBe(2), {
+          timeout: 10_000,
+        });
+      }
+      stopping = request("stop");
+      await stopEntered;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      expect(closes).toBe(0);
+      expect(writes).toBe(0);
+      release();
+      if (scenario.fail)
+        await expect(sweep).rejects.toMatchObject({
+          code: "MEMORY_RETENTION_FAILED",
+        });
+      else await sweep;
+      expect((await restarting).status).toBe(200);
+      if (secondRestart) expect((await secondRestart).status).toBe(200);
+      expect((await stopping).status).toBe(scenario.fail ? 500 : 200);
+      expect(closes).toBe(1);
+      expect(writes).toBe(scenario.fail ? 0 : 1);
+      if (scenario.fail)
+        expect(activationFailures).toMatchObject([
+          { code: "RUNTIME_QUIESCENCE_FAILED" },
+        ]);
+      else {
+        expect(activationFailures).toEqual([]);
+        const readback = await runtimeOn(dataDir);
+        try {
+          expect(
+            (
+              await readback.getMemories({
+                roomId,
+                tableName: "messages",
+                count: 10,
+              })
+            ).map((row) => row.id),
+          ).toEqual([ids[1]]);
+        } finally {
+          await readback.close();
+        }
+      }
+    } finally {
+      release();
+      await Promise.allSettled([sweep, restarting, secondRestart, stopping]);
+      if (server) await server.close();
+      vi.restoreAllMocks();
+      await Promise.allSettled([
+        previous.stop({ requireQuiescence: true }),
+        replacement.stop({ requireQuiescence: true }),
+        last.stop({ requireQuiescence: true }),
+      ]);
+      await Promise.allSettled([
+        previous.close(),
+        replacement.close(),
+        last.close(),
+      ]);
+      vi.unstubAllEnvs();
+    }
+  }, 180_000);
+}

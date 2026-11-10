@@ -38,7 +38,7 @@ const busyServices = new Set<TaskServiceLike>();
 /** Detached generations retain their storage ownership until the query settles. */
 const pendingQueries = new Map<
 	Promise<void>,
-	{ adapter: IDatabaseAdapter; services: Set<TaskServiceLike> }
+	{ adapters: Set<IDatabaseAdapter>; services: Set<TaskServiceLike> }
 >();
 
 const TICK_INTERVAL_MS = 1000;
@@ -159,7 +159,10 @@ async function tick(generation: number): Promise<void> {
 	const queryDone = new Promise<void>((resolve) => {
 		finishQuery = resolve;
 	});
-	pendingQueries.set(queryDone, { adapter: adp, services: queryOwners });
+	pendingQueries.set(queryDone, {
+		adapters: new Set([adp]),
+		services: queryOwners,
+	});
 	let allTasks: Task[];
 	try {
 		allTasks = await adp.getTasks({
@@ -334,6 +337,23 @@ export function stopTaskSchedulerForAdapter(
 	return drainQueries(undefined, closingAdapter);
 }
 
+/** The caller confirms these handles share storage and retires the first.
+ * Retain each pending query under both handles until it settles, including
+ * when the replacement closes before the retiring host finishes its drain. */
+export function handoffTaskSchedulerAdapter(
+	retiringAdapter: IDatabaseAdapter,
+	replacementAdapter: IDatabaseAdapter,
+): Promise<void> {
+	if (retiringAdapter === replacementAdapter) return Promise.resolve();
+	for (const ownership of pendingQueries.values()) {
+		if (ownership.adapters.has(retiringAdapter)) {
+			ownership.adapters.add(replacementAdapter);
+		}
+	}
+	if (adapter === retiringAdapter) startTaskScheduler(replacementAdapter);
+	return stopTaskSchedulerForAdapter(retiringAdapter);
+}
+
 function detachTaskScheduler(): void {
 	schedulerGeneration += 1;
 	if (timer && processTasks.size === 0) {
@@ -387,7 +407,7 @@ function drainQueries(
 		.filter(
 			([, ownership]) =>
 				(!owner || ownership.services.has(owner)) &&
-				(!closingAdapter || ownership.adapter === closingAdapter),
+				(!closingAdapter || ownership.adapters.has(closingAdapter)),
 		)
 		.map(([done]) => done);
 	return Promise.all(queries).then(() => undefined);

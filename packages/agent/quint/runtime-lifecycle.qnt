@@ -255,3 +255,199 @@ module runtime_adapter_retirement {
   run fastCloseRegressionWitnessTest = initialize(false, true).then(beginCleanup)
     .then(bestEffortReturns).then(legacyReleaseAtFastCap).expect(not(safety))
 }
+
+// Agent confirms physical connection identity; Core retains query leases in its
+// existing pending-query owner records. Three shared adapter handles abstract
+// two consecutive replacements. A fourth handle belongs to unrelated storage.
+// Callback/room retirement is a separate projection above, not a query lease.
+module runtime_shared_query_handoff {
+  pure val Queries = Set("old-query", "future-query")
+  pure val Shared = Set("old", "replacement", "last")
+  type Query = { phase: str, owner: str, aliases: Set[str], generation: int }
+  var s: {
+    current: str, originalCurrent: str, generation: int, registration: int, identical: bool, chain: bool,
+    handed: int, drains: int -> Set[str], returned: Set[int],
+    queries: str -> Query, closeRequested: bool, physicalClosed: bool
+  }
+  val pending = Queries.filter(q => s.queries.get(q).phase == "pending")
+  def owned(handle: str): Set[str] = pending.filter(q => s.queries.get(q).aliases.contains(handle))
+  val finalHandle = if (s.identical) "old" else if (s.chain) "last" else "replacement"
+  val handoffs = if (s.chain) 2 else 1
+  action initialize(current: str, identical: bool, chain: bool): bool = s' = {
+    current: if (identical) "old" else current, originalCurrent: current,
+    generation: if (current == "old") 0 else 1, registration: 1,
+    identical: identical, chain: chain, handed: 0, drains: Map(0 -> Set(), 1 -> Set()), returned: Set(),
+    queries: Map(
+      "old-query" -> { phase: "pending", owner: "old", aliases: Set("old"), generation: 0 },
+      "future-query" -> { phase: "idle", owner: "none", aliases: Set(), generation: 0 }),
+    closeRequested: false, physicalClosed: false
+  }
+  action init = any {
+    initialize("old", false, false), initialize("replacement", false, false),
+    initialize("unrelated", false, true), initialize("old", true, false)
+  }
+  action handoff = all {
+    s.handed < handoffs,
+    val retiring = if (s.handed == 0) "old" else "replacement"
+    val replacement = if (s.identical) "old" else if (s.handed == 0) "replacement" else "last"
+    s' = { ...s, handed: s.handed + 1,
+      // Same-handle reuse is not retirement; preserve generation and dispatch.
+      current: if (not(s.identical) and s.current == retiring) replacement else s.current,
+      generation: if (not(s.identical) and s.current == retiring) s.generation + 1 else s.generation,
+      queries: Queries.mapBy(q => { val query = s.queries.get(q)
+        if (query.phase == "pending" and query.aliases.contains(retiring))
+        { ...query, aliases: query.aliases.union(Set(replacement)) } else query }),
+      drains: s.drains.set(s.handed, if (s.identical) Set() else owned(retiring)),
+      returned: if (s.identical) s.returned.union(Set(s.handed)) else s.returned }
+  }
+  action beginFuture = all {
+    s.handed > 0, s.current != "none", not(s.physicalClosed and Shared.contains(s.current)),
+    s.queries.get("future-query").phase == "idle",
+    s' = { ...s, queries: s.queries.set("future-query", {
+      phase: "pending", owner: s.current, aliases: Set(s.current), generation: s.generation }) }
+  }
+  action settle(q: str, ok: bool): bool = all {
+    pending.contains(q),
+    s' = { ...s, queries: s.queries.set(q, { ...s.queries.get(q), phase: if (ok) "success" else "failed" }) }
+  }
+  action dispatch(q: str): bool = all {
+    s.queries.get(q).phase == "success", s.current != "none",
+    s.queries.get(q).generation == s.generation,
+    s' = { ...s, queries: s.queries.set(q, { ...s.queries.get(q), phase: "dispatched" }) }
+  }
+  action returnDrain(id: int): bool = all {
+    id < s.handed, s.drains.get(id).intersect(pending).size() == 0,
+    s' = { ...s, returned: s.returned.union(Set(id)) }
+  }
+  action requestClose = all {
+    s.handed == handoffs, not(s.closeRequested),
+    s' = { ...s, closeRequested: true,
+      current: if (s.current == finalHandle) "none" else s.current,
+      generation: if (s.current == finalHandle) s.generation + 1 else s.generation }
+  }
+  action finishClose = all {
+    s.closeRequested, owned(finalHandle).size() == 0,
+    s' = { ...s, physicalClosed: true }
+  }
+  action advance = any { settle("old-query", true), settle("old-query", false),
+    settle("future-query", true), settle("future-query", false),
+    returnDrain(0), returnDrain(1), finishClose }
+  action step = any { handoff, beginFuture, dispatch("old-query"), dispatch("future-query"), requestClose, advance, s' = s }
+  val safety = all {
+    s.registration == 1,
+    s.physicalClosed implies pending.forall(q => not(Shared.contains(s.queries.get(q).owner))),
+    s.returned.forall(id => s.drains.get(id).intersect(pending).size() == 0),
+    s.originalCurrent == "unrelated" implies s.current == "unrelated",
+    s.identical and not(s.closeRequested) implies s.current == "old" and s.generation == 0
+  }
+  temporal DrainWithoutFairness = s.closeRequested.leadsTo(s.physicalClosed and s.returned.size() == handoffs)
+  temporal FairDrain = Queries.forall(q => (settle(q, true) or settle(q, false)).weakFair(s))
+    and returnDrain(0).weakFair(s) and returnDrain(1).weakFair(s) and finishClose.weakFair(s)
+  temporal DrainCompletes = FairDrain.implies(DrainWithoutFairness)
+  // Legacy exact-handle closure could not see a pending query through its alias.
+  action legacyHandoff = all {
+    s.handed == 0, not(s.identical), not(s.chain),
+    s' = { ...s, handed: 1, drains: Map(0 -> owned("old")),
+      current: if (s.current == "old") "replacement" else s.current }
+  }
+  run oldQueryRetainsFinalAliasTest = initialize("old", false, false).then(handoff)
+    .expect(s.current == "replacement" and owned("replacement") == Set("old-query"))
+    .then(beginFuture).then(settle("future-query", true)).then(dispatch("future-query"))
+    .then(requestClose).expect(not(s.physicalClosed))
+    .then(settle("old-query", true)).then(returnDrain(0)).then(finishClose).expect(safety)
+  run chainedFailureRetainsUnrelatedSchedulerTest = initialize("unrelated", false, true).then(handoff)
+    .then(beginFuture).then(handoff).then(requestClose)
+    .expect(s.current == "unrelated" and owned("last") == Set("old-query"))
+    .then(settle("old-query", false)).then(returnDrain(0)).then(returnDrain(1)).then(finishClose)
+    .expect(safety and s.current == "unrelated" and pending == Set("future-query"))
+  run identicalHandlePreservesRegistrationTest = initialize("old", true, false).then(handoff)
+    .expect(s.current == "old" and s.generation == 0 and s.returned == Set(0))
+    .then(settle("old-query", true)).then(dispatch("old-query")).expect(safety)
+  run legacyAliasClosureWitnessTest = initialize("replacement", false, false).then(legacyHandoff)
+    .then(requestClose).then(finishClose).expect(not(safety))
+}
+
+// The API quiesces outgoing rooms before publication. First-party activation
+// synchronously adopts the outgoing shared-adapter cleanup before yielding.
+// RuntimeRetirement retains the complete receipt, including service callbacks,
+// deferred work and query handoff; a later host cleanup joins it transitively.
+module runtime_shared_callback_handoff {
+  pure val Retiring = Set(0, 1)
+  var s: {
+    active: int, last: int, fast: bool, write: str,
+    adopted: Set[int], lookupsCleared: Set[int], receipts: int -> str,
+    stopRequested: bool, stopReceipt: str, closeReceipt: str, physicalOpen: bool
+  }
+  action initialize(last: int, fast: bool): bool = s' = {
+    active: 0, last: last, fast: fast, write: "pending",
+    adopted: Set(), lookupsCleared: Set(), receipts: Retiring.mapBy(_ => "pending"),
+    stopRequested: false, stopReceipt: "pending", closeReceipt: "pending", physicalOpen: true
+  }
+  action init = any { initialize(1, false), initialize(1, true), initialize(2, true) }
+  action publish = all {
+    s.active < s.last,
+    // Publication and attachment precede any other asynchronous admission.
+    s' = { ...s, active: s.active + 1, adopted: s.adopted.union(Set(s.active)) }
+  }
+  action clearLookups(owner: int): bool = all {
+    s.adopted.contains(owner),
+    s' = { ...s, lookupsCleared: s.lookupsCleared.union(Set(owner)) }
+  }
+  action settleWrite(ok: bool): bool = all {
+    s.write == "pending",
+    s' = { ...s, write: if (ok) "success" else "failed" }
+  }
+  action finishCleanup(owner: int): bool = {
+    val dependency = if (owner == 0) s.write else s.receipts.get(0)
+    all {
+      s.lookupsCleared.contains(owner), s.receipts.get(owner) == "pending", dependency != "pending",
+      // Every source operation settled, even if its original hook failed.
+      s' = { ...s, receipts: s.receipts.set(owner, dependency) }
+    }
+  }
+  val priorCleanup = s.receipts.get(s.last - 1)
+  action requestStop = all {
+    s.active == s.last, not(s.stopRequested),
+    s' = { ...s, stopRequested: true }
+  }
+  action finishStop = all {
+    s.stopRequested, s.stopReceipt == "pending", s.fast or priorCleanup != "pending",
+    s' = { ...s, stopReceipt: if (s.fast) "success" else priorCleanup }
+  }
+  action finishClose = all {
+    s.stopReceipt != "pending", s.closeReceipt == "pending", priorCleanup != "pending",
+    s' = { ...s, closeReceipt: priorCleanup, physicalOpen: false }
+  }
+  action advance = any { clearLookups(0), clearLookups(1), settleWrite(true), settleWrite(false),
+    finishCleanup(0), finishCleanup(1), finishStop, finishClose }
+  action step = any { publish, requestStop, advance, s' = s }
+  val safety = all {
+    s.adopted == Retiring.filter(owner => owner < s.active),
+    s.lookupsCleared.subseteq(s.adopted),
+    not(s.physicalOpen) implies s.stopRequested and s.write != "pending"
+      and s.adopted.forall(owner => s.receipts.get(owner) != "pending"),
+    s.closeReceipt != "pending" implies s.closeReceipt == s.write,
+    not(s.fast) and s.stopReceipt != "pending" implies s.stopReceipt == s.write
+  }
+  temporal CloseWithoutFairness = s.stopRequested.leadsTo(not(s.physicalOpen))
+  temporal RetirementFairness = (settleWrite(true) or settleWrite(false)).weakFair(s)
+    and Retiring.forall(owner => clearLookups(owner).weakFair(s) and finishCleanup(owner).weakFair(s))
+    and finishStop.weakFair(s) and finishClose.weakFair(s)
+  temporal CloseCompletes = RetirementFairness.implies(CloseWithoutFairness)
+  action legacyClose = all {
+    s.stopReceipt != "pending", s' = { ...s, closeReceipt: "success", physicalOpen: false }
+  }
+  run strictStopJoinsOutgoingWriteTest = initialize(1, false).then(publish)
+    .then(clearLookups(0)).then(requestStop).expect(s.stopReceipt == "pending" and s.physicalOpen)
+    .then(settleWrite(true)).then(finishCleanup(0)).then(finishStop).then(finishClose).expect(safety)
+  run fastCloseRetainsFailedCallbackTest = initialize(1, true).then(publish)
+    .then(clearLookups(0)).then(requestStop).then(finishStop).expect(s.physicalOpen)
+    .then(settleWrite(false)).then(finishCleanup(0)).then(finishClose)
+    .expect(safety and s.closeReceipt == "failed")
+  run chainedCleanupRetainsOldWriteTest = initialize(2, true).then(publish).then(clearLookups(0))
+    .then(publish).then(clearLookups(1)).then(requestStop).then(finishStop)
+    .expect(safety and s.physicalOpen and s.adopted == Retiring)
+    .then(settleWrite(true)).then(finishCleanup(0)).then(finishCleanup(1)).then(finishClose).expect(safety)
+  run legacyFastCloseWitnessTest = initialize(1, true).then(publish)
+    .then(clearLookups(0)).then(requestStop).then(finishStop).then(legacyClose).expect(not(safety))
+}

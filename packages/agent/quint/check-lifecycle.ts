@@ -25,6 +25,13 @@ const requiredTests = retirement
       "drains the real retention callback before HTTP replacement closes its SQLite adapter",
       "reports a real SQLite callback failure after retirement without closing replacement storage",
       "host replacement drains a detached adapter query outside the dirty snapshot",
+      "shared adapter handoff transfers the live scheduler and drains its old query before replacement close",
+      "shared adapter handoff preserves an active replacement scheduler and its future work",
+      "chained shared adapter handoffs drain failed old queries and preserve an unrelated scheduler",
+      "identical adapter handoff preserves the active scheduler registration and future work",
+      "published replacement stop retains the outgoing shared retention callback",
+      "fast replacement close retains a failed callback through an identical adapter handle",
+      "chained published replacements retain the original shared callback before final close",
     ]
   : [
       "boots a new runtime after a successful stop",
@@ -104,6 +111,9 @@ for (const source of [
   ...(retirement
     ? [
         "packages/agent/src/runtime/eliza.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/agent/src/api/agent-admin-routes.ts",
+        "packages/agent/src/api/runtime-replacement-ownership.ts",
         "packages/agent/src/runtime/eliza-plugin.ts",
         "packages/agent/src/runtime/memory-retention-service.ts",
         "packages/agent/src/runtime/retention-task.ts",

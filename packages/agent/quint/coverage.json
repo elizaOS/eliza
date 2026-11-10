@@ -387,14 +387,16 @@
       "packages/agent/src/api/agent-lifecycle-routes.ts",
       "packages/agent/src/api/agent-admin-routes.ts",
       "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
-      "packages/core/src/runtime/room-handler-queue.ts"
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/agent/src/api/runtime-replacement-ownership.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases/two deferred tasks; adapter retirement has one outgoing/replacement pair, shared/distinct adapters, one active write or none and two stop callbacks. Restore replacement has three runtime identities, four build calls, one admitted owner and authority closure only between requests.",
-      "Nine maintained cases cover shared/distinct PGlite, detached scheduler queries outside the outgoing runtime's dirty snapshot, real HTTP/SQLite retention completion and write refusal, and actual startEliza restored-host HTTP retirement while a real evaluator owns retention deletion past the default fast caps. They include replacement readback, stop/start without duplicate closure, closed-authority failure, invalid cold-boot authority and restored persona/database persistence.",
-      "Progress requires fair owner, teardown, factory and host continuation settlement; success is not assumed. Factory-internal cleanup of a constructed failed runtime, post-publication activation exceptions, mid-request authority revocation, individual boot resources, post-delivery work, late starts, adapter-close failures, signal budgets and self-awaiting hooks remain partial. No wall-clock or unbounded refinement proof is claimed."
+      "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none, and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests. Shared-query handoff has four initialization modes, three handles for one physical connection, one unrelated handle, two queries, at most two handoffs, and one final close. Shared callback retirement has one outgoing admitted write, one or two published replacements, and strict or fast final stop.",
+      "Twelve hot-reload cases cover shared/distinct PGlite, actual HTTP/SQLite retention callbacks, and detached queries outside the outgoing runtime dirty snapshot. Four of these test live, identical, chained and unrelated scheduler handles. Three use authenticated HTTP with held PGlite retention writes, including failed completion and durable readback. Four additional restored-host cases cover actual startEliza evaluator retention past the fast cap, stop/start, closed and invalid authority, and durable persona/database readback.",
+      "Progress assumes fair owner, callback, storage, factory and host settlement, without requiring successful effects. Published handoff assumes outgoing rooms are drained before activation. Factory-internal cleanup, other activation errors, mid-request authority revocation, arbitrary callback internals, late starts, reopen and physical close failures, hard signal exit, cyclic adoption and self-awaiting hooks remain partial."
     ]
   },
   {
