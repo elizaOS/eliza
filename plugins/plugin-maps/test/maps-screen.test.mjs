@@ -7,6 +7,7 @@ import test from "node:test";
 import { BackgroundNavigation } from "../src/client/background-navigation.ts";
 import { createCloudMaps } from "../src/client/cloud-provider.ts";
 import { MapsFailure } from "../src/client/contracts.ts";
+import { guidanceDistance } from "../src/client/guidance.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -50,6 +51,7 @@ function fixture(options = {}) {
     background: [],
     voice: [],
     published: [],
+    contexts: [],
     released: 0,
     handoffDiscarded: 0,
     initialized: 0,
@@ -140,10 +142,11 @@ function fixture(options = {}) {
       stopped++;
     },
   };
-  let deviceFix;
+  let deviceFix, deviceFixListener;
   const deviceLocation = {
     awaitingPermission: () => false,
     async start(_oneShot, onFix) {
+      deviceFixListener = onFix;
       if (deviceFix) queueMicrotask(() => onFix(deviceFix));
     },
     async stop() {},
@@ -212,7 +215,10 @@ function fixture(options = {}) {
     handoffReturn: () => options.handoffReturn ?? false,
     released: () => calls.released++,
     now: () => now,
-    publishContext: (kind) => calls.published.push(kind),
+    publishContext: (kind, _identity, revision, read) => {
+      calls.published.push(kind);
+      calls.contexts.push({ kind, revision, value: read?.() });
+    },
     clearContext: () => {},
     ...(options.mapsApp ? { mapsApp: options.mapsApp } : {}),
     ...(options.unconfiguredText
@@ -239,6 +245,7 @@ function fixture(options = {}) {
       now += ms;
     },
     stops: () => stopped,
+    emitDevice: (value) => deviceFixListener?.(value),
     setDeviceFix: (value) => {
       deviceFix = value;
     },
@@ -281,6 +288,8 @@ test("search results, place detail, saved place and rename", async () => {
   await settle();
   view = f.screen.view();
   assert.equal(view.mode, "place");
+  assert.equal(view.place?.origin, "provider");
+  assert.equal(view.place?.providerId, "fixture");
   assert.equal(view.place?.address, "1 Destination Street");
   assert.equal(view.place?.hours, "Mo-Fr 09:00-17:00");
   assert.equal(view.place?.website, "https://destination.example/");
@@ -441,7 +450,10 @@ test("directions need a real origin and a served mode", async () => {
   view = f.screen.view();
   assert.equal(view.directions?.routeReady, true);
   assert.equal(view.directions?.duration, "5 min");
-  assert.equal(view.directions?.meta, "1.2 km · no live traffic");
+  assert.equal(
+    view.directions?.meta,
+    `${guidanceDistance(1200)} · no live traffic`,
+  );
   f.screen.setMode("walk");
   await settle();
   assert.deepEqual(
@@ -474,8 +486,8 @@ test("an offered route choice keeps the provider's order; choosing requests noth
       selected,
     ]),
     [
-      ["Recommended", "5 min", "1.2 km", true],
-      ["Alternative 1", "7 min", "1.5 km", false],
+      ["Recommended", "5 min", guidanceDistance(1200), true],
+      ["Alternative 1", "7 min", guidanceDistance(1500), false],
     ],
   );
   f.screen.chooseRoute(view.directions.routes[1].id);
@@ -768,12 +780,12 @@ test("an approximate or inaccurate update invalidates an older precise fix", asy
   }
 });
 
-test("hiding Maps releases it unless screen-off navigation continues", async () => {
+test("hiding Maps retains the selected route; screen-off navigation continues", async () => {
   const foreground = fixture();
   await planned(foreground);
   foreground.screen.hidden();
   assert.equal(foreground.calls.released, 1);
-  assert.equal(foreground.screen.view().mode, "base");
+  assert.equal(foreground.screen.view().mode, "directions");
 
   const background = fixture({ background: true });
   await planned(background);
@@ -925,4 +937,215 @@ test("Cloud admission failure remains visible through explicit search without pr
     assert.deepEqual(calls, ["capabilities", "capabilities", "capabilities"]);
     f.screen.dispose();
   }
+});
+
+test("leaving the view retains navigation and an unavailable reroute keeps the exact route", async () => {
+  const f = fixture({ background: true });
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    before = surface.snapshot().route.value;
+  f.screen.leaveView();
+  assert.equal(f.screen.isNavigating(), true);
+  assert.equal(f.screen.view().mode, "navigation");
+  assert.equal(f.calls.background.filter((row) => row[0] === "stop").length, 0);
+  f.host.connection().provider.route = async () => {
+    throw new MapsFailure("unavailable", "Offline.");
+  };
+  f.screen.reroute();
+  await settle();
+  assert.equal(f.screen.isNavigating(), true);
+  assert.deepEqual(surface.snapshot().route.value, before);
+  assert.equal(f.screen.view().mode, "navigation");
+  assert.match(f.screen.view().status.text, /Offline/);
+  assert.equal(f.calls.background.filter((row) => row[0] === "stop").length, 0);
+  f.screen.dispose();
+});
+
+test("GPS progress keeps the selected route approval current; a new route retires it", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const before = f.calls.contexts.at(-1);
+  f.emit(f.fix({ coordinate: ORIGIN }));
+  const progress = f.calls.contexts.at(-1);
+  assert.equal(progress.kind, "map-route");
+  assert.equal(progress.revision, before.revision);
+  assert.deepEqual(progress.value, before.value);
+  f.emit(f.fix());
+  f.screen.reroute();
+  await settle();
+  assert.notEqual(f.calls.contexts.at(-1).revision, before.revision);
+  f.screen.dispose();
+});
+
+test("recenter keeps the viewed place, reports its map coverage and biases a later search from the explicit position", async () => {
+  const f = fixture({
+    coverage: {
+      name: "Monaco",
+      mapRestricted: true,
+      contains: (point) => point.latitude > 43.72 && point.latitude < 43.76,
+    },
+  });
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  const before = f.screen.view().place;
+  f.setDeviceFix(
+    f.fix({ coordinate: { latitude: 48.8566, longitude: 2.3522 } }),
+  );
+  f.screen.recenter();
+  await settle();
+  const outside = f.screen.view();
+  assert.equal(outside.place.name, before.name);
+  assert.equal(outside.status.map, "outside-coverage");
+  assert.match(outside.status.text, /outside Monaco map coverage/);
+  assert.equal(outside.map.selected, undefined);
+  f.setDeviceFix(f.fix());
+  f.screen.recenter();
+  await settle();
+  const view = f.screen.view();
+  assert.equal(view.place.name, before.name);
+  assert.deepEqual(view.map.selected, OFF_ROUTE);
+  let options;
+  f.host.connection().provider.search = async (_query, _signal, input) => {
+    options = input;
+    return [];
+  };
+  f.screen.searchFor("Coffee");
+  await settle();
+  assert.deepEqual(options.near, OFF_ROUTE);
+  f.screen.dispose();
+});
+
+test("an unanswered explicit location request becomes retryable after fifteen seconds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture();
+  f.screen.locate();
+  assert.equal(f.screen.view().status.locationBusy, true);
+  t.mock.timers.tick(15_000);
+  await settle();
+  assert.equal(f.screen.view().status.locationBusy, false);
+  assert.match(f.screen.view().status.text, /Couldn't find your location/);
+  f.screen.dispose();
+});
+
+test("late location and provider callbacks after leaving cannot publish a selection", async () => {
+  const options = {},
+    f = fixture(options);
+  let finish;
+  f.host.connection().provider.search = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  f.screen.locate();
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  options.inactive = true;
+  f.screen.leaveView();
+  const contexts = f.calls.contexts.length;
+  f.emitDevice(f.fix());
+  finish([f.destination]);
+  await settle();
+  assert.equal(f.screen.surface(async () => true).snapshot().origin, null);
+  assert.equal(f.screen.view().mode, "results");
+  assert.equal(f.screen.view().hasResults, false);
+  assert.equal(f.calls.contexts.length, contexts);
+  f.screen.dispose();
+});
+
+test("leaving Maps keeps foreground navigation even without background-service support", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const route = f.screen.surface(async () => true).guidance().routeId;
+  f.screen.leaveView();
+  f.emit(f.fix({ coordinate: ORIGIN }));
+  assert.equal(f.screen.isNavigating(), true);
+  assert.equal(f.screen.surface(async () => true).guidance().routeId, route);
+  assert.equal(f.stops(), 0);
+  f.screen.dispose();
+});
+
+test("a location callback after the timeout cannot replace the retained origin", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture();
+  f.screen.locate();
+  t.mock.timers.tick(15_000);
+  await settle();
+  f.emitDevice(f.fix());
+  assert.equal(f.screen.surface(async () => true).snapshot().origin, null);
+  assert.equal(f.screen.view().mode, "base");
+  assert.match(f.screen.view().status.text, /Couldn't find your location/);
+  f.screen.dispose();
+});
+
+test("a hidden page without background admission stops guidance and keeps its route for explicit resume", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    route = surface.snapshot().route.value;
+  f.screen.hidden();
+  await settle();
+  assert.equal(f.screen.isNavigating(), false);
+  assert.equal(f.screen.view().mode, "directions");
+  assert.deepEqual(surface.snapshot().route.value, route);
+  assert.equal(f.stops(), 1);
+  assert.match(f.screen.view().status.text, /Tap Start to resume/);
+  f.screen.refresh();
+  assert.equal(
+    f.screen.isNavigating(),
+    false,
+    "foreground return does not restart guidance",
+  );
+  f.screen.dispose();
+});
+
+test("hiding without background admission during reroute retains the admitted route and ignores its late answer", async () => {
+  const f = fixture();
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  const surface = f.screen.surface(async () => true),
+    route = surface.snapshot().route.value;
+  let finish;
+  f.host.connection().provider.route = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  f.screen.reroute();
+  await settle();
+  f.screen.hidden();
+  await settle();
+  finish({ ...route, id: "late_route_0123456789", from: OFF_ROUTE });
+  await settle();
+  assert.equal(f.screen.isNavigating(), false);
+  assert.equal(f.screen.view().directions.routeReady, true);
+  assert.deepEqual(surface.snapshot().route.value, route);
+  assert.deepEqual(surface.snapshot().origin, route.from);
+  f.screen.dispose();
+});
+
+test("retiring a provider clears a recentered location without a selected place", async () => {
+  const f = fixture();
+  f.setDeviceFix(f.fix());
+  f.screen.recenter();
+  await settle();
+  assert.deepEqual(f.screen.view().map.selected, OFF_ROUTE);
+  f.screen.release(false);
+  assert.equal(f.screen.view().map.selected, undefined);
+  f.screen.dispose();
 });

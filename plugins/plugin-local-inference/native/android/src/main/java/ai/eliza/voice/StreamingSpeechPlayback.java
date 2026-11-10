@@ -18,6 +18,10 @@ import java.util.concurrent.TimeUnit;
  * <li>Timing: {@link Listener#firstFrame} when the first PCM reaches the output, and
  *     {@link Listener#audible} with the output's presentation time of the first sample at or above
  *     the audible level (the platform timestamp; head position only as a labelled fallback).</li>
+ * <li>Continuation: {@link #extend} reserves a further segment (the next sentence of the same reply)
+ *     on this utterance until the writer has played every earlier one. Its PCM follows in the same
+ *     queue and output, so the sentences play without a gap and {@link Listener#ended} is reported
+ *     once, after the last segment. {@link #stop} drops every segment.</li>
  * </ul>
  * Exactly one terminal outcome is reported: ended, failed, or (silently) stopped by the owner.
  * Pure Java, no Android types: the host JVM fixture checks the queue, writer and cancellation.
@@ -48,6 +52,8 @@ public final class StreamingSpeechPlayback {
   void failed(String reason);
  }
  public interface Clock { long nanos(); }
+ /** See {@link #mark}. {@code bufferedFrames}: frames written before this one that have not played yet. */
+ public interface Mark { void reached(long nanos,long bufferedFrames); }
 
  public static final String TIMESTAMP_CLOCK="audiotrack-timestamp",HEAD_CLOCK="audiotrack-head-position";
  public static final long POLL_MS=10;
@@ -66,8 +72,12 @@ public final class StreamingSpeechPlayback {
  private Output output; // Guarded by lock.
  private float volume=1f; // Guarded by lock.
  private boolean started,terminal; // Guarded by lock.
+ private int open=1; // Segments still being produced: the first, plus each extend(). Guarded by lock.
+ private int extensions; // extend() calls so far; the writer compares it with what it has played. Guarded by lock.
+ private boolean finished; // The writer played every segment: nothing extends this utterance. Guarded by lock.
+ private final java.util.ArrayDeque<Object[]> marks=new java.util.ArrayDeque<>(); // {Long frame, Mark}. Guarded by lock.
  private volatile boolean stopped;
- private long produced; // Producer thread only.
+ private volatile long produced; // Written by one producer at a time (segments are synthesized in turn).
  private volatile long audibleFrame=-1;
  private Thread writer;
 
@@ -88,9 +98,35 @@ public final class StreamingSpeechPlayback {
    produced+=samples.length;
    if(!queue.offer(samples,OFFER_TIMEOUT_MS,TimeUnit.MILLISECONDS))return false;
   }
-  if(complete)queue.complete();
+  if(complete)closeSegment();
   return !stopped;
  }
+ /**
+  * Reserves a further segment. True: the caller owes this utterance that segment, ended by an
+  * {@link #offer} with complete or by {@link #abandon}; the utterance does not end before. False
+  * once it was stopped, failed or has played every earlier segment.
+  */
+ public boolean extend(){
+  synchronized(lock){
+   if(terminal||stopped||finished)return false;
+   open++;extensions++;queue.reopen();return true;
+  }
+ }
+ /** A reserved segment ends without completing (its synthesis was refused or produced nothing). */
+ public void abandon(){closeSegment();}
+ private void closeSegment(){synchronized(lock){if(open>0&&--open==0)queue.complete();}}
+ /** Reports, on the writer, when the next frame to be offered is handed to the output. */
+ public void mark(Mark mark){synchronized(lock){marks.addLast(new Object[]{produced,mark});}}
+ /** Offered frames the output has not played yet. */
+ public long pendingFrames(){synchronized(lock){return Math.max(0,produced-(output==null?0:output.playedFrames()));}}
+ /** Speech is coming out now: the first audible sample has played and offered audio remains. */
+ public boolean audible(){
+  long frame=audibleFrame;
+  if(frame<0||stopped)return false;
+  synchronized(lock){if(output==null||terminal)return false;long played=output.playedFrames();return played>frame&&played<produced;}
+ }
+ /** The writer played every segment; {@link Listener#ended} follows. */
+ public boolean finished(){synchronized(lock){return finished;}}
  /** Synthesis failed after this utterance was published. Reports failed unless already terminal. */
  public void fail(String reason){
   if(!settle())return;
@@ -131,14 +167,19 @@ public final class StreamingSpeechPlayback {
    output=out;out.setVolume(volume);
   }
   long written=0,lastChunkAt=clock.nanos(),headNs=VoiceLatencyTrials.UNSET;
+  int served=0; // Extensions whose audio was all taken from the queue.
   boolean first=false,audibleReported=false;
   try{
    out.play();
+   for(;;){ // One pass per run of segments; a segment reserved while the last one drains starts another.
    for(;;){
+    // Read before the take: the queue ends only once every segment reserved by then was taken whole.
+    int reserved=extensions();
     float[] chunk=queue.take(POLL_MS,TimeUnit.MILLISECONDS);
     long[] audible=checkAudible(out,audibleReported,headNs);audibleReported=audible[0]==1;headNs=audible[1];
     if(chunk==null){if(clock.nanos()-lastChunkAt>STALL_NS)throw new IllegalStateException("synthesis-stalled");continue;}
-    if(chunk==SpeechPcmQueue.END)break;
+    if(chunk==SpeechPcmQueue.END){served=reserved;break;}
+    reach(out,written);
     try{
      int offset=0;
      while(offset<chunk.length){
@@ -156,9 +197,9 @@ public final class StreamingSpeechPlayback {
    }
    // An utterance shorter than the track's start threshold would never start playing: pad it with
    // silence up to the threshold. Only the speech is waited on; stop() cuts the trailing silence.
-   long threshold=out.startThresholdFrames();
+   long threshold=out.startThresholdFrames(),padded=0;
    if(written>0&&written<threshold&&out.playedFrames()==0){
-    float[] pad=new float[(int)(threshold-written)];int offset=0;
+    float[] pad=new float[(int)(threshold-written)];int offset=0;padded=pad.length;
     while(offset<pad.length){
      if(stopped)throw new CancellationException();
      int count=out.write(pad,offset,pad.length-offset);
@@ -170,17 +211,22 @@ public final class StreamingSpeechPlayback {
    // Every frame is queued: wait until the platform has played them, bounded by their duration.
    long played=out.playedFrames();
    long drainDeadline=clock.nanos()+Math.max(0,written-played)*1_000_000_000L/sampleRate+2_000_000_000L;
-   while(!stopped&&out.playedFrames()<written&&clock.nanos()<drainDeadline){
+   boolean extended=false;
+   while(!stopped&&!(extended=extensions()!=served)&&out.playedFrames()<written&&clock.nanos()<drainDeadline){
     long[] audible=checkAudible(out,audibleReported,headNs);audibleReported=audible[0]==1;headNs=audible[1];
     Thread.sleep(POLL_MS);
    }
    if(stopped)return;
    // A track that never played every queued frame did not finish: never report it as heard.
-   if(out.playedFrames()<written)throw new IllegalStateException("playback-drain-timeout");
+   if(!extended&&out.playedFrames()<written)throw new IllegalStateException("playback-drain-timeout");
+   // The next segment follows in the same output; the pad it follows is part of the stream.
+   if(extended||!finish(served)){written+=padded;lastChunkAt=clock.nanos();continue;}
    long[] audible=checkAudible(out,audibleReported,headNs);audibleReported=audible[0]==1;headNs=audible[1];
    if(!audibleReported&&headNs!=VoiceLatencyTrials.UNSET){audibleReported=true;listener.audible(headNs,HEAD_CLOCK);}
    out.stop();
    if(settle())listener.ended(audibleFrame<0||!first);
+   return;
+   }
   }catch(CancellationException cancelled){/* Stopped by the owner or after fail(). */}
   catch(InterruptedException interrupted){Thread.currentThread().interrupt();if(settle()){stopped=true;queue.close();listener.failed("playback-interrupted");}}
   catch(Exception|Error failure){
@@ -188,6 +234,16 @@ public final class StreamingSpeechPlayback {
   }finally{
    synchronized(lock){output=null;}
    try{out.release();}catch(RuntimeException ignored){/* Released. */}
+  }
+ }
+ private int extensions(){synchronized(lock){return extensions;}}
+ /** False when a segment was reserved first: the writer continues with it. */
+ private boolean finish(int served){synchronized(lock){if(open>0||extensions!=served)return false;finished=true;return true;}}
+ private void reach(Output out,long written){
+  for(;;){
+   Object[] next;
+   synchronized(lock){next=marks.peekFirst();if(next==null||(Long)next[0]>written)return;marks.removeFirst();}
+   ((Mark)next[1]).reached(clock.nanos(),Math.max(0,written-out.playedFrames()));
   }
  }
  /** [reported?1:0, head-position fallback time]. Reports the timestamp-derived audible time once. */
