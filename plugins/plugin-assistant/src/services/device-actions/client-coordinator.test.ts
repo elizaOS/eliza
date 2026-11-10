@@ -6,6 +6,7 @@ import {
   DeviceActionCoordinator,
   type DeviceActionJournal,
   type DeviceContextEnvelope,
+  type DeviceExecutionResult,
   type DeviceExecutor,
   type DeviceJournalEntry,
   type DeviceOperationReceipt,
@@ -89,6 +90,8 @@ function fixtureServer(
     providerReceipt: undefined as unknown,
     claims: 0,
     receiptOutage: false,
+    decisionOutage: false,
+    claimOutage: false,
   };
   const proposal = () => ({
     id,
@@ -109,6 +112,9 @@ function fixtureServer(
     execution: server.attemptId
       ? {
           attemptId: server.attemptId,
+          ...(operation.type === "sms_send"
+            ? { providerIdempotencyKey: id }
+            : {}),
           ...(server.providerReceipt === undefined
             ? {}
             : { providerReceipt: server.providerReceipt }),
@@ -120,9 +126,23 @@ function fixtureServer(
     if (body === undefined) return { proposals: [proposal()] };
     const data = body as Record<string, unknown>;
     expect(data.digest).toBe(digest);
-    if (path.endsWith("/decision"))
-      server.state = data.decision === "approve" ? "approved" : "rejected";
+    if (path.endsWith("/decision")) {
+      if (server.decisionOutage) throw Error("Synthetic outage");
+      const target = data.decision === "approve" ? "approved" : "rejected";
+      const unclaimedApproval =
+        target === "rejected" &&
+        server.state === "approved" &&
+        !server.attemptId;
+      if (
+        server.state !== target &&
+        server.state !== "pending" &&
+        !unclaimedApproval
+      )
+        throw Error("Proposal is no longer pending");
+      server.state = target;
+    }
     if (path.endsWith("/claim")) {
+      if (server.claimOutage) throw Error("Synthetic outage");
       server.claims++;
       expect(server.state).toBe("approved");
       server.state = "executing";
@@ -145,11 +165,15 @@ function fixtureServer(
       }
       if (server.state !== "executing")
         throw Error(`Invalid transition ${server.state} -> receipt`);
-      const receipt = data.receipt as { outcome: string };
+      const receipt = data.receipt as { outcome: string; code?: string };
       server.receipts.push(data);
       server.providerReceipt = data.receipt;
+      // A receipt the phone marks as never dispatched settles without review.
       server.state =
-        receipt.outcome === "applied" ? "done" : "reconciliation_required";
+        receipt.outcome === "applied" ||
+        receipt.code === "DEVICE_NOT_DISPATCHED"
+          ? "done"
+          : "reconciliation_required";
     }
     if (path.endsWith("/reconciliation")) {
       if (data.attemptId !== server.attemptId)
@@ -157,6 +181,15 @@ function fixtureServer(
       if (server.state !== "reconciliation_required")
         throw Error(`Invalid transition ${server.state} -> reconciliation`);
       const resolution = data.resolution as { outcome: string };
+      if (resolution.outcome === "unresolved") {
+        // Closed by the owner; the stored receipt keeps its uncertain outcome.
+        expect(Object.keys(resolution).sort()).toEqual([
+          "confirmed",
+          "outcome",
+        ]);
+        server.state = "done";
+        return { proposal: proposal(), digest };
+      }
       server.providerReceipt = resolution;
       server.state = resolution.outcome === "applied" ? "done" : "retryable";
     }
@@ -311,7 +344,9 @@ describe("DeviceActionCoordinator", () => {
     await first.pending(notesContext, signal());
     server.receiptOutage = true;
     const receipt = await first.approve("proposal", notesContext, signal());
-    expect(receipt.summary).toMatch(/Server receipt is pending/);
+    expect(receipt.summary).toBe(
+      "Saved fixture note Not synced yet; open action history to retry.",
+    );
     expect(server.state).toBe("executing");
     // A fresh coordinator (app restart) replays only the exact journal entry.
     server.receiptOutage = false;
@@ -455,7 +490,210 @@ describe("DeviceActionCoordinator", () => {
     );
     expect(review).toHaveLength(1);
     expect(review[0].proposal).toBeNull();
-    expect(review[0].notice).toMatch(/Camera capture was not negotiated/);
+    expect(review[0].notice).toBe("This action isn't available on this phone.");
+    // The reason stays in the diagnostics a caller can read.
+    await expect(
+      actions.pending(
+        { view: "camera", revision: 1, sensitive: false },
+        signal(),
+      ),
+    ).rejects.toThrow(/Camera capture was not negotiated/);
+  });
+
+  it("closes an attempt that never dispatched as failed with nothing sent", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    const controller = new AbortController();
+    let effects = 0;
+    // Cancelled after the claim and before dispatch.
+    const actions = coordinator(
+      request,
+      {
+        ...journal,
+        async markApplying(input) {
+          await journal.markApplying(input);
+          controller.abort();
+        },
+      },
+      async () => {
+        effects++;
+        return { status: "succeeded", summary: "Saved" };
+      },
+    );
+    await actions.pending(notesContext, signal());
+    const receipt = await actions.approve(
+      "proposal",
+      notesContext,
+      controller.signal,
+    );
+    expect(receipt).toMatchObject({
+      status: "failed",
+      summary:
+        "Not started. Nothing was sent. Not synced yet; open action history to retry.",
+    });
+    expect(effects).toBe(0);
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "failed",
+      summary: "Not started. Nothing was sent.",
+      result: { operationId: entries.get("proposal")?.operationId },
+    });
+    expect(server.state).toBe("executing");
+    await actions.syncReceipts(signal());
+    expect(server.receipts.at(-1)?.receipt).toEqual({
+      outcome: "failed",
+      operationId: entries.get("proposal")?.operationId,
+      code: "DEVICE_NOT_DISPATCHED",
+    });
+    expect(server.state).toBe("done");
+    expect(effects).toBe(0);
+  });
+
+  it("closes a claimed reservation left by a restart as not dispatched", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return { status: "succeeded", summary: "Saved" };
+    };
+    // The process stopped between the claim and markApplying.
+    const first = coordinator(
+      request,
+      {
+        ...journal,
+        async markApplying() {
+          throw Error("Process stopped");
+        },
+      },
+      execute,
+    );
+    await first.pending(notesContext, signal());
+    expect(
+      (await first.approve("proposal", notesContext, signal())).status,
+    ).toBe("unknown");
+    expect(entries.get("proposal")?.phase).toBe("reserved");
+    expect(server.state).toBe("executing");
+    await coordinator(request, journal, execute).syncReceipts(signal());
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "failed",
+      attemptId: "attempt",
+    });
+    expect(server.receipts.at(-1)?.receipt).toMatchObject({
+      outcome: "failed",
+      code: "DEVICE_NOT_DISPATCHED",
+    });
+    expect(server.state).toBe("done");
+    expect(effects).toBe(0);
+  });
+
+  it("closes an entry left applying by a restart as unknown", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return { status: "succeeded", summary: "Saved" };
+    };
+    // The effect ran but the process stopped before it was journaled.
+    const first = coordinator(
+      request,
+      {
+        ...journal,
+        async finish() {
+          throw Error("Process stopped");
+        },
+      },
+      execute,
+    );
+    await first.pending(notesContext, signal());
+    await first.approve("proposal", notesContext, signal());
+    expect(entries.get("proposal")?.phase).toBe("applying");
+    await coordinator(request, journal, execute).syncReceipts(signal());
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "unknown",
+    });
+    expect(server.receipts.at(-1)?.receipt).toEqual({
+      outcome: "unknown",
+      operationId: entries.get("proposal")?.operationId,
+    });
+    expect(server.state).toBe("reconciliation_required");
+    expect(effects).toBe(1);
+  });
+
+  it("never settles the attempt this instance is executing", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    let release = () => {};
+    let started = () => {};
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const actions = coordinator(request, journal, async () => {
+      started();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { status: "succeeded", summary: "Saved" };
+    });
+    await actions.pending(notesContext, signal());
+    const approval = actions.approve("proposal", notesContext, signal());
+    await running;
+    await actions.syncReceipts(signal());
+    expect(entries.get("proposal")?.phase).toBe("applying");
+    expect(server.receipts).toHaveLength(0);
+    release();
+    expect((await approval).status).toBe("succeeded");
+    expect(server.state).toBe("done");
+  });
+
+  it("reuses the reservation after a failed decision and re-cards a claimless approval", async () => {
+    for (const outage of ["decisionOutage", "claimOutage"] as const) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      let effects = 0;
+      const actions = coordinator(request, journal, async () => {
+        effects++;
+        return { status: "succeeded", summary: "Saved" };
+      });
+      await actions.pending(notesContext, signal());
+      server[outage] = true;
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("unknown");
+      const reserved = entries.get("proposal") as DeviceJournalEntry;
+      expect(reserved.phase).toBe("reserved");
+      expect(server.state).toBe(
+        outage === "decisionOutage" ? "pending" : "approved",
+      );
+      server[outage] = false;
+      const [card] = await actions.pending(notesContext, signal());
+      expect(card?.id).toBe("proposal");
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("succeeded");
+      expect(entries.get("proposal")?.operationId).toBe(reserved.operationId);
+      expect(server.state).toBe("done");
+      expect(effects).toBe(1);
+    }
+  });
+
+  it("rejects a re-shown approval whose claim never arrived", async () => {
+    const { server, request } = fixtureServer(note);
+    const actions = coordinator(request, memoryJournal().journal, async () => ({
+      status: "succeeded",
+      summary: "Saved",
+    }));
+    await actions.pending(notesContext, signal());
+    server.claimOutage = true;
+    await actions.approve("proposal", notesContext, signal());
+    expect(server.state).toBe("approved");
+    const [card] = await actions.pending(notesContext, signal());
+    expect(card?.id).toBe("proposal");
+    await actions.reject("proposal", signal());
+    expect(server.state).toBe("rejected");
   });
 
   it("applies the product view admission policy", () => {
@@ -533,11 +771,12 @@ describe("opt-in current browser request policy", () => {
     text,
     current() {},
   });
-  function browserFixture(policy = true, reserveGate?: () => Promise<void>) {
-    const fixture = fixtureServer({
-      type: "browser_navigate",
-      url: "https://example.com/path?q=1#x",
-    });
+  function browserFixture(
+    policy = true,
+    reserveGate?: () => Promise<void>,
+    url = "https://example.com/path?q=1#x",
+  ) {
+    const fixture = fixtureServer({ type: "browser_navigate", url });
     let messageId: string | undefined = "message";
     let proposalId = "proposal",
       proposalDigest = digest;
@@ -745,6 +984,50 @@ describe("opt-in current browser request policy", () => {
           current,
         ),
       ).toHaveLength(1);
+    }
+  });
+  it("opens exactly the address the server grounded in the user's words", async () => {
+    for (const [text, url, allowed] of [
+      // The server stores the user's spelling, never the model's www. form.
+      [
+        "Hey Eliza, can you open youtube.com for me?",
+        "https://youtube.com/",
+        true,
+      ],
+      [
+        "Hey Eliza, can you open youtube.com for me?",
+        "https://www.youtube.com/",
+        false,
+      ],
+      ["go to www.youtube.com", "https://www.youtube.com/", true],
+      ["open main.py", "https://main.py/", true],
+      ["can you open main.py", "https://main.py/", false],
+      ["can you open the main.py website", "https://main.py/", true],
+      ["don't open youtube.com", "https://youtube.com/", false],
+      ["open YouTube", "https://youtube.com/", false],
+      ["take me to L.A.", "https://l.a/", false],
+    ] as const) {
+      const f = browserFixture(true, undefined, url);
+      const current = proof(text);
+      expect(
+        (await f.actions.pendingReview(context, signal(), current))[0],
+        text,
+      ).toMatchObject(
+        allowed
+          ? { proposal: { id: "proposal" } }
+          : { proposal: null, notice: expect.stringContaining("blocked") },
+      );
+      expect(
+        await f.actions.performRequested(
+          "message",
+          context,
+          signal(),
+          async () => true,
+          undefined,
+          current,
+        ),
+      ).toHaveLength(allowed ? 1 : 0);
+      expect(f.effects()).toBe(allowed ? 1 : 0);
     }
   });
   it("grounds the exact destination and consumes once before concurrent approval", async () => {
@@ -1165,6 +1448,92 @@ describe("shared phone and reminder-read parity", () => {
     ).toMatch(/Unlock/);
     expect(effects).toBe(0);
   });
+  const messages = {
+    view: "messages",
+    revision: 4,
+    sensitive: false,
+    selectedObject: { kind: "sms-subscription", id: "3" },
+  };
+  it("uses short review copy for dial and SMS", async () => {
+    const sms = {
+      type: "sms_send",
+      recipients: ["+15555550123"],
+      body: "Running late",
+      subscriptionId: 3,
+    };
+    const { request } = fixtureServer(dial);
+    const [card] = await make(request, memoryJournal().journal, async () => ({
+      status: "unknown",
+      summary: "",
+    })).pending(home, signal());
+    expect(card.description).toBe(
+      "Number: +15551234567\n\nOpens your phone app with this number. You place the call there.",
+    );
+    for (const simLabel of [undefined, () => "Work"]) {
+      const actions = new DeviceActionCoordinator({
+        session,
+        credential: { ...credential, capabilities: ["sms.send.v1"] },
+        scope,
+        request: fixtureServer(sms).request,
+        journal: memoryJournal().journal,
+        execute: async () => ({ status: "unknown", summary: "" }),
+        profile: { ...profile, simLabel },
+      });
+      const [review] = await actions.pending(messages, signal());
+      expect(review.description).toBe(
+        simLabel
+          ? "To: +15555550123\nFrom: Work\n\nRunning late\n\nConfirm again in Android."
+          : "To: +15555550123\n\nRunning late\n\nConfirm again in Android.",
+      );
+    }
+  });
+  it("leaves an SMS with unknown evidence unresolved without calling it sent or not", async () => {
+    const sms = {
+      type: "sms_send",
+      recipients: ["+15555550123"],
+      body: "Running late",
+      subscriptionId: 3,
+    };
+    const { server, request } = fixtureServer(sms);
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = make(
+      request,
+      journal,
+      async () => {
+        effects++;
+        throw Error("lost result");
+      },
+      ["sms.send.v1"],
+    );
+    await actions.pending(messages, signal());
+    expect((await actions.approve("proposal", messages, signal())).status).toBe(
+      "unknown",
+    );
+    expect(server.state).toBe("reconciliation_required");
+    const [row] = await actions.history(signal());
+    expect(row.resolutions).toEqual(["unresolved"]);
+    for (const outcome of ["applied", "not_applied"] as const)
+      await expect(
+        actions.reconcile("proposal", outcome, signal()),
+      ).rejects.toThrow(/exact saved evidence/);
+    await actions.reconcile("proposal", "unresolved", signal());
+    expect(server.state).toBe("done");
+    expect(server.providerReceipt).toMatchObject({ outcome: "unknown" });
+    expect(effects).toBe(1);
+  });
+  it("does not leave a note write unresolved", async () => {
+    const { server, request } = fixtureServer(note);
+    const actions = coordinator(request, memoryJournal().journal, async () => {
+      throw Error("lost result");
+    });
+    await actions.pending(notesContext, signal());
+    await actions.approve("proposal", notesContext, signal());
+    await expect(
+      actions.reconcile("proposal", "unresolved", signal()),
+    ).rejects.toThrow(/Only an SMS, dial or Clock/);
+    expect(server.state).toBe("reconciliation_required");
+  });
   it("does not reconcile an unknown dial handoff from the owner's guess", async () => {
     const { request } = fixtureServer(dial);
     const { journal } = memoryJournal();
@@ -1282,5 +1651,280 @@ describe("shared phone and reminder-read parity", () => {
       result: readResult,
     });
     expect(reads).toBe(1);
+  });
+});
+
+describe("notes organize operations", () => {
+  const target = {
+    sourceId: "local",
+    sourceRevision: "a".repeat(64),
+    noteId: "n-1",
+    revision: "b".repeat(64),
+  };
+  function organizeFixture(
+    operation: Record<string, unknown>,
+    capabilities = ["notes.local-record.v1", "notes.organize.v1"],
+  ) {
+    const fixture = fixtureServer(operation);
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      for (const item of response.proposals ?? [response.proposal])
+        if (item) Object.assign(item.payload, { requestMessageId: "message" });
+      return response;
+    };
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities },
+      scope,
+      request,
+      journal,
+      execute: async () => {
+        effects++;
+        return { status: "succeeded", summary: "Done" };
+      },
+      profile,
+    });
+    return { ...fixture, actions, effects: () => effects };
+  }
+
+  it("refuses organize proposals the phone did not negotiate", async () => {
+    const f = organizeFixture({ type: "notes_filter", kind: "voice" }, [
+      "notes.local-record.v1",
+    ]);
+    const review = await f.actions.pendingReview(notesContext, signal());
+    expect(review[0].proposal).toBeNull();
+    expect(review[0].notice).toBe("This action isn't available on this phone.");
+  });
+
+  it("reviews a move and reports a committed Notes change", async () => {
+    const f = organizeFixture({ type: "notes_move", target, folder: "Work" });
+    const [card] = await f.actions.pending(notesContext, signal());
+    expect(card).toMatchObject({ title: "Move note", description: "To Work" });
+    // A reviewed move never runs as a direct request.
+    expect(
+      await f.actions.performRequested(
+        "message",
+        notesContext,
+        signal(),
+        async () => true,
+      ),
+    ).toEqual([]);
+    expect(f.effects()).toBe(0);
+    expect(
+      await f.actions.approve("proposal", notesContext, signal()),
+    ).toMatchObject({ status: "succeeded", committedChanges: ["notes"] });
+    expect(f.effects()).toBe(1);
+  });
+
+  it("runs a filter and recording directly only for the requesting message", async () => {
+    for (const operation of [
+      { type: "notes_filter", text: "milk" },
+      { type: "notes_record", action: "start" },
+    ]) {
+      const f = organizeFixture(operation);
+      await f.actions.pending(notesContext, signal());
+      expect(
+        await f.actions.performRequested(
+          "other-message",
+          notesContext,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(
+        await f.actions.performRequested(
+          "message",
+          notesContext,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+      expect(f.effects()).toBe(1);
+    }
+  });
+
+  it("records only while Notes is open and reviews elsewhere only from Home or Notes", () => {
+    const home = { view: "home", revision: 1, sensitive: false };
+    const calendar = { view: "calendar", revision: 1, sensitive: false };
+    expect(
+      proposalContextNotice(
+        { type: "notes_record", action: "start" },
+        home,
+        profile,
+      ),
+    ).toBe("Open Notes to record a voice note.");
+    expect(
+      proposalContextNotice(
+        { type: "notes_folder_create", name: "Work" },
+        home,
+        profile,
+      ),
+    ).toBeUndefined();
+    expect(
+      proposalContextNotice(
+        { type: "notes_restore", noteId: "n-1" },
+        calendar,
+        profile,
+      ),
+    ).toBe("Open Home or Notes to review this Notes action.");
+  });
+});
+
+describe("photos view operations", () => {
+  const photosContext: DeviceContextEnvelope = {
+    view: "photos",
+    revision: 3,
+    sensitive: false,
+  };
+  const capabilities = ["photos.library.v1", "photos.view.v1"];
+  function photosFixture(
+    operation: Record<string, unknown>,
+    photoLibraryResult: unknown,
+    negotiated = capabilities,
+  ) {
+    const fixture = fixtureServer(operation);
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      for (const item of response.proposals ?? [response.proposal])
+        if (item) Object.assign(item.payload, { requestMessageId: "message" });
+      return response;
+    };
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities: negotiated },
+      scope,
+      request,
+      journal,
+      execute: async () => {
+        effects++;
+        return {
+          status: "succeeded",
+          summary: "Done",
+          // Malformed results are passed on purpose to test the validator.
+          photoLibraryResult:
+            photoLibraryResult as DeviceExecutionResult["photoLibraryResult"],
+        };
+      },
+      profile,
+    });
+    return { ...fixture, actions, effects: () => effects };
+  }
+
+  it("refuses Photos proposals unless both capabilities were negotiated", async () => {
+    for (const negotiated of [["photos.library.v1"], ["photos.view.v1"]]) {
+      const f = photosFixture(
+        { type: "photos_open", id: "lib:i:1:10" },
+        undefined,
+        negotiated,
+      );
+      const review = await f.actions.pendingReview(photosContext, signal());
+      expect(review[0].proposal).toBeNull();
+      expect(review[0].notice).toBe(
+        "This action isn't available on this phone.",
+      );
+    }
+  });
+
+  it("reviews an album and a share and reports the review result, not a change", async () => {
+    for (const [operation, title] of [
+      [
+        { type: "photos_album_create", name: "Trip", ids: ["lib:i:1:10"] },
+        "Create album “Trip”",
+      ],
+      [{ type: "photos_share", ids: ["lib:i:1:10"] }, "Share 1 item"],
+    ] as const) {
+      const result = {
+        kind: operation.type,
+        status: "review_opened",
+        count: 1,
+        missing: 0,
+      };
+      const f = photosFixture(operation, result);
+      const [card] = await f.actions.pending(photosContext, signal());
+      expect(card).toMatchObject({ title });
+      // A reviewed Photos operation never runs as a direct request.
+      expect(
+        await f.actions.performRequested(
+          "message",
+          photosContext,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(f.effects()).toBe(0);
+      expect(
+        await f.actions.approve("proposal", photosContext, signal()),
+      ).toMatchObject({ status: "succeeded", committedChanges: [] });
+      expect(f.effects()).toBe(1);
+      expect(f.server.providerReceipt).toMatchObject({
+        outcome: "applied",
+        result,
+      });
+    }
+  });
+
+  it("runs a filter and an open directly only for the requesting message", async () => {
+    for (const [operation, result] of [
+      [
+        { type: "photos_filter", kind: "video" },
+        { kind: "photos_filter", shown: 3, more: false },
+      ],
+      [
+        { type: "photos_open", id: "lib:v:2:20" },
+        { kind: "photos_open", opened: true },
+      ],
+    ] as const) {
+      const f = photosFixture(operation, result);
+      await f.actions.pending(photosContext, signal());
+      expect(
+        await f.actions.performRequested(
+          "other-message",
+          photosContext,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(
+        await f.actions.performRequested(
+          "message",
+          photosContext,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+      expect(f.effects()).toBe(1);
+      expect(f.server.providerReceipt).toMatchObject({ result });
+    }
+  });
+
+  it("never reports a malformed Photos result as applied", async () => {
+    const f = photosFixture(
+      { type: "photos_filter", favorite: true },
+      { kind: "photos_filter", shown: 2, more: false, items: ["x"] },
+    );
+    await f.actions.pending(photosContext, signal());
+    expect(
+      await f.actions.approve("proposal", photosContext, signal()),
+    ).toMatchObject({ status: "unknown" });
+    expect(f.server.receipts).toEqual([]);
+  });
+
+  it("is reviewed only in Photos on the unlocked phone", () => {
+    const op = { type: "photos_share", ids: ["lib:i:1:10"] } as const;
+    expect(proposalContextNotice(op, photosContext, profile)).toBeUndefined();
+    expect(
+      proposalContextNotice(
+        op,
+        { view: "home", revision: 1, sensitive: false },
+        profile,
+      ),
+    ).toBe("Open Photos to review this action.");
+    expect(
+      proposalContextNotice(op, { ...photosContext, sensitive: true }, profile),
+    ).toBe("Unlock the phone to review this action.");
   });
 });

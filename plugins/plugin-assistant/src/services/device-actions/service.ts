@@ -51,9 +51,8 @@ import type {
   ApprovalRequest,
 } from "../approval/types.ts";
 import {
-  authoredBrowserDestination,
-  browserDestinationMatches,
   DeviceBrowserNotRequestedError,
+  groundBrowserDestination,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -101,6 +100,11 @@ import {
 } from "./contract.ts";
 import { deviceActionEffectReceipts } from "./effect-receipts.ts";
 import {
+  FILES_CAPABILITY,
+  FILES_OPERATION_TYPES,
+  isFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   FOREGROUND_REVIEW_TYPES,
   foregroundReviewOperationAvailable,
   isForegroundReviewOperation,
@@ -123,6 +127,11 @@ import {
 } from "./notes-contract.ts";
 import { notesDeleteAfterReadPlan } from "./notes-delete-continuation.ts";
 import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
+import {
+  isNotesOrganizeOperation,
+  NOTES_ORGANIZE_CAPABILITY,
+  NOTES_ORGANIZE_TYPES,
+} from "./notes-organize-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
 import {
@@ -133,6 +142,14 @@ import {
   phoneDialReceiptOutcome,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
+import { PHOTO_LIBRARY_CAPABILITY } from "./photo-library-contract.ts";
+import {
+  isPhotosViewOperation,
+  PHOTOS_VIEW_CAPABILITY,
+  PHOTOS_VIEW_TYPES,
+  photosViewCapabilityAvailable,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
 import {
   assertDeviceReadCompletionCurrent,
   bindDeviceCompletion,
@@ -253,13 +270,29 @@ export function deviceActionToolGuidance(
   const canonicalCalendar = runtime.actions.some(
     (action) => action.name === "CALENDAR",
   );
+  const admitted = (type: string) =>
+    currentTurn?.runtime === runtime &&
+    deviceAppRecordOperationAvailable(currentTurn.runtime, { type }, message);
+  const phoneReview = (domain: "notes" | "calendar") =>
+    Object.entries(DEVICE_RECORD_ADMISSION).some(
+      ([type, rule]) =>
+        rule.domain === domain &&
+        rule.selection === "none" &&
+        deviceOperationSupportedByCapabilities(type, capabilities) &&
+        admitted(type),
+    );
+  // One rule: phone-native records use device reviews; the canonical store owns only its own selection.
   const canonicalCalendarGuidance =
     canonicalCalendar && calendarRecords === "runtime"
-      ? " Ordinary app Calendar requests use the canonical CALENDAR service, runtime store and conversation context. Enrolled Calendar capabilities do not redirect app records into a device proposal. "
+      ? phoneReview("calendar")
+        ? " Phone-native Calendar data uses the device Calendar reviews. Other Calendar requests, and a selected canonical Calendar record, use the canonical CALENDAR service. "
+        : " Ordinary app Calendar requests use the canonical CALENDAR service, runtime store and conversation context. Enrolled Calendar capabilities do not redirect app records into a device proposal. "
       : "";
   const canonicalNotesGuidance =
     canonicalNotes && notesRecords === "runtime"
-      ? " Ordinary app Notes use the canonical NOTES service and owner-scoped runtime store. Device note capabilities do not redirect ordinary Notes reads, creates, edits or deletions. "
+      ? phoneReview("notes")
+        ? " Phone-native Notes data uses the device Notes reviews. Other Notes requests, and a selected canonical Notes record, use the canonical NOTES service. "
+        : " Ordinary app Notes use the canonical NOTES service and owner-scoped runtime store. Device note capabilities do not redirect ordinary Notes reads, creates, edits or deletions. "
       : "";
   const specialized = runtime.actions.flatMap((action) => {
     if (!action.egress?.includes("owner-device")) return [];
@@ -280,15 +313,12 @@ export function deviceActionToolGuidance(
     .filter(
       (item) =>
         deviceOperationSupportedByCapabilities(item.operation, capabilities) &&
-        (!(
-          item.operation === "create_note" ||
-          item.operation.startsWith("notes_")
-        ) ||
+        (DEVICE_RECORD_ADMISSION[item.operation]?.domain !== "notes" ||
           !canonicalNotes ||
-          notesRecords === "device") &&
-        (!isCalendarOperation({ type: item.operation }) ||
+          admitted(item.operation)) &&
+        (DEVICE_RECORD_ADMISSION[item.operation]?.domain !== "calendar" ||
           !canonicalCalendar ||
-          calendarRecords === "device") &&
+          admitted(item.operation)) &&
         (!isNotesOperation({ type: item.operation }) ||
           capabilities?.includes(NOTES_CAPABILITY)) &&
         (item.operation !== "notes_query" ||
@@ -321,7 +351,7 @@ export function deviceActionToolGuidance(
     .map((item) => item.name);
   if (current.length) {
     const namedNotesMutation =
-      notesRecords === "device" &&
+      admitted("notes_named") &&
       runtime.actions.some(
         (action) =>
           action.name === "PROPOSE_DEVICE_ACTION" &&
@@ -425,7 +455,7 @@ export async function deviceGmailRequestConsent(
     message.entityId !== original.entityId ||
     message.roomId !== original.roomId ||
     message.roomId !== current.replyConversation.roomId ||
-    message.entityId !== current.credential.subjectUserId ||
+    !isRequestOwner(current, message) ||
     message.content.text !== original.content.text ||
     !message.createdAt ||
     message.createdAt < current.startedAt ||
@@ -458,6 +488,17 @@ export async function deviceGmailRequestConsent(
   if (effect?.disposition === "deny") return "denied";
   return "review";
 }
+/** The credential subject is the auth identity; the message carries the
+ * mapped owner entity. Only the authenticated caller binding links the two. */
+function isRequestOwner(current: DeviceTurn, message: Memory): boolean {
+  const caller = current.requestCaller;
+  return (
+    !!caller &&
+    caller.subjectUserId === current.credential.subjectUserId &&
+    caller.role === "OWNER" &&
+    message.entityId === caller.entityId
+  );
+}
 /** Use only this active authenticated request's typed selection to select the
  * native store. A capability advertises a bridge; it does not migrate ownership. */
 export function currentReminderRecordSource(
@@ -475,7 +516,7 @@ export function currentReminderRecordSource(
   if (
     !message ||
     message.agentId !== runtime.agentId ||
-    message.entityId !== current.credential.subjectUserId
+    !isRequestOwner(current, message)
   )
     return "runtime";
   const context = turnObservation(message.content.metadata);
@@ -533,10 +574,7 @@ export function currentAppRecordSource(
   if (
     !message ||
     message.agentId !== runtime.agentId ||
-    !current.requestCaller ||
-    current.requestCaller.subjectUserId !== current.credential.subjectUserId ||
-    current.requestCaller.role !== "OWNER" ||
-    message.entityId !== current.requestCaller.entityId
+    !isRequestOwner(current, message)
   )
     return "unavailable";
   if (
@@ -591,8 +629,94 @@ export function currentAppRecordSource(
         kind === "canonical-calendar-event"
   )
     return "runtime";
-  return "unavailable";
+  // Another domain's selection (a reminder or the Clock sheet in Calendar) is no selection here.
+  const domainKind =
+    typeof kind === "string" &&
+    (domain === "notes"
+      ? /^(note|canonical-note|legacy-app-notes-)/.test(kind)
+      : /^(calendar-|canonical-calendar-|legacy-app-calendar-)/.test(kind));
+  return domainKind ? "unavailable" : "runtime";
 }
+
+/** Where each phone Notes/Calendar operation may be proposed. `none`: the phone
+ * resolves the record (an owner choice or a native lookup), so Home or the
+ * domain view admits it unless the turn selected a canonical record. `device`:
+ * the operation names an exact record or source, which the turn must select on
+ * the phone. The phone's own screen rules must admit no pair this table refuses. */
+export const DEVICE_RECORD_ADMISSION: Readonly<
+  Record<
+    string,
+    {
+      domain: "notes" | "calendar";
+      views: readonly string[] | "any";
+      selection: "none" | "device";
+    }
+  >
+> = {
+  notes_query: { domain: "notes", views: ["home", "notes"], selection: "none" },
+  notes_search: {
+    domain: "notes",
+    views: ["home", "notes"],
+    selection: "none",
+  },
+  notes_named: { domain: "notes", views: ["home", "notes"], selection: "none" },
+  create_note: { domain: "notes", views: ["notes"], selection: "device" },
+  read_selected_notes: {
+    domain: "notes",
+    views: ["notes"],
+    selection: "device",
+  },
+  notes_titles: { domain: "notes", views: ["notes"], selection: "device" },
+  notes_read_selected: {
+    domain: "notes",
+    views: ["notes"],
+    selection: "device",
+  },
+  notes_update: { domain: "notes", views: ["notes"], selection: "device" },
+  notes_delete: { domain: "notes", views: ["notes"], selection: "device" },
+  calendar_availability: {
+    domain: "calendar",
+    views: ["home", "calendar"],
+    selection: "none",
+  },
+  calendar_named: {
+    domain: "calendar",
+    views: ["home", "calendar"],
+    selection: "none",
+  },
+  // Native code fixes the window or the default calendar from any open screen.
+  calendar_read_next: { domain: "calendar", views: "any", selection: "none" },
+  calendar_create_local: {
+    domain: "calendar",
+    views: "any",
+    selection: "none",
+  },
+  read_calendar_range: {
+    domain: "calendar",
+    views: ["calendar"],
+    selection: "device",
+  },
+  calendar_create: {
+    domain: "calendar",
+    views: ["calendar"],
+    selection: "device",
+  },
+  calendar_read_selected: {
+    domain: "calendar",
+    views: ["calendar"],
+    selection: "device",
+  },
+  calendar_update: {
+    domain: "calendar",
+    views: ["calendar"],
+    selection: "device",
+  },
+  calendar_delete: {
+    domain: "calendar",
+    views: ["calendar"],
+    selection: "device",
+  },
+};
 
 /** Availability is the same domain fence as enqueue; capability alone never owns records. */
 export function deviceAppRecordOperationAvailable(
@@ -605,34 +729,39 @@ export function deviceAppRecordOperationAvailable(
     return false;
   const type = Reflect.get(operation, "type");
   if (typeof type !== "string") return false;
-  const domain =
-    isNotesOperation(operation) ||
-    isNativeNotesQuery({ type }) ||
-    [
-      "create_note",
-      "read_selected_notes",
-      "notes_named",
-      "notes_search",
-      "notes_titles",
-    ].includes(type)
-      ? "notes"
-      : isCalendarOperation(operation) ||
-          [
-            "read_calendar_range",
-            "calendar_availability",
-            "calendar_named",
-          ].includes(type)
-        ? "calendar"
-        : undefined;
-  if (!domain) return true;
+  const rule = Object.hasOwn(DEVICE_RECORD_ADMISSION, type)
+    ? DEVICE_RECORD_ADMISSION[type]
+    : undefined;
+  if (!rule) return true;
   const current = getDeviceActionTurn();
   // Workflow/system hosts outside an authenticated client turn keep their existing admission.
   if (!current || current.runtime !== runtime)
     return options?.requestBound !== true;
+  if (!current.active || !current.isCurrent()) return false;
+  const source = currentAppRecordSource(runtime, rule.domain, message);
+  if (rule.selection === "device") return source === "device";
+  if (
+    source === "unavailable" ||
+    !deviceOperationSupportedByCapabilities(
+      type,
+      current.credential.capabilities,
+    )
+  )
+    return false;
+  message ??= current.requestMessage?.message ?? current.replyContext?.message;
+  const context = message && turnObservation(message.content.metadata);
+  if (!context?.view) return false;
+  const kind = context.selectedObject
+    ? Reflect.get(context.selectedObject, "kind")
+    : undefined;
   return (
-    current.active &&
-    current.isCurrent() &&
-    currentAppRecordSource(runtime, domain, message) === "device"
+    (rule.views === "any" || rule.views.includes(context.view)) &&
+    !(
+      typeof kind === "string" &&
+      kind.startsWith(
+        rule.domain === "notes" ? "canonical-note" : "canonical-calendar",
+      )
+    )
   );
 }
 
@@ -653,10 +782,7 @@ export function setDeviceActionRequestMessage(
     typeof message.roomId !== "string" ||
     !message.roomId ||
     message.agentId !== runtime.agentId ||
-    !current.requestCaller ||
-    current.requestCaller.subjectUserId !== current.credential.subjectUserId ||
-    current.requestCaller.role !== "OWNER" ||
-    message.entityId !== current.requestCaller.entityId ||
+    !isRequestOwner(current, message) ||
     message.entityId === runtime.agentId ||
     message.content.role === "system" ||
     message.content.source === "voice_lifecycle" ||
@@ -916,6 +1042,7 @@ export async function withDeviceActionTurn<T>(
     context.active = false;
   }
 }
+const UNRESOLVED_RECONCILIATION = "owner-acknowledged-unresolved";
 function digest(value: unknown): string {
   return createHash("sha256").update(stableStringify(value)).digest("hex");
 }
@@ -943,6 +1070,19 @@ function transactionRuntime(
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
+}
+/** An approved read may finish within ten minutes of its claim, and never
+ * later than thirty minutes after the proposal was created. */
+function readCompletionDeadline(request: ApprovalRequest): string {
+  const claimedAt = request.execution?.claimedAt.getTime();
+  return new Date(
+    claimedAt === undefined
+      ? request.expiresAt.getTime()
+      : Math.min(
+          claimedAt + 10 * 60_000,
+          request.createdAt.getTime() + 30 * 60_000,
+        ),
+  ).toISOString();
 }
 export function deviceProposalDigest(request: ApprovalRequest): string {
   return digest({
@@ -1172,7 +1312,8 @@ export class DeviceActionService {
       binding.installationId !== c.installationId ||
       binding.enrollmentId !== row.enrollment_id ||
       binding.digest !== digest ||
-      binding.expiresAt !== request.expiresAt.toISOString() ||
+      (binding.expiresAt !== request.expiresAt.toISOString() &&
+        binding.expiresAt !== readCompletionDeadline(request)) ||
       binding.origin.original.agentId !== this.runtime.agentId ||
       binding.origin.hostContextRevision !==
         deviceReadHostContextRevision(this.runtime) ||
@@ -1188,7 +1329,7 @@ export class DeviceActionService {
     digest: string,
   ): Promise<NativeNotesReadReplyOrigin | undefined> {
     return this.access(c, async (q, row, tx) => {
-      await this.proposal(q, row, c, id, digest);
+      const request = await this.proposal(q, row, c, id, digest);
       const binding = await readDeviceCompletion(
         tx,
         this.runtime.agentId,
@@ -1199,7 +1340,7 @@ export class DeviceActionService {
         binding.state === "pending" &&
         binding.origin.hostContextRevision ===
           deviceReadHostContextRevision(this.runtime) &&
-        Date.parse(binding.expiresAt) > Date.now()
+        Date.parse(readCompletionDeadline(request)) > Date.now()
         ? completionOrigin(binding)
         : undefined;
     });
@@ -1224,7 +1365,7 @@ export class DeviceActionService {
       if (
         !bound ||
         !["pending", "prepared", "delivered"].includes(bound.binding.state) ||
-        Date.parse(bound.binding.expiresAt) <= Date.now()
+        Date.parse(readCompletionDeadline(bound.request)) <= Date.now()
       )
         return undefined;
       return completionHint(bound.binding, attemptId);
@@ -1250,7 +1391,7 @@ export class DeviceActionService {
         current.binding.origin.requestId !== hint.requestId ||
         current.binding.origin.conversationId !== hint.conversationId ||
         current.binding.origin.original.id !== hint.inReplyTo ||
-        Date.parse(current.binding.expiresAt) <= Date.now()
+        Date.parse(readCompletionDeadline(current.request)) <= Date.now()
       )
         throw new DeviceActionError("Original read room changed");
       return current.binding.origin.original.roomId;
@@ -1280,7 +1421,7 @@ export class DeviceActionService {
         bound.binding.origin.requestId !== hint.requestId ||
         bound.binding.origin.conversationId !== hint.conversationId ||
         bound.binding.origin.original.id !== hint.inReplyTo ||
-        Date.parse(bound.binding.expiresAt) <= Date.now()
+        Date.parse(readCompletionDeadline(bound.request)) <= Date.now()
       )
         throw new DeviceActionError(
           "Original read completion expired or changed",
@@ -1291,10 +1432,12 @@ export class DeviceActionService {
       if (binding.state !== "pending")
         throw new DeviceActionError("Original read completion already claimed");
       signal.throwIfAborted();
+      // The claim fixes the reply deadline that every later check reads.
       const next: DeviceReadCompletion = {
         ...binding,
         state: "claimed",
         attemptId: hint.attemptId,
+        expiresAt: readCompletionDeadline(bound.request),
       };
       await transitionDeviceCompletion(tx, binding, next);
       return { ...bound, binding: next, cached: false };
@@ -1337,7 +1480,7 @@ export class DeviceActionService {
         if (
           !current ||
           current.binding.state !== "claimed" ||
-          Date.parse(current.binding.expiresAt) <= Date.now()
+          Date.parse(readCompletionDeadline(current.request)) <= Date.now()
         )
           throw new DeviceActionError("Original read completion retired");
       });
@@ -1459,7 +1602,7 @@ export class DeviceActionService {
         if (
           !current ||
           current.binding.state !== "claimed" ||
-          Date.parse(current.binding.expiresAt) <= Date.now()
+          Date.parse(readCompletionDeadline(current.request)) <= Date.now()
         )
           throw new DeviceActionError("Original read completion retired");
         signal.throwIfAborted();
@@ -1492,7 +1635,9 @@ export class DeviceActionService {
                   ? "Original owner Notes edit after approved selected read"
                   : "Original owner Notes deletion after approved target lookup",
               idempotencyKey: mutationPlan.idempotencyKey,
-              expiresAt: existing?.expiresAt ?? new Date(binding.expiresAt),
+              // The follow-up review gets its own window, fixed when first created.
+              expiresAt:
+                existing?.expiresAt ?? new Date(Date.now() + 10 * 60_000),
             },
             tx,
           );
@@ -1645,7 +1790,7 @@ export class DeviceActionService {
         current.binding.origin.requestId !== hint.requestId ||
         current.binding.origin.conversationId !== hint.conversationId ||
         current.binding.origin.original.id !== hint.inReplyTo ||
-        Date.parse(current.binding.expiresAt) <= Date.now()
+        Date.parse(readCompletionDeadline(current.request)) <= Date.now()
       )
         throw new DeviceActionError("Original read completion retired");
       signal.throwIfAborted();
@@ -1679,7 +1824,7 @@ export class DeviceActionService {
       if (
         !current ||
         !["prepared", "delivered"].includes(current.binding.state) ||
-        Date.parse(current.binding.expiresAt) <= Date.now()
+        Date.parse(readCompletionDeadline(current.request)) <= Date.now()
       )
         throw new DeviceActionError("Original read completion retired");
       signal.throwIfAborted();
@@ -1759,8 +1904,10 @@ export class DeviceActionService {
           CALENDAR_AGENDA_CAPABILITY,
           "notes.local-record.v1",
           NOTES_QUERY_CAPABILITY,
+          NOTES_ORGANIZE_CAPABILITY,
           NOTES_SEARCH_CAPABILITY,
           CALENDAR_AVAILABILITY_CAPABILITY,
+          FILES_CAPABILITY,
           NAMED_TARGET_CAPABILITY,
           CALENDAR_NAMED_READ_CAPABILITY,
           REMINDER_CAPABILITY,
@@ -1773,6 +1920,8 @@ export class DeviceActionService {
           SMS_SEND_CAPABILITY,
           PHONE_DIAL_CAPABILITY,
           CONTACT_LOOKUP_CAPABILITY,
+          PHOTO_LIBRARY_CAPABILITY,
+          PHOTOS_VIEW_CAPABILITY,
         ],
       };
     });
@@ -1963,7 +2112,7 @@ export class DeviceActionService {
       request: ReviewedAvailabilityRequest;
     },
   ): Promise<ApprovalEnqueueResult> {
-    const validated = validateDeviceOperation(operation);
+    let validated = validateDeviceOperation(operation);
     if (!deviceAppRecordOperationAvailable(this.runtime, validated))
       throw new DeviceActionError(
         "Device Notes/Calendar record authority is not selected for this turn",
@@ -2054,10 +2203,12 @@ export class DeviceActionService {
         "clock_alarm",
         "create_note",
         "maps_read_selected",
+        ...FILES_OPERATION_TYPES,
         "notes_read_selected",
         "notes_query",
         "notes_update",
         "notes_delete",
+        ...NOTES_ORGANIZE_TYPES,
         "create_reminder",
         "reminder_create",
         "reminder_read_selected",
@@ -2074,26 +2225,54 @@ export class DeviceActionService {
         "calendar_read_selected",
         "calendar_update",
         "calendar_delete",
+        ...PHOTOS_VIEW_TYPES,
         ...FOREGROUND_REVIEW_TYPES,
       ].includes(validated.type)
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     const browserRequest = validated.type === "browser_navigate";
+    const foregroundTurn =
+      isPhotosViewOperation(validated) || isFilesOperation(validated)
+        ? getDeviceActionTurn()
+        : undefined;
+    const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(
       this.runtime,
       c,
       browserRequest,
     );
-    requestOrigin?.assertCurrent();
-    if (
-      browserRequest &&
-      (!requestOrigin ||
-        !browserDestinationMatches(
-          validated,
-          authoredBrowserDestination(requestOrigin.requestText),
-        ))
-    )
-      throw new DeviceBrowserNotRequestedError();
+    // Reviewed Photos and Files proposals retain their foreground owner
+    // even without a direct-request message binding.
+    const assertCurrent =
+      foregroundTurn?.runtime === this.runtime
+        ? () => {
+            if (
+              getDeviceActionTurn() !== foregroundTurn ||
+              foregroundTurn.credential !== c ||
+              !foregroundTurn.isCurrent() ||
+              !deviceOperationSupportedByCapabilities(
+                validated.type,
+                c.capabilities,
+              ) ||
+              signal?.aborted ||
+              getStreamingContext()?.abortSignal?.aborted
+            )
+              throw new DeviceActionError(
+                "Original foreground request ended; proposal cancelled",
+              );
+            requestOrigin?.assertCurrent();
+          }
+        : requestOrigin?.assertCurrent;
+    assertCurrent?.();
+    if (validated.type === "browser_navigate") {
+      // The durable original request owns the destination: the user's typed
+      // address, never the model's spelling of it.
+      const destination =
+        requestOrigin &&
+        groundBrowserDestination(requestOrigin.requestText, validated.url);
+      if (!destination) throw new DeviceBrowserNotRequestedError();
+      validated = { ...validated, url: destination };
+    }
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&
@@ -2107,7 +2286,7 @@ export class DeviceActionService {
     const result = await this.access(
       c,
       async (queue, row, tx) => {
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         const viewProfile = storedDeviceViewProfile(row.view_profile);
         if (
           validated.type === "open_view" &&
@@ -2144,11 +2323,26 @@ export class DeviceActionService {
             : {}),
         };
         // This is the canonical queue's transaction API: no notification or effect before commit.
-        const idempotencyKey = `device:${digest([c.subjectUserId, c.installationId, identifier(operationKey)])}`;
+        // A direct request binds its key to that message: a key reused in a later turn is a new review.
+        const idempotencyKey = `device:${digest([
+          c.subjectUserId,
+          c.installationId,
+          ...(payload.requestMessageId ? [payload.requestMessageId] : []),
+          identifier(operationKey),
+        ])}`;
         const existing = await queue.byIdempotencyKey(
           idempotencyKey,
           c.subjectUserId,
         );
+        // A lapsed review can never run: close it here rather than offer it again under the same key.
+        if (
+          existing?.state === "pending" &&
+          existing.expiresAt.getTime() <= Date.now()
+        )
+          return {
+            request: await queue.markExpired(existing.id, c.subjectUserId),
+            reused: true,
+          };
         if (isClockOperation(validated)) {
           const receipt = existing?.execution?.providerReceipt;
           const priorPayload = existing
@@ -2209,7 +2403,7 @@ export class DeviceActionService {
             }
           }
         }
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         if (!deviceAppRecordOperationAvailable(this.runtime, validated))
           throw new DeviceActionError(
             "Device Notes/Calendar record authority changed before enqueue",
@@ -2228,7 +2422,7 @@ export class DeviceActionService {
           },
           tx,
         );
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         deferredRead = await this.bindNewReadCompletion(
           tx,
           row,
@@ -2248,14 +2442,14 @@ export class DeviceActionService {
               ? availabilityReview.request
               : undefined,
         );
-        requestOrigin?.assertCurrent();
+        assertCurrent?.();
         return result;
       },
-      requestOrigin?.assertCurrent,
+      assertCurrent,
     );
     // Retain authority only after the proposal and original context committed.
     if (deferredRead) {
-      requestOrigin?.assertCurrent();
+      assertCurrent?.();
       getDeviceActionTurn()?.retainNotesRead?.(deferredRead);
     }
     return result;
@@ -2455,13 +2649,15 @@ export class DeviceActionService {
           subjectUserId: c.subjectUserId,
           state: "done",
           action: "device_action",
+          operationTypes: ["create_note", "notes_update", "notes_delete"],
           limit: 32,
         })
       ).filter((request) => {
         if (
           request.subjectUserId !== c.subjectUserId ||
           request.state !== "done" ||
-          request.payload.action !== "device_action"
+          request.payload.action !== "device_action" ||
+          request.execution?.providerReceipt?.outcome !== "applied"
         )
           return false;
         const payload = validateDevicePayload(request.payload);
@@ -2482,21 +2678,58 @@ export class DeviceActionService {
     );
   }
   async list(c: DeviceCredential): Promise<ApprovalRequest[]> {
-    return this.access(c, async (queue, row) =>
-      (
-        await queue.list({
-          subjectUserId: c.subjectUserId,
-          state: null,
-          action: "device_action",
-        })
-      ).filter((request) => {
+    const row = await this.access(c, async (_queue, row) => row);
+    // Read after the device lock is released: open work plus a recent page of history.
+    const queue = new PgApprovalQueue(this.runtime, {
+      agentId: this.runtime.agentId,
+    });
+    const onInvalidRow = (id: string, error: unknown) =>
+      this.runtime.reportError?.("device-actions:list", error, {
+        proposalId: id,
+      });
+    const [open, recent] = await Promise.all([
+      queue.list({
+        subjectUserId: c.subjectUserId,
+        state: null,
+        states: [
+          "pending",
+          "approved",
+          "executing",
+          "retryable",
+          "reconciliation_required",
+        ],
+        action: "device_action",
+        onInvalidRow,
+      }),
+      queue.list({
+        subjectUserId: c.subjectUserId,
+        state: null,
+        states: ["done", "rejected", "expired"],
+        action: "device_action",
+        limit: 50,
+        onInvalidRow,
+      }),
+    ]);
+    return [...open, ...recent]
+      .sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() ||
+          (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      )
+      .filter((request) => {
         if (
           request.payload.action !== "device_action" ||
           request.payload.installationId !== c.installationId ||
           request.payload.enrollmentId !== row.enrollment_id
         )
           return false;
-        const operation = validateDevicePayload(request.payload).operation;
+        let operation: DeviceActionPayload["operation"];
+        try {
+          operation = validateDevicePayload(request.payload).operation;
+        } catch (error) {
+          onInvalidRow(request.id, error);
+          return false;
+        }
         const supported = deviceOperationSupportedByCapabilities(
           operation.type,
           c.capabilities,
@@ -2504,6 +2737,9 @@ export class DeviceActionService {
         if (
           (isCameraCapture(operation) ||
             isNativeNotesQuery(operation) ||
+            isNotesOrganizeOperation(operation) ||
+            isPhotosViewOperation(operation) ||
+            isFilesOperation(operation) ||
             isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||
             operation.type === "calendar_read_next") &&
@@ -2514,8 +2750,7 @@ export class DeviceActionService {
           deviceOperationSupportedByCapabilities("open_view", c.capabilities) ||
           supported
         );
-      }),
-    );
+      });
   }
   private async proposal(
     queue: PgApprovalQueue,
@@ -2579,6 +2814,11 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Notes capability unavailable");
     if (
+      isPhotosViewOperation(payload.operation) &&
+      !photosViewCapabilityAvailable(c.capabilities)
+    )
+      throw new DeviceActionError("Photos capability unavailable");
+    if (
       isCalendarOperation(payload.operation) &&
       !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
     )
@@ -2612,9 +2852,13 @@ export class DeviceActionService {
         this.assertViewProfile(row, validateDevicePayload(request.payload));
       const target = approve ? "approved" : "rejected";
       if (request.state === target) return request;
+      // An approval whose claim never arrived ran nothing; the owner can still close it.
+      const unclaimedApproval =
+        !approve && request.state === "approved" && !request.execution;
       if (
-        request.state !== "pending" ||
-        request.expiresAt.getTime() <= Date.now()
+        !unclaimedApproval &&
+        (request.state !== "pending" ||
+          request.expiresAt.getTime() <= Date.now())
       )
         throw new DeviceActionError("Proposal is no longer pending");
       return q[approve ? "approve" : "reject"](id, c.subjectUserId, {
@@ -2628,9 +2872,16 @@ export class DeviceActionService {
     id: string,
     expectedDigest: string,
   ): Promise<ApprovalRequest> {
-    return this.access(c, async (q, row, tx) => {
+    const result = await this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
       this.assertViewProfile(row, validateDevicePayload(request.payload));
+      // A lapsed approval that was never claimed closes here, so it cannot sit in approved.
+      if (
+        request.state === "approved" &&
+        !request.execution &&
+        request.expiresAt.getTime() <= Date.now()
+      )
+        return q.markExpired(id, c.subjectUserId);
       if (
         request.state !== "approved" ||
         request.expiresAt.getTime() <= Date.now() ||
@@ -2656,6 +2907,9 @@ export class DeviceActionService {
         attemptId: claimed.execution.attemptId,
       });
     });
+    if (result.state === "expired")
+      throw new DeviceActionError("Proposal cannot be claimed");
+    return result;
   }
   async receipt(
     c: DeviceCredential,
@@ -2732,11 +2986,23 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
+      if (
+        isPhotosViewOperation(payload.operation) &&
+        !photosViewCapabilityAvailable(c.capabilities)
+      )
+        throw new DeviceActionError("Photos capability unavailable");
       const read =
         payload.operation.type === "read_selected_notes" ||
         payload.operation.type === "read_calendar_range" ||
         payload.operation.type === "read_selected_reminders";
-      if (isSmsSend(payload.operation)) {
+      // The phone knows nothing was dispatched, so no typed result exists to check.
+      const notDispatched =
+        receipt.outcome === "failed" &&
+        receipt.code === "DEVICE_NOT_DISPATCHED" &&
+        value.result === undefined;
+      if (notDispatched) {
+        // Settled below without native evidence.
+      } else if (isSmsSend(payload.operation)) {
         if (receipt.operationId !== request.execution?.providerIdempotencyKey)
           throw new DeviceActionError(
             "SMS journal identity differs from execution claim",
@@ -2877,6 +3143,18 @@ export class DeviceActionService {
           throw new DeviceActionError("Invalid Notes receipt");
         }
       } else if (
+        isPhotosViewOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validatePhotosViewResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Photos receipt");
+        }
+      } else if (
         isCalendarOperation(payload.operation) &&
         receipt.outcome === "applied"
       ) {
@@ -2933,7 +3211,15 @@ export class DeviceActionService {
         attemptId,
         providerReceipt: receipt,
       };
-      return receipt.outcome === "applied"
+      // A cancelled or denied SMS submitted no PDU: that is a settled non-send, not an uncertainty.
+      const smsNotSubmitted =
+        isSmsSend(payload.operation) &&
+        receipt.outcome === "failed" &&
+        ["cancelled", "denied"].includes(
+          (receipt.result as { status?: unknown } | undefined)
+            ?.status as string,
+        );
+      return receipt.outcome === "applied" || notDispatched || smsNotSubmitted
         ? q.markDone(mutation)
         : q.markReconciliationRequired({
             ...mutation,
@@ -2951,6 +3237,36 @@ export class DeviceActionService {
   ): Promise<ApprovalRequest> {
     const value = object(raw);
     exactKeys(value, ["confirmed", "outcome", "operationId", "result"]);
+    if (
+      value.confirmed === true &&
+      value.outcome === "unresolved" &&
+      value.operationId === undefined &&
+      value.result === undefined
+    )
+      // The owner closes an outcome nobody can prove. The receipt keeps its
+      // uncertain outcome, so no reader takes this for an applied effect.
+      return this.access(c, async (q, row) => {
+        const request = await this.proposal(q, row, c, id, expectedDigest);
+        if (request.execution?.attemptId !== identifier(attemptId))
+          throw new DeviceActionError("Execution attempt mismatch");
+        if (
+          request.state === "done" &&
+          request.execution.reconciledBy === c.subjectUserId &&
+          request.execution.reconciliationReason === UNRESOLVED_RECONCILIATION
+        )
+          return request;
+        if (request.state !== "reconciliation_required")
+          throw new DeviceActionError("No uncertain outcome to reconcile");
+        return q.reconcileExecution({
+          requestId: id,
+          subjectUserId: c.subjectUserId,
+          attemptId,
+          // Closes the row as done; the stored receipt is left as it was.
+          outcome: "delivered",
+          reconciledBy: c.subjectUserId,
+          reconciliationReason: UNRESOLVED_RECONCILIATION,
+        });
+      });
     if (
       value.confirmed !== true ||
       (value.outcome !== "applied" && value.outcome !== "not_applied")
@@ -3015,6 +3331,11 @@ export class DeviceActionService {
         !c.capabilities?.includes(NOTES_CAPABILITY)
       )
         throw new DeviceActionError("Notes capability unavailable");
+      if (
+        isPhotosViewOperation(payload.operation) &&
+        !photosViewCapabilityAvailable(c.capabilities)
+      )
+        throw new DeviceActionError("Photos capability unavailable");
       if (isSmsSend(payload.operation)) {
         if (receipt.operationId !== request.execution?.providerIdempotencyKey)
           throw new DeviceActionError(
@@ -3154,6 +3475,18 @@ export class DeviceActionService {
           };
         } catch {
           throw new DeviceActionError("Invalid Notes receipt");
+        }
+      } else if (
+        isPhotosViewOperation(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validatePhotosViewResult(payload.operation, value.result),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid Photos receipt");
         }
       } else if (
         isCalendarOperation(payload.operation) &&

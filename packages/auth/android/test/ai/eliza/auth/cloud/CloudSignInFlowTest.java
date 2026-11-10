@@ -106,10 +106,10 @@ public final class CloudSignInFlowTest {
    check(CloudSignInRoutes.route(route, "POST", true), "sign-in route " + route);
    check(!CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "POST", false), "POST with a body only " + route);
   }
-  for (String route : new String[]{"/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers"})
+  for (String route : new String[]{"/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers", "/steward/auth/oauth/google/authorize"})
    check(CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "GET", true) && !CloudSignInRoutes.route(route, "POST", true), "readiness read " + route);
   for (String route : new String[]{"/steward/auth/email/send", "/steward/auth/mfa/passkey/complete", "/steward/auth/email/code/send/", "/steward/auth/revoke",
-    "/api/v1/app-auth/mobile/ack/x", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", "/steward/auth/oauth/google/authorize", null})
+    "/api/v1/app-auth/mobile/ack/x", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", null})
    check(!CloudSignInRoutes.route(route, "POST", true) && !CloudSignInRoutes.route(route, "GET", false), "refused sign-in route " + route);
   check(CloudSignInRoutes.origin(product, "https", "api.eliza.app", -1) && CloudSignInRoutes.origin(product, "https", "api.eliza.app", 443), "production API");
   check(!CloudSignInRoutes.origin(product, "https", "api-staging.eliza.app", -1) && CloudSignInRoutes.origin(development, "https", "api-staging.eliza.app", -1), "staging only when admitted");

@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "NativeSpeechRequest",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/voice/src/native-speech-request.ts"],
+  "bounds": "One request, permanent binding loss, caller abort, one bridge cancel and terminal outcome."
+}

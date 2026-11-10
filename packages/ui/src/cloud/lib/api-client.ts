@@ -97,6 +97,16 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+/**
+ * The session is valid but too old for a destructive account action (data
+ * export, account deletion). The user must sign in again, then retry.
+ */
+export class RecentAuthRequiredError extends ApiError {
+  constructor(message: string, body?: unknown, responseHeaders?: Headers) {
+    super(401, "recent_auth_required", message, body, responseHeaders);
+    this.name = "RecentAuthRequiredError";
+  }
+}
 function usesLoopbackCliAccountTransport(): boolean {
   // Offline development also advertises staging sign-in. Its cookie-backed
   // local Cloud API remains authoritative until a CLI Cloud key is claimed.
@@ -500,6 +510,12 @@ export async function apiFetch(
     // UI "authed" until the next interaction. The nudge is a side effect only:
     // the call still throws ApiError, and the listener is single-flight and
     // never retries the request.
+    const payload = await readPayload(res, false);
+    const { code, message } = errorDetails(payload, res.status);
+    // recent_auth_required rejects the action, not the session: no nudge.
+    if (res.status === 401 && code === "recent_auth_required") {
+      throw new RecentAuthRequiredError(message, payload, res.headers);
+    }
     if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
       try {
         window.dispatchEvent(new CustomEvent("steward-unauthorized"));
@@ -507,8 +523,6 @@ export async function apiFetch(
         // no-op: event dispatch is best-effort
       }
     }
-    const payload = await readPayload(res, false);
-    const { code, message } = errorDetails(payload, res.status);
     throw new ApiError(res.status, code, message, payload, res.headers);
   }
   return res;

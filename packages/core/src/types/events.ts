@@ -158,15 +158,6 @@ export enum EventType {
 }
 
 /**
- * Platform-specific event type prefix
- */
-export enum PlatformPrefix {
-	DISCORD = "DISCORD",
-	TELEGRAM = "TELEGRAM",
-	X = "X",
-}
-
-/**
  * Base payload interface for all events
  */
 export interface EventPayload {
@@ -206,7 +197,7 @@ export interface MembershipAuthorityChangedPayload extends EventPayload {
 }
 
 /**
- * Payload for reaction-related events
+ * Payload for message, voice-message, reaction, and interaction events
  */
 export interface MessagePayload extends EventPayload {
 	message: Memory;

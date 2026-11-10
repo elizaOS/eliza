@@ -7,12 +7,12 @@ import { getTrajectoryContext } from "../trajectory-context";
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
 
 /** The database-side stage hook contributed by the trajectories service. */
-export interface SemanticStageDatabaseLogger {
+interface SemanticStageDatabaseLogger {
 	logSemanticStage(params: { stepId: string; stage: RecordedStage }): void;
 }
 
 /** The minimal runtime surface the sink needs (service lookup + J7 reporting). */
-export interface SemanticStageFanOutRuntime {
+interface SemanticStageFanOutRuntime {
 	getService(serviceType: string): unknown;
 	reportError(
 		scope: string,

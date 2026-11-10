@@ -79,7 +79,11 @@ function fixture() {
 function queuedRestoreFixture(savedText: string | null = null) {
   let text = "";
   let saved = savedText === null ? null : record(savedText);
-  let commitRestore: (() => void) | undefined;
+  const updates: Array<{
+    apply(): void;
+    acknowledge(error?: Error): void;
+  }> = [];
+  let immediateAcknowledgement = false;
   const store: DurableDraftStore = {
     async read() {
       return saved;
@@ -96,28 +100,48 @@ function queuedRestoreFixture(savedText: string | null = null) {
   const c = new DurableDraftController(
     async () => store,
     () => text,
-    (value, expected, current) =>
-      new Promise<void>((resolve) => {
-        commitRestore = () => {
+    (value, expected, current) => {
+      let acknowledge!: (error?: Error) => void;
+      const completion = new Promise<void>((resolve, reject) => {
+        acknowledge = (error) => error ? reject(error) : resolve();
+      });
+      updates.push({
+        apply() {
           if (
             (!current || current()) &&
             (expected === undefined || text === expected)
           )
             text = value;
-          resolve();
-        };
-      }),
+        },
+        acknowledge,
+      });
+      return immediateAcknowledgement ? undefined : completion;
+    },
     () => {},
   );
   return {
     c,
+    store,
     get: () => text,
     saved: () => saved,
     type(value: string) {
       text = value;
       c.edit(value);
     },
-    commit: () => commitRestore?.(),
+    takeUpdate() {
+      const update = updates.shift();
+      if (!update) throw new Error("No queued editor update");
+      return update;
+    },
+    acknowledgeImmediately() {
+      immediateAcknowledgement = true;
+    },
+    commit() {
+      const update = updates.shift();
+      if (!update) throw new Error("No queued editor update");
+      update.apply();
+      update.acknowledge();
+    },
   };
 }
 
@@ -934,7 +958,506 @@ describe("DurableDraftController queued UI restores", () => {
   });
 });
 
+describe("DurableDraftController asynchronous restore ownership", () => {
+  async function openSaved(text: string) {
+    const f = queuedRestoreFixture(text);
+    const opening = f.c.open("one");
+    await tick();
+    f.commit();
+    await opening;
+    return f;
+  }
+
+  it("waits for review restoration and leaves a retired binding untouched", async () => {
+    const f = queuedRestoreFixture("Saved message");
+    f.type("Current message");
+    await f.c.open("one");
+    let completed = false;
+    const restoring = Promise.resolve(f.c.restoreSaved()).then(() => {
+      completed = true;
+    });
+    await tick();
+    expect(completed).toBe(false);
+    expect(f.c.state.conflict).toBe(true);
+    await expect(f.c.hold("Current message")).rejects.toThrow();
+    f.c.retire();
+    f.type("Other binding message");
+    f.commit();
+    await restoring;
+    expect(f.get()).toBe("Other binding message");
+    expect(f.saved()?.text).toBe("Saved message");
+  });
+
+  it.each([false, true])(
+    "expires a review update after unconfirmed acknowledgement (void=%s)",
+    async (voidHost) => {
+      const f = queuedRestoreFixture("Saved message");
+      f.type("Current message");
+      await f.c.open("one");
+      if (voidHost) f.acknowledgeImmediately();
+      const restoring = f.c.restoreSaved();
+      const update = f.takeUpdate();
+      update.acknowledge();
+      await restoring;
+      expect(f.c.state.conflict).toBe(true);
+      update.apply();
+      expect(f.get()).toBe("Current message");
+    },
+  );
+
+  it("keeps both copies when typing changes during review restoration", async () => {
+    const f = queuedRestoreFixture("Saved message");
+    f.type("Current message");
+    await f.c.open("one");
+    const restoring = f.c.restoreSaved();
+    f.type("Newer unsent message");
+    f.commit();
+    await restoring;
+    expect(f.get()).toBe("Newer unsent message");
+    expect(f.saved()?.text).toBe("Saved message");
+    expect(f.c.state.savedText).toBe("Saved message");
+    expect(f.c.state.conflict).toBe(true);
+  });
+
+  it("keeps the send held until release restoration completes", async () => {
+    const f = await openSaved("Unsent message");
+    await f.c.hold("Unsent message");
+    f.type("");
+    const releasing = f.c.release();
+    expect(f.c.release()).toBe(releasing);
+    expect(f.c.holding).toBe(true);
+    await expect(f.c.hold("")).rejects.toThrow();
+    await expect(f.c.flush()).rejects.toThrow();
+    f.commit();
+    await releasing;
+    expect(f.c.holding).toBe(false);
+    expect(f.get()).toBe("Unsent message");
+    expect(f.saved()?.text).toBe("Unsent message");
+    expect(f.saved()?.sending).not.toBe(true);
+  });
+
+  it("retains the unsent copy for review when a release update is skipped", async () => {
+    const f = await openSaved("Unsent message");
+    await f.c.hold("Unsent message");
+    f.type("");
+    const releasing = f.c.release();
+    const rejected = expect(releasing).rejects.toThrow();
+    f.type("Newer unsent message");
+    f.commit();
+    await rejected;
+    expect(f.get()).toBe("Newer unsent message");
+    expect(f.saved()?.text).toBe("Unsent message\nNewer unsent message");
+    expect(f.c.state.conflict).toBe(true);
+    expect(f.c.holding).toBe(false);
+  });
+
+  it("retires a failed release update before any delayed host application", async () => {
+    const f = await openSaved("Unsent message");
+    await f.c.hold("Unsent message");
+    f.type("");
+    const releasing = f.c.release();
+    const rejected = expect(releasing).rejects.toThrow("Host rejected update");
+    const update = f.takeUpdate();
+    update.acknowledge(new Error("Host rejected update"));
+    await rejected;
+    update.apply();
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("Unsent message");
+    expect(f.c.state.conflict).toBe(true);
+  });
+
+  it.each(["before", "after"])(
+    "keeps failed release preservation in review when its save fails %s writing",
+    async (failure) => {
+      const f = await openSaved("Unsent message");
+      await f.c.hold("Unsent message");
+      f.type("");
+      const save = f.store.save;
+      f.store.save = async (expected, text, signal, write) => {
+        if (failure === "after") await save.call(f.store, expected, text, signal, write);
+        throw new Error("Storage unavailable");
+      };
+      const releasing = f.c.release();
+      const rejected = expect(releasing).rejects.toThrow();
+      f.type("Newer unsent message");
+      f.commit();
+      await rejected;
+      expect(f.get()).toBe("Newer unsent message");
+      expect(f.c.holding).toBe(false);
+      expect(f.c.state.conflict).toBe(true);
+      // The known non-dispatch still owns this mark during conflict review.
+      expect(f.c.state.unsettled).toBe(false);
+      await expect(f.c.hold("Newer unsent message")).rejects.toThrow();
+      await expect(f.c.flush()).rejects.toThrow();
+    },
+  );
+
+  it("leaves a failed release unmark in review and refuses another send", async () => {
+    const f = fixture();
+    f.external("Unsent message");
+    await f.c.open("one");
+    await f.c.hold("Unsent message");
+    f.set("");
+    f.store.save = async () => { throw new Error("Storage unavailable"); };
+    await expect(f.c.release()).rejects.toThrow(/Review local draft storage/);
+    expect(f.get()).toBe("Unsent message");
+    expect(f.saved()?.sending).toBe(true);
+    expect(f.c.state.unsettled).toBe(true);
+    expect(f.c.holding).toBe(false);
+    await expect(f.c.hold("Unsent message")).rejects.toThrow();
+    await expect(f.c.flush()).rejects.toThrow();
+  });
+
+  it("waits for a consume clear before admitting the form effect", async () => {
+    const f = await openSaved("Reviewed form");
+    let completed = false;
+    const consuming = f.c.consume("Reviewed form").then(() => {
+      completed = true;
+    });
+    await tick();
+    expect(completed).toBe(false);
+    expect(f.c.state.consuming).toBe(true);
+    await expect(f.c.consume("Reviewed form")).rejects.toThrow();
+    f.commit();
+    await consuming;
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("");
+    expect(f.c.state.consuming).toBe(false);
+  });
+
+  it("rolls back consume when the host skips its update after newer typing", async () => {
+    const f = await openSaved("Reviewed form");
+    const consuming = f.c.consume("Reviewed form");
+    const rejected = expect(consuming).rejects.toThrow(/Nothing was sent/);
+    await tick();
+    f.type("Newer unsent message");
+    f.commit();
+    await rejected;
+    expect(f.get()).toBe("Newer unsent message");
+    expect(f.saved()?.text).toBe("Newer unsent message");
+    expect(f.c.state.conflict).toBe(true);
+  });
+
+  it.each([false, true])(
+    "rolls back an unconfirmed consume and expires its update (void=%s)",
+    async (voidHost) => {
+      const f = await openSaved("Reviewed form");
+      if (voidHost) f.acknowledgeImmediately();
+      const consuming = f.c.consume("Reviewed form");
+      const rejected = expect(consuming).rejects.toThrow(/Nothing was sent/);
+      await tick();
+      const update = f.takeUpdate();
+      update.acknowledge();
+      await rejected;
+      update.apply();
+      expect(f.get()).toBe("Reviewed form");
+      expect(f.saved()?.text).toBe("Reviewed form");
+    },
+  );
+
+  it("retires the update when the host authority predicate throws at completion", async () => {
+    const f = await openSaved("Reviewed form");
+    let failAuthority = false;
+    const consuming = f.c.consume("Reviewed form", () => {
+      if (failAuthority) throw new Error("Authority check failed");
+      return true;
+    });
+    const rejected = expect(consuming).rejects.toThrow("Authority check failed");
+    await tick();
+    const update = f.takeUpdate();
+    update.apply();
+    failAuthority = true;
+    update.acknowledge();
+    await rejected;
+    failAuthority = false;
+    f.type("Reviewed form");
+    update.apply();
+    expect(f.get()).toBe("Reviewed form");
+    expect(f.saved()?.text).toBe("Reviewed form");
+  });
+
+  it("restores reviewed text when the host rejects after applying a clear", async () => {
+    const f = await openSaved("Reviewed form");
+    const consuming = f.c.consume("Reviewed form");
+    const rejected = expect(consuming).rejects.toThrow("Host rejected update");
+    await tick();
+    const update = f.takeUpdate();
+    update.apply();
+    update.acknowledge(new Error("Host rejected update"));
+    await rejected;
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("Reviewed form");
+    expect(f.c.state.savedText).toBe("Reviewed form");
+    expect(f.c.state.conflict).toBe(true);
+  });
+});
+
+describe("DurableDraftController compound consume recovery", () => {
+  function retiredConsumeFixture(rollbackAfter = false) {
+    let text = "Reviewed form";
+    let row: DurableDraft | null = record(text);
+    let revision = 1;
+    let owner = 0;
+    const release = new Map<string, () => void>();
+    const gates = new Map<string, Promise<void>>();
+    for (const key of ["clear", "rollback", "newer"]) {
+      gates.set(key, new Promise<void>((resolve) => { release.set(key, resolve); }));
+    }
+    const c = new DurableDraftController(
+      async () => {
+        const currentOwner = ++owner;
+        let writes = 0;
+        return {
+          read: async () => row,
+          async save(expected, value) {
+            writes++;
+            if (currentOwner === 1) {
+              await gates.get(writes === 1 ? "clear" : "rollback");
+              if (writes === 2 && !rollbackAfter) throw new Error("Rollback unavailable");
+            } else if (value === "Newer draft") await gates.get("newer");
+            row = replaceDurableDraft(row, expected, "test", value, {
+              revision: () => String(++revision),
+            });
+            if (currentOwner === 1 && writes === 2)
+              throw new Error("Rollback acknowledgement lost");
+            return row;
+          },
+        };
+      },
+      () => text,
+      (value, expected, current) => {
+        if (text === expected && current?.()) text = value;
+      },
+      () => {},
+    );
+    return {
+      c,
+      get: () => text,
+      saved: () => row?.text ?? "",
+      type(value: string) { text = value; c.edit(value); },
+      release(key: string) { release.get(key)?.(); },
+    };
+  }
+
+  it.each([
+    [false, false, false], [true, false, false],
+    [false, true, false], [true, true, false],
+    [false, true, true], [true, true, true],
+  ])(
+    "offers a retired failed consume across reopen order, rollback and equal editor (%s, %s, %s)",
+    async (reopenFirst, rollbackAfter, equalEditor) => {
+      const f = retiredConsumeFixture(rollbackAfter);
+      await f.c.open("one");
+      const consumed = expect(f.c.consume("Reviewed form")).rejects.toThrow();
+      await tick();
+      f.c.retire();
+      f.type("");
+      f.release("clear");
+      await tick();
+      if (reopenFirst) {
+        if (equalEditor) f.type("Reviewed form");
+        await f.c.open("one");
+      }
+      f.release("rollback");
+      await consumed;
+      if (!reopenFirst) {
+        if (equalEditor) f.type("Reviewed form");
+        await f.c.open("one");
+      }
+      expect(f.get()).toBe(equalEditor ? "Reviewed form" : "");
+      expect(f.c.state.savedText).toBe("Reviewed form");
+      expect(f.c.state.conflict).toBe(true);
+      await expect(f.c.flush()).rejects.toThrow();
+      await f.c.restoreSaved();
+      await tick();
+      await f.c.flush();
+      f.c.retire();
+      f.type("");
+      await f.c.open("one");
+      expect(f.get()).toBe("Reviewed form");
+      expect(f.c.state.conflict).toBe(false);
+    },
+  );
+
+  it.each([false, true])(
+    "keeps a newer same-key write across both completion orders (newerFirst=%s)",
+    async (newerFirst) => {
+      const f = retiredConsumeFixture();
+      await f.c.open("one");
+      const consumed = expect(f.c.consume("Reviewed form")).rejects.toThrow();
+      await tick();
+      f.c.retire();
+      await f.c.open("one");
+      f.type("Newer draft");
+      if (newerFirst) { f.release("newer"); await tick(); }
+      f.release("clear");
+      f.release("rollback");
+      await consumed;
+      if (!newerFirst) { f.release("newer"); await tick(); }
+      if (f.c.state.conflict) f.c.keepCurrent();
+      await tick();
+      await f.c.flush();
+      expect(f.get()).toBe("Newer draft");
+      expect(f.saved()).toBe("Newer draft");
+      f.c.retire();
+      f.type("");
+      await f.c.open("one");
+      expect(f.get()).toBe("Newer draft");
+      expect(f.c.state.conflict).toBe(false);
+    },
+  );
+
+  it("does not accept keep-current while the earlier restore is pending", async () => {
+    const f = queuedRestoreFixture("Saved form");
+    f.type("Current form");
+    await f.c.open("one");
+    const restoring = f.c.restoreSaved();
+    f.c.keepCurrent();
+    expect(f.c.state.conflict).toBe(true);
+    f.commit();
+    await restoring;
+    expect(f.get()).toBe("Saved form");
+  });
+
+  async function failedConsume(
+    fault: "before" | "after" | "external",
+    readFailure = false,
+  ) {
+    const f = queuedRestoreFixture("Reviewed form");
+    const opening = f.c.open("one");
+    await tick();
+    f.commit();
+    await opening;
+    const save = f.store.save;
+    const read = f.store.read;
+    let writes = 0;
+    f.store.save = async (expected, text, signal, write) => {
+      writes++;
+      if (writes !== 2) return save.call(f.store, expected, text, signal, write);
+      if (fault !== "before")
+        await save.call(
+          f.store,
+          expected,
+          fault === "external" ? "Other editor" : text,
+          signal,
+          write,
+        );
+      throw new Error("Rollback was not confirmed");
+    };
+    f.store.read = async () => {
+      if (writes >= 2 && readFailure) throw new Error("Readback unavailable");
+      return read.call(f.store);
+    };
+    const consuming = f.c.consume("Reviewed form");
+    const rejected = expect(consuming).rejects.toThrow("Host rejected after applying");
+    await tick();
+    const update = f.takeUpdate();
+    update.apply();
+    update.acknowledge(new Error("Host rejected after applying"));
+    await rejected;
+    return f;
+  }
+
+  it.each(["before", "after", "external"] as const)(
+    "retains the reviewed copy when rollback fails %s its write",
+    async (fault) => {
+      const f = await failedConsume(fault);
+      expect(f.get()).toBe("");
+      expect(f.c.state.conflict).toBe(true);
+      expect(f.c.state.savedText).toBe("Reviewed form");
+      const restoring = f.c.restoreSaved();
+      f.commit();
+      await restoring;
+      await tick();
+      expect(f.get()).toBe("Reviewed form");
+      if (fault === "external") {
+        expect(f.saved()?.text).toBe("Other editor");
+        expect(f.c.state.savedText).toBe("Other editor");
+        expect(f.c.state.conflict).toBe(true);
+        f.c.keepCurrent();
+        await tick();
+      }
+      expect(f.saved()?.text).toBe("Reviewed form");
+    },
+  );
+
+  it.each(["before", "after", "external"] as const)(
+    "offers the retained copy even when %s rollback readback also fails",
+    async (fault) => {
+      const f = await failedConsume(fault, true);
+      expect(f.c.state.savedText).toBe("Reviewed form");
+      expect(f.c.state.conflict).toBe(true);
+      expect(f.c.state.error).toBe(true);
+      const restoring = f.c.restoreSaved();
+      f.commit();
+      await restoring;
+      await tick();
+      expect(f.get()).toBe("Reviewed form");
+      if (fault === "external") expect(f.saved()?.text).toBe("Other editor");
+    },
+  );
+
+  it("requires review of a different stored copy before discarding it", async () => {
+    const f = await failedConsume("external");
+    f.c.keepCurrent();
+    await tick();
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("Other editor");
+    expect(f.c.state.savedText).toBe("Other editor");
+    expect(f.c.state.conflict).toBe(true);
+    f.c.keepCurrent();
+    await tick();
+    expect(f.saved()?.text).toBe("");
+  });
+
+  it("keeps the retained copy after another skipped host restoration", async () => {
+    const f = await failedConsume("before");
+    const restoring = f.c.restoreSaved();
+    const update = f.takeUpdate();
+    update.acknowledge();
+    await restoring;
+    update.apply();
+    expect(f.get()).toBe("");
+    expect(f.c.state.savedText).toBe("Reviewed form");
+    expect(f.c.state.conflict).toBe(true);
+  });
+});
+
 describe("DurableDraftController consume", () => {
+  it("waits for a retired consume and retains its failed receipt until a newer write", async () => {
+    const f = fixture();
+    f.external("Reviewed form");
+    await f.c.open("one");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const save = f.store.save;
+    f.store.save = async (expected, text, signal, write) => {
+      if (text === "") await gate;
+      return save.call(f.store, expected, text, signal, write);
+    };
+    const consuming = f.c.consume("Reviewed form");
+    const consumed = expect(consuming).rejects.toThrow(/Nothing was sent/);
+    await tick();
+    f.c.retire();
+    f.set("Reviewed form");
+    await f.c.open("one");
+    let completed = false;
+    const flushing = f.c.flush().finally(() => { completed = true; });
+    const flushed = expect(flushing).rejects.toThrow();
+    await tick();
+    expect(completed).toBe(false);
+    release();
+    await consumed;
+    await flushed;
+    await expect(f.c.flush()).rejects.toThrow();
+    await f.c.retry();
+    if (f.c.state.conflict) f.c.keepCurrent();
+    f.set("Replacement draft");
+    await tick();
+    await f.c.flush();
+    expect(f.saved()?.text).toBe("Replacement draft");
+  });
+
   it("clears the saved copy only for the reviewed text", async () => {
     const f = fixture();
     f.external("Reviewed form");
@@ -1330,4 +1853,173 @@ describe("browserDocumentDraftSlot", () => {
     expect(await store.read()).toBeNull();
     expect((await store.save(null, "After reset")).text).toBe("After reset");
   });
+});
+
+
+describe("DurableDraftController passive update handoff", () => {
+  it("waits for a retired binding's pending write before a lifecycle handoff", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    f.store.save = async (...args) => { await gate; return save(...args); };
+    f.set("draft from the previous view");
+    f.c.retire();
+    f.set("");
+    let settled = false;
+    const pending = f.c.flush().then(() => { settled = true; });
+    await tick();
+    expect(settled).toBe(false);
+    release();
+    await pending;
+    expect(f.saved()?.text).toBe("draft from the previous view");
+    expect(f.saved()?.sending).toBeUndefined();
+    expect(f.get()).toBe("");
+  });
+
+  it("drains the previous binding and preserves the new binding's own text", async () => {
+    const previous = fixture(), active = fixture();
+    let text = "";
+    const controller = new DurableDraftController(
+      async key => key === "previous" ? previous.store : active.store,
+      () => text,
+      value => { text = value; },
+      () => {},
+    );
+    await controller.open("previous");
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const save = previous.store.save;
+    previous.store.save = async (...args) => { await gate; return save(...args); };
+    text = "previous view draft"; controller.edit(text); controller.retire();
+    text = ""; await controller.open("active");
+    text = "current view draft"; controller.edit(text);
+    let settled = false;
+    const pending = controller.flush().then(() => { settled = true; });
+    await tick(); expect(settled).toBe(false);
+    release(); await pending;
+    expect(previous.saved()?.text).toBe("previous view draft");
+    expect(active.saved()?.text).toBe("current view draft");
+    expect(text).toBe("current view draft");
+    expect(controller.binding).toBe("active");
+  });
+
+  it("allows a recovered write on the same binding", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    f.store.save = async () => { throw new Error("storage offline"); };
+    f.set("keep through recovery");
+    await tick();
+    await expect(f.c.flush()).rejects.toThrow();
+    f.store.save = save;
+    await f.c.retry();
+    await f.c.flush();
+    expect(f.saved()?.text).toBe("keep through recovery");
+    expect(f.get()).toBe("keep through recovery");
+  });
+
+  it("refuses shutdown when a retired draft write failed", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.store.save = async () => { throw new Error("storage offline"); };
+    f.set("unsaved previous draft");
+    f.c.retire();
+    f.set("");
+    await tick();
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()).toBeNull();
+  });
+
+  it("waits for an actual queued write and reads it back without a send mark", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    f.store.save = async (...args) => { await gate; return save(...args); };
+    f.set("keep this draft");
+    let settled = false;
+    const pending = f.c.flush().then(() => { settled = true; });
+    await tick();
+    expect(settled).toBe(false);
+    release();
+    await pending;
+    expect(f.get()).toBe("keep this draft");
+    expect(f.saved()?.text).toBe("keep this draft");
+    expect(f.saved()?.sending).toBeUndefined();
+    expect(f.c.holding).toBe(false);
+  });
+
+  it("refuses a foreign revision even when its text matches", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.set("same text");
+    await f.c.flush();
+    f.external("same text");
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()?.revision).toBe("external");
+    expect(f.get()).toBe("same text");
+  });
+
+  it("refuses held sends without clearing or replaying their saved mark", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.set("send already started");
+    await f.c.hold(f.get());
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()?.sending).toBe(true);
+    expect(f.saved()?.text).toBe("send already started");
+    expect(f.c.holding).toBe(true);
+  });
+
+  it("refuses an edit or owner retirement while readback is pending", async () => {
+    for (const change of ["edit", "retire"] as const) {
+      const f = fixture();
+      await f.c.open("test");
+      f.set("before update");
+      await f.c.flush();
+      const read = f.store.read;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      f.store.read = async () => { await gate; return read(); };
+      const pending = f.c.flush();
+      await tick();
+      if (change === "edit") f.set("newer edit");
+      else f.c.retire();
+      release();
+      await expect(pending).rejects.toThrow();
+      expect(f.saved()?.sending).toBeUndefined();
+    }
+  });
+
+  it("refuses failed storage and keeps the editor text", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.store.save = async () => { throw new Error("disk unavailable"); };
+    f.set("keep in editor");
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.get()).toBe("keep in editor");
+    expect(f.saved()).toBeNull();
+  });
+});
+
+
+it("passive flush refuses a binding replacement during its opening read", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const c = new DurableDraftController(
+    async (key) => ({
+      async read() { if (key === "first") await gate; return null; },
+      async save() { throw new Error("No write expected"); },
+    }),
+    () => "", () => {}, () => {},
+  );
+  const opening = c.open("first");
+  const flushing = c.flush();
+  await c.open("second");
+  release();
+  await opening;
+  await expect(flushing).rejects.toThrow();
 });

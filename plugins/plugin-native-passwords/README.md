@@ -10,6 +10,8 @@ On-device password manager for Eliza Android hosts:
   key is bound to the lock-screen secure ID: enrolling a new biometric does not invalidate it
   (whoever can enroll already knows the credential), while removing the screen lock does. A
   vault whose key is lost or invalidated can only be deleted (`reset`) after a fresh unlock.
+  `PasswordVaultAccess#destroyVault` is the host's native way to destroy a readable vault
+  ([Host-native vault access](#host-native-vault-access)).
 - **Autofill provider** – `ElizaPasswordAutofillService` supports native app fields through Android Autofill, with save capture. Browser
   fields require explicit native per-field origins; ordinary WebView metadata is refused.
 - **Vault client** – a Capacitor plugin (`ElizaPasswords`) and a validating TypeScript client for
@@ -24,9 +26,12 @@ bun run --cwd plugins/plugin-native-passwords test   # TS client + JVM policy te
 
 ## Host integration (Android)
 
-1. Include both Gradle modules. This module depends on
-   `project(':elizaos-capacitor-secure-store')`; set the Gradle property
-   `elizaPasswordsSecureStoreProject` if the host names it differently.
+1. Include this module and secure-store's `android-nativeonly` module, which holds the vault
+   custody classes without the `SecureStorePlugin` bridge. This module depends on
+   `project(':elizaos-capacitor-secure-store-nativeonly')`; set the Gradle property
+   `elizaPasswordsSecureStoreProject` if the host names it differently. CSV transfer is in the
+   optional `android-transfer` module (`:elizaos-capacitor-passwords-transfer`, which depends on
+   `:elizaos-capacitor-passwords`); a host without it has no transfer classes.
 2. Register `PasswordsPlugin` in the bridge Activity.
 3. Opt in to being an Autofill provider by declaring the service in the host manifest:
 
@@ -82,19 +87,34 @@ the selected service; the plugin never sets secure settings or infers selection.
 
 ## Secrets boundary
 
-`openEditor()` creates an entry through a native FLAG_SECURE form. It accepts no
-arguments: typing and generation stay in native memory, and the only result is
-`{status: "saved", id}` or `{status: "cancelled"}`. The existing vault unlock must
-still be active. The editor refuses overlapping editors, rejects obscured input,
-disables view-state persistence, autofill and password copy/cut actions, and clears drafts on Cancel,
-background, lock or grant expiry. It accepts one exact HTTPS origin and never
-silently replaces an existing entry. Oversize edits are rejected as a whole with a visible error, never truncated. Editing/revision control, device-unlocked
-custody migration and host microphone/capture coordination are separate work;
-this method does not change the vault authentication policy. Hosts must stop
-capture and speech before opening any secret surface.
+`openEditor()` creates an entry through a native FLAG_SECURE form, and
+`openEditor({entryId, expectedRevision})` edits one. It accepts no draft fields: typing and
+generation stay in native memory, and the only result is `{status: "saved", id, revision}` or
+`{status: "cancelled"}`. The existing vault unlock must still be active. The editor refuses
+overlapping editors, rejects obscured input, disables view-state persistence, autofill and
+password copy/cut actions, and clears drafts on Cancel, background, lock or grant expiry. Oversize
+edits are rejected as a whole with a visible error, never truncated.
+
+- **Edit.** The form shows the name, username and first web binding, never the stored password.
+  An empty password field keeps it, so a metadata edit cannot replace the secret. Other bindings,
+  including app bindings, stay and are listed.
+- **Revisions.** `list()` reports each entry's `revision`, and every vault write changes it. A
+  record that changed since `expectedRevision` rejects with `conflict` before the form opens. If it
+  changes while the form is open, Save writes nothing and offers Reload, which shows the latest
+  record and discards the draft. Plaintext `save` and `remove` still do not compare revisions.
+- **Same sign-in.** The form accepts one exact HTTPS origin. If another entry has the same
+  username on that binding, it asks **Update existing** (creating: replaces only that entry's
+  password, at the revision it read) or **Keep separate**. It never merges or overwrites silently.
+
+Device-unlocked custody migration is separate work; this method does not change the vault
+authentication policy. Hosts stop capture and speech while a secret surface is up
+(`PasswordSurfaces`, see [Host-native vault access](#host-native-vault-access)).
 
 No `ElizaPasswords` method resolves with a secret. `save` accepts a password typed by the user
-(write-only) or generates one natively (`generate`). `reveal` shows a FLAG_SECURE native dialog
+(write-only) or generates one natively (`generate`). A host that sets
+`eliza_passwords_bridge_accepts_secrets` to `false` keeps passwords out of the bridge: `save` then
+rejects `password`, `generate` and a missing `id` with `invalid`, so a password reaches the vault
+only through `openEditor` or Android's save confirmation. `reveal` shows a FLAG_SECURE native dialog
 that hides after 30 s or when the host stops; `copy` marks the clip sensitive and schedules
 clearing after 45 s. If Android hides clipboard ownership, clearing waits until the host
 resumes. A replaced or unidentifiable clip is never deleted. Hosts must describe this as
@@ -105,7 +125,7 @@ Queued work is bound to the grant that admitted it; a later unlock cannot revive
 Destroyed Activities cancel their pending prompts, and old owners cannot revoke a newer grant.
 Opening the fill picker preserves the original request deadline. Framework cancellation or a
 replacement request revokes the picker before it can publish a result.
-The vault locks when the host Activity stops and when the unlock window ends. Hosts can separately register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
+The vault locks when the host Activity stops and when the unlock window ends. Hosts that include `android-transfer` can register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
 CSV export and import. Use `createTransferClient` for count-only results. Export requires
 an explicit plaintext-file warning, a user-picked document and fresh authentication after
 the picker returns. Export reads one native vault snapshot and writes bounded CSV rows.
@@ -116,13 +136,43 @@ One transfer owns its picker, grant and I/O; overlapping calls return `busy`. Ba
 review/I/O or destroying its Activity cancels that owner. An interrupted export may leave
 a partial plaintext file and says so. These APIs do not upload or sync the vault.
 
+## Host-native vault access
+
+These are Java APIs only, with no `ElizaPasswords` method, so page script cannot reach them.
+
+- **Admission.** `PasswordVaultAccess.setAdmission(context -> ...)`, registered once from
+  `Application#onCreate`, is the host's own rule (for example its account owner). Every bridge and
+  transfer method that reaches the vault rejects with `not-admitted` when it refuses; `status`,
+  `lock` and `openAutofillSettings` do not ask. Autofill fill and save requests get no dataset and
+  no prompt, and the fill and save screens close. The rule may run on the main thread (Autofill,
+  fill and save screens) or the bridge thread, so it must be fast, must not show UI and must
+  return false when it cannot decide. The default admits.
+- **Secret surfaces.** `PasswordSurfaces.addListener` reports on the main thread when the first
+  secret surface opens, before it draws, and when the last one closes: the unlock prompt, the
+  editor and its questions, a revealed password, and the fill and save screens. `visible()` reads
+  the current state from any thread. Listeners run inside the open or close, so they must be
+  quick, must not throw and must not open a surface.
+- **Lock and state.** `lockAndClose()` locks, drops pending fill and save requests and closes the
+  editor and a revealed password; open fill and save screens and a pending unlock fail on their
+  next step. `exists()` and `unrecoverable()` read the stored state. None of
+  them needs a grant or shows a prompt.
+
+`PasswordVaultAccess.get(context).destroyVault()` destroys the vault, readable or not, for host
+lifecycle events such as an account-owner revoke. It shows no prompt and needs no grant, because
+its caller may have no user present. It deletes the Keystore key first, then the records, revokes
+the grant and pending requests, and closes open native surfaces. It throws if deletion failed;
+calling it again finishes the job. The host must verify its own authority first and must never
+bridge it. The JavaScript `reset` still refuses a readable vault. A copied clip keeps its normal expiry, and a save
+that a person confirms and unlocks afterward creates a new vault. A host that migrated custody
+destroys each store it opened.
+
 Passkeys are not implemented.
 
 ## Verification
 
 - `test/client.node.mjs`: TS normalization, search, the no-secret response rule and error mapping.
 - `test/native-host/policy.node.mjs`: JVM tests of `PasswordFormPolicy`, `PasswordMatching`,
-  `PasswordGenerator` and `PasswordRequests` with synthetic structures.
+  `PasswordGenerator`, `PasswordRequests` and `PasswordEditorPolicy` with synthetic structures.
 - `test/android-consumer`: a separate offline sign-in app and provider host exercise native
   save, device-credential unlock, account choice and framework fill. A real Capacitor host
   also tests document-picker export/import, fresh unlock, exact restored values, overlapping
@@ -132,3 +182,9 @@ Passkeys are not implemented.
   The runner creates and removes a disposable user. These tests do not establish trusted-browser,
   biometric, physical-device or user acceptance. Layout artifacts render only the fixture
   views with synthetic data; Android screen-capture protection remains enabled.
+
+Other native credential owners can reuse `SecretSurfaces.revealOwned` for the timed FLAG_SECURE
+dialog and secret-surface signal. Supply a current foreground/unlocked owner predicate and close
+the returned handle on retirement. A retired handle cannot dismiss a newer surface. Values stay
+native; resolve renderer calls with acknowledgement metadata only. This does not grant vault or
+credential access and does not change the credential store's authentication policy.

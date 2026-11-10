@@ -3,12 +3,18 @@
  * real Durable Object storage and request serialization preserve spend holds.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { runWithCloudBindings } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   type InferenceAdmissionLease,
+  type InferenceAdmissionZeroReleaseReceipt,
   markInferenceAdmissionLeaseDispatched,
+  releaseInferenceAdmissionLease,
+  settleInferenceAdmissionLease,
+  wakeInferenceAdmissionGate,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { revokeInferenceApiKey } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { Miniflare } from "miniflare";
 
 const ADMISSION_RUNTIME_BOUNDARY_FILTERS = {
@@ -179,6 +185,7 @@ describe("Miniflare Durable Object integration", () => {
         },
       },
       kvNamespaces: ["TEST_AUTH_CACHE"],
+      bindings: { VOICE_SPEECH_RELAY_ENABLED: "true" },
     });
   });
 
@@ -193,6 +200,8 @@ describe("Miniflare Durable Object integration", () => {
   ): Promise<{
     readonly status: number;
     readonly handlerMs: string | null;
+    readonly enteredAt: string | null;
+    readonly activatedAt: string | null;
     text(): Promise<string>;
   }> {
     const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
@@ -207,6 +216,8 @@ describe("Miniflare Durable Object integration", () => {
     return {
       status: response.status,
       handlerMs: response.headers.get("x-eliza-gate-handler-ms"),
+      enteredAt: response.headers.get("x-eliza-gate-entered-at"),
+      activatedAt: response.headers.get("x-eliza-gate-activated-at"),
       text: async () => await response.text(),
     };
   }
@@ -230,6 +241,223 @@ describe("Miniflare Durable Object integration", () => {
       expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
     }
   });
+
+  test("every gate response reports entry and activation clocks for the caller's split", async () => {
+    const gate = "rate-limit:v2:activation-timing";
+    const sentAt = Date.now();
+    const first = await post("/rate-limit-warm", {}, gate);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const secondSentAt = Date.now();
+    const second = await post(
+      "/rate-limit",
+      { endpointType: "completions", windowMs: 60000, maxRequests: 5 },
+      gate,
+    );
+    const invalid = await post("/settle", {}, gate);
+    for (const response of [first, second, invalid]) {
+      expect(response.handlerMs).not.toBeNull();
+      expect(Number(response.enteredAt)).toBeGreaterThanOrEqual(sentAt);
+    }
+    // The first call constructed the object; later calls reuse that instance.
+    expect(Number(first.activatedAt)).toBeGreaterThanOrEqual(sentAt);
+    expect(second.activatedAt).toBe(first.activatedAt);
+    expect(Number(second.activatedAt)).toBeLessThan(secondSentAt);
+  });
+
+  const concurrently = (
+    gate: string,
+    requests: Array<{ path: string; body: Record<string, unknown> }>,
+  ) => Promise.all(requests.map(({ path, body }) => post(path, body, gate)));
+
+  test("an idle wake starts only the billing gate and creates no ledger or lease", async () => {
+    const organizationId = "org-miniflare-wake";
+    const forwarded: Array<{ gate: string; path: string; body: unknown }> = [];
+    const pending: Promise<unknown>[] = [];
+    // The production client reaches the real object through this binding.
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (gate: string) => ({
+          fetch: async (request: Request) => {
+            const path = new URL(request.url).pathname;
+            const body = (await request.json()) as Record<string, unknown>;
+            forwarded.push({ gate, path, body });
+            const response = await post(path, body, gate);
+            return new Response(await response.text(), {
+              status: response.status,
+            });
+          },
+        }),
+      },
+    };
+    const requestAt = (now: number) => {
+      const clock = spyOn(Date, "now").mockReturnValue(now);
+      try {
+        runWithCloudBindings(bindings, () =>
+          wakeInferenceAdmissionGate(organizationId, {
+            waitUntil: (promise) => pending.push(promise),
+          }),
+        );
+      } finally {
+        clock.mockRestore();
+      }
+    };
+    // A burst wakes once, requests 4 s apart do not, 5 s idle wakes again.
+    for (const now of [1_000, 1_100, 5_100, 9_100, 14_100]) requestAt(now);
+    await Promise.all(pending);
+    const wake = { gate: organizationId, path: "/rate-limit-warm", body: {} };
+    expect(forwarded).toEqual([wake, wake]);
+
+    const recovery = (requestId: string) => ({
+      version: 1,
+      kind: "organization",
+      organizationId,
+      userId: "00000000-0000-0000-0000-000000000002",
+      requestId,
+      model: "test-model",
+      provider: "test-provider",
+      billingSource: "test",
+      description: "Miniflare wake test",
+      accounting: { kind: "direct_debit" },
+    });
+    const lease = (requestId: string) => ({
+      path: "/lease",
+      body: {
+        organizationId,
+        requestId,
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 7,
+        recovery: recovery(requestId),
+      },
+    });
+    const cold = await post(
+      "/lease",
+      lease("wake-request-cold").body,
+      organizationId,
+    );
+    expect(cold.status).toBe(503);
+    expect(JSON.parse(await cold.text()).code).toBe(
+      "inference_admission_gate_uninitialized",
+    );
+
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "1" },
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    const warm = { path: "/rate-limit-warm", body: {} };
+    const [wakeA, first, wakeB, second, wakeC] = await concurrently(
+      organizationId,
+      [warm, lease("wake-request-a"), warm, lease("wake-request-b"), warm],
+    );
+    expect([wakeA, wakeB, wakeC].map(({ status }) => status)).toEqual([
+      200, 200, 200,
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 402]);
+
+    // The wake runs on the rate queue, so a busy billing queue cannot hold it.
+    expect(
+      (await post("/test-block-billing-queue", {}, organizationId)).status,
+    ).toBe(202);
+    try {
+      const woke = await Promise.race([
+        post("/rate-limit-warm", {}, organizationId),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error("wake waited behind billing")),
+            500,
+          );
+        }),
+      ]);
+      expect(woke.status).toBe(200);
+    } finally {
+      await post("/test-release-billing-queue", {}, organizationId);
+    }
+  }, 120_000);
+
+  test("a failed wake never reaches the caller", async () => {
+    const pending: Promise<unknown>[] = [];
+    const waitUntil = (promise: Promise<unknown>) => pending.push(promise);
+    runWithCloudBindings({}, () =>
+      wakeInferenceAdmissionGate("org-miniflare-wake-unbound", { waitUntil }),
+    );
+    runWithCloudBindings(
+      {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: () => ({
+            fetch: async () => {
+              throw new Error("binding unavailable");
+            },
+          }),
+        },
+      },
+      () =>
+        wakeInferenceAdmissionGate("org-miniflare-wake-down", { waitUntil }),
+    );
+    expect(pending).toHaveLength(2);
+    expect(await Promise.all(pending)).toEqual([undefined, undefined]);
+  });
+
+  test.each([
+    "org-miniflare-wake-rate",
+    "rate-limit:v2:org-miniflare-wake-rate",
+  ])(
+    "wakes neither count nor bypass concurrent rate decisions on %s",
+    async (gate) => {
+      const windowMs = 60_000;
+      const windowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
+      const operationDeadlineAt = Date.now() + 4_000;
+      const decide = (operationId: string) => ({
+        path: "/rate-limit",
+        body: {
+          endpointType: "completions",
+          windowMs,
+          maxRequests: 3,
+          windowStartedAt,
+          operationId,
+          operationDeadlineAt,
+        },
+      });
+      const responses = await concurrently(
+        gate,
+        Array.from({ length: 8 }, (_, index) => [
+          decide(`wake-op-${index}`),
+          { path: "/rate-limit-warm", body: {} },
+        ]).flat(),
+      );
+      const decisions = responses
+        .filter((_, index) => index % 2 === 0)
+        .map(({ status }) => status);
+      const wakes = responses
+        .filter((_, index) => index % 2 === 1)
+        .map(({ status }) => status);
+      expect(wakes).toEqual(Array(8).fill(200));
+      expect(decisions.filter((status) => status === 200)).toHaveLength(3);
+      expect(decisions.filter((status) => status === 429)).toHaveLength(5);
+
+      // A retried operation replays its receipt instead of counting again.
+      const replays = await concurrently(gate, [
+        decide("wake-op-0"),
+        decide("wake-op-0"),
+      ]);
+      expect(replays.map(({ status }) => status)).toEqual([
+        decisions[0],
+        decisions[0],
+      ]);
+      const persisted = JSON.parse(
+        await (await post("/test-read-legacy-rate-limits", {}, gate)).text(),
+      );
+      expect(persisted.completions).toMatchObject({
+        windowStartedAt,
+        count: 8,
+      });
+    },
+    120_000,
+  );
 
   // Match the cloud test lane's budget because Miniflare startup can be delayed
   // when this integration test runs alongside the rest of the batched suite.
@@ -291,6 +519,78 @@ describe("Miniflare Durable Object integration", () => {
       );
     }
     expect([first.status, second.status].sort()).toEqual([200, 402]);
+  }, 120_000);
+
+  test("an app recovery lease permits an absent creator and rejects malformed creator identities", async () => {
+    const gate = "org-creator-audit";
+    const lease = (
+      requestId: string,
+      creatorUserId: unknown,
+      estimatedCostUsd = 7,
+    ) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd,
+          recovery: {
+            version: 1,
+            kind: "app",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare creator audit test",
+            appId: "00000000-0000-4000-8000-000000000003",
+            estimatedBaseCostUsd: estimatedCostUsd,
+            appPolicy: {
+              name: "Organization-owned app",
+              creatorUserId,
+              monetizationEnabled: false,
+              reviewStatus: "approved",
+              platformOffsetAmount: 0,
+              purchaseSharePercentage: 0,
+              inferenceMarkupPercentage: 0,
+            },
+          },
+        },
+        gate,
+      );
+    expect(
+      (await post("/hydrate", { balanceUsd: 10, balanceRevision: "1" }, gate))
+        .status,
+    ).toBe(200);
+    for (const [index, invalid] of [
+      undefined,
+      "",
+      " ",
+      " creator ",
+      "x".repeat(257),
+      1,
+      {},
+    ].entries()) {
+      expect((await lease(`invalid-creator-${index}`, invalid)).status).toBe(
+        400,
+      );
+    }
+    expect((await lease("absent-creator", null)).status).toBe(200);
+    expect((await lease("absent-creator", null)).status).toBe(200);
+    // Invalid policies reserved nothing, and the valid replay reserved only once.
+    expect(
+      (
+        await lease(
+          "retained-creator",
+          "00000000-0000-4000-8000-000000000004",
+          3,
+        )
+      ).status,
+    ).toBe(200);
+    expect((await lease("exhausted-creator", null, 1)).status).toBe(402);
   }, 120_000);
 
   test("credential checks bypass a blocked billing queue on the same object", async () => {
@@ -357,6 +657,83 @@ describe("Miniflare Durable Object integration", () => {
     expect((await post("/credential/check", credential)).status).toBe(403);
     expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
       stalePositive,
+    );
+  });
+
+  test("a mobile lifecycle fence closes active speech and denies a retained positive at another location", async () => {
+    const organizationId = "org-miniflare";
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "00000000-0000-0000-0000-000000000105",
+      userId: "00000000-0000-0000-0000-000000000205",
+    };
+    const staleCache = await miniflare.getKVNamespace("TEST_AUTH_CACHE");
+    const staleCacheKey = "inference-auth:mobile-stale-positive";
+    const positive = JSON.stringify({ organizationId, ...credential });
+    await staleCache.put(staleCacheKey, positive);
+    const subscribed = await miniflare.dispatchFetch(
+      "https://gate.test/speech/subscribe",
+      {
+        headers: {
+          Upgrade: "websocket",
+          "x-test-organization-id": organizationId,
+          "X-Eliza-Speech-Identity": JSON.stringify({
+            organizationId,
+            credential,
+            expiresAt: Date.now() + 60000,
+          }),
+        },
+      },
+    );
+    expect(subscribed.status).toBe(101);
+    const socket = subscribed.webSocket;
+    if (!socket) throw new Error("Speech subscription socket missing");
+    const closed = new Promise<number>((resolve) =>
+      socket.addEventListener("close", (event) => resolve(event.code)),
+    );
+    socket.accept();
+    await runWithCloudBindings(
+      {
+        VOICE_SPEECH_RELAY_ENABLED: "true",
+        INFERENCE_ADMISSION_GATES: {
+          getByName(gate: string) {
+            expect(gate).toBe(organizationId);
+            return {
+              async fetch(request: Request) {
+                const result = await post(
+                  new URL(request.url).pathname,
+                  (await request.json()) as Record<string, unknown>,
+                );
+                return new Response(await result.text(), {
+                  status: result.status,
+                });
+              },
+            };
+          },
+        },
+      },
+      () => revokeInferenceApiKey(organizationId, credential.credentialId),
+    );
+    expect(
+      await Promise.race([
+        closed,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Speech revocation did not close socket")),
+            1000,
+          ),
+        ),
+      ]),
+    ).toBe(1008);
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      positive,
+    );
+    expect(
+      (await post("/credential/check", { organizationId, ...credential }))
+        .status,
+    ).toBe(403);
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      positive,
     );
   });
 
@@ -1114,5 +1491,292 @@ describe("Miniflare Durable Object integration", () => {
     expect(replies[0].availableUsd).toBe(9);
     expect(replies[1]).toMatchObject({ availableUsd: 9, duplicate: true });
     expect(lease.preProviderCancellationToken).toBeUndefined();
+  }, 120_000);
+
+  // Production release/settlement functions and the production DO run here.
+  // Only the transport acknowledgement is controllable; no database, provider,
+  // collected-money result or canonical receipt is fabricated by this fixture.
+  function isZeroGateRequest(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+  async function zeroReleaseFixture(name: string) {
+    const gateName = `d1-zero-${name}`,
+      requestId = `speech:d1-${name}:stt`;
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "1" },
+          gateName,
+        )
+      ).status,
+    ).toBe(200);
+    const recovery = {
+      version: 1,
+      kind: "organization",
+      organizationId: "org-miniflare",
+      requestId,
+      userId: "d1-owner",
+      model: "test-model",
+      provider: "test-provider",
+      billingSource: "test",
+      description: "Zero-release evidence fixture",
+      accounting: { kind: "direct_debit" },
+    };
+    expect(
+      (
+        await post(
+          "/lease",
+          {
+            organizationId: "org-miniflare",
+            requestId,
+            balanceUsd: 10,
+            balanceRevision: "1",
+            estimatedCostUsd: 1,
+            recovery,
+          },
+          gateName,
+        )
+      ).status,
+    ).toBe(200);
+    let calls = 0;
+    let acknowledge = async (response: Response): Promise<Response> => response;
+    const lease: InferenceAdmissionLease = {
+      organizationId: "org-miniflare",
+      requestId,
+      estimatedCostUsd: 1,
+      providerDispatched: false,
+      gate: {
+        fetch: async (input, init) => {
+          calls++;
+          const request = new Request(input, init);
+          const body: unknown = await request.json();
+          if (!isZeroGateRequest(body))
+            throw new Error("Expected gate request object");
+          const response = await post(
+            new URL(request.url).pathname,
+            body,
+            gateName,
+          );
+          return acknowledge(
+            new Response(await response.text(), { status: response.status }),
+          );
+        },
+      },
+    };
+    return {
+      lease,
+      requestId,
+      get calls() {
+        return calls;
+      },
+      setAcknowledge(fn: typeof acknowledge) {
+        acknowledge = fn;
+      },
+      async fullCapacityAvailable() {
+        const nextId = `${requestId}:after`;
+        return (
+          await post(
+            "/lease",
+            {
+              organizationId: "org-miniflare",
+              requestId: nextId,
+              balanceUsd: 10,
+              balanceRevision: "1",
+              estimatedCostUsd: 10,
+              recovery: { ...recovery, requestId: nextId },
+            },
+            gateName,
+          )
+        ).status;
+      },
+    };
+  }
+
+  test("actual DO zero release emits exact identity only after its explicit acknowledgement", async () => {
+    const f = await zeroReleaseFixture("acknowledged");
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    expect(
+      await releaseInferenceAdmissionLease(f.lease, (receipt) =>
+        receipts.push(receipt),
+      ),
+    ).toBeUndefined();
+    expect(f.calls).toBe(1);
+    expect(receipts).toEqual([
+      {
+        version: 1,
+        organizationId: "org-miniflare",
+        requestId: f.requestId,
+        state: "released_zero",
+      },
+    ]);
+    expect(await f.fullCapacityAvailable()).toBe(200);
+  }, 120_000);
+
+  test.each(["prepared", "rejected"] as const)(
+    "known %s dispatch emits never-reserved identity without a gate call",
+    async (state) => {
+      let calls = 0;
+      const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+      const lease: InferenceAdmissionLease = {
+        organizationId: "org-prepared",
+        requestId: `speech:${state}:tts`,
+        estimatedCostUsd: 1,
+        providerDispatched: false,
+        preProviderCancellationToken: "unused-capability",
+        preparedDispatch: { path: "/lease-dispatched", body: {}, state },
+        gate: {
+          fetch: async () => {
+            calls++;
+            throw new Error("Prepared release must not call gate");
+          },
+        },
+      };
+      expect(
+        await releaseInferenceAdmissionLease(lease, (receipt) =>
+          receipts.push(receipt),
+        ),
+      ).toBeUndefined();
+      expect(calls).toBe(0);
+      expect(receipts).toEqual([
+        {
+          version: 1,
+          organizationId: "org-prepared",
+          requestId: `speech:${state}:tts`,
+          state: "not_reserved",
+        },
+      ]);
+      expect(lease.preparedDispatch).toBeUndefined();
+      expect(lease.preProviderCancellationToken).toBeUndefined();
+    },
+  );
+
+  test("a lost release acknowledgement cannot emit zero proof despite the real DO releasing its hold", async () => {
+    const f = await zeroReleaseFixture("lost-ack");
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    f.setAcknowledge(async (response) => {
+      expect(response.status).toBe(200);
+      throw new Error("Lost acknowledgement after actual release");
+    });
+    await expect(
+      releaseInferenceAdmissionLease(f.lease, (receipt) =>
+        receipts.push(receipt),
+      ),
+    ).rejects.toBeInstanceOf(Error);
+    expect(receipts).toEqual([]);
+    expect(f.calls).toBe(1);
+    expect(await f.fullCapacityAvailable()).toBe(200);
+  }, 120_000);
+
+  test.each(["false", "wrong-state", "invalid-json", "404", "timeout"])(
+    "a %s release acknowledgement cannot emit zero proof",
+    async (fault) => {
+      const f = await zeroReleaseFixture(`invalid-${fault}`);
+      const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+      f.setAcknowledge(async () => {
+        if (fault === "timeout")
+          throw new DOMException("Acknowledgement timed out", "TimeoutError");
+        if (fault === "404") return new Response(null, { status: 404 });
+        if (fault === "invalid-json") return new Response("{");
+        return Response.json(
+          fault === "false" ? { released: false } : { dispatched: true },
+        );
+      });
+      await expect(
+        releaseInferenceAdmissionLease(f.lease, (receipt) =>
+          receipts.push(receipt),
+        ),
+      ).rejects.toBeInstanceOf(Error);
+      expect(receipts).toEqual([]);
+      expect(f.calls).toBe(1);
+    },
+    120_000,
+  );
+
+  test("ambiguous not-found cleanup retains legacy void without authoritative zero proof", async () => {
+    const f = await zeroReleaseFixture("ambiguous-not-found");
+    f.lease.preparedDispatch = {
+      path: "/lease-dispatched",
+      body: {},
+      state: "ambiguous",
+    };
+    f.setAcknowledge(async () =>
+      Response.json(
+        { code: "inference_admission_lease_not_found" },
+        { status: 409 },
+      ),
+    );
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    expect(
+      await releaseInferenceAdmissionLease(f.lease, (receipt) =>
+        receipts.push(receipt),
+      ),
+    ).toBeUndefined();
+    expect(receipts).toEqual([]);
+    expect(f.calls).toBe(1);
+  }, 120_000);
+
+  test("zero settlement forwards the real observer while ordinary callers retain Promise<void>", async () => {
+    const observed = await zeroReleaseFixture("settle-observed");
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    expect(
+      await settleInferenceAdmissionLease(
+        observed.lease,
+        0,
+        0,
+        undefined,
+        (receipt) => receipts.push(receipt),
+      ),
+    ).toBeUndefined();
+    expect(receipts).toEqual([
+      {
+        version: 1,
+        organizationId: "org-miniflare",
+        requestId: observed.requestId,
+        state: "released_zero",
+      },
+    ]);
+    const legacy = await zeroReleaseFixture("settle-legacy");
+    expect(
+      await settleInferenceAdmissionLease(legacy.lease, 0, 0),
+    ).toBeUndefined();
+    expect(legacy.calls).toBe(1);
+    expect(await legacy.fullCapacityAvailable()).toBe(200);
+  }, 120_000);
+
+  test("release evidence keeps the exact entry identity if a caller mutates its lease while acknowledgement is pending", async () => {
+    const f = await zeroReleaseFixture("identity-snapshot");
+    let acknowledge: () => void = () => {
+      throw new Error("Acknowledgement not armed");
+    };
+    let entered: () => void = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    f.setAcknowledge(async (response) => {
+      entered();
+      await new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      });
+      return response;
+    });
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    const release = releaseInferenceAdmissionLease(f.lease, (receipt) =>
+      receipts.push(receipt),
+    );
+    await waiting;
+    f.lease.organizationId = "wrong-org";
+    f.lease.requestId = "wrong-request";
+    acknowledge();
+    await release;
+    expect(receipts).toEqual([
+      {
+        version: 1,
+        organizationId: "org-miniflare",
+        requestId: f.requestId,
+        state: "released_zero",
+      },
+    ]);
+    expect(f.calls).toBe(1);
   }, 120_000);
 });

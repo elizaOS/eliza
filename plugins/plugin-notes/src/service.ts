@@ -1,5 +1,6 @@
 import { authoredNoteText } from "./note-authored.js";
 import { applyNotePatch } from "./note-patch.js";
+import { assertNotesServiceMutation } from "./request-effect-gate.js";
 import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
@@ -13,10 +14,10 @@ import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type EncryptedNotesDocumentPort, NotesStore } from "./store.js";
 import type {
+  NotesDocument,
   NotesSnapshot,
   NotesStoreStatus,
   StickyNote,
-  UpdateNoteInput,
 } from "./types.js";
 import {
   parseCreateNoteInput,
@@ -139,14 +140,34 @@ function noteContentKey(note: StickyNote): string {
 
 /** Show one note per content key: the copy edited last, so a note the owner
  * just edited to match another note stays visible in its editor. */
-function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {
+function distinctNotes(
+  notes: readonly StickyNote[],
+  noteRevisions: Record<string, number> = {},
+): StickyNote[] {
+  const revisionOf = (note: StickyNote) =>
+    Object.hasOwn(noteRevisions, note.id) ? noteRevisions[note.id] : 0;
   const shown = new Map<string, StickyNote>();
   for (const note of notes) {
     const key = noteContentKey(note);
     const current = shown.get(key);
-    if (!current || note.updatedAt > current.updatedAt) shown.set(key, note);
+    if (
+      !current ||
+      revisionOf(note) > revisionOf(current) ||
+      (revisionOf(note) === revisionOf(current) &&
+        note.updatedAt > current.updatedAt)
+    ) {
+      shown.set(key, note);
+    }
   }
   return notes.filter((note) => shown.get(noteContentKey(note)) === note);
+}
+
+function projectNotesSnapshot(document: NotesDocument): NotesSnapshot {
+  return {
+    revision: document.revision,
+    notes: distinctNotes(document.notes, document.noteRevisions),
+    trash: document.trash ?? [],
+  };
 }
 
 function resolveNoteIndex(
@@ -270,8 +291,7 @@ export class NotesService extends Service {
   }
 
   snapshot(): NotesSnapshot {
-    const snapshot = this.store.snapshot();
-    return { ...snapshot, notes: distinctNotes(snapshot.notes) };
+    return this.store.snapshot(projectNotesSnapshot);
   }
 
   listNotes(): StickyNote[] {
@@ -380,6 +400,7 @@ export class NotesService extends Service {
     snapshot: NotesSnapshot;
     replayed: boolean;
   }> {
+    assertNotesServiceMutation(this.runtime, "create");
     const input = parseCreateNoteInput(inputValue);
     const now = this.now().toISOString();
     const id = parseEntityId(this.createId());
@@ -400,7 +421,7 @@ export class NotesService extends Service {
       const existing =
         input.forceNew || input.format
           ? undefined
-          : draft.notes.find(
+          : distinctNotes(draft.notes, draft.noteRevisions).find(
               (note) => !note.format && noteContentKey(note) === requestedKey,
             );
       if (existing) return { note: existing, replayed: true };
@@ -421,17 +442,18 @@ export class NotesService extends Service {
         updatedAt: now,
       };
       draft.notes.unshift(note);
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [id]: draft.revision + 1,
+      };
       return { note, replayed: false };
-    });
+    }, projectNotesSnapshot);
     if (!transaction.value.replayed) {
       await this.emitStateUpdated(transaction.snapshot, "note:created");
     }
     return {
       value: transaction.value.note,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
+      snapshot: transaction.snapshot,
       replayed: transaction.value.replayed,
     };
   }
@@ -449,6 +471,7 @@ export class NotesService extends Service {
     snapshot: NotesSnapshot;
     consolidatedIds: string[];
   }> {
+    assertNotesServiceMutation(this.runtime, "update");
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
     const revision = parseNoteEditRevision(
@@ -467,15 +490,15 @@ export class NotesService extends Service {
       if (index < 0 || !existing) throw notFound(id);
       const updated = applyNotePatch(existing, patch, updatedAt);
       draft.notes[index] = updated;
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [id]: draft.revision + 1,
+      };
       return updated;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       consolidatedIds,
     };
   }
@@ -501,6 +524,7 @@ export class NotesService extends Service {
     consolidatedCount: number;
     consolidatedIds: string[];
   }> {
+    assertNotesServiceMutation(this.runtime, "update");
     const patch = parseUpdateNoteInput(patchValue);
     const revision = parseNoteEditRevision(
       expectedRevision,
@@ -541,15 +565,15 @@ export class NotesService extends Service {
         }
       }
       draft.notes = next;
+      draft.noteRevisions = {
+        ...draft.noteRevisions,
+        [updated.id]: draft.revision + 1,
+      };
       return updated;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       consolidatedCount: consolidatedIds.length,
       consolidatedIds,
     };
@@ -560,6 +584,7 @@ export class NotesService extends Service {
     snapshot: NotesSnapshot;
     removedIds: string[];
   }> {
+    assertNotesServiceMutation(this.runtime, "delete");
     const id = parseEntityId(idValue);
     let removedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
@@ -582,14 +607,10 @@ export class NotesService extends Service {
       ];
       draft.notes = draft.notes.filter((note) => !removedIds.includes(note.id));
       return existing;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       removedIds,
     };
   }
@@ -599,6 +620,7 @@ export class NotesService extends Service {
     idValue: unknown,
     expectedRevision: unknown,
   ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+    assertNotesServiceMutation(this.runtime, "update");
     const id = parseEntityId(idValue);
     const revision = parseNoteEditRevision(expectedRevision, true);
     const transaction = await this.store.transact((draft) => {
@@ -631,6 +653,7 @@ export class NotesService extends Service {
     removedIds: string[];
   }> {
     let removedIds: string[] = [];
+    assertNotesServiceMutation(this.runtime, "delete");
     const transaction = await this.store.transact((draft) => {
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
@@ -670,14 +693,10 @@ export class NotesService extends Service {
       ];
       draft.notes = kept;
       return existing;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
     return {
       ...transaction,
-      snapshot: {
-        ...transaction.snapshot,
-        notes: distinctNotes(transaction.snapshot.notes),
-      },
       removedCount: removedIds.length,
       removedIds,
     };
@@ -694,6 +713,7 @@ export class NotesService extends Service {
     value: number;
     snapshot: NotesSnapshot;
   }> {
+    assertNotesServiceMutation(this.runtime, "delete");
     const transaction = await this.store.transact((draft) => {
       if (
         expectedRevision !== undefined &&
@@ -722,7 +742,7 @@ export class NotesService extends Service {
       ];
       draft.notes = [];
       return count;
-    });
+    }, projectNotesSnapshot);
     await this.emitStateUpdated(transaction.snapshot, "notes:cleared");
     return transaction;
   }

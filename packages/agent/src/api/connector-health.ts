@@ -112,6 +112,8 @@ export class ConnectorHealthMonitor {
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private statuses: Map<string, ConnectorStatus> = new Map();
+  private generation = 0;
+  private checkPromise: Promise<void> | null = null;
 
   constructor(opts: ConnectorHealthMonitorOptions) {
     this.runtime = opts.runtime;
@@ -147,6 +149,9 @@ export class ConnectorHealthMonitor {
   }
 
   stop(): void {
+    this.generation += 1;
+    this.checkPromise = null;
+    this.statuses.clear();
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -159,7 +164,16 @@ export class ConnectorHealthMonitor {
    * services instead of the connectors that are running now.
    */
   setRuntime(runtime: AgentRuntime): void {
+    if (this.runtime === runtime) return;
     this.runtime = runtime;
+    this.generation += 1;
+    this.checkPromise = null;
+    this.statuses.clear();
+    if (this.timer) {
+      void this.check().catch((error: unknown) => {
+        this.reportProbeCycleFailure(error);
+      });
+    }
   }
 
   getConnectorStatuses(): Record<string, ConnectorStatus> {
@@ -187,13 +201,16 @@ export class ConnectorHealthMonitor {
     return result;
   }
 
-  private async probeConnector(name: string): Promise<ConnectorStatus> {
+  private async probeConnector(
+    name: string,
+    runtime: AgentRuntime,
+  ): Promise<ConnectorStatus> {
     const pluginName =
       CONNECTOR_PLUGIN_MAP[name] ??
       CONNECTOR_PLUGIN_MAP_NORMALIZED[name.toLowerCase()];
     if (!pluginName) return "unknown";
 
-    const service = this.runtime.getService(pluginName);
+    const service = runtime.getService(pluginName);
     if (service) {
       if (hasPollerHealthProbe(service)) {
         // getPollerHealth() is typed to return a value OR a Promise and, per the
@@ -215,7 +232,7 @@ export class ConnectorHealthMonitor {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          this.runtime?.reportError?.(
+          runtime?.reportError?.(
             "ConnectorHealthMonitor.probeConnector",
             error,
             { connector: name, plugin: pluginName },
@@ -228,7 +245,7 @@ export class ConnectorHealthMonitor {
 
     // Also check runtime.clients if available
     const clients = (
-      this.runtime as typeof this.runtime & {
+      runtime as typeof runtime & {
         clients?: Record<string, unknown>;
       }
     ).clients;
@@ -237,7 +254,21 @@ export class ConnectorHealthMonitor {
     return "missing";
   }
 
-  async check(): Promise<void> {
+  check(): Promise<void> {
+    if (this.checkPromise) return this.checkPromise;
+    const run = this.checkCurrent(this.runtime, this.generation);
+    this.checkPromise = run;
+    const release = (): void => {
+      if (this.checkPromise === run) this.checkPromise = null;
+    };
+    void run.then(release, release);
+    return run;
+  }
+
+  private async checkCurrent(
+    runtime: AgentRuntime,
+    generation: number,
+  ): Promise<void> {
     const configured = this.getConfiguredConnectors();
 
     for (const name of configured) {
@@ -248,7 +279,7 @@ export class ConnectorHealthMonitor {
       // poller probe; this guards any other unexpected throw (e.g. getService).
       let newStatus: ConnectorStatus;
       try {
-        newStatus = await this.probeConnector(name);
+        newStatus = await this.probeConnector(name, runtime);
       } catch (error) {
         // error-policy:J7 diagnostics must not kill the loop.
         logger.warn(
@@ -256,11 +287,13 @@ export class ConnectorHealthMonitor {
             error instanceof Error ? error.message : String(error)
           }`,
         );
-        this.runtime?.reportError?.("ConnectorHealthMonitor.check", error, {
+        runtime.reportError?.("ConnectorHealthMonitor.check", error, {
           connector: name,
         });
         newStatus = "missing";
       }
+      // A stopped or replaced runtime cannot publish a late probe result.
+      if (generation !== this.generation) return;
       const prevStatus = this.statuses.get(name);
 
       if (newStatus === "missing" && prevStatus !== "missing") {

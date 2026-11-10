@@ -97,6 +97,12 @@ must inject token verification, owner/session authorization, conversation scope,
 revocation and usage storage; importing these modules grants no authority or
 opens provider connections. Cloud retains its JWT and durable Redis policies.
 
+The shared Sonic TTS default is `sonic-3.6`, which follows Cartesia's stable
+3.6 snapshots. Cartesia documents it as fully compatible with Sonic 3.5;
+see the [model guide](https://docs.cartesia.ai/build-with-cartesia/tts-models/latest).
+Cloud synthesis, cache revisions and Cartesia usage records use that same default.
+This does not change explicit voice or other-provider model selections.
+
 Task gateways accept a trusted host `databaseProvider` with `open({path})` and
 `assertEncryption({db,path})`. `requireEncryptedDatabase: true` refuses startup
 unless the provider explicitly verifies the open connection before the gateway
@@ -129,8 +135,15 @@ source availability alone does not qualify encrypted storage on a consumer devic
 host source input. A consumer must select it alongside native-agent runtime and
 secure-store native-only sources. No default Gradle dependency or renderer API
 is added. The host supplies its existing dedicated verified-account directory
-and Keystore alias, a separate task-key directory/alias, and an existing private
-0700 no-backup database directory. Resolve the trusted Android Context path with
+and Keystore alias, a separate task-key directory and alias prefix (or its own
+`TaskDataKeyStore.perSlot` store), and an existing private 0700 no-backup
+database directory. Each database key has its own Keystore wrapping key, so a
+generation-bound remove deletes that Keystore entry and a wrapped copy left in
+flash cannot be decrypted. A shared-mode key store is refused. Keys are stored at
+(`Database.ownerIdentity`, database name): to finish a revocation after the
+account record is gone, delete the database files, then call
+`keys.destroy(ownerIdentity, name)`. `ownerIdentity(snapshot)` is
+`VerifiedAccountCredentialStore.ownerIdentity`. Resolve the trusted Android Context path with
 `getCanonicalFile()` before supplying that root; Android data-directory aliases
 are not accepted as canonical paths. All account writes must use this composition
 in the one native host process; it does not provide cross-process credential CAS.
@@ -175,3 +188,11 @@ carrier-NAT, documentation and transition addresses at connect time, so a DNS
 rebinding answer cannot reach a local service. It never follows redirects,
 sends no cookies and reads at most 8 MB. `resolvesPublic` and `privateAddress`
 let a caller check a name or address before handing it to another fetch.
+
+`createProviderKeySession` keeps optional Text and Voice keys only in host RAM.
+Selection (`cloud` or `own`) is separate from key lifetime. Edits preserve omitted
+fields; removal is explicit. Status returns only key-presence flags and an opaque
+revision. Hosts must gate edit, removal and explicit reveal to their owner surface,
+check `expectedRevision` again after asynchronous validation/retirement, and call
+`invalidate()` when owner authority changes. `launchKeys()` is trusted host-only;
+never include it in status, logs, model context or storage. Close drops the keys.

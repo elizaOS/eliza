@@ -4,11 +4,7 @@
  * boundary can distinguish capability, handler, and persistence failures
  * without parsing error prose.
  */
-
-export type ActionFailureKind =
-	| "missing_capability"
-	| "handler_error"
-	| "persistence_error";
+import { asObjectRecord } from "../utils/type-guards";
 
 export type ActionFailureProvenance =
 	| {
@@ -30,24 +26,17 @@ export type ActionFailureProvenance =
 			retryable: boolean;
 	  };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
+export type ActionFailureKind = ActionFailureProvenance["kind"];
 
 /** Validate action-owned failure metadata before it enters a planner trace. */
 export function normalizeActionFailureProvenance(
 	value: unknown,
 ): ActionFailureProvenance {
-	const record = asRecord(value);
+	const record = asObjectRecord(value);
 	if (!record) {
 		throw new TypeError("ActionResult.failureProvenance must be an object.");
 	}
-	const code =
-		typeof record.code === "string" && record.code.trim().length > 0
-			? record.code.trim()
-			: null;
+	const code = typeof record.code === "string" ? record.code.trim() : "";
 	if (!code) {
 		throw new TypeError(
 			"ActionResult.failureProvenance.code must be a non-empty string.",
@@ -111,11 +100,11 @@ export function normalizeActionFailureProvenance(
 export function readActionFailureProvenance(
 	error: unknown,
 ): ActionFailureProvenance | null {
-	const record = asRecord(error);
+	const record = asObjectRecord(error);
 	if (!record) return null;
-	const context = asRecord(record.context);
 	const candidate =
-		record.failureProvenance ?? context?.failureProvenance ?? undefined;
+		record.failureProvenance ??
+		asObjectRecord(record.context)?.failureProvenance;
 	if (candidate === undefined) return null;
 	try {
 		return normalizeActionFailureProvenance(candidate);

@@ -1,6 +1,6 @@
 /**
  * Proves allowance lifecycle behavior against real subscription migrations on
- * PGlite: caller deadlines persist apart from period expiry, stranded holds are
+ * PGlite or isolated PostgreSQL: caller deadlines persist apart from period expiry, stranded holds are
  * released to their exact sources, ended and terminal periods are retired, a
  * resubscription can be granted over a canceled bucket, managed compute spends a
  * paid period through payment grace (also in dunning grace, bounded by its
@@ -12,7 +12,20 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-process.env.DATABASE_URL = "pglite://memory";
+const postgresTestUrl = process.env.COMPUTE_FUNDING_POSTGRES_TEST_URL;
+if (postgresTestUrl) {
+  const target = new URL(postgresTestUrl);
+  if (
+    !["postgres:", "postgresql:"].includes(target.protocol) ||
+    !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) ||
+    !/^\/dedicated_compute_test_[a-z0-9]+$/.test(target.pathname)
+  ) {
+    throw new Error(
+      "Allowance tests require an isolated loopback dedicated_compute_test_ database",
+    );
+  }
+}
+process.env.DATABASE_URL = postgresTestUrl ?? "pglite://memory";
 process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.ENVIRONMENT = "local";
 // CI runs cloud unit tests with CACHE_ENABLED=false; MOCK_REDIS only takes
@@ -24,6 +37,7 @@ let client: typeof import("../../db/client");
 let helpers: typeof import("../../db/helpers");
 let funding: typeof import("./subscription-funding");
 let allowance: typeof import("../../db/repositories/subscription-allowance");
+let postgresPool: import("pg").Pool | undefined;
 let fixture: {
   exec(query: string): Promise<unknown>;
   query<T extends Record<string, unknown> = Record<string, unknown>>(
@@ -39,12 +53,28 @@ beforeAll(async () => {
   helpers = await import("../../db/helpers");
   funding = await import("./subscription-funding");
   allowance = await import("../../db/repositories/subscription-allowance");
-  const pglite = client.getPgliteClientForTests();
-  fixture = {
-    exec: (query) => pglite.exec(query),
-    query: <T extends Record<string, unknown>>(query: string, parameters?: unknown[]) =>
-      pglite.query<T>(query, parameters),
-  };
+  if (postgresTestUrl) {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: postgresTestUrl, max: 4 });
+    postgresPool = pool;
+    fixture = {
+      exec: (query) => pool.query(query),
+      query: <T extends Record<string, unknown>>(query: string, parameters?: unknown[]) =>
+        pool.query<T>(query, parameters),
+    };
+    const tables = await fixture.query(
+      "SELECT count(*)::integer AS count FROM information_schema.tables WHERE table_schema='public'",
+    );
+    if (tables.rows[0]?.count !== 0)
+      throw new Error("PostgreSQL allowance test database must be empty");
+  } else {
+    const pglite = client.getPgliteClientForTests();
+    fixture = {
+      exec: (query) => pglite.exec(query),
+      query: <T extends Record<string, unknown>>(query: string, parameters?: unknown[]) =>
+        pglite.query<T>(query, parameters),
+    };
+  }
   const { createBillingSnapshotFixture } = await import(
     "../../db/repositories/account-billing-snapshot-test-fixture"
   );
@@ -64,6 +94,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await client.closeDatabaseConnectionsForTests();
+  await postgresPool?.end();
 });
 
 async function databaseNow(): Promise<Date> {
@@ -374,6 +405,23 @@ describe("subscription allowance lifecycle", () => {
       available_amount: "0.250000",
       reserved_amount: "0.000000",
     });
+    expect(state.reservations[0]?.status).toBe("canceled");
+    expect(state.allocations).toEqual([
+      expect.objectContaining({
+        source: "allowance",
+        reserved_amount: "0.250000",
+        finalized_amount: "0.000000",
+        released_amount: "0.250000",
+        expired_refund_amount: "0.000000",
+      }),
+      expect.objectContaining({
+        source: "purchased_credit",
+        reserved_amount: "0.500000",
+        finalized_amount: "0.000000",
+        released_amount: "0.500000",
+        expired_refund_amount: "0.000000",
+      }),
+    ]);
     await expect(
       funding.subscriptionFundingService.cancel({
         organizationId: org,
@@ -417,7 +465,7 @@ describe("subscription allowance lifecycle", () => {
     });
     // Cap math itself is unchanged; callers pass the spending deadline from
     // managedComputeAllowanceDeadline.
-    expect(
+    expect<string>(
       funding.timeMeteredAllowanceCap({
         requestedAmount: "1.000000" as never,
         windowStart: new Date(0),
@@ -845,6 +893,16 @@ describe("subscription allowance lifecycle", () => {
       settled_amount: "0.400000",
       expired_amount: "3.600000",
     });
+    expect(state.reservations[0]?.status).toBe("finalized");
+    expect(state.allocations).toEqual([
+      expect.objectContaining({
+        source: "allowance",
+        reserved_amount: "1.000000",
+        finalized_amount: "0.400000",
+        released_amount: "0.000000",
+        expired_refund_amount: "0.600000",
+      }),
+    ]);
     expect(state.ledger.map((row) => row.kind)).toEqual([
       "reserve",
       "expire",
@@ -1091,9 +1149,6 @@ describe("subscription allowance lifecycle", () => {
     const { cache } = await import("../cache/client");
     const { CacheKeys } = await import("../cache/keys");
     const snapshots = await import("./inference-admission-snapshot");
-    const { admitOrganizationInference, InferenceAdmissionUnavailableError } = await import(
-      "./organization-inference-admission"
-    );
     const { getOrgTier } = await import("./org-rate-limits");
     const { advanceOrganizationPolicyGeneration } = await import(
       "../../db/repositories/organization-policy-generation"
@@ -1113,23 +1168,10 @@ describe("subscription allowance lifecycle", () => {
     );
     const next = (BigInt(stale.authority.generation) + 1n).toString();
 
-    // The stale snapshot still fails its request closed, but the shared
-    // projection is republished at once instead of waiting out its TTL.
-    await expect(
-      admitOrganizationInference({
-        context: {
-          organizationId: org,
-          userId: "74000000-0000-4000-8000-000000000001",
-          model: "gpt-4o-mini",
-          provider: "openai",
-          billingSource: "gateway",
-          requestId: "req_stale_snapshot_0001",
-        },
-        estimatedInputTokens: 1,
-        estimatedOutputTokens: 1,
-        admissionSnapshot: stale,
-      }),
-    ).rejects.toBeInstanceOf(InferenceAdmissionUnavailableError);
+    // A Worker lease decided from the stale snapshot is refused by the
+    // organization gate; its repair republishes the shared projection at once
+    // instead of waiting out its TTL.
+    await snapshots.refreshStaleInferenceAdmissionSnapshot(org);
     const republished = await cache.get<{ authority: { generation: string } }>(
       CacheKeys.inference.orgAdmission(org),
     );
@@ -1177,18 +1219,12 @@ test("Worker mobile identity funds inference entirely from its active Plus allow
   );
   const { resolveInferenceAuthContext } = await import("./inference-auth-context");
   const deferred: Promise<unknown>[] = [];
+  // The authoritative decision is what Worker hydration projects into the
+  // combined cache; a Worker request itself never resolves it inline.
   const auth = await resolveInferenceAuthContext(
     new Request("https://api.eliza.app/api/v1/chat/completions", {
       headers: { Authorization: `Bearer ${key}` },
     }),
-    {
-      cacheOnly: true,
-      executionCtx: {
-        waitUntil(promise) {
-          deferred.push(promise);
-        },
-      },
-    },
   );
   expect(auth.kind).toBe("authorized");
   if (auth.kind !== "authorized") throw Error("Mobile caller refused");

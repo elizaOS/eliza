@@ -211,6 +211,12 @@ export function generateAndroidConsumerHost({
       typeof profile.preserveRuntimeBytes === "boolean",
     "Runtime byte preservation must be a boolean",
   );
+  // "extract-16k": libraries are extracted on install and also stored, 16 KiB aligned.
+  requireValue(
+    profile.nativeLibraries === undefined ||
+      profile.nativeLibraries === "extract-16k",
+    'Native library packaging must be "extract-16k" or absent',
+  );
   const consumedInOutput = new Set();
   function input(reference, kind) {
     requireValue(
@@ -598,6 +604,7 @@ export function generateAndroidConsumerHost({
     releaseMinify: profile.releaseMinify,
     kotlin: profile.kotlin ?? true,
     preserveRuntimeBytes: Boolean(profile.preserveRuntimeBytes || runtimeMain),
+    nativeLibraries: profile.nativeLibraries ?? null,
     modules,
     manifest,
     identityResources: path.join(output, CONSUMER_IDENTITY_RESOURCES),

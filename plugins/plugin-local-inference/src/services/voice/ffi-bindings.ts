@@ -145,8 +145,12 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     and friends: several Paradee-family voices on one context, such as
  *     English Paradee-8M v1.2 and Castilian Spanish Delibes-8M-esES). Every
  *     symbol this binding uses is unchanged, so v19 libraries stay compatible.
+ * v21: additive `eliza_inference_paradee_set_voice_speed_range` (a caller-set
+ *     speed clamp per Paradee voice slot; the Android voice bridge binds it).
+ *     This binding does not call it and every symbol it uses is unchanged, so
+ *     v20 libraries stay compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 20 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 21 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -2293,6 +2297,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		(reported === String(ELIZA_INFERENCE_ABI_VERSION) && v17SymbolsAvailable) ||
+		(reported === "20" && v17SymbolsAvailable) ||
 		(reported === "19" && v17SymbolsAvailable) ||
 		(reported === "18" && v17SymbolsAvailable) ||
 		(reported === "17" && v17SymbolsAvailable) ||

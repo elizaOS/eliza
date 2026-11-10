@@ -132,6 +132,63 @@ describe("one total dispatch deadline", () => {
     expect(l.preProviderCancellationToken).toBe("capability-a");
     expect(l.preparedDispatch?.state).toBe("ambiguous");
   });
+  test("a cold gate whose primary hydration fails rejects before dispatch", async () => {
+    let calls = 0;
+    const l = lease(async () => {
+      calls++;
+      return Response.json(
+        { code: "inference_admission_gate_uninitialized" },
+        { status: 503 },
+      );
+    });
+    let failure: unknown;
+    try {
+      await markInferenceAdmissionLeaseDispatched(l);
+    } catch (error) {
+      failure = error;
+    }
+    // This unit has no primary, so the inline hydration fails closed.
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "Inference admission gate hydration failed",
+    );
+    expect(calls).toBe(1);
+    expect(l.preparedDispatch?.state).toBe("rejected");
+    expect(l.providerDispatched).toBe(false);
+    expect(l.preProviderCancellationToken).toBe("capability-a");
+  });
+  test.each(["transport", "invalid-ack", "unknown-503"])(
+    "a cold response after %s never erases possible prior dispatch",
+    async (first) => {
+      let calls = 0;
+      const bodies: unknown[] = [];
+      const l = lease(async (request) => {
+        bodies.push(await request.json());
+        if (++calls === 1) {
+          if (first === "transport") throw Error("Unknown transport outcome");
+          if (first === "invalid-ack") return new Response("{");
+          return Response.json({ code: "unknown" }, { status: 503 });
+        }
+        return Response.json(
+          { code: "inference_admission_gate_uninitialized" },
+          { status: 503 },
+        );
+      });
+      let failure: unknown;
+      try {
+        await markInferenceAdmissionLeaseDispatched(l);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeDefined();
+      expect(calls).toBe(3);
+      expect(bodies[1]).toEqual(bodies[0]);
+      expect(bodies[2]).toEqual(bodies[0]);
+      expect(l.preparedDispatch?.state).toBe("ambiguous");
+      expect(l.providerDispatched).toBe(false);
+      expect(l.preProviderCancellationToken).toBe("capability-a");
+    },
+  );
   test("three immediate failures retain the existing attempt limit", async () => {
     let calls = 0;
     const l = lease(async () => {
@@ -168,3 +225,87 @@ describe("one total dispatch deadline", () => {
     },
   );
 });
+
+test.each([false, true])(
+  "proxy refuses an unhydratable cold gate before provider work (ambiguous %s)",
+  async (ambiguous) => {
+    const admission = await import(
+      "@elizaos/cloud-shared/lib/services/organization-inference-admission"
+    );
+    const { createHandler } = await import(
+      "@elizaos/cloud-shared/lib/services/proxy/engine"
+    );
+    let attempts = 0;
+    let providerCalls = 0;
+    const settled: number[] = [];
+    const pending: Promise<unknown>[] = [];
+    const l = lease(async () => {
+      if (++attempts === 1 && ambiguous) return new Response("{");
+      return Response.json(
+        { code: "inference_admission_gate_uninitialized" },
+        { status: 503 },
+      );
+    });
+    const mocked = spyOn(
+      admission,
+      "admitOrganizationInference",
+    ).mockImplementation(
+      async () =>
+        ({
+          markProviderDispatched: async () => {
+            try {
+              await markInferenceAdmissionLeaseDispatched(l);
+            } catch (cause) {
+              throw new admission.InferenceAdmissionUnavailableError({ cause });
+            }
+          },
+          settle: async (cost: number) => {
+            settled.push(cost);
+            return null;
+          },
+          settleUnknown: async () => {
+            throw Error("Provider work never started");
+          },
+        }) as never,
+    );
+    try {
+      const handler = createHandler(
+        {
+          id: "synthetic",
+          name: "Synthetic",
+          auth: "apiKeyWithOrg",
+          getCost: async () => 1,
+        },
+        async () => {
+          providerCalls++;
+          return { response: Response.json({ unexpected: true }) };
+        },
+        {
+          mode: "combined",
+          auth: { user: { id: "user-a", organization_id: "org-a" } },
+          requestId: "request-a",
+          admissionSnapshot: {} as never,
+          executionCtx: {
+            waitUntil: (work: Promise<unknown>) => pending.push(work),
+          },
+        },
+      );
+      const response = await handler(
+        new Request("https://cloud.test/synthetic"),
+      );
+      expect(response.status).toBe(503);
+      const body = (await response.json()) as { code?: unknown };
+      expect(body.code).toBe("service_unavailable");
+      expect(response.headers.get("Retry-After")).toBe("1");
+      await Promise.all(pending);
+      expect(providerCalls).toBe(0);
+      expect(settled).toEqual([0]);
+      expect(attempts).toBe(ambiguous ? 3 : 1);
+      expect(l.preparedDispatch?.state).toBe(
+        ambiguous ? "ambiguous" : "rejected",
+      );
+    } finally {
+      mocked.mockRestore();
+    }
+  },
+);

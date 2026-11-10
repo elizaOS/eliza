@@ -12,14 +12,17 @@
  *           packages/cloud/api/test/e2e
  */
 
-import { createHash } from "node:crypto";
+import { afterAll, beforeEach } from "bun:test";
+import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { orgRateLimitOverridesRepository } from "@elizaos/cloud-shared/db/repositories/org-rate-limit-overrides";
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { invalidateOrgTierCache } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
@@ -65,11 +68,13 @@ async function ensureTestUser({
   email,
   stewardUserId,
   role = "admin",
+  withSandbox = true,
 }: {
   slug: string;
   email: string;
   stewardUserId: string;
   role?: string;
+  withSandbox?: boolean;
 }) {
   const walletAddress = testWalletAddress(stewardUserId);
   const existingOrg = await dbWrite.query.organizations.findFirst({
@@ -134,16 +139,32 @@ async function ensureTestUser({
     .where(eq(users.id, user.id));
   await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
 
-  const sandboxes = await agentSandboxesRepository.listByOrganization(
-    organization.id,
+  // These suites share three fixture organizations across many route cases.
+  // Match the existing test API-key cap at the organization boundary so
+  // payload and authorization cases reach their intended assertions. Dedicated
+  // rate-limit tests retain their own organizations and limits.
+  await orgRateLimitOverridesRepository.upsert(
+    {
+      organization_id: organization.id,
+      strict_rpm: 10_000,
+      note: "Worker e2e shared fixture organization",
+    },
+    user.id,
   );
-  await ensureFixtureSandbox({
-    slug,
-    organizationId: organization.id,
-    userId: user.id,
-    sandboxes,
-    repository: agentSandboxesRepository,
-  });
+  await invalidateOrgTierCache(organization.id);
+
+  if (withSandbox) {
+    const sandboxes = await agentSandboxesRepository.listByOrganization(
+      organization.id,
+    );
+    await ensureFixtureSandbox({
+      slug,
+      organizationId: organization.id,
+      userId: user.id,
+      sandboxes,
+      repository: agentSandboxesRepository,
+    });
+  }
 
   await apiKeysService.deactivateUserKeysByName(user.id, "playwright-e2e");
   const { plainKey } = await apiKeysService.create({
@@ -190,6 +211,32 @@ const { plainKey: affiliatePlainKey } = await apiKeysService.create({
   is_active: true,
 });
 
+// The owning runner enables these only for Group D on its transient store.
+// No new random tenants may be seeded into configured or persistent databases.
+if (process.env.CLOUD_E2E_GROUP_D_STRICT_FIXTURES === "1") {
+  if (process.env.CLOUD_E2E_DISPOSABLE_DB !== "1")
+    throw new Error(
+      "Group D isolated fixtures require the owning runner's disposable database.",
+    );
+  // Each Group D strict-validation family has its own organization bucket.
+  // An API key rate_limit does not override the organization strict-RPM policy.
+  const strictValidationKeys: Record<string, string> = {};
+  const validationRun = randomUUID();
+  for (const family of ["stt", "tts", "image", "video", "fal"] as const) {
+    const identity = `e2e-strict-${validationRun}-${family}`;
+    const fixture = await ensureTestUser({
+      slug: identity,
+      email: `${identity}@example.test`,
+      stewardUserId: identity,
+      role: "admin",
+      withSandbox: false,
+    });
+    strictValidationKeys[family] = fixture.plainKey;
+  }
+  process.env.TEST_STRICT_VALIDATION_KEYS =
+    JSON.stringify(strictValidationKeys);
+}
+
 process.env.TEST_API_KEY = owner.plainKey;
 process.env.TEST_MEMBER_API_KEY = member.plainKey;
 process.env.TEST_AFFILIATE_API_KEY = affiliatePlainKey;
@@ -216,4 +263,53 @@ if (process.env.REQUIRE_E2E_SERVER !== "0") {
         "the accepted response matched the current run receipt",
     );
   }
+}
+
+// The local Worker enqueues deletion; the Node worker owns its execution.
+// Drive that existing worker only against the runner-attested disposable store.
+if (process.env.CLOUD_E2E_DISPOSABLE_DB === "1") {
+  const database = new URL(process.env.TEST_DATABASE_URL || "");
+  if (
+    !process.env.CLOUD_E2E_RUN_RECEIPT ||
+    !["127.0.0.1", "localhost", "::1", "[::1]"].includes(database.hostname)
+  )
+    throw new Error("Deletion worker requires the owned local e2e database");
+  const { provisioningJobService } = await import("@elizaos/cloud-shared/node");
+  const { JOB_TYPES } = await import("@elizaos/cloud-shared/agent-contracts");
+  const jobTypes = [
+    JOB_TYPES.APP_DELETE,
+    JOB_TYPES.APP_DB_DEPROVISION,
+    JOB_TYPES.APP_CACHE_INVALIDATE,
+    JOB_TYPES.CONTAINER_DELETE,
+  ];
+  let pending: Promise<void> | undefined;
+  let failure: unknown;
+  const drain = () =>
+    (pending ??= provisioningJobService
+      .processPendingJobs(25, { jobTypes })
+      .then((result) => {
+        if (result.failed)
+          throw new Error(
+            `App deletion worker failed: ${JSON.stringify(result.errors)}`,
+          );
+      })
+      .catch((error) => {
+        failure = error;
+      })
+      .finally(() => {
+        pending = undefined;
+      }));
+  const timer = setInterval(() => {
+    void drain();
+  }, 250);
+  timer.unref();
+  beforeEach(async () => {
+    await drain();
+    if (failure) throw failure;
+  });
+  afterAll(async () => {
+    clearInterval(timer);
+    await drain();
+    if (failure) throw failure;
+  });
 }

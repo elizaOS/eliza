@@ -1,3 +1,9 @@
+import {
+	type BoundRequestOperationAttempt,
+	BoundRequestOperationError,
+	bindRequestOperationResult,
+} from "../actions/task-extraction-context";
+import { copyBoundOperationDenial } from "./operation-restriction-projection";
 /**
  * Settles action handlers before any callback can reach a user-facing transport.
  * The boundary normalizes the returned ActionResult, validates effect receipts,
@@ -44,6 +50,7 @@ import {
 	isProviderContextOverflowFailure,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
+import { isPlainObject } from "../utils/type-guards";
 import { bindEffectDelivery } from "./effect-delivery";
 
 type BufferedActionCallback = {
@@ -55,6 +62,8 @@ type SettlementPhase = "pending" | "settled" | "failed";
 
 /** Inputs for one isolated handler attempt and its user-facing callback. */
 export interface SettleActionHandlerOptions {
+	/** Opaque identity supplied only by the actual host executor. */
+	operationAttempt?: BoundRequestOperationAttempt;
 	runtime: IAgentRuntime;
 	action: Action;
 	callback?: HandlerCallback;
@@ -66,14 +75,6 @@ export interface SettleActionHandlerOptions {
 	 * a normalized failure result so planner loops can reason about the failure.
 	 */
 	handlerError?: "return-failure" | "rethrow";
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 function invalidActionResult(message: string): never {
@@ -106,8 +107,9 @@ function markCanonicalCallback(
 export function normalizeActionResult(
 	actionName: string,
 	result: unknown,
+	operationAttempt?: BoundRequestOperationAttempt,
 ): ActionResult {
-	if (!isObjectRecord(result)) {
+	if (!isPlainObject(result)) {
 		return invalidActionResult(
 			"Action handlers must return a plain ActionResult object.",
 		);
@@ -118,7 +120,7 @@ export function normalizeActionResult(
 		);
 	}
 	const rawResult = result as unknown as ActionResult;
-	const resultData = isObjectRecord(rawResult.data) ? rawResult.data : {};
+	const resultData = isPlainObject(rawResult.data) ? rawResult.data : {};
 	const effectReceipts =
 		rawResult.effectReceipts === undefined
 			? undefined
@@ -141,7 +143,6 @@ export function normalizeActionResult(
 
 	const normalized: ActionResult = {
 		...rawResult,
-		success: rawResult.success,
 		...(effectReceipts !== undefined ? { effectReceipts } : {}),
 		...(userFacingEffectReceiptIds !== undefined
 			? { userFacingEffectReceiptIds }
@@ -154,12 +155,18 @@ export function normalizeActionResult(
 			actionName,
 		},
 	};
-	return rawResult.replyFailure === undefined
-		? normalized
-		: applyGroundedActionReply(normalized, {
-				kind: "unavailable",
-				failure: normalizeActionReplyFailure(rawResult.replyFailure),
-			});
+	if (operationAttempt)
+		bindRequestOperationResult(normalized, operationAttempt);
+	copyBoundOperationDenial(rawResult, normalized, operationAttempt);
+	if (rawResult.replyFailure === undefined) return normalized;
+	const finalResult = applyGroundedActionReply(normalized, {
+		kind: "unavailable",
+		failure: normalizeActionReplyFailure(rawResult.replyFailure),
+	});
+	if (operationAttempt)
+		bindRequestOperationResult(finalResult, operationAttempt);
+	copyBoundOperationDenial(normalized, finalResult, operationAttempt);
+	return finalResult;
 }
 
 /** Build a planner-visible failure while retaining the trusted action identity. */
@@ -339,6 +346,19 @@ export async function settleActionHandler(
 	};
 	const deliverWithoutModelStream = (buffered: BufferedActionCallback) =>
 		runWithSuppressedModelStream(() => deliverSafely(buffered));
+	// Every settled delivery runs on one chain, so a callback emitted while the
+	// buffered ones drain queues behind them (ActionSettlement.qnt
+	// DeliveredInEmissionOrder). deliverSafely never rejects.
+	let deliveryTail: Promise<unknown> = Promise.resolve();
+	const deliverInOrder = (
+		buffered: BufferedActionCallback,
+	): Promise<Memory[]> => {
+		const delivery = deliveryTail.then(() =>
+			deliverWithoutModelStream(buffered),
+		);
+		deliveryTail = delivery;
+		return delivery;
+	};
 
 	const actionCallback: HandlerCallback | undefined = options.callback
 		? async (response, actionName) => {
@@ -359,7 +379,7 @@ export async function settleActionHandler(
 					);
 					return [];
 				}
-				return deliverWithoutModelStream(buffered);
+				return deliverInOrder(buffered);
 			}
 		: undefined;
 
@@ -405,6 +425,29 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
+		if (error instanceof BoundRequestOperationError) {
+			const denied = actionFailureResult(
+				options.action.name,
+				error.message,
+				{
+					code: error.code,
+					acceptance: "rejected",
+					executionStatus: "not_started",
+					executed: false,
+					retryable: false,
+				},
+				{
+					kind: "handler_error",
+					boundary: "handler",
+					code: error.code,
+					retryable: false,
+				},
+			);
+			if (options.operationAttempt)
+				bindRequestOperationResult(denied, options.operationAttempt);
+			copyBoundOperationDenial(error, denied, options.operationAttempt);
+			return denied;
+		}
 		const contextOverflow = isProviderContextOverflowFailure(error);
 		// A processing-policy denial raised by a model call inside the handler is
 		// as terminal as a denied admission: a replan must not retry it.
@@ -443,13 +486,19 @@ export async function settleActionHandler(
 			failureProvenance,
 		);
 	}
-	if (isObjectRecord(rawResult)) {
+	if (isPlainObject(rawResult)) {
 		effectContractDeclared =
 			"effectReceipts" in rawResult ||
 			"userFacingEffectReceiptIds" in rawResult;
 	}
 	try {
-		settledResult = normalizeActionResult(options.action.name, rawResult);
+		if (isPlainObject(rawResult) && options.operationAttempt)
+			bindRequestOperationResult(rawResult, options.operationAttempt);
+		settledResult = normalizeActionResult(
+			options.action.name,
+			rawResult,
+			options.operationAttempt,
+		);
 		if (
 			settledResult.success !== false &&
 			tagsMayProduceEffects(options.action.tags) &&
@@ -510,9 +559,8 @@ export async function settleActionHandler(
 	// No action-owned prose is an acceptable substitute for unavailable model
 	// presentation. Keep the settled effect and let the turn emit system status.
 	if (settledResult.replyFailure) bufferedCallbacks.length = 0;
-	for (const buffered of bufferedCallbacks) {
-		await deliverWithoutModelStream(buffered);
-	}
+	for (const buffered of bufferedCallbacks) void deliverInOrder(buffered);
+	await deliveryTail;
 	if (callbackDeliveryFailures.length > 0) {
 		settledResult = {
 			...settledResult,

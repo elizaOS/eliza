@@ -1,15 +1,13 @@
 /** The application host composes its Android receiver before starting the portable agent. */
 
-import { STATIC_ELIZA_PLUGINS } from "@elizaos/agent/runtime/plugin-types";
-import { browserPlugin } from "@elizaos/plugin-browser";
-import { workflowPlugin } from "@elizaos/plugin-workflow";
-import { mobileRemoteTargetPlugin } from "./mobile-remote-target";
+import { STATIC_ELIZA_PLUGIN_LOADERS } from "@elizaos/agent/runtime/plugin-types";
 
-STATIC_ELIZA_PLUGINS["@elizaos/app/mobile-remote-target"] = {
-  default: mobileRemoteTargetPlugin,
-};
-STATIC_ELIZA_PLUGINS["@elizaos/plugin-browser"] = { default: browserPlugin };
-STATIC_ELIZA_PLUGINS["@elizaos/plugin-workflow"] = { default: workflowPlugin };
+// Load on first resolve, so a host that denies the plugin never evaluates it.
+// The agent registers the browser and workflow loaders itself.
+STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/app/mobile-remote-target"] =
+  async () => ({
+    default: (await import("./mobile-remote-target")).mobileRemoteTargetPlugin,
+  });
 const { installMobileWorkflowProcessHost } = await import(
   "./runtime/install-mobile-workflow-process-host"
 );

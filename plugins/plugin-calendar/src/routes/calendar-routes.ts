@@ -28,6 +28,7 @@ import type {
   SetLifeOpsCalendarIncludedRequest,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/contracts";
+import { ownerCalendarFeedWithReadDiagnostics } from "../service/managed-calendar-read.js";
 import type { CalendarOwnerMutationGateway } from "./mutation-gateway.js";
 
 export type CalendarRouteRateLimitKey =
@@ -48,6 +49,8 @@ export interface CalendarRouteService {
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
+    now?: Date,
+    signal?: AbortSignal,
   ): Promise<unknown>;
   listCalendars(
     requestUrl: URL,
@@ -112,6 +115,8 @@ export interface CalendarRouteService {
 
 /** Host-provided HTTP plumbing. */
 export interface CalendarRouteDeps {
+  /** The calling transport owns cancellation. */
+  signal?: AbortSignal;
   method: string;
   pathname: string;
   url: URL;
@@ -312,7 +317,14 @@ export async function handleCalendarRoutes(
     if (deps.rateLimit("google_api_read")) return true;
     return deps.runRoute(async (service) => {
       deps.json(
-        await service.getCalendarFeed(url, parseCalendarFeedQuery(q, deps)),
+        ownerCalendarFeedWithReadDiagnostics(
+          await service.getCalendarFeed(
+            url,
+            parseCalendarFeedQuery(q, deps),
+            undefined,
+            deps.signal,
+          ),
+        ),
       );
     });
   }

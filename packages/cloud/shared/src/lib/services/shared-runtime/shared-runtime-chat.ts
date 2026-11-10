@@ -69,12 +69,11 @@ import {
 } from "../image-generation";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
 import {
-  getInferenceAdmissionSnapshotCacheOnly,
-  InferenceAdmissionSnapshotCacheWarmingError,
+  getInferenceAdmissionSnapshotCacheFirst,
   inferenceRateLimitConfig,
 } from "../inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
-import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "../inference-billing-fast-path";
 import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
@@ -433,6 +432,7 @@ function personalSharedMediaPort(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
+  executionCtx: BridgeExecutionContext | undefined,
 ): SharedMediaGenerationPort | undefined {
   const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
   const providerKeys = imageProviderKeysFromCloudEnvironment();
@@ -463,7 +463,12 @@ function personalSharedMediaPort(
       actionOrdinal += 1;
       let rateLimited: Response | null;
       try {
-        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict");
+        // A Worker turn counts in the Durable Object strict window that the
+        // generative HTTP routes use, as completions do below.
+        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
+          cacheOnly: Boolean(executionCtx),
+          executionCtx,
+        });
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
         // the Shared runtime's single retryable warming signal.
@@ -623,7 +628,7 @@ export function sharedElizaRuntimeExecution(
   turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
-  _executionCtx: BridgeExecutionContext | undefined,
+  executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
   trustedNetworkTurn?: unknown,
@@ -652,7 +657,9 @@ export function sharedElizaRuntimeExecution(
       channelSource: "blooio",
     });
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
+  const media = personalShared
+    ? personalSharedMediaPort(agent, roomId, turnKey, executionCtx)
+    : undefined;
   const network = sharedNetworkExecution(
     agent,
     personalShared,
@@ -1127,22 +1134,8 @@ async function admitTurn(
   let rateLimited: Response | null;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   if (executionCtx && funding === "organization-credits") {
-    try {
-      admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
-        agent.organization_id,
-        executionCtx,
-        { awaitHydrationMs: SHARED_TURN_HYDRATION_WAIT_MS },
-      );
-    } catch (error) {
-      // error-policy:J1 a combined policy miss remains a retryable warmup and
-      // cannot fall through to synchronous balance or tier reads.
-      if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
-        throw new SharedRuntimeCacheWarmingError(
-          "Inference admission cache is warming. Retry shortly.",
-        );
-      }
-      throw error;
-    }
+    // Cache-first: a cold organization projection is filled inline.
+    admissionSnapshot = await getInferenceAdmissionSnapshotCacheFirst(agent.organization_id);
   }
   try {
     rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {
@@ -1194,7 +1187,7 @@ async function admitTurn(
     // runtime's retryable cache-warming signal.
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
     }

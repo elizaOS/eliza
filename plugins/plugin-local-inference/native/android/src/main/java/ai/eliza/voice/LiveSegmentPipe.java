@@ -20,9 +20,12 @@ import org.json.*;
 public final class LiveSegmentPipe {
  public interface Transport {void check()throws Exception;JSONObject post(JSONObject body)throws Exception;default void cancelInFlight(){}}
  public interface Sink {void result(JSONObject value);void failed(String code);}
- public static final int MAX_BATCHES=8,MAX_BATCH_CHARS=128*1024;
+ // The queue holds about 4 s of 32 ms frames, so a slow final (the POST carrying speech-end waits for
+ // it) does not end the capture, with a hard cap on queued JSON.
+ public static final int MAX_QUEUED_FRAMES=4000/32,MAX_QUEUED_CHARS=1024*1024,MAX_BATCH_CHARS=128*1024;
  private final Transport transport;private final Sink sink;private final String sessionId,roomId;
- private final ArrayDeque<JSONObject> queued=new ArrayDeque<>();
+ private final ArrayDeque<String> queued=new ArrayDeque<>();
+ private int queuedFrames,queuedChars;
  private final CompletableFuture<Boolean> closed=new CompletableFuture<>(),ready=new CompletableFuture<>();
  public CompletableFuture<Boolean> ready(){return ready;}
  private boolean closing,cancelled,finished;private double cutoff=Double.POSITIVE_INFINITY;
@@ -39,24 +42,32 @@ public final class LiveSegmentPipe {
    String encoded=batch.toString();
    synchronized(this){
     if(closing||finished)return false;
-    if(queued.size()<MAX_BATCHES&&frames.length()<=32&&encoded.length()<=MAX_BATCH_CHARS){queued.add(new JSONObject(encoded));notifyAll();return true;}
+    if(frames.length()<=32&&encoded.length()<=MAX_BATCH_CHARS&&queuedFrames+frames.length()<=MAX_QUEUED_FRAMES&&queuedChars+encoded.length()<=MAX_QUEUED_CHARS){
+     queued.add(encoded);queuedFrames+=frames.length();queuedChars+=encoded.length();notifyAll();return true;
+    }
    }
    fail("BACKPRESSURE");return false;
   }catch(Exception invalid){fail("INVALID_AUDIO");return false;}
  }
  public synchronized void cutoff(double at){cutoff=Math.min(cutoff,at);}
  public CompletableFuture<Boolean> close(boolean discard,double at){
-  synchronized(this){cutoff=Math.min(cutoff,at);closing=true;cancelled|=discard;if(cancelled)queued.clear();notifyAll();}
+  synchronized(this){cutoff=Math.min(cutoff,at);closing=true;cancelled|=discard;if(cancelled)clearQueue();notifyAll();}
   if(discard)transport.cancelInFlight();return closed;
  }
 
  private void fail(String code){
   boolean report;
-  synchronized(this){report=!cancelled&&!finished;cancelled=true;closing=true;queued.clear();notifyAll();}
-  transport.cancelInFlight();
-  if(report)sink.failed(code);
-  // Rejected worker has no drainer to acknowledge its end.
-  if("BUSY".equals(code)){synchronized(this){finished=true;}ready.complete(false);closed.complete(false);}
+  synchronized(this){report=!cancelled&&!finished;cancelled=true;closing=true;clearQueue();notifyAll();}
+  try{transport.cancelInFlight();if(report)sink.failed(code);}
+  finally{
+   // Rejected work has no drainer. Failed cancellation or notification cannot strand these futures.
+   if("BUSY".equals(code)){synchronized(this){finished=true;}ready.complete(false);closed.complete(false);}
+  }
+ }
+ private void clearQueue(){queued.clear();queuedFrames=0;queuedChars=0;} // Under this lock.
+ private JSONObject poll()throws JSONException{ // Under this lock.
+  String encoded=queued.poll();if(encoded==null)return null;
+  JSONObject batch=new JSONObject(encoded);queuedChars-=encoded.length();queuedFrames-=batch.getJSONArray("frames").length();return batch;
  }
  private JSONObject body(JSONObject batch)throws JSONException{
   JSONObject body=new JSONObject().put("sessionId",sessionId);if(roomId!=null)body.put("roomId",roomId);
@@ -96,7 +107,7 @@ public final class LiveSegmentPipe {
    }else ready.complete(false);
    for(;;){
     JSONObject batch;
-    synchronized(this){if(queued.isEmpty()&&!closing)wait(250);batch=queued.poll();if(batch==null&&closing)break;}
+    synchronized(this){if(queued.isEmpty()&&!closing)wait(250);batch=poll();if(batch==null&&closing)break;}
     transport.check();
     if(batch==null)continue;
     synchronized(this){if(cancelled)continue;}
@@ -107,9 +118,10 @@ public final class LiveSegmentPipe {
   }catch(Exception failure){fail("TRANSPORT");}
   finally{
    ready.complete(false);
-   try{transport.check();JSONObject response=transport.post(body(null));transport.check();reply(response);serverClosed=response.optInt("status")==200&&new JSONObject(response.getString("body")).optBoolean("closed");}
+   // A failed last segment still closes the server session (502 ASR_FAILED with closed).
+   try{transport.check();JSONObject response=transport.post(body(null));transport.check();reply(response);int status=response.optInt("status");JSONObject value=new JSONObject(response.getString("body"));serverClosed=(status==200||status==502&&"ASR_FAILED".equals(value.optString("code")))&&value.optBoolean("closed");}
    catch(Exception unavailable){/* A changed enrollment must never receive even this cleanup. */}
-   synchronized(this){finished=true;queued.clear();}
+   synchronized(this){finished=true;clearQueue();}
    closed.complete(serverClosed);
   }
  }

@@ -1,0 +1,51 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/generations.ts",
+    "packages/cloud/shared/src/db/schemas/generations.ts",
+    "packages/cloud/shared/src/lib/storage/object-store.ts",
+    "packages/cloud/shared/src/lib/storage/r2-runtime-binding.ts",
+    "packages/cloud/shared/src/db/repositories/__tests__/generation-object-versions.pglite.test.ts",
+    "packages/cloud/quint/check-generation-object-versions.mjs",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-generation-object-versions.mjs",
+  "bounds": {
+    "assumptions": [
+      "Two server-owned preparation versions, two fields per batch, one initial committed version, and atomic SQL pointer publication. UUID uniqueness and provider create-only semantics are assumed; generic SQL/TypeScript refinement is not proved.",
+      "A successful field PUT acknowledges complete bytes. Provider failure can be ambiguous, and a sibling PUT can settle after its caller rejected. Prepared objects never replace the bytes of any old or concurrent version.",
+      "Failed and abandoned preparation objects are retained without speculative deletion. An unknown SQL outcome may still reference them. Crash orphan reclamation and durable cleanup receipts remain explicit unimplemented obligations; this model does not establish a garbage collector.",
+      "Existing trusted explicit R2 pointer restoration bypasses preparation and remains supported. Tenant authorization, same-row lifecycle/financial CAS, arbitrary content bytes, provider checksum verification and external corruption remain outside this bounded model.",
+      "The real PGlite tests cover four fields, rollback after PUT, parallel writers, ambiguous and rejected PUTs, late sibling settlement and retained-pointer restoration. They do not establish live R2/S3 qualification or database transport-ambiguous commit handling."
+    ],
+    "progress": "Preparations and outstanding provider calls settle only under weak fairness of their provider/SQL continuations; no elapsed deadline, successful write or cleanup is guaranteed."
+  },
+  "cases": [
+    {
+      "name": "immutable-generation-pointers",
+      "main": "generation_object_versions",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["PreparedAttemptsSettle", "OutstandingPutsSettle"],
+      "temporalChecks": [
+        {
+          "property": "PreparedAttemptsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Provider and SQL continuations are weakly fair. Success, crash recovery and orphan cleanup are not assumed."
+          ]
+        },
+        {
+          "property": "OutstandingPutsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Provider and SQL continuations are weakly fair. Success, crash recovery and orphan cleanup are not assumed."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

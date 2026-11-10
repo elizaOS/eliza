@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="ai.elizaresearch.pixelconfig" android:versionCode="1" android:versionName="1">
+    package="ai.eliza.hardware.pixelconfig" android:versionCode="1" android:versionName="1">
     <queries>
         <package android:name="com.google.euiccpixel" />
         <package android:name="com.google.android.euicc" />

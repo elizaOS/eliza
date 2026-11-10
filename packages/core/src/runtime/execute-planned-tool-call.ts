@@ -1,3 +1,10 @@
+import {
+	beginRequestOperationAttempt,
+	bindRequestOperationResult,
+	getBoundOperationDenialAttempt,
+	getBoundOperationDenialOperation,
+} from "../actions/task-extraction-context";
+import { copyBoundOperationDenial } from "./operation-restriction-projection";
 /**
  * Executes one planner-selected tool call against its Action: resolves the
  * action, applies role and connector-account gates, validates
@@ -44,6 +51,7 @@ import type { ContentValue } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state";
 import { withActiveRoutingContexts } from "../utils/context-routing";
+import { isObjectRecord, isPlainObject } from "../utils/type-guards";
 import { resolveActionEventWorldId } from "./action-event-world";
 import {
 	actionGateFailure,
@@ -52,10 +60,10 @@ import {
 } from "./action-gate";
 import {
 	actionFailureResult as failureResult,
+	normalizeActionResult,
 	settleActionHandler,
 	stringifyActionError as stringifyError,
 } from "./action-handler-settlement";
-import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { observeOwnerToolExecution } from "./owner-tool-execution-observer";
 import type { PlannerToolCall } from "./planner-types.ts";
@@ -64,8 +72,6 @@ import {
 	type EntityAliasCapabilityMap,
 	resolveEntityAliasRefs,
 } from "./tool-arg-aliases";
-
-export type PlannedToolCall = PlannerToolCall;
 
 export interface ExecutePlannedToolCallContext {
 	message: Memory;
@@ -101,10 +107,6 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	/** Projected settlement for turn-owned recovery before buffered callbacks. */
 	onBeforeCallbacks?: (result: ActionResult) => void;
 };
-
-function isContentRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 const MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH = 8;
 const MAX_ACTION_RESULT_DIAGNOSTIC_NODES = 1_024;
@@ -159,7 +161,7 @@ function projectActionResultDiagnosticValue(
 	if (typeof value === "string") {
 		return redactDiagnosticString(value, redactDiagnosticText);
 	}
-	if (typeof value !== "object" || value === null) {
+	if (typeof value !== "object") {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
 	if (depth >= MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH || seen.has(value)) {
@@ -270,6 +272,8 @@ function projectActionResultDiagnosticValue(
 	}
 }
 
+const SUPPRESSED_RESULT_KEYS: ReadonlySet<string> = new Set(["data", "values"]);
+
 function actionResultToContentRecord(
 	result: ActionResult,
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
@@ -281,9 +285,9 @@ function actionResultToContentRecord(
 		new WeakSet<object>(),
 		0,
 		{ nodes: 0 },
-		options.suppressData ? new Set(["data", "values"]) : undefined,
+		options.suppressData ? SUPPRESSED_RESULT_KEYS : undefined,
 	);
-	return isContentRecord(projectedResult) ? projectedResult : {};
+	return isObjectRecord(projectedResult) ? projectedResult : {};
 }
 
 function sensitiveActionResultMarker(
@@ -354,6 +358,13 @@ export function projectActionResultForClipboard(
 			: undefined;
 	const safeActionName = actionName ?? resultActionName;
 	const safeControlData = {
+		...(getBoundOperationDenialAttempt(result)
+			? {
+					code: result.data?.code,
+					executionStatus: "not_started",
+					executed: false,
+				}
+			: {}),
 		...(safeActionName ? { actionName: safeActionName } : {}),
 		...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
 		...(result.data?.retryable === false ? { retryable: false } : {}),
@@ -367,7 +378,7 @@ export function projectActionResultForClipboard(
 			? { suppressPlannerReply: true }
 			: {}),
 	};
-	return {
+	const projected: ActionResult = {
 		success: result.success,
 		...(result.text !== undefined ? { text: result.text } : {}),
 		...(result.transcriptVisibility !== undefined
@@ -409,6 +420,11 @@ export function projectActionResultForClipboard(
 			? { continueChain: result.continueChain }
 			: {}),
 	};
+	const projectionAttempt = getBoundOperationDenialAttempt(result);
+	if (projectionAttempt)
+		bindRequestOperationResult(projected, projectionAttempt);
+	copyBoundOperationDenial(result, projected, projectionAttempt);
+	return projected;
 }
 
 function projectSettledResultForObserver(
@@ -496,7 +512,7 @@ function publishSettledResult(
 }
 
 function readMetadataString(message: Memory, key: string): string | undefined {
-	const metadata = isContentRecord(message.metadata) ? message.metadata : null;
+	const metadata = isObjectRecord(message.metadata) ? message.metadata : null;
 	const value = metadata?.[key];
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -560,13 +576,26 @@ function runWithMessageTrajectoryContext<T>(
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
-	toolCall: PlannerToolCall | PlannedToolCall,
+	toolCall: PlannerToolCall,
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
 	const ownerExecutionId = runtime.ownerToolExecutionObserver
 		? crypto.randomUUID()
 		: undefined;
+	const gateCapture = (
+		gate: OwnerCapture["gate"],
+		gateOutcome: OwnerCapture["gateOutcome"],
+	): OwnerCapture | undefined =>
+		runtime.ownerToolExecutionObserver
+			? {
+					runtime,
+					executionId: ownerExecutionId,
+					phase: "gate",
+					gate,
+					gateOutcome,
+				}
+			: undefined;
 	// Perf probe (#latency): per-segment wall clock for one executed tool call,
 	// logged as a single summary line. Diagnostic only; never alters behavior.
 	const perfT0 = Date.now();
@@ -600,15 +629,7 @@ export async function executePlannedToolCall(
 				},
 			),
 			{
-				ownerCapture: runtime.ownerToolExecutionObserver
-					? {
-							runtime,
-							executionId: ownerExecutionId,
-							phase: "gate",
-							gate: "lookup",
-							gateOutcome: "denied",
-						}
-					: undefined,
+				ownerCapture: gateCapture("lookup", "denied"),
 			},
 		);
 	}
@@ -642,15 +663,7 @@ export async function executePlannedToolCall(
 			redactDiagnosticText,
 			failureResult(action.name, gateFailure),
 			{
-				ownerCapture: runtime.ownerToolExecutionObserver
-					? {
-							runtime,
-							executionId: ownerExecutionId,
-							phase: "gate",
-							gate: "role-context",
-							gateOutcome: "denied",
-						}
-					: undefined,
+				ownerCapture: gateCapture("role-context", "denied"),
 			},
 		);
 	}
@@ -668,16 +681,83 @@ export async function executePlannedToolCall(
 					`Owner-private disclosure denied: ${disclosure.reason}`,
 				),
 				{
-					ownerCapture: runtime.ownerToolExecutionObserver
-						? {
-								runtime,
-								executionId: ownerExecutionId,
-								phase: "gate",
-								gate: "disclosure",
-								gateOutcome: "denied",
-							}
-						: undefined,
+					ownerCapture: gateCapture("disclosure", "denied"),
 				},
+			);
+		}
+	}
+
+	// Mint the host attempt before schema rejection: an out-of-request operation
+	// remains outside the task even when the planner supplies malformed args.
+	const requestOperationAttempt = executorCtx.state
+		? beginRequestOperationAttempt({
+				runtime,
+				state: executorCtx.state,
+				message: executorCtx.message,
+				action,
+			})
+		: undefined;
+	if (action.restrictRequestOperation) {
+		const restriction: unknown = runWithActionRoutingContext(
+			{
+				actionName: action.name,
+				modelClass: action.modelClass,
+				messageId: executorCtx.message.id,
+				requestMessage: executorCtx.message,
+				requestState: executorCtx.state,
+				requestRuntime: runtime,
+				hostAttemptId: ownerExecutionId,
+				requestOperationAttempt,
+			},
+			() =>
+				action.restrictRequestOperation?.({
+					runtime,
+					message: executorCtx.message,
+					state: executorCtx.state,
+					action,
+					params: toolCall.params,
+				}),
+		);
+		if (restriction !== undefined) {
+			// A callback cannot grant execution or manufacture outside-task proof.
+			// Invalid/async/lookalike output is a failed admission, never a pass.
+			if (
+				!isObjectRecord(restriction) ||
+				restriction.success !== false ||
+				!getBoundOperationDenialOperation(restriction) ||
+				!requestOperationAttempt ||
+				getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt
+			) {
+				return emitToolResult(
+					toolCall,
+					redactDiagnosticText,
+					failureResult(
+						action.name,
+						"Invalid request-operation restriction result",
+						{
+							code: "ACTION_REQUEST_RESTRICTION_INVALID",
+							acceptance: "rejected",
+							executionStatus: "not_started",
+							executed: false,
+							retryable: false,
+						},
+						{
+							kind: "handler_error",
+							boundary: "handler",
+							code: "ACTION_REQUEST_RESTRICTION_INVALID",
+							retryable: false,
+						},
+					),
+				);
+			}
+			return emitToolResult(
+				toolCall,
+				redactDiagnosticText,
+				normalizeActionResult(
+					action.name,
+					restriction,
+					requestOperationAttempt,
+				),
 			);
 		}
 	}
@@ -687,32 +767,28 @@ export async function executePlannedToolCall(
 	if (
 		"args" in toolCall ||
 		"arguments" in toolCall ||
-		(toolCall.params !== undefined && !isPlainRecord(toolCall.params))
+		(toolCall.params !== undefined && !isPlainObject(toolCall.params))
 	) {
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(
+			normalizeActionResult(
 				action.name,
-				"Tool arguments must be a plain object in params",
-				{ acceptance: "rejected", executionStatus: "not_started" },
-				{
-					kind: "handler_error",
-					boundary: "handler",
-					code: "ACTION_ARGUMENTS_INVALID",
-					retryable: true,
-				},
+				failureResult(
+					action.name,
+					"Tool arguments must be a plain object in params",
+					{ acceptance: "rejected", executionStatus: "not_started" },
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_ARGUMENTS_INVALID",
+						retryable: true,
+					},
+				),
+				requestOperationAttempt,
 			),
 			{
-				ownerCapture: runtime.ownerToolExecutionObserver
-					? {
-							runtime,
-							executionId: ownerExecutionId,
-							phase: "gate",
-							gate: "schema",
-							gateOutcome: "denied",
-						}
-					: undefined,
+				ownerCapture: gateCapture("schema", "denied"),
 			},
 		);
 	}
@@ -760,15 +836,7 @@ export async function executePlannedToolCall(
 				},
 			),
 			{
-				ownerCapture: runtime.ownerToolExecutionObserver
-					? {
-							runtime,
-							executionId: ownerExecutionId,
-							phase: "gate",
-							gate: "schema",
-							gateOutcome: "failed",
-						}
-					: undefined,
+				ownerCapture: gateCapture("schema", "failed"),
 			},
 		);
 	}
@@ -781,35 +849,31 @@ export async function executePlannedToolCall(
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(
+			normalizeActionResult(
 				action.name,
-				validation.errors.join("; ") ||
-					`Invalid arguments for action ${action.name}`,
-				{
-					acceptance: "rejected",
-					executionStatus: "not_started",
-					parameterErrors: validation.errors,
-					...(invalidParameterNames.length > 0
-						? { invalidParameterNames }
-						: {}),
-				},
-				{
-					kind: "handler_error",
-					boundary: "handler",
-					code: "ACTION_ARGUMENTS_INVALID",
-					retryable: true,
-				},
+				failureResult(
+					action.name,
+					validation.errors.join("; ") ||
+						`Invalid arguments for action ${action.name}`,
+					{
+						acceptance: "rejected",
+						executionStatus: "not_started",
+						parameterErrors: validation.errors,
+						...(invalidParameterNames.length > 0
+							? { invalidParameterNames }
+							: {}),
+					},
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_ARGUMENTS_INVALID",
+						retryable: true,
+					},
+				),
+				requestOperationAttempt,
 			),
 			{
-				ownerCapture: runtime.ownerToolExecutionObserver
-					? {
-							runtime,
-							executionId: ownerExecutionId,
-							phase: "gate",
-							gate: "schema",
-							gateOutcome: "denied",
-						}
-					: undefined,
+				ownerCapture: gateCapture("schema", "denied"),
 			},
 		);
 	}
@@ -864,15 +928,7 @@ export async function executePlannedToolCall(
 					},
 				),
 				{
-					ownerCapture: runtime.ownerToolExecutionObserver
-						? {
-								runtime,
-								executionId: ownerExecutionId,
-								phase: "gate",
-								gate: "action-validation",
-								gateOutcome: "failed",
-							}
-						: undefined,
+					ownerCapture: gateCapture("action-validation", "failed"),
 				},
 			);
 		}
@@ -892,15 +948,7 @@ export async function executePlannedToolCall(
 					},
 				),
 				{
-					ownerCapture: runtime.ownerToolExecutionObserver
-						? {
-								runtime,
-								executionId: ownerExecutionId,
-								phase: "gate",
-								gate: "action-validation",
-								gateOutcome: "denied",
-							}
-						: undefined,
+					ownerCapture: gateCapture("action-validation", "denied"),
 				},
 			);
 		}
@@ -925,23 +973,15 @@ export async function executePlannedToolCall(
 					`Action ${action.name} is not allowed for the selected connector account`,
 			),
 			{
-				ownerCapture: runtime.ownerToolExecutionObserver
-					? {
-							runtime,
-							executionId: ownerExecutionId,
-							phase: "gate",
-							gate: "connector-account",
-							gateOutcome: "denied",
-						}
-					: undefined,
+				ownerCapture: gateCapture("connector-account", "denied"),
 			},
 		);
 	}
 	perfMark("accountPolicy");
 	options.abortSignal?.throwIfAborted();
 
-	const messageId = executorCtx.message.id as UUID | undefined;
-	const roomId = executorCtx.message.roomId as UUID;
+	const messageId = executorCtx.message.id;
+	const roomId = executorCtx.message.roomId;
 	let actionEventWorldId: Promise<UUID> | undefined;
 	const getActionEventWorldId = () => {
 		actionEventWorldId ??= resolveActionEventWorldId(
@@ -1032,6 +1072,7 @@ export async function executePlannedToolCall(
 					settleActionHandler({
 						runtime,
 						action,
+						operationAttempt: requestOperationAttempt,
 						callback: protectedCallback,
 						beforeCallbacks: (result) =>
 							publishSettledResult(runtime, action, result, onBeforeCallbacks),
@@ -1092,6 +1133,11 @@ export async function executePlannedToolCall(
 									? undefined
 									: executorCtx.replyOwner,
 								messageId: executorCtx.message.id,
+								requestMessage: executorCtx.message,
+								requestState: executorCtx.state,
+								requestRuntime: runtime,
+								hostAttemptId: ownerExecutionId,
+								requestOperationAttempt,
 							};
 							try {
 								return await runWithActionRoutingContext(routingContext, () =>
@@ -1114,7 +1160,7 @@ export async function executePlannedToolCall(
 					// Raw here by design: completeActionTrajectoryStep owns the
 					// diagnostic projection for every settlement, so the handler-adjacent
 					// copy stays exact and the egress copy is projected once.
-					parameters: isContentRecord(validation.args) ? validation.args : {},
+					parameters: isObjectRecord(validation.args) ? validation.args : {},
 					projectResult: (result) =>
 						projectSettledResultForObserver(action, result),
 				},
@@ -1227,27 +1273,26 @@ export async function executePlannedToolCall(
 	});
 }
 
+interface OwnerCapture {
+	runtime: IAgentRuntime;
+	executionId?: string;
+	phase: "gate" | "settled";
+	gate:
+		| "lookup"
+		| "role-context"
+		| "disclosure"
+		| "schema"
+		| "action-validation"
+		| "connector-account"
+		| "execution";
+	gateOutcome: "denied" | "failed" | "executed";
+}
+
 async function emitToolResult(
-	toolCall: PlannerToolCall | PlannedToolCall,
+	toolCall: PlannerToolCall,
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	result: ActionResult,
-	options: {
-		suppressData?: boolean;
-		ownerCapture?: {
-			runtime: IAgentRuntime;
-			executionId?: string;
-			phase: "gate" | "settled";
-			gate:
-				| "lookup"
-				| "role-context"
-				| "disclosure"
-				| "schema"
-				| "action-validation"
-				| "connector-account"
-				| "execution";
-			gateOutcome: "denied" | "failed" | "executed";
-		};
-	} = {},
+	options: { suppressData?: boolean; ownerCapture?: OwnerCapture } = {},
 ): Promise<ActionResult> {
 	if (options.ownerCapture) {
 		const observation = options.ownerCapture;
@@ -1300,7 +1345,7 @@ async function withResolvedUserRoles(
 }
 
 function plannedToolCallToStreamingToolCall(
-	toolCall: PlannerToolCall | PlannedToolCall,
+	toolCall: PlannerToolCall,
 	status: "completed" | "failed",
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): ToolCall {
@@ -1345,16 +1390,6 @@ function actionResultToStreamingResult(
 		continueChain: result.continueChain,
 	};
 	return actionResultToContentRecord(streamingResult, redactDiagnosticText);
-}
-
-export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 /**

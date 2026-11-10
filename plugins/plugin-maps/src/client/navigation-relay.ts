@@ -81,17 +81,19 @@ export async function withMapsNavigationRelay<T, Owner extends object>(
           !/^[a-f0-9-]{36}$/i.test(command.id) ||
           delivered.has(command.id) ||
           typeof command.expiresAt !== "number" ||
-          command.expiresAt <= Date.now() ||
-          command.expiresAt > Date.now() + 30_000
+          command.expiresAt <= Date.now()
         )
           throw Error("Invalid Maps navigation request");
         delivered.add(command.id);
         const operation = command.operation as
           | Record<string, unknown>
           | undefined;
+        // expiresAt is on the agent host's clock; the phone never waits past the relay's 30 seconds.
         const bounded = anySignal(host, [
           current,
-          AbortSignal.timeout(Math.max(1, command.expiresAt - Date.now())),
+          AbortSignal.timeout(
+            Math.min(30_000, Math.max(1, command.expiresAt - Date.now())),
+          ),
         ]);
         let result: Record<string, unknown>;
         try {

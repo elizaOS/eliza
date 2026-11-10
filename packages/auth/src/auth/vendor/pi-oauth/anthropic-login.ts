@@ -10,6 +10,7 @@
 
 import { ElizaError } from "@elizaos/core/protocol";
 import { generatePKCE } from "../../../contracts/index.ts";
+import { createRefreshHttpError } from "../../refresh-http-error.ts";
 
 const decode = (s: string): string => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
@@ -293,8 +294,7 @@ export async function refreshAnthropicToken(
     signal: AbortSignal.timeout(5_000),
   });
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Anthropic token refresh failed: ${errText}`);
+    throw await createRefreshHttpError("anthropic-subscription", response);
   }
   const data = await parseAnthropicTokenResponse(response, "refresh");
   return {

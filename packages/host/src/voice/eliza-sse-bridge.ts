@@ -20,6 +20,11 @@
  * decoding path, no live model.
  */
 
+import {
+  type ChatTerminalFailure,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
 import { stringToUuid, validateUuid } from "@elizaos/core";
 import {
   findViewActionHandoff,
@@ -68,8 +73,6 @@ const SERVER_TIMING_PROVIDERS = [
   "other",
   "unknown",
 ] as const;
-const ACTION_PROGRESS_TEXT =
-  /^(?:on it\b|checking\b|fetching\b|gathering\b|looking\s+(?:up|into)\b|running\b|working\s+on\b|one\s+moment\b)/iu;
 
 export type ElizaServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
 export type ElizaServerTimingProvider =
@@ -130,6 +133,8 @@ export function parseElizaServerTiming(
 }
 
 export interface ElizaSseBridgeRequest {
+  /** Enabled only after the client negotiated non-success turn settlement. */
+  requireTurnTerminal?: boolean;
   uiContext?: VoiceUiContext;
   /** Host-owned restrictive policy selection, never UI/model metadata. */
   modelAttemptPolicy?: { policyId: string; sessionId: string };
@@ -169,11 +174,22 @@ export interface ElizaSseBridgeRequest {
   /** Emits a non-authoritative progress cue while an action-backed turn is pending. */
   onProgress?: (text: string) => void | Promise<void>;
   /**
+   * Shows each content-free activity label (`running_tool` status) while the
+   * turn is pending. Display only: never spoken and never reply text.
+   */
+  onActivity?: (label: string) => void;
+  /**
    * Fires once the canonical route has finalized the authoritative reply text,
    * before its durable persistence receipt and view-handoff metadata are ready.
    */
   onReplyReady?: () => void;
-  /** Test hook; production uses six seconds between progress cues. */
+  /**
+   * Receives the full authoritative reply when it rewrites text already
+   * streamed (for example a normalized or unwrapped final). Without it, such
+   * a divergence is a protocol error.
+   */
+  onAuthoritativeReplace?: (text: string) => void;
+  /** Retained for call-site compatibility; manufactured periodic cues are disabled. */
   progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
@@ -189,10 +205,13 @@ export interface ElizaSseBridgeResponseHeaders {
 }
 
 export interface ElizaSseBridgeResult {
-  /** True only after an explicit `[DONE]` or structured terminal frame. */
+  /** True only for an accepted success terminal (legacy callers retain their existing framing). */
   completed: boolean;
   /** True if the stream was aborted (interruption / disconnect). */
   aborted: boolean;
+  /** An intentional silent terminal is not a successful assistant reply. */
+  turnOutcome?: { outcome: "failed" | "ignored"; code?: string };
+  terminalFailure?: ChatTerminalFailure;
   /** Successful model-selected VIEWS handoff carried by the terminal frame. */
   viewHandoff?: ElizaVoiceViewHandoff;
   /** Persisted user message correlation from the canonical terminal receipt. */
@@ -222,6 +241,9 @@ export class ElizaSseBridgeError extends Error {
     readonly upstreamMessage?: string,
     /** Bounded non-JSON upstream body prefix safe for diagnostics. */
     readonly upstreamSnippet?: string,
+    /** Canonical failure retained independently of speech and transport retry. */
+    readonly terminalFailure?: ChatTerminalFailure,
+    readonly canonicalTerminal = false,
   ) {
     super(message);
     this.name = "ElizaSseBridgeError";
@@ -373,6 +395,84 @@ export async function streamElizaConversation(
     throw new ElizaSseBridgeError("Eliza SSE response has no body", "no_body");
   }
 
+  const readCanonicalOutcome = (payload: string): Record<string, unknown> => {
+    let terminal: unknown;
+    try {
+      terminal = JSON.parse(payload);
+    } catch {
+      // error-policy:J3 A malformed terminal cannot authorize buffered speech.
+      throw new ElizaSseBridgeError(
+        "Invalid canonical terminal JSON",
+        "protocol_error",
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      );
+    }
+    if (!isRecord(terminal)) {
+      throw new ElizaSseBridgeError(
+        "Invalid canonical terminal envelope",
+        "protocol_error",
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      );
+    }
+    const failureKind = parseChatFailureKind(terminal.failureKind);
+    const failure = parseChatTerminalFailure(terminal.terminalFailure);
+    if (
+      (terminal.type !== undefined && typeof terminal.type !== "string") ||
+      (terminal.text !== undefined && typeof terminal.text !== "string") ||
+      (terminal.fullText !== undefined &&
+        typeof terminal.fullText !== "string") ||
+      (terminal.failureKind !== undefined && !failureKind) ||
+      (terminal.terminalFailure !== undefined && !failure) ||
+      (failureKind && failure && failureKind !== failure.kind) ||
+      (terminal.noResponseReason !== undefined &&
+        terminal.noResponseReason !== "ignored") ||
+      (terminal.userMessageId !== undefined &&
+        !validateUuid(terminal.userMessageId))
+    ) {
+      throw new ElizaSseBridgeError(
+        "Invalid canonical terminal outcome",
+        "protocol_error",
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      );
+    }
+    if (failureKind || failure) {
+      // A completed HTTP stream can carry an unsuccessful turn. Keep it out
+      // of final speech, navigation and reply_complete. The client recognizes
+      // canonical failure kinds as settled causes, not transport recovery.
+      // The specific code and transient flag remain on the internal receipt.
+      throw new ElizaSseBridgeError(
+        "Canonical conversation did not produce a successful reply",
+        "upstream_error",
+        undefined,
+        failure?.kind ?? failureKind,
+        false,
+        undefined,
+        undefined,
+        failure,
+        true,
+      );
+    }
+    return terminal;
+  };
+
   const reader = response.body.getReader();
   let abortCancellation: Promise<void> | null = null;
   const cancelReaderOnAbort = () => {
@@ -393,20 +493,13 @@ export async function streamElizaConversation(
   let buffered = "";
   let eventType = "";
   let emittedText = "";
+  // Last authoritative wire text; deltas extend this, not what was emitted.
+  let authorizedText = "";
   let pendingProvisionalText: string | null = null;
-  let progressTimer: ReturnType<typeof setTimeout> | null = null;
-  let progressActive = false;
   let progressInFlight = false;
   let planningAcknowledgmentSeen = false;
+  let lastActivityLabel: string | undefined;
   let replyAuthorized = false;
-  const progressIntervalMs = request.progressIntervalMs ?? 6_000;
-  const clearProgress = (): void => {
-    progressActive = false;
-    if (progressTimer !== null) {
-      clearTimeout(progressTimer);
-      progressTimer = null;
-    }
-  };
   const emitProgress = async (text: string): Promise<void> => {
     if (request.signal.aborted || replyAuthorized || progressInFlight) return;
     progressInFlight = true;
@@ -425,24 +518,6 @@ export async function streamElizaConversation(
       progressInFlight = false;
     }
   };
-  const scheduleProgress = (): void => {
-    if (
-      !request.onProgress ||
-      progressActive ||
-      !Number.isFinite(progressIntervalMs) ||
-      progressIntervalMs <= 0
-    )
-      return;
-    progressActive = true;
-    const tick = async (): Promise<void> => {
-      if (!progressActive || request.signal.aborted) return;
-      await emitProgress("Still working on that.");
-      if (progressActive && !request.signal.aborted) {
-        progressTimer = setTimeout(() => void tick(), progressIntervalMs);
-      }
-    };
-    progressTimer = setTimeout(() => void tick(), progressIntervalMs);
-  };
   const emitDelta = (text: string): void => {
     if (!text) return;
     emittedText += text;
@@ -450,30 +525,43 @@ export async function streamElizaConversation(
   };
   const authorizeText = (authoritativeText: string): void => {
     replyAuthorized = true;
-    clearProgress();
     pendingProvisionalText = null;
-    if (!authoritativeText.startsWith(emittedText)) {
+    authorizedText = authoritativeText;
+    // A shorter snapshot of text already emitted adds nothing new.
+    if (emittedText.startsWith(authoritativeText)) return;
+    const emittedStem = emittedText.trimEnd();
+    if (authoritativeText.startsWith(emittedStem)) {
+      // Only trailing whitespace differs: emit the new suffix, without a
+      // second separator when the emitted text already ended in one.
+      let suffix = authoritativeText.slice(emittedStem.length);
+      if (emittedStem.length < emittedText.length) suffix = suffix.trimStart();
+      emitDelta(suffix);
+      return;
+    }
+    if (!request.onAuthoritativeReplace) {
       throw new ElizaSseBridgeError(
         "Eliza agent authoritative reply diverged from text already sent to speech",
         "protocol_error",
       );
     }
-    emitDelta(authoritativeText.slice(emittedText.length));
+    emittedText = authoritativeText;
+    request.onAuthoritativeReplace(authoritativeText);
   };
   const applyTextUpdate = (update: VoiceTextUpdate): void => {
     if (update.provisional) {
       pendingProvisionalText =
         update.kind === "snapshot"
           ? update.text
-          : `${pendingProvisionalText ?? emittedText}${update.text}`;
-      if (ACTION_PROGRESS_TEXT.test(update.text.trim())) scheduleProgress();
+          : `${pendingProvisionalText ?? authorizedText}${update.text}`;
       return;
     }
 
     if (update.kind === "delta") {
       // A delta extends the current wire buffer, so its non-provisional frame
       // authorizes the held prefix as well. A snapshot below replaces it.
-      authorizeText(`${pendingProvisionalText ?? emittedText}${update.text}`);
+      authorizeText(
+        `${pendingProvisionalText ?? authorizedText}${update.text}`,
+      );
       return;
     }
     authorizeText(update.text);
@@ -502,11 +590,14 @@ export async function streamElizaConversation(
       if (chunk.done) break;
       buffered += decoder.decode(chunk.value, { stream: true });
 
-      let newlineIndex: number;
       // SSE events are separated by blank lines; a single event may carry
       // multiple `data:` lines. We process line-by-line and only act on
       // `data:` payloads, which is what the OpenAI-shaped stream emits.
-      while ((newlineIndex = buffered.indexOf("\n")) !== -1) {
+      for (
+        let newlineIndex = buffered.indexOf("\n");
+        newlineIndex !== -1;
+        newlineIndex = buffered.indexOf("\n")
+      ) {
         if (request.signal.aborted) return { completed: false, aborted: true };
         const line = buffered.slice(0, newlineIndex).trimEnd();
         buffered = buffered.slice(newlineIndex + 1);
@@ -523,14 +614,78 @@ export async function streamElizaConversation(
         if (payload === "") continue;
         const payloadType = extractPayloadType(payload);
         if (
+          (eventType === "error" || payloadType === "error") &&
+          (request.requireTurnTerminal === true ||
+            !(
+              eventType === "done" ||
+              payloadType === "done" ||
+              payload === "[DONE]"
+            ))
+        ) {
+          if (
+            request.requireTurnTerminal === true &&
+            (eventType === "done" ||
+              payloadType === "done" ||
+              payload === "[DONE]")
+          ) {
+            throw new ElizaSseBridgeError(
+              "Conflicting canonical terminal envelope",
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              true,
+            );
+          }
+          throw new ElizaSseBridgeError(
+            `Eliza agent stream error: ${extractErrorMessage(payload)}`,
+            "upstream_error",
+          );
+        }
+        if (
           payload === "[DONE]" ||
           eventType === "done" ||
           payloadType === "done"
         ) {
+          if (
+            request.requireTurnTerminal === true &&
+            payload !== "[DONE]" &&
+            payloadType !== null &&
+            payloadType !== "done"
+          ) {
+            throw new ElizaSseBridgeError(
+              "Conflicting canonical terminal envelope",
+              "protocol_error",
+              undefined,
+              undefined,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              true,
+            );
+          }
+          const terminal =
+            payload === "[DONE]"
+              ? null
+              : request.requireTurnTerminal === true
+                ? readCanonicalOutcome(payload)
+                : JSON.parse(payload);
+          if (request.requireTurnTerminal === true && payload !== "[DONE]") {
+            if (terminal?.noResponseReason === "ignored") {
+              return {
+                completed: false,
+                aborted: false,
+                turnOutcome: { outcome: "ignored" },
+              };
+            }
+          }
           finishAuthoritativeText(payload);
           const viewHandoff =
             payload === "[DONE]" ? null : extractViewHandoff(payload);
-          const terminal = payload === "[DONE]" ? null : JSON.parse(payload);
           const userMessageId = isRecord(terminal)
             ? terminal.userMessageId
             : undefined;
@@ -547,36 +702,62 @@ export async function streamElizaConversation(
             ...(typeof userMessageId === "string" ? { userMessageId } : {}),
           };
         }
-        if (eventType === "error" || payloadType === "error") {
-          throw new ElizaSseBridgeError(
-            `Eliza agent stream error: ${extractErrorMessage(payload)}`,
-            "upstream_error",
-          );
-        }
         if (payloadType === "reply_ready") {
+          if (request.requireTurnTerminal === true) {
+            const outcome = readCanonicalOutcome(payload);
+            if (outcome.noResponseReason === "ignored") {
+              throw new ElizaSseBridgeError(
+                "Silent outcome cannot authorize an early reply",
+                "protocol_error",
+                undefined,
+                undefined,
+                false,
+                undefined,
+                undefined,
+                undefined,
+                true,
+              );
+            }
+          }
           finishAuthoritativeText(payload);
           request.onReplyReady?.();
           continue;
         }
-        if (
-          payloadType === "status" &&
-          !planningAcknowledgmentSeen &&
-          !replyAuthorized
-        ) {
+        if (payloadType === "status" && !replyAuthorized) {
           // The canonical route attaches the already-admitted acknowledgement
           // to thinking status and repeats it through later phases. It is
-          // transient speech, never an authoritative reply prefix.
+          // transient speech, never an authoritative reply prefix. Each tool
+          // status carries its own content-free activity label to display.
           const status = JSON.parse(payload) as {
             kind?: unknown;
             label?: unknown;
           };
-          if (
-            status.kind === "thinking" &&
-            typeof status.label === "string" &&
-            status.label.trim()
+          const label =
+            typeof status.label === "string" ? status.label.trim() : "";
+          if (!planningAcknowledgmentSeen && status.kind === "thinking") {
+            if (label) {
+              planningAcknowledgmentSeen = true;
+              await emitProgress(status.label as string);
+            }
+          } else if (
+            status.kind === "running_tool" &&
+            label &&
+            label !== lastActivityLabel &&
+            !request.signal.aborted
           ) {
-            planningAcknowledgmentSeen = true;
-            await emitProgress(status.label);
+            lastActivityLabel = label;
+            try {
+              request.onActivity?.(label);
+            } catch (error) {
+              // error-policy:J7 activity display must not kill the canonical turn.
+              logger.warn(
+                {
+                  traceId: request.traceId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                "[eliza-sse-bridge] activity observer failed",
+              );
+            }
           }
           continue;
         }
@@ -584,8 +765,23 @@ export async function streamElizaConversation(
         if (update) applyTextUpdate(update);
       }
     }
+  } catch (error) {
+    if (request.signal.aborted) return { completed: false, aborted: true };
+    if (error instanceof ElizaSseBridgeError && error.canonicalTerminal) {
+      return {
+        completed: false,
+        aborted: false,
+        turnOutcome: {
+          outcome: "failed",
+          code: error.upstreamCode ?? error.code,
+        },
+        ...(error.terminalFailure
+          ? { terminalFailure: error.terminalFailure }
+          : {}),
+      };
+    }
+    throw error;
   } finally {
-    clearProgress();
     request.signal.removeEventListener("abort", cancelReaderOnAbort);
     if (abortCancellation) {
       await abortCancellation;

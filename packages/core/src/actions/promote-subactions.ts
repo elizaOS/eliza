@@ -16,7 +16,6 @@ import type {
 	ActionExample,
 	ActionParameter,
 	ActionParameters,
-	ActionResult,
 	Handler,
 	HandlerCallback,
 	HandlerOptions,
@@ -29,7 +28,6 @@ import type { State } from "../types/state.js";
 import {
 	CANONICAL_SUBACTION_KEY,
 	DEFAULT_SUBACTION_KEYS,
-	LEGACY_SUBACTION_KEYS,
 	normalizeSubaction,
 } from "./subaction-dispatch";
 
@@ -83,7 +81,6 @@ const PROMOTED_MARKER = Symbol.for("@elizaos/core/promote-subactions/marker");
 interface PromotedAction extends Action {
 	[PROMOTED_MARKER]?: {
 		parent: string;
-		virtuals: readonly string[];
 		parentRoutingHint?: string;
 		/** The umbrella description at promotion time, stated once per family. */
 		parentDescription: string;
@@ -189,14 +186,10 @@ export function pinnedDiscriminatorForPromotedChild(
 export function listSubactionsFromParameters(
 	parameters: readonly ActionParameter[] | undefined,
 ): readonly string[] {
-	if (!parameters) return [];
-	const candidate = findDiscriminatorParameter(parameters);
-	if (!candidate) return [];
-	const schema = candidate.schema;
-	if (!schema || typeof schema !== "object") return [];
-	const enumValues = (schema as { enum?: unknown }).enum;
-	if (!Array.isArray(enumValues)) return [];
-	return enumValues.filter((v): v is string => typeof v === "string");
+	const enumValues = findDiscriminatorParameter(parameters)?.schema.enum;
+	return enumValues
+		? enumValues.filter((v): v is string => typeof v === "string")
+		: [];
 }
 
 function hasEnum(parameter: ActionParameter): boolean {
@@ -208,23 +201,18 @@ function hasEnum(parameter: ActionParameter): boolean {
 	);
 }
 
+/** The first discriminator key, in {@link DEFAULT_SUBACTION_KEYS} order, declared with an enum. */
 function findDiscriminatorParameter(
 	parameters: readonly ActionParameter[] | undefined,
 ): ActionParameter | undefined {
 	if (!parameters) return undefined;
-	const keys = [CANONICAL_SUBACTION_KEY, ...LEGACY_SUBACTION_KEYS];
-	return keys
-		.map((key) => parameters.find((p) => p.name === key && hasEnum(p)))
-		.find((parameter): parameter is ActionParameter => Boolean(parameter));
+	for (const key of DEFAULT_SUBACTION_KEYS) {
+		const parameter = parameters.find((p) => p.name === key && hasEnum(p));
+		if (parameter) return parameter;
+	}
+	return undefined;
 }
 
-/**
- * True when `parameter` applies to the pinned `subaction`. Parameters
- * without an applicability list are shared across every subaction; an
- * explicit empty list marks a parent-only parameter. Matching goes through
- * `normalizeSubaction` so case / separator variants in hand-written lists
- * still hit the canonical enum value.
- */
 function parameterRequiredForSubaction(
 	requiredForSubactions: readonly string[] | undefined,
 	subaction: string,
@@ -236,6 +224,13 @@ function parameterRequiredForSubaction(
 	);
 }
 
+/**
+ * True when `parameter` applies to the pinned `subaction`. Parameters
+ * without an applicability list are shared across every subaction; an
+ * explicit empty list marks a parent-only parameter. Matching goes through
+ * `normalizeSubaction` so case / separator variants in hand-written lists
+ * still hit the canonical enum value.
+ */
 function parameterAppliesToSubaction(
 	parameter: ActionParameter,
 	subaction: string,
@@ -245,6 +240,15 @@ function parameterAppliesToSubaction(
 	return parameter.subactions.some(
 		(entry) => normalizeSubaction(entry) === pinned,
 	);
+}
+
+/**
+ * Description a promoted virtual writes on its pinned discriminator. Exported
+ * so the umbrella's alias-contract renderer (planned-tool.ts) can recognise
+ * the pin and carry it as `pins[name] = value` instead of the full override.
+ */
+export function pinnedDiscriminatorDescription(subaction: string): string {
+	return `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`;
 }
 
 /**
@@ -283,15 +287,6 @@ function parameterAppliesToSubaction(
  * the discriminator into `mergeOptionsWithSubaction` regardless, so
  * dispatch is unaffected.
  */
-/**
- * Description a promoted virtual writes on its pinned discriminator. Exported
- * so the umbrella's alias-contract renderer (planned-tool.ts) can recognise
- * the pin and carry it as `pins[name] = value` instead of the full override.
- */
-export function pinnedDiscriminatorDescription(subaction: string): string {
-	return `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`;
-}
-
 function pinDiscriminatorForVirtual(
 	parameters: readonly ActionParameter[] | undefined,
 	subaction: string,
@@ -379,6 +374,7 @@ function mergeOptionsWithSubaction(
 
 function buildVirtualHandler(parent: Action, subaction: string): Handler {
 	const parentHandler = parent.handler;
+	const pinned = normalizeSubaction(subaction);
 	return async (
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -407,9 +403,7 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 					const carriesPin =
 						Array.isArray(declaredEnum) &&
 						declaredEnum.some(
-							(v) =>
-								typeof v === "string" &&
-								normalizeSubaction(v) === normalizeSubaction(subaction),
+							(v) => typeof v === "string" && normalizeSubaction(v) === pinned,
 						);
 					if (!carriesPin) continue;
 				}
@@ -417,15 +411,12 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 				if (
 					typeof value === "string" &&
 					value.trim() !== "" &&
-					normalizeSubaction(value) !== normalizeSubaction(subaction)
+					normalizeSubaction(value) !== pinned
 				) {
-					const wanted = `${toUpperSnake(parent.name)}_${toUpperSnake(value.trim())}`;
-					const text = `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${toUpperSnake(parent.name)} with ${key}=${value}) instead.`;
-					return {
-						success: false,
-						text,
-						error: new Error(text),
-					} as ActionResult;
+					const parentName = toUpperSnake(parent.name);
+					const wanted = `${parentName}_${toUpperSnake(value.trim())}`;
+					const text = `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${parentName} with ${key}=${value}) instead.`;
+					return { success: false, text, error: new Error(text) };
 				}
 			}
 		}
@@ -517,6 +508,7 @@ export function promoteSubactionsToActions(
 			similes,
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
+			restrictRequestOperation: parent.restrictRequestOperation,
 			validate: buildVirtualValidator(parent, subKey),
 			parameters: pinDiscriminatorForVirtual(
 				override.parameters ?? parent.parameters,
@@ -545,7 +537,6 @@ export function promoteSubactionsToActions(
 		Object.defineProperty(virtual, PROMOTED_MARKER, {
 			value: {
 				parent: parent.name,
-				virtuals: [virtualName],
 				parentRoutingHint: parent.routingHint,
 				parentDescription: parent.description,
 				subaction: subKey,

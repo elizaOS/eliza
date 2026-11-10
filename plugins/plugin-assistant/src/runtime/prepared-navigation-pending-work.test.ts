@@ -84,6 +84,7 @@ async function run(
     decision?: "CONTINUE" | "FINISH";
     repeatNavigation?: boolean;
     followUp?: boolean;
+    batch?: boolean;
     covered?: boolean;
     next?: "create" | "reply";
   } = {},
@@ -131,6 +132,18 @@ async function run(
                   eliza_turn_scope: options.scope ?? "more_work_pending",
                 },
               },
+              ...(options.batch && planners === 1
+                ? [
+                    {
+                      id: "batched-create-call",
+                      name: "CALENDAR_CREATE_EVENT",
+                      arguments: {
+                        title: "qa teaa",
+                        eliza_turn_scope: options.scope ?? "more_work_pending",
+                      },
+                    },
+                  ]
+                : []),
             ],
           };
         if (planners === 2 && options.next === "reply")
@@ -306,6 +319,47 @@ describe("prepared app-view navigation inside a larger request", () => {
     expect(h.result.evaluator).toMatchObject({
       decision: "FINISH",
       success: false,
+      replyEffectStatus: "non_applied",
+    });
+  });
+});
+
+// Live tj-2539a35cc967f5 (voice): "open the calendar and tell me if there's
+// anything on it for this week". Stage 1 called the navigation direct; the
+// planner batched VIEWS_SHOW with CALENDAR_FEED under final scope. The prepared
+// navigation dropped the queued read, the evaluator answered CONTINUE with the
+// read still uncovered, and the loop ended the turn without running it.
+describe("prepared app-view navigation batched with follow-up work", () => {
+  it("replans the dropped follow-up the evaluator finds uncovered", async () => {
+    const h = await run({ scope: "final", batch: true });
+    expect(h.executed).toEqual(["VIEWS_SHOW", "CALENDAR_CREATE_EVENT"]);
+    expect(h.planners).toBe(2);
+    expect(h.evaluations).toBe(2);
+    expect(h.result.replyRecoveryRequired).not.toBe(true);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: true,
+    });
+  });
+
+  it("keeps the partial finish when the evaluator found the request covered", async () => {
+    const h = await run({ scope: "final", batch: true, covered: true });
+    expect(h.executed).toEqual(["VIEWS_SHOW"]);
+    expect(h.planners).toBe(1);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: false,
+      replyEffectStatus: "non_applied",
+    });
+  });
+
+  it("keeps a durable device request as a turn boundary even with a batch", async () => {
+    const h = await run({ first: "device", scope: "final", batch: true });
+    expect(h.executed).toEqual(["DEVICE_ACTION"]);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: false,
+      requestFullyCovered: false,
       replyEffectStatus: "non_applied",
     });
   });

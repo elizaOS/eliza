@@ -21,12 +21,14 @@
  * treating each other's in-flight messages as abandoned; a drain that
  * outlives its lease can see one message handled twice, which the handler
  * must tolerate (the Stripe consumer re-checks every downstream write).
- * The processing list and the lease need atomic list moves and SET NX, so a
- * backend without them (Cloudflare KV) keeps the plain pop-then-settle drain.
+ * The processing list and the lease need atomic list moves and SET NX. A
+ * backend without them (Cloudflare KV) loses messages under concurrent pushes
+ * and pops, so `enqueue` and `drain` refuse it instead of degrading.
  *
  * Backed by the same shared `cache` client, so it follows the same
  * adapter selection (Upstash REST in cloud, native Redis or embedded
- * Wadis locally) and circuit-breaker behavior.
+ * Wadis locally) and circuit-breaker behavior. Stripe deliveries do not use
+ * this queue; they are an outbox on webhook_events (stripe-delivery-outbox).
  */
 
 import { randomUUID } from "node:crypto";
@@ -101,6 +103,11 @@ function leaseKey(queueKey: string): string {
   return `${queueKey}:drain-lease`;
 }
 
+function requireAtomicBackend(queueKey: string): void {
+  if (!cache.supportsAtomicOperations())
+    throw new Error(`[Queue] ${queueKey} needs a backend with atomic list operations`);
+}
+
 async function pushRawRequired(queueKey: string, raw: string): Promise<void> {
   const written = await cache.pushQueueHead(queueKey, raw);
   if (written === null) {
@@ -127,6 +134,7 @@ async function settleRequired(queueKey: string, raw: string): Promise<void> {
  * can return a 5xx and let the upstream producer (e.g. Stripe) retry.
  */
 export async function enqueue<T>(queueKey: string, body: T): Promise<void> {
+  requireAtomicBackend(queueKey);
   const envelope: Envelope<T> = { body, attempts: 0, enqueuedAt: Date.now() };
   await pushRequired(queueKey, envelope);
 }
@@ -191,13 +199,9 @@ export async function drain<T>(
     retryBaseDelayMs,
     retryMaxDelayMs,
     start,
-    durable: cache.supportsAtomicOperations(),
     onDeadLetter: options.onDeadLetter,
   };
-  if (!run.durable) {
-    await drainClaimed(queueKey, handler, stats, run);
-    return stats;
-  }
+  requireAtomicBackend(queueKey);
 
   const leaseToken = randomUUID();
   if (!(await acquireLease(queueKey, leaseToken, leaseMs))) {
@@ -219,8 +223,6 @@ interface DrainRun<T> {
   retryBaseDelayMs: number;
   retryMaxDelayMs: number;
   start: number;
-  /** Claim onto the processing list and settle after the write-back; false on non-atomic backends. */
-  durable: boolean;
   onDeadLetter: DrainOptions<T>["onDeadLetter"];
 }
 
@@ -230,12 +232,9 @@ async function drainClaimed<T>(
   stats: DrainStats,
   run: DrainRun<T>,
 ): Promise<void> {
-  const { max, budgetMs, maxAttempts, retryBaseDelayMs, retryMaxDelayMs, start, durable } = run;
-  const claim = () =>
-    durable ? cache.moveQueueTail(queueKey, processingKey(queueKey)) : cache.popQueueTail(queueKey);
-  const settle = async (raw: string) => {
-    if (durable) await settleRequired(queueKey, raw);
-  };
+  const { max, budgetMs, maxAttempts, retryBaseDelayMs, retryMaxDelayMs, start } = run;
+  const claim = () => cache.moveQueueTail(queueKey, processingKey(queueKey));
+  const settle = (raw: string) => settleRequired(queueKey, raw);
   // Serialized envelopes this drain pushed back; popping one means the queue wrapped.
   const requeued = new Set<string>();
   const deadLetter = async (envelope: Envelope<T>) => {
@@ -287,7 +286,7 @@ async function drainClaimed<T>(
 
   // Messages an earlier drain claimed but never settled: it died mid-handler or
   // lost Redis before the write-back. Each one counts as a failed attempt.
-  const abandoned = durable ? await cache.listQueue(processingKey(queueKey)) : [];
+  const abandoned = await cache.listQueue(processingKey(queueKey));
   for (const raw of abandoned ?? []) {
     const envelope = parse(raw);
     if (envelope) {

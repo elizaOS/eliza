@@ -1,6 +1,7 @@
 // Runs the hosted agent-server index boundary for cloud runtime containers.
 import { Elysia } from "elysia";
 import { AgentManager } from "./agent-manager";
+import { shutdownBeforeDeadline } from "./agent-shutdown";
 import {
   ensureServerName,
   getAgentCapacity,
@@ -76,15 +77,24 @@ logger.info("Agent-server listening", {
   capacity,
 });
 
-process.on("SIGTERM", async () => {
+process.once("SIGTERM", async () => {
   logger.info("SIGTERM received, draining...");
-  await manager.drain();
-  await manager.cleanupRedis();
+  const deadline = performance.now() + 55_000;
   const redis = getRedis();
-  try {
-    await redis.quit();
-  } catch {
-    redis.disconnect();
-  }
-  process.exit(0);
+  const failed = await shutdownBeforeDeadline(
+    {
+      drain: () => manager.drain(),
+      cleanup: () => manager.cleanupRedis(),
+      quit: () => redis.quit(),
+      disconnect: () => redis.disconnect(),
+      onFailure: (phase, error) => {
+        logger.error("Agent-server shutdown phase failed", {
+          phase,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    },
+    deadline,
+  );
+  process.exit(failed ? 1 : 0);
 });

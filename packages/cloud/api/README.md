@@ -9,6 +9,14 @@ local bindings are derived from root .env/.env.local. Add routes in the file-bas
 tree and run the package codegen script. The build script checks types; typecheck also
 validates router and Worker bundling contracts.
 
+`/api/v1/responses` is a synchronous adapter to the same chat authentication,
+admission and billing owner. It preserves ordered text, image URLs, inline files
+and function-call histories. Unsupported inputs (including stored response IDs,
+streaming, hosted tools and explicit image detail) return `400` before admission.
+Provider token limits remain `incomplete`; malformed provider output returns `503`.
+Numeric tool arguments that the chat SDK cannot preserve are rejected explicitly.
+The adapter does not persist Responses objects.
+
 Delegated inference budgets are off by default. Apply shared migrations 0544–0545
 before setting `INFERENCE_FUNDED_BUDGET_ADMISSION=true`. Keep strong revocation
 enabled and configure the same `INFERENCE_FUNDING_BUDGET_SEAL_SECRET` on the
@@ -16,6 +24,22 @@ Worker and accounting hosts. Enroll an organization through the internal
 `withInferencePolicyMutation({organizationIds, enable: true}, ...)` transaction.
 All policy writers must use the managed mutation service; the database rejects
 an unfenced change for an enrolled organization.
+
+Migration 0553 also rejects an unfenced policy write in a repeatable-read or
+serializable transaction with SQLSTATE `40001`. Restart that whole transaction
+at `READ COMMITTED`, or obtain a valid managed mutation permit in the same
+transaction for an organization-specific write. User standing and identity
+changes always need `READ COMMITTED`: an older snapshot can hide a newly issued
+key and its organization, even when every visible organization has a permit.
+An older snapshot can also hide first enrollment after an advisory lock;
+locking a missing authority row cannot make that snapshot current. PostgreSQL
+treats `READ UNCOMMITTED` as `READ COMMITTED`, so the guard accepts it too.
+Key association writes take shared user locks; standing and identity writes
+hold the same locks exclusively while discovering affected organizations.
+Canonical helpers acquire user locks before organization locks. Direct SQL
+that takes these locks in another order can be retried after a deadlock; it
+cannot skip the policy fence. Enroll a deployment only after its key and user
+policy writers use the managed mutation helpers.
 
 Bounded, direct Cerebras chat requests use the delegated path. The refill amount
 is a target, not a request limit: a larger request can claim the full available
@@ -74,6 +98,50 @@ separate migration work.
 
 ## Development
 
+Speech-only clients can use `/api/v1/voice/speech/consent`, `/session`, `/ws`,
+and `/session/:sessionId/revoke` under that prefix. Enable only after qualifying
+`VOICE_SPEECH_RELAY_ENABLED=true` and the `SPEECH_RELAY_SESSIONS` binding. This
+does not move an agent, its model calls, tools, or history to Cloud. The scoped,
+single-use capability expires 60 seconds after mint. Clients must close/revoke
+it when the account changes and renew it explicitly after expiry. An internal
+WebSocket subscribes to the existing organization revocation authority. API-key,
+account, membership, session, and organization revocations close matching speech
+sessions. Losing that internal socket also stops speech; no polling is required.
+The speech flag enables these existing lifecycle writes without changing the
+general inference authorization or snapshot-admission flags.
+
+One Durable Object owns each session. It admits the server-enforced budget at
+bootstrap: 60 seconds of 16 kHz mono PCM16 input and 4096 TTS characters. Audio
+frames and TTS phrases do not query the database or repeat account/credit
+admission. The canonical inference service uses monthly subscription allowance first for
+subscribers; internal provider-cost reservation does not require prepaid user
+credits. Existing durable inference leases retain uncertain provider costs
+after interruption or a crash. Both STT and TTS reservations are marked dispatched
+at bootstrap before any provider opens. A crash can therefore retain the full
+reservation, including unused TTS. A live close, including barge-in, settles
+TTS against the server-counted submitted characters; STT requires its matching
+provider drain receipt.
+`CARTESIA_STT_USD_PER_CREDIT` supplies the account
+rate; streaming Ink-2 costs three credits per input second and Sonic one credit
+per character. Bootstrap and final accounting can access the primary store.
+Other inference and legacy batch speech routes retain their own admission paths.
+Staging uses an explicit `CARTESIA_STT_USD_PER_CREDIT=0.000065` estimate: the highest
+published self-serve overage rate ($65 per million provider credits) in the
+[pricing page](https://www.cartesia.ai/pricing) and
+[pricing documentation](https://docs.cartesia.ai/pricing), checked 2026-11-01.
+This is an estimate for staging validation, not an assertion about a private
+invoice. Production retains its existing configured account rate.
+
+Cloud speech uses the shared Cartesia Ink turn-detection settings, just like
+Direct speech. It does not replace them with a faster-ending profile. Eager-end
+remains a distinct event; it is never promoted to a final transcript.
+The streaming route bypasses the legacy SQL audio cache and does not replay
+cached PCM. Its cache stores positive moderation verdicts, not synthesized
+audio. Positive text moderation receipts use a 60-second, exact-input cache bound to
+the tenant, model, policy revision and moderation credential. Skipped, warned,
+degraded, or failed checks never enter that cache. Change
+`CONTENT_SAFETY_POLICY_REVISION` when deployment policy changes.
+
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
@@ -112,9 +180,16 @@ callback. App IDs in Cloud and client IDs in Steward belong to different stores
 and must not be assumed interchangeable. No product repository is imported by
 these shared mechanisms.
 
-Before enabling a client, provision its own active, approved app with an active
-owner/organization, an exact allowed callback, and no live generated application
-API key. Use separate registrations in staging and production. Validate the public
+New platform clients use a dedicated, memberless publisher organization and an
+active, approved app with an exact allowed callback and no live generated app
+API key. The protected registration workflow authorizes provisioning; a login
+user does not own the publisher. Database guards prevent user membership and
+personal-account deletion from disabling or deleting that publisher. Existing
+registration-only apps can be moved with the workflow's reviewed publisher
+isolation operation while preserving their app UUID and customer grants. A
+historical creator is only optional audit metadata. Each customer's consent and
+credential remain bound to that customer's user and organization. Use separate
+registrations in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
 before shipping. The admin preflight allows an `app_url` homepage path on the
 registered HTTPS origin, while `allowed_origins` must contain the sole exact
@@ -138,7 +213,9 @@ Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
 standalone verifier. With the protected environment variables present, run
 `node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 --skip-database --verify-live` to check its public metadata without a database read.
-Omitting the selector keeps the primary-client release check.
+Omitting the selector checks the primary client. Release gates use `--all-clients`
+to check the primary client and every enabled additional client, both in the
+database before deployment and through public metadata after deployment.
 
 ### App-owned managed Google returns
 
@@ -173,6 +250,41 @@ own their actual Android packages, callbacks, branding and acceptance tests.
 Use `prompt=select_account` for a user gesture before the App Link and
 `mfa=exchange` to finish a required second factor through the existing exchange
 and MFA endpoints. An MFA-required response carries no session tokens.
+
+Native Google sign-in with Play services can do the Cloud half in one call,
+`POST /api/v1/app-auth/mobile/google`, and connect Gmail and Calendar in the
+same step:
+
+1. `POST /steward/auth/oauth/google/native/challenge` (as today) gives
+   `challengeId`, `nonce` and `serverClientId`.
+2. On the phone, Credential Manager returns an id_token carrying that nonce.
+   `Identity.getAuthorizationClient().authorize(...)` with the connector scopes
+   and `requestOfflineAccess(<serverClientId>, true)` returns a
+   `serverAuthCode`. `GET /api/v1/app-auth/mobile/google` returns Cloud's
+   `serverClientId` and `scopes`; it is Cloud's `GOOGLE_CLIENT_ID`, and it must
+   be the same web client as Steward's `GOOGLE_CLIENT_ID`.
+3. `POST /api/v1/app-auth/mobile/google` with
+   `{clientId, environment, redirectUri, state, codeVerifier, deviceName?,
+   steward: {clientId, challengeId, idToken, codeVerifier}, serverAuthCode?}`.
+   Cloud verifies the identity with Steward (signed, with the caller's edge IP).
+   It then syncs the Cloud user and organization and records the app
+   connection. It issues and exchanges a mobile App Auth grant (same lineage,
+   TTL and inactive-until-acknowledged key as `connect` + `mobile/token`) and
+   stores the Google connection when the code belongs to the same Google
+   account (`sub`) and the user owns the organization. Finally it revokes the
+   temporary Steward session. The answer is
+   `{success, status: "signed_in", credentialId, secret, expiresAt, scopes,
+   acknowledgeBy, code, accountCreated, google?}`. `google` is
+   `{connected: true, connectionId, email, scopes, refreshTokenIssued}` or
+   `{connected: false, code}`; a Google failure never fails the sign-in. A
+   second factor answers `{success: true, status: "mfa_required", mfa}` with no
+   key.
+4. `POST /api/v1/app-auth/mobile/ack` (as today) activates the key.
+
+This needs no new setting beyond those above: `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` on the API Worker and, on Steward,
+`STEWARD_GOOGLE_NATIVE_CLIENT_IDS` mapping the Steward app client to the
+Android OAuth client ids.
 
 Native email sign-in is a six-digit code typed into the app:
 
@@ -500,6 +612,52 @@ each environment:
 - Optional `ELIZA_MAPS_OPERATOR`, `ELIZA_MAPS_ATTRIBUTION` and
   `ELIZA_MAPS_PROVIDER_ID`.
 
+`ELIZA_MAPS_PROVIDER=google` serves the same contract from Google Maps
+Platform instead: Places API (New) text search and place details, Geocoding API
+geocode and reverse, Routes API `computeRoutes` (drive with live traffic, walk,
+bicycle, and transit on published timetables) and Map Tiles API 2D roadmap
+tiles. Ops provision:
+
+- Secret `GOOGLE_MAPS_API_KEY`: a server key restricted to those four APIs
+  (no application restriction usable from Workers; restrict by API). It goes
+  only in request headers or Google's own request URLs and never leaves Cloud.
+- Optional `ELIZA_MAPS_COVERAGE_JSON` (default: one `world` region),
+  `ELIZA_MAPS_LANGUAGE` (BCP-47, e.g. `en-US`), `ELIZA_MAPS_REGION` (CLDR,
+  e.g. `US`; tiles default to `en-US`/`US`), `ELIZA_MAPS_ROUTE_ALTERNATIVES`,
+  `ELIZA_MAPS_DATASET_REVISION` (default `google-maps-platform-live`),
+  `ELIZA_MAPS_PROVIDER_ID` (default `eliza-cloud-google`) and
+  `ELIZA_MAPS_ATTRIBUTION` (default `Google Maps`).
+- `ELIZA_MAPS_TILES=false` turns the tile proxy off; `ELIZA_MAPS_TRAFFIC=none`
+  drops live traffic (traffic-aware routes bill as Routes Pro);
+  `ELIZA_MAPS_TRANSIT=false` drops transit.
+
+`capabilities.traffic` is `live` and `capabilities.transit` is `scheduled`
+while those are on; `modes` then includes `transit`. Drive routes are requested
+`TRAFFIC_AWARE`, carry `traffic: "live"` and `staticDurationSeconds` (the
+free-flow time); walk, bicycle and transit routes carry `traffic: "none"`.
+Transit ride steps carry `transit` (`line`, `vehicle`, `headsign`, stops,
+times, `stopCount`, `color`). `POST routes` accepts an optional `departAt`
+(ISO 8601) for timetables and traffic prediction; a past departure for a
+traffic-aware drive is `400 invalid_request`. Search asks only for basic place
+fields (Text Search Pro); details adds website, phone and opening hours.
+
+`GET /api/v1/maps/tiles/{z}/{x}/{y}` returns one PNG roadmap tile
+(`Cache-Control: private, max-age=86400`) when the provider serves tiles;
+`capabilities.tiles` then gives the URL template, zoom range, tile size and
+the attribution a host must show on the map, and `capabilities.map` is `true`.
+`POST /api/v1/maps/tiles/viewport` with `{zoom, north, south, east, west}`
+returns `{providerId, copyright, maxZoom}`: the copyright for the visible area,
+which the host shows with the tiles (it is metadata like `capabilities`: it
+needs the subscription but no `Idempotency-Key` and consumes no allowance).
+plugin-maps' `createCloudMaps(..., { tileRequest })` and `MapPlane` with a
+`cloud-raster` basemap draw these tiles. Cloud creates the Map Tiles
+session once per isolate, key, language and region, renews it an hour before
+it expires and once more if Google refuses it. Tiles use the same
+authentication, subscription and durable admission as every Maps operation:
+one request unit and a unique `Idempotency-Key` per tile, so size the
+`ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` plans for map browsing (a screen is
+roughly 12-20 tiles). Other providers answer `503 maps_not_configured`.
+
 `capabilities` also reports `sources` and a location `disclosure`: the services
 that receive a request's text and coordinates and their operator. Cloud records
 only the operation and result code. A self-hostable reference stack with TLS,
@@ -567,3 +725,15 @@ variable through its atomic Worker-binding pipeline. A blank source preserves
 the deployed value. This uses the existing binding mechanism even though the
 content is public. To withdraw published documents, replace the binding with
 `{}` so the endpoint refuses it; an empty source is not a deletion request.
+
+App deletion is asynchronous. `DELETE /api/v1/apps/:id` returns `202` with the
+original `jobId` while teardown is pending, and `200` only for confirmed completion.
+Poll the existing jobs endpoint and require its matching app-deletion receipt before
+removing the app from local state. Cancelling a client wait does not cancel teardown.
+The original deletion fence remains in place after a failed or uncertain provider
+operation; retries read the same job and cannot change its repository-deletion option.
+A missing GitHub deletion acknowledgement reports `operator_reconciliation_required`.
+It does not repeat the DELETE or accept a 404 as success. Escalate the original job
+and repository ID to an operator; this release has no automatic evidence-import
+endpoint. Independent original provider evidence is required before an operator
+can reconcile that receipt. The app and its deletion fence remain retained.

@@ -22,6 +22,7 @@ import {
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
 import { isNativeBrowserRequest } from "../native-browser-request.js";
+import { observedNativeHistorySelection } from "../native-client-command.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -964,7 +965,14 @@ export const browserAction: Action = {
         `[BROWSER] ${command.subaction} via target=${params?.target ?? "auto"} (workspace mode=${getBrowserWorkspaceMode(process.env)})`,
       );
       const result = browserService
-        ? await browserService.execute(command, params?.target, nativeClientId)
+        ? await browserService.execute(
+            command,
+            params?.target,
+            nativeClientId,
+            nativeClientId
+              ? observedNativeHistorySelection(message, command.subaction)
+              : undefined,
+          )
         : await executeBrowserWorkspaceCommand(command);
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
       // Page observations feed dependent planning; they do not themselves
@@ -984,14 +992,28 @@ export const browserAction: Action = {
       }
 
       const text = formatBrowserSessionResult(command, result);
+      // A native client navigation is a frame sent to the requesting app,
+      // which never acknowledges it. The reply may claim only the send.
+      const unconfirmedNativeOpen =
+        result.targetId === "native-client" &&
+        (command.subaction === "open" || command.subaction === "navigate") &&
+        command.url
+          ? `I sent ${formatBrowserDestination(command.url)} to your browser, but it hasn't confirmed that it opened.`
+          : undefined;
       return {
         text,
-        ...(ownsTerminalReply
+        ...(unconfirmedNativeOpen
           ? {
+              userFacingText: unconfirmedNativeOpen,
+              verifiedUserFacing: true,
               turnComplete: true,
-              modelReplyRequired: true,
             }
-          : {}),
+          : ownsTerminalReply
+            ? {
+                turnComplete: true,
+                modelReplyRequired: true,
+              }
+            : {}),
         success: true,
         ...(pageRead ? { transcriptVisibility: "internal" as const } : {}),
         values: {

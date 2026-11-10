@@ -21,7 +21,7 @@ import type {
 import { getCookieValueFromHeader } from "../http/cookie-header";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { contentModerationService } from "./content-moderation";
+import { adminService } from "./admin";
 
 const ANONYMOUS_SESSION_COOKIE = "eliza-anon-session";
 const DEFAULT_ANONYMOUS_HOURLY_LIMIT = 10;
@@ -62,7 +62,6 @@ export type AnonymousChatContextResolution =
       blocked: boolean;
     }
   | { kind: "missing" }
-  | { kind: "warming" }
   | { kind: "rejected" }
   | { kind: "unavailable" };
 
@@ -86,7 +85,6 @@ export type AnonymousChatLeaseResolution =
       limit: number;
       retryAfter: number;
     }
-  | { kind: "warming" }
   | { kind: "rejected" }
   | { kind: "unavailable" };
 
@@ -232,7 +230,7 @@ async function hydrateGate(stub: RuntimeDurableObjectStub, sessionToken: string)
     return;
   }
 
-  const blocked = await contentModerationService.shouldBlockUser(authoritative.userId);
+  const blocked = await adminService.shouldBlockUser(authoritative.userId);
   const response = await postGate(stub, "/hydrate", {
     sessionId: authoritative.sessionId,
     userId: authoritative.userId,
@@ -250,30 +248,16 @@ async function hydrateGate(stub: RuntimeDurableObjectStub, sessionToken: string)
   }
 }
 
-function scheduleHydration(
-  stub: RuntimeDurableObjectStub,
-  sessionToken: string,
-  executionCtx: ExecutionContextLike,
-): void {
+/** One primary hydration per anonymous gate per isolate, awaited inline. */
+function hydrateGateOnce(stub: RuntimeDurableObjectStub, sessionToken: string): Promise<void> {
   const name = gateName(sessionToken);
-  let task = hydrationFlights.get(name);
-  if (!task) {
-    const current = hydrateGate(stub, sessionToken).finally(() => {
-      if (hydrationFlights.get(name) === current) hydrationFlights.delete(name);
-    });
-    task = current;
-    hydrationFlights.set(name, current);
-  }
-  executionCtx.waitUntil(
-    task.catch((error) => {
-      // error-policy:J7 hydration is diagnostic/background work; the cold
-      // request already received a retryable warming response.
-      logger.error("[AnonymousChatAdmission] hydration failed", {
-        gate: name,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }),
-  );
+  const existing = hydrationFlights.get(name);
+  if (existing) return existing;
+  const current = hydrateGate(stub, sessionToken).finally(() => {
+    if (hydrationFlights.get(name) === current) hydrationFlights.delete(name);
+  });
+  hydrationFlights.set(name, current);
+  return current;
 }
 
 function scheduleSnapshotPersistence(
@@ -306,7 +290,6 @@ function scheduleSnapshotPersistence(
 
 export async function resolveAnonymousChatContext(
   request: Request,
-  executionCtx: ExecutionContextLike,
 ): Promise<AnonymousChatContextResolution> {
   const sessionToken = getCookieValueFromHeader(
     request.headers.get("cookie"),
@@ -319,18 +302,22 @@ export async function resolveAnonymousChatContext(
   const stub = gateStub(namespace, sessionToken);
 
   let response: Response;
+  let body: Record<string, unknown>;
   try {
     response = await postGate(stub, "/context", {}, IDEMPOTENT_GATE_ATTEMPTS);
+    body = await responseBody(response);
+    if (response.status === 503 && body.code === "anonymous_chat_gate_uninitialized") {
+      // A gate that has not served this session yet is hydrated from the
+      // primary once, inline, and read again.
+      await hydrateGateOnce(stub, sessionToken);
+      response = await postGate(stub, "/context", {}, IDEMPOTENT_GATE_ATTEMPTS);
+      body = await responseBody(response);
+    }
   } catch (error) {
     logger.error("[AnonymousChatAdmission] context read failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { kind: "unavailable" };
-  }
-  const body = await responseBody(response);
-  if (response.status === 503 && body.code === "anonymous_chat_gate_uninitialized") {
-    scheduleHydration(stub, sessionToken, executionCtx);
-    return { kind: "warming" };
   }
   if (response.status === 401 || response.status === 410) {
     return { kind: "rejected" };
@@ -368,7 +355,7 @@ export async function reserveAnonymousChatSlot(
     return { kind: "unavailable" };
   }
   const body = await responseBody(response);
-  if (response.status === 503) return { kind: "warming" };
+  if (response.status === 503) return { kind: "unavailable" };
   if (response.status === 401 || response.status === 410) {
     return { kind: "rejected" };
   }
@@ -472,22 +459,6 @@ export async function commitAnonymousChatSlot(lease: AnonymousChatGateLease): Pr
   );
   if (!response.ok) {
     throw new Error(`Anonymous chat gate commit failed with status ${response.status}`);
-  }
-}
-
-export async function refreshAnonymousChatModeration(
-  credential: AnonymousChatGateCredential,
-): Promise<void> {
-  const namespace = gateNamespace();
-  if (!namespace) {
-    throw new Error("Anonymous chat gate binding is unavailable");
-  }
-  const blocked = await contentModerationService.shouldBlockUser(credential.context.userId);
-  const response = await postGate(gateStub(namespace, credential.sessionToken), "/moderation", {
-    blocked,
-  });
-  if (!response.ok) {
-    throw new Error(`Anonymous chat moderation refresh failed with status ${response.status}`);
   }
 }
 

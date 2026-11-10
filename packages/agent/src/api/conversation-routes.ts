@@ -165,7 +165,11 @@ import {
   writeSse,
   writeSseJson,
 } from "./chat-stream-writer.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  productUserChatEntityId,
+  resolveClientChatAdminEntityId,
+  resolveOwnerChatCallerRole,
+} from "./client-chat-admin.ts";
 import {
   assertConversationConnectionRuntime,
   type ConversationConnectionDescriptor,
@@ -992,6 +996,14 @@ export function resolveConversationCaller(
     principal.kind === "owner_session" ||
     principal.kind === "owner_api_token"
   ) {
+    if (resolveOwnerChatCallerRole() === "USER") {
+      return {
+        entityId: productUserChatEntityId(),
+        role: "USER",
+        userName: resolveAppUserName(state.config),
+        grantSource: "session",
+      };
+    }
     return {
       entityId: ensureAdminEntityIdForRuntime(state, runtime),
       role: "OWNER",
@@ -1239,6 +1251,7 @@ async function resolvePersistedAssistantTurn(
             assertCurrent?.();
             return runtime.updateMemory({
               ...generatedTurn,
+              embedding: undefined,
               content: persistedContent,
             });
           },
@@ -1421,10 +1434,14 @@ export async function ensureConversationRoom(
 async function syncConversationRoomState(
   state: ConversationRouteState,
   conv: ConversationMeta,
+  connection?: ConversationConnectionDescriptor,
 ): Promise<void> {
-  if (!state.runtime) return;
-  const runtime = state.runtime;
+  const runtime = connection?.runtime ?? state.runtime;
+  if (!runtime) return;
   const room = await runtime.getRoom(conv.roomId);
+  if (connection) {
+    assertConversationConnectionRuntime(state.runtime, connection);
+  }
   if (!room) return;
   const ownerId = ensureAdminEntityId(state);
   const nextMetadata = buildConversationRoomMetadata(
@@ -2299,6 +2316,7 @@ async function recoverDurableConversationChatOutcome(
       assertCurrent?.();
       return runtime.updateMemory({
         ...assistant,
+        embedding: undefined,
         content: {
           ...assistant.content,
           inReplyTo: userMessageId,
@@ -3410,13 +3428,13 @@ async function createConversation(
   if (runtime) {
     try {
       prepareConversationConnectionRoom(runtime, conv.roomId);
-      await ensureConversationRoom(
+      const connection = await ensureConversationRoom(
         state,
         runtime,
         conv,
         resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
       );
-      await syncConversationRoomState(state, conv);
+      await syncConversationRoomState(state, conv, connection);
       if (body.includeGreeting === true) {
         const storedGreeting = await ensureConversationGreetingStored(
           state,
@@ -3432,6 +3450,9 @@ async function createConversation(
           };
         }
       }
+      // Deletion or runtime replacement can win while metadata or the greeting
+      // is read. Revalidate the descriptor before reporting creation success.
+      assertConversationConnectionRuntime(state.runtime, connection);
     } catch (err) {
       // error-policy:J1 boundary translation — withdraw the registration
       // so the failed room setup leaves no listed conversation without a
@@ -3513,13 +3534,14 @@ export async function ensureOwnerConversation(
     state.conversations.set(id, conv);
     try {
       prepareConversationConnectionRoom(runtime, conv.roomId);
-      await ensureConversationRoom(state, runtime, conv, {
+      const connection = await ensureConversationRoom(state, runtime, conv, {
         entityId: ensureAdminEntityIdForRuntime(state, runtime),
         role: "OWNER",
         userName: resolveAppUserName(state.config),
         grantSource: "owner",
       });
-      await syncConversationRoomState(state, conv);
+      await syncConversationRoomState(state, conv, connection);
+      assertConversationConnectionRuntime(state.runtime, connection);
     } catch (err) {
       // error-policy:J1 withdraw the registration so a failed room setup
       // leaves no listed conversation without a backing room; the caller
@@ -5814,6 +5836,9 @@ async function streamConversationMessage(
       // cleanup slot that is cleared when the request finally releases it.
       const generationLease = runtimeTurnLease;
       let streamedText = "";
+      // The streamed text is an unvalidated model draft (provisional on the
+      // wire) until a final-reply frame confirms it.
+      let streamedTextIsDraft = false;
       // The route already wrote a `thinking` status when the SSE channel opened;
       // collapse the identical opening status generateChatResponse re-emits so
       // the wire carries each phase transition once. Distinct consecutive phases
@@ -6062,16 +6087,18 @@ async function streamConversationMessage(
               // Keep the durable candidate complete even when a paired client
               // has gone offline. Transport closure only suppresses writes.
               streamedText += chunk;
+              streamedTextIsDraft = origin === "model_draft";
               if (connectionClosed || disconnectTracker.isAborted()) return;
-              // Action-callback text is provisional on the wire: the final reply
-              // may replace it wholesale, and a voice client must not speak text
-              // it cannot retract. Text rendering remains unchanged.
+              // Action-callback and draft text is provisional on the wire: the
+              // final reply may replace it wholesale, and a voice client must
+              // not speak text it cannot retract. Text rendering is unchanged.
               tokenWriter.writeChunk(res, chunk, streamedText, {
-                provisional: origin === "action_callback",
+                provisional: origin !== undefined && origin !== "model",
               });
             },
-            onSnapshot: (text, origin) => {
-              if (!text) return;
+            onSnapshot: (text, origin, revision) => {
+              // An empty revision retracts a draft the turn did not deliver.
+              if (!text && !revision) return;
               assertCurrentGenerationOwner();
               const connectionClosed =
                 disconnectTracker.checkConnectionClosed();
@@ -6083,17 +6110,20 @@ async function streamConversationMessage(
               // closing punctuation while the same visible field is still
               // streaming. Do not shrink the user-visible token stream for
               // prefix-equivalent snapshots; later longer snapshots/deltas still
-              // advance normally.
+              // advance normally. A new model attempt (revision) restarts the
+              // reply, so it replaces even a prefix: later deltas extend it.
               if (
+                !revision &&
                 text.length < streamedText.length &&
                 streamedText.startsWith(text)
               ) {
                 return;
               }
               streamedText = text;
+              streamedTextIsDraft = origin === "model_draft";
               if (connectionClosed || disconnectTracker.isAborted()) return;
               tokenWriter.writeSnapshot(res, streamedText, {
-                provisional: origin === "action_callback",
+                provisional: origin !== undefined && origin !== "model",
               });
             },
             resolveNoResponseText: () => {
@@ -6259,8 +6289,8 @@ async function streamConversationMessage(
           // If text was already streamed to the client (e.g. the initial
           // response succeeded but planner follow-up failed), use the
           // streamed text as the final reply instead of replacing it with a
-          // generic fallback.
-          if (streamedText) {
+          // generic fallback. An unconfirmed draft is not a delivered reply.
+          if (streamedText && !streamedTextIsDraft) {
             logger.warn(
               {
                 err: getErrorMessage(terminalError),
@@ -6328,7 +6358,7 @@ async function streamConversationMessage(
                     ? terminalError.stack
                     : undefined,
               },
-              "Chat generation failed with no streamed text",
+              "Chat generation failed with no confirmed streamed text",
             );
             try {
               assertConversationConnectionRuntime(
@@ -6372,6 +6402,7 @@ async function streamConversationMessage(
                       assertLocalVoiceTurnFence();
                       await runtime.updateMemory({
                         ...exactPersistedResponse,
+                        embedding: undefined,
                         content: buildPersistedAssistantContent(
                           generationResolvedText,
                           generationResult,

@@ -114,7 +114,7 @@ test("the next repeat crosses DST in wall time and counts skipped dates", () => 
   assert.equal(gap.dueAt, Date.parse("2026-03-08T07:00:00Z"));
 });
 
-test("Done completes a one-off reminder with one history entry", () => {
+test("Done completes a one-off reminder with one history entry and keeps its notice times", () => {
   const now = Date.parse("2026-03-06T15:00:00Z");
   const row = {
     status: "posted",
@@ -138,8 +138,9 @@ test("Done completes a one-off reminder with one history entry", () => {
       skippedDates: 0,
     },
   ]);
-  assert.equal("postedAt" in row, false);
-  assert.equal("snoozedAt" in row, false);
+  // Matches ReminderStore.decide: one-off Done keeps postedAt and snoozedAt.
+  assert.equal(row.postedAt, now - MINUTE);
+  assert.equal(row.snoozedAt, now - 2 * MINUTE);
   assert.equal("legacyAlarm" in row, false);
   assert.throws(
     () => completeReminderOccurrence(row, host(now)),
@@ -162,6 +163,7 @@ test("Done advances a repeat to its next occurrence and keeps its alert state", 
       skippedDates: 0,
     })),
     postedAt: now - MINUTE,
+    snoozedAt: now - 2 * MINUTE,
     completedAt: 1,
   };
   assert.equal(
@@ -177,6 +179,7 @@ test("Done advances a repeat to its next occurrence and keeps its alert state", 
   assert.equal(row.occurrenceId, "next-1");
   assert.equal("completedAt" in row, false);
   assert.equal("postedAt" in row, false);
+  assert.equal("snoozedAt" in row, false);
   assert.equal(row.history.length, REMINDER_HISTORY_LIMIT);
   assert.equal(row.history[0].occurrenceId, "old-1");
   assert.deepEqual(row.history.at(-1), {

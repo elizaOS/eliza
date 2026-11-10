@@ -5,6 +5,7 @@ import {
   exceptionRule,
   installThreatRules,
   MAX_DOMAINS,
+  neverBlockHosts,
   RULE_BASE,
 } from "../protection/policy.mjs";
 
@@ -92,4 +93,47 @@ test("host warning page is configurable without accepting a path or remote autho
         }),
       /Invalid warning/,
     );
+});
+
+test("never-block hosts are excluded from every threat rule and validated as hostnames", () => {
+  const rules = compileThreatRules(
+    ["false-positive.example", "scam.example"],
+    id,
+    { neverBlock: ["sites.false-positive.example", "false-positive.example"] },
+  );
+  assert.equal(rules.length, 2);
+  for (const rule of rules)
+    assert.deepEqual(rule.condition.excludedRequestDomains, [
+      "false-positive.example",
+      "sites.false-positive.example",
+    ]);
+  // A listed domain stays in the rules: only the reviewed hosts (and their subdomains) are
+  // excluded, so a lookalike such as false-positive.example.scam.example is still blocked.
+  assert.ok(
+    rules[0].condition.requestDomains.includes("false-positive.example"),
+  );
+  assert.equal(
+    compileThreatRules(["scam.example"], id)[0].condition
+      .excludedRequestDomains,
+    undefined,
+    "No exclusion without a never-block list",
+  );
+  assert.deepEqual(neverBlockHosts(["b.example", "a.example", "b.example"]), [
+    "a.example",
+    "b.example",
+  ]);
+  for (const value of [
+    "Example.com",
+    "*.example.com",
+    "example",
+    "example.com/path",
+    "https://example.com",
+    "",
+    7,
+  ])
+    assert.throws(
+      () => compileThreatRules(["scam.example"], id, { neverBlock: [value] }),
+      /Invalid never-block hosts/,
+    );
+  assert.throws(() => neverBlockHosts("example.com"), /Invalid never-block/);
 });

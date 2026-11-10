@@ -13,6 +13,7 @@ import {
   type ResultState,
   type Route,
   type TravelMode,
+  transitDetails,
   unavailableCapabilities,
 } from "./contracts.ts";
 import type { MapsLocation, Position } from "./location.ts";
@@ -23,6 +24,11 @@ const idle = <T>(value: T): ResultState<T> => ({
   value,
   error: null,
 });
+/** Exact ready or refused publication by one still-admitted route request. */
+export type RoutePlanReceipt = Readonly<{
+  revision: number;
+  error: MapsFailure | null;
+}>;
 export type MapsState = Readonly<{
   revision: number;
   provider: ProviderConfig;
@@ -346,7 +352,7 @@ export class MapsController {
       });
     }
   }
-  async planRoute() {
+  async planRoute(): Promise<RoutePlanReceipt | undefined> {
     this.invalidateRoute();
     const request = new AbortController();
     this.routeRequest = request;
@@ -400,15 +406,23 @@ export class MapsController {
           "invalid-response",
           "The provider returned duplicate routes.",
         );
+      const revision = this.state.revision + 1;
       this.update({
         route: { phase: "ready", value: routes[0] ?? null, error: null },
         routeOptions: routes.length > 1 ? routes : [],
       });
+      return { revision, error: null };
     } catch (error) {
-      if (!request.signal.aborted && this.active)
-        this.update({
-          route: { phase: "error", value: null, error: failure(error) },
-        });
+      if (
+        request.signal.aborted ||
+        !this.active ||
+        this.routeRequest !== request
+      )
+        return;
+      const revision = this.state.revision + 1;
+      const refused = failure(error);
+      this.update({ route: { phase: "error", value: null, error: refused } });
+      return { revision, error: refused };
     }
   }
   /** Choose one of the offered routes. Nothing is requested again. */
@@ -449,7 +463,12 @@ export class MapsController {
       !Number.isFinite(result.fetchedAt) ||
       result.fetchedAt <= 0 ||
       result.fetchedAt > Date.now() + 60000 ||
-      result.traffic !== this.capabilities().traffic
+      // Live traffic applies to driving; walk, cycle and transit durations are free flow.
+      (result.traffic !== "none" &&
+        result.traffic !== this.capabilities().traffic) ||
+      (result.staticDurationSeconds !== undefined &&
+        (!Number.isFinite(result.staticDurationSeconds) ||
+          result.staticDurationSeconds < 0))
     )
       throw new MapsFailure(
         "invalid-response",
@@ -471,6 +490,9 @@ export class MapsController {
         coordinate: coordinate(step.coordinate),
         distanceMeters: step.distanceMeters,
         ...(step.maneuver ? { maneuver: step.maneuver } : {}),
+        ...(step.transit !== undefined
+          ? { transit: transitDetails(step.transit) }
+          : {}),
       };
     });
     return {

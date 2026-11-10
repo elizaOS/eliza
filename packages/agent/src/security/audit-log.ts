@@ -105,11 +105,11 @@ function trimEntries(entries: AuditEntry[], maxEntries: number): void {
 }
 
 function publishToProcessFeed(entry: AuditEntry): void {
-  processFeedEntries.push(entry);
+  processFeedEntries.push(structuredClone(entry));
   trimEntries(processFeedEntries, PROCESS_FEED_MAX_ENTRIES);
   for (const subscriber of processFeedSubscribers) {
     try {
-      subscriber(entry);
+      subscriber(structuredClone(entry));
     } catch {
       // Ignore subscriber failures so audit recording is never blocked.
     }
@@ -145,9 +145,9 @@ export function queryAuditFeed(query: AuditFeedQuery = {}): AuditEntry[] {
     );
   }
   if (boundedLimit !== undefined) {
-    return entries.slice(-boundedLimit);
+    return structuredClone(entries.slice(-boundedLimit));
   }
-  return [...entries];
+  return structuredClone(entries);
 }
 
 export function getAuditFeedSize(): number {
@@ -253,7 +253,11 @@ export class SandboxAuditLog {
    * guarantees; rejects with `AUDIT_SINK_FAILED` when either requirement fails.
    */
   record(entry: Omit<AuditEntry, "timestamp">): Promise<void> {
-    const full: AuditEntry = { ...entry, timestamp: new Date().toISOString() };
+    // Keep the queued snapshot separate from mutable observer and sink copies.
+    const full: AuditEntry = {
+      ...structuredClone(entry),
+      timestamp: new Date().toISOString(),
+    };
     this.entries.push(full);
     publishToProcessFeed(full);
 
@@ -294,7 +298,7 @@ export class SandboxAuditLog {
     let durablyCommitted = false;
     for (const sink of [...this.sinks]) {
       try {
-        await sink.append(entry);
+        await sink.append(structuredClone(entry));
         if (sink.durable) durablyCommitted = true;
       } catch (error) {
         // error-policy:J2 Required failures reject below; optional ones stay visible.
@@ -366,11 +370,13 @@ export class SandboxAuditLog {
   }
 
   getRecent(count = 100): AuditEntry[] {
-    return this.entries.slice(-count);
+    return structuredClone(this.entries.slice(-count));
   }
 
   getByType(type: AuditEventType, count = 50): AuditEntry[] {
-    return this.entries.filter((e) => e.type === type).slice(-count);
+    return structuredClone(
+      this.entries.filter((e) => e.type === type).slice(-count),
+    );
   }
 
   get size(): number {

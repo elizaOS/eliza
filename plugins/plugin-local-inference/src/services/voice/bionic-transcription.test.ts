@@ -106,6 +106,41 @@ describe("transcribeViaBionicHost", () => {
 		expect(host.batch).toBe(0);
 	});
 
+	it("refuses a clip over the streaming segment cap instead of truncating it", async () => {
+		const host = makeHost({ supported: true });
+		await expect(
+			transcribeViaBionicHost(host, {
+				pcm: new Float32Array(16000 * 121),
+				sampleRate: 16000,
+				toBase64: () => "",
+			}),
+		).rejects.toMatchObject({ code: "ASR_CLIP_TOO_LONG" });
+		expect(host.streams).toHaveLength(0);
+	});
+
+	it("fails instead of returning partial text when the stream dropped audio", async () => {
+		const host = makeHost({ supported: true });
+		host.createStreamingTranscriber = () =>
+			new BionicStreamingTranscriber({
+				host: {
+					openAsrStream: async () => {
+						const s = new Stream();
+						host.streams.push(s);
+						return s;
+					},
+					transcribe: async () => "unused",
+				},
+				maxQueuedSeconds: 1,
+			});
+		await expect(
+			transcribeViaBionicHost(host, {
+				pcm,
+				sampleRate: 16000,
+				toBase64: () => "",
+			}),
+		).rejects.toMatchObject({ code: "ASR_CLIP_TOO_LONG" });
+	});
+
 	it("rejects an already-aborted request before touching the host", async () => {
 		const host = makeHost({ supported: true });
 		const ac = new AbortController();

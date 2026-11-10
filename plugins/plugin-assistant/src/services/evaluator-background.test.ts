@@ -476,10 +476,10 @@ describe("durable background memory", () => {
     let now = Date.now() + 10_000;
     const scheduler = new TaskService(runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw new Error("Test drives public scheduler ticks");
       },
-      clearInterval: () => undefined,
+      clearTimeout: () => undefined,
     });
     await service.enqueue(message, state, { phase: "post_turn" });
     const initial = await job(runtime);
@@ -552,10 +552,10 @@ describe("durable background memory", () => {
       const now = Date.now() + 10_000;
       const scheduler = new TaskService(runtime, {
         now: () => now,
-        setInterval: () => {
+        setTimeout: () => {
           throw new Error("Test drives public scheduler ticks");
         },
-        clearInterval: () => undefined,
+        clearTimeout: () => undefined,
       });
       await service.enqueue(message, state, { phase: "post_turn" });
       const initial = await job(runtime);
@@ -612,10 +612,10 @@ describe("durable background memory", () => {
       const createScheduler = () =>
         new TaskService(runtime, {
           now: () => now,
-          setInterval: () => {
+          setTimeout: () => {
             throw new Error("Manual ticks only");
           },
-          clearInterval: () => undefined,
+          clearTimeout: () => undefined,
         });
       try {
         await service.enqueue(message, state, { phase: "post_turn" });
@@ -678,10 +678,10 @@ describe("durable background memory", () => {
     }) as AgentRuntime["useModel"];
     const scheduler = new TaskService(runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw new Error("Manual ticks only");
       },
-      clearInterval: () => undefined,
+      clearTimeout: () => undefined,
     });
     try {
       await service.enqueue(message, state, { phase: "post_turn" });

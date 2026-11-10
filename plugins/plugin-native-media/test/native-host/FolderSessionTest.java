@@ -1,5 +1,9 @@
 package ai.eliza.plugins.media;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Host-JVM checks of the folder-tree capability session. Not Android or provider evidence. */
@@ -19,6 +23,48 @@ public final class FolderSessionTest {
       return;
     }
     throw new AssertionError("Expected refusal: " + label);
+  }
+
+  /** The (location, parent) index answers exactly what a scan of the live entries would. */
+  private static void indexMatchesScan() {
+    AtomicInteger next = new AtomicInteger();
+    FolderSession<String> session = new FolderSession<>(64, 40, () -> "s" + next.incrementAndGet());
+    FolderSession.Entry<String> root = session.root("r");
+    List<FolderSession.Entry<String>> issued = new ArrayList<>();
+    issued.add(root);
+    List<String> folders = new ArrayList<>(List.of(root.id));
+    Random random = new Random(7);
+    for (int step = 0; step < 2000; step++) {
+      String parent = folders.get(random.nextInt(folders.size()));
+      if (session.get(parent) == null) continue;
+      String location = "r/" + random.nextInt(48);
+      FolderSession.Entry<String> scanned = null;
+      for (FolderSession.Entry<String> item : issued)
+        if (session.get(item.id) == item
+            && item.location().equals(location)
+            && Objects.equals(item.parent, parent)) scanned = item;
+      int roll = random.nextInt(10);
+      if (roll == 0 && scanned != null && scanned != root) {
+        session.remove(scanned.id);
+        continue;
+      }
+      if (roll == 1 && scanned != null && scanned != root) {
+        session.renamed(scanned, location + "-" + step);
+        continue;
+      }
+      FolderSession.Entry<String> found;
+      try {
+        found = session.authorize(location, parent);
+      } catch (IllegalStateException limit) {
+        continue;
+      }
+      if (scanned != null) check(found == scanned, "indexed lookup equals the scan");
+      else {
+        check(!issued.contains(found), "a new location is a new capability");
+        issued.add(found);
+        if (random.nextInt(4) == 0) folders.add(found.id);
+      }
+    }
   }
 
   public static void main(String[] args) {
@@ -63,26 +109,78 @@ public final class FolderSessionTest {
     check(full.size() == 4, "nothing evicted");
     rejects(() -> full.authorize("t/x", "unknown-parent"), "an unknown parent cannot evict");
 
+    // An evicted capability is gone for good: relisting its location issues a new id.
+    FolderSession.Entry<String> relisted = session.authorize("tree:/old", root.id);
+    check(relisted != old && !relisted.id.equals(old.id), "evicted entry is not revived");
+    check(session.authorize("tree:/old", root.id) == relisted, "relisted entry is found again");
+
     // Rename and removal follow provider confirmation; clear forgets every capability.
     session.renamed(a, "tree:/docs/a2");
     check(a.location().equals("tree:/docs/a2"), "renamed location");
+    check(session.authorize("tree:/docs/a2", docs.id) == a, "found at the renamed location");
     session.remove(b.id);
     check(session.get(b.id) == null, "removed");
+    check(session.authorize("tree:/docs/b", docs.id) != b, "a removed location is new");
     session.clear();
     check(session.size() == 0 && session.rootId() == null, "cleared");
     check(session.get(null) == null, "no entry for no id");
 
-    // Cursors name the folder they continue; anything else asks for a refresh.
-    check(FolderSession.cursorOffset(FolderSession.cursor("e3", 250), "e3") == 250, "cursor");
-    check(FolderSession.cursorOffset("e4:250", "e3") == FolderSession.OTHER_FOLDER, "other folder");
-    check(FolderSession.cursorOffset(":5", "") == FolderSession.OTHER_FOLDER, "no folder id");
-    check(FolderSession.cursorOffset("e3:x", "e3") == FolderSession.MALFORMED, "malformed");
-    check(FolderSession.cursorOffset("e3:0", "e3") == FolderSession.MALFORMED, "not positive");
-    check(FolderSession.cursorOffset("a:b:7", "a:b") == 7, "ids may contain colons");
+    indexMatchesScan();
+
+    // Revisions keep their listed format, so changes made against earlier listings still match.
+    check(
+        FolderSession.revision("a.txt", "text/plain", 12, 34, 5).equals("a.txt|text/plain|12|34|5"),
+        "revision format");
+    check(
+        FolderSession.revision("Docs", "vnd.android.document/directory", -1, -1, 8)
+            .equals("Docs|vnd.android.document/directory|-1|-1|8"),
+        "unknown size and time");
+
+    // Cursors name the folder they continue and the last row shown; anything else asks for a
+    // refresh.
+    String more = FolderSession.cursor("e3", 250, "primary:Download/a:b é.pdf");
+    check(FolderSession.cursorOffset(more, "e3") == 250, "cursor offset");
+    check(
+        "primary:Download/a:b é.pdf".equals(FolderSession.cursorLast(more)),
+        "cursor round-trips the last document id");
+    check(
+        FolderSession.cursorOffset(FolderSession.cursor("e4", 250, "d"), "e3")
+            == FolderSession.OTHER_FOLDER,
+        "other folder");
+    check(
+        FolderSession.cursorOffset(FolderSession.cursor("", 5, "d"), "")
+            == FolderSession.OTHER_FOLDER,
+        "no folder id");
+    check(FolderSession.cursorOffset("e3:x:ZA", "e3") == FolderSession.MALFORMED, "malformed");
+    check(FolderSession.cursorOffset("e3:0:ZA", "e3") == FolderSession.MALFORMED, "not positive");
+    check(FolderSession.cursorOffset("e3:250:", "e3") == FolderSession.MALFORMED, "no last row");
+    check(FolderSession.cursorOffset("e3:250:*", "e3") == FolderSession.MALFORMED, "bad last row");
+    check(
+        FolderSession.cursorOffset("e3:250", "e3") == FolderSession.MALFORMED
+            && FolderSession.cursorLast("e3:250:") == null,
+        "an older build's cursor is refused");
+    check(
+        FolderSession.cursorOffset(FolderSession.cursor("a:b", 7, "d"), "a:b") == 7,
+        "ids may contain colons");
+
+    // A page continues only while the row before it is unchanged: the host compares the provider
+    // row at offset-1 with the cursor's last document id.
+    List<String> rows = new ArrayList<>();
+    for (int i = 0; i < 300; i++) rows.add("doc" + i);
+    String page = FolderSession.cursor("e3", 250, rows.get(249));
+    int at = FolderSession.cursorOffset(page, "e3") - 1;
+    check(rows.get(at).equals(FolderSession.cursorLast(page)), "unchanged folder continues");
+    List<String> removed = new ArrayList<>(rows);
+    removed.remove(9);
+    check(!removed.get(at).equals(FolderSession.cursorLast(page)), "a removal is a conflict");
+    List<String> added = new ArrayList<>(rows);
+    added.add(0, "new");
+    check(!added.get(at).equals(FolderSession.cursorLast(page)), "an insertion is a conflict");
 
     // Child names: one path segment, no control characters.
     check(FolderSession.childName("  Reports  ").equals("Reports"), "trimmed");
-    for (String bad : new String[] {"", " ", ".", "..", "a/b", "a\\b", "a\nb", "x".repeat(256)})
+    for (String bad :
+        new String[] {"", " ", ".", "..", "a/b", "Q3/Q4 receipts", "a\\b", "a\nb", "x".repeat(256)})
       rejects(() -> FolderSession.childName(bad), "name " + bad.length());
     rejects(() -> FolderSession.childName(null), "null name");
     System.out.println("folder session checks: " + checks);

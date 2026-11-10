@@ -60,7 +60,13 @@ function getEphemeralSalt(): string {
 	return ephemeralSalt;
 }
 
+/** Additional authenticated data bound into every v2 ciphertext. */
+const SETTINGS_V2_AAD = new TextEncoder().encode("elizaos:settings:v2");
+
 function isEncryptedV1(value: string): boolean {
+	// Plain settings dominate reads; a v1 envelope always has its only colon
+	// right after the 32-hex IV, so reject before allocating a split.
+	if (value.charCodeAt(32) !== 58) return false;
 	const parts = value.split(":");
 	if (parts.length !== 2) return false;
 	// v1 was AES-256-CBC: a 16-byte IV (32 hex chars) and a ciphertext that is a
@@ -78,6 +84,7 @@ function isEncryptedV1(value: string): boolean {
 }
 
 function isEncryptedV2(value: string): boolean {
+	if (!value.startsWith("v2:")) return false;
 	const parts = value.split(":");
 	if (parts.length !== 4) return false;
 	if (parts[0] !== "v2") return false;
@@ -181,18 +188,6 @@ export function clearSaltCache(): void {
  * @returns {string} - The encrypted value in 'iv:encrypted' format
  */
 export function encryptStringValue(value: string, salt: string): string {
-	if (value === undefined || value === null) {
-		return value;
-	}
-
-	if (typeof value === "boolean" || typeof value === "number") {
-		return value;
-	}
-
-	if (typeof value !== "string") {
-		return value;
-	}
-
 	// If already encrypted, return as-is.
 	if (isEncryptedV1(value) || isEncryptedV2(value)) {
 		return value;
@@ -206,13 +201,12 @@ export function encryptStringValue(value: string, salt: string): string {
 		.slice(0, 32);
 	const iv = BufferUtils.randomBytes(12);
 
-	const aad = new TextEncoder().encode("elizaos:settings:v2");
 	const plaintextBytes = BufferUtils.fromString(value, "utf8");
 	const { ciphertext, tag } = cryptoUtils.encryptAes256Gcm(
 		key,
 		iv,
 		plaintextBytes,
-		aad,
+		SETTINGS_V2_AAD,
 	);
 
 	// Store version + IV + ciphertext + tag so we can decrypt and authenticate later
@@ -248,13 +242,12 @@ export function decryptStringValue(value: string, salt: string): string {
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
-			const aad = new TextEncoder().encode("elizaos:settings:v2");
 			const plaintextBytes = cryptoUtils.decryptAes256Gcm(
 				key,
 				iv,
 				ciphertext,
 				tag,
-				aad,
+				SETTINGS_V2_AAD,
 			);
 			return BufferUtils.bufferToString(plaintextBytes, "utf8");
 		}

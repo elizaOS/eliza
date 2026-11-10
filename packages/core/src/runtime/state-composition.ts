@@ -91,6 +91,7 @@ export class ProviderStateComposer {
 		onlyInclude = false,
 		skipCache = false,
 		refreshProviders: string[] | null = null,
+		options: { deferredReferenceProviders?: readonly string[] } = {},
 	): Promise<State> {
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
@@ -248,13 +249,19 @@ export class ProviderStateComposer {
 		const providerData: ProviderExecutionRecord[] = await Promise.all(
 			providersToRun.map(async (provider) => {
 				const providerRuntime: IAgentRuntime = this.runtime;
+				// Owner-exclusive results are never reused (see providersToRun and
+				// currentProviderResults), so a deferred body cannot reach a later
+				// composition that renders the complete text.
+				const referenceBodyDeferred =
+					provider.disclosureGate?.require === "owner_exclusive" &&
+					options.deferredReferenceProviders?.includes(provider.name) === true;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
 						? `${message.id}\u0000${message.roomId}\u0000${providerSelectionKey}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
-							}`
+							}\u0000${referenceBodyDeferred ? "deferred" : "complete"}`
 						: null;
 				let execution =
 					inFlightKey !== null
@@ -290,6 +297,9 @@ export class ProviderStateComposer {
 											provider.get(providerRuntime, message, cachedState, {
 												signal: workController.signal,
 												selectedProviderNames,
+												...(referenceBodyDeferred
+													? { referenceBodyDeferred: true }
+													: {}),
 											}),
 										),
 									),
@@ -527,8 +537,13 @@ export class ProviderStateComposer {
 		}
 		const recordProviderAccesses = (includeText: boolean) => {
 			if (trajectoryStepId && trajLogger) {
-				const userText =
-					typeof message.content.text === "string" ? message.content.text : "";
+				const query = {
+					message: toWellFormedUnicode(
+						typeof message.content.text === "string"
+							? message.content.text
+							: "",
+					),
+				};
 				const trajCtx = activeTrajectoryContext;
 				const providerTraceId = this.runtime.getActiveTrace(
 					this.runtime.getCurrentRunId(),
@@ -569,7 +584,7 @@ export class ProviderStateComposer {
 							// access row — omit them so readers do not slice a different
 							// string with compose-local offsets.
 							purpose: "compose_state",
-							query: { message: toWellFormedUnicode(userText) },
+							query,
 							runId: trajCtx?.runId,
 							roomId: trajCtx?.roomId,
 							messageId: trajCtx?.messageId,
@@ -614,7 +629,7 @@ export class ProviderStateComposer {
 							tokenCount: attribution?.tokenCount,
 							position: attribution?.position,
 							purpose: "compose_state",
-							query: { message: toWellFormedUnicode(userText) },
+							query,
 							runId: trajCtx?.runId,
 							roomId: trajCtx?.roomId,
 							messageId: trajCtx?.messageId,
@@ -711,22 +726,17 @@ export class ProviderStateComposer {
 		};
 		for (const provider of providersToGet) {
 			const providerResult = currentProviderResults[provider.name];
-			if (
-				providerResult?.values &&
-				typeof providerResult.values === "object" &&
-				providerResult.values !== null
-			) {
+			if (providerResult?.values && typeof providerResult.values === "object") {
 				Object.assign(aggregatedStateValues, providerResult.values);
 			}
 		}
-		const providersToGetNames = new Set(providersToGet.map((p) => p.name));
+		const providersToGetNames = new Set(providerOrderNames);
 		for (const providerName in currentProviderResults) {
 			if (!providersToGetNames.has(providerName)) {
 				const providerResult = currentProviderResults[providerName];
 				if (
 					providerResult?.values &&
-					typeof providerResult.values === "object" &&
-					providerResult.values !== null
+					typeof providerResult.values === "object"
 				) {
 					Object.assign(aggregatedStateValues, providerResult.values);
 				}

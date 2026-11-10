@@ -708,6 +708,9 @@ export async function createV5MessageContextObject(args: {
       roomId: args.message.roomId,
       messageId: args.message.id,
       actorId: args.message.entityId,
+      ...(args.message.content?.channelType === "VOICE_DM"
+        ? { responseChannel: "VOICE_DM" }
+        : {}),
       ...(displayTimeZone ? { displayTimeZone } : {}),
       selectedContexts: [...(args.selectedContexts ?? [])],
       ...(args.actionSurface
@@ -723,6 +726,21 @@ export async function createV5MessageContextObject(args: {
             stable: true,
           }
         : undefined,
+      // One channel-scoped instruction reaches Stage 1, planning and final
+      // evaluation through the existing shared context without rewriting generated output.
+      ...(args.message.content?.channelType === "VOICE_DM"
+        ? {
+            staticProviders: [
+              {
+                id: "voice-response-style",
+                label: "system",
+                stable: true,
+                content:
+                  "voice_response_style: Your user-visible reply will be spoken aloud. For an ordinary question or overview, deliver one concise spoken turn: one to three short sentences, about 60 words or fewer, containing only the most useful verified facts needed to answer. A complete answer covers the request; it does not enumerate every search result or add an unsolicited briefing, background, examples, caveats, or follow-up menu. This spoken-length instruction takes priority over generic thoroughness or comprehensiveness preferences. Expand when the user explicitly asks for detail, a list, an exhaustive report, exact text, or when necessary to avoid a misleading answer. Never omit a limitation that changes the answer. Avoid reading long URLs, tables, source inventories or internal tool metadata aloud unless requested; preserve attribution required for the facts you use. The text in replyText and messageToUser is also displayed and saved verbatim, not only spoken. Parenthetical asides are not private: keep drafting notes, schema or tool instructions, and commentary about meeting language or length requirements out of these reply fields. Answer explicitly requested technical explanations normally and preserve requested exact quotations. Keep important uncertainty and failed checks clear. This governs user-visible prose only: keep complete internal evidence, tool arguments and required response envelopes unchanged. Never invent an answer, shorten a user-provided literal, or replace the final answer with a progress acknowledgment.",
+              },
+            ],
+          }
+        : {}),
       characterPrompt: characterStyleDirections
         ? {
             id: "character-style",

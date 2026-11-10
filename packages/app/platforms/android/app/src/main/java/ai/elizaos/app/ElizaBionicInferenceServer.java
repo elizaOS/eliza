@@ -43,8 +43,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <pre>
  *   [int32 big-endian byte length N][N bytes UTF-8 JSON]
  * </pre>
- * Request JSON: {@code {op:"generate", bundleDir, prompt, maxTokens,
- * stopSequences?}}.
+ * Request JSON: {@code {op:"generate", bundleDir, prompt | promptSegments,
+ * maxTokens, stopSequences?}}. {@code promptSegments} is a list of
+ * {@code {text, special}}: only special segments (template markers) are
+ * tokenized with control-token parsing, so message text cannot forge a turn.
  * Response JSON: {@code {ok, text?, error?, tokens?, ms?, tokS?}} — for the
  * buffered first slice this is exactly the JSON {@link ElizaVoiceNative#nativeLlmSelfTest}
  * already returns, so the GPU decode loop runs entirely server-side and the
@@ -54,17 +56,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code embed}, {@code tts} ({@code {text | phonemes, language:"en-US", speed}}
  * spoken by Paradee-8M with native misaki G2P), {@code asr}, {@code image},
  * {@code tts_cancel} and {@code asr_cancel}. Speech logs carry sizes only,
- * never text or transcripts.
+ * never text or transcripts. {@code capabilities} reports what a bundle's
+ * files can serve ({@code text, embedding, vision, asr, tts}) without loading
+ * a model.
+ *
+ * <p>A buffered {@code generate} ends its connection after the response; while
+ * it decodes, the host watches the connection and stops at the next native
+ * step once the caller hangs up.
  *
  * <p>Streaming ASR ({@code asr_stream_supported / open / feed / partial /
  * finish / close / cancel}) keeps one connection open per stream; see
  * {@link BionicAsrStreams} for the protocol and bounds.
+ *
+ * <p>Only this app's UID may connect: an abstract socket name is not an
+ * authentication boundary. Model paths a request names ({@code bundleDir},
+ * {@code mmprojPath}, {@code drafterPath}) must resolve inside the app's data
+ * directory. A request frame over its limit is answered with
+ * {@code {ok:false, code:"FRAME_TOO_LARGE", limitBytes}}.
  */
 final class ElizaBionicInferenceServer {
 
     private static final String TAG = "ElizaBionicInfer";
-    /** Hard cap on a single request frame (1 MiB) — prompts, not payloads. */
-    private static final int MAX_FRAME_BYTES = 1 << 20;
+    /** Cap on a prompt request frame (1 MiB). */
+    static final int MAX_PROMPT_FRAME_BYTES = 1 << 20;
+    /**
+     * Cap on an audio or image request frame ({@code asr}, {@code image},
+     * {@code asr_stream_feed}). Each frame is read whole into memory, so this
+     * stays small enough for a low-RAM phone.
+     */
+    static final int MAX_PAYLOAD_FRAME_BYTES = 16 << 20;
 
     /**
      * Poll-based memory-pressure probe supplied by the owning service
@@ -94,6 +114,10 @@ final class ElizaBionicInferenceServer {
     /** Idle-unload timeout; {@code 0} disables the idle lever (#11760). */
     private final long idleUnloadMs;
     private final MemoryPressureProbe pressureProbe;
+    /** Request-supplied model paths must resolve under this directory. */
+    private final File modelRoot;
+    /** Set by {@link #stop}; the generate step loop checks it between native steps. */
+    private volatile boolean cancelRequested = false;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile LocalServerSocket serverSocket;
     private volatile Thread acceptThread;
@@ -188,8 +212,10 @@ final class ElizaBionicInferenceServer {
             InferenceMemoryPolicy.RamClass ramClass,
             long idleUnloadMs,
             MemoryPressureProbe pressureProbe,
-            NetworkStateProbe networkStateProbe) {
+            NetworkStateProbe networkStateProbe,
+            File modelRoot) {
         this.socketName = socketName;
+        this.modelRoot = modelRoot;
         this.defaultBundleDir = defaultBundleDir;
         this.ramClass = ramClass;
         this.idleUnloadMs = idleUnloadMs;
@@ -256,6 +282,11 @@ final class ElizaBionicInferenceServer {
         }
     }
 
+    /**
+     * Throws {@link IllegalStateException} when the fused engine does not load
+     * or the socket does not bind, so the caller can retract delegation
+     * instead of advertising a host that is not listening.
+     */
     synchronized void start() {
         if (running.get()) {
             return;
@@ -265,16 +296,16 @@ final class ElizaBionicInferenceServer {
         // the dlopen + Vulkan-device init; also fail fast + loud if the GPU host
         // isn't actually usable, so the agent's refuse-and-fallback can engage.
         if (!ElizaVoiceNative.ensureLoaded()) {
-            Log.e(TAG, "fused native engine failed to load; bionic inference host NOT started: "
-                + ElizaVoiceNative.getLoadError());
-            return;
+            throw new IllegalStateException(
+                "fused native engine failed to load; bionic inference host not started: "
+                    + ElizaVoiceNative.getLoadError());
         }
         try {
             serverSocket = new LocalServerSocket(socketName);
         } catch (IOException e) {
-            Log.e(TAG, "failed to bind abstract UDS \"" + socketName + "\"", e);
-            return;
+            throw new IllegalStateException("failed to bind abstract UDS \"" + socketName + "\"", e);
         }
+        cancelRequested = false;
         running.set(true);
         acceptThread = new Thread(this::acceptLoop, "eliza-bionic-infer-accept");
         acceptThread.setDaemon(true);
@@ -286,8 +317,20 @@ final class ElizaBionicInferenceServer {
             + ", idleUnloadMs=" + idleUnloadMs + ")");
     }
 
+    /**
+     * Stop accepting and free the resident state. A running decode or speech
+     * pass is cancelled first, so the wait for it is one native step, not the
+     * whole pass (this runs on the main thread from onDestroy).
+     */
     synchronized void stop() {
         running.set(false);
+        cancelRequested = true;
+        try {
+            signalTtsCancel();
+            asrStreams.cancelCurrent(this::signalBatchAsrCancel);
+        } catch (Throwable t) {
+            Log.w(TAG, "could not signal the running voice pass to stop", t);
+        }
         ScheduledExecutorService exec = memoryPolicyExecutor;
         memoryPolicyExecutor = null;
         if (exec != null) {
@@ -296,6 +339,13 @@ final class ElizaBionicInferenceServer {
         LocalServerSocket s = serverSocket;
         serverSocket = null;
         if (s != null) {
+            // close() alone leaves accept() blocked and the abstract address bound,
+            // so a same-process restart would fail with "Address already in use".
+            try {
+                android.system.Os.shutdown(s.getFileDescriptor(), android.system.OsConstants.SHUT_RDWR);
+            } catch (android.system.ErrnoException ignored) {
+                // Already closed by the peer; close() below still runs.
+            }
             try {
                 s.close();
             } catch (IOException ignored) {
@@ -463,29 +513,49 @@ final class ElizaBionicInferenceServer {
         try (LocalSocket sock = client;
              DataInputStream in = new DataInputStream(sock.getInputStream());
              DataOutputStream out = new DataOutputStream(sock.getOutputStream())) {
+            final int peerUid = sock.getPeerCredentials().getUid();
+            if (peerUid != android.os.Process.myUid()) {
+                Log.w(TAG, "refused connection from uid " + peerUid);
+                return;
+            }
             // One request per connection for the buffered slice; loop so a future
             // streaming/keep-alive client can reuse the connection.
             while (running.get()) {
-                final String requestJson;
+                final byte[] frame;
                 try {
-                    requestJson = readFrame(in);
+                    frame = readFrame(in);
+                } catch (FrameTooLargeException tooLarge) {
+                    // The body was not read, so the connection cannot continue.
+                    writeFrame(out, frameTooLargeJson(tooLarge.length, MAX_PAYLOAD_FRAME_BYTES));
+                    out.flush();
+                    break;
                 } catch (IOException eof) {
                     break; // peer closed
                 }
-                if (requestJson == null) {
+                if (frame == null) {
                     break;
+                }
+                final String requestJson = new String(frame, StandardCharsets.UTF_8);
+                final String op = opOf(requestJson);
+                if (frame.length > MAX_PROMPT_FRAME_BYTES && !isPayloadOp(op)) {
+                    writeFrame(out, frameTooLargeJson(frame.length, MAX_PROMPT_FRAME_BYTES));
+                    out.flush();
+                    continue;
                 }
                 // op="generateStream" server-pushes one frame per decode step on
                 // this same connection (handled inline so it can write many
                 // frames); every other op is one-request/one-response.
-                if ("generateStream".equals(opOf(requestJson))) {
+                if ("generateStream".equals(op)) {
                     generateStreamRequest(requestJson, out);
                     out.flush();
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                     continue;
                 }
+                if ("generate".equals(op)) {
+                    generateRequest(sock, in, out, requestJson);
+                    break;
+                }
                 String responseJson;
-                final String op = opOf(requestJson);
                 if (BionicAsrStreams.isStreamOp(op)) {
                     responseJson = handleAsrStream(asrClient, op, requestJson);
                 } else if ("nativeSourceRead".equals(op)) {
@@ -502,7 +572,8 @@ final class ElizaBionicInferenceServer {
                 out.flush();
                 // Every op (generate/embed/tts/asr/image) touches the shared
                 // resident context — refresh the idle clock on completion (#11760).
-                if (!"networkPolicy".equals(opOf(requestJson)) && !"nativeSourceRead".equals(opOf(requestJson))) {
+                if (!"networkPolicy".equals(op) && !"nativeSourceRead".equals(op)
+                        && !"capabilities".equals(op)) {
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                 }
             }
@@ -522,6 +593,45 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
+     * One buffered generate. The caller sends nothing more on this connection,
+     * so a reader on its input sees only the hang-up, and the decode checks
+     * that between native steps instead of finishing a turn nobody will read.
+     * The reader owns the input afterwards, so the connection then ends.
+     */
+    private void generateRequest(LocalSocket sock, DataInputStream in, DataOutputStream out,
+                                 String requestJson) throws IOException {
+        final AtomicBoolean peerGone = new AtomicBoolean(false);
+        final Thread watch = new Thread(() -> {
+            try {
+                while (in.read() >= 0) {
+                    // Nothing is expected; the read only waits for EOF.
+                }
+            } catch (IOException closed) {
+                // Treated as the peer going away.
+            }
+            peerGone.set(true);
+        }, "eliza-bionic-infer-peer");
+        watch.setDaemon(true);
+        watch.start();
+        try {
+            final String responseJson = handleRequest(requestJson, peerGone::get);
+            if (peerGone.get()) {
+                Log.i(TAG, "generate client went away; reply dropped");
+                return;
+            }
+            writeFrame(out, responseJson);
+            out.flush();
+        } finally {
+            lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
+            try {
+                sock.shutdownInput();
+            } catch (IOException ignored) {
+                // The socket is closing anyway.
+            }
+        }
+    }
+
+    /**
      * Streaming ASR ops. cancel answers without the resident lock (the decode
      * it stops holds it); every other op runs under the lock on the resident
      * context.
@@ -532,7 +642,7 @@ final class ElizaBionicInferenceServer {
             if ("asr_stream_cancel".equals(op)) {
                 return asrStreams.cancel(req.optString("streamId", ""));
             }
-            String bundleDir = req.optString("bundleDir", "");
+            String bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             final String bundle = bundleDir.isEmpty() ? defaultBundleDir : bundleDir;
             synchronized (residentLock) {
                 try {
@@ -549,6 +659,10 @@ final class ElizaBionicInferenceServer {
     }
 
     private String handleRequest(String requestJson) {
+        return handleRequest(requestJson, null);
+    }
+
+    private String handleRequest(String requestJson, BionicDecodeLoop.Liveness liveness) {
         try {
             JSONObject req = new JSONObject(requestJson);
             String op = req.optString("op", "generate");
@@ -557,15 +671,18 @@ final class ElizaBionicInferenceServer {
                 return new JSONObject().put("ok", true)
                     .put("state", networkStateProbe.read()).toString();
             }
-            String bundleDir = req.optString("bundleDir", "");
+            String bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
             if ("tts_cancel".equals(op) || "asr_cancel".equals(op)) {
                 return cancelVoice("tts_cancel".equals(op));
             }
+            if ("capabilities".equals(op)) {
+                return capabilities(bundleDir);
+            }
             if ("embed".equals(op)) {
-                return embed(req.getString("bundleDir"), req.getString("text"),
+                return embed(confined(req.getString("bundleDir"), "bundleDir"), req.getString("text"),
                     req.optJSONArray("expectedTokenIds"), req.optString("embeddingSpace", ""));
             }
             if ("tts".equals(op)) {
@@ -578,13 +695,14 @@ final class ElizaBionicInferenceServer {
             }
             if ("image".equals(op)) {
                 return describeImage(bundleDir, req.optString("imageBase64", ""),
-                    req.optString("mmprojPath", ""), req.optString("prompt", ""));
+                    confined(req.optString("mmprojPath", ""), "mmprojPath"), req.optString("prompt", ""));
             }
             if (!"generate".equals(op)) {
                 return errorJson("unsupported op: " + op);
             }
-            String prompt = req.optString("prompt", "");
-            String drafterPath = req.optString("drafterPath", "");
+            final List<PromptSegment> segments = readPromptSegments(req);
+            String prompt = promptText(req, segments);
+            String drafterPath = confined(req.optString("drafterPath", ""), "drafterPath");
             int maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             List<String> stopSequences = readStopSequences(req);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
@@ -602,10 +720,13 @@ final class ElizaBionicInferenceServer {
             // ELIZA_BIONIC_RESIDENT=0 to force the old path).
             if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
                 try {
-                    String r = generateResident(
-                        bundleDir, drafterPath, prompt, maxTokens, stopSequences);
+                    String r = generateResident(bundleDir, drafterPath, prompt, segments,
+                        maxTokens, stopSequences, liveness);
                     Log.i(TAG, "GENERATE result (resident): " + generateLogSummary(r));
                     return r;
+                } catch (CancellationException stopping) {
+                    // The host is stopping; stop() frees the resident state.
+                    return cancelledJson("generate");
                 } catch (Throwable t) {
                     Log.w(TAG, "resident generate failed; falling back to reload-per-call", t);
                     resetResident();
@@ -633,11 +754,13 @@ final class ElizaBionicInferenceServer {
      * the full 256-token JNI buffer before the Java cap check ever ran).
      */
     private String generateResident(String bundleDir, String drafterPath, String prompt,
-                                    int maxTokens, List<String> stopSequences) throws Exception {
+                                    List<PromptSegment> segments, int maxTokens,
+                                    List<String> stopSequences,
+                                    BionicDecodeLoop.Liveness liveness) throws Exception {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
-            resetAndPrefillResident(prompt, drafterPath);
+            resetAndPrefillResident(prompt, segments, drafterPath);
             // Buffered callers still need bounded native steps: stop markers
             // are visible only after nativeLlmStreamNext returns, so decoding
             // the whole turn in one call would trim the marker but still pay
@@ -645,7 +768,7 @@ final class ElizaBionicInferenceServer {
             // overshoot while keeping JNI round trips inexpensive.
             final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
                 this::residentStreamStep, maxTokens,
-                DEFAULT_STREAM_STEP_TOKENS, stopSequences, null);
+                DEFAULT_STREAM_STEP_TOKENS, stopSequences, null, liveness);
             final long ms = android.os.SystemClock.elapsedRealtime() - t0;
             final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
             Log.i(TAG, "GENERATE (resident) eval count: " + r.produced
@@ -671,6 +794,9 @@ final class ElizaBionicInferenceServer {
     /** One bounded native decode step on the resident stream, parsed for the loop. */
     private BionicDecodeLoop.Step residentStreamStep(int stepCap)
             throws org.json.JSONException {
+        if (cancelRequested) {
+            throw new CancellationException("bionic inference host is stopping");
+        }
         final String stepJson =
             ElizaVoiceNative.nativeLlmStreamNext(residentStream, stepCap);
         if (stepJson == null) return null;
@@ -696,26 +822,28 @@ final class ElizaBionicInferenceServer {
         String bundleDir = defaultBundleDir;
         String drafterPath = "";
         String prompt = "";
+        List<PromptSegment> segments = null;
         int maxTokens = residentStreamGenerationBoundary();
         int streamStep = 0;
         List<String> stopSequences = Collections.emptyList();
         try {
             JSONObject req = new JSONObject(requestJson);
-            bundleDir = req.optString("bundleDir", "");
+            bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
-            drafterPath = req.optString("drafterPath", "");
-            prompt = req.optString("prompt", "");
+            drafterPath = confined(req.optString("drafterPath", ""), "drafterPath");
+            segments = readPromptSegments(req);
+            prompt = promptText(req, segments);
             maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             streamStep = req.optInt("streamStep", 0);
             stopSequences = readStopSequences(req);
-        } catch (org.json.JSONException e) {
+        } catch (org.json.JSONException | IllegalArgumentException e) {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
-        generateStream(
-            bundleDir, drafterPath, prompt, maxTokens, streamStep, stopSequences, out);
+        generateStream(bundleDir, drafterPath, prompt, segments, maxTokens, streamStep,
+            stopSequences, out);
     }
 
     /**
@@ -827,7 +955,8 @@ final class ElizaBionicInferenceServer {
      * decoded inside ONE {@code nativeLlmStreamNext}, so the "stream" was a
      * single giant frame and TTFT equaled full-turn latency.
      */
-    private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
+    private void generateStream(String bundleDir, String drafterPath, String prompt,
+                                List<PromptSegment> segments, int maxTokens,
                                 int requestedStreamStep, List<String> stopSequences,
                                 DataOutputStream out) throws IOException {
         final int streamStep = resolveStreamStepTokens(
@@ -841,7 +970,7 @@ final class ElizaBionicInferenceServer {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
-                resetAndPrefillResident(prompt, drafterPath);
+                resetAndPrefillResident(prompt, segments, drafterPath);
                 final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
                     this::residentStreamStep, maxTokens, streamStep, stopSequences,
                     text -> {
@@ -867,6 +996,11 @@ final class ElizaBionicInferenceServer {
                     + ") @ " + String.format(java.util.Locale.US, "%.2f", tokS)
                     + " tok/s");
             }
+        } catch (IOException clientGone) {
+            // Only frame writes throw IOException: the client closed mid-reply
+            // (an aborted turn). Keep the context and other connections' ASR
+            // streams; the next turn resets the KV past the shared prefix.
+            Log.i(TAG, "generate_stream client went away; resident context kept");
         } catch (Throwable t) {
             Log.w(TAG, "generate_stream failed", t);
             resetResident();
@@ -945,7 +1079,8 @@ final class ElizaBionicInferenceServer {
      * prefix or the stream can't be trimmed (e.g. an MTP stream). Caller holds
      * residentLock.
      */
-    private void resetAndPrefillResident(String prompt, String drafterPath) {
+    private void resetAndPrefillResident(String prompt, List<PromptSegment> segments,
+                                         String drafterPath) {
         final String effectiveDrafterPath = drafterPath == null ? "" : drafterPath;
         if (residentStream != 0L && !effectiveDrafterPath.equals(residentDrafterPath)) {
             ElizaVoiceNative.nativeLlmStreamClose(residentStream);
@@ -962,7 +1097,7 @@ final class ElizaBionicInferenceServer {
             residentDrafterPath = effectiveDrafterPath;
             residentPrevTokens = null;
         }
-        final int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+        final int[] toks = tokenizePrompt(prompt, segments);
         // Longest common token prefix with the previous turn, capped so at least
         // one new token is prefilled (the decode samples from the last prefilled
         // position's logits, so the suffix must be non-empty).
@@ -1003,6 +1138,82 @@ final class ElizaBionicInferenceServer {
             Log.i(TAG, "resident prefill reuse: kept " + applied + "/" + toks.length
                 + " prefix tokens, prefilled " + suffix.length + " delta");
         }
+    }
+
+    /** One {@code promptSegments} entry: template markers are {@code special}. */
+    static final class PromptSegment {
+        final String text;
+        final boolean special;
+
+        PromptSegment(String text, boolean special) {
+            this.text = text;
+            this.special = special;
+        }
+    }
+
+    /** The request's {@code promptSegments}, or null when it sent a plain prompt. */
+    static List<PromptSegment> readPromptSegments(JSONObject request) throws org.json.JSONException {
+        final JSONArray values = request.optJSONArray("promptSegments");
+        if (values == null) return null;
+        final ArrayList<PromptSegment> segments = new ArrayList<>(values.length());
+        for (int i = 0; i < values.length(); i++) {
+            final JSONObject value = values.getJSONObject(i);
+            segments.add(new PromptSegment(
+                value.getString("text"), value.optBoolean("special", false)));
+        }
+        return segments;
+    }
+
+    /** The whole prompt as text, for logs and the reload-per-call fallback. */
+    static String promptText(JSONObject request, List<PromptSegment> segments) {
+        if (segments == null) return request.optString("prompt", "");
+        final StringBuilder text = new StringBuilder();
+        for (PromptSegment segment : segments) text.append(segment.text);
+        return text.toString();
+    }
+
+    /**
+     * Token ids for the prompt. Segments are tokenized one at a time and
+     * concatenated: BOS only on the first, control tokens parsed only in
+     * special segments. A plain prompt keeps the old whole-string parse.
+     */
+    private int[] tokenizePrompt(String prompt, List<PromptSegment> segments) {
+        if (segments == null) {
+            return ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+        }
+        final ArrayList<int[]> parts = new ArrayList<>(segments.size());
+        int total = 0;
+        for (int i = 0; i < segments.size(); i++) {
+            final PromptSegment segment = segments.get(i);
+            final int[] part = ElizaVoiceNative.nativeTokenize(
+                residentCtx, segment.text, i == 0, segment.special);
+            parts.add(part);
+            total += part.length;
+        }
+        final int[] toks = new int[total];
+        int at = 0;
+        for (int[] part : parts) {
+            System.arraycopy(part, 0, toks, at, part.length);
+            at += part.length;
+        }
+        return toks;
+    }
+
+    /**
+     * What a bundle's files can serve, without loading anything or taking the
+     * resident lock. Embeddings use the agent's own BGE bundle per request.
+     */
+    static String capabilities(String bundleDir) throws org.json.JSONException {
+        final File bundle = new File(bundleDir);
+        final File paradee = new File(bundle, PARADEE_DIR);
+        return new JSONObject().put("ok", true).put("capabilities", new JSONObject()
+            .put("text", firstMatch(new File(bundle, "text"), ".gguf") != null)
+            .put("embedding", true)
+            .put("vision", firstMatch(new File(bundle, "vision"), ".gguf") != null)
+            .put("asr", firstMatch(new File(bundle, "asr"), ".gguf") != null)
+            .put("tts", new File(paradee, PARADEE_MODEL).isFile()
+                && new File(paradee, MISAKI_LEXICON).isFile()))
+            .toString();
     }
 
     /** Uses the isolated canonical encoder; failures never route to chat weights. */
@@ -1112,16 +1323,29 @@ final class ElizaBionicInferenceServer {
      * once; the pass itself returns {@code code:"CANCELLED"}.
      */
     private String cancelVoice(boolean tts) throws org.json.JSONException {
+        // asr_cancel stops the batch transcription only; a stream decode on
+        // the same context is cancelled by its own asr_stream_cancel.
+        final boolean signalled = tts
+            ? signalTtsCancel()
+            : asrStreams.cancelBatch(this::signalBatchAsrCancel);
+        return new JSONObject().put("ok", true).put("signalled", signalled).toString();
+    }
+
+    private boolean signalTtsCancel() {
         synchronized (cancelLock) {
             if (residentCtx == 0L) {
-                return new JSONObject().put("ok", true).put("signalled", false).toString();
+                return false;
             }
-            if (tts) {
-                ElizaVoiceNative.nativeCancelTts(residentCtx);
-            } else {
+            ElizaVoiceNative.nativeCancelTts(residentCtx);
+            return true;
+        }
+    }
+
+    private void signalBatchAsrCancel() {
+        synchronized (cancelLock) {
+            if (residentCtx != 0L) {
                 ElizaVoiceNative.nativeAsrCancel(residentCtx);
             }
-            return new JSONObject().put("ok", true).put("signalled", true).toString();
         }
     }
 
@@ -1157,7 +1381,13 @@ final class ElizaBionicInferenceServer {
         synchronized (residentLock) {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
-                String text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
+                final String text;
+                asrStreams.beginBatch();
+                try {
+                    text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
+                } finally {
+                    asrStreams.endBatch();
+                }
                 Log.i(TAG, "ASR from agent: " + n + " samples @ " + sr + " Hz -> "
                     + text.length() + " chars");
                 return new JSONObject()
@@ -1243,18 +1473,62 @@ final class ElizaBionicInferenceServer {
         }
     }
 
-    /** Read one length-prefixed UTF-8 frame, or null on a clean length-0 frame. */
-    private static String readFrame(DataInputStream in) throws IOException {
+    /**
+     * The confined form of a request-supplied model path: empty stays empty,
+     * anything else must resolve (symlinks followed) inside {@link #modelRoot}.
+     */
+    private String confined(String path, String field) {
+        if (path.isEmpty()) {
+            return path;
+        }
+        try {
+            final String root = modelRoot.getCanonicalPath();
+            if (new File(path).getCanonicalPath().startsWith(root + File.separator)) {
+                return path;
+            }
+        } catch (IOException unresolvable) {
+            // Treated as outside the root below.
+        }
+        throw new IllegalArgumentException(field + " is outside the app's model storage");
+    }
+
+    private static boolean isPayloadOp(String op) {
+        return "asr".equals(op) || "image".equals(op) || "asr_stream_feed".equals(op);
+    }
+
+    private static String frameTooLargeJson(long length, int limitBytes) {
+        try {
+            return new JSONObject().put("ok", false).put("code", "FRAME_TOO_LARGE")
+                .put("limitBytes", limitBytes)
+                .put("error", "request frame of " + length + " bytes exceeds the "
+                    + limitBytes + "-byte limit").toString();
+        } catch (org.json.JSONException e) {
+            return "{\"ok\":false,\"code\":\"FRAME_TOO_LARGE\"}";
+        }
+    }
+
+    /** A request frame longer than {@link #MAX_PAYLOAD_FRAME_BYTES}; its body is unread. */
+    private static final class FrameTooLargeException extends IOException {
+        final int length;
+
+        FrameTooLargeException(int length) {
+            super("frame too large: " + length);
+            this.length = length;
+        }
+    }
+
+    /** Read one length-prefixed frame, or null on a clean length-0 frame. */
+    private static byte[] readFrame(DataInputStream in) throws IOException {
         int len = in.readInt(); // big-endian; throws EOFException when peer closes
         if (len <= 0) {
             return null;
         }
-        if (len > MAX_FRAME_BYTES) {
-            throw new IOException("frame too large: " + len);
+        if (len > MAX_PAYLOAD_FRAME_BYTES) {
+            throw new FrameTooLargeException(len);
         }
         byte[] buf = new byte[len];
         in.readFully(buf);
-        return new String(buf, StandardCharsets.UTF_8);
+        return buf;
     }
 
     private static void writeFrame(DataOutputStream out, String json) throws IOException {
