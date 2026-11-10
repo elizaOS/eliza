@@ -16,8 +16,9 @@ import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
  * dispatch after it. Every other committed balance change (top-ups, refunds,
  * non-inference debits) republishes the projection to the gate, and the gate
  * keeps the newest balance revision, so affordability is decided against the
- * committed balance rather than the snapshot's. A cold or superseded snapshot
- * is refilled inline, and an aged snapshot is refilled once before it refuses.
+ * committed balance rather than the snapshot's. An aged snapshot still decides
+ * its request and is refreshed under `waitUntil`; only a request with no
+ * snapshot, or one refused for a superseded policy generation, refills inline.
  *
  * Hosts without a Worker lifetime keep a synchronous reservation because they
  * have no Durable Object to fence a deferred charge.
@@ -68,6 +69,8 @@ import {
 import {
   fillInferenceAdmissionSnapshot,
   getInferenceAdmissionSnapshotCacheFirst,
+  peekInferenceAdmissionSnapshotInIsolate,
+  refreshInferenceAdmissionSnapshotOffResponse,
   refreshStaleInferenceAdmissionSnapshot,
 } from "./inference-admission-snapshot";
 import {
@@ -465,33 +468,44 @@ async function admitWithoutGate(
 }
 
 /**
- * A refusal decided from a snapshot older than this refills the snapshot from
- * the primary once and retries. It matches the isolate projection lifetime, so
- * an organization that stays refused costs at most one primary read per isolate
- * in this window, while a top-up or hold release missed by the cached snapshot
- * is honored on the next request.
+ * A refusal decided from a snapshot older than this refreshes the snapshot
+ * from the primary after the response. It matches the isolate projection
+ * lifetime, so an organization that stays refused costs at most one primary
+ * read per isolate in this window, while a top-up or hold release missed by
+ * the cached snapshot is honored on the request after the refusal.
  */
 const REFUSAL_REFILL_MIN_AGE_MS = 5_000;
 
 /**
- * The snapshot a Worker request is admitted from: the one carried by the
- * combined auth decision while it is no older than the shared projection,
- * else the organization projection read cache-first (a cold cache is filled
- * inline). A snapshot that cannot prove hold standing or subscriber funding is
- * refilled from the primary once instead of failing.
+ * The snapshot a Worker request is admitted from. A snapshot carried by the
+ * combined auth decision (or the isolate's newer copy of it) decides the
+ * request at any age; one older than the shared projection lifetime is
+ * refreshed under `waitUntil` for later requests. The organization gate keeps
+ * the committed balance and the policy-generation fence, so an aged snapshot
+ * cannot overspend or dispatch under a superseded policy. Only a request with
+ * no snapshot reads the shared cache and, when that is cold too, the primary.
+ * A snapshot that cannot prove hold standing or subscriber funding is not a
+ * usable decision and is filled from the primary once.
  */
 async function workerAdmissionSnapshot(
   params: OrganizationInferenceAdmissionParams,
 ): Promise<InferenceAdmissionSnapshot> {
+  const organizationId = params.context.organizationId;
   const carried = params.admissionSnapshot;
-  let snapshot: InferenceAdmissionSnapshot =
-    isInferenceAdmissionSnapshot(carried) &&
-    snapshotAgeMs(carried) <= CacheTTL.inference.orgAdmission * 1000
-      ? carried
-      : await getInferenceAdmissionSnapshotCacheFirst(params.context.organizationId);
+  let snapshot: InferenceAdmissionSnapshot;
+  if (isInferenceAdmissionSnapshot(carried)) {
+    const local = peekInferenceAdmissionSnapshotInIsolate(organizationId);
+    snapshot = local && local.balance.balanceAt > carried.balance.balanceAt ? local : carried;
+  } else {
+    snapshot = await getInferenceAdmissionSnapshotCacheFirst(organizationId);
+  }
   if (!snapshotIsComplete(snapshot)) {
-    snapshot = await fillInferenceAdmissionSnapshot(params.context.organizationId);
+    snapshot = await fillInferenceAdmissionSnapshot(organizationId);
     if (!snapshotIsComplete(snapshot)) throw admissionUnavailable(params);
+    return snapshot;
+  }
+  if (params.executionCtx && snapshotAgeMs(snapshot) > CacheTTL.inference.orgAdmission * 1000) {
+    refreshInferenceAdmissionSnapshotOffResponse(organizationId, params.executionCtx);
   }
   return snapshot;
 }
@@ -518,8 +532,8 @@ function snapshotIsComplete(snapshot: InferenceAdmissionSnapshot): boolean {
  * generation was superseded or while a policy/hold mutation is open (see the
  * standing fence in `inference-policy-fence.ts`); that refusal refills the
  * projection inline and retries once. A balance or hold refusal decided from
- * an aged snapshot refills it once too, so a stale snapshot never refuses a
- * funded organization by itself.
+ * an aged snapshot stands for this request and refreshes the projection under
+ * `waitUntil`, so a stale snapshot refuses a funded organization at most once.
  */
 async function admitFromSnapshot(
   params: OrganizationInferenceAdmissionParams,
@@ -547,23 +561,14 @@ async function admitFromSnapshot(
     if (!isStandingRefusal(error) || snapshotAgeMs(snapshot) < REFUSAL_REFILL_MIN_AGE_MS) {
       throw error;
     }
-    let refreshed: InferenceAdmissionSnapshot;
-    try {
-      refreshed = await fillInferenceAdmissionSnapshot(params.context.organizationId);
-    } catch (fillError) {
-      // error-policy:J2 an aged snapshot alone must not refuse; without the
-      // primary the refusal is unproven, so report it as retryable.
-      throw admissionUnavailable(params, fillError);
+    if (params.executionCtx) {
+      refreshInferenceAdmissionSnapshotOffResponse(
+        params.context.organizationId,
+        params.executionCtx,
+        { force: true },
+      );
     }
-    if (!snapshotIsComplete(refreshed)) throw admissionUnavailable(params);
-    if (
-      refreshed.billingHold === snapshot.billingHold &&
-      refreshed.balance.balanceRevision === snapshot.balance.balanceRevision &&
-      refreshed.authority.generation === snapshot.authority.generation
-    ) {
-      throw error;
-    }
-    return await admitOnce(refreshed);
+    throw error;
   }
 }
 
