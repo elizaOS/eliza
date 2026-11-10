@@ -24,6 +24,7 @@ const requiredTests = retirement
       "closes the replaced runtime's database when the replacement uses another one",
       "drains the real retention callback before HTTP replacement closes its SQLite adapter",
       "reports a real SQLite callback failure after retirement without closing replacement storage",
+      "host replacement drains a detached adapter query outside the dirty snapshot",
     ]
   : [
       "boots a new runtime after a successful stop",
@@ -89,6 +90,7 @@ for (const source of [
         "packages/core/src/runtime/retirement.ts",
         "packages/core/src/runtime/service-lifecycle.ts",
         "packages/core/src/services/task.ts",
+        "packages/core/src/services/task-scheduler.ts",
       ]
     : [
         "packages/agent/src/api/agent-lifecycle-routes.ts",

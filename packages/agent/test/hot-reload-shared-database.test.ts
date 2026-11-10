@@ -6,12 +6,18 @@ import path from "node:path";
 import {
   AgentRuntime,
   ChannelType,
+  getTaskSchedulerAdapter,
+  startTaskScheduler,
+  stopTaskScheduler,
   stringToUuid,
   TaskService,
   type UUID,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
+import {
+  createTestRuntime,
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {
@@ -281,3 +287,80 @@ for (const { name, fail } of [
     }
   }, 180_000);
 }
+
+it("host replacement drains a detached adapter query outside the dirty snapshot", async () => {
+  const latch = () => {
+    let resolve!: () => void;
+    return {
+      promise: new Promise<void>((r) => {
+        resolve = r;
+      }),
+      resolve: () => resolve(),
+    };
+  };
+  const owner = await createTestRuntime({
+    characterName: "SchedulerAdapterOwner",
+  });
+  const consumer = await createTestRuntime({
+    characterName: "SchedulerAdapterConsumer",
+  });
+  const entered = latch(),
+    release = latch();
+  const service = new TaskService(consumer.runtime);
+  let runs = 0,
+    closes = 0,
+    queryFinished = false;
+  let closing: Promise<void> | undefined;
+  try {
+    consumer.runtime.registerTaskWorker({
+      name: "ADAPTER_REPLACEMENT",
+      execute: async () => {
+        runs++;
+      },
+    });
+    await consumer.runtime.createTask({
+      name: "ADAPTER_REPLACEMENT",
+      tags: ["queue"],
+      metadata: {},
+    });
+    const getTasks = owner.runtime.adapter.getTasks.bind(owner.runtime.adapter);
+    vi.spyOn(owner.runtime.adapter, "getTasks").mockImplementationOnce(
+      async (params) => {
+        expect(params.agentIds).toEqual([consumer.runtime.agentId]);
+        entered.resolve();
+        await release.promise;
+        const rows = await getTasks(params);
+        queryFinished = true;
+        return rows;
+      },
+    );
+    const close = owner.runtime.adapter.close.bind(owner.runtime.adapter);
+    vi.spyOn(owner.runtime.adapter, "close").mockImplementation(async () => {
+      closes++;
+      await close();
+    });
+    startTaskScheduler(owner.runtime.adapter);
+    service.startTimer();
+    await entered.promise;
+    const oldDrain = stopTaskScheduler();
+    startTaskScheduler(consumer.runtime.adapter);
+    service.startTimer();
+    await owner.runtime.stop();
+    closing = disposeReplacedRuntime(owner.runtime, consumer.runtime);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closes).toBe(0);
+    await expect.poll(() => runs, { timeout: 10000 }).toBe(1);
+    release.resolve();
+    await Promise.all([closing, oldDrain]);
+    expect(queryFinished).toBe(true);
+    expect(closes).toBe(1);
+    expect(getTaskSchedulerAdapter()).toBe(consumer.runtime.adapter);
+  } finally {
+    release.resolve();
+    await closing;
+    await service.stop();
+    await stopTaskScheduler();
+    vi.restoreAllMocks();
+    await Promise.all([owner.cleanup(), consumer.cleanup()]);
+  }
+}, 120_000);

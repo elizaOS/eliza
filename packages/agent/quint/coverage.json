@@ -362,13 +362,14 @@
       "packages/core/src/runtime/retirement.ts",
       "packages/core/src/runtime/service-lifecycle.ts",
       "packages/core/src/services/task.ts",
-      "packages/agent/test/hot-reload-shared-database.test.ts"
+      "packages/agent/test/hot-reload-shared-database.test.ts",
+      "packages/core/src/services/task-scheduler.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Eight boot phases and two deferred task identities. The retirement refinement has one outgoing and one active replacement runtime, shared/distinct connections, one initially active write or no write, and two original stop callbacks.",
-      "Four maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check.",
+      "Five maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check. The detached scheduler-query case also verifies that an outgoing adapter is drained without stopping the replacement scheduler, even when the outgoing runtime was outside the dirty snapshot.",
       "Retirement progress assumes fair storage success/failure settlement, callback settlement, continuation and host cleanup. Individual boot resources, arbitrary callback internals, post-delivery work, late service starts, adapter-close failures, signal exit budgets and self-awaiting hooks remain partial. No wall-clock, implementation trace-refinement or unbounded proof is claimed."
     ]
   },

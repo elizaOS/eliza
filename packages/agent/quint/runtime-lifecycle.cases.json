@@ -11,11 +11,12 @@
     "packages/core/src/runtime/retirement.ts",
     "packages/core/src/runtime/service-lifecycle.ts",
     "packages/core/src/services/task.ts",
+    "packages/core/src/services/task-scheduler.ts",
     "packages/agent/test/hot-reload-shared-database.test.ts"
   ],
   "bounds": {
     "domain": "Eight boot phases and two deferred task identities. A separate retirement projection has one outgoing and one active replacement runtime, a shared or distinct adapter, one initially active write or no write, and two original service-stop callbacks.",
-    "scope": "Finite boot/teardown safety and conditional retirement progress. Fast completion and lookup clearing do not release callback ownership. The retirement receipt is the host helper's resolution/rejection; the CLI reports cleanup failure after publishing its replacement. Real HTTP, file-backed SQLite scheduler/retention, shared PGlite and distinct PGlite conformance."
+    "scope": "Finite boot/teardown safety and conditional retirement progress. Fast completion and lookup clearing do not release callback ownership. The retirement receipt is the host helper's resolution/rejection; the CLI reports cleanup failure after publishing its replacement. Real HTTP, file-backed SQLite scheduler/retention, shared PGlite and distinct PGlite conformance. Host conformance additionally exercises detached shared-scheduler queries when the outgoing runtime is outside the dirty query snapshot."
   },
   "cases": [
     {

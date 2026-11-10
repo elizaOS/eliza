@@ -1596,7 +1596,8 @@ export async function closeRuntimeAdapter(
   if (!adapter || typeof adapter.close !== "function") return;
   try {
     logger.debug(`[eliza] ${context}: closing database adapter`);
-    await adapter.close();
+    // Core owns adapter-wide scheduler queries and pending diagnostics.
+    await runtime.close();
     logger.debug(`[eliza] ${context}: database adapter closed`);
   } catch (err) {
     logger.warn(
