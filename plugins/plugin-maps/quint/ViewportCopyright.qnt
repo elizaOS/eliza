@@ -11,7 +11,7 @@ module ViewportCopyright {
     s.alive, s.next < 3,
     s' = s.with("pending", s.next).with("next", s.next + 1).with("requestedView", s.view).with("visible", false).with("shown", -1),
   }
-  action reply(token: int, success: bool) = all {
+  action reply(token: int, success: bool): bool = all {
     token >= 0, token < s.next,
     s' = if (s.alive and token == s.pending) {
       s.with("pending", -1).with("shown", if (success) s.requestedView else -1).with("visible", success).with("failed", not(success))
