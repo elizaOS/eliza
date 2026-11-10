@@ -385,13 +385,17 @@ export function validateFilesFilter(value: unknown): FilesFilter {
   if (!Object.keys(out).length) throw Error("Empty filter");
   return out;
 }
+// Words of any script, like StorageCatalog.query on Android.
 const words = (value: string) =>
   value
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .split(/[^a-z0-9]+/)
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter(Boolean);
+/** Scripts that do not space their words: a filter word may sit inside a name word. */
+const UNSPACED_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 export function filterMatches(
   filter: FilesFilter,
   entry: StorageEntry,
@@ -429,7 +433,11 @@ export function filterMatches(
     const name = words(entry.name);
     if (
       !words(filter.text).every((word) =>
-        name.some((part) => part.startsWith(word)),
+        name.some((part) =>
+          UNSPACED_SCRIPT.test(word)
+            ? part.includes(word)
+            : part.startsWith(word),
+        ),
       )
     )
       return false;
