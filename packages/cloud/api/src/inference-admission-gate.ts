@@ -198,6 +198,9 @@ interface PolicyFenceRequest {
   policyGeneration?: string;
 }
 
+/** Numeric entries expire before preparation; a prepared generation requires evidence. */
+type PendingPolicyFence = number | { generation: string };
+
 interface RateLimitCutoverRequest {
   windowMs: number;
 }
@@ -1258,6 +1261,7 @@ export class InferenceAdmissionGate {
         nextAlarmAt: null,
         settledRequestIds: [],
       });
+      await this.retirePreparedPolicyFences(request.policyGeneration);
       return Response.json({ hydrated: true, initialized: true });
     }
     const ledger = cloneLedger(existing);
@@ -1271,6 +1275,7 @@ export class InferenceAdmissionGate {
     // rollback: the gate keeps the newest generation it has seen.
     observePolicyGeneration(ledger, request.policyGeneration);
     await this.save(ledger);
+    await this.retirePreparedPolicyFences(request.policyGeneration);
     return Response.json({ hydrated: true, initialized: false });
   }
 
@@ -1904,17 +1909,69 @@ export class InferenceAdmissionGate {
     generation: string | undefined,
   ): Promise<boolean> {
     const [pending, floor] = await Promise.all([
-      this.state.storage.get<Record<string, number>>(POLICY_FENCE_PENDING_KEY),
+      this.state.storage.get<Record<string, PendingPolicyFence>>(
+        POLICY_FENCE_PENDING_KEY,
+      ),
       this.state.storage.get<string>(POLICY_FENCE_GENERATION_KEY),
     ]);
     const now = Date.now();
-    if (pending && Object.values(pending).some((until) => until > now)) {
+    if (
+      pending &&
+      Object.values(pending).some(
+        (entry) => typeof entry !== "number" || entry > now,
+      )
+    ) {
       return false;
     }
     if (floor === undefined || generation === undefined) return true;
     const leased = balanceRevision(generation);
     const committed = balanceRevision(floor);
     return leased !== null && committed !== null && leased >= committed;
+  }
+
+  private async publishStandingPolicyFloor(generation: string): Promise<void> {
+    const floor = await this.state.storage.get<string>(
+      POLICY_FENCE_GENERATION_KEY,
+    );
+    const current = floor === undefined ? null : balanceRevision(floor);
+    const incoming = balanceRevision(generation)!;
+    if (current === null || incoming > current)
+      await this.state.storage.put(POLICY_FENCE_GENERATION_KEY, generation);
+  }
+
+  private discardCoveredPreparedFences(
+    pending: Record<string, PendingPolicyFence>,
+    generation: bigint,
+  ): boolean {
+    let changed = false;
+    for (const [id, entry] of Object.entries(pending)) {
+      if (typeof entry === "number") continue;
+      const prepared = balanceRevision(entry.generation);
+      if (prepared !== null && prepared <= generation) {
+        delete pending[id];
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private async retirePreparedPolicyFences(
+    generation: string | undefined,
+  ): Promise<void> {
+    if (generation === undefined) return;
+    const stored = await this.state.storage.get<
+      Record<string, PendingPolicyFence>
+    >(POLICY_FENCE_PENDING_KEY);
+    if (!stored) return;
+    const pending = { ...stored };
+    if (
+      !this.discardCoveredPreparedFences(pending, balanceRevision(generation)!)
+    )
+      return;
+    // Publish the durable floor first. Interrupted retirement can leave a
+    // protective entry, but cannot reopen dispatch under an older lease.
+    await this.publishStandingPolicyFloor(generation);
+    await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
   }
 
   private async policyFence(
@@ -1930,38 +1987,62 @@ export class InferenceAdmissionGate {
     }
     const now = Date.now();
     const stored =
-      (await this.state.storage.get<Record<string, number>>(
+      (await this.state.storage.get<Record<string, PendingPolicyFence>>(
         POLICY_FENCE_PENDING_KEY,
       )) ?? {};
     const pending = Object.fromEntries(
-      Object.entries(stored).filter(([, until]) => until > now),
+      Object.entries(stored).filter(
+        ([, entry]) => typeof entry !== "number" || entry > now,
+      ),
     );
+    const owned = pending[request.mutationId];
+    const prepared =
+      typeof owned === "object" ? balanceRevision(owned.generation) : null;
     if (path === "/policy-fence/begin") {
-      pending[request.mutationId] = now + POLICY_FENCE_MAX_PENDING_MS;
+      if (request.policyGeneration !== undefined) {
+        const incoming = balanceRevision(request.policyGeneration)!;
+        if (prepared !== null && prepared !== incoming)
+          return jsonError(
+            "Prepared policy fence generation does not match",
+            409,
+          );
+        const floor = await this.state.storage.get<string>(
+          POLICY_FENCE_GENERATION_KEY,
+        );
+        const committed = floor === undefined ? null : balanceRevision(floor);
+        if (committed === null || committed < incoming)
+          pending[request.mutationId] = {
+            generation: request.policyGeneration,
+          };
+        else delete pending[request.mutationId];
+      } else if (prepared === null) {
+        pending[request.mutationId] = now + POLICY_FENCE_MAX_PENDING_MS;
+      }
       await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
       return Response.json({ blocked: true });
     }
-    delete pending[request.mutationId];
-    await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
-    if (path === "/policy-fence/commit" && request.policyGeneration) {
-      const floor = await this.state.storage.get<string>(
-        POLICY_FENCE_GENERATION_KEY,
-      );
-      const incoming = balanceRevision(request.policyGeneration)!;
-      const current = floor === undefined ? null : balanceRevision(floor);
-      if (current === null || incoming > current) {
-        await this.state.storage.put(
-          POLICY_FENCE_GENERATION_KEY,
-          request.policyGeneration,
+    if (path === "/policy-fence/commit") {
+      const generation = request.policyGeneration;
+      const incoming =
+        generation === undefined ? null : balanceRevision(generation);
+      if (prepared !== null && incoming !== prepared)
+        return jsonError(
+          "Prepared policy fence requires committed generation",
+          409,
         );
-      }
-      const existing = await this.load();
-      if (existing) {
-        const ledger = cloneLedger(existing);
-        observePolicyGeneration(ledger, request.policyGeneration);
-        await this.save(ledger);
+      if (generation !== undefined && incoming !== null) {
+        await this.publishStandingPolicyFloor(generation);
+        const existing = await this.load();
+        if (existing) {
+          const ledger = cloneLedger(existing);
+          observePolicyGeneration(ledger, generation);
+          await this.save(ledger);
+        }
+        this.discardCoveredPreparedFences(pending, incoming);
       }
     }
+    delete pending[request.mutationId];
+    await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
     return Response.json({ committed: true });
   }
 

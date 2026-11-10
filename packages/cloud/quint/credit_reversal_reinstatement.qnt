@@ -11,6 +11,7 @@ module credit_reversal_reinstatement {
     rows: List[Obligation], providerRefund: int, acknowledgedRefund: int,
     reinstatement: Reinstatement, preparedRefund: int,
     failureBudget: int, acknowledgedReinstatement: bool,
+    preparedStandingFence: bool, standingFencePastOldTtl: bool, standingFloor: int,
   }
   var s: State
   pure val grant = 2
@@ -34,6 +35,8 @@ module credit_reversal_reinstatement {
     sum + if (row.source == Dispute and reinstatementReceipt(x)) 0 else total(row))
   pure def hasHold(x: State): bool = x.rows.select(row => onHold(x, row)).length() > 0
   pure def paidAdmission(x: State): bool = x.balance > 0 and not(hasHold(x))
+  pure def oldGenerationDispatch(x: State): bool =
+    x.standingFloor == 1 and not(x.preparedStandingFence)
 
   // Zero-delta cumulative receipts preserve the observed target. Their economic
   // obligation is zero, but a later preparation must still see that observation.
@@ -62,6 +65,7 @@ module credit_reversal_reinstatement {
     funded: false, balance: 0, spent: 0, toppedUp: false, rows: List(),
     providerRefund: 0, acknowledgedRefund: 0, reinstatement: NoEvent,
     preparedRefund: -1, failureBudget: 1, acknowledgedReinstatement: false,
+    preparedStandingFence: false, standingFencePastOldTtl: false, standingFloor: 1,
   }
   action grantCredits = all { not(s.funded), s' = { ...s, funded: true, balance: grant } }
   action spend = all { paidAdmission(s), s' = { ...s, balance: s.balance - 1, spent: s.spent + 1 } }
@@ -84,6 +88,7 @@ module credit_reversal_reinstatement {
   }
   action prepareObserved(observed: int): bool = all {
     s.reinstatement == WaitingForWithdrawal, hasDispute(s), s.preparedRefund == -1,
+    not(s.preparedStandingFence),
     observed >= 0, observed <= s.providerRefund,
     s' = { ...s, preparedRefund: max(observed, knownRefund(s)) },
   }
@@ -97,19 +102,45 @@ module credit_reversal_reinstatement {
     s.failureBudget > 0,
     s' = s.with("preparedRefund", -1).with("failureBudget", 0),
   }
-  action commitReinstatement = all {
+  action rollbackWithoutCommitReply = all {
+    s.reinstatement == WaitingForWithdrawal, s.preparedRefund >= knownRefund(s),
+    s.failureBudget > 0,
+    s' = { ...s, preparedRefund: -1, failureBudget: 0, preparedStandingFence: true },
+  }
+  action commitWithReceiptObservation(observed: bool): bool = all {
     s.reinstatement == WaitingForWithdrawal, s.preparedRefund >= knownRefund(s),
     val returned = { ...s, reinstatement: Settled,
-      balance: s.balance + disputeApplied(s) + disputeRepayment(s) }
+      balance: s.balance + disputeApplied(s) + disputeRepayment(s),
+      preparedStandingFence: not(observed), standingFloor: if (observed) 2 else 1 }
     s' = repay(book(returned, Reapplication, s.preparedRefund)).with("preparedRefund", -1),
   }
+  action commitReinstatement = commitWithReceiptObservation(true)
+  action commitWithoutReply = commitWithReceiptObservation(false)
+  // A former unprepared-entry expiry cannot retire a prepared generation.
+  action crossOldFenceTtl = all {
+    s.preparedStandingFence, not(s.standingFencePastOldTtl),
+    s' = s.with("standingFencePastOldTtl", true),
+  }
+  action observeOlderPolicy = all { s.preparedStandingFence, s' = s }
+  // The exact receipt or a current primary snapshot advances the floor first.
+  action observeCommittedPolicy = all {
+    s.preparedStandingFence, reinstatementReceipt(s),
+    s' = { ...s, preparedStandingFence: false, standingFencePastOldTtl: false, standingFloor: 2 },
+  }
+  // Only a primary barrier with the previous generation establishes rollback.
+  action observeRolledBackPolicy = all {
+    s.preparedStandingFence, not(reinstatementReceipt(s)),
+    s' = { ...s, preparedStandingFence: false, standingFencePastOldTtl: false },
+  }
+  action observeStandingOutcome = any { observeCommittedPolicy, observeRolledBackPolicy }
   action acknowledgeReinstatement = all {
     s.reinstatement == Settled, not(s.acknowledgedReinstatement),
+    not(s.preparedStandingFence),
     s' = s.with("acknowledgedReinstatement", true),
   }
   // The transaction can commit before its cache/publication acknowledgement.
   action replayAfterLostAcknowledgement = all { s.reinstatement == Settled, s' = s }
-  action continueReinstatement = any { prepare, stalePreparation, commitReinstatement }
+  action continueReinstatement = any { prepare, stalePreparation, commitReinstatement, commitWithoutReply }
   action deliverLatestRefund = all {
     s.providerRefund > s.acknowledgedRefund, deliverRefund(s.providerRefund),
   }
@@ -119,6 +150,7 @@ module credit_reversal_reinstatement {
     any { grantCredits, spend, topUp, repayOutstanding, observeRefund(target),
       retryBeforeGrant, deliverRefund(target), deliverLatestRefund, withdrawDispute(target),
       observeReinstatement, continueReinstatement, failedTransaction,
+      rollbackWithoutCommitReply, crossOldFenceTtl, observeOlderPolicy, observeStandingOutcome,
       acknowledgeReinstatement, replayAfterLostAcknowledgement, idle }
   }
   pure def netDebits(x: State): int = x.rows.foldl(0, (sum, row) => {
@@ -134,6 +166,9 @@ module credit_reversal_reinstatement {
   val AcknowledgedCovered = covered(s) >= s.acknowledgedRefund
   val KnownRefundRetained = knownRefund(s) >= s.acknowledgedRefund
   val PaidAdmissionCovered = paidAdmission(s) implies AcknowledgedCovered
+  val StandingGenerationAuthority =
+    (s.standingFloor == 2 implies reinstatementReceipt(s)) and
+    (reinstatementReceipt(s) implies not(oldGenerationDispatch(s)))
   temporal ReinstatementSettles = always((s.reinstatement != NoEvent and hasDispute(s))
     implies eventually(s.reinstatement == Settled))
   temporal RefundSettles = always((s.funded and s.providerRefund > s.acknowledgedRefund)
@@ -142,8 +177,10 @@ module credit_reversal_reinstatement {
     implies eventually(not(hasHold(s)) or s.balance == 0))
   temporal FairReversalDelivery =
     (continueReinstatement.weakFair(s) and deliverLatestRefund.weakFair(s) and
-      repayOutstanding.weakFair(s) and acknowledgeReinstatement.weakFair(s)) implies
+      repayOutstanding.weakFair(s) and acknowledgeReinstatement.weakFair(s) and
+      observeStandingOutcome.weakFair(s)) implies
     (ReinstatementSettles and RefundSettles and RepaymentSettles and
+      always(s.preparedStandingFence implies eventually(not(s.preparedStandingFence))) and
       always(s.reinstatement == Settled implies eventually(s.acknowledgedReinstatement)))
   temporal HoldAuthority = always(and {
     (next(s.spent) > s.spent) implies paidAdmission(s),
@@ -192,4 +229,16 @@ module credit_reversal_reinstatement {
     .then(replayAfterLostAcknowledgement).then(replayAfterLostAcknowledgement)
     .expect(s.balance == 0 and not(s.acknowledgedReinstatement) and Conserved)
     .then(acknowledgeReinstatement).expect(s.acknowledgedReinstatement and AcknowledgedCovered)
+  run unknownCommitFencesOldDispatchUntilPrimaryReceiptTest = init.then(grantCredits)
+    .then(withdrawDispute(1)).then(observeRefund(2)).then(observeReinstatement)
+    .then(prepareObserved(2)).then(commitWithoutReply).then(crossOldFenceTtl).then(observeOlderPolicy)
+    .expect(s.preparedStandingFence and s.standingFencePastOldTtl and s.standingFloor == 1 and not(oldGenerationDispatch(s)))
+    .then(observeCommittedPolicy).expect(not(s.preparedStandingFence) and StandingGenerationAuthority)
+    .then(acknowledgeReinstatement).expect(s.acknowledgedReinstatement and Conserved)
+  run unknownRollbackRequiresPrimaryBarrierTest = init.then(grantCredits)
+    .then(withdrawDispute(1)).then(observeRefund(2)).then(observeReinstatement)
+    .then(prepareObserved(2)).then(rollbackWithoutCommitReply).then(crossOldFenceTtl)
+    .expect(s.preparedStandingFence and not(oldGenerationDispatch(s)) and not(reinstatementReceipt(s)))
+    .then(observeRolledBackPolicy).expect(oldGenerationDispatch(s) and Conserved)
+    .then(prepareObserved(2)).then(commitReinstatement).expect(StandingGenerationAuthority and Conserved)
 }

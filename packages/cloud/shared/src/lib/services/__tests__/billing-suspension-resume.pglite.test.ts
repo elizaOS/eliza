@@ -437,7 +437,11 @@ test(
         }),
     );
     expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
-    expect(gatePaths.slice(0, 2)).toEqual(["/policy-fence/begin", "/policy-fence/commit"]);
+    expect(gatePaths.slice(0, 3)).toEqual([
+      "/policy-fence/begin",
+      "/policy-fence/begin", // Pin the prepared generation before COMMIT.
+      "/policy-fence/commit",
+    ]);
     expect(pending.size).toBe(0);
     expect(floor > BigInt(snapshot.authority.generation)).toBe(true);
 

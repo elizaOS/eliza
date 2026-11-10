@@ -18,9 +18,11 @@ import { randomUUID } from "node:crypto";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import type Stripe from "stripe";
+import type { CommitFault } from "./fixtures/postgres-commit-ack-relay";
 import { stripeReversalTestDatabase } from "./fixtures/stripe-reversal-database";
 
 const testDatabase = await stripeReversalTestDatabase("reinstatement");
+let closeStandingFences: (() => Promise<void>) | undefined;
 setDefaultTimeout(60_000);
 
 const { closeDatabaseConnectionsForTests, dbWrite } = await import(
@@ -41,6 +43,11 @@ const { stripeCheckoutOrders } = await import(
   "@elizaos/cloud-shared/db/schemas/stripe-checkout-orders"
 );
 const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
+const { organizationSubscriptionAuthorities, organizationPolicyAudit } =
+  await import("@elizaos/cloud-shared/db/schemas");
+const { runWithCloudBindingsAsync } = await import(
+  "@elizaos/cloud-shared/lib/runtime/cloud-bindings"
+);
 const { organizationPaymentReversalHolds } = await import(
   "@elizaos/cloud-shared/db/schemas/organization-payment-reversal-holds"
 );
@@ -147,6 +154,8 @@ beforeAll(async () => {
         creditTransactions,
         stripeCheckoutOrders,
         invoices,
+        organizationSubscriptionAuthorities,
+        organizationPolicyAudit,
         organizationPaymentReversalHolds,
         earningsSourceEnum,
         ledgerEntryTypeEnum,
@@ -157,13 +166,23 @@ beforeAll(async () => {
       },
       empty.id,
     ),
-  ))
-    await pg().exec(statement.replaceAll('"public".', ""));
+  )) {
+    // This non-subscriber fixture has no canonical subscription rows.
+    if (!statement.includes("organization_subscription_authorities_tenant_fk"))
+      await pg().exec(statement.replaceAll('"public".', ""));
+  }
 });
 
 afterAll(async () => {
-  await closeDatabaseConnectionsForTests();
-  await testDatabase.close();
+  try {
+    await closeDatabaseConnectionsForTests();
+  } finally {
+    try {
+      await closeStandingFences?.();
+    } finally {
+      await testDatabase.close();
+    }
+  }
 });
 
 interface Purchase {
@@ -1281,11 +1300,19 @@ test("a committed refund during preparation aborts reinstatement before paid cre
 });
 
 test("a lost reinstatement acknowledgement retains one complete reinstatement", async () => {
-  await reinstatementAcknowledgementLoss(false);
-  if (testDatabase.native) await reinstatementAcknowledgementLoss(true);
+  await reinstatementAcknowledgementLoss("cache");
+  if (testDatabase.native) {
+    for (const fault of [
+      "after_commit",
+      "before_send",
+      "after_commit_unreadable",
+    ] as const)
+      await reinstatementAcknowledgementLoss(fault);
+  }
 });
 
-async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
+async function reinstatementAcknowledgementLoss(fault: "cache" | CommitFault) {
+  const wireFault = fault === "cache" ? undefined : fault;
   const buyer = await affiliateTopUp();
   const disputeId = `dp_${randomUUID()}`;
   expect(
@@ -1299,7 +1326,7 @@ async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
     ),
   ).toBe("ack");
   const refund = refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId);
-  expect(await processStripeEvent(refund)).toBe("ack");
+  if (!wireFault) expect(await processStripeEvent(refund)).toBe("ack");
   const reinstated = disputeEvent(
     "charge.dispute.funds_reinstated",
     disputeId,
@@ -1311,6 +1338,9 @@ async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
       charge: Record<string, unknown>;
     }
   ).charge.amount_refunded = 1500;
+  const standing = wireFault
+    ? await bindOriginalStandingSnapshot(buyer.org)
+    : undefined;
   const invalidate = creditsService.invalidateCreditCaches.bind(creditsService);
   const record = creditsService.recordDisputeReinstatement.bind(creditsService);
   let ownerPid = 0;
@@ -1325,11 +1355,11 @@ async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
         sql`SELECT pg_backend_pid() AS pid`,
       );
       ownerPid = rows[0]!.pid;
-      if (commitReplyLost) testDatabase.loseCommitAck(ownerPid);
+      if (wireFault) testDatabase.loseCommitAck(ownerPid, wireFault);
     }
     return result;
   });
-  const lost = commitReplyLost
+  const lost = wireFault
     ? undefined
     : spyOn(creditsService, "invalidateCreditCaches").mockImplementationOnce(
         async (org) => {
@@ -1338,28 +1368,51 @@ async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
         },
       );
   try {
-    expect(await processStripeEvent(reinstated)).toBe("retry");
+    const originalLease =
+      fault === "after_commit_unreadable"
+        ? await standing!.tryOriginalSnapshot()
+        : undefined;
+    if (originalLease) expect(originalLease.status).toBe(200);
+    const process = () => processStripeEvent(reinstated);
+    expect(
+      await (standing
+        ? runWithCloudBindingsAsync(
+            {
+              INFERENCE_ADMISSION_GATES: standing.binding,
+              INFERENCE_FUNDED_BUDGET_ADMISSION: "false",
+              INFERENCE_RATE_POLICY_ADMISSION: "false",
+            },
+            process,
+          )
+        : process()),
+    ).toBe("retry");
+    if (standing && wireFault)
+      await checkNativeStandingDisposition(
+        standing,
+        buyer.org,
+        wireFault,
+        ownerPid,
+        originalLease?.requestId,
+      );
   } finally {
     lost?.mockRestore();
     owner.mockRestore();
   }
-  if (commitReplyLost)
-    expect(testDatabase.didLoseCommitAck(ownerPid)).toBe(true);
-  expect(await balance(buyer.org)).toBe(0);
-  expect(
-    await creditsService.getTransactionByStripePaymentIntent(
-      `stripe:dispute:${disputeId}:reinstated`,
-    ),
-  ).toMatchObject({ amount: "5.000000" });
-  const observedReceipts = await pg().query<{ type: string; amount: string }>(
-    `SELECT type,amount FROM credit_transactions WHERE stripe_payment_intent_id IN ($1,$2) ORDER BY type`,
-    [
-      `stripe:dispute:${disputeId}:reinstated`,
-      `stripe:refund:ch_${disputeId}:1500:reinstatement:${disputeId}`,
-    ],
-  );
-  expect(observedReceipts.rows).toEqual([
-    { type: "clawback", amount: "-5.000000" },
+  const readReceipts = () =>
+    pg().query<{ type: string; amount: string }>(
+      `SELECT type,amount FROM credit_transactions WHERE stripe_payment_intent_id IN ($1,$2) ORDER BY type`,
+      [
+        `stripe:dispute:${disputeId}:reinstated`,
+        `stripe:refund:ch_${disputeId}:1500:reinstatement:${disputeId}`,
+      ],
+    );
+  if (fault === "before_send") {
+    expect((await readReceipts()).rows).toEqual([]);
+    expect(await balance(buyer.org)).toBe(5);
+    expect(await processStripeEvent(reinstated)).toBe("ack");
+  }
+  expect((await readReceipts()).rows).toEqual([
+    { type: "clawback", amount: wireFault ? "-10.000000" : "-5.000000" },
     { type: "refund", amount: "5.000000" },
   ]);
   const committed = await ledger(buyer.org);
@@ -1371,12 +1424,136 @@ async function reinstatementAcknowledgementLoss(commitReplyLost: boolean) {
     InsufficientCreditsError,
   );
   testDatabase.record({
-    event: commitReplyLost
-      ? "lost-native-commit-reply-retains-complete-receipts"
-      : "lost-post-commit-cache-acknowledgement-retains-complete-receipts",
+    event: "reinstatement-acknowledgement-loss-replays-complete-receipts",
+    fault,
     ownerPid,
     finalBalance: await balance(buyer.org),
     creditRows: committed.length,
+  });
+}
+
+async function checkNativeStandingDisposition(
+  standing: Awaited<ReturnType<typeof bindOriginalStandingSnapshot>>,
+  org: string,
+  fault: CommitFault,
+  ownerPid: number,
+  originalLeaseId?: string,
+) {
+  expect(testDatabase.didLoseCommitAck(ownerPid, fault)).toBe(true);
+  const committed = fault !== "before_send";
+  const {
+    rows: [observed],
+  } = await pg().query<{
+    balance: string;
+    revision: string;
+    generation: string;
+  }>(
+    `SELECT o.credit_balance::text AS balance,o.balance_revision::text AS revision,a.policy_generation::text AS generation
+    FROM organizations o JOIN organization_subscription_authorities a ON a.organization_id=o.id WHERE o.id=$1`,
+    [org],
+  );
+  expect(observed?.generation).toBe(committed ? "2" : "1");
+  expect(Number(observed?.balance)).toBe(committed ? 0 : 5);
+  const mutationId = standing.calls[0]?.body.mutationId;
+  expect(standing.calls.slice(0, 2)).toEqual([
+    { pathname: "/policy-fence/begin", body: { mutationId } },
+    {
+      pathname: "/policy-fence/begin",
+      body: { mutationId, policyGeneration: "2" },
+    },
+  ]);
+  const { rows: audit } = await pg().query<{ generation: string }>(
+    `SELECT generation::text FROM organization_policy_audit WHERE organization_id=$1 AND change->>'mutationId'=$2`,
+    [org, mutationId],
+  );
+  expect(audit).toEqual(committed ? [{ generation: "2" }] : []);
+  if (fault === "after_commit_unreadable") {
+    expect(testDatabase.didLoseReceiptObservation(ownerPid)).toBe(true);
+    expect(standing.calls).toHaveLength(2);
+    // Advance the real Workerd gate's test clock beyond the old pending TTL,
+    // while the previously acquired 20-minute lease still exists.
+    await standing.advance(121_000);
+    await standing.republishOriginal();
+    const blocked = await standing.dispatch(originalLeaseId!);
+    expect(blocked).toMatchObject({
+      status: 409,
+      body: { code: "inference_admission_policy_stale" },
+    });
+    const primarySnapshot = {
+      balanceUsd: Number(observed!.balance),
+      balanceRevision: observed!.revision,
+      policyGeneration: observed!.generation,
+    };
+    const { publishInferenceAdmissionPolicy } = await import(
+      "@elizaos/cloud-shared/lib/services/inference-admission-gate"
+    );
+    await runWithCloudBindingsAsync(
+      { INFERENCE_ADMISSION_GATES: standing.binding },
+      () =>
+        publishInferenceAdmissionPolicy({
+          organizationId: org,
+          ...primarySnapshot,
+        }),
+    );
+    expect((await standing.dispatch(originalLeaseId!)).status).toBe(409);
+    // The authoritative snapshot retired the prepared entry. A current
+    // generation reaches the real balance check and sees no funds.
+    expect((await standing.trySnapshot(primarySnapshot)).status).toBe(402);
+    testDatabase.record({
+      event: "prepared-fence-survives-unavailable-receipt-beyond-old-ttl",
+      ownerPid,
+      blockedDispatch: blocked.status,
+      recoveredGeneration: observed!.generation,
+    });
+    return;
+  }
+  expect(standing.calls[2]).toEqual(
+    committed
+      ? {
+          pathname: "/policy-fence/commit",
+          body: { mutationId, policyGeneration: "2" },
+        }
+      : { pathname: "/policy-fence/abort", body: { mutationId } },
+  );
+  const admission = await standing.tryOriginalSnapshot();
+  if (committed)
+    expect(admission).toMatchObject({
+      status: 409,
+      body: { code: "inference_admission_policy_stale" },
+    });
+  else expect(admission.status).toBe(200);
+  testDatabase.record({
+    event: "native-uncertain-commit-standing-disposition",
+    fault,
+    ownerPid,
+    oldGenerationAdmissionStatus: admission.status,
+    paths: standing.paths,
+  });
+}
+
+async function bindOriginalStandingSnapshot(organizationId: string) {
+  await pg().query(
+    "INSERT INTO organization_subscription_authorities(organization_id,policy_generation) VALUES ($1,1)",
+    [organizationId],
+  );
+  const {
+    rows: [snapshot],
+  } = await pg().query<{ user_id: string; balance: string; revision: string }>(
+    `SELECT u.id AS user_id,o.credit_balance::text AS balance,o.balance_revision::text AS revision
+    FROM organizations o JOIN users u ON u.organization_id=o.id WHERE o.id=$1 AND u.role='owner' LIMIT 1`,
+    [organizationId],
+  );
+  expect(Number(snapshot?.balance)).toBe(5);
+  const { closeNativeStandingFences, nativeStandingFence } = await import(
+    "./fixtures/native-standing-fence"
+  );
+  closeStandingFences = closeNativeStandingFences;
+  return nativeStandingFence({
+    organizationId,
+    userId: snapshot!.user_id,
+    balanceUsd: Number(snapshot!.balance),
+    balanceRevision: snapshot!.revision,
+    policyGeneration: "1",
   });
 }
 

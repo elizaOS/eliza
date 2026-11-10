@@ -36,6 +36,7 @@ const commitCallbacks = new WeakMap<
     before: Array<() => Promise<void>>;
     after: Array<() => Promise<void>>;
     rollback: Array<() => Promise<void>>;
+    uncertainCommit: Array<() => Promise<void>>;
   }
 >();
 
@@ -61,6 +62,16 @@ export function registerAfterRollback(tx: DbTransaction, callback: () => Promise
   callbacks.push(callback);
 }
 
+/** Reconcile from durable evidence when COMMIT may have happened without its reply. */
+export function registerAfterUncertainCommit(
+  tx: DbTransaction,
+  callback: () => Promise<void>,
+): void {
+  const callbacks = commitCallbacks.get(tx)?.uncertainCommit;
+  if (!callbacks) throw new UnmanagedWriteTransactionError();
+  callbacks.push(callback);
+}
+
 export class UnmanagedWriteTransactionError extends Error {
   constructor() {
     super("Policy mutation requires a managed writeTransaction transaction");
@@ -71,6 +82,8 @@ export class UnmanagedWriteTransactionError extends Error {
 export async function writeTransaction<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
   const callbacks: Array<() => Promise<void>> = [];
   const rollback: Array<() => Promise<void>> = [];
+  const uncertainCommit: Array<() => Promise<void>> = [];
+  let commitAttempted = false;
   let result: T;
   try {
     result = await observeDbOperation("transaction", "writeTransaction", () =>
@@ -80,10 +93,12 @@ export async function writeTransaction<T>(fn: (tx: DbTransaction) => Promise<T>)
           before: beforeCommit,
           after: callbacks,
           rollback,
+          uncertainCommit,
         });
         try {
           const result = await fn(tx);
           for (const callback of beforeCommit) await callback();
+          commitAttempted = true;
           return result;
         } finally {
           commitCallbacks.delete(tx);
@@ -91,8 +106,12 @@ export async function writeTransaction<T>(fn: (tx: DbTransaction) => Promise<T>)
       }),
     );
   } catch (error) {
-    // error-policy:J7 rollback cleanup is best effort; the original failure wins.
-    await Promise.allSettled(rollback.map((callback) => callback()));
+    // After callback success the driver may have sent COMMIT. A transport
+    // failure is not evidence that the server rolled back. The original error
+    // remains visible even if an owner independently reconciles its receipt.
+    // error-policy:J7 failed cleanup must not replace the original failure.
+    const effects = commitAttempted ? uncertainCommit : rollback;
+    await Promise.allSettled(effects.map((callback) => callback()));
     throw error;
   }
   // COMMIT has succeeded. A publication failure must remain visible to the caller.

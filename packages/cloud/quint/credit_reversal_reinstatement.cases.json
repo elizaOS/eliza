@@ -26,14 +26,22 @@
     "packages/cloud/api/__tests__/fixtures/stripe-reversal-database.ts",
     "packages/cloud/api/__tests__/fixtures/postgres-commit-ack-relay.ts",
     "packages/cloud/shared/src/db/repositories/credit-transactions.ts",
-    "packages/cloud/shared/src/db/client.ts"
+    "packages/cloud/shared/src/db/client.ts",
+    "packages/cloud/api/src/inference-admission-gate.ts",
+    "packages/cloud/api/__tests__/fixtures/native-standing-fence.ts",
+    "packages/cloud/api/test/fixtures/inference-admission-gate-worker.ts",
+    "packages/cloud/shared/src/db/repositories/organization-policy-generation.ts",
+    "packages/cloud/shared/src/db/schemas/organization-policy-audit.ts",
+    "packages/cloud/shared/src/db/schemas/billing-subscriptions.ts",
+    "packages/cloud/shared/src/lib/services/inference-admission-gate.ts"
   ],
   "bounds": {
     "domain": "One organization, one paid grant and captured charge of two abstract credits, one dispute, two monotonic cumulative refund targets, one additional credit and one optional pre-commit failure. Preparation may observe an older provider total while the current durable series high-water mark is read under the organization lock.",
     "atomicity": "Hold release, repayment return, exact reinstatement receipt, refund repair and shortfall settlement publish in one managed organization transaction. Failure before COMMIT publishes none of them. Failure after COMMIT but before cache/publication acknowledgement retains all receipts for safe retry. Cumulative zero-delta reversals retain their observed target in the existing credit ledger. A newer committed refund invalidates stale preparation before any credit/hold effect.",
     "conformance": "The required PGlite suites run the production queue consumer and the credits, earnings and hold repositories. The refund repair test interrupts the real last credit insert after the reinstatement receipt is written in the same uncommitted transaction. An overlapping actual paid reservation waits for recovery to commit, then rejects insufficient credit. Stripe inputs and external calls are controlled. Local Stripe SDK signatures exercise valid delivery, missing or incorrect signatures, changed payloads, expired timestamps and a test endpoint signing a live event. A neighboring tenant remains unchanged through the repair. Retained NaN and positive clawback rows cannot release a shortfall or reinstate affiliate earnings. Coupled tests reject actual paid flat reservations after rollback, retain holds and repayment amounts, observe a newer committed zero-delta refund during preparation, replay a post-COMMIT acknowledgement loss, and reconcile a historical partial receipt.",
-    "gaps": "No live Stripe proof or cryptographic model. Provider reads and affiliate effects remain outside the organization credit transaction. The model covers only one organization/payment/dispute and finite input changes, not arbitrary tenant/affiliate composition, operator release, arbitrary PostgreSQL lock schedules or Worker standing-fence disposition on unknown COMMIT or an external refund that has not yet reached the maintained ledger owner. Existing historical partial rows are repaired when their original delivery resumes; admission before that recovery and historical backfill remain separate. Local SDK signatures and current-source legacy recovery are checked by real PGlite conformance, not general refinement. Outbox lease/dead-letter budgets, operator resend and multi-charge/multi-dispute composition remain separate protocols; fair redelivery is an explicit environmental assumption.",
-    "nativeConformance": "Set STRIPE_REVERSAL_TEST_POSTGRES_URL only to an authenticated loopback PostgreSQL16 qa_* role and dedicated quint_reversal_<hex> database. The same 43 maintained scenarios use unique schemas and the real pooled database adapter. The fixture rejects trust authentication and verifies that production and observation use different sessions in the same schema. Commit and rollback interleavings require a third paid-reservation session whose pg_blocking_pids names the real recovery transaction. Provider HTTP and non-loopback sockets are forbidden. Native execution is explicit; default PGlite conformance alone does not establish this scheduling evidence. The relay forwards real COMMIT and drops its success reply on the exact pooled session. An independent connection observes the exact two committed receipts and replay does not duplicate credit. A non-UTC application process also runs the early and late referral cases using schema-aware credit receipt decoding."
+    "gaps": "No live Stripe proof or cryptographic model. Provider reads and affiliate effects remain outside the organization credit transaction. The model covers only one organization/payment/dispute and finite input changes, not arbitrary tenant/affiliate composition, operator release, arbitrary PostgreSQL lock schedules, simultaneous prepared standing generations, or Hyperdrive transport failure modes or an external refund that has not yet reached the maintained ledger owner. Existing historical partial rows are repaired when their original delivery resumes; admission before that recovery and historical backfill remain separate. Local SDK signatures and current-source legacy recovery are checked by real PGlite conformance, not general refinement. Outbox lease/dead-letter budgets, operator resend and multi-charge/multi-dispute composition remain separate protocols; fair redelivery is an explicit environmental assumption. A prepared fence remains blocked when neither an exact primary outcome nor a current authoritative publication is available. Legacy unprepared entries retain their existing expiry; crash before preparation and arbitrary host time changes are not claimed covered.",
+    "nativeConformance": "Set STRIPE_REVERSAL_TEST_POSTGRES_URL only to an authenticated loopback PostgreSQL16 qa_* role and dedicated quint_reversal_<hex> database. The same 43 maintained scenarios use unique schemas and the real pooled database adapter. The fixture rejects trust authentication and verifies that production and observation use different sessions in the same schema. Commit and rollback interleavings require a third paid-reservation session whose pg_blocking_pids names the real recovery transaction. Provider HTTP and non-loopback sockets are forbidden. Native execution is explicit; default PGlite conformance alone does not establish this scheduling evidence. The relay forwards real COMMIT and drops its success reply on the exact pooled session. An independent connection observes the exact two committed receipts and replay does not duplicate credit. A non-UTC application process also runs the early and late referral cases using schema-aware credit receipt decoding.",
+    "standingFence": "One existing prepared standing fence and generations 1 and 2. Before COMMIT, the audit candidate is pinned under the original mutation identity. An uncertain reply retains the fence. The locked primary audit can establish committed generation or prove rollback at a previous generation. A fresh same-or-newer primary publication can retire covered prepared entries after the floor is durable. Older publications and passage of the former unprepared timeout cannot authorize the old lease. The implementation proves these branches with PostgreSQL16 and the production gate in Workerd, using a controlled test clock for the timeout transition."
   },
   "cases": [
     {
@@ -47,7 +55,8 @@
         "UniqueReceipts",
         "AcknowledgedCovered",
         "KnownRefundRetained",
-        "PaidAdmissionCovered"
+        "PaidAdmissionCovered",
+        "StandingGenerationAuthority"
       ],
       "temporal": [
         "HoldAuthority",
@@ -66,7 +75,7 @@
           "property": "FairReversalDelivery",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of eligible preparation/commit continuation, latest refund delivery, repayment and post-commit acknowledgement. One pre-commit failure and two target changes bound interference; SQL/provider/cache eventually permit completion. The exact original grant and withdrawal row exist for dependent progress."
+            "Weak fairness of eligible preparation/commit continuation, latest refund delivery, repayment, acknowledgement, and authoritative standing-fence observation. One pre-COMMIT failure and two target changes bound interference; a committed result may lose its reply. SQL/provider/cache and either exact primary outcome or a current primary publication eventually permit completion. A prepared fence remains protective when primary proof is unavailable. The exact original grant and withdrawal row exist for dependent progress."
           ]
         },
         {

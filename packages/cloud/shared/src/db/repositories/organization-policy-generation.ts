@@ -1,6 +1,6 @@
 /** Advances organization policy generations under the shared organization lock and records the same committed mutation. */
 import { ElizaError } from "@elizaos/core";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
@@ -78,4 +78,44 @@ export async function readOrganizationPolicyGeneration(
     .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId))
     .limit(1);
   return authority ? authority.generation.toString() : null;
+}
+
+/** Resolves an uncertain publication through its existing policy audit receipt. */
+export async function inspectOrganizationPolicyMutation(input: {
+  organizationId: string;
+  generation: bigint;
+  reason: string;
+  actor: string;
+  mutationId: string;
+}): Promise<"committed" | "rolled_back" | "unknown"> {
+  return dbWrite.transaction(
+    async (tx) => {
+      // The writer updated this exact row before COMMIT. A shared lock waits
+      // until that update commits or rolls back. The receipt read is a separate
+      // READ COMMITTED statement after this barrier, on the primary.
+      const [authority] = await tx
+        .select({ generation: organizationSubscriptionAuthorities.policy_generation })
+        .from(organizationSubscriptionAuthorities)
+        .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+        .for("share");
+      if (!authority) return "unknown";
+      const [receipt] = await tx
+        .select({ change: organizationPolicyAudit.change })
+        .from(organizationPolicyAudit)
+        .where(
+          and(
+            eq(organizationPolicyAudit.organization_id, input.organizationId),
+            eq(organizationPolicyAudit.generation, input.generation),
+            eq(organizationPolicyAudit.reason, input.reason),
+            eq(organizationPolicyAudit.actor, input.actor),
+          ),
+        )
+        .limit(1);
+      if (receipt?.change.mutationId === input.mutationId) return "committed";
+      // A missing receipt at an already reached generation does not identify
+      // the outcome. Keep the protective entry in that case.
+      return authority.generation < input.generation ? "rolled_back" : "unknown";
+    },
+    { isolationLevel: "read committed" },
+  );
 }

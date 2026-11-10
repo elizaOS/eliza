@@ -13,7 +13,10 @@ import {
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
-import { postgresCommitAckRelay } from "./postgres-commit-ack-relay";
+import {
+  type CommitFault,
+  postgresCommitAckRelay,
+} from "./postgres-commit-ack-relay";
 
 const loopback = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -76,8 +79,9 @@ export async function stripeReversalTestDatabase(name: string) {
       },
       waitForBlockedMutation: async (_ownerPid: number) => {},
       verifyProductionConnection: async (_executor: SqlExecutor) => {},
-      loseCommitAck: (_pid: number) => {},
-      didLoseCommitAck: (_pid: number) => false,
+      loseCommitAck: (_pid: number, _fault: CommitFault) => {},
+      didLoseCommitAck: (_pid: number, _fault: CommitFault) => false,
+      didLoseReceiptObservation: (_pid: number) => false,
       record: (_event: Record<string, unknown>) => {},
       close: async () => {},
     };
@@ -207,12 +211,15 @@ export async function stripeReversalTestDatabase(name: string) {
     exec: async (text: string) => {
       await client.query(text);
     },
-    loseCommitAck(pid: number) {
+    loseCommitAck(pid: number, fault: CommitFault) {
       if (!relay)
         throw new Error("No COMMIT acknowledgement relay in this fixture");
-      relay.arm(pid);
+      relay.arm(pid, fault);
     },
-    didLoseCommitAck: (pid: number) => relay?.didDrop(pid) ?? false,
+    didLoseCommitAck: (pid: number, fault: CommitFault) =>
+      relay?.didDrop(pid, fault) ?? false,
+    didLoseReceiptObservation: (pid: number) =>
+      relay?.didDropObservation(pid) ?? false,
     async verifyProductionConnection(executor: SqlExecutor) {
       const [owner] = await sqlRows<{
         pid: number;

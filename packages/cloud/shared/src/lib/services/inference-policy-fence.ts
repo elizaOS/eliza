@@ -7,10 +7,14 @@ import {
   dbWrite,
   registerAfterCommit,
   registerAfterRollback,
+  registerAfterUncertainCommit,
   registerBeforeCommit,
   writeTransaction,
 } from "../../db/helpers";
-import { advanceOrganizationPolicyGeneration } from "../../db/repositories/organization-policy-generation";
+import {
+  advanceOrganizationPolicyGeneration,
+  inspectOrganizationPolicyMutation,
+} from "../../db/repositories/organization-policy-generation";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 
@@ -47,22 +51,45 @@ async function fenceStandingMutation(
   const fresh = [...new Set(organizationIds)].sort().filter((id) => !active.has(id));
   if (fresh.length === 0) return;
   const mutationId = crypto.randomUUID();
+  const reason = "inference_standing_mutation";
+  const actor = "system:inference-policy-fence";
   const generations = new Map<string, string>();
   const opened: string[] = [];
   registerAfterRollback(tx, async () => {
     for (const organizationId of opened)
       await policyCall(organizationId, "/policy-fence/abort", { mutationId });
   });
+  registerAfterUncertainCommit(tx, async () => {
+    for (const organizationId of opened) {
+      const policyGeneration = generations.get(organizationId);
+      if (policyGeneration === undefined) continue;
+      const outcome = await inspectOrganizationPolicyMutation({
+        organizationId,
+        generation: BigInt(policyGeneration),
+        mutationId,
+        reason,
+        actor,
+      });
+      if (outcome === "committed")
+        await policyCall(organizationId, "/policy-fence/commit", { mutationId, policyGeneration });
+      else if (outcome === "rolled_back")
+        await policyCall(organizationId, "/policy-fence/abort", { mutationId });
+    }
+  });
   registerBeforeCommit(tx, async () => {
     for (const organizationId of fresh) {
       try {
         const generation = await advanceOrganizationPolicyGeneration(tx, {
           organizationId,
-          reason: "inference_standing_mutation",
-          actor: "system:inference-policy-fence",
+          reason,
+          actor,
           change: { mutationId },
         });
-        generations.set(organizationId, generation.toString());
+        const policyGeneration = generation.toString();
+        generations.set(organizationId, policyGeneration);
+        // Pin this exact candidate while the audit receipt is still pending.
+        // A lost COMMIT reply cannot let an older lease outlive the fence.
+        await policyCall(organizationId, "/policy-fence/begin", { mutationId, policyGeneration });
       } catch (error) {
         // An organization without a subscription authority has no admission
         // snapshot to supersede; closing its entry is the whole fence.

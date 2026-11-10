@@ -434,7 +434,10 @@
       "packages/cloud/api/__tests__/fixtures/stripe-reversal-database.ts",
       "packages/cloud/api/__tests__/fixtures/postgres-commit-ack-relay.ts",
       "packages/cloud/shared/src/db/client.ts",
-      "packages/cloud/shared/src/db/repositories/credit-transactions.ts"
+      "packages/cloud/shared/src/db/repositories/credit-transactions.ts",
+      "packages/cloud/shared/src/db/repositories/organization-policy-generation.ts",
+      "packages/cloud/api/src/inference-admission-gate.ts",
+      "packages/cloud/api/__tests__/fixtures/native-standing-fence.ts"
     ],
     "invariants": [
       "Conserved",
@@ -442,7 +445,8 @@
       "UniqueReceipts",
       "AcknowledgedCovered",
       "KnownRefundRetained",
-      "PaidAdmissionCovered"
+      "PaidAdmissionCovered",
+      "StandingGenerationAuthority"
     ],
     "status": "partial",
     "limitations": [
@@ -450,7 +454,8 @@
       "One existing managed organization transaction publishes hold release, repayment return, reinstatement receipt, refund repair and shortfall settlement. New paid credit is never published ahead of that repair. Capped cumulative events retain zero-delta receipts, and the locked durable high-water mark rejects stale preparation.",
       "Real PGlite checks actual paid reservations, rollback, newer refunds during preparation, post-COMMIT acknowledgement loss, signed intake, neighboring tenant isolation, corrupt retained inputs and historical partial-receipt convergence.",
       "Optional authenticated native PostgreSQL16 conformance uses independent recovery, admission and observer sessions, proves lock waits across commit and rollback, and withholds the real COMMIT response before safe retry.",
-      "Provider truth, arbitrary tenant and affiliate composition, arbitrary PostgreSQL scheduling, Worker standing-fence recovery after unknown COMMIT, operator release and historical backfill remain separate. Historical partial credit that was already visible before its original delivery resumes is not retroactively fenced. Outbox delivery budgets and multi-charge/multi-dispute composition remain separate."
+      "The real Workerd gate retains the exact prepared generation across an unknown COMMIT and the former expiry, rejects stale dispatch, and recovers from authoritative commit, rollback or current primary snapshot evidence.",
+      "Provider truth, arbitrary tenant and affiliate composition, arbitrary PostgreSQL scheduling, simultaneous prepared generations, Hyperdrive fault transport, operator release and historical backfill remain separate. Prepared fences remain blocked without primary evidence; unprepared begin entries retain their prior expiry. Historical partial credit already visible before its original delivery resumes is not retroactively fenced. Outbox budgets and multi-charge/multi-dispute composition remain separate."
     ]
   },
   {

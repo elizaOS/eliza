@@ -2,6 +2,11 @@
 import { Buffer } from "node:buffer";
 import net from "node:net";
 
+export type CommitFault =
+  | "before_send"
+  | "after_commit"
+  | "after_commit_unreadable";
+
 // https://www.postgresql.org/docs/16/protocol-message-formats.html
 function readFrames(
   pending: Buffer,
@@ -28,18 +33,23 @@ export async function postgresCommitAckRelay(upstream: {
   port: number;
 }) {
   const sessions = new Set<{ pid: number; close(): void }>();
-  const armed = new Set<number>();
-  const dropped = new Set<number>();
+  const armed = new Map<number, CommitFault>();
+  const dropped = new Map<number, CommitFault>();
+  const droppedObservations = new Set<number>();
+  let obscureObservation: number | undefined;
   const server = net.createServer((frontend) => {
     const backend = net.createConnection(upstream);
     let initialized = false;
-    let dropping = false;
+    let dropping: CommitFault | undefined;
+    let closed = false;
     let completed = false;
     let requests: Buffer = Buffer.alloc(0);
     let replies: Buffer = Buffer.alloc(0);
     const session = {
       pid: 0,
       close() {
+        if (closed) return;
+        closed = true;
         sessions.delete(session);
         frontend.destroy();
         backend.destroy();
@@ -59,13 +69,32 @@ export async function postgresCommitAckRelay(upstream: {
         return;
       }
       requests = readFrames(requests, chunk, (kind, body, frame) => {
+        if (closed) return;
+        if (
+          obscureObservation !== undefined &&
+          (kind === "Q" || kind === "P") &&
+          /organization_subscription_authorities[\s\S]+for share/i.test(
+            body.toString(),
+          )
+        ) {
+          droppedObservations.add(obscureObservation);
+          obscureObservation = undefined;
+          session.close();
+          return;
+        }
+        const fault = armed.get(session.pid);
         if (
           kind === "Q" &&
-          armed.has(session.pid) &&
+          fault &&
           /^commit;?$/i.test(body.subarray(0, -1).toString().trim())
         ) {
           armed.delete(session.pid);
-          dropping = true;
+          if (fault === "before_send") {
+            dropped.set(session.pid, fault);
+            session.close();
+            return;
+          }
+          dropping = fault;
         }
         backend.write(frame);
       });
@@ -82,7 +111,11 @@ export async function postgresCommitAckRelay(upstream: {
         if (kind === "Z") {
           // The server committed and is idle. Withhold both success frames
           // from the driver and destroy this exact connection.
-          if (completed && body.toString() === "I") dropped.add(session.pid);
+          if (completed && body.toString() === "I") {
+            dropped.set(session.pid, dropping);
+            if (dropping === "after_commit_unreadable")
+              obscureObservation = session.pid;
+          }
           session.close();
         }
       });
@@ -97,14 +130,15 @@ export async function postgresCommitAckRelay(upstream: {
     throw new Error("Native PostgreSQL relay did not get a loopback port");
   return {
     port: address.port,
-    arm(pid: number) {
+    arm(pid: number, fault: CommitFault) {
       if (![...sessions].some((session) => session.pid === pid))
         throw new Error(
           "COMMIT acknowledgement loss requires an active recovery session",
         );
-      armed.add(pid);
+      armed.set(pid, fault);
     },
-    didDrop: (pid: number) => dropped.has(pid),
+    didDrop: (pid: number, fault: CommitFault) => dropped.get(pid) === fault,
+    didDropObservation: (pid: number) => droppedObservations.has(pid),
     async close() {
       for (const session of sessions) session.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));
