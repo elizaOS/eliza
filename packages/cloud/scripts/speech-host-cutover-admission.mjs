@@ -27,40 +27,68 @@ function uniqueBinding(bindings, name) {
   return binding;
 }
 
-// Read every page. A missing/inconsistent pagination receipt cannot establish
-// that a matching namespace is unique, so it is an admission failure.
+// Cloudflare's namespace list uses numbered pages with optional result_info.
+// Like its official SDK, read through an empty terminal page; a short page or
+// absent total_pages is not proof that the inventory is complete.
 export async function fetchSpeechNamespaces(environment, fetchImpl = fetch) {
   const namespaces = [];
   const ids = new Set();
   let expectedPages;
   let expectedCount;
+  let expectedPerPage;
   for (let page = 1; page <= 100; page++) {
     const payload = await fetchCloudflareInventory(
       environment,
       `/workers/durable_objects/namespaces?page=${page}&per_page=1000`,
       fetchImpl,
     );
-    const info = payload.result_info;
+    const info = payload.result_info === undefined ? {} : payload.result_info;
     if (
       !Array.isArray(payload.result) ||
       !info ||
-      info.page !== page ||
-      !Number.isInteger(info.total_pages) ||
-      info.total_pages < 1 ||
-      info.total_pages > 100 ||
-      !Number.isInteger(info.total_count) ||
-      info.total_count < 0 ||
-      !Number.isInteger(info.per_page) ||
-      info.per_page < 1 ||
-      info.per_page > 1000 ||
-      info.count !== payload.result.length ||
-      payload.result.length > info.per_page ||
-      (expectedPages !== undefined && info.total_pages !== expectedPages) ||
-      (expectedCount !== undefined && info.total_count !== expectedCount)
+      typeof info !== "object" ||
+      Array.isArray(info) ||
+      payload.result.length > (info.per_page ?? expectedPerPage ?? 1000) ||
+      (info.page !== undefined && info.page !== page) ||
+      (info.total_pages !== undefined &&
+        (!Number.isInteger(info.total_pages) ||
+          info.total_pages < 0 ||
+          info.total_pages > 100 ||
+          (expectedPages !== undefined &&
+            info.total_pages !== expectedPages))) ||
+      (info.total_count !== undefined &&
+        (!Number.isInteger(info.total_count) ||
+          info.total_count < 0 ||
+          (expectedCount !== undefined &&
+            info.total_count !== expectedCount))) ||
+      (info.per_page !== undefined &&
+        (!Number.isInteger(info.per_page) ||
+          info.per_page < 1 ||
+          info.per_page > 1000 ||
+          (expectedPerPage !== undefined &&
+            info.per_page !== expectedPerPage))) ||
+      (info.count !== undefined && info.count !== payload.result.length)
     )
       fail("incomplete_namespace_inventory");
-    expectedPages = info.total_pages;
-    expectedCount = info.total_count;
+    expectedPages ??= info.total_pages;
+    expectedCount ??= info.total_count;
+    expectedPerPage ??= info.per_page;
+    if (payload.result.length === 0) {
+      if (
+        (expectedCount !== undefined && namespaces.length !== expectedCount) ||
+        (expectedPages !== undefined &&
+          expectedPages !== page - 1 &&
+          !(page === 1 && expectedPages === 1))
+      )
+        fail("incomplete_namespace_inventory");
+      return namespaces;
+    }
+    if (
+      (expectedPages !== undefined && page > expectedPages) ||
+      (expectedCount !== undefined &&
+        namespaces.length + payload.result.length > expectedCount)
+    )
+      fail("incomplete_namespace_inventory");
     for (const namespace of payload.result) {
       if (
         !namespace ||
@@ -71,13 +99,8 @@ export async function fetchSpeechNamespaces(environment, fetchImpl = fetch) {
       ids.add(namespace.id);
       namespaces.push(namespace);
     }
-    if (page === expectedPages) {
-      if (namespaces.length !== expectedCount)
-        fail("incomplete_namespace_inventory");
-      return namespaces;
-    }
   }
-  fail("incomplete_namespace_inventory");
+  fail("namespace_inventory_page_limit");
 }
 
 function namespaceFor(binding, localWorker, namespaces) {
@@ -174,17 +197,26 @@ export async function admitSpeechHostCutover(
     !/^[0-9a-f]{40}$/.test(environment.GITHUB_SHA ?? "")
   )
     fail("invalid_release_identity");
+  const desiredHost = environment.STAGING_SPEECH_HOST ?? "speech";
+  if (desiredHost !== "api" && desiredHost !== "speech")
+    fail("invalid_desired_host");
   const apiBindings = await fetchWorkerBindings(environment, API, fetchImpl);
   let targetBindings;
-  try {
-    targetBindings = await fetchWorkerBindings(environment, TARGET, fetchImpl);
-  } catch (error) {
-    throw new StateBackendInventoryError(
-      "speech_cutover:target_host_unavailable; complete host-only provisioning before first activation",
-      error instanceof StateBackendInventoryError
-        ? error.message
-        : "read failed",
-    );
+  if (desiredHost === "speech") {
+    try {
+      targetBindings = await fetchWorkerBindings(
+        environment,
+        TARGET,
+        fetchImpl,
+      );
+    } catch (error) {
+      throw new StateBackendInventoryError(
+        "speech_cutover:target_host_unavailable; complete host-only provisioning before first activation",
+        error instanceof StateBackendInventoryError
+          ? error.message
+          : "read failed",
+      );
+    }
   }
   const namespaces = await fetchSpeechNamespaces(environment, fetchImpl);
   const current = namespaceFor(
@@ -192,12 +224,20 @@ export async function admitSpeechHostCutover(
     API,
     namespaces,
   );
-  const target = namespaceFor(
-    uniqueBinding(targetBindings, "SPEECH_RELAY_SESSIONS"),
-    TARGET,
-    namespaces,
-  );
-  if (target.script !== TARGET) fail("unexpected_target_owner");
+  // Retaining the API host cannot move sessions back from the speech host.
+  // Read its actual namespace even when the unused target has not been created.
+  if (desiredHost === "api" && current.script !== API)
+    fail("api_retention_requires_local_namespace");
+  const target =
+    desiredHost === "api"
+      ? current
+      : namespaceFor(
+          uniqueBinding(targetBindings, "SPEECH_RELAY_SESSIONS"),
+          TARGET,
+          namespaces,
+        );
+  if (desiredHost === "speech" && target.script !== TARGET)
+    fail("unexpected_target_owner");
   const identity = {
     sourceSha: environment.GITHUB_SHA,
     fromWorker: current.script,
