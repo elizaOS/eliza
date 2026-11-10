@@ -77,8 +77,26 @@ class SiteTests(unittest.TestCase):
         self.assertIn({"source": "/app", "destination": "/app/", "permanent": True}, config["redirects"])
         self.assertEqual(config["proxy"]["entrypoint"], "website/proxy.mjs")
         self.assertEqual(config["proxy"]["matcher"], ["/", "/index.html"])
-        self.assertIn("website/scripts/minify-site.mjs", config["buildCommand"])
-        self.assertLess(config["buildCommand"].index("website/scripts/test-site.py"), config["buildCommand"].index("website/scripts/minify-site.mjs"))
+        command = config["buildCommand"]
+        self.assertLessEqual(len(command), 256)
+        self.assertEqual(command, "bash website/scripts/vercel-build.sh")
+        script = (ROOT / "website/scripts/vercel-build.sh").read_text()
+        steps = (
+            "python3 website/scripts/build-site.py",
+            "python3 website/scripts/test-site.py",
+            "python3 scripts/test_private_pack_export.py",
+            "node website/scripts/test-wallet.cjs",
+            "node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs "
+            "website/scripts/desk.test.cjs website/scripts/host-route.test.cjs "
+            "website/scripts/journey.test.cjs website/scripts/desktop.test.cjs "
+            "website/scripts/minify.test.cjs",
+            "node website/scripts/minify-site.mjs",
+        )
+        position = -1
+        for step in steps:
+            found = script.find(step)
+            self.assertGreater(found, position, step)
+            position = found
         self.assertFalse(any(item.get("destination") == "/volos/index.html" and "has" not in item for item in config.get("rewrites", [])))
         with self.get("/") as response:
             home = response.read().decode()
