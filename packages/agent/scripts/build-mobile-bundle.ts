@@ -43,6 +43,7 @@ import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
 } from "./mobile-workspace-entry.ts";
+import { describeSpawnFailure } from "./spawn-failure.ts";
 
 // Pure data module (no imports) — safe to load in the build script. The
 // manifest's plugin lists are derived from it so they cannot drift from what
@@ -1670,7 +1671,9 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   });
   if (made.status !== 0 || !existsSync(snapshotPath)) {
     console.error(
-      "[build-mobile] FATAL: could not make the PGlite initdb snapshot",
+      "[build-mobile] FATAL: could not make the PGlite initdb snapshot: " +
+        (describeSpawnFailure(process.execPath, made) ??
+          `${snapshotPath} was not written`),
     );
     process.exit(1);
   }
@@ -1698,12 +1701,19 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
         ...process.env,
         PGLITE_INITDB_SNAPSHOT: snapshotPath,
         LOG_LEVEL: "warn",
+        // The shipped cluster must not depend on the build machine's shell:
+        // extensions loaded, and no RLS baked in (a boot with
+        // ENABLE_DATA_ISOLATION=true applies it after the migrations).
+        ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
+        ENABLE_DATA_ISOLATION: "false",
       },
     },
   );
   if (migrated.status !== 0 || !existsSync(migratedPath)) {
     console.error(
-      "[build-mobile] FATAL: could not make the PGlite migrated snapshot",
+      "[build-mobile] FATAL: could not make the PGlite migrated snapshot: " +
+        (describeSpawnFailure(process.execPath, migrated) ??
+          `${migratedPath} was not written`),
     );
     process.exit(1);
   }
@@ -1883,7 +1893,8 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
     console.error(smokeOutput.slice(-6000));
     console.error(
       "[build-mobile] FATAL: agent-bundle.js failed the module-load smoke " +
-        `(exit ${smoke.status}). A load-time eval error in the bundle bricks ` +
+        `(${describeSpawnFailure("bun", smoke) ?? "BUNDLE_LOAD_SMOKE_OK was not printed"}). ` +
+        "A load-time eval error in the bundle bricks " +
         "the on-device agent before /api/health can bind.",
     );
     process.exit(1);
