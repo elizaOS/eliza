@@ -46,7 +46,12 @@ type FilesView = {
   onLeave?(...args: unknown[]): unknown;
   preset?(sub: string): unknown;
 };
-type Result = { status: string; message?: string; access?: string };
+type Result = {
+  status: string;
+  message?: string;
+  access?: string;
+  legacy?: boolean;
+};
 type Outcome = { path: string; status: string; to?: string };
 export type FilesStoragePort<Selection extends FilesSelection> = {
   storageState(): Promise<Result & { volumes?: StorageVolume[] }>;
@@ -248,6 +253,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   let api: ViewApi | undefined,
     place: Place = { kind: "browse" };
   let access = "unknown",
+    legacy = false,
     volumes: StorageVolume[] = [],
     counts: Partial<Record<FilesCategory, number>> = {},
     trashCount = 0;
@@ -289,6 +295,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   const failed = (value: Result) => {
     if (value.status === "denied") {
       access = value.access || "denied";
+      legacy = value.legacy === true;
       repaint();
       return true;
     }
@@ -311,6 +318,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       const state = await storage.storageState();
       if (ticket !== stateGeneration || !current()) return false;
       access = state.access || "denied";
+      legacy = state.legacy === true;
       volumes = [...(state.volumes || [])].sort(
         (a, b) => Number(b.primary) - Number(a.primary),
       );
@@ -1164,6 +1172,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     out.browse = {
       ready: granted && !filter,
       denied: access === "denied",
+      deniedLabel: legacy ? "Allow storage access" : "Allow all files access",
       unavailable: access === "unavailable" || access === "unsupported",
       grant: async () => {
         try {
