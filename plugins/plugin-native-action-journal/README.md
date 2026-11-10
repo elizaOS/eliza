@@ -28,8 +28,9 @@ wait ten seconds after a foreground review (Calendar events, reminders):
 - `DeferredDeletionCoordinator` - main-process admission over host ports: storage slots,
   monotonic clock, authenticated owner identity and review fence, the reminder engine
   (which suspends delivery at stage), Calendar provider writes and a wake-up scheduler.
-  Owner network reads never run under its lock; an owner that changed or cannot be confirmed
-  pauses the row instead of deleting.
+  Owner network reads never run under its lock. A known changed owner pauses without a stale
+  review-fence call; an equal owner still needs the final fence. Unavailable owners retry
+  within the existing bound. A final-fence failure never permits a deletion.
 
 Hosts keep the foreground review dialogs, the WorkManager (or equivalent) worker that calls
 `reconcile()`, and their installed slot names. A provider that recreates an item (for example a
