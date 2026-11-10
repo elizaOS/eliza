@@ -36,6 +36,8 @@ const tests = requireVitestConformance(
   [
     "keeps a conversation rename on SQLite after the list is rebuilt from the database",
     "rejects creation when the conversation is deleted during room setup",
+    "keeps timed-out connection writes exclusive, skips queued work, and admits a fresh retry",
+    "shares pending connection work and reconciles again after it settles",
   ],
 );
 console.log(

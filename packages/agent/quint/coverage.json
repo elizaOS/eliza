@@ -66,9 +66,9 @@
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One room and runtime, one proof identity with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
-      "Distinct callers and rooms, deletion retries while raw I/O is stalled, room-generation eviction, request fences, and process restart are outside the projections.",
-      "Database failures and observer deadlines are abstracted. Drain assumes weakly fair raw I/O settlement. HTTP and SQLite scenarios do not establish implementation refinement."
+      "One room lifecycle and runtime, two proof identities with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
+      "Independent caller and room lifecycles, deletion retries while raw I/O is stalled, room-generation eviction, request fences, and process restart are outside the projections.",
+      "Database failures and observer deadlines are abstracted. Drain assumes weakly fair raw I/O settlement. Real HTTP and SQLite check matching observers, a production deadline, queued cancellation, quarantine and fresh retry across two room IDs. These scenarios do not establish implementation refinement."
     ]
   },
   {
