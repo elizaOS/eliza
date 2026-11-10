@@ -76,5 +76,22 @@
       "One explicit optional product, fixed updater source and an atomic outer staging directory. Pixel product tests exercise real file copies, recorded hashes, inactive configuration and collision refusal.",
       "Package compilation, enabled enrollment, signing, Android installation and interrupted publication remain separate gates."
     ]
+  },
+  {
+    "id": "os.SystemUpdateDownload",
+    "model": "packages/os/quint/SystemUpdateDownload.qnt",
+    "sources": [
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+      "packages/os/android/system-updater/test/ai/eliza/systemupdater/DownloadReplay.java",
+      "packages/os/quint/check-system-update.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One known-unapplied candidate, six retained-byte classes and at most two HTTP requests. The serial host and real FileLock own each settled source call.",
+      "The source checker executes actual UpdateChannel download calls with owned HTTPS, real random-access files and actual range responses. Android discovery/signature checks, JobScheduler, engine apply and reboot are not established.",
+      "File-lock contention and interrupted-process recovery have selected model scenarios; source download conformance covers corrupt full/oversized partial reset, corrupt prefix refetch, valid range resume and verified complete reuse.",
+      "Progress assumes the same candidate, available lock/storage, successful IO and exact HTTP bytes under fair retry calls. No deadline, Android power-loss or eventual installed-update theorem is claimed."
+    ]
   }
 ]
