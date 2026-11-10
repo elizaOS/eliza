@@ -324,6 +324,25 @@ test("resume tolerates a pre-upgrade locale-ordered identity, refuses a differen
     timestamp: timestamp(v),
     dependencies: deps(),
   });
+  // Same id and timestamp as the base plan, but a different dependency set.
+  const variantPlan = (id, v, variant) => {
+    const base = deps();
+    const dependencies =
+      variant === "sub-bytes"
+        ? [
+            base[0],
+            { name: base[1].name, bytes: Buffer.from("dep aa fixture TAMPERED") },
+          ]
+        : variant === "add-dep"
+          ? [
+              ...base,
+              { name: "3.root.json", bytes: Buffer.from("dep root3 fixture") },
+            ]
+          : variant === "remove-dep"
+            ? [base[0]]
+            : base;
+    return { id, timestamp: timestamp(v), dependencies };
+  };
   const preUpgradeIdentity = (p) => {
     const ordered = [...p.dependencies].sort((x, y) =>
       x.name.localeCompare(y.name, "da-DK"),
@@ -423,5 +442,36 @@ test("resume tolerates a pre-upgrade locale-ordered identity, refuses a differen
       ),
       /reused/,
     );
+  });
+  // Same id and timestamp but a changed dependency set still refuses: the
+  // stored identity must be the identity of this exact plan under a
+  // pre-change ordering, and a changed set cannot match under any ordering.
+  for (const variant of ["sub-bytes", "add-dep", "remove-dep"]) {
+    await setup(async (s) => {
+      writeRow(s.journal, upgradePlan("release-2", 2), "preparing");
+      await assert.rejects(
+        publishMetadataTransaction(
+          s.journal,
+          variantPlan("release-2", 2, variant),
+          s.ports,
+        ),
+        /reused/,
+      );
+    });
+  }
+  // A published row with a changed dependency set refuses too: the
+  // identity check gates the published-row return as well.
+  await setup(async (s) => {
+    writeRow(s.journal, upgradePlan("release-2", 2), "published");
+    s.objects.set("timestamp.json", timestamp(2));
+    await assert.rejects(
+      publishMetadataTransaction(
+        s.journal,
+        variantPlan("release-2", 2, "sub-bytes"),
+        s.ports,
+      ),
+      /reused/,
+    );
+    assert.deepEqual(s.calls, []);
   });
 });

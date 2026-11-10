@@ -108,17 +108,36 @@ function snapshot(input) {
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const target = hash(timestamp),
     v = version(timestamp),
-    identity = hash(
-      Buffer.from(
-        JSON.stringify({
-          target,
-          dependencies: dependencies.map(({ name, sha256 }) => ({
-            name,
-            sha256,
-          })),
-        }),
+    identityFor = (ordered) =>
+      hash(
+        Buffer.from(
+          JSON.stringify({
+            target,
+            dependencies: ordered.map(({ name, sha256 }) => ({
+              name,
+              sha256,
+            })),
+          }),
+        ),
       ),
-    );
+    identity = identityFor(dependencies);
+  // Pre-change identities for this exact byte plan. The old code sorted
+  // with bare localeCompare, so a row written before the ordering change
+  // holds the identity of this plan under the writing host's collation.
+  // Accept a stored identity only when it is one of those: the runtime
+  // default collation, or Danish collation, in which "aa" sorts as "å" —
+  // the documented flipping case for the shipped targets/stable/aa… /
+  // b0… pair (Norwegian orders these names the same as Danish). A
+  // different dependency set cannot match under any ordering, because the
+  // identity commits to every dependency name and hash.
+  const legacyIdentities = [
+    identityFor(
+      [...dependencies].sort((a, b) => a.name.localeCompare(b.name)),
+    ),
+    identityFor(
+      [...dependencies].sort((a, b) => a.name.localeCompare(b.name, "da-DK")),
+    ),
+  ];
   return {
     id: input.id,
     timestamp,
@@ -126,6 +145,7 @@ function snapshot(input) {
     target,
     version: v,
     identity,
+    legacyIdentities,
   };
 }
 /** Core for a provisioned publisher. No default signer, storage adapter or CLI.
@@ -173,13 +193,17 @@ export async function publishMetadataTransaction(
     if (existing) {
       if (existing.identity !== plan.identity) {
         // Upgrade boundary: a row written before the ordering change can
-        // hold a locale-ordered identity for this exact byte plan. target
-        // is the sha256 of the timestamp bytes and version is read from
-        // those bytes; both were recorded at insert, so a row matching
-        // both is this publication under the other ordering, not an id
-        // reuse. Anything else keeps the refusal.
+        // hold a locale-ordered identity for this exact byte plan. Accept
+        // the mismatch only when the stored identity is the identity of
+        // this exact plan under a pre-change ordering (see snapshot): the
+        // same timestamp (target and version were recorded at insert) and
+        // the same dependency set under another ordering. A rerun with a
+        // changed dependency set keeps the refusal, because the identity
+        // commits to every dependency name and hash.
         fail(
-          existing.target === plan.target && existing.version === plan.version,
+          existing.target === plan.target &&
+            existing.version === plan.version &&
+            plan.legacyIdentities.includes(existing.identity),
           "publication id reused for different bytes",
         );
         if (existing.phase === "published") return existing;
