@@ -163,7 +163,7 @@ jobs:
 
       - name: Setup Fastlane
         if: steps.credentials.outputs.ready == 'true'
-        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -324,7 +324,7 @@ jobs:
 
       - name: Setup Fastlane
         if: steps.credentials.outputs.ready == 'true'
-        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
