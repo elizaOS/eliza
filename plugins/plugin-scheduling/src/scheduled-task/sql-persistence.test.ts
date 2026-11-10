@@ -170,9 +170,14 @@ describe("scheduling SQL persistence", () => {
       const before = service.getRunner({ agentId: harness.runtime.agentId });
       const task = await before.schedule({
         ...receiptReminderInput("late-consumer-boot-task"),
-        trigger: { kind: "manual" },
+        trigger: {
+          kind: "cron",
+          expression: "0 8 * * *",
+          tz: "America/Los_Angeles",
+        },
       });
       const dispatched: string[] = [];
+      const timezones: Array<string | undefined> = [];
       const provider = (runtime: IAgentRuntime, agentId: string) => ({
         store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
         logStore: createSchedulingSqlScheduledTaskLogStore({
@@ -180,8 +185,9 @@ describe("scheduling SQL persistence", () => {
           agentId,
         }),
         dispatcher: {
-          async dispatch(record: { taskId: string }) {
+          async dispatch(record: { taskId: string; timezone?: string }) {
             dispatched.push(record.taskId);
+            timezones.push(record.timezone);
             return { ok: true as const };
           },
         },
@@ -197,6 +203,7 @@ describe("scheduling SQL persistence", () => {
       );
       expect((await after.fireWithResult(task.taskId)).kind).toBe("fired");
       expect(dispatched).toEqual([task.taskId]);
+      expect(timezones).toEqual(["America/Los_Angeles"]);
       registerScheduledTaskRunnerDeps(harness.runtime, () => {
         throw Error("must retain first consumer");
       });
