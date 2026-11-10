@@ -171,6 +171,17 @@ import {
   validateReminderCreate,
   validateReminderCreateResult,
 } from "./reminder-create-contract.ts";
+import {
+  isSmsCompose,
+  isTelephonyAction,
+  isTelephonyRead,
+  type TelephonyActionOperation,
+  type TelephonyActionResult,
+  telephonyActionCapabilityAvailable,
+  telephonyActionReceiptOutcome,
+  validateTelephonyAction,
+  validateTelephonyActionResult,
+} from "./telephony-actions-contract.ts";
 import type {
   WorkflowDeviceBinding,
   WorkflowDeviceTarget,
@@ -249,6 +260,7 @@ export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
   | PhoneDialOperation
+  | TelephonyActionOperation
   | ReminderCreateOperation
   | WorkflowPresentationOperation
   | ClockHandoffOperation
@@ -352,6 +364,8 @@ export interface DeviceExecutionResult {
   cameraResult?: CameraCaptureResult;
   smsResult?: SmsSendResult;
   dialResult?: PhoneDialResult;
+  /** The one typed result of a call, contact change, contact SMS or open-item read. */
+  telephonyResult?: TelephonyActionResult;
   /** Local Browser presentation only; never persisted or uploaded. */
   presentBrowser?: () => void;
 }
@@ -518,6 +532,17 @@ export function dialDeviceStatus(
 ): "succeeded" | "failed" {
   return phoneDialReceiptOutcome(result) === "applied" ? "succeeded" : "failed";
 }
+/** A call receipt proves a started call, never a connected one; an unknown SMS stays unknown. */
+export function telephonyDeviceStatus(
+  result: TelephonyActionResult,
+): "succeeded" | "failed" | "unknown" {
+  const outcome = telephonyActionReceiptOutcome(result);
+  return outcome === "applied"
+    ? "succeeded"
+    : outcome === "failed"
+      ? "failed"
+      : "unknown";
+}
 export function validateDeviceOperation(
   value: unknown,
   policy: DeviceOperationPolicy,
@@ -526,6 +551,7 @@ export function validateDeviceOperation(
   if (isCameraCapture(p)) return validateCameraCapture(p);
   if (isSmsSend(p)) return validateSmsSend(p);
   if (isPhoneDial(p)) return validatePhoneDial(p);
+  if (isTelephonyAction(p)) return validateTelephonyAction(p);
   if (isReminderCreate(p)) return validateReminderCreate(p);
   if (isClockHandoffOperation(p)) return validateClockHandoffDispatch(p);
   if (isMapsOperation(p)) return validateMapsOperation(p);
@@ -798,6 +824,17 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
   if (isPhoneDial(operation) && (context.sensitive || ports.foregroundHidden()))
     throw new ContextNotice(
       "Unlock the phone and keep it open to review this number.",
+    );
+  // Calls, contact changes, contact SMS, voicemail deletion and reads of the
+  // open thread or voicemail never run on a locked or hidden phone.
+  if (
+    isTelephonyAction(operation) &&
+    (context.sensitive || ports.foregroundHidden())
+  )
+    throw new ContextNotice(
+      isTelephonyRead(operation)
+        ? "Unlock the phone and keep it open to share this."
+        : "Unlock the phone and keep it open to review this action.",
     );
   if (
     isSmsSend(operation) &&
@@ -1292,6 +1329,11 @@ export class DeviceActionCoordinator<
       !phoneDialCapabilityAvailable(op, this.credential.capabilities)
     )
       throw Error("Dialing was not negotiated with this phone");
+    if (
+      isTelephonyAction(op) &&
+      !telephonyActionCapabilityAvailable(op.type, this.credential.capabilities)
+    )
+      throw Error("This telephony action was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
       throw Error("Native SMS was not negotiated with this phone");
     if (
@@ -1479,6 +1521,8 @@ export class DeviceActionCoordinator<
         title: "Open dial screen",
         description: `${op.target.kind === "number" ? `Number: ${op.target.number}` : `Contact: ${op.target.query}`}\n\nOpens your phone app with this number. You place the call there.`,
       };
+    if (isTelephonyAction(op))
+      return { ...base, ...describeTelephonyAction(op), ...readReply };
     if (isSmsSend(op)) {
       const sim = this.profile.simLabel?.(op.subscriptionId);
       return {
@@ -1915,6 +1959,19 @@ export class DeviceActionCoordinator<
         throw Error("Missing dial result");
     } else if (result.dialResult !== undefined)
       throw Error("Unexpected dial result");
+    let telephonyResult: TelephonyActionResult | undefined;
+    if (isTelephonyAction(op)) {
+      if (result.telephonyResult !== undefined) {
+        telephonyResult = validateTelephonyActionResult(
+          op,
+          result.telephonyResult,
+        );
+        if (telephonyDeviceStatus(telephonyResult) !== result.status)
+          throw Error("Telephony outcome mismatch");
+      } else if (result.status !== "unknown")
+        throw Error("Missing telephony result");
+    } else if (result.telephonyResult !== undefined)
+      throw Error("Unexpected telephony result");
     let smsResult: SmsSendResult | undefined;
     if (isSmsSend(op)) {
       if (result.smsResult !== undefined) {
@@ -2044,6 +2101,7 @@ export class DeviceActionCoordinator<
     return {
       smsResult,
       dialResult,
+      telephonyResult,
       clockResult,
       mapsResult,
       photoLibraryResult,
@@ -2082,7 +2140,11 @@ export class DeviceActionCoordinator<
     const p = reviewed.proposal,
       // Minted before `busy` is taken: a context without randomUUID refuses
       // this approval instead of leaving the coordinator busy for good.
-      minted = isSmsSend(p.operation) ? p.id : crypto.randomUUID();
+      // Both SMS operations use the proposal as the native journal identity.
+      minted =
+        isSmsSend(p.operation) || isSmsCompose(p.operation)
+          ? p.id
+          : crypto.randomUUID();
     this.busy = true;
     this.executing = proposalId;
     this.proposals.delete(proposalId);
@@ -2101,7 +2163,8 @@ export class DeviceActionCoordinator<
         earlier.operationHash === operationHash &&
         this.ownEntry(earlier, p) &&
         this.ownDevice(earlier) &&
-        (!isSmsSend(p.operation) || earlier.operationId === p.id)
+        (!(isSmsSend(p.operation) || isSmsCompose(p.operation)) ||
+          earlier.operationId === p.id)
           ? earlier
           : undefined;
       const operationId = adopted?.operationId ?? minted;
@@ -2168,7 +2231,7 @@ export class DeviceActionCoordinator<
       execution.assertPrepared();
       const claimed = await this.mutation(p, "claim", {}, signal);
       if (
-        isSmsSend(p.operation) &&
+        (isSmsSend(p.operation) || isSmsCompose(p.operation)) &&
         claimed.providerIdempotencyKey !== operationId
       )
         throw Error("SMS execution claim identity changed");
@@ -2333,6 +2396,7 @@ export class DeviceActionCoordinator<
           typed.calendarResult ||
           typed.reminderResult ||
           typed.mapsResult ||
+          typed.telephonyResult ||
           typed.readResult ||
           fg?.kind === "calendar_availability" ||
           (fg?.kind === "calendar_named" && fg.action === "read")) &&
@@ -2583,6 +2647,11 @@ export class DeviceActionCoordinator<
       if (isPhoneDial(op)) {
         const result = await this.savedDialResult(p, entry);
         return result && dialDeviceStatus(result);
+      }
+      if (isTelephonyAction(op)) {
+        const result = await this.savedTelephonyResult(p, entry);
+        const status = result && telephonyDeviceStatus(result);
+        return status === "unknown" ? undefined : status;
       }
       const result = await this.savedClockResult(p, entry);
       return !result || result.status === "unknown"
@@ -2917,6 +2986,7 @@ export class DeviceActionCoordinator<
     return {
       smsResult: await this.savedSmsResult(p, entry),
       dialResult: await this.savedDialResult(p, entry),
+      telephonyResult: await this.savedTelephonyResult(p, entry),
       clockResult: await this.savedClockResult(p, entry),
       mapsResult: await this.savedMapsResult(p, entry),
       cameraResult: await this.savedCameraResult(p, entry),
@@ -3048,6 +3118,35 @@ export class DeviceActionCoordinator<
     );
     if (entry.status !== dialDeviceStatus(result))
       throw Error("Saved dial outcome mismatch");
+    return result;
+  }
+  /** Saved native evidence only; a call, change or send is never repeated to obtain it. */
+  private async savedTelephonyResult(
+    p: DeviceProposal,
+    summary: DeviceJournalEntry,
+  ): Promise<TelephonyActionResult | undefined> {
+    const op = p.operation;
+    if (!isTelephonyAction(op)) return undefined;
+    const refusal =
+      "No exact saved telephony receipt; the action will not be repeated";
+    const entry = await this.savedEntry(p, summary, refusal, { device: true });
+    if (
+      isSmsCompose(op) &&
+      (entry.operationId !== p.id ||
+        p.providerIdempotencyKey !== entry.operationId)
+    )
+      throw Error(refusal);
+    if (entry.result?.telephonyResult === undefined) {
+      if (entry.status !== "unknown")
+        throw Error("Missing saved telephony receipt");
+      return undefined;
+    }
+    const result = validateTelephonyActionResult(
+      op,
+      entry.result.telephonyResult,
+    );
+    if (entry.status !== telephonyDeviceStatus(result))
+      throw Error("Saved telephony outcome mismatch");
     return result;
   }
   private async savedClockResult(
@@ -3294,6 +3393,18 @@ export class DeviceActionCoordinator<
         applied !== (dialDeviceStatus(dialResult) === "succeeded"))
     )
       throw Error("Dial reconciliation requires exact saved handoff evidence");
+    const telephonyResult = entry
+      ? await this.savedTelephonyResult(p, entry)
+      : undefined;
+    if (
+      isTelephonyAction(op) &&
+      (!telephonyResult ||
+        telephonyDeviceStatus(telephonyResult) === "unknown" ||
+        applied !== (telephonyDeviceStatus(telephonyResult) === "succeeded"))
+    )
+      throw Error(
+        "Telephony reconciliation requires exact saved evidence; an unknown outcome cannot be called applied or not applied",
+      );
     const clockResult = entry
       ? await this.savedClockResult(p, entry)
       : undefined;
@@ -3374,13 +3485,15 @@ export class DeviceActionCoordinator<
           ...((applied ||
             isClockHandoffOperation(op) ||
             isSmsSend(op) ||
-            isPhoneDial(op)) &&
+            isPhoneDial(op) ||
+            isTelephonyAction(op)) &&
           entry
             ? { operationId: entry.operationId }
             : {}),
           ...receiptResult({
             smsResult,
             dialResult,
+            telephonyResult,
             foregroundResult,
             clockResult,
             mapsResult,
@@ -3401,6 +3514,7 @@ export class DeviceActionCoordinator<
 type TypedResults = {
   smsResult?: SmsSendResult;
   dialResult?: PhoneDialResult;
+  telephonyResult?: TelephonyActionResult;
   clockResult?: ClockHandoffResult;
   mapsResult?: MapsResult;
   cameraResult?: CameraCaptureResult;
@@ -3416,8 +3530,75 @@ function handoffOperation(operation: ReviewableDeviceOperation): boolean {
   return (
     isSmsSend(operation) ||
     isPhoneDial(operation) ||
+    (isTelephonyAction(operation) && !isTelephonyRead(operation)) ||
     isClockHandoffOperation(operation)
   );
+}
+/** Review-card copy. The phone's own review shows the resolved name, number and before/after. */
+function describeTelephonyAction(operation: TelephonyActionOperation): {
+  title: string;
+  description: string;
+} {
+  const fields = (set: {
+    displayName?: string;
+    phoneNumbers?: string[];
+    emailAddresses?: string[];
+  }) =>
+    [
+      set.displayName === undefined ? undefined : `Name: ${set.displayName}`,
+      set.phoneNumbers === undefined
+        ? undefined
+        : `Numbers: ${set.phoneNumbers.join(", ") || "none"}`,
+      set.emailAddresses === undefined
+        ? undefined
+        : `Email: ${set.emailAddresses.join(", ") || "none"}`,
+    ]
+      .filter((line) => line !== undefined)
+      .join("\n");
+  switch (operation.type) {
+    case "phone_call":
+      return {
+        title: "Place call",
+        description: `${operation.target.kind === "number" ? `Number: ${operation.target.number}` : `Contact: ${operation.target.query}`}\n\nCalls this number from your phone after you confirm. An emergency number opens your phone app instead.`,
+      };
+    case "contact_create":
+      return {
+        title: "Add contact",
+        description: `${fields(operation.contact)}\n\nSaves this contact on your phone after you confirm.`,
+      };
+    case "contact_update":
+      return {
+        title: "Change contact",
+        description: `Contact: ${operation.query}\n${fields(operation.set)}\n\nReplaces these details after you confirm. Nothing else is shared with the agent.`,
+      };
+    case "contact_delete":
+      return {
+        title: "Delete contact",
+        description: `Contact: ${operation.query}\n\nDeletes this contact from your phone after you confirm.`,
+      };
+    case "sms_compose":
+      return {
+        title: "Review SMS",
+        description: `To contact: ${operation.query}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
+      };
+    case "messages_read_selected":
+      return {
+        title: "Share open messages",
+        description:
+          "Share the messages showing in the open thread with the agent. Other threads and phone numbers stay private.",
+      };
+    case "voicemail_read_selected":
+      return {
+        title: "Share open voicemail",
+        description:
+          "Share the open voicemail and its transcript with the agent. Other voicemail stays private.",
+      };
+    case "voicemail_delete_selected":
+      return {
+        title: "Delete voicemail",
+        description: "Deletes the open voicemail after you confirm.",
+      };
+  }
 }
 const UNKNOWN_SUMMARY =
   "Action outcome needs review. It will not be repeated automatically.";
@@ -3446,6 +3627,7 @@ function receiptResult(results: TypedResults): CommittedReceiptResult {
   const value =
     results.smsResult ??
     results.dialResult ??
+    results.telephonyResult ??
     results.foregroundResult ??
     results.clockResult ??
     results.mapsResult ??

@@ -8,10 +8,16 @@ import {
   parseCallLog,
   parseHandoff,
   parseMessages,
+  parsePlaceCall,
   parseSmsJournal,
   parseSmsSendResult,
   parseTelephonyStatus,
   parseThreads,
+  parseVoicemailAudio,
+  parseVoicemailFetch,
+  parseVoicemailList,
+  parseVoicemailPcm,
+  parseVoicemailStatus,
   reviewSms,
   SmsSendNotAttempted,
   smsBindingHash,
@@ -951,5 +957,287 @@ test("call-log access is reported only when the host declares it", () => {
         }),
       ),
     /call-log/,
+  );
+});
+
+test("a placed call reports only that Android accepted the request", async () => {
+  const { plugin, calls } = stub({
+    placeCall: { status: "placed", message: "Android accepted the request." },
+  });
+  const client = createTelephonyClient(plugin, true);
+  assert.deepEqual(await client.placeCall("+1 (555) 555-0100"), {
+    status: "placed",
+    message: "Android accepted the request.",
+  });
+  assert.deepEqual(calls, [["placeCall", { number: "+15555550100" }]]);
+  await assert.rejects(client.placeCall("*#06#"), RangeError);
+  assert.equal(calls.length, 1, "an undialable number never reaches native");
+
+  for (const status of ["emergency-handoff", "busy", "unavailable", "failed"])
+    assert.equal(parsePlaceCall({ status, message: "" }).status, status);
+  // Nothing may claim more than the request: no connected or answered state, no extra field.
+  for (const bad of [
+    { status: "connected", message: "" },
+    { status: "answered", message: "" },
+    { status: "handed-off", message: "" },
+    { status: "placed" },
+    { status: "placed", message: "", callId: "1" },
+    { status: "placed", message: "x".repeat(1025) },
+    null,
+  ])
+    assert.throws(() => parsePlaceCall(bad), /invalid/);
+
+  // A typed native refusal (no dialer role, no CALL_PHONE) reaches the caller unchanged.
+  const refusal = Object.assign(new Error("Make this app your phone app"), {
+    code: "role-required",
+  });
+  await assert.rejects(
+    createTelephonyClient(stub({ placeCall: refusal }).plugin, true).placeCall(
+      "5550100",
+    ),
+    (error: unknown) => error === refusal,
+  );
+  // A host built before placeCall existed has no such method: unavailable, never a silent dial.
+  await assert.rejects(
+    createTelephonyClient({ dial: async () => ({}) } as never, true).placeCall(
+      "5550100",
+    ),
+    TelephonyUnavailable,
+  );
+});
+
+const voicemailRow = (
+  id: string,
+  date: number,
+  patch: Record<string, unknown> = {},
+) => ({
+  id,
+  number: "+15555550100",
+  cachedName: "Ada",
+  date,
+  durationSeconds: 12,
+  isNew: true,
+  hasAudio: true,
+  carrierTranscript: "Call me back",
+  ...patch,
+});
+
+test("an unsupported carrier is a state, never an empty voicemail box", async () => {
+  assert.deepEqual(parseVoicemailStatus({ access: true, state: "ready" }), {
+    access: true,
+    state: "ready",
+  });
+  assert.deepEqual(parseVoicemailStatus({ access: false, state: null }), {
+    access: false,
+    state: null,
+  });
+  for (const bad of [
+    { access: false, state: "unsupported" },
+    { access: true, state: null },
+    { access: true, state: "empty" },
+    { access: true },
+    { access: true, state: "ready", count: 0 },
+  ])
+    assert.throws(() => parseVoicemailStatus(bad), /invalid/);
+
+  assert.deepEqual(
+    parseVoicemailList({ state: "unsupported", voicemails: [] }, 25),
+    { state: "unsupported", voicemails: [] },
+  );
+  assert.throws(
+    () =>
+      parseVoicemailList(
+        { state: "unsupported", voicemails: [voicemailRow("1", 1000)] },
+        25,
+      ),
+    /invalid/,
+  );
+  assert.throws(() => parseVoicemailList({ voicemails: [] }, 25), /invalid/);
+  assert.throws(() => parseVoicemailList({ state: "ready" }, 25), /invalid/);
+});
+
+test("voicemails are bounded, newest first and exactly the contract's fields", async () => {
+  const { plugin, calls } = stub({
+    listVoicemail: {
+      state: "ready",
+      voicemails: [
+        voicemailRow("9", 2000),
+        voicemailRow("8", 1000, {
+          number: "",
+          cachedName: null,
+          isNew: false,
+          hasAudio: false,
+          carrierTranscript: null,
+        }),
+      ],
+    },
+  });
+  const client = createTelephonyClient(plugin, true);
+  const list = await client.listVoicemail(2);
+  assert.equal(list.state, "ready");
+  assert.deepEqual(list.voicemails[0], voicemailRow("9", 2000));
+  assert.deepEqual(list.voicemails[1].number, "");
+  assert.deepEqual(list.voicemails[1].carrierTranscript, null);
+  assert.deepEqual(calls, [["listVoicemail", { limit: 2 }]]);
+  await assert.rejects(client.listVoicemail(0), RangeError);
+  await assert.rejects(client.listVoicemail(51), RangeError);
+  assert.equal(calls.length, 1);
+
+  const page = (...voicemails: unknown[]) => ({ state: "ready", voicemails });
+  for (const bad of [
+    page(
+      voicemailRow("9", 2000),
+      voicemailRow("8", 1000),
+      voicemailRow("7", 900),
+    ),
+    page(voicemailRow("9", 1000), voicemailRow("8", 2000)),
+    page(voicemailRow("9", 2000), voicemailRow("9", 1000)),
+    page(voicemailRow("09", 2000)),
+    page(voicemailRow("9", 0)),
+    page(voicemailRow("9", 2000, { number: "+1 555" })),
+    page(voicemailRow("9", 2000, { durationSeconds: -1 })),
+    page(voicemailRow("9", 2000, { isNew: 1 })),
+    page(voicemailRow("9", 2000, { carrierTranscript: " " })),
+    page(voicemailRow("9", 2000, { carrierTranscript: "x".repeat(4001) })),
+    page(voicemailRow("9", 2000, { cachedName: undefined })),
+    page(voicemailRow("9", 2000, { sourcePackage: "com.example" })),
+  ])
+    assert.throws(() => parseVoicemailList(bad, 2), /invalid/);
+});
+
+test("voicemail audio is the requested voicemail, typed and within its bounds", async () => {
+  const audio = { id: "7", mimeType: "audio/amr", size: 6, data: "IyFBTVIK" };
+  const { plugin, calls } = stub({
+    voicemailAudio: audio,
+    fetchVoicemailAudio: { status: "fetching" },
+    markVoicemailHeard: { status: "marked" },
+    deleteVoicemail: { status: "not-found" },
+  });
+  const client = createTelephonyClient(plugin, true);
+  assert.deepEqual(await client.voicemailAudio("7"), audio);
+  assert.equal(await client.fetchVoicemailAudio("7"), "fetching");
+  assert.equal(await client.markVoicemailHeard("7"), "marked");
+  assert.equal(await client.deleteVoicemail("7"), "not-found");
+  assert.deepEqual(calls, [
+    ["voicemailAudio", { id: "7" }],
+    ["fetchVoicemailAudio", { id: "7" }],
+    ["markVoicemailHeard", { id: "7" }],
+    ["deleteVoicemail", { id: "7" }],
+  ]);
+  for (const id of ["", "0", "07", "7 ", "x", "1".repeat(19)])
+    await assert.rejects(client.voicemailAudio(id), RangeError);
+  assert.equal(calls.length, 4, "an invalid ID never reaches native");
+
+  for (const bad of [
+    { ...audio, id: "8" },
+    { ...audio, size: 5 },
+    { ...audio, mimeType: "text/html" },
+    { ...audio, mimeType: "audio/" },
+    { ...audio, data: "IyFBTVI" },
+    { ...audio, data: "IyFB TVIK" },
+    { ...audio, data: "" },
+    { ...audio, path: "/data/voicemail/7.amr" },
+    { ...audio, size: 9 * 1024 * 1024, data: "A".repeat(12 * 1024 * 1024) },
+  ])
+    assert.throws(() => parseVoicemailAudio(bad, "7"), /invalid/);
+  assert.equal(parseVoicemailFetch({ status: "ready" }), "ready");
+  assert.equal(parseVoicemailFetch({ status: "failed" }), "failed");
+  assert.throws(() => parseVoicemailFetch({ status: "downloaded" }), /invalid/);
+  await assert.rejects(
+    createTelephonyClient(
+      stub({ markVoicemailHeard: { status: "deleted" } }).plugin,
+      true,
+    ).markVoicemailHeard("7"),
+    /invalid/,
+  );
+  // Typed native refusals (not-found, not-ready, too-large) reach the caller unchanged.
+  const notReady = Object.assign(new Error("not on the phone yet"), {
+    code: "not-ready",
+  });
+  await assert.rejects(
+    createTelephonyClient(
+      stub({ voicemailAudio: notReady }).plugin,
+      true,
+    ).voicemailAudio("7"),
+    (error: unknown) => error === notReady,
+  );
+});
+
+test("decoded voicemail is a 16 kHz mono WAV whose length matches its duration", async () => {
+  const wav = (samples: number) =>
+    Buffer.alloc(44 + samples * 2).toString("base64");
+  const pcm = (samples: number, patch: Record<string, unknown> = {}) => ({
+    mimeType: "audio/wav",
+    sampleRateHz: 16000,
+    durationSeconds: Math.round((samples * 1000) / 16000) / 1000,
+    data: wav(samples),
+    ...patch,
+  });
+  const { plugin, calls } = stub({ voicemailPcm: pcm(24000) });
+  const client = createTelephonyClient(plugin, true);
+  const decoded = await client.voicemailPcm("7");
+  assert.equal(decoded.durationSeconds, 1.5);
+  assert.equal(decoded.sampleRateHz, 16000);
+  assert.equal(decoded.mimeType, "audio/wav");
+  assert.deepEqual(calls, [["voicemailPcm", { id: "7" }]]);
+  assert.equal(parseVoicemailPcm(pcm(16001)).durationSeconds, 1);
+  assert.equal(parseVoicemailPcm(pcm(300 * 16000)).durationSeconds, 300);
+
+  for (const bad of [
+    pcm(24000, { sampleRateHz: 8000 }),
+    pcm(24000, { mimeType: "audio/amr" }),
+    pcm(24000, { durationSeconds: 3 }),
+    pcm(24000, { durationSeconds: "1.5" }),
+    pcm(24000, { data: Buffer.alloc(44 + 48001).toString("base64") }),
+    pcm(24000, { data: Buffer.alloc(44).toString("base64") }),
+    pcm(24000, { channels: 2 }),
+    pcm(300 * 16000 + 16000),
+    pcm(6 * 60 * 16000),
+  ])
+    assert.throws(() => parseVoicemailPcm(bad), /invalid/);
+});
+
+test("voicemail change notices carry no content and stop cleanly", async () => {
+  const { plugin, calls, listeners } = stub();
+  const client = createTelephonyClient(plugin, true);
+  let changes = 0;
+  const stop = await client.observeVoicemail(() => changes++);
+  assert.deepEqual(
+    listeners.map(([event]) => event),
+    ["voicemailChanged"],
+  );
+  assert.deepEqual(calls, [["observeVoicemail", { enabled: true }]]);
+  listeners[0][1]({ sequence: 1, transcript: "ignored" });
+  assert.equal(changes, 1);
+  await stop();
+  assert.deepEqual(calls.slice(1), [
+    ["remove", "voicemailChanged"],
+    ["observeVoicemail", { enabled: false }],
+  ]);
+
+  // Observation that native refuses leaves no listener behind.
+  const refused = stub({ observeVoicemail: new Error("not granted") });
+  await assert.rejects(
+    createTelephonyClient(refused.plugin, true).observeVoicemail(() => {}),
+    /not granted/,
+  );
+  assert.deepEqual(refused.calls, [
+    ["observeVoicemail", { enabled: true }],
+    ["remove", "voicemailChanged"],
+  ]);
+
+  // Without the profile, or on a host without the voicemail methods, nothing reaches native code.
+  const outside = stub();
+  await assert.rejects(
+    createTelephonyClient(outside.plugin, false).listVoicemail(),
+    TelephonyUnavailable,
+  );
+  assert.equal(outside.calls.length, 0);
+  await assert.rejects(
+    createTelephonyClient(
+      { listVoicemail: async () => ({}) } as never,
+      true,
+    ).listVoicemail(),
+    TelephonyUnavailable,
   );
 });
