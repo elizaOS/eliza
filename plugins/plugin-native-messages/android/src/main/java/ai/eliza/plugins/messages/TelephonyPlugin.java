@@ -49,7 +49,7 @@ import org.json.JSONObject;
  *
  * Voicemail: while the host is the default dialer, the bounded list, audio and heard/delete writes of
  * {@link VoicemailStore} over Android's voicemail provider, under the same fence. What the provider
- * holds is whatever a visual-voicemail source on the phone stored; this plugin is not such a source.
+ * holds is whatever a visual-voicemail source on the phone stored; the {@code vvm} package is one for hosts that declare it.
  *
  * Effects: {@link #dial} is a handoff to the user's dialer, which also owns emergency numbers.
  * {@link #placeCall} asks Telecom for a call only while the host holds the dialer role and CALL_PHONE,
