@@ -11,7 +11,8 @@
  * routing names candidate actions before context routing has run — the queue
  * must be visible on the turn where the decision arrives, whatever contexts
  * that turn classifies into. The happy-path render is empty and the read is
- * one bounded SQL, per the always-on provider contract.
+ * the bounded queue selection RESOLVE_REQUEST itself uses, per the always-on
+ * provider contract.
  */
 
 import type {
@@ -22,6 +23,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
+import { listResolvablePendingApprovals } from "../actions/resolve-request.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalRequest } from "../lifeops/approval-queue.types.js";
 
@@ -106,9 +108,10 @@ export const pendingApprovalsProvider: Provider = {
       return EMPTY;
     }
     // Approvals are enqueued with subjectUserId = the requesting owner's
-    // entityId (see actions/owner-surfaces.ts), and RESOLVE_REQUEST lists by
-    // the same key — the provider mirrors that scoping exactly so it shows
-    // precisely the rows the action can resolve.
+    // entityId (see actions/owner-surfaces.ts); household proposals and
+    // resource-capacity reviews addressed to the owner are stored under
+    // SELF_ENTITY_ID. The provider reads RESOLVE_REQUEST's own selection so it
+    // shows precisely the rows the action can resolve.
     const subjectUserId =
       typeof message.entityId === "string" ? message.entityId : "";
     if (!subjectUserId) return EMPTY;
@@ -116,12 +119,7 @@ export const pendingApprovalsProvider: Provider = {
     let pending: ReadonlyArray<ApprovalRequest>;
     try {
       const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-      pending = await queue.list({
-        subjectUserId,
-        state: "pending",
-        action: null,
-        limit: null,
-      });
+      pending = await listResolvablePendingApprovals(queue, subjectUserId);
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a queue-read failure
       // renders a distinguishable "unavailable" result, never the designed

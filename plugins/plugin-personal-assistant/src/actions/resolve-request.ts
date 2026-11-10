@@ -2413,6 +2413,48 @@ async function readResolvableApproval(
   return queue.byId(requestId, SELF_ENTITY_ID);
 }
 
+/**
+ * Lists the pending rows this caller may decide on: the rows queued under its
+ * own subject, plus the household proposals and resource-capacity reviews
+ * addressed to the owner, which are persisted under SELF_ENTITY_ID (see
+ * readResolvableApproval). RESOLVE_REQUEST and the pendingApprovals provider
+ * both read this list, so the provider shows exactly the rows the action can
+ * resolve.
+ */
+export async function listResolvablePendingApprovals(
+  queue: ApprovalQueue,
+  subjectUserId: string,
+): Promise<ApprovalRequest[]> {
+  const directPending = await queue.list({
+    subjectUserId,
+    state: "pending",
+    action: null,
+    limit: null,
+  });
+  const selfPending =
+    subjectUserId === SELF_ENTITY_ID
+      ? []
+      : (
+          await queue.list({
+            subjectUserId: SELF_ENTITY_ID,
+            state: "pending",
+            action: "execute_workflow",
+            limit: null,
+          })
+        ).filter((request) => {
+          const household = readHouseholdProposalApprovalTarget(request);
+          const capacity = readResourceCapacityReviewTarget(request);
+          return (
+            household?.partyEntityId === SELF_ENTITY_ID ||
+            capacity?.partyEntityId === SELF_ENTITY_ID
+          );
+        });
+  return [...directPending, ...selfPending].filter(
+    (request, index, all) =>
+      all.findIndex((candidate) => candidate.id === request.id) === index,
+  );
+}
+
 async function resolveApprovalRequest(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2455,30 +2497,6 @@ async function resolveApprovalRequest(
     }
     throw error;
   }
-  const directPending = await queue.list({
-    subjectUserId,
-    state: "pending",
-    action: null,
-    limit: null,
-  });
-  const selfPending =
-    subjectUserId === SELF_ENTITY_ID
-      ? []
-      : (
-          await queue.list({
-            subjectUserId: SELF_ENTITY_ID,
-            state: "pending",
-            action: "execute_workflow",
-            limit: null,
-          })
-        ).filter((request) => {
-          const household = readHouseholdProposalApprovalTarget(request);
-          const capacity = readResourceCapacityReviewTarget(request);
-          return (
-            household?.partyEntityId === SELF_ENTITY_ID ||
-            capacity?.partyEntityId === SELF_ENTITY_ID
-          );
-        });
   const userText =
     typeof message.content.text === "string" ? message.content.text : "";
   const explicitRequestId =
@@ -2495,10 +2513,7 @@ async function resolveApprovalRequest(
         action: null,
         limit: null,
       })
-    : [...directPending, ...selfPending].filter(
-        (request, index, all) =>
-          all.findIndex((candidate) => candidate.id === request.id) === index,
-      );
+    : await listResolvablePendingApprovals(queue, subjectUserId);
   if (retrying && pending.length === 0) {
     const text = "There is no failed request to retry.";
     if (callback) await callback({ text });

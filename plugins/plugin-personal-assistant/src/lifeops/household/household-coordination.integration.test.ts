@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, State } from "@elizaos/core";
 import {
   AgentEventService,
   createMessageMemory,
@@ -27,6 +27,7 @@ import {
 } from "../../../test/helpers/runtime.js";
 import { householdCoordinationAction } from "../../actions/household-coordination.js";
 import { resolveRequestAction } from "../../actions/resolve-request.js";
+import { pendingApprovalsProvider } from "../../providers/pending-approvals.js";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalQueue } from "../approval-queue.types.js";
 import { fenceFamilyWorkspace } from "../family-workflows/workspace-operation-store.js";
@@ -1031,6 +1032,86 @@ describe("household coordination — real PGlite", () => {
         "household_proposal_approved",
         "household_agreement_activated",
       ]),
+    );
+  });
+
+  it("lists the owner's household approval in pendingApprovals, the row RESOLVE_REQUEST resolves", async () => {
+    const childId = await person("pending-view-child");
+    const coParentId = await person("pending-view-co-parent");
+    await bindFamily({ childId, coParentId });
+    const proposal = await service().createProposal({
+      coordinationId: `pending-view-${randomUUID()}`,
+      terms: terms({
+        summary: "Pickup swap for the dentist visit",
+        childEntityIds: [childId],
+      }),
+      affectedPartyEntityIds: [childId, coParentId],
+      requiredApproverEntityIds: [SELF_ENTITY_ID],
+      createdByEntityId: SELF_ENTITY_ID,
+    });
+    const links = await householdRepository.listApprovalLinks(
+      proposal.proposalId,
+      proposal.version,
+    );
+    const ownerLink = links.find(
+      (link) => link.partyEntityId === SELF_ENTITY_ID,
+    );
+    const coParentLink = links.find(
+      (link) => link.partyEntityId === coParentId,
+    );
+    if (!ownerLink) throw new Error("owner approval link missing");
+    if (!coParentLink) throw new Error("co-parent approval link missing");
+
+    const ownerMessage = createMessageMemory({
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: {
+        text: "Approve the pickup swap proposal.",
+        source: "client_chat",
+      },
+    });
+    const emptyState: State = { values: {}, data: {}, text: "" };
+    const before = await pendingApprovalsProvider.get(
+      runtime,
+      ownerMessage,
+      emptyState,
+    );
+    expect(before.values?.pendingApprovalIds ?? []).toContain(
+      ownerLink.approvalRequestId,
+    );
+    expect(before.values?.pendingApprovalIds ?? []).not.toContain(
+      coParentLink.approvalRequestId,
+    );
+    expect(before.text).toContain(`id=${ownerLink.approvalRequestId}`);
+
+    const approval = await resolveRequestAction.handler(
+      runtime,
+      ownerMessage,
+      undefined,
+      {
+        parameters: {
+          action: "approve",
+          requestId: ownerLink.approvalRequestId,
+          reason: "I approve the pickup swap.",
+        },
+      },
+      undefined,
+    );
+    expect(approval).toMatchObject({
+      success: true,
+      data: {
+        requestId: ownerLink.approvalRequestId,
+        state: "approved",
+      },
+    });
+    const after = await pendingApprovalsProvider.get(
+      runtime,
+      ownerMessage,
+      emptyState,
+    );
+    expect(after.values?.pendingApprovalIds ?? []).not.toContain(
+      ownerLink.approvalRequestId,
     );
   });
 
