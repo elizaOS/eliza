@@ -983,14 +983,30 @@ test("GPS progress keeps the selected route approval current; a new route retire
   f.screen.dispose();
 });
 
-test("recenter keeps the viewed place and biases a later search from the explicit position", async () => {
-  const f = fixture();
+test("recenter keeps the viewed place, reports its map coverage and biases a later search from the explicit position", async () => {
+  const f = fixture({
+    coverage: {
+      name: "Monaco",
+      mapRestricted: true,
+      contains: (point) => point.latitude > 43.72 && point.latitude < 43.76,
+    },
+  });
   f.screen.setQuery("Destination");
   f.screen.submit();
   await settle();
   f.screen.choose("place:fixture:destination");
   await settle();
   const before = f.screen.view().place;
+  f.setDeviceFix(
+    f.fix({ coordinate: { latitude: 48.8566, longitude: 2.3522 } }),
+  );
+  f.screen.recenter();
+  await settle();
+  const outside = f.screen.view();
+  assert.equal(outside.place.name, before.name);
+  assert.equal(outside.status.map, "outside-coverage");
+  assert.match(outside.status.text, /outside Monaco map coverage/);
+  assert.equal(outside.map.selected, undefined);
   f.setDeviceFix(f.fix());
   f.screen.recenter();
   await settle();
