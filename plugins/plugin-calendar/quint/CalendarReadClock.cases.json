@@ -5,9 +5,10 @@
     "plugins/plugin-calendar/src/calendar-read-result.ts",
     "plugins/plugin-calendar/src/actions/calendar-weekday-window.test.ts",
     "plugins/plugin-calendar/src/internal/next-event-time-reference.test.ts",
-    "plugins/plugin-calendar/test/calendar-read-projection.test.ts"
+    "plugins/plugin-calendar/test/calendar-read-projection.test.ts",
+    "plugins/plugin-personal-assistant/test/calendar-action-effect-receipts.pglite.test.ts"
   ],
-  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption.",
+  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption. The full personal-assistant composition uses the shared producer projection; its database-backed check requires that the local display time survives the canonical executor.",
   "cases": [
     {
       "name": "local-display",
@@ -25,5 +26,6 @@
       "maxSteps": 4,
       "samples": 200
     }
-  ]
+  ],
+  "conformance": "plugins/plugin-calendar/quint/check-calendar-read-clock.mjs"
 }
