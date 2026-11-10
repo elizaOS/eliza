@@ -133,7 +133,8 @@ public final class NativeRuntimeSession implements AutoCloseable {
             logger.setDaemon(true); logger.start();
             return process;
         }
-        /** Waits for a child this scope started; its budget counts from this call. */
+        /** Waits for a child this scope started; its budget counts from this call. The wait fails
+         * as soon as that child or any other child of this scope has exited. */
         public void awaitReady(Process process, NativeProcessSupervisor.Probe probe, long timeoutMs, long pollMs) throws Exception {
             if (process == null || probe == null || !owns(process))
                 throw new IllegalArgumentException("Invalid runtime process configuration");
