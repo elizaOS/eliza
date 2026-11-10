@@ -1,0 +1,31 @@
+{
+  "sources": [
+    "packages/cloud/api/src/lib/maps-route.ts",
+    "packages/cloud/shared/src/lib/services/maps/google-provider.ts",
+    "packages/cloud/api/__tests__/maps-google-provider.test.ts",
+    "packages/cloud/quint/check-maps-tile-cache.mjs"
+  ],
+  "bounds": {
+    "domain": "One caller and one tile, one authorization bit and one HTTP cache entry. Any sequence of requests, authorization and revocation is allowed.",
+    "atomicity": "Each request completes within one authorization state. Existing server admission owns mid-request revocation and is outside this HTTP cache projection.",
+    "progress": "No fairness or provider-availability claim. An unauthorized request may be refused indefinitely."
+  },
+  "limitations": [
+    "Assumes clients and intermediaries follow HTTP no-store. Does not prove browser or Cloudflare implementations.",
+    "Current-map rendering memory, Google session tokens, device/native transport and organization quota enforcement are outside this projection.",
+    "The existing provider/route tests check no-store request and response metadata and preserved bytes; their Google boundary is a controlled fetch, not a live provider."
+  ],
+  "cases": [
+    {
+      "name": "no-store",
+      "main": "MapsTileCache",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety", "noRetainedTile"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 100
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-maps-tile-cache.mjs"
+}

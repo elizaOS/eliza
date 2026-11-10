@@ -1,6 +1,8 @@
-/** Stage 1 leads its user message with the room's static catalog and Task text,
- * so consecutive turns share that prefix. Live tj-786ca91739ceaa: every Stage-1
- * call opened with the clock line and cached only the system and tool prefix. */
+/** Stage 1 leads its user message with the room's static catalog and Task text
+ * and keeps cache-unstable providers (the clock) behind the transcript, so
+ * consecutive turns share everything up to the newest prior message. Live
+ * tj-786ca91739ceaa: every Stage-1 call opened with the clock line and cached
+ * only the system and tool prefix. */
 import type { ContextEvent, IAgentRuntime } from "@elizaos/core";
 import { expect, it } from "vitest";
 import { renderMessageHandlerModelInput } from "./stage1-input";
@@ -11,7 +13,11 @@ const contexts = [
   { id: "calendar", description: "Events, appointments and availability." },
 ];
 
-function turn(clock: string, request: string): string {
+function turn(
+  clock: string,
+  request: string,
+  prior: readonly string[] = [],
+): string {
   const events: ContextEvent[] = [
     {
       id: "time",
@@ -29,6 +35,18 @@ function turn(clock: string, request: string): string {
         stable: false,
       },
     },
+    ...prior.map(
+      (content, index): ContextEvent => ({
+        id: `prior-${index}`,
+        type: "segment",
+        segment: {
+          id: `prior-${index}`,
+          label: "prior_message:user",
+          content,
+          stable: false,
+        },
+      }),
+    ),
     {
       id: "current-turn-boundary",
       type: "instruction",
@@ -51,7 +69,7 @@ function turn(clock: string, request: string): string {
   return String(input.messages[1]?.content);
 }
 
-it("puts the catalog and Task ahead of the clock, past effects and the boundary", () => {
+it("puts the catalog, Task, past effects, boundary and transcript ahead of the clock", () => {
   const user = turn("4:01:04 AM", "move it to 4pm");
   const task = user.indexOf("# Task");
   const clock = user.indexOf("Local date:");
@@ -60,11 +78,11 @@ it("puts the catalog and Task ahead of the clock, past effects and the boundary"
   const conversation = user.indexOf("# Conversation");
   expect(user.startsWith("# Available Contexts\n- simple:")).toBe(true);
   expect(task).toBeGreaterThan(0);
-  expect(clock).toBeGreaterThan(task);
-  expect(effects).toBeGreaterThan(clock);
+  expect(effects).toBeGreaterThan(task);
   expect(boundary).toBeGreaterThan(effects);
   expect(conversation).toBeGreaterThan(boundary);
-  expect(user.indexOf("# Current message")).toBeGreaterThan(conversation);
+  expect(clock).toBeGreaterThan(conversation);
+  expect(user.indexOf("# Current message")).toBeGreaterThan(clock);
 });
 
 it("shares the catalog and Task prefix between turns", () => {
@@ -75,4 +93,18 @@ it("shares the catalog and Task prefix between turns", () => {
   expect(first.slice(0, shared)).toContain(
     "otherwise call HANDLE_RESPONSE with its registered fields.",
   );
+});
+
+it("keeps the transcript an earlier turn sent inside the shared prefix when the clock moves", () => {
+  const first = turn("4:01:04 AM", "move it to 4pm", ["book the dentist"]);
+  const second = turn("4:02:36 AM", "remind me to stretch", [
+    "book the dentist",
+    "move it to 4pm",
+  ]);
+  let shared = 0;
+  while (shared < first.length && first[shared] === second[shared]) shared++;
+  const prefix = first.slice(0, shared);
+  expect(prefix).toContain("# Conversation");
+  expect(prefix).toContain("book the dentist");
+  expect(prefix).not.toContain("Local date:");
 });

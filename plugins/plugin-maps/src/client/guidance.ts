@@ -23,8 +23,17 @@ export const maneuverIcon = (maneuver?: Maneuver) =>
   MANEUVER_ICONS[maneuver || "continue"];
 
 /** Distance for guidance: 5 m steps below 100 m, 10 m below 1 km, then 0.1 km. */
-export function guidanceDistance(meters: number): string {
+export function guidanceDistance(
+  meters: number,
+  locale = Intl.DateTimeFormat().resolvedOptions().locale,
+): string {
   if (!Number.isFinite(meters) || meters < 0) return "";
+  if (/^en-US\b/i.test(locale)) {
+    const feet = meters / 0.3048;
+    return feet < 1000
+      ? `${Math.round(feet / 10) * 10} ft`
+      : `${(meters / 1609.344).toFixed(1)} mi`;
+  }
   if (meters < 100) return `${Math.max(0, Math.round(meters / 5) * 5)} m`;
   if (meters < 1000) return `${Math.round(meters / 10) * 10} m`;
   return `${(meters / 1000).toFixed(1)} km`;
@@ -62,7 +71,12 @@ export function atStep(
   return { ...rest, ...(next ? { next } : {}), ...(then ? { then } : {}) };
 }
 /** Presentation of one progress reading for the navigation sheet, voice and notification. */
-export function guidanceView(progress: RouteProgress, now = new Date()) {
+export function guidanceView(
+  progress: RouteProgress,
+  now = new Date(),
+  traffic: "none" | "approximated" | "live" = "none",
+  locale = Intl.DateTimeFormat().resolvedOptions().locale,
+) {
   const next = progress.next,
     then = progress.then;
   const arrival = new Date(now.getTime() + progress.remainingSeconds * 1000);
@@ -70,7 +84,7 @@ export function guidanceView(progress: RouteProgress, now = new Date()) {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const distance = next ? guidanceDistance(next.distanceMeters) : "";
+  const distance = next ? guidanceDistance(next.distanceMeters, locale) : "";
   const instruction = next?.step.instruction || "Continue to the destination";
   return {
     icon: maneuverIcon(next?.step.maneuver),
@@ -80,10 +94,14 @@ export function guidanceView(progress: RouteProgress, now = new Date()) {
     thenIcon: then ? maneuverIcon(then.step.maneuver) : "",
     thenText: then?.step.instruction || "",
     remainingTime: guidanceDuration(progress.remainingSeconds),
-    remaining: `${guidanceDistance(progress.remainingMeters)} · arrive ${clock} · no live traffic`,
-    /** One utterance per upcoming step: the provider's own instruction text. */
-    spoken: next ? instruction : "",
+    remaining: `${guidanceDistance(progress.remainingMeters, locale)} · arrive ${clock}${traffic === "live" ? "" : " · no live traffic"}`,
+    /** Distance plus the provider's own instruction; the screen owns near/now repetition. */
+    spoken: next
+      ? next.distanceMeters <= 50
+        ? instruction
+        : `In ${distance}, ${instruction}`
+      : "",
     notificationTitle: next ? `${distance} · ${instruction}` : instruction,
-    notificationText: `${guidanceDuration(progress.remainingSeconds)} · ${guidanceDistance(progress.remainingMeters)} remaining`,
+    notificationText: `${guidanceDuration(progress.remainingSeconds)} · ${guidanceDistance(progress.remainingMeters, locale)} remaining`,
   };
 }

@@ -75,6 +75,98 @@ test("the speech output warm-up is bounded, and close stops it at once, also a b
   }
 });
 
+// Compiles the named library classes with one JVM fixture and runs it. No Android class is involved.
+function contract(classes, fixture, expected) {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-speech-"));
+  try {
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "17",
+        "-d",
+        output,
+        ...classes.map((name) =>
+          path.join(here, "../src/main/java/ai/eliza/voice", `${name}.java`),
+        ),
+        path.join(here, `speech/${fixture}.java`),
+      ],
+      { timeout: 60000, stdio: "pipe" },
+    );
+    assert.match(
+      execFileSync(java("java"), ["-cp", output, `ai.eliza.voice.${fixture}`], {
+        timeout: 60000,
+        encoding: "utf8",
+      }),
+      expected,
+    );
+  } finally {
+    fs.rmSync(output, { recursive: true, force: true });
+  }
+}
+
+test("a shorter VAD end hangover closes the segment sooner, clamped to whole windows, and the barge-in run is counted", () =>
+  contract(
+    ["LiveVadGate", "LiveCaptureOptions"],
+    "LiveVadHangoverTest",
+    /^PASS live vad hangover/,
+  ));
+
+test("appended sentences play in order through one output, end once, and stop drops them all", () =>
+  contract(
+    [
+      "StreamingSpeechPlayback",
+      "SpeechPcmQueue",
+      "VoiceLatencyTrials",
+      "SpeechAudioFocusPolicy",
+      "SpeechRequestGate",
+    ],
+    "SpeechAppendTest",
+    /^PASS speech append/,
+  ));
+
+test("speech synthesis uses the big cores, two to eight threads", () =>
+  contract(["SpeechCores"], "SpeechCoresTest", /^PASS speech cores/));
+
+test("a conversation's hold keeps the engine only in the foreground and is one flag", () =>
+  contract(
+    ["SpeechEngineHold"],
+    "SpeechEngineHoldTest",
+    /^PASS speech engine hold/,
+  ));
+
+test("the bridge honours the engine hold on the idle timer only, and pause and trim end it", () => {
+  const bridge = fs.readFileSync(
+    path.join(
+      here,
+      "../speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java",
+    ),
+    "utf8",
+  );
+  assert.match(
+    bridge,
+    /localIdleRelease=\(\)->\{if\(!engineHold\.keeps\(speechForeground\)\)queueLocalRelease\(\);\};/,
+  );
+  assert.match(
+    bridge,
+    /handleOnPause\(\)\{speechForeground=false;engineHold\.release\(\);/,
+  );
+  assert.match(
+    bridge,
+    /if\(level==TRIM_MEMORY_UI_HIDDEN\)\{engineHold\.release\(\);scheduleLocalRelease\(30000\);\}/,
+  );
+  // Memory pressure and an explicit release unload at once, hold or not.
+  assert.match(
+    bridge,
+    /private void releaseForMemoryPressure\(\)\{gate\.cancelAll\(\);queueLocalRelease\(\);\}/,
+  );
+  // The thread count is set on the speech worker before the first voice can load.
+  assert.match(
+    bridge,
+    /new LocalSpeechEngine\(\(\)->\{useBigCores\(\);return SessionSpeech\.shared\(getContext\(\)\);\}\)/,
+  );
+});
+
 test("the bridge starts the warm-up only for a foreground idle speaker outside protected surfaces and closes it on every stop path", () => {
   const bridge = fs.readFileSync(
     path.join(
