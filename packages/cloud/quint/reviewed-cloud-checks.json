@@ -12,7 +12,9 @@
         "accepted welcome survives a rejected marker write at the delivery attempt limit",
         "lost delivered-marker reply preserves the claim for marker replay",
         "lost processing-removal reply does not requeue a delivered welcome",
-        "lost retry publication reply leaves the original and retry payload durable after restart"
+        "lost retry replacement reply retains only the delayed retry after restart",
+        "retry replacement preserves unrelated and duplicate legacy processing members",
+        "the same welcome poller resumes its retained claim after the state owner supports atomic retry"
       ]
     }
   ],

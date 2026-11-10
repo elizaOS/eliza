@@ -8,6 +8,8 @@
 import { createHash } from "node:crypto";
 import {
   DISCORD_WELCOME_DELIVERED as DELIVERED_PREFIX,
+  DISCORD_WELCOME_REQUEUE,
+  DiscordWelcomeStateError,
   DISCORD_WELCOME_PROCESSING as PROCESSING_KEY,
   DISCORD_WELCOME_PENDING as QUEUE_KEY,
 } from "@elizaos/cloud-services-common/discord-welcome-state";
@@ -38,6 +40,7 @@ export interface DiscordInstallWelcomeJob {
 }
 
 export interface DiscordInstallWelcomeRedis {
+  eval(script: string, keys: string[], args: string[]): Promise<unknown>;
   get<T = string>(key: string): Promise<T | null>;
   set(
     key: string,
@@ -170,6 +173,18 @@ export class DiscordInstallWelcomeQueue {
     await this.redis.lpush(QUEUE_KEY, JSON.stringify(job));
   }
 
+  private async requeue(raw: string, retry: string): Promise<void> {
+    const replaced = await this.redis.eval(
+      DISCORD_WELCOME_REQUEUE,
+      [PROCESSING_KEY, QUEUE_KEY],
+      [raw, retry],
+    );
+    if (replaced !== 1)
+      throw new DiscordWelcomeStateError(
+        "Discord welcome processing claim was not replaced",
+      );
+  }
+
   start(): Promise<void> {
     if (this.stopInFlight || this.interval) return Promise.resolve();
     if (this.startInFlight) return this.startInFlight;
@@ -260,8 +275,7 @@ export class DiscordInstallWelcomeQueue {
     }
     if (job.retryAt && Date.parse(job.retryAt) > Date.now()) {
       // Still backing off: back to the pending list untouched.
-      await this.redis.lpush(QUEUE_KEY, raw);
-      await this.redis.lrem(PROCESSING_KEY, 1, raw);
+      await this.requeue(raw, raw);
       return true;
     }
 
@@ -288,10 +302,7 @@ export class DiscordInstallWelcomeQueue {
         attempts,
         retryAt: new Date(Date.now() + retryDelayMs(attempts)).toISOString(),
       };
-      // Keep a durable copy if removing the original claim fails. An
-      // interruption between these writes can leave both copies for recovery.
-      await this.redis.lpush(QUEUE_KEY, JSON.stringify(retry));
-      await this.redis.lrem(PROCESSING_KEY, 1, raw);
+      await this.requeue(raw, JSON.stringify(retry));
       logger.warn("Discord install welcome delivery will retry", {
         jobId: job.id,
         attempts,
