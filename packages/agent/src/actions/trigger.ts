@@ -1012,6 +1012,36 @@ async function opUpdate(
       { readOnlyOperation: true, taskId: String(task.id) },
     );
   }
+  // maxRuns and wakeMode are not schedule fields, so the schedule checks
+  // above do not cover them: an unusable value used to be dropped while the
+  // update still reported success, so the planner believed the limit applied.
+  // They are checked here, after the schedule checks, so this change only
+  // adds lines below the shared early return.
+  if (
+    params.maxRuns !== undefined &&
+    params.maxRuns !== null &&
+    parsePositiveInt(params.maxRuns) === undefined
+  ) {
+    return failed(
+      "update",
+      "Nothing was changed. maxRuns must be a positive integer.",
+      "INVALID_UPDATE",
+      { readOnlyOperation: true, taskId: String(task.id) },
+    );
+  }
+  if (
+    typeof params.wakeMode === "string" &&
+    params.wakeMode.trim() !== "" &&
+    params.wakeMode.trim().toLowerCase() !== "inject_now" &&
+    params.wakeMode.trim().toLowerCase() !== "next_autonomy_cycle"
+  ) {
+    return failed(
+      "update",
+      'Nothing was changed. wakeMode must be "inject_now" or "next_autonomy_cycle".',
+      "INVALID_UPDATE",
+      { readOnlyOperation: true, taskId: String(task.id) },
+    );
+  }
 
   const next: TriggerConfig = { ...trigger };
   const displayName = readString(params.displayName);
