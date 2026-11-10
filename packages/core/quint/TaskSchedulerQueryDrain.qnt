@@ -71,17 +71,20 @@ module TaskSchedulerQueryDrain {
     s.stopRequested, not(s.restarted), not(s.retiredAdapters.contains("storage-new")),
     s' = { ...s, active: true, adapter: "storage-new", generation: s.generation + 1, restarted: true },
   }
-  action step = {
-    nondet owner = Services.oneOf()
-    nondet q = Queries.oneOf()
-    nondet adapterOwner = Adapters.oneOf()
-    nondet succeeded = Set(true, false).oneOf()
-    any {
-      register(owner), begin(q), unregister(owner), closeStorage(owner),
-      retireAdapter(adapterOwner), closeAdapter(adapterOwner),
-      settle(q, succeeded), dispatch(q), stopScheduler, returnSchedulerStop,
-      restart, s' = s,
-    }
+  action step = any {
+    {
+      nondet owner = Services.oneOf()
+      any { register(owner), unregister(owner), closeStorage(owner) }
+    },
+    {
+      nondet q = Queries.oneOf()
+      any { begin(q), settle(q, true), settle(q, false), dispatch(q) }
+    },
+    {
+      nondet owner = Adapters.oneOf()
+      any { retireAdapter(owner), closeAdapter(owner) }
+    },
+    stopScheduler, returnSchedulerStop, restart, s' = s,
   }
 
   val ClosedStorageHasNoQueries = s.closed.forall(owner => ownedPending(owner).size() == 0)
