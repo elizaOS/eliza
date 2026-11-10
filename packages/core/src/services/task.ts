@@ -853,13 +853,16 @@ export class TaskService extends Service {
 		operation: () => Promise<T>,
 	): Promise<T> {
 		this.assertAcceptingExecution();
-		const completion = Promise.withResolvers<void>();
-		this.pendingOperations.add(completion.promise);
+		let settle!: () => void;
+		const completion = new Promise<void>((resolve) => {
+			settle = resolve;
+		});
+		this.pendingOperations.add(completion);
 		try {
 			return await operation();
 		} finally {
-			this.pendingOperations.delete(completion.promise);
-			completion.resolve();
+			this.pendingOperations.delete(completion);
+			settle();
 		}
 	}
 
