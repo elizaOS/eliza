@@ -744,21 +744,35 @@
   },
   {
     "id": "cloud-flow-speech-relay",
-    "model": null,
+    "model": "packages/cloud/quint/speech_deferred_opening.qnt",
     "sources": [
       "packages/cloud/api/src/speech-relay-coordinator.ts",
-      "packages/cloud/api/src/speech-retirement-state.ts",
-      "packages/cloud/api/src/speech-relay-admission.ts"
+      "packages/cloud/api/src/speech-retirement-state.ts"
     ],
+    "invariants": [
+      "ConfirmationJoinsOpening",
+      "ClaimedProofKeepsOriginalGeneration",
+      "NeverStartedHasNoClaim"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One minted proof-version-1 session, one valid authenticated Hello, one public socket, one opening claim, one retirement attempt and successful or failed import/storage completion. Claim identity is one fixed symbolic owner; generations range from zero through two.",
+      "The model ends the checked acquisition region when an unretired opening passes its revocation fence. Quota, money/admission, provider creation, active PCM/TTS controls, renewal, provider cleanup and terminal financial evidence remain separate obligations.",
+      "Storage transitions combine commit and acknowledgement in this finite outcome projection. Applied-but-unacknowledged storage, object eviction/restart, repeated retirement attempts, expiry, multiple sockets and concurrent initialization are outside it.",
+      "The Workerd fixture wraps delivery after actual deferred imports resolve at the upgrade, opening and close source awaits. Coordinator guards and generation/proof logic run as written; native sockets and SQLite Durable Object storage remain real. Existing controlled provider, quota and DB boundaries are retained; this is not live provider or PostgreSQL billing proof.",
+      "Progress assumes each admitted import, fence operation and storage operation settles, plus fair local continuations. Failure may return an unconfirmed outcome. No eventual successful retirement or wall-clock bound is promised.",
+      "The proof comparison now >= initializedAt is valid in this instance. Clock reversals, expiration during loading and clock-driven retry deadlines require their separate time projection."
+    ]
+  },
+  {
+    "id": "cloud-flow-speech-relay-admission",
+    "model": null,
+    "sources": ["packages/cloud/api/src/speech-relay-admission.ts"],
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite speech model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Revocation reaches the authoritative session namespace | Retirement retains admission and usage receipts | Cancellation prevents later audio publication",
-      "Abstract states: preparing, ready, streaming, ending, retiring, retired, revoked"
+      "Preserved money/usage owner from the broad speech-relay inventory. The new deferred-opening model stops before admission/provider ownership and does not discharge these obligations.",
+      "Model paired STT/TTS reservation, dispatch evidence, quota release, actual/conservative settlement, lost acknowledgements, retained progress and recovery with exact session/request identities. Existing runtime tests do not substitute for a verified transition relation."
     ]
   },
   {

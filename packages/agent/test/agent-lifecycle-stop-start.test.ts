@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -119,18 +119,25 @@ it("boots a new runtime after teardown reports a failure", async () => {
   expect(harness.state.runtime).toBe(replacement);
 });
 
-it("rejects pause and resume without a live runtime or during boot and teardown over HTTP", async () => {
+it("rejects competing lifecycle and wallet reloads during HTTP boot and teardown", async () => {
   const directory = await mkdtemp(
     path.join(tmpdir(), "agent-lifecycle-quint-"),
   );
   const apiToken = randomUUID();
+  await writeFile(
+    path.join(directory, "eliza.json"),
+    JSON.stringify({ wallet: { primary: { evm: "cloud" } } }),
+  );
   for (const [key, value] of Object.entries({
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "eliza.json"),
+    ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "eliza.json"),
     ELIZA_API_TOKEN: apiToken,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
+    ENABLE_CLOUD_WALLET: "1",
   }))
     vi.stubEnv(key, value);
+  vi.stubEnv("WALLET_SOURCE_EVM", undefined);
   const fixture = await createTestRuntime({ characterName: "Lifecycle model" });
   let releaseBoot!: () => void;
   let releaseRestart!: () => void;
@@ -158,6 +165,7 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
   });
   let boots = 0;
   let stopped = false;
+  let walletUpdate: Promise<Response> | undefined;
   let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
   try {
     server = await startApiServer({
@@ -193,6 +201,13 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
       });
     for (const action of ["pause", "resume"])
       expect((await post(action)).status).toBe(503);
+    expect(
+      (
+        await fetch(`${apiBase}/api/wallet/config`, {
+          headers: { authorization: `Bearer ${apiToken}` },
+        })
+      ).status,
+    ).toBe(200);
 
     const starting = post("start");
     await Promise.race([
@@ -209,8 +224,45 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
       status: { state: "starting" },
     });
     expect(boots).toBe(1);
+    let walletSettled = false;
+    walletUpdate = fetch(`${apiBase}/api/wallet/primary`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ chain: "evm", source: "local" }),
+    }).then((response) => {
+      walletSettled = true;
+      return response;
+    });
+    await vi.waitFor(() => expect(boots > 1 || walletSettled).toBe(true), {
+      timeout: 30_000,
+    });
+    expect(boots).toBe(1);
+    expect(await (await walletUpdate).json()).toMatchObject({
+      ok: true,
+      restarting: false,
+    });
+    expect(
+      JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8")),
+    ).toMatchObject({ wallet: { primary: { evm: "local" } } });
+    expect(await (await post("start")).json()).toMatchObject({
+      status: { state: "starting" },
+    });
     releaseBoot();
     expect((await starting).status).toBe(200);
+    const readStatus = async () =>
+      (
+        await fetch(`${apiBase}/api/status`, {
+          headers: { authorization: `Bearer ${apiToken}` },
+        })
+      ).json();
+    expect(await readStatus()).toMatchObject({
+      state: "running",
+      pendingRestart: true,
+      pendingRestartReasons: ["Wallet configuration updated"],
+    });
     const restarting = post("restart");
     await Promise.race([
       restartEntered,
@@ -230,6 +282,11 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
     expect(boots).toBe(2);
     releaseRestart();
     expect((await restarting).status).toBe(200);
+    expect(await readStatus()).toMatchObject({
+      state: "running",
+      pendingRestart: false,
+      pendingRestartReasons: [],
+    });
     expect((await post("pause")).status).toBe(200);
     expect((await post("resume")).status).toBe(200);
 
@@ -247,6 +304,7 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
     releaseBoot();
     releaseRestart();
     releaseStop();
+    await Promise.allSettled([walletUpdate]);
     if (server) await server.close();
     if (!stopped) await fixture.cleanup();
     vi.unstubAllEnvs();
