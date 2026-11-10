@@ -7,7 +7,10 @@
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
-    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java"
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+    "packages/os/android/system-updater/sepolicy/eliza_system_updater.te",
+    "packages/os/android/system-updater/sepolicy/seapp_contexts",
+    "packages/os/android/system-updater/AndroidManifest.xml"
   ],
   "bounds": "One device, one candidate and binary current eligibility. Model safety covers stop/crash and policy changes; cryptographic checks, Android timing, storage and device behavior still require native qualification.",
   "cases": [

@@ -3,6 +3,8 @@ typeattribute eliza_system_updater coredomain;
 type eliza_system_updater_data_file, file_type, data_file_type, core_data_file_type, app_data_file_type;
 app_domain(eliza_system_updater)
 net_domain(eliza_system_updater)
+allow eliza_system_updater eliza_system_updater_data_file:dir create_dir_perms;
+allow eliza_system_updater eliza_system_updater_data_file:file create_file_perms;
 binder_use(eliza_system_updater)
 allow eliza_system_updater update_engine_service:service_manager find;
 binder_call(eliza_system_updater, update_engine)

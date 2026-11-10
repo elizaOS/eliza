@@ -17,6 +17,7 @@ public final class JournalReplay {
                 case "download": journal = journal.download("source", "target", digest); break;
                 case "verify": journal = journal.verified("source", "target", digest); break;
                 case "reject": journal = journal.failedBeforeApply(); break;
+                case "withdraw": journal = journal.cancelUnapplied(); break;
                 case "apply": journal = journal.applyIntent("boot", true); break;
                 case "busy":
                     try { journal.applyIntent("boot", false); throw new AssertionError("Busy engine accepted"); }

@@ -90,6 +90,13 @@ final class UpdateRunner {
                     context.getResources().getStringArray(R.array.os_update_hosts),
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
             UpdateChannel.Candidate candidate = channel.discover();
+            boolean unapplied = current.phase == UpdateJournal.Phase.DOWNLOADING
+                    || current.phase == UpdateJournal.Phase.VERIFIED;
+            if (unapplied && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
+                    || !current.packageSha256.equals(candidate.sha256))) {
+                UpdateJournal idle = current.cancelUnapplied();
+                store.write(current, idle); current = idle;
+            }
             if (candidate == null) { finish(run, "No newer system update was offered"); return; }
             if (current.phase == UpdateJournal.Phase.IDLE || current.phase == UpdateJournal.Phase.COMPLETE
                     || current.phase == UpdateJournal.Phase.SOURCE_RETAINED) {

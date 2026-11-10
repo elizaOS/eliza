@@ -111,6 +111,14 @@ public final class UpdateJournal {
         return this;
     }
 
+    /** A withdrawn candidate can be replaced only while no apply intent exists. */
+    public UpdateJournal cancelUnapplied() {
+        if (phase != Phase.DOWNLOADING && phase != Phase.VERIFIED) {
+            throw new IllegalStateException("An applied or uncertain update cannot be discarded");
+        }
+        return idle();
+    }
+
     public UpdateJournal failedBeforeApply() {
         if (phase != Phase.DOWNLOADING && phase != Phase.VERIFIED) {
             throw new IllegalStateException("Cannot classify an apply as unstarted");
