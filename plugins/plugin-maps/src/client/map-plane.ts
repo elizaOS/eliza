@@ -376,6 +376,7 @@ export class MapPlane {
           : /fetch|request|tile|load/i.test(message)
             ? "resource-load"
             : "render-error";
+      delete container.dataset.mapReady;
       onError();
     });
     if (raster?.copyright) {
@@ -414,9 +415,10 @@ export class MapPlane {
       const show = (text: string) => {
         container.dataset.mapCopyright = text;
         canvas.style.visibility = visibility;
-        if (this.styleReady) container.dataset.mapReady = "true";
         if (container.dataset.mapError === "copyright")
           delete container.dataset.mapError;
+        if (this.styleReady && !container.dataset.mapError)
+          container.dataset.mapReady = "true";
         this.options.onCopyright?.(text);
       };
       const updateVisibility = () => {
@@ -476,7 +478,8 @@ export class MapPlane {
     this.map.on("load", () => {
       if (this.destroyed) return;
       this.styleReady = true;
-      if (!this.refreshCopyright) container.dataset.mapReady = "true";
+      if (!this.refreshCopyright && !container.dataset.mapError)
+        container.dataset.mapReady = "true";
       this.refreshCopyright?.();
       this.update(this.requested, this.requestedRoute, this.requestedOverlay);
     });

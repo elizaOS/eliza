@@ -827,6 +827,13 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   assert.equal(map.canvas.style.visibility, undefined);
   assert.equal(f.container.dataset.mapReady, "true");
   assert.equal(f.container.dataset.mapError, undefined);
+  map.events.error({ error: new Error("Tile load failed") });
+  assert.equal(f.container.dataset.mapError, "resource-load");
+  assert.equal(f.container.dataset.mapReady, undefined);
+  map.events.move();
+  map.events.moveend();
+  assert.equal(f.container.dataset.mapError, "resource-load");
+  assert.equal(f.container.dataset.mapReady, undefined);
   plane.destroy();
   f.plane.destroy();
   assert.equal(f.removedProtocols.length, 2);
