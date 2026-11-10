@@ -1,0 +1,88 @@
+{
+  "sources": [
+    "packages/cloud/services/gateway-discord/src/discord-install-welcome-queue.ts",
+    "packages/cloud/services/gateway-discord/src/gateway-manager.ts",
+    "packages/cloud/services/gateway-discord/src/cloudflare-welcome-store.ts",
+    "packages/cloud/services/_common/src/discord-welcome-state.ts",
+    "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.ts",
+    "packages/cloud/services/gateway-container/cloudflare/discord-welcome.fixture.ts",
+    "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.test.ts",
+    "packages/cloud/services/gateway-container/README.md",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": {
+    "domain": "One managed queue owner, one valid symbolic welcome job, one retained delivery marker and at most two starts. The first row may be pending or abandoned in processing. An imported marker represents an earlier observed provider acknowledgement. A transient outcome keeps at most one pending retry copy and one original processing copy.",
+    "ownership": "GatewayManager starts the queue for the managed Discord bot and joins stop on disconnect. Stop closes new poll admission and joins original recovery and any admitted drain. The test holds an actual successful recovery move reply and, separately, a provider reply while the same owner stops. An admitted drain may finish after stop is requested.",
+    "limitations": [
+      "The model assumes one managed owner and restart from a quiescent or abandoned processing record. It does not establish cross-pod leader fencing, clock deadlines, exact retry counters, marker expiry or provider nonce retention. Enqueue of additional jobs, ordering among several entries, import, invalid payloads and public transport are exercised only by named integration checks where present.",
+      "Successful SQLite moves and mutations settle with their acknowledgements in this projection. Recovery rejection before a move, provider rejection and transient retry are modeled. Lost acknowledgements, new owners that overlap a retiring process, storage failures after provider acceptance, a crash during retry push/removal and arbitrary imported duplicates remain open.",
+      "A ready retry may be polled after its backoff. The real tests read the persisted attempt and deadline, restart Workerd and check the same provider nonce on retry. Live Discord delivery, provider deduplication guarantees and arbitrary retries are outside this model. The provider response is controlled in tests while production queue, transport and SQLite operations execute."
+    ]
+  },
+  "cases": [
+    {
+      "name": "managed-recovery-stop-and-delivery",
+      "main": "DiscordWelcomeQueue",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "StopRequiresQuiescence",
+        "MarkerRequiresObservedAcceptance",
+        "RetainedMarkerSkipsProvider",
+        "RetryRetainsBothCopies"
+      ],
+      "temporal": [
+        "StopClosesAdmission",
+        "ProcessingRemovalRequiresOutcome",
+        "DrainSettles",
+        "StopSettles",
+        "StopWithoutFairness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "StopClosesAdmission",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is required. Stop fences only this queue owner. Work admitted before the stop request may continue until its outcome settles."
+          ]
+        },
+        {
+          "property": "ProcessingRemovalRequiresOutcome",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is required. One valid processing row is moved back during startup, removed after a retained marker, removed after a retry copy is written, or dropped after definitive rejection. Storage application and acknowledgement are atomic at this projection boundary."
+          ]
+        },
+        {
+          "property": "DrainSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settle means admitted storage and provider calls eventually return, with the modeled success, rejection or retry outcomes, and local continuations run. Settlement does not imply successful delivery, polling fairness, an elapsed-time deadline or eventual success after retry."
+          ]
+        },
+        {
+          "property": "StopSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settle and finishStop requires an admitted recovery or drain to reach its outcome and a fair stop continuation. This includes a rejected startup recovery. Hung external calls and repeated host failures can prevent progress."
+          ]
+        },
+        {
+          "property": "StopWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. An outstanding operation or continuation can stutter forever. The verifier must find a temporal loop."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

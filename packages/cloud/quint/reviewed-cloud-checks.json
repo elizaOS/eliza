@@ -1,4 +1,17 @@
 {
+  "DiscordWelcomeQueue.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.test.ts",
+      "required": [
+        "quiesced import preserves FIFO order, processing recovery, and delivered markers",
+        "an abandoned processing claim survives restart with its complete payload",
+        "public queue transport rejects imports, unauthorized callers and foreign lists",
+        "stop joins processing recovery and leaves the welcome available to the next owner",
+        "stop joins admitted delivery before another startup can recover its claim",
+        "transient welcome delivery retains its payload and nonce through durable retry"
+      ]
+    }
+  ],
   "worker_cache_circuit.qnt": [
     {
       "file": "packages/cloud/api/__tests__/cache-circuit.miniflare.test.ts",

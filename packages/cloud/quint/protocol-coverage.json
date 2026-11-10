@@ -931,10 +931,31 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite message-delivery model yet.",
+      "General message delivery remains open. The managed Discord install-welcome queue has separate partial coverage.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Redelivery does not duplicate an acknowledged effect | Tenant routing is retained | Provider failures are not fabricated success",
       "Abstract states: received, deduplicated, queued, dispatched, acknowledged, retrying, failed"
+    ]
+  },
+  {
+    "id": "cloud-flow-discord-install-welcome-queue",
+    "model": "packages/cloud/quint/DiscordWelcomeQueue.qnt",
+    "sources": [
+      "packages/cloud/services/gateway-discord/src/discord-install-welcome-queue.ts",
+      "packages/cloud/services/gateway-discord/src/cloudflare-welcome-store.ts",
+      "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.ts"
+    ],
+    "invariants": [
+      "StopRequiresQuiescence",
+      "MarkerRequiresObservedAcceptance",
+      "RetainedMarkerSkipsProvider",
+      "RetryRetainsBothCopies"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One managed owner, one symbolic valid job, at most two starts and one original processing row. Startup recovery and an admitted drain stay owned until stop settles. A transient retry writes a pending copy before acknowledging processing. Retained markers skip provider sends.",
+      "Real Workerd SQLite exercises startup/stop, claim retention, recovery after restart, stable retry identity and marker replay, with controlled provider responses. Import, FIFO among several jobs and public request boundaries are named tests outside the finite model.",
+      "Progress requires admitted operations and local continuations to settle. Cross-pod leadership, overlapping live owners, provider truth and nonce guarantees, retry deadlines/budgets, marker expiry, lost write acknowledgements and crash interleavings during retry publication remain open."
     ]
   },
   {

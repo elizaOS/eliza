@@ -2,8 +2,18 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DISCORD_WELCOME_DELIVERED } from "@elizaos/cloud-services-common/discord-welcome-state";
+import {
+  DISCORD_WELCOME_DELIVERED,
+  DISCORD_WELCOME_PENDING,
+  DISCORD_WELCOME_PROCESSING,
+} from "@elizaos/cloud-services-common/discord-welcome-state";
 import { Miniflare } from "miniflare";
+import { discordWelcomeStore } from "../../gateway-discord/src/cloudflare-welcome-store";
+import {
+  type DiscordInstallWelcomeJob,
+  DiscordInstallWelcomeQueue,
+  type DiscordInstallWelcomeRedis,
+} from "../../gateway-discord/src/discord-install-welcome-queue";
 
 let worker: Miniflare, script: string, directory: string;
 const start = () =>
@@ -61,6 +71,54 @@ const job = (id: string) => ({
   eventTimestamp: "2026-10-22T00:00:00Z",
   user: { id: `user-${id}`, globalName: id },
 });
+const deferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+};
+const fixtureProvider = (
+  send: (body: Record<string, unknown>) => Response | Promise<Response>,
+) =>
+  Object.assign(
+    async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).endsWith("/users/@me/channels"))
+        return Response.json({ id: "fixture-recovery" });
+      if (typeof init?.body !== "string")
+        throw new Error("Expected provider JSON");
+      return send(JSON.parse(init.body));
+    },
+    { preconnect: () => {} },
+  );
+const welcomeStore = (
+  observe?: (input: Record<string, unknown>) => Promise<void>,
+) =>
+  discordWelcomeStore(
+    new Proxy({} as DiscordInstallWelcomeRedis, {
+      get: () => () => {
+        throw new Error("Unexpected Redis fallback");
+      },
+    }),
+    {
+      CLOUD_DISCORD_WELCOME_BACKEND: "cloudflare",
+      DISCORD_WELCOME_URL: "https://welcome.test/internal/discord-welcome",
+      DISCORD_WELCOME_TOKEN: "test-only",
+    },
+    async (url, init) => {
+      if (typeof init.body !== "string") throw new Error("JSON required");
+      const response = await worker.dispatchFetch(String(url), {
+        method: init.method,
+        headers: Object.fromEntries(new Headers(init.headers)),
+        body: init.body,
+      });
+      if (response.ok) await observe?.(JSON.parse(init.body));
+      return new Response(await response.arrayBuffer(), {
+        status: response.status,
+        headers: Object.fromEntries(response.headers),
+      });
+    },
+  );
 test("quiesced import preserves FIFO order, processing recovery, and delivered markers", async () => {
   const snapshot = {
     operation: "import",
@@ -159,3 +217,179 @@ test("public queue transport rejects imports, unauthorized callers and foreign l
     ).status,
   ).toBe(400);
 });
+
+test("stop joins processing recovery and leaves the welcome available to the next owner", async () => {
+  const queued = job("stop-during-recovery");
+  await ok({ action: "enqueue", job: queued });
+  expect((await ok({ action: "claim" })).result).toBe(JSON.stringify(queued));
+  const entered = deferred();
+  const release = deferred();
+  let recovering = false;
+  const store = welcomeStore(async (input) => {
+    if (
+      recovering ||
+      input.operation !== "move" ||
+      input.source !== DISCORD_WELCOME_PROCESSING
+    )
+      return;
+    recovering = true;
+    entered.resolve();
+    // The actual SQLite move completed. Only delivery of its reply is held.
+    await release.promise;
+  });
+  let sends = 0;
+  const provider = fixtureProvider(() => {
+    sends++;
+    return Response.json({ id: "fixture-message" });
+  });
+  const queue = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    provider,
+  );
+  const starting = queue.start();
+  let stopping: Promise<void> | undefined;
+  let stopReturnedBeforeRecovery = false;
+  try {
+    await Promise.race([
+      entered.promise,
+      starting.then(() => {
+        throw new Error("No processing recovery request");
+      }),
+    ]);
+    let stopped = false;
+    stopping = queue.stop().then(() => {
+      stopped = true;
+    });
+    await Bun.sleep(0);
+    stopReturnedBeforeRecovery = stopped;
+  } finally {
+    release.resolve();
+    await Promise.allSettled([starting, stopping]);
+    await queue.stop();
+  }
+  expect({ stopReturnedBeforeRecovery, sends }).toEqual({
+    stopReturnedBeforeRecovery: false,
+    sends: 0,
+  });
+  expect((await ok({ action: "claim" })).result).toBe(JSON.stringify(queued));
+  const nextOwner = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    provider,
+  );
+  expect(await nextOwner.drainOnce()).toBe(true);
+  expect(sends).toBe(1);
+  expect(await store.get<string>(DISCORD_WELCOME_DELIVERED + queued.id)).toBe(
+    "1",
+  );
+  expect(await nextOwner.drainOnce()).toBe(false);
+});
+
+test("stop joins admitted delivery before another startup can recover its claim", async () => {
+  const queued = job("stop-during-delivery");
+  await ok({ action: "enqueue", job: queued });
+  const entered = deferred();
+  const release = deferred();
+  let recoveries = 0;
+  const store = welcomeStore(async (input) => {
+    if (
+      input.operation === "move" &&
+      input.source === DISCORD_WELCOME_PROCESSING
+    )
+      recoveries++;
+  });
+  let sends = 0;
+  const provider = fixtureProvider(async () => {
+    sends++;
+    entered.resolve();
+    await release.promise;
+    return Response.json({ id: "fixture-message" });
+  });
+  const queue = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    provider,
+  );
+  let stopping: Promise<void> | undefined;
+  try {
+    await queue.start();
+    await entered.promise;
+    const originalRecoveries = recoveries;
+    let stopped = false;
+    stopping = queue.stop().then(() => {
+      stopped = true;
+    });
+    await queue.start();
+    expect(recoveries).toBe(originalRecoveries);
+    expect(stopped).toBe(false);
+    expect(await store.get(DISCORD_WELCOME_DELIVERED + queued.id)).toBeNull();
+  } finally {
+    release.resolve();
+    await stopping;
+    await queue.stop();
+  }
+  expect(sends).toBe(1);
+  expect(await store.get<string>(DISCORD_WELCOME_DELIVERED + queued.id)).toBe(
+    "1",
+  );
+  expect(await queue.drainOnce()).toBe(false);
+});
+
+test("transient welcome delivery retains its payload and nonce through durable retry", async () => {
+  const queued = job("transient-delivery");
+  const store = welcomeStore();
+  const nonces: unknown[] = [];
+  const provider = fixtureProvider((body) => {
+    nonces.push(body.nonce);
+    expect(body.enforce_nonce).toBe(true);
+    if (nonces.length === 1)
+      return Response.json({ message: "Fixture rate limit" }, { status: 429 });
+    return Response.json({ id: "fixture-retry" });
+  });
+  const queue = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    provider,
+  );
+  await queue.enqueue(queued);
+  const beforeAttempt = Date.now();
+  expect(await queue.drainOnce()).toBe(true);
+  expect(await store.get(DISCORD_WELCOME_DELIVERED + queued.id)).toBeNull();
+  const raw = (await ok({ action: "claim" })).result;
+  if (typeof raw !== "string") throw new Error("Missing durable retry");
+  const retry = JSON.parse(raw) as DiscordInstallWelcomeJob;
+  expect(retry).toEqual({
+    ...queued,
+    attempts: 1,
+    retryAt: expect.any(String),
+  });
+  const moveBack = () =>
+    store.lmove(
+      DISCORD_WELCOME_PROCESSING,
+      DISCORD_WELCOME_PENDING,
+      "right",
+      "left",
+    );
+  expect(await moveBack()).toBe(raw);
+  expect(await moveBack()).toBeNull();
+  if (!retry.retryAt) throw new Error("Missing retry time");
+  expect(Date.parse(retry.retryAt)).toBeGreaterThan(beforeAttempt);
+  expect(nonces).toHaveLength(1);
+  await worker.dispose();
+  worker = start();
+  await worker.ready;
+  await Bun.sleep(Math.max(0, Date.parse(retry.retryAt) - Date.now() + 10));
+  const recovered = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    provider,
+  );
+  expect(await recovered.drainOnce()).toBe(true);
+  expect(nonces).toHaveLength(2);
+  expect(nonces[1]).toBe(nonces[0]);
+  expect(await store.get<string>(DISCORD_WELCOME_DELIVERED + queued.id)).toBe(
+    "1",
+  );
+  expect(await recovered.drainOnce()).toBe(false);
+}, 15_000);

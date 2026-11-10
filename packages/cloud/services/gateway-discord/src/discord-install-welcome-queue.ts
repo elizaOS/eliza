@@ -156,6 +156,8 @@ export async function sendDiscordInstallWelcome(
 
 export class DiscordInstallWelcomeQueue {
   private interval: ReturnType<typeof setInterval> | null = null;
+  private startInFlight: Promise<void> | null = null;
+  private stopInFlight: Promise<void> | null = null;
   private drainInFlight: Promise<void> | null = null;
 
   constructor(
@@ -168,19 +170,45 @@ export class DiscordInstallWelcomeQueue {
     await this.redis.lpush(QUEUE_KEY, JSON.stringify(job));
   }
 
-  async start(): Promise<void> {
-    if (this.interval) return;
-    await this.recoverProcessingJobs();
-    this.interval = setInterval(() => this.scheduleDrain(), POLL_INTERVAL_MS);
-    this.scheduleDrain();
+  start(): Promise<void> {
+    if (this.stopInFlight || this.interval) return Promise.resolve();
+    if (this.startInFlight) return this.startInFlight;
+    // Publish the startup before any recovery request can leave this owner.
+    this.startInFlight = Promise.resolve()
+      .then(async () => {
+        await this.recoverProcessingJobs();
+        if (this.stopInFlight) return;
+        this.interval = setInterval(
+          () => this.scheduleDrain(),
+          POLL_INTERVAL_MS,
+        );
+        this.scheduleDrain();
+      })
+      .finally(() => {
+        this.startInFlight = null;
+      });
+    return this.startInFlight;
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (this.stopInFlight) return this.stopInFlight;
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
-    await this.drainInFlight;
+    // Join recovery as well as delivery before releasing ownership. The start
+    // caller receives any recovery error through its original promise.
+    this.stopInFlight = Promise.allSettled([
+      this.startInFlight,
+      this.drainInFlight,
+    ])
+      .then(([, drain]) => {
+        if (drain.status === "rejected") throw drain.reason;
+      })
+      .finally(() => {
+        this.stopInFlight = null;
+      });
+    return this.stopInFlight;
   }
 
   async drainOnce(): Promise<boolean> {
@@ -281,7 +309,7 @@ export class DiscordInstallWelcomeQueue {
   }
 
   private scheduleDrain(): void {
-    if (this.drainInFlight) return;
+    if (this.stopInFlight || this.drainInFlight) return;
     this.drainInFlight = this.drainOnce()
       .then(() => undefined)
       .catch((error) => {
