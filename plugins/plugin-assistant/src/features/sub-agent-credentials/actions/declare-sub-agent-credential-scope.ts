@@ -25,6 +25,7 @@ import { logger } from "@elizaos/core";
 import {
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   type SubAgentCredentialBridge,
+  type SubAgentCredentialRequestOrigin,
 } from "../types.ts";
 
 interface DeclareParams {
@@ -37,6 +38,41 @@ interface DeclareParams {
 function readParams(options: HandlerOptions | undefined): DeclareParams {
   const params = options?.parameters;
   return params && typeof params === "object" ? (params as DeclareParams) : {};
+}
+
+/**
+ * The owner chat this scope is declared from. The bridge delivers the owner
+ * request there: a `dm` request needs the chat's channel id as its recipient,
+ * and the owner-app form needs the room. The orchestrator credential route
+ * passes the same origin from the task's session metadata.
+ */
+async function readMessageOrigin(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<SubAgentCredentialRequestOrigin> {
+  let room: Awaited<ReturnType<IAgentRuntime["getRoom"]>> = null;
+  try {
+    room = await runtime.getRoom(message.roomId);
+  } catch (error) {
+    // error-policy:J4 room lookup unavailable -> no channelId; the bridge
+    // still routes by roomId/source/owner.
+    logger.warn(
+      `[SubAgentCreds:declare_scope] origin room lookup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const source =
+    typeof message.content?.source === "string"
+      ? message.content.source
+      : room?.source;
+  return {
+    roomId: message.roomId,
+    channelId: room?.channelId ?? undefined,
+    source,
+    ownerEntityId:
+      message.entityId !== runtime.agentId ? message.entityId : undefined,
+  };
 }
 
 function getBridge(runtime: IAgentRuntime): SubAgentCredentialBridge | null {
@@ -103,7 +139,7 @@ export const declareSubAgentCredentialScopeAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
@@ -144,6 +180,7 @@ export const declareSubAgentCredentialScopeAction: Action = {
       credentialKeys,
       actorPolicy,
       deliveryTarget,
+      origin: await readMessageOrigin(runtime, message),
     });
 
     logger.info(

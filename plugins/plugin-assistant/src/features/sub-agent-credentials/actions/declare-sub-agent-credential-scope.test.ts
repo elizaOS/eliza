@@ -17,6 +17,7 @@ function createRuntime(services: Record<string, unknown | null>) {
   return {
     agentId: "agent-1",
     getService: (name: string) => services[name] ?? null,
+    getRoom: async () => null,
   };
 }
 
@@ -59,6 +60,12 @@ describe("DECLARE_SUB_AGENT_CREDENTIAL_SCOPE", () => {
       credentialKeys: ["OPENAI_API_KEY"],
       actorPolicy: "owner_only",
       deliveryTarget: "owner_app_inline",
+      origin: {
+        roomId: "r1",
+        channelId: undefined,
+        source: undefined,
+        ownerEntityId: "u1",
+      },
     });
     expect(result.data?.credentialScopeId).toBe("cred_scope_abc");
     expect(result.data?.scopedToken).toBe("deadbeef");
