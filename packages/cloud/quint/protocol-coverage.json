@@ -2035,16 +2035,21 @@
   },
   {
     "id": "cloud-flow-personal-shared-conversation",
-    "model": null,
+    "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
     "sources": [
       "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts",
       "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "ReleaseNeedsCheckpoint",
+      "FailureHoldsRoom",
+      "ReadRetainsHistory"
+    ],
+    "status": "partial",
     "limitations": [
-      "PersonalSharedConsent models consent and durable delivery authorization only. The shared runtime conversation and message route remain distinct obligations for membership-scoped context selection, complete retained content, provider send composition and reconciliation.",
-      "Do not infer conversation or request-boundary correctness from the consent repository model. Source selection, restoration, cancellation and cross-component failure interleavings need their own models and implementation conformance."
+      "The interrupted-turn model covers one cancellation checkpoint, room release and recovery after eviction. The real Workerd test verifies the original message and interrupted pair with exact content and order.",
+      "PersonalSharedConsent covers a separate delivery authorization owner. Membership-scoped selection, arbitrary retained content and archive failures, provider send composition and reconciliation remain distinct obligations."
     ]
   },
   {

@@ -317,6 +317,25 @@
       ]
     }
   ],
+  "SharedInterruptedTurn.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
+      "required": [
+        "a committed seal rejects a reminder before history mutation or inference",
+        "fallback recovery seals its imported snapshot and retains admission fencing after failed import",
+        "an evicted object reloads a checkpointed interrupted turn before admission",
+        "a connector turn refused by the cutover seal is a retryable hold, before and after commit",
+        "real DO rejects forged Network scope before transport or history access",
+        "Slop and Friends transport metadata keep one canonical Personal conversation",
+        "actual Shared bridge and stream replay DO receipts across Network changes without inference",
+        "canonical Network delivery extends Personal history once and honors ownership fences before dispatch",
+        "first handled text requires real Gateway JWT and service proof, then reuses the phone owner and canonical history",
+        "canonical eliza-app handled proof reaches its delivery verifier and records history once",
+        "a legacy dispatching intent without dispatchedAt keeps the claim grace window",
+        "a retryable gateway refusal leaves the delivery sendable on retry"
+      ]
+    }
+  ],
   "speech_deferred_opening.qnt": [
     {
       "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",

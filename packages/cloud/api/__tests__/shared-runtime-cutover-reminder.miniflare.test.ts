@@ -1082,11 +1082,26 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       execution_tier: "shared",
     };
     const room = "room-barge-eviction-miniflare";
+    const priorMessage = {
+      id: "workerd-prior-history",
+      role: "user",
+      content: "  older retained text  ",
+      createdAt: 1787184000000,
+    };
+    const expectedHistory = [
+      priorMessage,
+      { id: "workerd-interrupted-user", content: "interrupted request" },
+      {
+        id: "workerd-interrupted-assistant",
+        content: "partial answer",
+        interrupted: true,
+      },
+    ];
     const seeded = await post(room, "/__test/seed", {
       conversation: {
         agentId: agent.id,
         channelId: room,
-        history: [],
+        history: [priorMessage],
         dirty: false,
         version: 1,
       },
@@ -1115,13 +1130,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       }),
     );
     const admittedBody = (await admitted.json()) as {
-      history: Array<{ id?: string }>;
+      history: unknown[];
     };
     expect(admitted.status).toBe(200);
-    expect(admittedBody.history.map((message) => message.id)).toEqual([
-      "workerd-interrupted-user",
-      "workerd-interrupted-assistant",
-    ]);
+    expect(admittedBody.history).toHaveLength(expectedHistory.length);
+    expect(admittedBody.history).toMatchObject(expectedHistory);
 
     await within(
       "Durable Object eviction",
@@ -1136,12 +1149,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       roomId: room,
     });
     const recoveredBody = (await recovered.json()) as {
-      history: Array<{ id?: string; interrupted?: boolean }>;
+      history: unknown[];
     };
-    expect(recoveredBody.history).toMatchObject([
-      { id: "workerd-interrupted-user" },
-      { id: "workerd-interrupted-assistant", interrupted: true },
-    ]);
+    expect(recovered.status).toBe(200);
+    expect(recoveredBody.history).toHaveLength(expectedHistory.length);
+    expect(recoveredBody.history).toMatchObject(expectedHistory);
     releaseFinalizationGate();
   }, 120_000);
 
