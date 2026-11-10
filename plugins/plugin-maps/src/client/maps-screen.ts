@@ -1272,7 +1272,10 @@ export class MapsScreenController {
         ? snapshot.originSearch.phase === "loading"
         : snapshot.search.phase === "loading");
     const coverage = this.host.coverage();
-    const point = selected?.coordinate;
+    const point =
+      this.recenterSelection === selected && this.recenterPosition
+        ? this.recenterPosition
+        : selected?.coordinate;
     const outsideCoverage = !!point && !!coverage && !coverage.contains(point);
     const locationState: MapsScreenView["status"]["location"] = this.locating
       ? "loading"
