@@ -106,11 +106,14 @@ class SiteTests(unittest.TestCase):
         self.assertNotIn("Trade Solana", home)
         with self.get("/volos/") as response:
             volos = response.read().decode()
-        self.assertIn("Not published", volos)
+        self.assertIn("AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump", volos)
+        self.assertIn("Not financial advice. Holding the coin is not a promise of profit, yield, or a payout.", volos)
         self.assertIn("can fall to zero", volos)
         self.assertIn("https://valhalla-app.xyz/", volos)
-        self.assertNotIn("pump.fun", volos.lower())
+        self.assertIn("https://pump.fun/coin/AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump", volos)
+        self.assertNotIn("Not published", volos)
         self.assertNotIn("will pump", volos.lower())
+        self.assertNotIn("github.com", volos.lower())
         self.assertNotRegex(volos, r"0x[0-9a-fA-F]{40}")
 
     def test_auth_is_not_rewritten_or_covered(self):

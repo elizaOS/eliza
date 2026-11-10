@@ -80,10 +80,13 @@ test('entrance and volOS copy stay honest', () => {
   assert.doesNotMatch(mobile, /top:\s*118px/);
   assert.doesNotMatch(mobile, /z-index:\s*\d+\s*!important/);
   assert.match(mobile, /\.menu-bar,\s*\.dock\s*\{\s*z-index:\s*1/);
-  assert.match(volos, /Not published/);
+  assert.match(volos, /AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump/);
+  assert.match(volos, /Not financial advice\. Holding the coin is not a promise of profit, yield, or a payout\./);
   assert.match(volos, /can fall to zero/);
   assert.match(volos, /https:\/\/valhalla-app\.xyz\//);
-  assert.doesNotMatch(volos, /pump\.fun/i);
+  assert.match(volos, /https:\/\/pump\.fun\/coin\/AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump/);
+  assert.doesNotMatch(volos, /Not published/);
   assert.doesNotMatch(volos, /will pump/i);
+  assert.doesNotMatch(volos, /github\.com/i);
   assert.doesNotMatch(volos, /0x[0-9a-fA-F]{40}/);
 });
