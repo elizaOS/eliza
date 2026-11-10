@@ -1,4 +1,9 @@
-import { DiscordWelcomeStateError } from "@elizaos/cloud-services-common/discord-welcome-state";
+import {
+  DISCORD_WELCOME_PENDING,
+  DISCORD_WELCOME_PROCESSING,
+  DISCORD_WELCOME_REQUEUE,
+  DiscordWelcomeStateError,
+} from "@elizaos/cloud-services-common/discord-welcome-state";
 import type { DiscordInstallWelcomeRedis } from "./discord-install-welcome-queue";
 
 /** Preserve the queue's existing list/receipt contract and capture one authority. */
@@ -56,6 +61,17 @@ export function discordWelcomeStore(
     return result;
   }
   return {
+    async eval(script, keys, args) {
+      if (
+        script !== DISCORD_WELCOME_REQUEUE ||
+        keys.length !== 2 ||
+        keys[0] !== DISCORD_WELCOME_PROCESSING ||
+        keys[1] !== DISCORD_WELCOME_PENDING ||
+        args.length !== 2
+      )
+        throw new DiscordWelcomeStateError("Unsupported welcome queue script");
+      return count("requeue", { claim: args[0], value: args[1] });
+    },
     async get<T = string>(key: string): Promise<T | null> {
       const value = await call("get", { key });
       if (value !== null && typeof value !== "string")

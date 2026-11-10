@@ -52,6 +52,23 @@ export class DiscordWelcomeState {
       value,
     );
   }
+  private remove(key: string, count: number, value: string): number {
+    const positions = this.state.storage.sql
+      .exec<{ position: number }>(
+        `SELECT position FROM queue WHERE name=? AND value=? ORDER BY position ${count < 0 ? "DESC" : "ASC"} LIMIT ?`,
+        key,
+        value,
+        count === 0 ? -1 : Math.abs(count),
+      )
+      .toArray();
+    for (const row of positions)
+      this.state.storage.sql.exec(
+        "DELETE FROM queue WHERE name=? AND position=?",
+        key,
+        row.position,
+      );
+    return positions.length;
+  }
   private async schedule(): Promise<void> {
     const row = this.state.storage.sql
       .exec<{ expires_at: number }>(
@@ -95,6 +112,7 @@ export class DiscordWelcomeState {
       destination,
       whereFrom,
       whereTo,
+      claim,
     } = input;
     let snapshot:
       | { pending: string[]; processing: string[]; delivered: Marker[] }
@@ -166,6 +184,9 @@ export class DiscordWelcomeState {
     } else if (operation === "remove") {
       if (!listKey(key) || !integer(count) || typeof value !== "string")
         return new Response("Invalid queue acknowledgement", { status: 400 });
+    } else if (operation === "requeue") {
+      if (typeof claim !== "string" || typeof value !== "string")
+        return new Response("Invalid retry replacement", { status: 400 });
     } else return new Response("Invalid operation", { status: 400 });
     const result = this.state.storage.transactionSync(() => {
       if (snapshot) {
@@ -281,22 +302,13 @@ export class DiscordWelcomeState {
           result = row.value;
           break;
         }
-        case "remove": {
-          const positions = this.state.storage.sql
-            .exec<{ position: number }>(
-              `SELECT position FROM queue WHERE name=? AND value=? ORDER BY position ${(count as number) < 0 ? "DESC" : "ASC"} LIMIT ?`,
-              key as string,
-              value as string,
-              count === 0 ? -1 : Math.abs(count as number),
-            )
-            .toArray();
-          for (const row of positions)
-            this.state.storage.sql.exec(
-              "DELETE FROM queue WHERE name=? AND position=?",
-              key as string,
-              row.position,
-            );
-          result = positions.length;
+        case "remove":
+          result = this.remove(key as string, count as number, value as string);
+          break;
+        case "requeue": {
+          result = this.remove(DISCORD_WELCOME_PROCESSING, 1, claim as string);
+          if (result === 1)
+            this.push(DISCORD_WELCOME_PENDING, value as string, "left");
           break;
         }
       }
@@ -350,7 +362,9 @@ export async function handleDiscordWelcome(
     Array.isArray(input) ||
     !("operation" in input) ||
     typeof input.operation !== "string" ||
-    !["get", "set", "push", "move", "remove"].includes(input.operation)
+    !["get", "set", "push", "move", "remove", "requeue"].includes(
+      input.operation,
+    )
   )
     return new Response("Invalid operation", { status: 400 });
   return env.DISCORD_WELCOME_STATE.getByName("discord-welcome-v1").fetch(

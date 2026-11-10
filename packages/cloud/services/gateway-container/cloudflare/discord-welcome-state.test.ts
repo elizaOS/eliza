@@ -6,6 +6,7 @@ import {
   DISCORD_WELCOME_DELIVERED,
   DISCORD_WELCOME_PENDING,
   DISCORD_WELCOME_PROCESSING,
+  DISCORD_WELCOME_REQUEUE,
 } from "@elizaos/cloud-services-common/discord-welcome-state";
 import { Miniflare } from "miniflare";
 import { discordWelcomeStore } from "../../gateway-discord/src/cloudflare-welcome-store";
@@ -495,54 +496,126 @@ for (const scenario of [
   }, 30_000);
 }
 
-test("lost retry publication reply leaves the original and retry payload durable after restart", async () => {
-  const queued = job("lost-retry-publication");
+test("lost retry replacement reply retains only the delayed retry after restart", async () => {
+  const queued = { ...job("lost-retry-replacement"), attempts: 6 };
   const store = welcomeStore();
   const storageError = new Error(
-    "Fixture retry reply lost after SQLite publication",
+    "Fixture retry reply lost after SQLite replacement",
   );
-  let retrying = false;
+  let retainedRetry: string | undefined;
+  let sends = 0;
+  const provider = fixtureProvider(() => {
+    sends++;
+    return Response.json({ message: "Fixture rate limit" }, { status: 429 });
+  });
   const queue = new DiscordInstallWelcomeQueue(
     welcomeStore({
       after: (input) => {
-        if (retrying && input.operation === "push") throw storageError;
+        if (input.operation !== "requeue") return;
+        if (typeof input.value !== "string")
+          throw new Error("Missing retry value");
+        retainedRetry = input.value;
+        throw storageError;
       },
     }),
     "fixture-token",
-    fixtureProvider(() =>
-      Response.json({ message: "Fixture rate limit" }, { status: 429 }),
-    ),
+    provider,
   );
   await queue.enqueue(queued);
-  retrying = true;
   await expect(queue.drainOnce()).rejects.toThrow(storageError.message);
   await worker.dispose();
   worker = start();
   await worker.ready;
-  const original = await store.lmove(
-    DISCORD_WELCOME_PROCESSING,
-    DISCORD_WELCOME_PENDING,
-    "right",
-    "left",
+  if (!retainedRetry) throw new Error("Missing published retry");
+  expect(JSON.parse(retainedRetry)).toEqual({
+    ...queued,
+    attempts: 7,
+    retryAt: expect.any(String),
+  });
+  const { retryAt } = JSON.parse(retainedRetry) as { retryAt: string };
+  expect(Date.parse(retryAt)).toBeGreaterThan(Date.now());
+  expect(
+    await store.lmove(
+      DISCORD_WELCOME_PROCESSING,
+      DISCORD_WELCOME_PENDING,
+      "right",
+      "left",
+    ),
+  ).toBeNull();
+  expect(
+    await store.eval(
+      DISCORD_WELCOME_REQUEUE,
+      [DISCORD_WELCOME_PROCESSING, DISCORD_WELCOME_PENDING],
+      [JSON.stringify(queued), retainedRetry],
+    ),
+  ).toBe(0);
+  const recovered = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    provider,
   );
-  expect(original).toBe(JSON.stringify(queued));
+  expect(await recovered.drainOnce()).toBe(true);
+  expect(await recovered.drainOnce()).toBe(true);
+  expect(sends).toBe(1);
   const retry = await store.lmove(
     DISCORD_WELCOME_PENDING,
     DISCORD_WELCOME_PROCESSING,
     "right",
     "left",
   );
-  if (typeof retry !== "string") throw new Error("Missing published retry");
-  expect(JSON.parse(retry)).toEqual({
-    ...queued,
-    attempts: 1,
-    retryAt: expect.any(String),
-  });
+  expect(retry).toBe(retainedRetry);
   expect(
-    await store.get<string>(`${DISCORD_WELCOME_DELIVERED}${queued.id}`),
+    await store.lmove(
+      DISCORD_WELCOME_PENDING,
+      DISCORD_WELCOME_PROCESSING,
+      "right",
+      "left",
+    ),
   ).toBeNull();
-  expect(await store.lrem(DISCORD_WELCOME_PROCESSING, 1, retry)).toBe(1);
+  expect(await store.lrem(DISCORD_WELCOME_PROCESSING, 1, retainedRetry)).toBe(
+    1,
+  );
+}, 30_000);
+
+test("retry replacement preserves unrelated and duplicate legacy processing members", async () => {
+  const store = welcomeStore();
+  const selected = JSON.stringify(job("selected-retry"));
+  const other = JSON.stringify(job("other-processing"));
+  const retry = JSON.stringify({ ...job("selected-retry"), attempts: 1 });
+  const replace = (claim: string) =>
+    store.eval(
+      DISCORD_WELCOME_REQUEUE,
+      [DISCORD_WELCOME_PROCESSING, DISCORD_WELCOME_PENDING],
+      [claim, retry],
+    );
+  await store.lpush(DISCORD_WELCOME_PROCESSING, selected, other, selected);
+  expect(await replace(`${selected} `)).toBe(0);
   expect(
-    await store.lrem(DISCORD_WELCOME_PENDING, 1, JSON.stringify(queued)),
-  ).toBe(1);
+    await store.lmove(
+      DISCORD_WELCOME_PENDING,
+      DISCORD_WELCOME_PROCESSING,
+      "right",
+      "left",
+    ),
+  ).toBeNull();
+  expect(await replace(selected)).toBe(1);
+  expect(
+    await store.lmove(
+      DISCORD_WELCOME_PENDING,
+      DISCORD_WELCOME_PROCESSING,
+      "right",
+      "left",
+    ),
+  ).toBe(retry);
+  expect(await store.lrem(DISCORD_WELCOME_PROCESSING, 0, retry)).toBe(1);
+  expect(await store.lrem(DISCORD_WELCOME_PROCESSING, 0, selected)).toBe(1);
+  expect(await store.lrem(DISCORD_WELCOME_PROCESSING, 0, other)).toBe(1);
+  expect(
+    await store.lmove(
+      DISCORD_WELCOME_PROCESSING,
+      DISCORD_WELCOME_PENDING,
+      "right",
+      "left",
+    ),
+  ).toBeNull();
 }, 30_000);
