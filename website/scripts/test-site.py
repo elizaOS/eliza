@@ -75,7 +75,7 @@ class SiteTests(unittest.TestCase):
             self.assertTrue(response.url.endswith("/app/"))
         config = json.loads((ROOT / "vercel.json").read_text())
         self.assertIn({"source": "/app", "destination": "/app/", "permanent": True}, config["redirects"])
-        self.assertEqual(config["proxy"]["entrypoint"], "website/proxy.mjs")
+        self.assertEqual(config["proxy"]["entrypoint"], "website/proxy.js")
         self.assertEqual(config["proxy"]["matcher"], ["/", "/index.html"])
         command = config["buildCommand"]
         self.assertLessEqual(len(command), 256)

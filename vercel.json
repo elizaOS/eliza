@@ -3,7 +3,7 @@
   "buildCommand": "bash website/scripts/vercel-build.sh",
   "outputDirectory": "site-build",
   "proxy": {
-    "entrypoint": "website/proxy.mjs",
+    "entrypoint": "website/proxy.js",
     "matcher": ["/", "/index.html"]
   },
   "redirects": [

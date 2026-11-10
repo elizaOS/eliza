@@ -22,10 +22,10 @@ test('volOS root is host-specific and does not replace the Valhalla entrance', (
 
 test('deployment config keeps the proxy on the entrance paths only', () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
-  assert.equal(config.proxy.entrypoint, 'website/proxy.mjs');
+  assert.equal(config.proxy.entrypoint, 'website/proxy.js');
   assert.deepEqual(config.proxy.matcher, ['/', '/index.html']);
   assert.deepEqual(config.redirects, [{ source: '/app', destination: '/app/', permanent: true }]);
-  const proxy = fs.readFileSync(path.join(root, 'website/proxy.mjs'), 'utf8');
+  const proxy = fs.readFileSync(path.join(root, 'website/proxy.js'), 'utf8');
   assert.match(proxy, /routeForHost/);
   assert.match(proxy, /rewrite/);
   assert.match(proxy, /next/);
@@ -38,7 +38,7 @@ test('proxy rewrites only a volOS root when the helper is installed', async (t) 
     t.skip('install @vercel/functions to exercise the proxy response');
     return;
   }
-  const { default: proxy } = await import('../proxy.mjs');
+  const { default: proxy } = await import('../proxy.js');
   const request = (host, pathname) => ({
     url: 'https://' + (host || 'valhalla-app.xyz') + pathname,
     headers: { get(name) { return name.toLowerCase() === 'host' ? host : null; } }

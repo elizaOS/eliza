@@ -1,10 +1,7 @@
-import { next, rewrite } from '@vercel/functions';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
+const { next, rewrite } = require('@vercel/functions');
 const { routeForHost } = require('./host-route.cjs');
 
-export default function proxy(request) {
+function proxy(request) {
   const current = new URL(request.url);
   const destination = routeForHost(request.headers.get('host'), current.pathname);
   if (!destination) return next();
@@ -12,3 +9,5 @@ export default function proxy(request) {
   current.search = '';
   return rewrite(current);
 }
+
+module.exports = proxy;
