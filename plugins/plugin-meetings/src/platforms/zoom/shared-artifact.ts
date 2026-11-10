@@ -52,12 +52,12 @@ export function buildZoomBotMeetingArtifact(
     return {
       id: segment.id,
       startMs: segment.startMs,
-      endMs: segment.endMs,
+      endMs: positiveEndMs(segment.startMs, segment.endMs),
       text: segment.text,
       words: segment.words.map((word) => ({
         text: word.text,
         startMs: word.startMs,
-        endMs: word.endMs,
+        endMs: positiveEndMs(word.startMs, word.endMs),
         confidence: word.confidence,
         speakerId,
         sourceStreamId: streamId,
@@ -161,6 +161,13 @@ export function buildZoomBotMeetingArtifact(
   };
   assertValidMeetingArtifact(artifact);
   return artifact;
+}
+/**
+ * Timed ASR may return zero-width spans (its contract is `startMs <= endMs`),
+ * but the artifact contract needs `endMs > startMs`: widen those to 1 ms.
+ */
+function positiveEndMs(startMs: number, endMs: number): number {
+  return Math.max(endMs, startMs + 1);
 }
 function stableLabel(value: string): string {
   return encodeURIComponent(value.trim().toLowerCase()) || "unknown";
