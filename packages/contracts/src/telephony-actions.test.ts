@@ -13,6 +13,8 @@ import {
   SMS_COMPOSE_CAPABILITY,
   smsComposeReceiptOutcome,
   smsComposeResultText,
+  smsReplyReceiptOutcome,
+  smsReplyResultText,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilities,
   telephonyActionCapability,
@@ -26,6 +28,8 @@ import {
   validatePhoneCallResult,
   validateSmsCompose,
   validateSmsComposeResult,
+  validateSmsReply,
+  validateSmsReplyResult,
   validateTelephonyAction,
   validateVoicemailDelete,
   validateVoicemailDeleteResult,
@@ -291,8 +295,12 @@ test("a contact SMS names a contact by text and keeps an unknown outcome unknown
     assert.throws(() => validateSmsCompose(bad), REJECTED);
   const result = (status: string) =>
     validateSmsComposeResult({ kind: "sms-compose", status });
-  for (const status of ["submitted", "sent", "delivered"])
+  for (const status of ["drafted", "submitted", "sent", "delivered"])
     assert.equal(smsComposeReceiptOutcome(result(status)), "applied");
+  assert.equal(
+    smsComposeResultText(result("drafted")),
+    "The message is in that conversation's text field for the owner to edit and send. Nothing was sent.",
+  );
   assert.equal(smsComposeReceiptOutcome(result("unknown")), "unknown");
   assert.match(smsComposeResultText(result("unknown")), /not sent again/);
   for (const status of ["not-found", "unavailable", "cancelled", "failed"])
@@ -305,6 +313,57 @@ test("a contact SMS names a contact by text and keeps an unknown outcome unknown
     { kind: "sms-compose" },
   ])
     assert.throws(() => validateSmsComposeResult(bad), REJECTED);
+});
+
+test("a reply draft names no recipient and is placed or not, never sent", () => {
+  const reply = {
+    type: "sms_reply_selected",
+    body: "On my way.\nTen minutes.",
+  };
+  assert.deepEqual(validateSmsReply(reply), reply);
+  for (const bad of [
+    { type: "sms_reply_selected" },
+    { type: "sms_reply_selected", body: "" },
+    { type: "sms_reply_selected", body: "   " },
+    { type: "sms_reply_selected", body: 5 },
+    { type: "sms_reply_selected", body: "x".repeat(1601) },
+    { type: "sms_reply_selected", body: "hi\u0007" },
+    { type: "sms_reply_selected", body: "hi\u202e" },
+    { type: "sms_reply_selected", body: "hi", query: "Ada" },
+    { type: "sms_reply_selected", body: "hi", threadId: "4" },
+    { type: "sms_reply_selected", body: "hi", recipients: ["+1555"] },
+    { type: "sms_reply_selected", body: "hi", send: true },
+    { type: "sms_compose", body: "hi" },
+    null,
+  ])
+    assert.throws(() => validateSmsReply(bad), REJECTED);
+  const result = (status: string) =>
+    validateSmsReplyResult({ kind: "sms-reply", status });
+  assert.equal(smsReplyReceiptOutcome(result("drafted")), "applied");
+  for (const status of ["none-selected", "occupied", "unavailable"])
+    assert.equal(smsReplyReceiptOutcome(result(status)), "failed");
+  assert.deepEqual(
+    ["drafted", "none-selected", "occupied", "unavailable"].map((status) =>
+      smsReplyResultText(result(status)),
+    ),
+    [
+      "The draft is in the open conversation's text field for the owner to edit and send. Nothing was sent.",
+      "The owner has no conversation open. Nothing was drafted.",
+      "The owner is writing their own message in that conversation. Nothing was changed.",
+      "This phone cannot draft messages right now. Nothing was drafted.",
+    ],
+  );
+  for (const bad of [
+    { kind: "sms-reply", status: "sent" },
+    { kind: "sms-reply", status: "submitted" },
+    { kind: "sms-reply", status: "unknown" },
+    { kind: "sms-reply", status: "cancelled" },
+    { kind: "sms-compose", status: "drafted" },
+    { kind: "sms-reply", status: "drafted", body: "hi" },
+    { kind: "sms-reply" },
+    null,
+  ])
+    assert.throws(() => validateSmsReplyResult(bad), REJECTED);
 });
 
 test("an open-thread read is a bounded, date-ordered tail with no numbers", () => {
@@ -490,6 +549,7 @@ test("each operation type has one capability and one validator", () => {
       ["contact_update", CONTACT_WRITE_CAPABILITY],
       ["contact_delete", CONTACT_WRITE_CAPABILITY],
       ["sms_compose", SMS_COMPOSE_CAPABILITY],
+      ["sms_reply_selected", SMS_COMPOSE_CAPABILITY],
       ["messages_read_selected", MESSAGES_READ_CAPABILITY],
       ["voicemail_read_selected", VOICEMAIL_READ_CAPABILITY],
       ["voicemail_delete_selected", VOICEMAIL_DELETE_CAPABILITY],
@@ -501,6 +561,7 @@ test("each operation type has one capability and one validator", () => {
     update,
     remove,
     { type: "sms_compose", query: "Ada", body: "hi" },
+    { type: "sms_reply_selected", body: "hi" },
     { type: "messages_read_selected" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },

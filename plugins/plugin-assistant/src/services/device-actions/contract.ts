@@ -371,6 +371,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
           "Invalid contact SMS operation. Use query (the contact name) and body.",
         );
       }
+    case "sms_reply_selected":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid reply draft operation. Use only body; the open conversation is the recipient.",
+        );
+      }
     case "messages_read_selected":
     case "voicemail_read_selected":
     case "voicemail_delete_selected":

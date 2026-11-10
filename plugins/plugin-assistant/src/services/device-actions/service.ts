@@ -192,11 +192,13 @@ import {
 import {
   CONTACT_WRITE_CAPABILITY,
   isSmsCompose,
+  isSmsReply,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
   SMS_COMPOSE_CAPABILITY,
   smsComposeNotSubmitted,
+  smsReplyNotDrafted,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilityAvailable,
   telephonyActionReceiptOutcome,
@@ -3292,10 +3294,16 @@ export class DeviceActionService {
         isSmsCompose(payload.operation) &&
         receipt.outcome === "failed" &&
         smsComposeNotSubmitted(receipt.result);
+      // A reply draft that was not placed changed nothing and sends nothing.
+      const replyNotDrafted =
+        isSmsReply(payload.operation) &&
+        receipt.outcome === "failed" &&
+        smsReplyNotDrafted(receipt.result);
       return receipt.outcome === "applied" ||
         notDispatched ||
         smsNotSubmitted ||
-        composeNotSubmitted
+        composeNotSubmitted ||
+        replyNotDrafted
         ? q.markDone(mutation)
         : q.markReconciliationRequired({
             ...mutation,
