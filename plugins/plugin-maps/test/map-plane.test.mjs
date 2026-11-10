@@ -830,8 +830,15 @@ test("a Cloud raster basemap draws Cloud tiles through its own protocol and repo
   map.events.error({ error: new Error("Tile load failed") });
   assert.equal(f.container.dataset.mapError, "resource-load");
   assert.equal(f.container.dataset.mapReady, undefined);
+  map.bounds = { north: 46, south: 45.9, east: 9.6, west: 9.55 };
+  failCopyright = true;
   map.events.move();
   map.events.moveend();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(f.container.dataset.mapError, "resource-load");
+  failCopyright = false;
+  map.events.moveend();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(f.container.dataset.mapError, "resource-load");
   assert.equal(f.container.dataset.mapReady, undefined);
   plane.destroy();
