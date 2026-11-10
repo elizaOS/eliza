@@ -25,6 +25,172 @@ afterEach(() => {
 	stopTaskScheduler();
 });
 
+it("stop drains daemon preflight before runtime storage closes", async () => {
+	const f = await createTestRuntime({ characterName: "TaskPreflightDrain" });
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(f.runtime);
+	let runs = 0;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "DRAIN_PREFLIGHT",
+			shouldRun: async () => {
+				entered.resolve();
+				await release.promise;
+				expect(await f.runtime.getTasks({ tags: ["queue"] })).toHaveLength(1);
+				return true;
+			},
+			execute: async () => {
+				runs++;
+			},
+		});
+		await f.runtime.createTask({
+			name: "DRAIN_PREFLIGHT",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const tick = service.runTick(await f.runtime.getTasks({ tags: ["queue"] }));
+		await entered.promise;
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(stopped).toBe(false);
+		release.resolve();
+		await Promise.all([tick, stopping]);
+		expect(runs).toBe(0);
+		expect(await f.runtime.getTasks({ tags: ["queue"] })).toHaveLength(1);
+	} finally {
+		release.resolve();
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("stop drains an admitted by-id read and refuses its late worker", async () => {
+	const f = await createTestRuntime({ characterName: "TaskByIdDrain" });
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(f.runtime);
+	let runs = 0;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "DRAIN_READ",
+			execute: async () => {
+				runs++;
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "DRAIN_READ",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTask = f.runtime.getTask.bind(f.runtime);
+		vi.spyOn(f.runtime, "getTask").mockImplementationOnce(async (taskId) => {
+			entered.resolve();
+			await release.promise;
+			return getTask(taskId);
+		});
+		const execution = service.executeTaskById(id);
+		const outcome = execution.then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+		await entered.promise;
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(stopped).toBe(false);
+		release.resolve();
+		await stopping;
+		expect(await outcome).toMatchObject({ code: "TASK_SERVICE_STOPPED" });
+		expect(runs).toBe(0);
+		await expect(service.executeTaskById(id)).rejects.toMatchObject({
+			code: "TASK_SERVICE_STOPPED",
+		});
+		expect(await f.runtime.getTask(id)).not.toBeNull();
+	} finally {
+		release.resolve();
+		vi.restoreAllMocks();
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("stop drains every overlapping nonblocking owner and blocks an exclusive replacement", async () => {
+	const f = await createTestRuntime({ characterName: "TaskOwnerDrain" });
+	const entered = [latch(), latch()] as const,
+		release = [latch(), latch()] as const;
+	const service = new TaskService(f.runtime);
+	let runs = 0;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "DRAIN_OVERLAP",
+			execute: async () => {
+				const index = runs++;
+				entered[index]?.resolve();
+				await release[index]?.promise;
+				return { preserveTask: true };
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "DRAIN_OVERLAP",
+			tags: ["queue", "repeat"],
+			metadata: { blocking: false, updateInterval: 60000 },
+		});
+		const first = service.executeTaskById(id);
+		await entered[0].promise;
+		const second = service.executeTaskById(id);
+		await entered[1].promise;
+		release[0].resolve();
+		await first;
+		expect((await service.getTaskStatus(id)).executing).toBe(true);
+		await f.runtime.updateTask(id, {
+			metadata: { blocking: true, updateInterval: 60000 },
+		});
+		await service.executeTaskById(id);
+		expect(runs).toBe(2);
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(stopped).toBe(false);
+		release[1].resolve();
+		await Promise.all([second, stopping]);
+		expect((await service.getTaskStatus(id)).executing).toBe(false);
+	} finally {
+		for (const held of release) held.resolve();
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("retirement refuses immediate resume before it changes stored pause state", async () => {
+	const f = await createTestRuntime({ characterName: "TaskResumeRetired" });
+	const service = new TaskService(f.runtime);
+	try {
+		const id = await f.runtime.createTask({
+			name: "RETIRED_RESUME",
+			tags: ["queue"],
+			metadata: { paused: true },
+		});
+		await service.stop();
+		await expect(service.resumeTask(id, true)).rejects.toMatchObject({
+			code: "TASK_SERVICE_STOPPED",
+		});
+		expect((await f.runtime.getTask(id))?.metadata?.paused).toBe(true);
+		await service.runDueTasks();
+		await service.runTick(await f.runtime.getTasks({ tags: ["queue"] }));
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
 // TaskService.qnt OneShotAtMostOnce: runDueTasks() during a daemon runTick.
 it("a host runDueTasks during a daemon tick does not run a one-shot twice", async () => {
 	const f = await createTestRuntime({ characterName: "DaemonOneShot" });
