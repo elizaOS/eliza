@@ -22,7 +22,12 @@ import type {
   ActiveGuidance,
   MapsNavigationSurface,
 } from "./device-navigation.ts";
-import { atStep, guidanceView, maneuverIcon } from "./guidance.ts";
+import {
+  atStep,
+  guidanceDistance,
+  guidanceView,
+  maneuverIcon,
+} from "./guidance.ts";
 import type { MapsLocation, Position } from "./location.ts";
 import type { MapOverlay } from "./map-plane.ts";
 import { usableNavigationFix } from "./navigation-fix.ts";
@@ -303,6 +308,12 @@ export class MapsScreenController {
   private sharing?: { abort: AbortController; current: () => boolean };
   private readonly identities = new WeakMap<MapsScreenSelection, object>();
   private readonly searchIdentity = {};
+  private contextKey = "";
+  private contextRevision = 0;
+  private recenterOnly = false;
+  private recenterSelection?: MapsScreenSelection;
+  private recenterPosition?: Coordinate;
+  private locationTimeout?: ReturnType<typeof setTimeout>;
   private readonly releaseListeners = new Set<() => void>();
   private readonly lifecycle = {
     releases: 0,
@@ -363,8 +374,11 @@ export class MapsScreenController {
     return controller;
   }
 
-  /** Leaving Maps, a hidden page or a provider switch: nothing keeps running. */
+  /** Destroy a screen or retire its provider; stop guidance and discard all view data. */
   release(cancelIntent = true): void {
+    clearTimeout(this.locationTimeout);
+    this.locationTimeout = undefined;
+    this.recenterOnly = false;
     this.sharing?.abort.abort();
     this.sharing = undefined;
     this.host.voice.pause();
@@ -417,10 +431,29 @@ export class MapsScreenController {
       this.invalidate();
       return;
     }
-    this.release();
+    this.leaveView();
   }
 
-  /** Another surface took over (Home, an incoming call); shared and spoken output stop. */
+  /** The host changed views; keep settled data and an active navigation session. */
+  leaveView(): void {
+    this.retireShare();
+    clearTimeout(this.locationTimeout);
+    this.locationTimeout = undefined;
+    this.locating = false;
+    this.recenterOnly = false;
+    ++this.searchIntent;
+    for (const listener of [...this.releaseListeners]) listener();
+    void this.host.agentLocation.stop().catch(() => {});
+    if (!this.navigating)
+      void this.controller?.suspend().catch((error) => {
+        this.message = failure(error).message;
+      });
+    this.host.clearContext?.();
+    this.contextKey = "";
+    this.host.released?.();
+  }
+
+  /** Retire a share; an admitted background navigation session keeps its own guidance. */
   retireShare(): void {
     this.sharing?.abort.abort();
     this.sharing = undefined;
@@ -797,9 +830,19 @@ export class MapsScreenController {
     this.host.discardHandoff?.();
     this.message = "";
     this.locating = true;
-    if (!this.directions) this.selected = undefined;
+    if (!this.directions && !this.recenterOnly) this.selected = undefined;
     this.searching = false;
-    void this.ensure().locate();
+    const controller = this.ensure();
+    this.locationTimeout = setTimeout(() => {
+      if (!this.locating || this.controller !== controller) return;
+      this.locating = false;
+      this.recenterOnly = false;
+      this.message =
+        "Couldn't find your location. Try again or enter a starting point.";
+      void controller.suspend().catch(() => {});
+      this.invalidate();
+    }, 15_000);
+    void controller.locate();
     this.invalidate();
   }
 
@@ -808,7 +851,10 @@ export class MapsScreenController {
     if (this.navigating) {
       this.follow = true;
       this.invalidate();
-    } else this.locate();
+    } else {
+      this.recenterOnly = true;
+      this.locate();
+    }
   }
 
   /** Manual location: Maps clears and asks for coordinates in the search field. */
@@ -842,8 +888,7 @@ export class MapsScreenController {
         "Connect a Maps provider to plan a route. No route has been calculated.";
     } else {
       this.directions = true;
-      this.message =
-        "Enter an origin latitude, longitude and press Enter, or explicitly use current location.";
+      this.message = "Choose a starting point, or use your current location.";
       if (
         item.origin !== "provider" &&
         snapshot.provider.status === "configured"
@@ -1010,7 +1055,7 @@ export class MapsScreenController {
         }
         if (running && !this.navFix)
           this.message =
-            "Waiting for a fresh location fix. Guidance continues with the screen off.";
+            "Waiting for your location. Navigation updates continue in notifications with the screen off.";
         this.invalidate();
       });
     const locationFailed = (error: unknown) => {
@@ -1315,15 +1360,14 @@ export class MapsScreenController {
         isPlace || this.searching || choosingOrigin ? "back" : "search",
       showSearch: (!this.directions && !this.navigating) || choosingOrigin,
       status: {
-        visible:
-          !isPlace ||
-          !!(
-            this.mapState === "error" ||
-            outsideCoverage ||
-            snapshot.route.error ||
-            error ||
-            this.message
-          ),
+        visible: !!(
+          this.mapState === "error" ||
+          outsideCoverage ||
+          snapshot.route.error ||
+          error ||
+          pending ||
+          this.message
+        ),
         text: status,
         mapText: status === mapText ? "" : mapText,
         controls: !this.searching && !this.directions && !this.navigating,
@@ -1354,9 +1398,11 @@ export class MapsScreenController {
       map: {
         ...(coverage?.mapRestricted && outsideCoverage
           ? {}
-          : selected
-            ? { selected: selected.coordinate }
-            : {}),
+          : this.recenterSelection === selected && this.recenterPosition
+            ? { selected: this.recenterPosition }
+            : selected
+              ? { selected: selected.coordinate }
+              : {}),
         route: snapshot.route.value,
         overlay: {
           pins: pinned.map((item) => ({
@@ -1420,7 +1466,7 @@ export class MapsScreenController {
             ? "Planning…"
             : "No route",
         meta: route
-          ? `${(route.distanceMeters / 1000).toFixed(1)} km · no live traffic`
+          ? `${guidanceDistance(route.distanceMeters)}${route.traffic === "live" ? "" : " · no live traffic"}`
           : "",
         via: route
           ? (snapshot.originLabel ? `From ${snapshot.originLabel} · ` : "") +
@@ -1436,7 +1482,7 @@ export class MapsScreenController {
           id: option.id,
           label: index === 0 ? "Recommended" : `Alternative ${index}`,
           duration: `${Math.max(1, Math.round(option.durationSeconds / 60))} min`,
-          meta: `${(option.distanceMeters / 1000).toFixed(1)} km`,
+          meta: guidanceDistance(option.distanceMeters),
           via: option.steps[0]?.instruction || "",
           selected: option.id === route?.id,
         })),
@@ -1452,7 +1498,9 @@ export class MapsScreenController {
               this.navStep,
             )
           : undefined;
-      const guidance = progress ? guidanceView(progress) : undefined;
+      const guidance = progress
+        ? guidanceView(progress, new Date(this.now()), route?.traffic)
+        : undefined;
       view.navigation = {
         arrived: this.arrived,
         distance: this.arrived
@@ -1508,20 +1556,21 @@ export class MapsScreenController {
         next.route.phase === "ready" && this.rerouteCleared
           ? next.route.value
           : null;
-      if (replacement || next.route.phase === "error")
+      if (replacement || next.route.error)
         this.reroutePublication = {
           session: this.navSession,
           revision: next.revision,
         };
-      if (replacement) {
+      if (next.route.error) {
+        this.rerouting = false;
+        this.message = `${next.route.error.message} The current route was kept.`;
+      } else if (replacement) {
         this.rerouting = false;
         this.navStep = 0;
         this.navRouteId = replacement.id;
         this.host.voice.pause();
         this.message = "New route ready.";
-      } else if (next.route.phase === "error")
-        void this.stopGuidance().catch(() => {});
-      else if (next.route.phase !== "ready") this.rerouteCleared = true;
+      } else if (next.route.phase !== "ready") this.rerouteCleared = true;
     } else if (
       this.navigating &&
       (next.route.phase !== "ready" || next.route.value?.id !== this.navRouteId)
@@ -1535,20 +1584,32 @@ export class MapsScreenController {
     ) {
       const position = next.position.value;
       this.locating = false;
-      if (!this.directions)
+      clearTimeout(this.locationTimeout);
+      this.locationTimeout = undefined;
+      const recenterOnly = this.recenterOnly;
+      this.recenterOnly = false;
+      if (recenterOnly) {
+        this.recenterSelection = this.selected;
+        this.recenterPosition = position.coordinate;
+      }
+      if (!this.directions && !recenterOnly)
         this.selected = {
           label: "Current location",
           coordinate: position.coordinate,
           origin: "location",
         };
-      else {
+      else if (this.directions) {
         this.originText = coordLabel(position.coordinate);
         void this.controller?.planRoute();
       }
       this.searching = false;
-      this.message = `${position.precision === "approximate" ? "Approximate location" : "Location fix"} · accuracy ±${Math.ceil(position.accuracyMeters)} m`;
+      this.message =
+        position.precision === "approximate" ? "Approximate location" : "";
     } else if (this.locating && next.position.phase === "error") {
       this.locating = false;
+      clearTimeout(this.locationTimeout);
+      this.locationTimeout = undefined;
+      this.recenterOnly = false;
       this.message = next.position.error?.message || "Location unavailable.";
     }
     this.invalidate();
@@ -1580,7 +1641,7 @@ export class MapsScreenController {
     this.arrived =
       greatCircle(fix.coordinate, current.to) < 25 && fix.accuracyMeters <= 30;
     if (this.arrived) {
-      this.host.voice.pause();
+      this.host.voice.update(`${current.id}:arrived`, "You have arrived.");
       this.message = "Destination reached.";
       this.offRoute = false;
       void this.host.navigationLocation.stop();
@@ -1600,12 +1661,21 @@ export class MapsScreenController {
         current.steps,
         this.navStep,
       );
-      const guidance = guidanceView(reading);
+      const guidance = guidanceView(
+        reading,
+        new Date(this.now()),
+        current.traffic,
+      );
       this.message = this.offRoute
-        ? "Off route. Stop and calculate a new route."
-        : `Foreground guidance · location accuracy ±${Math.ceil(fix.accuracyMeters)} m${this.backgroundRunning ? " · continues with the screen off" : ""}`;
+        ? "Off route. Tap Reroute from here."
+        : this.backgroundRunning
+          ? "Navigation continues in notifications with the screen off."
+          : "";
       if (this.offRoute) {
-        this.host.voice.pause();
+        this.host.voice.update(
+          `${current.id}:off-route`,
+          "You are off route. Open Maps to reroute.",
+        );
         this.host.background.update(
           "Off route",
           "Open Maps to reroute from here or stop.",
@@ -1613,7 +1683,7 @@ export class MapsScreenController {
       } else {
         if (reading.next)
           this.host.voice.update(
-            `${current.id}:${reading.next.index}`,
+            `${current.id}:${reading.next.index}:${reading.next.distanceMeters <= 50 ? "now" : reading.next.distanceMeters <= 250 ? "near" : "far"}`,
             guidance.spoken,
           );
         this.host.background.update(
@@ -1841,7 +1911,10 @@ export class MapsScreenController {
     }
     const token = ++this.revision;
     const selected = this.selected;
-    if (selectionChanged && selected) {
+    if (selectionChanged && !this.host.active()) {
+      this.contextKey = "";
+      this.host.clearContext?.();
+    } else if (selectionChanged && selected) {
       let identity = this.identities.get(selected);
       if (!identity) {
         identity = {};
@@ -1882,19 +1955,36 @@ export class MapsScreenController {
               };
             }
           : undefined;
-      // Route identity changes with origin, mode and provider updates; a failed or
-      // loading route exposes no stale route read.
+      // Route identity changes with its admitted origin, mode and provider. A failed
+      // reroute keeps the previously admitted route; other loading/failed plans expose no route read.
+      const key = JSON.stringify([
+        route ? "map-route" : "map-place",
+        selected.label,
+        selected.coordinate,
+        read?.(),
+      ]);
+      if (key !== this.contextKey) {
+        this.contextKey = key;
+        ++this.contextRevision;
+      }
       this.host.publishContext?.(
         route ? "map-route" : "map-place",
         identity,
-        token,
+        this.contextRevision,
         read,
       );
     } else if (selectionChanged && this.searching && this.query.trim())
       this.host.publishContext?.("map-search", this.searchIdentity, token);
-    else if (selectionChanged) this.host.clearContext?.();
+    else if (selectionChanged) {
+      this.contextKey = "";
+      this.host.clearContext?.();
+    }
     queueMicrotask(() => {
-      if (!this.disposed && token === this.revision && this.host.active())
+      if (
+        !this.disposed &&
+        token === this.revision &&
+        (this.host.active() || this.navigating)
+      )
         this.host.invalidate();
     });
   }
