@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07110e">
+  <meta name="description" content="volOS is a planned token that has not been released. No contract address is published. This page is not an offer and does not promise a price increase.">
+  <link rel="canonical" href="https://valos.live/">
+  <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
+  <title>volOS — pre-launch</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 60% 40% at 0% 0%, rgba(80, 220, 160, .12), transparent 28rem),
+        radial-gradient(ellipse 40% 30% at 100% 10%, rgba(226, 176, 85, .12), transparent 24rem),
+        #07110e;
+      color: #f4f7f2;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+    a { color: #e2b055; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid #f3e0b0; outline-offset: 3px; }
+    .wrap { width: min(1100px, calc(100% - 28px)); margin: 0 auto; padding: 22px 0 56px; }
+    header, .station { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .mark { display: inline-flex; align-items: center; gap: 10px; color: inherit; font-weight: 750; letter-spacing: .06em; text-decoration: none; }
+    .mark b { color: #8ef0c2; }
+    .mark span { color: #e2b055; }
+    .pill, .signin { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 999px; }
+    .pill { border: 1px solid rgba(142, 240, 194, .45); color: #c9ffe6; letter-spacing: .12em; text-transform: uppercase; font-size: 12px; }
+    .signin { background: #e2b055; color: #1a1408; font-weight: 750; text-decoration: none; }
+    h1 { margin: 22px 0 8px; font-size: clamp(48px, 10vw, 84px); line-height: .9; letter-spacing: -.04em; }
+    h1 b { color: #8ef0c2; font-weight: 650; }
+    h1 span { color: #e2b055; }
+    .lede { max-width: 40rem; margin: 0 0 18px; color: #d5e4da; font-size: 18px; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr); gap: 12px; }
+    article { padding: 16px; border: 1px solid rgba(142, 240, 194, .22); border-radius: 16px; background: rgba(8, 20, 16, .9); }
+    h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #b7f5d4; }
+    p { margin: 0; line-height: 1.5; }
+    .chart { width: 100%; height: 180px; margin-top: 8px; border: 1px solid rgba(142, 240, 194, .2); border-radius: 12px; background: #06110d; }
+    .slot, label { display: block; }
+    .slot, input, button { min-height: 44px; }
+    input, button { width: 100%; margin-top: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(142, 240, 194, .3); background: #06110d; color: #f4f7f2; font: inherit; }
+    button { background: #143028; color: #9eb0a6; cursor: not-allowed; }
+    .stack { display: grid; gap: 12px; margin-top: 12px; }
+    .risk { border-color: rgba(226, 176, 85, .4); }
+    footer { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 18px; color: #d5e4da; }
+    footer a { min-height: 44px; display: inline-flex; align-items: center; }
+    @media (max-width: 800px) {
+      header, .station { align-items: flex-start; flex-wrap: wrap; }
+      .grid { grid-template-columns: 1fr; }
+      .lede { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="mark" href="#station">vol<span>OS</span></a>
+      <p class="pill">Pre-launch</p>
+    </header>
+    <main id="station">
+      <h1><b>vol</b><span>OS</span></h1>
+      <p class="lede">A token the owner plans to release later. It is not released, nothing on this page is for sale, and no pool is linked.</p>
+      <div class="grid">
+        <article aria-labelledby="chart-title">
+          <h2 id="chart-title">Chart</h2>
+          <p>Illustration only. No price, volume, or supply figure is connected.</p>
+          <svg class="chart" viewBox="0 0 640 180" role="img" aria-label="Decorative curve. No market data is shown.">
+            <path d="M16 140 C 120 140, 180 120, 240 100 S 360 40, 470 70 600 36 624 48" fill="none" stroke="#8ef0c2" stroke-width="3"/>
+          </svg>
+        </article>
+        <article aria-labelledby="swap-title">
+          <h2 id="swap-title">Swap</h2>
+          <p>Unavailable. volOS is not released, and this page cannot trade.</p>
+          <label>You pay <input value="Not available" disabled></label>
+          <label>You receive <input value="Not available" disabled></label>
+          <button type="button" disabled>Swap unavailable</button>
+        </article>
+      </div>
+      <div class="stack">
+        <article aria-labelledby="contract-title">
+          <h2 id="contract-title">Official contract</h2>
+          <p id="official-contract" class="slot">Not published. The contract address will be added on this page when the owner releases it.</p>
+        </article>
+        <article aria-labelledby="link-title">
+          <h2 id="link-title">Official link</h2>
+          <p id="official-link" class="slot">Not published. An official link will be added here later. This page does not link to a trading venue.</p>
+        </article>
+        <article class="risk" aria-labelledby="risk-title">
+          <h2 id="risk-title">Risk</h2>
+          <p>Crypto assets can fall to zero. This page is not financial advice, not an offer to sell, and it does not promise that volOS will rise in price or that a launch will happen on any date.</p>
+        </article>
+      </div>
+    </main>
+    <footer>
+      <a class="signin" href="https://valhalla-app.xyz/">ValhallaOS workspace</a>
+      <p>A separate product. Live trading there is off.</p>
+    </footer>
+  </div>
+</body>
+</html>

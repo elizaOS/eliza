@@ -207,7 +207,9 @@
         var link = document.createElement('a');
         link.href = url;
         link.download = 'valhalla-paper-journal.csv';
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         root.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         $('desk-journal-status').textContent = 'Paper journal export prepared.';
       } catch (error) {

@@ -46,12 +46,16 @@ function fixture({ restored = false, reject = false, human = true } = {}) {
     createElement: () => node('created'),
     head: { appendChild() {} }
   };
+  const assigned = [];
   const window = {
     VALHALLA_SITE: { AUTH_URL: 'https://auth.example.test', TERMS_VERSION: '2026-11-03' },
     addEventListener(type, fn) { (events[type] ||= []).push(fn); },
     dispatchEvent(event) { for (const fn of events[event.type] || []) fn(event); },
     setInterval() { return 1; },
-    location: { assign() {} }
+    location: {
+      assign(url) { assigned.push(String(url)); },
+      reload() {}
+    }
   };
   const fetch = async (url, options) => {
     calls.push({ url, options });
@@ -69,7 +73,7 @@ function fixture({ restored = false, reject = false, human = true } = {}) {
   };
   vm.runInNewContext(source, context);
   return {
-    node, window, sessionStorage, calls,
+    node, window, sessionStorage, localStorage, calls, assigned,
     ready() { for (const fn of events['document:DOMContentLoaded'] || []) fn(); }
   };
 }
@@ -114,4 +118,47 @@ test('missing human-check configuration does not advance the gate', () => {
   assert.equal(f.node('gateHuman').hidden, false);
   assert.equal(f.node('desk').hidden, true);
   assert.equal(f.node('humanPlaceholder').handlers.click, undefined);
+});
+
+test('verified entrance sign-in opens the OS desk and does not show the console', async () => {
+  const f = fixture();
+  f.sessionStorage.setItem('valhalla-entry-desk', '1');
+  f.ready();
+  f.node('magicEmail').value = 'a@example.test';
+  f.node('emailForm').handlers.submit({ preventDefault() {} });
+  await flush();
+  f.node('emailCodeInput').value = '123456';
+  f.node('codeForm').handlers.submit({ preventDefault() {} });
+  await flush();
+  assert.deepEqual(f.assigned, ['/os/']);
+  assert.equal(f.node('desk').hidden, true);
+  assert.equal(f.sessionStorage.getItem('valhalla-entry-desk'), null);
+  assert.equal(f.sessionStorage.getItem('valhalla-code-ok'), '1');
+});
+
+test('public paper desk control does not create a session', () => {
+  const f = fixture();
+  f.ready();
+  f.node('openPaper').handlers.click();
+  assert.deepEqual(f.assigned, ['/os/']);
+  assert.equal(f.node('desk').hidden, true);
+  assert.equal(f.sessionStorage.getItem('valhalla-auth'), null);
+  assert.equal(f.localStorage.getItem('valhalla-session'), null);
+});
+
+test('a display name is not stored or accepted as a credential', async () => {
+  const f = fixture();
+  f.ready();
+  f.node('createName').value = 'Not A Password';
+  f.node('createEmail').value = 'a@example.test';
+  f.node('createWallet').value = 'solflare';
+  f.node('createForm').handlers.submit({ preventDefault() {} });
+  await flush();
+  const account = JSON.parse(f.localStorage.getItem('valhalla-account'));
+  assert.equal(JSON.stringify(account).includes('Not A Password'), false);
+  assert.equal(account.name, undefined);
+  assert.equal(account.email, undefined);
+  assert.equal(f.sessionStorage.getItem('valhalla-auth'), null);
+  assert.equal(f.node('desk').hidden, true);
+  assert.equal(f.node('gateCode').hidden, false);
 });

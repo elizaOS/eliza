@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080a0c">
   <meta name="description" content="ValhallaOS command desk for wallet connections and assistant chat.">
-  <title>ValhallaOS · Command Desk</title>
+  <title>ValhallaOS · Workstation</title>
   <link rel="stylesheet" href="/os/os.css?v=1.4.2">
   <link rel="stylesheet" href="/desk.css?v=1.4.2">
+  <script src="/home.js" defer></script>
   <script src="/site-config.js?v=1.4.2" defer></script>
   <script src="/os/app.js?v=1.4.2" defer></script>
   <script src="/os/bridge.js?v=1.4.2" defer></script>
@@ -39,32 +40,49 @@
   </svg>
 
   <main class="desktop" id="desktop">
-    <header class="desktop-heading">
-      <img src="/assets/mark.svg" alt="" width="40" height="40">
+    <header class="desktop-heading menu-bar">
+      <img src="/assets/mark.svg" alt="" width="28" height="28">
       <div><h1>VALHALLA<span>OS</span></h1>
-      <p>COMMAND DESK / PAPER-FIRST</p></div>
+      <p>PAPER-FIRST WORKSTATION</p></div>
       <div class="header-state"><span class="state-dot"></span> PUBLIC DESK <span class="paper-badge">LIVE TRADING OFF</span></div>
+      <a class="classic-button menu-signin" href="/app/">Account</a>
     </header>
 
-    <nav class="desktop-icons" aria-label="Desktop applications">
+    <nav class="desktop-icons dock" aria-label="Desktop applications">
       <button class="desktop-icon" type="button" data-open="status">
-        <svg aria-hidden="true"><use href="#icon-computer"></use></svg><span>System Status</span>
+        <svg aria-hidden="true"><use href="#icon-computer"></use></svg><span>Status</span>
       </button>
-      <button class="desktop-icon" type="button" data-open="swarm">
-        <svg aria-hidden="true"><use href="#icon-network"></use></svg><span>A2A Monitor</span>
+      <a class="desktop-icon" href="#chat-title"><svg aria-hidden="true"><use href="#icon-notepad"></use></svg><span>Assistant</span></a>
+      <button class="desktop-icon" type="button" data-open="wallet">
+        <svg aria-hidden="true"><use href="#icon-wallet"></use></svg><span>Wallet</span>
       </button>
+      <a class="desktop-icon" href="#cyber-desk-title"><svg aria-hidden="true"><use href="#icon-browser"></use></svg><span>Paper</span></a>
       <button class="desktop-icon" type="button" data-open="memory">
-        <svg aria-hidden="true"><use href="#icon-notepad"></use></svg><span>Memory Inspector</span>
+        <svg aria-hidden="true"><use href="#icon-notepad"></use></svg><span>Memory</span>
       </button>
       <button class="desktop-icon" type="button" data-open="browser">
-        <svg aria-hidden="true"><use href="#icon-browser"></use></svg><span>Web Shell</span>
+        <svg aria-hidden="true"><use href="#icon-browser"></use></svg><span>Web</span>
       </button>
-      <button class="desktop-icon" type="button" data-open="wallet">
-        <svg aria-hidden="true"><use href="#icon-wallet"></use></svg><span>Wallet Bridge</span>
+      <button class="desktop-icon" type="button" data-open="swarm">
+        <svg aria-hidden="true"><use href="#icon-network"></use></svg><span>Monitor</span>
       </button>
+      <button class="desktop-icon" type="button" disabled title="Live trading is off. No swap is available."><span>Swap</span></button>
     </nav>
 
     <div class="workspace">
+      <section class="workspace-panel market-panel" aria-labelledby="market-title">
+        <div class="panel-heading"><h2 id="market-title">Market</h2><span>NOT CONNECTED</span></div>
+        <p>No prices, volume, or token lists are loaded. A blank tile is not a live quote.</p>
+        <ul class="placeholder-row">
+          <li>Price feed not connected</li>
+          <li>Volume feed not connected</li>
+          <li>Route feed not connected</li>
+        </ul>
+      </section>
+      <section class="workspace-panel telemetry-panel" aria-labelledby="telemetry-title">
+        <div class="panel-heading"><h2 id="telemetry-title">Hardware</h2><span>NOT CONNECTED</span></div>
+        <p>No CPU, GPU, or network reading is available from this page.</p>
+      </section>
       <section class="workspace-panel overview-panel" aria-labelledby="overview-title">
         <div class="panel-heading"><h2 id="overview-title">Wallet / overview</h2><span>NON-CUSTODIAL</span></div>
         <div class="overview-body">
@@ -81,7 +99,7 @@
       </section>
 
       <section class="workspace-panel chat-panel" aria-labelledby="chat-title">
-        <div class="panel-heading"><h2 id="chat-title">Assistant / chat</h2><span>CONFIGURED CHAT SERVICE</span></div>
+        <div class="panel-heading"><h2 id="chat-title">Assistant / chat</h2><span>DOES NOT TRADE</span></div>
         <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-label="Assistant conversation">
           <p class="chat-intro"><strong>VALHALLA ASSISTANT</strong><br>Ask about the desk, market concepts, or paper trading. Chat cannot place trades or access your wallet.</p>
         </div>

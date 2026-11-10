@@ -49,11 +49,11 @@ class SiteTests(unittest.TestCase):
         return urllib.request.urlopen(self.base + path)
 
     def test_routes_and_assets(self):
-        for route in ("/", "/app/", "/os/", "/terms/", "/api/"):
+        for route in ("/", "/app/", "/os/", "/volos/", "/terms/", "/api/"):
             with self.subTest(route=route), self.get(route) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn("text/html", response.headers["Content-Type"])
-        for route in ("/", "/app/", "/os/"):
+        for route in ("/", "/app/", "/os/", "/volos/"):
             with self.get(route) as response:
                 html = response.read().decode()
             parser = Assets()
@@ -75,6 +75,25 @@ class SiteTests(unittest.TestCase):
             self.assertTrue(response.url.endswith("/app/"))
         config = json.loads((ROOT / "vercel.json").read_text())
         self.assertIn({"source": "/app", "destination": "/app/", "permanent": True}, config["redirects"])
+        self.assertEqual(config["proxy"]["entrypoint"], "website/proxy.mjs")
+        self.assertEqual(config["proxy"]["matcher"], ["/", "/index.html"])
+        self.assertIn("website/scripts/minify-site.mjs", config["buildCommand"])
+        self.assertLess(config["buildCommand"].index("website/scripts/test-site.py"), config["buildCommand"].index("website/scripts/minify-site.mjs"))
+        self.assertFalse(any(item.get("destination") == "/volos/index.html" and "has" not in item for item in config.get("rewrites", [])))
+        with self.get("/") as response:
+            home = response.read().decode()
+        self.assertIn("Continue to sign-in", home)
+        self.assertIn("/assets/poster.jpg", home)
+        self.assertIn("Live trading is off", home)
+        self.assertNotIn("Trade Solana", home)
+        with self.get("/volos/") as response:
+            volos = response.read().decode()
+        self.assertIn("Not published", volos)
+        self.assertIn("can fall to zero", volos)
+        self.assertIn("https://valhalla-app.xyz/", volos)
+        self.assertNotIn("pump.fun", volos.lower())
+        self.assertNotIn("will pump", volos.lower())
+        self.assertNotRegex(volos, r"0x[0-9a-fA-F]{40}")
 
     def test_auth_is_not_rewritten_or_covered(self):
         self.assertEqual((OUT / "app/gate.js").read_bytes(), (ROOT / "website/app/gate.js").read_bytes())

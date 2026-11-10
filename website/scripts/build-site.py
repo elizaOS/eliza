@@ -7,7 +7,7 @@ out = root / "site-build"
 
 directories = (
     "admin api app assets chrome connect contact cookies dashboard demo disclosure "
-    "extension faq health kernel media os pay preview privacy shop status terms tools "
+    "extension faq health kernel media os pay preview privacy shop status terms tools volos "
     "updates whitepaper"
 ).split()
 files = (

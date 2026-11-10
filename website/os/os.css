@@ -312,7 +312,7 @@ button:focus-visible, select:focus-visible, a:focus-visible, iframe:focus-visibl
 .desktop-heading h1 span { color: #f2eade; }
 .desktop-heading p { color: #aaa597; font-size: 11px; letter-spacing: .08em; }
 .header-state { display: flex; align-items: center; gap: 8px; margin-left: auto; color: #a9b5aa; font-size: 11px; letter-spacing: .08em; }
-.state-dot { width: 7px; height: 7px; border-radius: 50%; background: #32e9a1; }
+.state-dot { width: 7px; height: 7px; border-radius: 50%; background: #ffc66d; }
 .paper-badge { padding: 4px 7px; border: 1px solid #725521; color: #ffc66d; }
 .desktop-icons {
   inset: 82px auto 60px 16px;
@@ -396,22 +396,52 @@ button:focus-visible, select:focus-visible, a:focus-visible, iframe:focus-visibl
 .start-button { min-width: 82px; height: 36px; }
 .start-button[aria-expanded="true"], .taskbar-app[aria-pressed="true"] { border-color: #ffc66d; background: #302313; }
 .taskbar-clock { border: 1px solid #423623; color: #d3c7b5; }
+.desktop-heading { pointer-events: auto; }
+.menu-signin { margin-left: 8px; }
+.market-panel, .telemetry-panel { grid-column: 1 / -1; }
+.market-panel > p, .telemetry-panel > p { margin: 14px; color: #bcb7ad; font-size: 13px; line-height: 1.5; }
+.placeholder-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 14px 14px; padding: 0; list-style: none; }
+.placeholder-row li { min-height: 44px; display: flex; align-items: center; padding: 8px 10px; border: 1px dashed #6f5630; color: #d9d0c2; }
+.dock a.desktop-icon { text-decoration: none; }
+@media (pointer: coarse) {
+  .window-controls button { width: 44px; height: 44px; }
+  .desktop-icon { min-height: 44px; }
+  .taskbar-app, .start-button { min-height: 44px; }
+}
 @media (max-width: 720px) {
-  .desktop { min-width: 320px; padding: 118px 10px 68px; }
-  .desktop-heading { min-height: 64px; padding: 8px 10px; }
+  .desktop { min-width: 320px; display: flex; flex-direction: column; padding: 12px 10px 78px; }
+  .taskbar { height: 60px; }
+  .desktop-heading { position: relative; top: auto; right: auto; left: auto; min-height: 64px; flex-wrap: wrap; padding: 8px 10px; }
+  .header-state { width: 100%; margin-left: 0; }
   .desktop-heading h1 { font-size: 16px; }
   .desktop-heading p { max-width: none; font-size: 11px; }
   .header-state { font-size: 11px; }
   .header-state > .state-dot { display: none; }
   .paper-badge { font-size: 11px; }
-  .desktop-icons { position: absolute; top: 68px; right: 10px; bottom: auto; left: 10px; width: auto; flex-direction: row; overflow-x: auto; padding: 0 0 4px; border: 0; }
-  .desktop-icon { width: auto; min-width: max-content; min-height: 38px; padding: 7px; }
+  .chat-form { flex-wrap: wrap; }
+  .chat-form textarea, .chat-form button { width: 100%; }
+  .desktop-icons { position: relative; top: auto; right: auto; bottom: auto; left: auto; inset: auto; width: 100%; flex-direction: row; overflow-x: auto; padding: 8px 0; border: 0; }
+  .desktop-icon { width: auto; min-width: max-content; min-height: 44px; padding: 7px; }
   .desktop-icon span { font-size: 12px; }
   .workspace { grid-template-columns: 1fr; }
   .overview-panel, .chat-panel { min-height: 320px; }
   .overview-body { padding: 20px 14px; }
   .overview-mech { height: 140px; }
   .chat-log { min-height: 190px; }
-  .window, .browser-window { position: fixed; top: 70px !important; left: 8px !important; width: calc(100vw - 16px) !important; max-height: calc(100dvh - 130px); }
-  .window-body { max-height: calc(100dvh - 175px); }
+  .menu-signin { min-height: 44px; }
+  .market-panel, .telemetry-panel { grid-column: 1 / -1; }
+  .market-panel > p, .telemetry-panel > p { margin: 14px; color: #bcb7ad; font-size: 13px; line-height: 1.5; }
+  .placeholder-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 14px 14px; padding: 0; list-style: none; }
+  .placeholder-row li { min-height: 44px; display: flex; align-items: center; padding: 8px 10px; border: 1px dashed #6f5630; color: #d9d0c2; }
+  .dock .desktop-icon { text-decoration: none; }
+  .menu-bar, .dock { z-index: 1; }
+  .taskbar { z-index: 60; }
+  .window, .browser-window {
+    position: fixed;
+    top: 8px !important;
+    left: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 76px);
+  }
+  .window-body { max-height: calc(100dvh - 130px); }
 }

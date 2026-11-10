@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#121a27">
-  <meta name="description" content="Preview release. The ValhallaOS flagship is a Jupiter trading terminal inside an AI workspace. This preview does not execute swaps or take payment.">
+  <meta name="theme-color" content="#07090c">
+  <meta name="description" content="ValhallaOS is a paper-first workspace. Live trading is off. This page does not sign you in, execute swaps, or take payment.">
   <link rel="canonical" href="https://valhalla-app.xyz/">
   <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="preload" as="image" href="/assets/poster.jpg" fetchpriority="high">
@@ -16,22 +16,21 @@
     <header class="topbar" data-nav="locked">
       <a class="brand" href="/"><svg id="brand-mark" class="brand-mark" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path fill="none" stroke="#E8B65A" stroke-width="1.6" d="M5 23c4.2-11 17.8-11 22 0"/><path fill="none" stroke="#C9963E" stroke-width="1.2" d="M9 23c2.8-7 11.2-7 14 0"/><path fill="#E8B65A" d="M15 13h2v10h-2z"/></svg><span>VALHALLAOS</span></a>
       <nav aria-label="Main navigation">
-        <a href="/os/">Explore Desk</a>
-        <a href="/app/">Client access</a>
+        <a href="/app/" data-enter-desk>Sign in</a>
+        <a href="/os/">Public desk</a>
       </nav>
     </header>
 
-    <main>
-      <p class="status">Preview release — service validation in progress.</p>
-      <figure class="stage-wrap" aria-label="Silent film. ValhallaOS visual introduction. It does not show the product.">
+    <main class="citadel-main">
+      <figure class="stage-wrap backdrop" aria-label="Silent film. ValhallaOS visual introduction. It does not show the product.">
         <div class="stage">
           <div class="scene" id="hero-scene">
             <img class="still" src="/assets/poster.jpg" alt="" width="1280" height="720">
             <video id="hero-video" muted loop playsinline preload="none" poster="/assets/poster.jpg" aria-describedby="hero-note"></video>
             <ol class="scenes" aria-label="Three scenes">
-              <li>Your trading terminal.</li>
-              <li>Your AI workspace.</li>
-              <li>Connected to Solana.</li>
+              <li>Your workspace.</li>
+              <li>Your assistant.</li>
+              <li>Tools you can open.</li>
             </ol>
             <p class="motion-slot"><button class="motion-control" id="hero-motion" type="button" aria-pressed="false" aria-label="Play motion" title="Play motion">▶</button></p>
           </div>
@@ -41,11 +40,18 @@
         <noscript><p>ValhallaOS visual introduction. It does not show the product.</p></noscript>
       </figure>
 
-      <section class="intro-note" id="discover" aria-labelledby="discover-title">
-        <h1 id="discover-title">ValhallaOS</h1>
-        <p class="tagline">Trade Solana. Work with AI. Keep control.</p>
-        <p>The flagship is a Jupiter trading terminal inside an AI workspace. Designed for customer-controlled trades, with optional ElizaOS assistance. Not an official Jupiter product.</p>
-        <p>The preview does not execute swaps or take payment. Sign-in and quote review are planned for when the service is connected. This page does not complete sign-in.</p>
+      <section class="citadel-card intro-note" id="discover" aria-labelledby="discover-title">
+        <p class="citadel-kicker">Sign-in required</p>
+        <h1 id="discover-title">ValhallaOS Citadel</h1>
+        <p class="tagline">A workspace you can enter. Live trading is off.</p>
+        <p>ValhallaOS is a paper-first desk for status, an assistant, and simulated tools. It does not hold your keys. This page does not sign you in, execute a swap, or take payment.</p>
+        <form id="home-email" method="post" action="/app/">
+          <label for="home-email-address">Email <span>Prefills the sign-in page. It is not a password.</span></label>
+          <input id="home-email-address" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" required>
+          <button type="submit">Continue to sign-in</button>
+        </form>
+        <p>Sign-in still requires the human check and a verified code or Google. A display name is not a credential. After that, the command desk opens.</p>
+        <p class="journey-links"><a id="home-google" href="/app/" data-enter-desk>Sign in</a> <a href="/os/">Preview the public desk</a></p>
       </section>
 
     </main>
@@ -57,12 +63,13 @@
         <a href="/kernel/">Kernel lab</a>
         <a href="/disclosure/">Risk</a>
       </nav>
-      <p>A live trade is your own wallet transaction. You keep custody. Results are not guaranteed. This is not financial advice.</p>
+      <p>Live trading is off. This desk does not hold your keys. Results are not guaranteed. This is not financial advice.</p>
       <p class="legal-tm">© 2026 TokenJunction LLC</p>
     </footer>
   </div>
   <script src="/site-config.js"></script>
   <script src="/home-motion.js"></script>
+  <script src="/home.js"></script>
   <script src="/site-chrome.js"></script>
 </body>
 </html>

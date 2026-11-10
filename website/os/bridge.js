@@ -122,11 +122,24 @@
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: text, history: history, stream: false }), signal: controller.signal
       });
+      var type = response.headers.get('content-type') || '';
+      if (!response.ok || type.indexOf('application/json') === -1) {
+        var closed = new Error('The chat service did not return a reply.');
+        closed.valhallaClosed = true;
+        throw closed;
+      }
       var body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Chat request failed.');
-      if (body.ok === false || body.status === 'CONFIG_PENDING' || body.provider === 'valhalla-fallback') throw new Error('Model service is not configured or unavailable. No model reply was generated.');
+      if (!body || body.ok === false || body.status === 'CONFIG_PENDING' || body.provider === 'valhalla-fallback') {
+        var pending = new Error('Model service is not configured or unavailable. No model reply was generated.');
+        pending.valhallaClosed = true;
+        throw pending;
+      }
       var reply = body.reply || body.content || '';
-      if (typeof reply !== 'string' || !reply.trim()) throw new Error('The chat service returned an empty reply.');
+      if (typeof reply !== 'string' || !reply.trim()) {
+        var empty = new Error('The chat service returned an empty reply.');
+        empty.valhallaClosed = true;
+        throw empty;
+      }
       message('ASSISTANT', reply);
       var speechFailed = false;
       if (voiceEnabled) {
@@ -140,7 +153,9 @@
       history.push({ role: 'user', content: text }, { role: 'assistant', content: reply.slice(0, 500) }); history = history.slice(-8);
       if (!speechFailed) chatStatus.textContent = 'Reply received from ' + (body.provider || response.headers.get('x-valhalla-provider') || 'the configured service') + '. Not financial advice.';
     } catch (error) {
-      chatStatus.textContent = error.name === 'AbortError' ? 'Chat timed out. Please try again.' : 'Chat: ' + (error.message || 'Please try again.');
+      chatStatus.textContent = error.name === 'AbortError'
+        ? 'Chat timed out. No reply was generated.'
+        : (error.valhallaClosed ? error.message : 'Chat service did not return a reply. Nothing was generated.');
     } finally {
       window.clearTimeout(timeout); submitting = false; form.querySelector('button').disabled = false; input.disabled = false; input.focus();
     }

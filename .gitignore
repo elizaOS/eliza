@@ -1,2 +1,4 @@
 /site-build/
+/node_modules/
+/private-export/
 **/__pycache__/

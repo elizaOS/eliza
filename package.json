@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "dependencies": {
+    "@vercel/functions": "^2.2.13"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  }
+}

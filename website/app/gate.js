@@ -492,13 +492,7 @@
     if (paperBtn && !paperBtn.dataset.bound) {
       paperBtn.dataset.bound = "1";
       paperBtn.addEventListener("click", function () {
-        if (!termsOk()) return;
-        saveSession({ kind: "paper", name: "Paper desk" });
-        var account = readAccount() || {};
-        account.plan = account.plan || "free";
-        account.paper = true;
-        writeAccount(account);
-        openDesk();
+        window.location.assign("/os/");
       });
     }
     var form = document.getElementById("emailForm");
@@ -704,6 +698,10 @@
 
   function openDesk() {
     var session = fresh(localStorage.getItem(SESSION_KEY), 12 * 60 * 60 * 1000);
+    if (session && session.kind === "paper") {
+      localStorage.removeItem(SESSION_KEY);
+      session = null;
+    }
     if (!session) {
       var account = readAccount();
       var verified = account && account.hint &&
@@ -743,10 +741,6 @@
       if (avatar) avatar.hidden = true;
       paste.hidden = false;
       document.getElementById("modeBadge").textContent = "READ ONLY";
-    } else if (session.kind === "paper") {
-      who.textContent = "Paper desk";
-      var mode = document.getElementById("modeBadge");
-      if (mode) mode.textContent = "PAPER";
     } else if (session.pubkey) {
       who.textContent = "…" + session.pubkey.slice(-4);
       if (window.ValhallaSite) {

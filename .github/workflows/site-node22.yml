@@ -42,8 +42,14 @@ jobs:
         run: python3 website/scripts/test-site.py
       - name: Verify wallet boundaries
         run: node website/scripts/test-wallet.cjs
-      - name: Verify gate, OS, and all seven desk tests
-        run: node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs website/scripts/desk.test.cjs
+      - name: Install host-routing runtime
+        run: npm ci
+      - name: Verify gate, desk, entrance, and volOS routing
+        run: node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs website/scripts/desk.test.cjs website/scripts/host-route.test.cjs website/scripts/journey.test.cjs website/scripts/desktop.test.cjs website/scripts/minify.test.cjs
+      - name: Verify owner pack stays out of the site
+        run: python3 scripts/test_private_pack_export.py
+      - name: Prepare the public bundle
+        run: node website/scripts/minify-site.mjs
       - name: Upload verified static build
         uses: actions/upload-artifact@v4
         with:

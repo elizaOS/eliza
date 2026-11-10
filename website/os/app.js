@@ -107,13 +107,15 @@
         credentials: 'same-origin',
         signal: controller.signal
       });
-      if (!response.ok) throw new Error('HTTP ' + response.status);
+      var type = response.headers.get('content-type') || '';
+      if (!response.ok || type.indexOf('application/json') === -1) throw new Error('closed');
       var result = await response.json();
-      if (!result || typeof result.status !== 'string') throw new Error('Unexpected health response');
-      setHealth(result.status + (result.engine ? ' · ' + result.engine : ''), 'ok');
+      var status = result && typeof result.status === 'string' ? result.status.trim().toLowerCase() : '';
+      if (status !== 'ok' && status !== 'healthy' && status !== 'ready') throw new Error('closed');
+      setHealth('Service reports ' + status + '.', 'ok');
       checkedAt.textContent = new Date().toLocaleTimeString();
     } catch (error) {
-      setHealth('Unavailable · ' + (error.name === 'AbortError' ? 'timed out' : 'probe failed'), 'error');
+      setHealth('Unavailable · ' + (error.name === 'AbortError' ? 'timed out' : 'no service status') + '. Not reported as live.', 'error');
       checkedAt.textContent = new Date().toLocaleTimeString();
     } finally {
       window.clearTimeout(timeout);
@@ -181,10 +183,18 @@
     }
   });
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && !menu.hidden) {
+    if (event.key !== 'Escape') return;
+    if (!menu.hidden) {
       setMenu(false);
       startButton.focus();
+      return;
     }
+    var tag = event.target && event.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    var open = windows.filter(function (node) { return !node.hidden; });
+    if (!open.length) return;
+    open.sort(function (a, b) { return Number(b.style.zIndex || 0) - Number(a.style.zIndex || 0); });
+    closeWindow(open[0]);
   });
   document.getElementById('browser-page').addEventListener('change', function (event) {
     if (event.target.value !== '/' && event.target.value !== '/status/') return;

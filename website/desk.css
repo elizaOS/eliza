@@ -23,3 +23,6 @@
 .cyber-desk ul { padding-left: 20px; }
 .cyber-desk li { margin: 5px 0; }
 .cyber-desk .cyber-badge { display: inline-block; padding: 2px 5px; background: #543b0f; color: #ffe4a8; font-size: 11px; font-weight: bold; }
+@media (pointer: coarse) {
+  .cyber-desk button, .cyber-desk input { min-height: 44px; }
+}

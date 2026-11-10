@@ -144,5 +144,5 @@ test('built OS references versioned desk assets and preserves disabled live trad
   assert.match(html, /href="\/desk\.css\?v=1\.4\.2"/);
   assert.match(html, /src="\/desk\.js\?v=1\.4\.2"/);
   assert.ok(fs.statSync(path.join(root, 'site-build/desk.css')).size > 0);
-  assert.match(fs.readFileSync(path.join(root, 'site-build/site-config.js'), 'utf8'), /LIVE_TRADING:\s*false/);
+  assert.match(fs.readFileSync(path.join(root, 'site-build/site-config.js'), 'utf8'), /LIVE_TRADING:\s*(?:false|!1)/);
 });
