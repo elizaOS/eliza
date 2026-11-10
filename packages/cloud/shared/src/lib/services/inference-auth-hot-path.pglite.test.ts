@@ -649,6 +649,30 @@ describe("Worker billing admits from the snapshot and the organization gate only
       primaryArmed = false;
     }
   });
+
+  // The auth entry keeps carrying the held snapshot until its own refresh;
+  // the refill that the first refusal scheduled is what later requests use.
+  test("a carried hold yields to the newer published snapshot without a primary read", async () => {
+    const { resetInferenceAdmissionMemoryCacheForTests } = await import(
+      "./inference-admission-snapshot"
+    );
+    const key = CacheKeys.inference.orgAdmission(ORG);
+    resetInferenceAdmissionMemoryCacheForTests();
+    await cache.setWithOutcome(key, admission(), CacheTTL.inference.orgAdmission);
+    primaryArmed = true;
+    primaryTouches = 0;
+    try {
+      const result = await admit(aged({ billingHold: true }), () =>
+        Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 }),
+      );
+      expect(result.mode).toBe("durable_object_debit");
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+      await cache.del(key);
+      resetInferenceAdmissionMemoryCacheForTests();
+    }
+  });
 });
 
 describe("mobile lifecycle cache fences", () => {
