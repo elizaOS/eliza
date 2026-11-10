@@ -2110,6 +2110,25 @@
     ]
   },
   {
+    "id": "cloud-shared-deferred-prewarm",
+    "model": "packages/cloud/quint/SharedHistoryHydration.qnt",
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts"
+    ],
+    "invariants": [
+      "OneWarmupOwner",
+      "SharedGenerationAndFreshRetry",
+      "BodyCompletionUsesItsWarmup"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One hydrated legacy room. Two initial responses join one module warmup. One may cancel while its peer waits. One history request can complete during that warmup. A failed module call can be followed by one successful retry and one ready reuse.",
+      "The Workerd HTTP fixture checks pending bodies, the live room queue, actual body cancellation and body rejection. The real Durable Object and SQLite storage keep the history while the fixture controls module completion.",
+      "The case abstracts history persistence and assumes successful owner lookup. More than two concurrent bodies, cancellation of all callers, additional retries, deployment eviction and owner lookup failure remain outside the bound."
+    ]
+  },
+  {
     "id": "cloud-flow-personal-shared-conversation",
     "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
     "sources": [

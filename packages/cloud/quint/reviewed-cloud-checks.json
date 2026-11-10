@@ -332,7 +332,9 @@
         "a cold room's first history read joins in-flight hydration instead of returning warming",
         "hydration slower than the bound still fails closed with the retryable warming",
         "a failed history load returns warming and starts a fresh read on retry",
-        "a canonical Personal Shared turn lets keep-warm prewarm report its owning organization"
+        "a canonical Personal Shared turn lets keep-warm prewarm report its owning organization",
+        "deferred prewarm joins one warmup and a cancelled body leaves the room and peer live",
+        "a deferred module failure fails both bodies and a later prewarm starts a fresh attempt"
       ]
     }
   ],
