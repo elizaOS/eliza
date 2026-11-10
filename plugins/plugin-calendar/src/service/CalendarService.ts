@@ -5947,6 +5947,7 @@ export class CalendarService extends Service {
     // alone, so a failed source still degrades and reports on its own. A read
     // whose request ended while it waited gives its turn back unread.
     const managed = this.managedCalendar;
+    let pulledManagedChange = false;
     const managedFeeds = calendars.map((calendar) =>
       managed?.owns(calendar)
         ? (async (): Promise<
@@ -5989,6 +5990,56 @@ export class CalendarService extends Service {
         let feed: LifeOpsCalendarFeed;
         if ("feed" in read) {
           feed = read.feed;
+          // The managed broker bypasses the standard Google cache sync. Pull
+          // changed mapped events through the same reconciler before presenting
+          // local rows. Do not import unrelated events or replay pending writes.
+          const control = await this.linkedControl.read();
+          if (
+            !calendarRecordPolicyFailure() &&
+            !control.paused &&
+            !control.dispatch &&
+            control.destination?.connectorAccountId ===
+              calendar.connectorAccountId &&
+            control.destination.providerCalendarId === calendar.calendarId
+          ) {
+            const links = await this.linkedRepo.listForAgent(this.agentId());
+            for (const link of links) {
+              signal.throwIfAborted();
+              if (
+                link.state !== "clean" ||
+                !link.providerEventId ||
+                link.connectorAccountId !== calendar.connectorAccountId ||
+                link.providerCalendarId !== calendar.calendarId
+              )
+                continue;
+              const remote = feed.events.find(
+                (event) => event.externalId === link.providerEventId,
+              );
+              if (remote && remote.metadata.etag === link.providerEtag)
+                continue;
+              if (!remote) {
+                const local = await this.repo.getCalendarEventById(
+                  this.agentId(),
+                  link.localEventId,
+                );
+                if (
+                  !local ||
+                  (local.isAllDay
+                    ? !allDayEventIntersectsLocalWindow(
+                        local,
+                        timeMin,
+                        timeMax,
+                        timeZone,
+                      )
+                    : Date.parse(local.startAt) >= Date.parse(timeMax) ||
+                      Date.parse(local.endAt) <= Date.parse(timeMin))
+                )
+                  continue;
+              }
+              if ((await this.runLinkedCalendarOperation(link)) === "pulled")
+                pulledManagedChange = true;
+            }
+          }
         } else {
           const { error } = read;
           const sourceError = calendarSourceError(error);
@@ -6159,6 +6210,18 @@ export class CalendarService extends Service {
           timeMin,
           timeMax,
         });
+      }
+    }
+    if (pulledManagedChange) {
+      for (const source of sources) {
+        if (source.calendar.provider === ELIZA_CALENDAR_PROVIDER) {
+          signal.throwIfAborted();
+          source.feed = await this.readElizaCalendarFeed({
+            calendar: source.calendar,
+            timeMin,
+            timeMax,
+          });
+        }
       }
     }
     const hasLinkedCandidates =
