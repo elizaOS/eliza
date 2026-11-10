@@ -97,6 +97,7 @@ function harness(
     /** Playback settles only when the test settles it, also after an abort (slow cleanup). */
     manualSpeech?: boolean;
     openMic?: boolean;
+    pipelineSpeech?: boolean;
     timing?: Partial<typeof ASSISTANT_TIMING_DEFAULTS>;
   } = {},
 ) {
@@ -178,6 +179,7 @@ function harness(
   const session = new VoiceAssistantSession(ports, {
     clock,
     ...(options.openMic ? { openMic: true } : {}),
+    ...(options.pipelineSpeech ? { pipelineSpeech: true } : {}),
     ...(options.timing ? { timing: options.timing } : {}),
   });
   const answer = (
@@ -2059,5 +2061,39 @@ describe("VoiceAssistantSession open microphone", () => {
     await h.clock.advance(0);
     expect(h.log.closed).toBe(1);
     expect(h.session.getSnapshot().inputHeld).toBe(true);
+  });
+});
+
+describe("VoiceAssistantSession pipelined speech", () => {
+  it("hands the next sentence over once the current one is audible and counts heard in order", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    h.answer(
+      0,
+      "Once upon a time there was a fox. It lived in a quiet wood. It was a happy fox.",
+    );
+    await flush();
+    expect(h.speeches).toHaveLength(1);
+    at(h.speeches, 0).input.onStarted();
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Once upon a time there was a fox.",
+      "It lived in a quiet wood.",
+    ]);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.speeches).toHaveLength(2);
+    at(h.speeches, 1).input.onStarted();
+    await flush();
+    expect(h.speeches).toHaveLength(3);
+    h.session.interruptSpeech();
+    await flush();
+    expect(at(h.log.heard, 0)).toMatchObject({
+      heard: "Once upon a time there was a fox.",
+      unheard: "It lived in a quiet wood. It was a happy fox.",
+      interrupted: true,
+    });
   });
 });

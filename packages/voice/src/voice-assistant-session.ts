@@ -424,6 +424,7 @@ export class VoiceAssistantSession {
   private mutedValue = false;
   private hold?: Hold;
   private readonly openMic: boolean;
+  private readonly pipelineSpeech: boolean;
   /** The aborted speculative turn whose text the utterance in progress carries. */
   private superseded?: string;
 
@@ -435,10 +436,17 @@ export class VoiceAssistantSession {
       clock?: AssistantClock;
       /** Keep the capture open through the reply (speculative turns and barge-in); needs `fullDuplex`. */
       openMic?: boolean;
+      /**
+       * Hand the next sentence to `speak` as soon as the current one is audible, so the host can
+       * synthesize it during playback. The host must then play sentences in the order given and
+       * settle each call when that sentence's playback ended.
+       */
+      pipelineSpeech?: boolean;
     } = {},
   ) {
     this.ports = ports;
     this.openMic = options.openMic === true;
+    this.pipelineSpeech = options.pipelineSpeech === true;
     const timing = { ...ASSISTANT_TIMING_DEFAULTS, ...options.timing };
     for (const value of Object.values(timing))
       if (!Number.isFinite(value) || value < 0)
@@ -1110,6 +1118,7 @@ export class VoiceAssistantSession {
     sentence: string,
     signal: AbortSignal,
     guard: () => void,
+    audible?: () => void,
   ) {
     guard();
     const playback = this.ports.speak({
@@ -1118,6 +1127,7 @@ export class VoiceAssistantSession {
       text: sentence,
       signal,
       onStarted: () => {
+        audible?.();
         if (!this.owned(session, turn, response) || response.started) return;
         response.started = true;
         this.ports.onTurn?.("first-audio", response.turnId);
@@ -1193,17 +1203,33 @@ export class VoiceAssistantSession {
         running = true;
         pumping = (async () => {
           try {
+            // Pipelined: the sentence after the audible one is already with the speaker. Its
+            // playback cannot start before the previous one ended, so two are in flight at most.
+            const pending: Promise<void>[] = [];
             while (!failure && begun < plan.length) {
               const sentence = plan[begun++] as string;
-              await this.playSentence(
+              let audible!: () => void;
+              const started = new Promise<void>((resolve) => {
+                audible = resolve;
+              });
+              const playback = this.playSentence(
                 session,
                 turn,
                 response,
                 sentence,
                 voice.signal,
                 guard,
+                audible,
               );
+              if (!this.pipelineSpeech) {
+                await playback;
+                continue;
+              }
+              pending.push(playback);
+              playback.catch(() => {});
+              await Promise.race([started, playback]);
             }
+            await Promise.all(pending);
           } catch (error) {
             playbackFailed = true;
             failure ??= { error };
