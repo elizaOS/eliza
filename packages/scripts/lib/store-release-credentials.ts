@@ -38,10 +38,9 @@ export const NON_CREDENTIAL_VARIABLES = Object.freeze([
  *
  * `authorizedReviewers` is the allowlist of GitHub principals (user logins or
  * `org/team` slugs) permitted to approve a production-release deployment. It
- * is deliberately empty until a repository owner verifies and commits the
- * list; while it is empty the live audit reports the resolved reviewer
- * principals as an owner-verification blocker instead of READY, so an
- * arbitrary reviewer can never satisfy the gate by existing.
+ * is verified by a repository owner. An empty list reports the resolved
+ * reviewer principals as an owner-verification blocker instead of READY,
+ * so an arbitrary reviewer can never satisfy the gate by existing.
  */
 export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
   deploymentRefs: Object.freeze([
@@ -49,7 +48,7 @@ export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
     Object.freeze({ type: "tag", name: "v*" }),
   ]),
   preventSelfReview: true,
-  authorizedReviewers: Object.freeze([]),
+  authorizedReviewers: Object.freeze(["lalalune"]),
 });
 
 /**
@@ -395,7 +394,7 @@ export function evaluateEnvironmentReadiness(
   const blockers = [];
   if (!live.environmentExists) {
     blockers.push(
-      `Environment ${RELEASE_ENVIRONMENT} does not exist; every store job would be blocked at deployment.`,
+      `Environment ${RELEASE_ENVIRONMENT} does not exist; configure release protections and credentials before publishing to stores.`,
     );
   } else {
     blockers.push(...evaluatePolicy(live, policy));

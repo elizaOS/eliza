@@ -72,6 +72,7 @@ $summary = [ordered]@{
   installer = $null
   installerSizeBytes = 0
   launcherPath = $null
+  rendererLauncherPath = $null
   startMenuShortcut = $null
   shortcutTarget = $null
   uninstallerPath = $null
@@ -120,6 +121,9 @@ try {
     -BuildDir $BuildDir `
     -BackendPort $BackendPort `
     -TimeoutSeconds $TimeoutSeconds
+  if ($LASTEXITCODE -ne 0) {
+    throw "Installed Windows startup smoke exited with code $LASTEXITCODE."
+  }
 
   $summary.checks.installerExecuted = $true
   $summary.checks.backendReachable = $true
@@ -179,6 +183,17 @@ try {
   $summary.uninstallerPath = $uninstaller.FullName
 
   Stop-ElizaProcesses
+
+  # Retain the installed bytes for renderer checks after the original install
+  # is removed. The native smoke above must first run the actual installation.
+  Copy-Item -LiteralPath $ProofInstallDir -Destination $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force
+  $launcherRelativePath = [System.IO.Path]::GetRelativePath((Resolve-Path $ProofInstallDir).Path, $launcher.FullName)
+  $rendererLauncherPath = Join-Path $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR $launcherRelativePath
+  if (-not (Test-Path -LiteralPath $rendererLauncherPath -PathType Leaf)) {
+    throw "Retained renderer launcher is missing: $rendererLauncherPath"
+  }
+  Set-Content -LiteralPath $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Value $rendererLauncherPath -Encoding utf8
+  $summary.rendererLauncherPath = $rendererLauncherPath
 
   $uninstallArgs = @(
     "/VERYSILENT",
