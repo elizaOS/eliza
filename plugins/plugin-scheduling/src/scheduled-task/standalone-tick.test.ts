@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { buildFallbackDefaultPack } from "./default-pack.js";
 import {
   registerScheduledTaskRunnerDeps,
   ScheduledTaskRunnerService,
@@ -119,6 +120,60 @@ describe("standalone scheduling tick", () => {
     });
     expect(again.fires.filter((f) => f.outcome === "fired")).toEqual([]);
   });
+
+  it.each([
+    ["winter", "2026-01-15T07:00:00.000Z", "2026-01-15T16:00:30.000Z"],
+    ["summer", "2026-07-15T06:00:00.000Z", "2026-07-15T15:00:30.000Z"],
+  ])(
+    "fires the fresh Good morning default at device-local 8am in %s",
+    async (_season, createdAt, dueAt) => {
+      // Alpha passes the Android device IANA zone as TZ to its resident process.
+      const before = process.env.TZ;
+      process.env.TZ = "America/Los_Angeles";
+      const runtime = makeFakeRuntime();
+      let service: ScheduledTaskRunnerService | undefined;
+      try {
+        expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(
+          "America/Los_Angeles",
+        );
+        service = await startServiceOn(runtime);
+        const runner = service.getRunner({
+          agentId: runtime.agentId,
+          now: () => new Date(createdAt),
+        });
+        const input = buildFallbackDefaultPack({ agentId: runtime.agentId })
+          .tasks[0];
+        const task = await runner.schedule({
+          ...input,
+          metadata: { ...input.metadata, createdAtIso: createdAt },
+        });
+        const utcEight = await runStandaloneSchedulingTick(runtime, {
+          now: new Date(`${dueAt.slice(0, 11)}08:00:30.000Z`),
+        });
+        expect(utcEight.fires).toEqual([]);
+        const localEight = await runStandaloneSchedulingTick(runtime, {
+          now: new Date(dueAt),
+        });
+        expect(task.trigger).toEqual({
+          kind: "cron",
+          expression: "0 8 * * *",
+          tz: "owner_local",
+        });
+        expect(localEight.errors).toEqual([]);
+        expect(localEight.fires).toEqual([
+          { taskId: task.taskId, outcome: "fired" },
+        ]);
+        const again = await runStandaloneSchedulingTick(runtime, {
+          now: new Date(Date.parse(dueAt) + 30000),
+        });
+        expect(again.fires).toEqual([]);
+      } finally {
+        await service?.stop();
+        if (before === undefined) delete process.env.TZ;
+        else process.env.TZ = before;
+      }
+    },
+  );
 
   it("fires an owner-local cron task in the zone saved in the plugin settings", async () => {
     const runtime = makeFakeRuntime();
