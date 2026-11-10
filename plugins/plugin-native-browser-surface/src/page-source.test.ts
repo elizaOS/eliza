@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it, vi } from "vitest";
+import { MAX_READING_EXCERPT } from "./page-reading";
 import {
   MAX_PAGE_SOURCE_BYTES,
   pageSourceExcerpt,
@@ -148,5 +149,21 @@ describe("pageSourceExcerpt", () => {
     const result = pageSourceExcerpt("a".repeat(6000));
     expect(result).toEqual({ text: "a".repeat(5000), truncated: true });
     expect(pageSourceExcerpt(" \n\t ")).toBeUndefined();
+  });
+
+  it("keeps a cut excerpt valid text when the boundary splits a character", () => {
+    // The 5000th code unit is the first half of one astral character (an emoji).
+    const source = `${"a".repeat(MAX_READING_EXCERPT - 1)}\u{1F600}${"b".repeat(10)}`;
+    const result = pageSourceExcerpt(source);
+    expect(result?.truncated).toBe(true);
+    const text = result?.text ?? "";
+    // Half a surrogate pair is not text: encoding it replaces it with U+FFFD.
+    expect(
+      new TextDecoder("utf-8", { fatal: true }).decode(
+        new TextEncoder().encode(text),
+      ),
+    ).toBe(text);
+    expect(text).not.toContain("\uFFFD");
+    expect(text).toBe("a".repeat(MAX_READING_EXCERPT - 1));
   });
 });

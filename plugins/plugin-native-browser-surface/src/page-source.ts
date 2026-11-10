@@ -100,9 +100,12 @@ export function pageSourceExcerpt(source: string): PageSource | undefined {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   if (!text) return undefined;
+  if (text.length <= MAX_READING_EXCERPT) return { text, truncated: false };
   return {
-    text: text.slice(0, MAX_READING_EXCERPT),
-    truncated: text.length > MAX_READING_EXCERPT,
+    // A cut inside a surrogate pair would leave half a character, which is not
+    // text: the host encodes it as U+FFFD. Drop the incomplete pair instead.
+    text: text.slice(0, MAX_READING_EXCERPT).replace(/[\uD800-\uDBFF]$/, ""),
+    truncated: true,
   };
 }
 
