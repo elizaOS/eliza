@@ -566,6 +566,7 @@ export class SpeechRelayCoordinator {
               const task = this.open(ledger, {
                 reportTimings: hello.timings === true,
                 extendable: hello.extend === true && ledger.proofVersion !== 1,
+                refuse: fail,
               });
               this.openingTask = task;
               void task.then(() => {
@@ -704,7 +705,13 @@ export class SpeechRelayCoordinator {
     {
       reportTimings = false,
       extendable = false,
-    }: { reportTimings?: boolean; extendable?: boolean } = {},
+      refuse,
+    }: {
+      reportTimings?: boolean;
+      extendable?: boolean;
+      /** Reports an admission refusal that arrives after `ready` to the client. */
+      refuse?: (error: unknown) => void;
+    } = {},
   ) {
     const startedAt = performance.now();
     const elapsed = (from: number) => Math.round(performance.now() - from);
@@ -744,8 +751,11 @@ export class SpeechRelayCoordinator {
               ? speechRelayMaxWindows(this.env)
               : 1;
           // The revocation fence and paid admission are independent round trips.
-          // Start the fence now and join it before any provider opens, so a
-          // provider still never starts without a live revocation subscription.
+          // Start the fence now. A retirement-proof session joins it before
+          // any provider opens. Every other session opens speech input after
+          // the claim above and joins the fence with its reservation off the
+          // path to `ready`; a failed fence or refused admission then retires
+          // the session with the error it would have refused the opening with.
           const fenceStartedAt = performance.now();
           const fence = this.subscribeFence(ledger, ledger.expiresAt, () => {
             try {
@@ -800,7 +810,9 @@ export class SpeechRelayCoordinator {
                       this.retirementHandle = handle;
                     },
                   }
-                : {}),
+                : refuse
+                  ? { admissionFailed: refuse }
+                  : {}),
               confirmTtsTransportStopped: () => this.tts!.closeAndConfirm(2000),
               assertCurrent: () => this.current(),
               consumeConsent: async () => true,
