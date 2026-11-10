@@ -24,8 +24,12 @@ import { trustAction } from "./trust/actions/trust.ts";
 import { adminTrustProvider } from "./trust/providers/adminTrust.ts";
 import { securityStatusProvider } from "./trust/providers/securityStatus.ts";
 import { trustProfileProvider } from "./trust/providers/trustProfile.ts";
+import * as trustTables from "./trust/schema.ts";
 
 const trustCapability = {
+  // The host composes its trust plugin from this object, so it must carry the
+  // `trust.*` tables for runPluginMigrations to create them.
+  schema: trustTables,
   providers: [
     trustProfileProvider,
     securityStatusProvider,
