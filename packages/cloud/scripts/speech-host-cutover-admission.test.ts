@@ -56,6 +56,7 @@ function fixture(
   const calls: string[] = [];
   const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
     const path = new URL(String(url));
+    const page = Number(path.searchParams.get("page"));
     calls.push(path.pathname + path.search);
     expect(init?.method).toBe("GET");
     expect(init?.redirect).toBe("error");
@@ -66,15 +67,19 @@ function fixture(
       ? { result: { bindings: options.api ?? [speech(oldId), freeze] } }
       : path.pathname.endsWith(`/scripts/${newWorker}/settings`)
         ? { result: { bindings: options.target ?? [speech(newId)] } }
-        : (options.pages?.[Number(path.searchParams.get("page")) - 1] ?? {
-            result: namespaces,
-            result_info: {
-              page: 1,
-              per_page: 1000,
-              count: 2,
-              total_pages: 1,
-              total_count: 2,
+        : ((options.pages ?? [
+            {
+              result: namespaces,
+              result_info: {
+                page: 1,
+                per_page: 1000,
+                count: 2,
+                total_count: 2,
+              },
             },
+          ])[page - 1] ?? {
+            result: [],
+            result_info: { page, count: 0 },
           });
     return new Response(JSON.stringify({ success: true, ...body }), {
       status: options.status ?? 200,
@@ -120,6 +125,7 @@ describe("staging speech host cutover admission", () => {
     expect(calls).toEqual([
       `/client/v4/accounts/${"a".repeat(32)}/workers/scripts/${oldWorker}/settings`,
       `/client/v4/accounts/${"a".repeat(32)}/workers/durable_objects/namespaces?page=1&per_page=1000`,
+      `/client/v4/accounts/${"a".repeat(32)}/workers/durable_objects/namespaces?page=2&per_page=1000`,
     ]);
     expect(
       await admitSpeechHostCutover(
@@ -209,6 +215,7 @@ describe("staging speech host cutover admission", () => {
       `/client/v4/accounts/${"a".repeat(32)}/workers/scripts/${oldWorker}/settings`,
       `/client/v4/accounts/${"a".repeat(32)}/workers/scripts/${newWorker}/settings`,
       `/client/v4/accounts/${"a".repeat(32)}/workers/durable_objects/namespaces?page=1&per_page=1000`,
+      `/client/v4/accounts/${"a".repeat(32)}/workers/durable_objects/namespaces?page=2&per_page=1000`,
     ]);
     expect(
       await admitSpeechHostCutover(
@@ -415,6 +422,58 @@ describe("staging speech host cutover admission", () => {
     expect(result.alreadyActive).toBe(false);
   });
 
+  test("accepts the live Cloudflare pagination shape without total_pages", async () => {
+    const { calls, fetcher } = fixture({
+      pages: [
+        {
+          result: namespaces,
+          result_info: { page: 1, per_page: 1000, count: 2, total_count: 2 },
+        },
+        {
+          result: [],
+          result_info: { page: 2, per_page: 1000, count: 0, total_count: 2 },
+        },
+      ],
+    });
+    expect(await fetchSpeechNamespaces(environment, fetcher)).toEqual(
+      namespaces,
+    );
+    expect(calls).toHaveLength(2);
+  });
+
+  test("reads short pages through the empty terminal page when metadata is absent", async () => {
+    const { calls, fetcher } = fixture({
+      pages: [
+        { result: [namespaces[0]] },
+        { result: [namespaces[1]] },
+        { result: [] },
+      ],
+    });
+    expect(await fetchSpeechNamespaces(environment, fetcher)).toEqual(
+      namespaces,
+    );
+    expect(calls).toHaveLength(3);
+  });
+
+  test("rejects malformed results and supplied pagination metadata", async () => {
+    for (const body of [
+      {},
+      { result: null },
+      { result: {} },
+      { result: namespaces, result_info: null },
+      { result: namespaces, result_info: [] },
+      { result: namespaces, result_info: { page: 2 } },
+      { result: namespaces, result_info: { count: 1 } },
+      { result: namespaces, result_info: { total_count: -1 } },
+      { result: namespaces, result_info: { total_pages: "1" } },
+      { result: namespaces, result_info: { per_page: 1 } },
+      { result: namespaces, result_info: { per_page: 1001 } },
+    ])
+      await expect(
+        fetchSpeechNamespaces(environment, fixture({ pages: [body] }).fetcher),
+      ).rejects.toThrow("incomplete_namespace_inventory");
+  });
+
   test("reads every namespace page and rejects incomplete/duplicate inventories", async () => {
     const page = (number: number, result: unknown[]) => ({
       result,
@@ -432,9 +491,8 @@ describe("staging speech host cutover admission", () => {
     expect(await fetchSpeechNamespaces(environment, fetcher)).toEqual(
       namespaces,
     );
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     for (const pages of [
-      [{ result: namespaces }],
       [page(1, [namespaces[0]]), page(2, [namespaces[0]])],
       [
         page(1, [namespaces[0]]),
@@ -443,10 +501,53 @@ describe("staging speech host cutover admission", () => {
           result_info: { ...page(2, []).result_info, total_count: 3 },
         },
       ],
+      [
+        page(1, [namespaces[0]]),
+        {
+          ...page(2, [namespaces[1]]),
+          result_info: { ...page(2, []).result_info, count: 1, total_pages: 3 },
+        },
+      ],
+      [
+        page(1, [namespaces[0]]),
+        {
+          ...page(2, [namespaces[1]]),
+          result_info: { ...page(2, []).result_info, count: 1, per_page: 2 },
+        },
+      ],
+      [page(1, [namespaces[0]]), page(2, [])],
+      [
+        {
+          result: [namespaces[0]],
+          result_info: { page: 1, per_page: 1, count: 1 },
+        },
+        {
+          result: [namespaces[1], { ...namespaces[0], id: "e".repeat(32) }],
+        },
+      ],
+      [{ result: namespaces, result_info: { total_count: 3 } }, { result: [] }],
+      [{ result: namespaces, result_info: { total_pages: 2 } }, { result: [] }],
     ])
       await expect(
         fetchSpeechNamespaces(environment, fixture({ pages }).fetcher),
       ).rejects.toThrow("speech_cutover:");
+  });
+
+  test("refuses an inventory that never terminates within the page budget", async () => {
+    const { fetcher, calls } = fixture({
+      pages: Array.from({ length: 100 }, (_, index) => ({
+        result: [
+          {
+            ...namespaces[0],
+            id: (index + 1).toString(16).padStart(32, "0"),
+          },
+        ],
+      })),
+    });
+    await expect(fetchSpeechNamespaces(environment, fetcher)).rejects.toThrow(
+      "namespace_inventory_page_limit",
+    );
+    expect(calls).toHaveLength(100);
   });
 
   test("provider failures do not reveal protected input", async () => {
