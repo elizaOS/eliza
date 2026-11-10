@@ -1087,8 +1087,8 @@
     "limitations": [
       "The Maps durable allowance count and per-credential receipts have a bounded model and real Miniflare SQLite conformance. One organization, three request identities, two windows and a fixed allowance are checked. A lost response cannot release its receipt, and terminal usage does not refund admission.",
       "The fair progress claim requires a matching terminal usage observation and a completing transaction while the credential remains active. It does not assume provider success or automatic observation.",
-      "Existing plan_request_buckets.qnt and maps_request_buckets.qnt cover paired bucket arithmetic. cache_swr_lifecycle.qnt covers loader ownership, timeout and late-result exclusion.",
-      "Cache invalidation races, circuit-breaker recovery, distributed backend changes, primary policy locks, live credential verification, provider dispatch and arbitrary configuration changes remain separate coverage gaps."
+      "Existing plan_request_buckets.qnt and maps_request_buckets.qnt cover paired bucket arithmetic. cache_swr_lifecycle.qnt covers loader ownership, timeout and late-result exclusion. cache_breaker_receipts.qnt and worker_cache_circuit.qnt cover bounded command receipts and host-specific cooldown recovery.",
+      "Cache invalidation races, transport reconnects, distributed backend changes, primary policy locks, live credential verification, provider dispatch and arbitrary configuration changes remain separate coverage gaps."
     ]
   },
   {
