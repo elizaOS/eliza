@@ -276,3 +276,156 @@ module ApprovalService_failures {
 module ApprovalService_race {
   import ApprovalService(Selectors = Set("s1", "s2"), CanFail = false).*
 }
+
+// ApprovalService's own retirement receipt spans task creation, waiting callers,
+// direct selection callbacks, the worker's deletion, and claimed timer callbacks.
+// One request through one old instance; replacement may start only after stop.
+// Durable rows left by already-pending cancellations/callback failure are retained.
+module ApprovalRetirement {
+  type State = {
+    stopped: bool, retired: bool, replacement: bool,
+    phase: str, task: bool, result: str
+  }
+  var s: State
+
+  pure val phases = Set("idle", "creating", "publish", "cleanup", "pending",
+    "selectionRead", "timeoutRead", "selectCallback", "timeoutCallback",
+    "selectDelete", "timeoutDelete", "listing", "done")
+  val inMap = Set("pending", "selectionRead").contains(s.phase) and s.result == "none"
+  val busy = not(Set("idle", "done").contains(s.phase))
+
+  action init = s' = {
+    stopped: false, retired: false, replacement: false,
+    phase: "idle", task: false, result: "none"
+  }
+  action Admit = all {
+    not(s.stopped), s.phase == "idle",
+    s' = { ...s, phase: "creating" }
+  }
+  action BeginList = all {
+    not(s.stopped), s.phase == "idle",
+    s' = { ...s, phase: "listing" }
+  }
+  action ListSettles = all {
+    s.phase == "listing",
+    s' = { ...s, phase: "done" }
+  }
+  action WriteDone = all {
+    s.phase == "creating",
+    s' = { ...s, phase: "publish", task: true }
+  }
+  action WriteFailed = all {
+    s.phase == "creating",
+    s' = { ...s, phase: "done", result: "rejected" }
+  }
+  action Publish = all {
+    s.phase == "publish",
+    s' = { ...s, phase: if (s.stopped) "cleanup" else "pending" }
+  }
+  action Cleanup = all {
+    s.phase == "cleanup",
+    s' = { ...s, phase: "done", task: false, result: "rejected" }
+  }
+  action BeginSelection = all {
+    not(s.stopped), s.phase == "pending",
+    s' = { ...s, phase: "selectionRead" }
+  }
+  action BeginTimeout = all {
+    not(s.stopped), s.phase == "pending",
+    s' = { ...s, phase: "timeoutRead" }
+  }
+  action ReadSelection = all {
+    s.phase == "selectionRead",
+    s' = { ...s, phase: if (s.stopped) "selectDelete" else "selectCallback" }
+  }
+  action SelectionReadFails = all {
+    s.phase == "selectionRead",
+    s' = { ...s, phase: if (s.stopped) "done" else "pending" }
+  }
+  action ReadTimeout = all {
+    s.phase == "timeoutRead",
+    s' = { ...s, phase: "timeoutCallback" }
+  }
+  action CallbackDone = all {
+    Set("selectCallback", "timeoutCallback").contains(s.phase),
+    s' = { ...s,
+      phase: if (s.phase == "selectCallback") "selectDelete" else "timeoutDelete",
+      result: if (s.phase == "selectCallback") "selected" else "timedOut"
+    }
+  }
+  action CallbackFailed = all {
+    Set("timeoutRead", "selectCallback", "timeoutCallback").contains(s.phase),
+    s' = { ...s, phase: "done", result: if (s.result == "none") "rejected" else s.result }
+  }
+  action DeleteDone = all {
+    Set("selectDelete", "timeoutDelete").contains(s.phase),
+    s' = { ...s, phase: "done", task: false }
+  }
+  action DeleteFailed = all {
+    Set("selectDelete", "timeoutDelete", "cleanup").contains(s.phase),
+    s' = { ...s, phase: "done", result: if (s.result == "none") "rejected" else s.result }
+  }
+  action Cancel = all {
+    s.phase == "pending",
+    s' = { ...s, phase: "selectDelete", result: "cancelled" }
+  }
+  action Stop = all {
+    not(s.stopped),
+    s' = { ...s, stopped: true,
+      phase: if (s.phase == "pending") "done" else s.phase,
+      result: if (inMap) "cancelled" else s.result
+    }
+  }
+  action Retire = all {
+    s.stopped, not(s.retired), not(busy),
+    s' = { ...s, retired: true }
+  }
+  action Replace = all {
+    s.retired, not(s.replacement),
+    s' = { ...s, replacement: true }
+  }
+  action step = any {
+    Admit, BeginList, ListSettles, WriteDone, WriteFailed, Publish, Cleanup,
+    BeginSelection, BeginTimeout, ReadSelection, SelectionReadFails, ReadTimeout,
+    CallbackDone, CallbackFailed, DeleteDone, DeleteFailed, Cancel, Stop,
+    Retire, Replace, s' = s
+  }
+  val TypeOK = phases.contains(s.phase) and Set("none", "selected", "timedOut", "cancelled", "rejected").contains(s.result)
+  val NoLatePending = s.stopped implies not(inMap)
+  val RetiredIsDrained = s.retired implies (s.stopped and not(busy))
+  val ReplacementIsDrained = s.replacement implies s.retired
+  temporal SettlesOnce = always((Set("selected", "timedOut", "cancelled", "rejected").forall(result =>
+    s.result == result implies next(s.result) == result)).orKeep(s))
+  temporal RetiredEffectsStay = always((s.retired implies
+    (next(s.phase) == s.phase and next(s.task) == s.task and next(s.result) == s.result)).orKeep(s))
+  temporal CompletionFairness = and {
+    ListSettles.weakFair(s), any { WriteDone, WriteFailed }.weakFair(s), Publish.weakFair(s),
+    any { Cleanup, DeleteFailed }.weakFair(s),
+    any { ReadSelection, SelectionReadFails }.weakFair(s),
+    any { ReadTimeout, CallbackFailed }.weakFair(s),
+    any { CallbackDone, CallbackFailed }.weakFair(s),
+    any { DeleteDone, DeleteFailed }.weakFair(s), Retire.weakFair(s)
+  }
+  temporal StopDrains = CompletionFairness implies always(s.stopped implies eventually(s.retired))
+  temporal UnfairStopDrains = always(s.stopped implies eventually(s.retired))
+
+  run lateWriteIsRejectedTest = init.then(Admit).then(Stop).then(WriteDone)
+    .then(Publish).expect(s.phase == "cleanup" and not(s.retired))
+    .then(Cleanup).then(Retire).then(Replace)
+    .expect(s.result == "rejected" and not(s.task))
+  run claimedSelectionFinishesTest = init.then(Admit).then(WriteDone).then(Publish)
+    .then(BeginSelection).then(ReadSelection).then(Stop)
+    .expect(not(s.retired) and s.result == "none")
+    .then(CallbackDone).then(DeleteDone).then(Retire)
+    .expect(s.result == "selected")
+  run unclaimedSelectionCancelsTest = init.then(Admit).then(WriteDone).then(Publish)
+    .then(BeginSelection).then(Stop).then(ReadSelection).then(DeleteDone).then(Retire)
+    .expect(s.result == "cancelled")
+  run claimedTimeoutRejectsTest = init.then(Admit).then(WriteDone).then(Publish)
+    .then(BeginTimeout).then(Stop).then(ReadTimeout).then(CallbackFailed).then(Retire)
+    .expect(s.result == "rejected" and s.task)
+  run failedSelectionReadKeepsOwnerTest = init.then(Admit).then(WriteDone).then(Publish)
+    .then(BeginSelection).then(SelectionReadFails).expect(inMap and s.result == "none")
+    .then(Stop).then(Retire).expect(s.result == "cancelled")
+
+}

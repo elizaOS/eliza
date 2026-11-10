@@ -20,17 +20,27 @@
 	{
 		"id": "core-ApprovalService",
 		"model": "packages/core/quint/ApprovalService.qnt",
-		"sources": ["packages/core/src/services/approval.ts"],
+		"sources": [
+			"packages/core/src/services/approval.ts",
+			"packages/core/src/runtime/retirement.ts",
+			"packages/core/test/approval-service-model.test.ts"
+		],
 		"invariants": [
 			"AtMostOneCallback",
 			"ResultAgrees",
 			"SingleOwner",
-			"TypeOK"
+			"TypeOK",
+			"NoLatePending",
+			"RetiredIsDrained",
+			"ReplacementIsDrained"
 		],
-		"status": "modeled",
+		"status": "partial",
 		"limitations": [
-			"One pending approval and two competing selectors. Callback completion and failure are nondeterministic.",
-			"Model verification does not establish behavior outside these bounds."
+			"One published approval and two competing selectors, plus a separate one-request retirement projection. Callback completion/failure and storage settlement are nondeterministic.",
+			"Role authorization, option validation, asynchronous requests without callbacks, multiple pending approvals, durable recovery of task rows and process restart are outside these projections.",
+			"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. No retry ownership or cross-instance callback recovery is proved.",
+			"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
+			"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections."
 		]
 	},
 	{
