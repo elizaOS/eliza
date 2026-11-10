@@ -949,13 +949,18 @@
       "StopRequiresQuiescence",
       "MarkerRequiresObservedAcceptance",
       "RetainedMarkerSkipsProvider",
-      "RetryRetainsBothCopies"
+      "RetryRetainsBothCopies",
+      "AcceptedClaimWithoutMarkerSurvives",
+      "AcceptedDeliveryHasNoRetryCopy",
+      "RemovalRequiresDurableReplacement",
+      "MarkerPreventsRecoverySend"
     ],
     "status": "partial",
     "limitations": [
       "One managed owner, one symbolic valid job, at most two starts and one original processing row. Startup recovery and an admitted drain stay owned until stop settles. A transient retry writes a pending copy before acknowledging processing. Retained markers skip provider sends.",
       "Real Workerd SQLite exercises startup/stop, claim retention, recovery after restart, stable retry identity and marker replay, with controlled provider responses. Import, FIFO among several jobs and public request boundaries are named tests outside the finite model.",
-      "Progress requires admitted operations and local continuations to settle. Cross-pod leadership, overlapping live owners, provider truth and nonce guarantees, retry deadlines/budgets, marker expiry, lost write acknowledgements and crash interleavings during retry publication remain open."
+      "A second bounded case separates SQLite commits from missing marker, removal and retry publication replies. A retained marker skips provider work after restart. Without a marker, storage failure preserves the original processing row and reports the error without consuming a provider attempt. A retry publication can leave two durable copies, with later selection and stale backoff bypass outside the case.",
+      "Progress assumes admitted operations settle and recovery uses the same storage. Cross-pod leadership, overlapping live owners, marker expiry, repeated storage failures, actual provider nonce guarantees, retry deadlines/budgets and recovery past the bounded duplicate-copy window remain open."
     ]
   },
   {

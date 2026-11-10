@@ -8,7 +8,11 @@
         "public queue transport rejects imports, unauthorized callers and foreign lists",
         "stop joins processing recovery and leaves the welcome available to the next owner",
         "stop joins admitted delivery before another startup can recover its claim",
-        "transient welcome delivery retains its payload and nonce through durable retry"
+        "transient welcome delivery retains its payload and nonce through durable retry",
+        "accepted welcome survives a rejected marker write at the delivery attempt limit",
+        "lost delivered-marker reply preserves the claim for marker replay",
+        "lost processing-removal reply does not requeue a delivered welcome",
+        "lost retry publication reply leaves the original and retry payload durable after restart"
       ]
     }
   ],

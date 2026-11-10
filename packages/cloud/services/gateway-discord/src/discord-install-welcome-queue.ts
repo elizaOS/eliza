@@ -270,12 +270,6 @@ export class DiscordInstallWelcomeQueue {
         botToken: this.botToken,
         fetchImpl: this.fetchImpl,
       });
-      // Discord's enforce_nonce makes a replay safe if the process dies after
-      // the REST response but before this durable delivered marker is written.
-      await this.redis.set(deliveredKey, "1", {
-        ex: DELIVERED_TTL_SECONDS,
-      });
-      await this.redis.lrem(PROCESSING_KEY, 1, raw);
     } catch (error) {
       const attempts = (job.attempts ?? 0) + 1;
       const terminal = isTerminalDeliveryFailure(error);
@@ -294,8 +288,8 @@ export class DiscordInstallWelcomeQueue {
         attempts,
         retryAt: new Date(Date.now() + retryDelayMs(attempts)).toISOString(),
       };
-      // Requeue before removing the processing claim. A crash between these
-      // operations creates a harmless duplicate rather than losing the job.
+      // Keep a durable copy if removing the original claim fails. An
+      // interruption between these writes can leave both copies for recovery.
       await this.redis.lpush(QUEUE_KEY, JSON.stringify(retry));
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
       logger.warn("Discord install welcome delivery will retry", {
@@ -304,7 +298,14 @@ export class DiscordInstallWelcomeQueue {
         retryAt: retry.retryAt,
         error: sanitizeDiscordInstallWelcomeError(error),
       });
+      return true;
     }
+    // Storage errors are not provider failures. The next drain can inspect
+    // the retained marker or recover the processing claim with the same nonce.
+    await this.redis.set(deliveredKey, "1", {
+      ex: DELIVERED_TTL_SECONDS,
+    });
+    await this.redis.lrem(PROCESSING_KEY, 1, raw);
     return true;
   }
 

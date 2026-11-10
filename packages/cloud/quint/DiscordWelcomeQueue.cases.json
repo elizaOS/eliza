@@ -17,10 +17,11 @@
   "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
   "bounds": {
     "domain": "One managed queue owner, one valid symbolic welcome job, one retained delivery marker and at most two starts. The first row may be pending or abandoned in processing. An imported marker represents an earlier observed provider acknowledgement. A transient outcome keeps at most one pending retry copy and one original processing copy.",
+    "receiptRecovery": "A separate projection starts with one processing row and either an observed provider acceptance or a retryable provider failure. At most one write receipt fails, with distinct states before and after SQLite commits. A single restart retains those effects. The model stops at a recovered durable marker, a retained row that needs the existing provider path, or available retry rows.",
     "ownership": "GatewayManager starts the queue for the managed Discord bot and joins stop on disconnect. Stop closes new poll admission and joins original recovery and any admitted drain. The test holds an actual successful recovery move reply and, separately, a provider reply while the same owner stops. An admitted drain may finish after stop is requested.",
     "limitations": [
       "The model assumes one managed owner and restart from a quiescent or abandoned processing record. It does not establish cross-pod leader fencing, clock deadlines, exact retry counters, marker expiry or provider nonce retention. Enqueue of additional jobs, ordering among several entries, import, invalid payloads and public transport are exercised only by named integration checks where present.",
-      "Successful SQLite moves and mutations settle with their acknowledgements in this projection. Recovery rejection before a move, provider rejection and transient retry are modeled. Lost acknowledgements, new owners that overlap a retiring process, storage failures after provider acceptance, a crash during retry push/removal and arbitrary imported duplicates remain open.",
+      "The lifecycle case settles SQLite moves and mutations with their acknowledgements. The receipt-recovery case separates application and acknowledgement for marker writes, processing removal and retry publication. An applied retry can leave both the original and delayed retry copies. The case retains both rows and stops before choosing a row to send. Recovery with overlapping retry copies can bypass the newer copy's backoff and remains open.",
       "A ready retry may be polled after its backoff. The real tests read the persisted attempt and deadline, restart Workerd and check the same provider nonce on retry. Live Discord delivery, provider deduplication guarantees and arbitrary retries are outside this model. The provider response is controlled in tests while production queue, transport and SQLite operations execute."
     ]
   },
@@ -82,6 +83,56 @@
         }
       ],
       "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "storage-receipt-loss-and-restart",
+      "main": "DiscordWelcomeReceiptRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "AcceptedClaimWithoutMarkerSurvives",
+        "AcceptedDeliveryHasNoRetryCopy",
+        "RemovalRequiresDurableReplacement",
+        "MarkerPreventsRecoverySend"
+      ],
+      "temporal": [
+        "FailedReceiptRetainsStorage",
+        "MarkerSurvivesRestart",
+        "WriteSettles",
+        "RecoverySettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "FailedReceiptRetainsStorage",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is required. A rejected reply leaves the currently committed SQLite rows intact. The transaction itself is atomic. There is no concurrent owner, marker expiry or external deletion."
+          ]
+        },
+        {
+          "property": "MarkerSurvivesRestart",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is required. One restart reads the same durable storage before marker expiry. The marker derives from an observed successful provider response."
+          ]
+        },
+        {
+          "property": "WriteSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of settleWrite represents a reply or reported failure for admitted writes and their continuations. It does not guarantee successful publication or require a restart."
+          ]
+        },
+        {
+          "property": "RecoverySettles",
+          "expect": "holds",
+          "assumptions": [
+            "After one admitted restart, weak fairness of settleRecovery assumes successful storage operations and continuation. It reaches marker replay, no remaining claim, an unconfirmed claim eligible for the same provider nonce, or retained retry rows. Further failures, repeat sends, Discord deduplication and recovery of multiple delayed copies remain open."
+          ]
+        }
+      ],
+      "maxSteps": 28,
       "samples": 1000
     }
   ]

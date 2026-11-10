@@ -91,8 +91,9 @@ const fixtureProvider = (
     },
     { preconnect: () => {} },
   );
+type StoreObserver = (input: Record<string, unknown>) => void | Promise<void>;
 const welcomeStore = (
-  observe?: (input: Record<string, unknown>) => Promise<void>,
+  hooks: { before?: StoreObserver; after?: StoreObserver } = {},
 ) =>
   discordWelcomeStore(
     new Proxy({} as DiscordInstallWelcomeRedis, {
@@ -107,13 +108,16 @@ const welcomeStore = (
     },
     async (url, init) => {
       if (typeof init.body !== "string") throw new Error("JSON required");
+      const input = JSON.parse(init.body) as Record<string, unknown>;
+      await hooks.before?.(input);
       const response = await worker.dispatchFetch(String(url), {
         method: init.method,
         headers: Object.fromEntries(new Headers(init.headers)),
         body: init.body,
       });
-      if (response.ok) await observe?.(JSON.parse(init.body));
-      return new Response(await response.arrayBuffer(), {
+      const bytes = await response.arrayBuffer();
+      if (response.ok) await hooks.after?.(input);
+      return new Response(bytes, {
         status: response.status,
         headers: Object.fromEntries(response.headers),
       });
@@ -186,7 +190,7 @@ test("an abandoned processing claim survives restart with its complete payload",
   await worker.ready;
   await ok({ action: "enqueue", job: queued });
   expect((await ok({ action: "drain" })).messages).toHaveLength(0);
-});
+}, 30_000);
 test("public queue transport rejects imports, unauthorized callers and foreign lists", async () => {
   expect(
     (
@@ -225,17 +229,19 @@ test("stop joins processing recovery and leaves the welcome available to the nex
   const entered = deferred();
   const release = deferred();
   let recovering = false;
-  const store = welcomeStore(async (input) => {
-    if (
-      recovering ||
-      input.operation !== "move" ||
-      input.source !== DISCORD_WELCOME_PROCESSING
-    )
-      return;
-    recovering = true;
-    entered.resolve();
-    // The actual SQLite move completed. Only delivery of its reply is held.
-    await release.promise;
+  const store = welcomeStore({
+    after: async (input) => {
+      if (
+        recovering ||
+        input.operation !== "move" ||
+        input.source !== DISCORD_WELCOME_PROCESSING
+      )
+        return;
+      recovering = true;
+      entered.resolve();
+      // The actual SQLite move completed. Only delivery of its reply is held.
+      await release.promise;
+    },
   });
   let sends = 0;
   const provider = fixtureProvider(() => {
@@ -292,12 +298,14 @@ test("stop joins admitted delivery before another startup can recover its claim"
   const entered = deferred();
   const release = deferred();
   let recoveries = 0;
-  const store = welcomeStore(async (input) => {
-    if (
-      input.operation === "move" &&
-      input.source === DISCORD_WELCOME_PROCESSING
-    )
-      recoveries++;
+  const store = welcomeStore({
+    after: (input) => {
+      if (
+        input.operation === "move" &&
+        input.source === DISCORD_WELCOME_PROCESSING
+      )
+        recoveries++;
+    },
   });
   let sends = 0;
   const provider = fixtureProvider(async () => {
@@ -393,3 +401,148 @@ test("transient welcome delivery retains its payload and nonce through durable r
   );
   expect(await recovered.drainOnce()).toBe(false);
 }, 15_000);
+
+for (const scenario of [
+  {
+    name: "accepted welcome survives a rejected marker write at the delivery attempt limit",
+    operation: "set",
+    before: true,
+    attempts: 7,
+    marker: null,
+    remainingClaim: true,
+  },
+  {
+    name: "lost delivered-marker reply preserves the claim for marker replay",
+    operation: "set",
+    before: false,
+    attempts: 0,
+    marker: "1",
+    remainingClaim: true,
+  },
+  {
+    name: "lost processing-removal reply does not requeue a delivered welcome",
+    operation: "remove",
+    before: false,
+    attempts: 0,
+    marker: "1",
+    remainingClaim: false,
+  },
+]) {
+  test(scenario.name, async () => {
+    const queued = {
+      ...job(`receipt-${scenario.operation}-${scenario.before}`),
+      attempts: scenario.attempts,
+    };
+    const markerKey = `${DISCORD_WELCOME_DELIVERED}${queued.id}`;
+    const storageError = new Error("Fixture storage reply unavailable");
+    const interrupt: StoreObserver = (input) => {
+      if (input.operation === scenario.operation) throw storageError;
+    };
+    const failingStore = welcomeStore(
+      scenario.before ? { before: interrupt } : { after: interrupt },
+    );
+    const nonces: unknown[] = [];
+    const provider = fixtureProvider((body) => {
+      nonces.push(body.nonce);
+      return Response.json({ id: "fixture-accepted" });
+    });
+    const queue = new DiscordInstallWelcomeQueue(
+      failingStore,
+      "fixture-token",
+      provider,
+    );
+    await queue.enqueue(queued);
+    const result: unknown = await queue
+      .drainOnce()
+      .catch((error: unknown) => error);
+
+    await worker.dispose();
+    worker = start();
+    await worker.ready;
+    const store = welcomeStore();
+    const marker = await store.get<string>(markerKey);
+    const unexpectedRetry = await store.lmove(
+      DISCORD_WELCOME_PENDING,
+      DISCORD_WELCOME_PROCESSING,
+      "right",
+      "left",
+    );
+    const nextOwner = new DiscordInstallWelcomeQueue(
+      store,
+      "fixture-token",
+      provider,
+    );
+    const recoveredClaim = await nextOwner.drainOnce();
+    const drained = !(await nextOwner.drainOnce());
+    expect({
+      error: result instanceof Error ? result.message : result,
+      marker,
+      unexpectedRetry,
+      recoveredClaim,
+      drained,
+      finalMarker: await store.get<string>(markerKey),
+      sends: nonces.length,
+    }).toEqual({
+      error: storageError.message,
+      marker: scenario.marker,
+      unexpectedRetry: null,
+      recoveredClaim: scenario.remainingClaim,
+      drained: true,
+      finalMarker: "1",
+      sends: scenario.before ? 2 : 1,
+    });
+    if (scenario.before) expect(nonces[1]).toBe(nonces[0]);
+  }, 30_000);
+}
+
+test("lost retry publication reply leaves the original and retry payload durable after restart", async () => {
+  const queued = job("lost-retry-publication");
+  const store = welcomeStore();
+  const storageError = new Error(
+    "Fixture retry reply lost after SQLite publication",
+  );
+  let retrying = false;
+  const queue = new DiscordInstallWelcomeQueue(
+    welcomeStore({
+      after: (input) => {
+        if (retrying && input.operation === "push") throw storageError;
+      },
+    }),
+    "fixture-token",
+    fixtureProvider(() =>
+      Response.json({ message: "Fixture rate limit" }, { status: 429 }),
+    ),
+  );
+  await queue.enqueue(queued);
+  retrying = true;
+  await expect(queue.drainOnce()).rejects.toThrow(storageError.message);
+  await worker.dispose();
+  worker = start();
+  await worker.ready;
+  const original = await store.lmove(
+    DISCORD_WELCOME_PROCESSING,
+    DISCORD_WELCOME_PENDING,
+    "right",
+    "left",
+  );
+  expect(original).toBe(JSON.stringify(queued));
+  const retry = await store.lmove(
+    DISCORD_WELCOME_PENDING,
+    DISCORD_WELCOME_PROCESSING,
+    "right",
+    "left",
+  );
+  if (typeof retry !== "string") throw new Error("Missing published retry");
+  expect(JSON.parse(retry)).toEqual({
+    ...queued,
+    attempts: 1,
+    retryAt: expect.any(String),
+  });
+  expect(
+    await store.get<string>(`${DISCORD_WELCOME_DELIVERED}${queued.id}`),
+  ).toBeNull();
+  expect(await store.lrem(DISCORD_WELCOME_PROCESSING, 1, retry)).toBe(1);
+  expect(
+    await store.lrem(DISCORD_WELCOME_PENDING, 1, JSON.stringify(queued)),
+  ).toBe(1);
+}, 30_000);

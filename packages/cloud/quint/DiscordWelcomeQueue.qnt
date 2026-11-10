@@ -124,3 +124,85 @@ module DiscordWelcomeQueue {
     .then(stop).then(recoveryRejected).then(finishStop)
     .expect(s.phase == "stopped" and s.processing and not(s.marker))
 }
+
+// One original processing claim after the provider outcome. SQLite mutation
+// and the transport reply are separate. A failed receipt keeps the effects
+// already applied. The restart ends at the next provider or retry decision.
+module DiscordWelcomeReceiptRecovery {
+  type State = {
+    phase: str, original: str, retryPublished: bool,
+    marker: bool, providerAccepted: bool,
+  }
+  var s: State
+
+  action initialize(accepted: bool): bool = s' = {
+    phase: if (accepted) "mark" else "push", original: "processing",
+    retryPublished: false, marker: false, providerAccepted: accepted,
+  }
+  action init = any { initialize(true), initialize(false) }
+  val writing = s.phase.in(Set("mark", "marked", "push", "pushed", "remove", "removed"))
+  val recovering = s.phase.in(Set("restart", "claim", "readMarker", "ackReplay"))
+
+  action applyMarker = all {
+    s.phase == "mark", s' = { ...s, phase: "marked", marker: true },
+  }
+  action applyRetry = all {
+    s.phase == "push", s' = { ...s, phase: "pushed", retryPublished: true },
+  }
+  action applyRemoval = all {
+    s.phase == "remove", s' = { ...s, phase: "removed", original: "absent" },
+  }
+  action acknowledge = all {
+    s.phase.in(Set("marked", "pushed", "removed")),
+    s' = { ...s, phase: if (s.phase == "removed") "done" else "remove" },
+  }
+  // Before-apply rejection and after-apply reply loss retain different rows.
+  action receiptFailure = all { writing, s' = { ...s, phase: "failed" } }
+  action restart = all { s.phase == "failed", s' = { ...s, phase: "restart" } }
+  action recover = all {
+    s.phase == "restart",
+    s' = {
+      ...s, original: if (s.original == "processing") "pending" else "absent",
+      phase: if (s.retryPublished) "retryAvailable"
+        else if (s.original == "processing") "claim" else "done",
+    },
+  }
+  action claim = all {
+    s.phase == "claim", s.original == "pending",
+    s' = { ...s, phase: "readMarker", original: "processing" },
+  }
+  action readMarker = all {
+    s.phase == "readMarker",
+    s' = { ...s, phase: if (s.marker) "ackReplay" else "needsSend" },
+  }
+  action acknowledgeReplay = all {
+    s.phase == "ackReplay", s' = { ...s, phase: "done", original: "absent" },
+  }
+  action settleWrite = any { applyMarker, applyRetry, applyRemoval, acknowledge, receiptFailure }
+  action settleRecovery = any { recover, claim, readMarker, acknowledgeReplay }
+  action step = any { settleWrite, restart, settleRecovery, s' = s }
+
+  val AcceptedClaimWithoutMarkerSurvives = (s.providerAccepted and not(s.marker)).implies(s.original != "absent")
+  val AcceptedDeliveryHasNoRetryCopy = s.providerAccepted.implies(not(s.retryPublished))
+  val RemovalRequiresDurableReplacement = (s.original == "absent").implies(s.marker or s.retryPublished)
+  val MarkerPreventsRecoverySend = s.marker.implies(s.phase != "needsSend")
+  temporal FailedReceiptRetainsStorage = always((writing and next(s.phase) == "failed").implies(
+    next(s.original) == s.original and next(s.marker) == s.marker and next(s.retryPublished) == s.retryPublished
+  ).orKeep(s))
+  temporal MarkerSurvivesRestart = always(s.marker.implies(next(s.marker)).orKeep(s))
+  temporal WriteSettles = settleWrite.weakFair(s).implies(writing.leadsTo(not(writing)))
+  temporal RecoverySettles = settleRecovery.weakFair(s).implies(recovering.leadsTo(not(recovering)))
+
+  run rejectedMarkerRetainsClaimTest = initialize(true).then(receiptFailure)
+    .then(restart).then(recover).then(claim).then(readMarker)
+    .expect(s.phase == "needsSend" and AcceptedClaimWithoutMarkerSurvives)
+  run lostMarkerReplySkipsProviderTest = initialize(true).then(applyMarker).then(receiptFailure)
+    .then(restart).then(recover).then(claim).then(readMarker).then(acknowledgeReplay)
+    .expect(s.phase == "done" and s.marker and s.original == "absent" and not(s.retryPublished))
+  run lostRemovalReplyKeepsCompletedStateTest = initialize(true).then(applyMarker)
+    .then(acknowledge).then(applyRemoval).then(receiptFailure).then(restart).then(recover)
+    .expect(s.phase == "done" and s.marker and s.original == "absent")
+  run lostRetryReplyKeepsBothRowsTest = initialize(false).then(applyRetry).then(receiptFailure)
+    .then(restart).then(recover)
+    .expect(s.phase == "retryAvailable" and s.original == "pending" and s.retryPublished and not(s.marker))
+}
