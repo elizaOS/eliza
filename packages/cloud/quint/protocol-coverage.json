@@ -992,21 +992,31 @@
   },
   {
     "id": "cloud-flow-cache-and-rate-policy",
-    "model": null,
+    "model": "packages/cloud/quint/maps_request_receipts.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/cache/client.ts",
       "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
-      "packages/cloud/api/src/lib/maps-request-admission.ts"
+      "packages/cloud/api/src/lib/maps-request-admission.ts",
+      "packages/cloud/api/src/maps-request-allowance-controller.ts",
+      "packages/cloud/api/__tests__/maps-request-allowance.miniflare.test.ts",
+      "packages/cloud/api/test/fixtures/maps-request-allowance-worker.ts",
+      "packages/cloud/shared/src/lib/services/maps-request-policy.ts",
+      "packages/cloud/quint/check-maps-request-buckets.mjs"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "boundedAllowance",
+      "countMatchesReceipts",
+      "oneAdmissionPerReceipt",
+      "firstTerminalOutcomeWins",
+      "unknownReplyRetainsReceipt",
+      "windowNeverRetreats"
+    ],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite cache/rate-policy model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Expiry and invalidation do not resurrect stale authority | Distributed counters do not exceed allowance | Unknown outcomes are not retried as new admissions",
-      "Abstract states: miss, loading, cached, expired, invalidated, admitted, limited"
+      "The Maps durable allowance count and per-credential receipts have a bounded model and real Miniflare SQLite conformance. One organization, three request identities, two windows and a fixed allowance are checked. A lost response cannot release its receipt, and terminal usage does not refund admission.",
+      "The fair progress claim requires a matching terminal usage observation and a completing transaction while the credential remains active. It does not assume provider success or automatic observation.",
+      "Existing plan_request_buckets.qnt and maps_request_buckets.qnt cover paired bucket arithmetic. cache_swr_lifecycle.qnt covers loader ownership, timeout and late-result exclusion.",
+      "Cache invalidation races, circuit-breaker recovery, distributed backend changes, primary policy locks, live credential verification, provider dispatch and arbitrary configuration changes remain separate coverage gaps."
     ]
   },
   {
@@ -2402,7 +2412,7 @@
     "status": "partial",
     "limitations": [
       "No proof of JavaScript floating-point rounding or arbitrary numeric limits.",
-      "Credential ownership, subscription policy, allowance-window transitions, tombstone retention and cross-organization routing remain separate obligations.",
+      "Credential ownership, subscription policy and cross-organization routing remain separate obligations. maps_request_receipts.qnt covers fixed allowance-window transitions, retained request receipts and first-terminal usage observations.",
       "The strict hook executes the real controller on Miniflare SQLite with a controlled fixture clock; this is scenario correspondence, not general TypeScript refinement.",
       "Only paired refill and retry deadlines within one admitted window are specified; the complete Maps flow remains partial."
     ]
