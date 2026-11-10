@@ -3,7 +3,7 @@
 module StandardInferenceAdmission {
   type State = {
     mode: str, phase: str, client: str, now: int, dueAt: int,
-    generation: int, fenceUntil: int, credentialActive: bool,
+    generation: int, carried: int, refills: int, fenceUntil: int, credentialActive: bool,
     attempts: int, reply: bool, dispatches: int, invoked: bool,
     recoveryOwner: int, publishedBy: int, sqlDebit: int, gateDebit: int
   }
@@ -16,13 +16,14 @@ module StandardInferenceAdmission {
   var s: State
   action initialize(mode: str): bool = s' = {
     mode: mode, phase: "none", client: "ready", now: 0, dueAt: 0,
-    generation: 1, fenceUntil: 0, credentialActive: true,
+    generation: 1, carried: 1, refills: 0, fenceUntil: 0, credentialActive: true,
     attempts: 0, reply: false, dispatches: 0, invoked: false,
     recoveryOwner: 0, publishedBy: 0, sqlDebit: 0, gateDebit: 0
   }
   action init = any { initialize("ordinary"), initialize("combined") }
 
-  val currentPolicy = s.generation == 1 and s.fenceUntil <= s.now
+  // The request carries the generation of its admission snapshot.
+  val currentPolicy = s.carried == s.generation and s.fenceUntil <= s.now
   val hold = if (Active.contains(s.phase)) 1 else 0
   val available = 2 - hold - s.gateDebit
 
@@ -64,7 +65,30 @@ module StandardInferenceAdmission {
     s' = s.with("client", "ambiguous").with("reply", false)
   }
 
-  action finishMark = any { persistMark(true), acceptAck, loseAck }
+  // The gate answers a first deferred commit under a superseded generation or
+  // an open fence with an explicit refusal and records nothing.
+  action refuseStaleMark = all {
+    s.client == "waiting" and not(s.reply),
+    s.mode == "combined" and s.phase == "none" and not(currentPolicy),
+    s' = s.with("client", "refused")
+  }
+
+  // The refused caller reads the primary once, after any open policy mutation
+  // commits, and prepares the same request under the generation it read.
+  action refillStalePolicy = all {
+    s.client == "refused" and s.refills == 0 and s.fenceUntil <= s.now,
+    s' = s.with("carried", s.generation).with("refills", 1)
+      .with("client", "ready").with("attempts", 0)
+  }
+
+  // A refusal that stands (the refill found a hold, the refill failed, or the
+  // one retry was refused again) ends the request with nothing reserved.
+  action settleRefusedAtZero = all {
+    s.client == "refused",
+    s' = s.with("client", "cancelled")
+  }
+
+  action finishMark = any { persistMark(true), acceptAck, loseAck, refuseStaleMark }
 
   action invokeProvider = all {
     s.client == "authorized" and not(s.invoked),
@@ -94,7 +118,7 @@ module StandardInferenceAdmission {
   }
 
   action beginFence = all {
-    s.generation == 1 and s.fenceUntil == 0,
+    s.fenceUntil == 0,
     s' = s.with("fenceUntil", s.now + 1)
   }
 
@@ -142,7 +166,8 @@ module StandardInferenceAdmission {
   action wait = s' = s
 
   action step = any {
-    reserve, startMark, finishMark, invokeProvider, cancelBeforeProvider(true),
+    reserve, startMark, finishMark, refillStalePolicy, settleRefusedAtZero,
+    invokeProvider, cancelBeforeProvider(true),
     abandonAuthorized, expireUndispatched, beginFence, abortFence, advancePolicy, revokeCredential,
     claimRecovery, debitRecovery, settleKnown, tick, wait,
     {
@@ -158,7 +183,9 @@ module StandardInferenceAdmission {
     s.phase == "recovering" implies (hold == 1 and s.dispatches == 1),
     s.phase == "settled" implies (hold == 0 and s.sqlDebit == 1 and s.gateDebit == 1),
     s.gateDebit <= s.sqlDebit,
-    available >= 0
+    available >= 0,
+    s.refills <= 1 and s.carried <= s.generation,
+    s.client == "refused" implies (s.phase == "none" and s.dispatches == 0 and not(s.invoked))
   }
 
   temporal DurableAuthority = always((all {
@@ -178,6 +205,19 @@ module StandardInferenceAdmission {
   run stalePolicyFencesOrdinaryDispatchTest = initialize("ordinary").then(reserve)
     .then(advancePolicy).then(startMark).expect(not(canMark(true)))
     .then(loseAck).then(cancelBeforeProvider(false)).expect(s.dispatches == 0 and available == 2)
+
+  run staleDeferredCommitRefillsOnceAndDispatchesTest = initialize("combined")
+    .then(advancePolicy).then(startMark).expect(not(canMark(true)))
+    .then(refuseStaleMark).expect(hold == 0 and s.dispatches == 0)
+    .then(refillStalePolicy).then(startMark).then(persistMark(true)).then(acceptAck)
+    .then(invokeProvider).expect(s.dispatches == 1 and s.invoked and s.refills == 1)
+
+  run staleDeferredCommitRefusedAfterRefillSettlesAtZeroTest = initialize("combined")
+    .then(advancePolicy).then(startMark).then(refuseStaleMark).then(refillStalePolicy)
+    .then(beginFence).then(startMark).then(refuseStaleMark)
+    .expect(s.refills == 1 and s.fenceUntil > s.now)
+    .then(settleRefusedAtZero)
+    .expect(s.client == "cancelled" and s.dispatches == 0 and available == 2 and not(s.invoked))
 
   run lostMarkAckReplaysOneHoldTest = initialize("combined")
     .then(startMark).then(persistMark(true)).then(loseAck)
