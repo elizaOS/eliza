@@ -168,6 +168,10 @@ describe("Shared first-turn warming in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   const historyReads: string[] = [];
+  let releaseSlowHistory!: () => void;
+  const slowHistory = new Promise<void>((resolve) => {
+    releaseSlowHistory = resolve;
+  });
 
   beforeAll(async () => {
     const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -360,12 +364,12 @@ describe("Shared first-turn warming in Workerd", () => {
           return Response.json({ error: "unexpected egress" }, { status: 500 });
         }
         const agentId = decodeURIComponent(url.pathname.slice(1));
+        const first = !historyReads.includes(agentId);
         historyReads.push(agentId);
-        // Authoritative history lands well inside the turn's bound, except
-        // for the agent that models a hydration slower than the bound.
-        await new Promise((resolve) =>
-          setTimeout(resolve, agentId.includes("slow") ? 6_000 : 200),
-        );
+        if (agentId.includes("failed-once") && first)
+          return new Response("History dependency failed", { status: 503 });
+        if (agentId.includes("slow")) await slowHistory;
+        else await new Promise((resolve) => setTimeout(resolve, 200));
         return Response.json([
           {
             id: `${agentId}-prior-user`,
@@ -391,6 +395,7 @@ describe("Shared first-turn warming in Workerd", () => {
   }, 120_000);
 
   afterAll(async () => {
+    releaseSlowHistory();
     await miniflare?.dispose();
     if (buildDirectory) await rm(buildDirectory, { recursive: true });
   });
@@ -435,8 +440,8 @@ describe("Shared first-turn warming in Workerd", () => {
     });
     expect(cold.status).toBe(503);
     expect(await cold.text()).toContain("conversation_cache_warming");
-    // The same in-flight hydration completes and serves the retry.
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    // Release the original read only after the caller has timed out.
+    releaseSlowHistory();
     const retried = await post(room, "/history", {
       operation: "history",
       agentId,
@@ -446,6 +451,31 @@ describe("Shared first-turn warming in Workerd", () => {
     expect(retried.status, body).toBe(200);
     expect(body).toContain(`${agentId}-prior-user`);
     expect(historyReads.filter((read) => read === agentId)).toHaveLength(1);
+  }, 60_000);
+
+  test("a failed history load returns warming and starts a fresh read on retry", async () => {
+    const agentId = "agent-failed-once-first-turn-warming";
+    const room = `${agentId}:${agentId}`;
+    const body = { operation: "history", agentId, roomId: agentId };
+    const failed = await post(room, "/history", body);
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({
+      code: "conversation_cache_warming",
+      retryable: true,
+    });
+    expect(historyReads.filter((read) => read === agentId)).toHaveLength(1);
+
+    for (let i = 0; i < 2; i++) {
+      const retry = await post(room, "/history", body);
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toMatchObject({
+        history: [
+          { id: `${agentId}-prior-user`, content: "earlier question" },
+          { id: `${agentId}-prior-assistant`, content: "earlier answer" },
+        ],
+      });
+    }
+    expect(historyReads.filter((read) => read === agentId)).toHaveLength(2);
   }, 60_000);
 
   test("a canonical Personal Shared turn lets keep-warm prewarm report its owning organization", async () => {

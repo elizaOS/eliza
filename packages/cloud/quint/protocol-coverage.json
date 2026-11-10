@@ -2072,6 +2072,21 @@
     ]
   },
   {
+    "id": "cloud-shared-history-hydration",
+    "model": "packages/cloud/quint/SharedHistoryHydration.qnt",
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/shared/src/lib/services/shared-runtime/bounded-hydration.ts",
+      "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts"
+    ],
+    "invariants": ["OneWaitingRequest", "ReadyRetainsHistory"],
+    "status": "partial",
+    "limitations": [
+      "One legacy room, three serialized requests, two background lookups and an exact ordered history pair. A caller warming deadline retains the existing lookup. A read failure before publication permits a fresh lookup.",
+      "Real Workerd storage and request handling check delayed lookup, retry after failure and subsequent reuse. PostgreSQL, snapshot write and acknowledgement failures, arbitrary history, object eviction and personal identity remain separate."
+    ]
+  },
+  {
     "id": "cloud-flow-personal-shared-conversation",
     "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
     "sources": [

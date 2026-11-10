@@ -323,6 +323,17 @@
       ]
     }
   ],
+  "SharedHistoryHydration.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts",
+      "required": [
+        "a cold room's first history read joins in-flight hydration instead of returning warming",
+        "hydration slower than the bound still fails closed with the retryable warming",
+        "a failed history load returns warming and starts a fresh read on retry",
+        "a canonical Personal Shared turn lets keep-warm prewarm report its owning organization"
+      ]
+    }
+  ],
   "SharedInterruptedTurn.qnt": [
     {
       "file": "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
