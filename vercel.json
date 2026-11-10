@@ -7,6 +7,7 @@
     "matcher": ["/", "/index.html"]
   },
   "redirects": [
-    { "source": "/app", "destination": "/app/", "permanent": true }
+    { "source": "/app", "destination": "/", "permanent": false },
+    { "source": "/app/", "destination": "/", "permanent": false }
   ]
 }

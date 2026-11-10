@@ -1,46 +1,83 @@
 (function () {
-  function remember(email) {
-    try {
-      if (email) sessionStorage.setItem('valhalla-entry-email', email);
-      sessionStorage.setItem('valhalla-entry-desk', '1');
-      return true;
-    } catch (error) {
-      return false;
+  var status = document.getElementById('auth-status');
+  var google = document.getElementById('google-sign-in');
+  var form = document.getElementById('magic-link');
+  var email = document.getElementById('magic-email');
+  if (!status || !google || !form || !email || !window.ValhallaSupabase) return;
+
+  var busy = false;
+
+  function say(text) {
+    status.textContent = text;
+  }
+
+  function unlock() {
+    busy = false;
+    google.disabled = !window.ValhallaSupabase.config();
+  }
+
+  function run(work) {
+    if (busy) return;
+    if (!window.ValhallaSupabase.config()) {
+      say('Sign-in is not configured yet.');
+      return;
     }
-  }
-
-  function enter(event, email, requireStorage) {
-    if (event) event.preventDefault();
-    if (!remember(email)) {
-      var input = document.getElementById('home-email-address');
-      if (requireStorage && input) {
-        input.setCustomValidity('Browser storage is unavailable. Use the sign-in link instead.');
-        input.reportValidity();
-        return;
-      }
-    }
-    window.location.assign('/app/');
-  }
-
-  var form = document.getElementById('home-email');
-  if (form) {
-    form.addEventListener('submit', function (event) {
-      var input = document.getElementById('home-email-address');
-      enter(event, input ? input.value.trim() : '', true);
+    busy = true;
+    google.disabled = true;
+    window.ValhallaSupabase.client().then(function (supabase) {
+      return work(supabase);
+    }).then(function () {
+      unlock();
+    }).catch(function (error) {
+      say(window.ValhallaSupabase.providerMessage(error));
+      unlock();
     });
   }
 
-  var typed = document.getElementById('home-email-address');
-  if (typed) {
-    typed.addEventListener('input', function (event) {
-      event.target.setCustomValidity('');
+  google.addEventListener('click', function () {
+    say('Opening Google…');
+    run(function (supabase) {
+      return supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.ValhallaSupabase.osReturnTo() }
+      }).then(function (result) {
+        if (result && result.error) say(window.ValhallaSupabase.providerMessage(result.error));
+      });
     });
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var address = email.value.trim();
+    if (!address) return;
+    say('Sending the sign-in link…');
+    run(function (supabase) {
+      return supabase.auth.signInWithOtp({
+        email: address,
+        options: { emailRedirectTo: window.ValhallaSupabase.osReturnTo() }
+      }).then(function (result) {
+        if (result && result.error) say(window.ValhallaSupabase.providerMessage(result.error));
+        else say('Check your email for the sign-in link.');
+      });
+    });
+  });
+
+  window.addEventListener('pageshow', function (event) {
+    if (event && event.persisted) unlock();
+  });
+
+  if (!window.ValhallaSupabase.config()) {
+    say('Sign-in is not configured yet.');
+    return;
   }
 
-  var links = document.querySelectorAll('[data-enter-desk]');
-  Array.prototype.forEach.call(links, function (link) {
-    link.addEventListener('click', function (event) {
-      enter(event, '', false);
-    });
+  window.ValhallaSupabase.client().then(function (supabase) {
+    return supabase.auth.getSession();
+  }).then(function (result) {
+    var user = result && result.data && result.data.session && result.data.session.user;
+    if (user) window.location.replace('/os/');
+  }).catch(function (error) {
+    if (busy) return;
+    say(window.ValhallaSupabase.providerMessage(error));
   });
 })();

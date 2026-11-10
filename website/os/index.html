@@ -8,13 +8,15 @@
   <title>ValhallaOS · Workstation</title>
   <link rel="stylesheet" href="/os/os.css?v=1.4.2">
   <link rel="stylesheet" href="/desk.css?v=1.4.2">
-  <script src="/home.js" defer></script>
   <script src="/site-config.js?v=1.4.2" defer></script>
+  <script src="/supabase.js" defer></script>
+  <script src="/os/session.js" defer></script>
   <script src="/os/app.js?v=1.4.2" defer></script>
   <script src="/os/bridge.js?v=1.4.2" defer></script>
   <script src="/desk.js?v=1.4.2" defer></script>
 </head>
 <body>
+  <p id="session-hold" role="status">Sign-in is required.</p>
   <svg class="icon-defs" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
     <symbol id="icon-computer" viewBox="0 0 32 32">
       <path fill="#d4d0c8" stroke="#222" d="M3 4h26v19H3z"/><path fill="#000080" d="M5 6h22v14H5z"/>
@@ -39,13 +41,13 @@
     </symbol>
   </svg>
 
-  <main class="desktop" id="desktop">
+  <main class="desktop" id="desktop" hidden>
     <header class="desktop-heading menu-bar">
       <img src="/assets/mark.svg" alt="" width="28" height="28">
       <div><h1>VALHALLA<span>OS</span></h1>
-      <p>PAPER-FIRST WORKSTATION</p></div>
-      <div class="header-state"><span class="state-dot"></span> PUBLIC DESK <span class="paper-badge">LIVE TRADING OFF</span></div>
-      <a class="classic-button menu-signin" href="/app/">Account</a>
+      <p id="account-email"></p></div>
+      <div class="header-state"><span class="state-dot"></span> <span id="account-level">Free</span> <span class="paper-badge">LIVE TRADING OFF</span></div>
+      <button id="sign-out" class="classic-button menu-signin" type="button" hidden>Sign out</button>
     </header>
 
     <nav class="desktop-icons dock" aria-label="Desktop applications">
@@ -120,7 +122,7 @@
         <div class="panel-heading"><h2 id="activity-title">System / activity</h2><span>LOCAL SESSION</span></div>
         <p>Live trading is disabled. Configure the simulated bot in the existing trading desk; sign-in may be required.</p>
         <div class="tool-row">
-          <a class="classic-button accent-button" href="/app/#botPanel">Paper bot controls</a>
+          <span class="classic-button">Paper controls stay off</span>
           <button type="button" class="classic-button" data-open="status">Service status</button>
           <button type="button" class="classic-button" data-open="swarm">Swarm monitor</button>
           <button type="button" class="classic-button" data-open="memory">Memory inspector</button>
@@ -261,11 +263,10 @@
       <div class="window-body">
         <p>Connect an installed wallet to share its public address. Your wallet controls permissions; this desk will not request a transaction or signature.</p>
         <div class="wallet-actions">
+          <button type="button" class="classic-button" data-wallet="phantom">Connect Phantom</button>
           <button type="button" class="classic-button" data-wallet="solflare">Connect Solflare</button>
-          <button type="button" class="classic-button" data-wallet="metamask">Connect MetaMask</button>
-          <button type="button" class="classic-button" disabled>Privy unavailable</button>
         </div>
-        <p class="fine-print">Privy requires an application ID and a configured integration. MetaMask connects an Ethereum address; Solflare connects a Solana address.</p>
+        <p class="fine-print">A wallet connection does not sign you in. Nothing is sent until you confirm it in the wallet.</p>
         <p class="inset-panel" id="wallet-status" role="status">No wallet connected.</p>
         <button type="button" class="classic-button" id="wallet-disconnect" hidden>Disconnect</button>
         <p class="fine-print">Live trading is disabled. This bridge does not request, store, or transmit private keys.</p>

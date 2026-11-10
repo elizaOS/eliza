@@ -42,6 +42,8 @@ window.VALHALLA_SITE = {
   COINBASE_COMMERCE_URL: "",
   NOWPAYMENTS_URL: "",
   LIVE_TRADING: false,
+  SUPABASE_URL: "https://girltjnrrwlyeufrcors.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_PKNzsuQZMMs4Sb81gnoFaw_PCgSbclp",
   /* Public chat uses the deployed Cloudflare Workers AI service. Brain integration is separate. */
   CHAT_URL: "https://valhalla-chat.valhalla-app.workers.dev",
   TICKER_URL: ""

@@ -4,72 +4,46 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07090c">
-  <meta name="description" content="ValhallaOS is a paper-first workspace. Live trading is off. This page does not sign you in, execute swaps, or take payment.">
+  <meta name="description" content="Sign in to ValhallaOS. Live trading is off.">
   <link rel="canonical" href="https://valhalla-app.xyz/">
   <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
-  <link rel="preload" as="image" href="/assets/poster.jpg" fetchpriority="high">
+  <link rel="preload" as="image" href="/assets/heaven-poster.jpg" fetchpriority="high">
   <link rel="stylesheet" href="/home.css">
   <title>ValhallaOS</title>
 </head>
 <body>
   <div class="page">
     <header class="topbar" data-nav="locked">
-      <a class="brand" href="/"><svg id="brand-mark" class="brand-mark" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path fill="none" stroke="#E8B65A" stroke-width="1.6" d="M5 23c4.2-11 17.8-11 22 0"/><path fill="none" stroke="#C9963E" stroke-width="1.2" d="M9 23c2.8-7 11.2-7 14 0"/><path fill="#E8B65A" d="M15 13h2v10h-2z"/></svg><span>VALHALLAOS</span></a>
-      <nav aria-label="Main navigation">
-        <a href="/app/" data-enter-desk>Sign in</a>
-        <a href="/os/">Public desk</a>
-      </nav>
+      <a class="brand" href="/"><svg class="brand-mark" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path fill="none" stroke="#E8B65A" stroke-width="1.6" d="M5 23c4.2-11 17.8-11 22 0"/><path fill="none" stroke="#C9963E" stroke-width="1.2" d="M9 23c2.8-7 11.2-7 14 0"/><path fill="#E8B65A" d="M15 13h2v10h-2z"/></svg><span>VALHALLAOS</span></a>
     </header>
-
     <main class="citadel-main">
-      <figure class="stage-wrap backdrop" aria-label="Silent film. ValhallaOS visual introduction. It does not show the product.">
+      <figure class="stage-wrap backdrop" aria-hidden="true">
         <div class="stage">
           <div class="scene" id="hero-scene">
-            <img class="still" src="/assets/poster.jpg" alt="" width="1280" height="720">
-            <video id="hero-video" muted loop playsinline preload="none" poster="/assets/poster.jpg" aria-describedby="hero-note"></video>
-            <ol class="scenes" aria-label="Three scenes">
-              <li>Your workspace.</li>
-              <li>Your assistant.</li>
-              <li>Tools you can open.</li>
-            </ol>
+            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="720">
+            <video id="hero-video" muted loop playsinline preload="none" poster="/assets/heaven-poster.jpg"></video>
             <p class="motion-slot"><button class="motion-control" id="hero-motion" type="button" aria-pressed="false" aria-label="Play motion" title="Play motion">▶</button></p>
           </div>
         </div>
-        <figcaption id="hero-note">ValhallaOS visual introduction. It does not show the product.</figcaption>
-        <p id="hero-fallback" hidden>The video did not play. The still image is shown instead.</p>
-        <noscript><p>ValhallaOS visual introduction. It does not show the product.</p></noscript>
       </figure>
-
-      <section class="citadel-card intro-note" id="discover" aria-labelledby="discover-title">
-        <p class="citadel-kicker">Sign-in required</p>
-        <h1 id="discover-title">ValhallaOS Citadel</h1>
-        <p class="tagline">A workspace you can enter. Live trading is off.</p>
-        <p>ValhallaOS is a paper-first desk for status, an assistant, and simulated tools. It does not hold your keys. This page does not sign you in, execute a swap, or take payment.</p>
-        <form id="home-email" method="post" action="/app/">
-          <label for="home-email-address">Email <span>Prefills the sign-in page. It is not a password.</span></label>
-          <input id="home-email-address" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" required>
-          <button type="submit">Continue to sign-in</button>
+      <section class="citadel-card" aria-labelledby="sign-title">
+        <h1 id="sign-title">ValhallaOS</h1>
+        <p id="auth-status" role="status">Live trading is off.</p>
+        <button id="google-sign-in" type="button">Continue with Google</button>
+        <form id="magic-link">
+          <label for="magic-email">Email</label>
+          <input id="magic-email" type="email" autocomplete="email" inputmode="email" maxlength="254" required>
+          <button type="submit">Email me a sign-in link</button>
         </form>
-        <p>Sign-in still requires the human check and a verified code or Google. A display name is not a credential. After that, the command desk opens.</p>
-        <p class="journey-links"><a id="home-google" href="/app/" data-enter-desk>Sign in</a> <a href="/os/">Preview the public desk</a></p>
       </section>
-
     </main>
-
     <footer>
-      <span>VALHALLAOS</span>
-      <nav aria-label="Footer">
-        <a href="https://github.com/TokenJunction/eliza-valhalla">Repository</a>
-        <a href="/kernel/">Kernel lab</a>
-        <a href="/disclosure/">Risk</a>
-      </nav>
-      <p>Live trading is off. This desk does not hold your keys. Results are not guaranteed. This is not financial advice.</p>
-      <p class="legal-tm">© 2026 TokenJunction LLC</p>
+      <p>TokenJunction LLC. This is not financial advice.</p>
     </footer>
   </div>
   <script src="/site-config.js"></script>
   <script src="/home-motion.js"></script>
+  <script src="/supabase.js"></script>
   <script src="/home.js"></script>
-  <script src="/site-chrome.js"></script>
 </body>
 </html>

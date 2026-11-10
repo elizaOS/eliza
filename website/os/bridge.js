@@ -29,39 +29,39 @@
     if (typeof provider.on !== 'function') return;
     provider.on(event, handler); listeners.push({ provider: provider, event: event, handler: handler });
   }
-  function ethereumProvider() {
-    var ethereum = window.ethereum;
-    if (!ethereum) return null;
-    if (Array.isArray(ethereum.providers)) return ethereum.providers.find(function (provider) { return provider.isMetaMask === true; }) || null;
-    return ethereum.isMetaMask === true ? ethereum : null;
+  function externalProvider(name) {
+    if (name === 'solflare') return window.solflare || null;
+    if (name === 'phantom') {
+      if (window.phantom && window.phantom.solana) return window.phantom.solana;
+      if (window.solana && window.solana.isPhantom === true) return window.solana;
+    }
+    return null;
   }
   async function connect(name) {
     if (busy) return;
-    var provider = name === 'solflare' ? window.solflare : ethereumProvider();
-    if (!provider) { status.textContent = (name === 'solflare' ? 'Solflare' : 'MetaMask') + ' was not detected. Install or enable its browser extension, then try again.'; return; }
+    if (name !== 'phantom' && name !== 'solflare') return;
+    var provider = externalProvider(name);
+    var displayName = name === 'solflare' ? 'Solflare' : 'Phantom';
+    if (!provider || typeof provider.connect !== 'function') {
+      status.textContent = displayName + ' was not detected. Install its browser extension, then try again.';
+      return;
+    }
     busy = true;
     walletButtons.forEach(function (button) { button.disabled = true; });
     status.textContent = 'Approve the connection in your wallet. No transaction or signature is requested.';
     try {
-      var address;
-      if (name === 'solflare') {
-        var result = await provider.connect();
-        address = String(result && result.publicKey || provider.publicKey || '');
-      } else {
-        var accounts = await provider.request({ method: 'eth_requestAccounts' });
-        address = Array.isArray(accounts) ? String(accounts[0] || '') : '';
-      }
+      var result = await provider.connect();
+      var address = String(result && result.publicKey || provider.publicKey || '');
       if (!address) throw new Error('The wallet returned no account.');
       removeListeners(); active = { name: name, provider: provider };
-      var displayName = name === 'solflare' ? 'Solflare' : 'MetaMask';
       showWallet(displayName, address);
       listen(provider, 'disconnect', function () { clearWallet('Wallet disconnected.'); });
-      listen(provider, name === 'solflare' ? 'accountChanged' : 'accountsChanged', function (accounts) {
-        var next = name === 'solflare' ? String(accounts || '') : String(Array.isArray(accounts) && accounts[0] || '');
-        if (next) showWallet(displayName, next); else clearWallet('Wallet account is no longer available.');
+      listen(provider, 'accountChanged', function (next) {
+        var value = String(next || '');
+        if (value) showWallet(displayName, value); else clearWallet('Wallet account is no longer available.');
       });
     } catch (error) {
-      status.textContent = 'Connection was not completed. ' + (error && error.code === 4001 ? 'The wallet request was declined.' : 'Check your wallet and try again.');
+      status.textContent = 'Connection was not completed. Check your wallet and try again.';
     } finally {
       busy = false; walletButtons.forEach(function (button) { button.disabled = false; });
     }
@@ -70,12 +70,11 @@
   disconnect.addEventListener('click', async function () {
     var previous = active;
     if (!previous) return;
-    if (previous.name === 'solflare' && typeof previous.provider.disconnect === 'function') {
+    if (typeof previous.provider.disconnect === 'function') {
       try { await previous.provider.disconnect(); }
-      catch (error) { status.textContent = 'Could not disconnect Solflare. Try disconnecting in your wallet.'; return; }
-      clearWallet('Solflare disconnected.'); return;
+      catch (error) { status.textContent = 'Could not disconnect the wallet. Try disconnecting in the wallet itself.'; return; }
     }
-    clearWallet('Removed from this desk. To revoke access, disconnect this site in MetaMask.');
+    clearWallet('Wallet disconnected.');
   });
   var form = document.getElementById('chat-form');
   var input = document.getElementById('chat-input');

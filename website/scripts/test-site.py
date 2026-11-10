@@ -74,7 +74,8 @@ class SiteTests(unittest.TestCase):
         with self.get("/app") as response:
             self.assertTrue(response.url.endswith("/app/"))
         config = json.loads((ROOT / "vercel.json").read_text())
-        self.assertIn({"source": "/app", "destination": "/app/", "permanent": True}, config["redirects"])
+        self.assertIn({"source": "/app", "destination": "/", "permanent": False}, config["redirects"])
+        self.assertIn({"source": "/app/", "destination": "/", "permanent": False}, config["redirects"])
         self.assertEqual(config["proxy"]["entrypoint"], "website/proxy.js")
         self.assertEqual(config["proxy"]["matcher"], ["/", "/index.html"])
         command = config["buildCommand"]
@@ -89,7 +90,7 @@ class SiteTests(unittest.TestCase):
             "node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs "
             "website/scripts/desk.test.cjs website/scripts/host-route.test.cjs "
             "website/scripts/journey.test.cjs website/scripts/desktop.test.cjs "
-            "website/scripts/minify.test.cjs",
+            "website/scripts/minify.test.cjs website/scripts/supabase-auth.test.cjs",
             "node website/scripts/minify-site.mjs",
         )
         position = -1
@@ -100,9 +101,12 @@ class SiteTests(unittest.TestCase):
         self.assertFalse(any(item.get("destination") == "/volos/index.html" and "has" not in item for item in config.get("rewrites", [])))
         with self.get("/") as response:
             home = response.read().decode()
-        self.assertIn("Continue to sign-in", home)
-        self.assertIn("/assets/poster.jpg", home)
+        self.assertIn("Continue with Google", home)
+        self.assertIn("Email me a sign-in link", home)
+        self.assertIn("/assets/heaven-poster.jpg", home)
         self.assertIn("Live trading is off", home)
+        self.assertNotIn("github.com", home)
+        self.assertNotIn("Public desk", home)
         self.assertNotIn("Trade Solana", home)
         with self.get("/volos/") as response:
             volos = response.read().decode()
@@ -122,7 +126,9 @@ class SiteTests(unittest.TestCase):
         self.assertNotIn("Valhalla read-only preview", (OUT / "errors.js").read_text())
         for name in (".env", "scripts", "src", "experimental", "experiments"):
             self.assertFalse((OUT / name).exists())
-        self.assertIn('"/media/hero.mp4"', (OUT / "home-motion.js").read_text())
+        motion = (OUT / "home-motion.js").read_text()
+        self.assertIn('"/media/hero-web.mp4"', motion)
+        self.assertIn('"/media/heaven-loop.mp4"', motion)
 
     def test_build_rejects_missing_entry_points_and_assets(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -24,7 +24,10 @@ test('deployment config keeps the proxy on the entrance paths only', () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
   assert.equal(config.proxy.entrypoint, 'website/proxy.js');
   assert.deepEqual(config.proxy.matcher, ['/', '/index.html']);
-  assert.deepEqual(config.redirects, [{ source: '/app', destination: '/app/', permanent: true }]);
+  assert.deepEqual(config.redirects, [
+    { source: '/app', destination: '/', permanent: false },
+    { source: '/app/', destination: '/', permanent: false }
+  ]);
   const proxy = fs.readFileSync(path.join(root, 'website/proxy.js'), 'utf8');
   assert.match(proxy, /routeForHost/);
   assert.match(proxy, /rewrite/);

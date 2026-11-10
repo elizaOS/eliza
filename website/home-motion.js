@@ -33,11 +33,15 @@
     }
   }
 
+  function filmSource() {
+    return window.matchMedia("(max-width: 720px)").matches ? "/media/heaven-loop.mp4" : "/media/hero-web.mp4";
+  }
+
   function attachSources() {
     if (sourcesReady) return;
     sourcesReady = true;
     var mp4 = document.createElement("source");
-    mp4.src = "/media/hero.mp4";
+    mp4.src = filmSource();
     mp4.type = "video/mp4";
     video.appendChild(mp4);
     video.preload = "metadata";

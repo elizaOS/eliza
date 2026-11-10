@@ -205,7 +205,8 @@ test('assistant chat fails closed unless a real reply arrives', async () => {
 });
 
 test('wallet bridge source does not request a transaction or signature', () => {
-  assert.doesNotMatch(bridgeSource, /eth_sendTransaction|signTransaction|signMessage|personal_sign/);
-  assert.match(bridgeSource, /eth_requestAccounts/);
+  assert.doesNotMatch(bridgeSource, /eth_sendTransaction|eth_requestAccounts|signTransaction|signMessage|personal_sign|signInWithWeb3/);
+  assert.match(bridgeSource, /phantom/);
+  assert.match(bridgeSource, /solflare/);
   assert.match(bridgeSource, /No transaction or signature is requested/);
 });

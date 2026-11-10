@@ -12,7 +12,7 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to instructions</a>
-<header><a href="/">VALHALLAOS</a><nav aria-label="Main"><a href="/os/">Explore Desk</a><a href="https://github.com/TokenJunction/eliza-valhalla">Repository</a></nav></header>
+<header><a href="/">VALHALLAOS</a><nav aria-label="Main"><a href="/">Sign in</a></nav></header>
 <main id="main">
 <p class="label">Kernel lab · Experimental download</p>
 <h1>Boot the educational kernel in QEMU.</h1>
@@ -21,12 +21,9 @@
 <h2>Download the verified baseline</h2>
 <p>Release: <strong>educational-kernel-v38-20261108</strong>. Source commit: <code>5847b4587bad60557b367ee59eee8e5b7aef7df7</code>.</p>
 <div class="downloads" aria-label="Kernel downloads">
-<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/valhalla.iso">Bootable ISO</a>
-<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/source.tar.gz">Source archive</a>
-<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/kernel.elf">Debug ELF</a>
-<a href="https://github.com/TokenJunction/eliza-valhalla/releases/download/educational-kernel-v38-20261108/SHA256SUMS">SHA-256 checksums</a>
+<p>Boot files are not linked from this public page.</p>
 </div>
-<p><a href="https://github.com/TokenJunction/eliza-valhalla/releases/tag/educational-kernel-v38-20261108">Release notes and real serial logs</a></p>
+<p>Release notes are not linked from this public page.</p>
 <h2>Run the ISO</h2>
 <p>On Ubuntu/Debian, install the emulator. Then run this command from the folder containing the downloaded <code>valhalla.iso</code>. It uses software emulation and does not attach your host disks.</p>
 <pre><code>sudo apt-get update
@@ -74,7 +71,7 @@ make run CROSS=</code></pre>
 </ul>
 <h2>Limits before you experiment</h2>
 <p>Threads and daemons share trusted kernel memory. There is no userspace isolation, exception handling, preemption, SMP, NX enforcement, networking, filesystem, or persistent storage. Interrupts are disabled. Heap allocations, page-table pages, and exited task stacks are not reclaimed.</p>
-<p>Keep this experiment separate from production services. The <a href="https://github.com/TokenJunction/eliza-valhalla/tree/develop/experiments/valhalla-kernel">source and complete architecture notes</a> describe the supported boundaries.</p>
+<p>Keep this experiment separate from production services.</p>
 </main>
 <footer><nav aria-label="Footer"><a href="/">Home</a><a href="/app/">Client access</a><a href="/disclaimer.html">Risk</a></nav><p>© 2026 TokenJunction LLC · Educational experiment, not an installer.</p></footer>
 </body>

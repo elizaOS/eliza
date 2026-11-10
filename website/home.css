@@ -51,6 +51,20 @@ h1 { margin-bottom: 10px; color: #fffaf3; font-size: clamp(28px, 4vw, 40px); fon
 .citadel-card { position: relative; z-index: 3; width: min(440px, calc(100% - 32px)); margin: 28px auto; padding: 22px 18px 16px; border: 1px solid rgba(226, 176, 85, .9); border-radius: 18px; background: rgba(8, 10, 16, .92); box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(226, 176, 85, .18); }
 .citadel-kicker { color: #e2b055; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
 .citadel-card h1 { margin-bottom: 8px; color: #f6edd8; font-size: clamp(28px, 6vw, 36px); letter-spacing: .03em; }
+#auth-status { margin: 0 0 14px; color: #f0e2c4; font-size: 14px; line-height: 1.4; }
+#google-sign-in, #magic-link button { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px; margin-top: 10px; border: 0; border-radius: 8px; background: #e8b65a; color: #1a140c; font: inherit; font-weight: 700; cursor: pointer; }
+#google-sign-in { background: transparent; color: #f6edd8; border: 1px solid rgba(232, 182, 90, .7); }
+#magic-link { display: grid; gap: 6px; margin-top: 16px; }
+#magic-link label { color: #f0e2c4; font-size: 13px; }
+#magic-link input { min-height: 44px; width: 100%; padding: 10px 12px; border: 1px solid rgba(240, 215, 162, .4); border-radius: 8px; background: rgba(8, 12, 18, .55); color: #fffaf3; font: inherit; }
+@media (max-width: 720px) {
+  .citadel-main { min-height: 100vh; padding: 12px 0 72px; }
+  .citadel-card { width: calc(100% - 24px); }
+  .stage-wrap.backdrop .stage { min-height: 100vh; }
+}
+@media (min-width: 1024px) {
+  .stage-wrap.backdrop .stage { min-height: 100vh; }
+}
 .citadel-card #home-email { flex-direction: column; align-items: stretch; max-width: none; }
 .citadel-card #home-email label { flex: 0 0 auto; align-content: start; }
 .citadel-card #home-email button, .citadel-card .journey-links a { width: 100%; }
