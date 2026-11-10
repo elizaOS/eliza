@@ -1508,55 +1508,58 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
     expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
   });
 
-  it("keeps the microphone closed (never cancelled) through an owner-input pause and the resumed reply, then reopens once", async () => {
-    const h = harness();
-    await h.session.start();
-    await h.say("summarize my packing note");
-    await h.clock.advance(longGapMs);
-    h.answer(0, "Share the note?", {
-      complete: false,
-      awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
-    });
-    await flush();
-    const state = h.session.getSnapshot();
-    expect(state).toMatchObject({
-      phase: "awaiting-user-input",
-      inputHeld: true,
-    });
-    expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
-    // Speech during the review is never sent.
-    await h.say("yes share it");
-    await h.clock.advance(longGapMs);
-    expect(h.log.sends).toHaveLength(1);
-    const pause = state.awaitingUserInput;
-    if (!pause) throw new Error("expected a pause");
-    const reply = {
-      requestId: pause.requestId,
-      conversationId: "room-1",
-      userMessageId: pause.userMessageId,
-      assistantMessageId: "a-2",
-      complete: true,
-    };
-    expect(
-      h.session.resume({
-        pause: { ...pause, digest: "other" },
-        reply: { ...reply, text: "x" },
-      }),
-    ).toBe(false);
-    expect(
-      h.session.resume({
-        pause,
-        reply: { ...reply, text: "Passport, charger and boots." },
-      }),
-    ).toBe(true);
-    await flush();
-    expect(h.log.captures).toBe(1);
-    expect(h.speeches[0]?.input.text).toBe("Passport, charger and boots.");
-    h.speeches[0]?.done.resolve();
-    await flush();
-    expect(h.log).toMatchObject({ captures: 2, closed: 1, cancelled: 0 });
-    expect(h.log.reopens).toEqual([undefined, true]);
-  });
+  it.each([false, true])(
+    "keeps the microphone closed through owner review and the resumed reply, then reopens once (openMic=%s)",
+    async (openMic) => {
+      const h = harness({ openMic });
+      await h.session.start();
+      await h.say("summarize my packing note");
+      await h.clock.advance(longGapMs);
+      h.answer(0, "Share the note?", {
+        complete: false,
+        awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+      });
+      await flush();
+      const state = h.session.getSnapshot();
+      expect(state).toMatchObject({
+        phase: "awaiting-user-input",
+        inputHeld: true,
+      });
+      expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
+      // Speech during the review is never sent.
+      await h.say("yes share it");
+      await h.clock.advance(longGapMs);
+      expect(h.log.sends).toHaveLength(1);
+      const pause = state.awaitingUserInput;
+      if (!pause) throw new Error("expected a pause");
+      const reply = {
+        requestId: pause.requestId,
+        conversationId: "room-1",
+        userMessageId: pause.userMessageId,
+        assistantMessageId: "a-2",
+        complete: true,
+      };
+      expect(
+        h.session.resume({
+          pause: { ...pause, digest: "other" },
+          reply: { ...reply, text: "x" },
+        }),
+      ).toBe(false);
+      expect(
+        h.session.resume({
+          pause,
+          reply: { ...reply, text: "Passport, charger and boots." },
+        }),
+      ).toBe(true);
+      await flush();
+      expect(h.log.captures).toBe(1);
+      expect(h.speeches[0]?.input.text).toBe("Passport, charger and boots.");
+      h.speeches[0]?.done.resolve();
+      await flush();
+      expect(h.log).toMatchObject({ captures: 2, closed: 1, cancelled: 0 });
+      expect(h.log.reopens).toEqual([undefined, true]);
+    },
+  );
 });
 
 describe("splitSpokenSentences and timing", () => {
@@ -2052,6 +2055,26 @@ describe("VoiceAssistantSession open microphone", () => {
       text: "stop, what time is it",
     });
     expect(h.log.closed).toBe(0);
+  });
+
+  it("ends the conversation when closing the microphone for owner review fails", async () => {
+    const h = open({
+      close: async () => {
+        throw new Error("capture close failed");
+      },
+    });
+    await h.session.start();
+    await h.say("share my note with Sam");
+    await h.clock.advance(0);
+    h.answer(0, "Share the note?", {
+      complete: false,
+      awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+    });
+    await flush();
+    expect(h.phase()).toBe("error");
+    expect(h.log).toMatchObject({ captures: 1, closed: 1 });
+    expect(h.speeches).toHaveLength(0);
+    expect(h.session.getSnapshot().awaitingUserInput).toBeUndefined();
   });
 
   it("without echo cancellation the busy hold stays", async () => {

@@ -864,7 +864,11 @@ export class VoiceAssistantSession {
       const resumed = this.openMic && !response.started;
       this.interrupt();
       if (resumed) {
-        this.segments.unshift({ closed: true, done: true, text: response.text });
+        this.segments.unshift({
+          closed: true,
+          done: true,
+          text: response.text,
+        });
         this.superseded = response.turnId;
         this.ports.onTurn?.("resumed", response.turnId);
       }
@@ -1072,30 +1076,9 @@ export class VoiceAssistantSession {
       this.inflight = run.catch(() => {});
       return;
     }
-    // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
-    // still in flight; a capture still opening is closed by open() as it arrives.
-    const capture = this.capture,
-      opening = this.opening;
-    const hold: Hold = {
-      response,
-      closed: false,
-      closes: [...this.closingCaptures.values()],
-    };
-    this.hold = hold;
-    this.capture = undefined;
-    if (capture) hold.closes.push(this.closeCapture(capture));
-    this.publish({ phase: "thinking", transcript: text });
-    // The input-close barrier `respond` waits on before sending: a close that rejects or never
-    // settles keeps `inputHeld` off, and nothing is sent, acknowledged or played.
-    const closed = (async () => {
-      await opening?.catch(() => {});
-      await Promise.all(hold.closes);
-      if (this.hold === hold) {
-        hold.closed = true;
-        this.republish();
-      }
-    })();
+    const closed = this.holdInput(response);
     closed.catch(() => {});
+    this.publish({ phase: "thinking", transcript: text });
     this.ports.onTurn?.("submitted", response.turnId, { endpoint });
     const previous = this.inflight;
     const run = this.respond(
@@ -1108,6 +1091,34 @@ export class VoiceAssistantSession {
       supersedes,
     );
     this.inflight = run.catch(() => {});
+  }
+
+  /** Holds input closed through a response or an owner-input pause. */
+  private holdInput(response: Response): Promise<void> {
+    // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
+    // still in flight; a capture still opening is closed by open() as it arrives.
+    const capture = this.capture,
+      opening = this.opening;
+    const hold: Hold = {
+      response,
+      closed: false,
+      closes: [...this.closingCaptures.values()],
+    };
+    this.hold = hold;
+    this.capture = undefined;
+    if (capture) hold.closes.push(this.closeCapture(capture));
+    // Only confirmed closure publishes inputHeld; a failed close ends the conversation.
+    const closed = (async () => {
+      await opening?.catch(() => {});
+      await Promise.all(hold.closes).catch(() => {
+        throw unconfirmedClose();
+      });
+      if (this.hold === hold) {
+        hold.closed = true;
+        this.republish();
+      }
+    })();
+    return closed;
   }
 
   /** Plays one sentence of a reply and counts it as heard once its playback ended. */
@@ -1338,6 +1349,14 @@ export class VoiceAssistantSession {
           playbackFailed = false;
           plan.length = begun = response.played = 0;
           response.started = false;
+        }
+        // Open-microphone replies enter the same hold before owner review. Final segments from
+        // its closing capture wait for the resumed reply instead of superseding the paused turn.
+        if (!this.hold) {
+          for (const segment of this.segments)
+            if (segment.tentative === response) delete segment.tentative;
+          await this.holdInput(response);
+          guard();
         }
         // The busy hold keeps input closed while the owner reviews and until the resumed reply played.
         reply = await new Promise<AssistantReply>((resolve, reject) => {
