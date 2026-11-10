@@ -378,6 +378,10 @@ type Response = {
   turnId: string;
   /** The utterance this turn was sent with. */
   text: string;
+  /** The taken-back turn this one replaces. */
+  supersedes?: string;
+  /** `send` was called for this turn. */
+  sent?: boolean;
   controller: AbortController;
   replyId?: string;
   sentences: string[];
@@ -833,24 +837,30 @@ export class VoiceAssistantSession {
     };
     this.segments.push(segment);
     if (response) {
-      const session = this.session,
-        playing = response.started;
+      const session = this.session;
       // Held speech interrupts a pending request before its transcript; a blip closes first and waits
       // for the gate. While the reply plays the transcript gate confirms (residual echo of a sentence
       // can hold the VAD open), unless the host set a hold for an echo-cancelled open microphone.
-      const hold = playing
-        ? this.timing.playbackBargeInMs
-        : this.timing.bargeInConfirmMs;
-      if (!playing || hold > 0)
+      // Speech that began before the first audio and is still held once the reply plays starts the
+      // playback hold then, so it interrupts like speech that began during playback.
+      const arm = () => {
+        const playing = response.started;
+        const hold = playing
+          ? this.timing.playbackBargeInMs
+          : this.timing.bargeInConfirmMs;
+        if (playing && hold <= 0) return;
         this.clock.setTimer(() => {
           if (
-            this.current(session) &&
-            !segment.closed &&
-            segment.tentative === response &&
-            response.started === playing
+            !this.current(session) ||
+            segment.closed ||
+            segment.tentative !== response
           )
-            this.confirmBargeIn(segment);
+            return;
+          if (response.started === playing) this.confirmBargeIn(segment);
+          else arm();
         }, hold);
+      };
+      arm();
       return;
     }
     this.publish(this.listeningState());
@@ -869,7 +879,9 @@ export class VoiceAssistantSession {
           done: true,
           text: response.text,
         });
-        this.superseded = response.turnId;
+        // Only a turn the host received can be replaced: one taken back while it still waited for
+        // the request before it passes on the turn that one replaced.
+        this.superseded = response.sent ? response.turnId : response.supersedes;
         this.ports.onTurn?.("resumed", response.turnId);
       }
     }
@@ -1054,6 +1066,7 @@ export class VoiceAssistantSession {
     const response: Response = {
       turnId: randomId(),
       text,
+      ...(supersedes ? { supersedes } : {}),
       controller: new AbortController(),
       sentences: [],
       played: 0,
@@ -1209,14 +1222,21 @@ export class VoiceAssistantSession {
       // Playback of this reply's sentences; aborted with the response, or alone when a pause
       // withdraws streamed speech.
       let voice = linkedController(response.controller.signal);
+      // Wakes a pump that is only waiting for playback: more sentences were planned meanwhile.
+      let more: (() => void) | undefined;
       const pump = () => {
-        if (running || failure) return;
+        if (running) {
+          more?.();
+          return;
+        }
+        if (failure) return;
         running = true;
         pumping = (async () => {
           try {
             // Pipelined: the sentence after the audible one is already with the speaker. Its
             // playback cannot start before the previous one ended, so two are in flight at most.
             const pending: Promise<void>[] = [];
+            for (;;) {
             while (!failure && begun < plan.length) {
               const sentence = plan[begun++] as string;
               let audible!: () => void;
@@ -1240,7 +1260,25 @@ export class VoiceAssistantSession {
               playback.catch(() => {});
               await Promise.race([started, playback]);
             }
-            await Promise.all(pending);
+            if (failure) break;
+            if (!pending.length) {
+              // One sentence at a time: nothing is in flight once the loop above is done.
+              await Promise.all(pending);
+              if (begun >= plan.length) break;
+              continue;
+            }
+            // Sentences planned while the handed-over ones play (a later stream frame, or the
+            // confirmed reply) are handed over at once, not dropped with the settled pump.
+            const planned = new Promise<"more">((resolve) => {
+              more = () => resolve("more");
+            });
+            const settled = await Promise.race([
+              Promise.all(pending).then(() => "played" as const),
+              planned,
+            ]);
+            more = undefined;
+            if (settled === "played" && begun >= plan.length) break;
+            }
           } catch (error) {
             playbackFailed = true;
             failure ??= { error };
@@ -1289,6 +1327,7 @@ export class VoiceAssistantSession {
         plan.push(...parts.slice(plan.length, complete));
         pump();
       };
+      response.sent = true;
       let reply = await this.ports.send({
         turnId: response.turnId,
         text,
