@@ -299,8 +299,16 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 			break;
 		}
 
+		// A fence split is not a separator break: the picked-newline branch
+		// already moved breakIdx past the newline, and the progress branch
+		// picks an arbitrary mid-line index. The character at breakIdx is
+		// therefore the next line's first character, not a separator, so
+		// skipping it would eat one space of indentation inside the fence.
+		// The synthetic close/reopen lines are the separation here.
 		const brokeOnSeparator =
-			breakIdx < remaining.length && /\s/.test(remaining[breakIdx]);
+			!fenceToSplit &&
+			breakIdx < remaining.length &&
+			/\s/.test(remaining[breakIdx]);
 		const nextStart = Math.min(
 			remaining.length,
 			breakIdx + (brokeOnSeparator ? 1 : 0),
