@@ -86,6 +86,12 @@ const trashFlights = new Map<string, Promise<void>>();
 
 class Missing extends Error {}
 class Exists extends Error {}
+/** The journal that records where each trashed item came from is present but unreadable. */
+class TrashJournalUnreadable extends Error {
+  constructor() {
+    super("The trash record could not be read. Nothing was changed.");
+  }
+}
 
 export class BrowserStorageVolume {
   private library: Library;
@@ -450,17 +456,22 @@ export class BrowserStorageVolume {
     });
   }
 
+  /**
+   * The trash journal. An unreadable one is reported: it is the only record of where each
+   * trashed item came from, so treating it as empty would drop those origins on the next save.
+   */
   private records(): Record<string, TrashRecord> {
+    const raw = this.store.getItem(this.namespace.trashKey);
+    if (!raw) return {};
+    let value: unknown;
     try {
-      const value = JSON.parse(
-        this.store.getItem(this.namespace.trashKey) || "{}",
-      );
-      return value && typeof value === "object" && !Array.isArray(value)
-        ? value
-        : {};
+      value = JSON.parse(raw);
     } catch {
-      return {};
+      throw new TrashJournalUnreadable();
     }
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new TrashJournalUnreadable();
+    return value as Record<string, TrashRecord>;
   }
   private save(records: Record<string, TrashRecord>) {
     this.store.setItem(this.namespace.trashKey, JSON.stringify(records));
