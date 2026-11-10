@@ -149,7 +149,7 @@
 		"limitations": [
 			"One agent, two service instances, two adapters, three tick slots, two restarts and two registrations.",
 			"Model verification does not establish behavior outside these bounds.",
-			"TaskSchedulerQueryDrain covers query ownership across unregister and scheduler restart. Shared adapter lifetime across hosts and multiple agents remains externally owned."
+			"TaskSchedulerQueryDrain covers query ownership across unregister and scheduler restart. Its separate batch projection covers a peer replacement while the first agent awaits in one shared batch. Hosts own physical adapter sharing and lifetime."
 		]
 	},
 	{

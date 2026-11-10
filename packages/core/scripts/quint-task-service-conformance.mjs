@@ -25,6 +25,7 @@ const required = [
 	"a failed one-shot re-read keeps the task for a later run",
 	"executeTaskById does not overlap a blocking repeat task's tick run",
 	"a scheduler restart does not dispatch a second runTick to a busy service",
+	"rechecks a peer registration after another agent awaits inside a shared batch",
 ];
 const output = testOutputPath("quint-task-retirement");
 mkdirSync(output, { recursive: true });
