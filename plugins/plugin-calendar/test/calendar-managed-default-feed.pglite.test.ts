@@ -292,12 +292,18 @@ describe("managed owner calendars in the aggregate feed", {
     );
     let removed = false;
     let providerReads = 0;
+    let allowWrites = true;
     const changed = {
       ...event("owner@example.test", "mapped", "Mapped after Google edit"),
       metadata: { etag: '"v2"' },
     };
     shown = new Set(["owner@example.test"]);
     const calendar = service((input) => {
+      if (input.operation === "write-capabilities" && !allowWrites)
+        return Response.json(
+          { error: "Calendar changes are off" },
+          { status: 403 },
+        );
       if (input.operation === "write-capabilities")
         return {
           version: 1,
@@ -351,6 +357,21 @@ describe("managed owner calendars in the aggregate feed", {
     expect(providerReads).toBe(1);
     await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
     expect(providerReads).toBe(1); // Equal revisions do not cause a second provider read.
+    allowWrites = false;
+    changed.title = "Changed while writes are off";
+    changed.metadata.etag = '"v3"';
+    const readOnly = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(readOnly.events.some((row) => row.title === changed.title)).toBe(
+      true,
+    );
+    expect((await calendar.getCalendarEventById(local.id))?.title).toBe(
+      "Mapped after Google edit",
+    );
+    allowWrites = true;
+    await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect((await calendar.getCalendarEventById(local.id))?.title).toBe(
+      changed.title,
+    );
     removed = true;
     const second = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
     expect(await calendar.getCalendarEventById(local.id)).toBeNull();

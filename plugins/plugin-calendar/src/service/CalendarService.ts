@@ -6036,8 +6036,28 @@ export class CalendarService extends Service {
                 )
                   continue;
               }
-              if ((await this.runLinkedCalendarOperation(link)) === "pulled")
-                pulledManagedChange = true;
+              try {
+                if ((await this.runLinkedCalendarOperation(link)) === "pulled")
+                  pulledManagedChange = true;
+              } catch (error) {
+                // Revoked write access or another admitted sync must not turn
+                // a successful provider read into a failed Calendar feed.
+                if (
+                  !(
+                    (error instanceof CalendarServiceError &&
+                      error.code ===
+                        "LINKED_CALENDAR_DESTINATION_UNAVAILABLE") ||
+                    (error instanceof ElizaError &&
+                      error.code === "LINKED_CALENDAR_DISPATCH_REJECTED")
+                  )
+                )
+                  throw error;
+                this.runtime.reportError(
+                  "calendar:managed-linked-pull",
+                  error,
+                  { linkId: link.id },
+                );
+              }
             }
           }
         } else {
