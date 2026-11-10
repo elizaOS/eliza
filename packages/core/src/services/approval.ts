@@ -318,6 +318,7 @@ export class ApprovalService extends Service {
 			entityId: request.entityId,
 			tags: ["AWAITING_CHOICE", "APPROVAL", ...(request.tags ?? [])],
 			metadata: {
+				...(request.metadata ?? {}),
 				options: request.options.map((opt) => ({
 					name: opt.name,
 					description: opt.description ?? "",
@@ -329,13 +330,8 @@ export class ApprovalService extends Service {
 					createdAt: Date.now(),
 					...(isAsync ? { isAsync: true } : {}),
 				},
-				...(request.metadata ?? {}),
-				...(isAsync
-					? {
-							onSelectCallback: !!request.onSelect,
-							onTimeoutCallback: !!request.onTimeout,
-						}
-					: {}),
+				onSelectCallback: !!request.onSelect,
+				onTimeoutCallback: !!request.onTimeout,
 			},
 		});
 	}

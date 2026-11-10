@@ -26,6 +26,7 @@ const required = [
 	"retains an orphaned callback task after runtime restart and permits explicit cancellation",
 	"selects a persisted callback-free task after runtime restart",
 	"retains the row when deletion fails after a completed approval effect",
+	"keeps synchronous approval receipt fields source-owned despite attached metadata",
 ];
 
 const output = testOutputPath("quint-approval");

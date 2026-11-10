@@ -430,8 +430,10 @@ module ApprovalRetirement {
 
 }
 
-// One persisted asynchronous task. The maintained coding-tools caller supplies
-// both callbacks; the other finite case has none. Task lookup succeeds here;
+// One persisted task: required callbacks (sync or async), or callback-free async.
+// The maintained coding-tools caller supplies both callbacks. Attached metadata
+// cannot replace source-owned choices, request identity or callback requirements.
+// Their construction is checked against actual SQLite records. Task lookup succeeds here;
 // the existing race/retirement modules cover read admission and claimed errors.
 // Callback functions remain local; neither runtime restart nor worker-name
 // registration recreates them. Deadline timers are owned only by the live

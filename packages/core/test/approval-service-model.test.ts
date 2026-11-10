@@ -510,4 +510,53 @@ describe("ApprovalService model properties", () => {
 		});
 		expect(await runtime.getTask(taskId)).not.toBeNull();
 	});
+
+	it("keeps synchronous approval receipt fields source-owned despite attached metadata", async () => {
+		const result = observe(
+			service.requestApproval({
+				...request([], 60_000),
+				metadata: {
+					customMarker: "kept",
+					options: [{ name: "unoffered" }],
+					approvalRequest: {
+						isAsync: true,
+						allowedRoles: ["VISITOR"],
+						timeoutMs: 0,
+						createdAt: -1,
+					},
+					onSelectCallback: false,
+					onTimeoutCallback: false,
+				},
+				onSelect: async () => {
+					await runtime.setCache("approval-sync-partial-effect", "started");
+					throw new Error("sync approval effect failed");
+				},
+			}),
+		);
+		const taskId = await pendingId();
+		await expect(select(taskId)).rejects.toThrow("sync approval effect failed");
+		expect((await result).error).toMatchObject({
+			message: "sync approval effect failed",
+		});
+		await expect(select(taskId)).rejects.toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
+		const task = await runtime.getTask(taskId);
+		assert(task);
+		expect(task.metadata?.customMarker).toBe("kept");
+		expect(task.metadata?.onSelectCallback).toBe(true);
+		expect(task.metadata?.onTimeoutCallback).toBe(true);
+		expect(task.metadata?.options).toEqual([
+			{ name: "approve", description: "" },
+			{ name: "deny", description: "" },
+		]);
+		expect(task.metadata?.approvalRequest).toMatchObject({
+			timeoutMs: 60_000,
+			allowedRoles: ["OWNER", "ADMIN"],
+		});
+		expect(task.metadata?.approvalRequest).not.toHaveProperty("isAsync");
+		expect(await runtime.getCache("approval-sync-partial-effect")).toBe(
+			"started",
+		);
+	});
 });

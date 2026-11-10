@@ -278,12 +278,13 @@
 		"packages/core/test/approval-service-model.test.ts"
 	],
 	"conformance": "packages/core/scripts/quint-approval-conformance.mjs",
-	"bounds": "The existing race/failure cases start with one published approval and two selectors. The retirement case has one request in one instance, one creation receipt, one selecting worker or claimed timer, one stop and a replacement admission boundary, or one admitted list/worker-permission query. Callback and storage completion may succeed or fail. Persisted cases project one async task with either both callbacks (the coding-tools caller) or none, one positive live deadline, one runtime restart, and one same-name worker re-registration. Callback completion and task deletion can succeed or fail. Task reads succeed in this projection.",
+	"bounds": "The existing race/failure cases start with one published approval and two selectors. The retirement case has one request in one instance, one creation receipt, one selecting worker or claimed timer, one stop and a replacement admission boundary, or one admitted list/worker-permission query. Callback and storage completion may succeed or fail. Persisted cases project one task requiring both callbacks (sync or async, including the coding-tools caller) or one callback-free async task, one positive live deadline, one runtime restart, and one same-name worker re-registration. Callback completion and task deletion can succeed or fail. Task reads succeed in this projection.",
 	"limitations": [
 		"Role authorization, option validation, multiple pending approvals, durable recovery of task rows and process restart are outside these projections.",
 		"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. Unavailable callbacks now fail closed. There is no durable callback retry or function reconstruction.",
 		"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
 		"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections.",
-		"Persisted callback requirements use the existing boolean metadata. Mixed callback shapes, legacy or externally changed metadata, automatic worker registration and startup reconstruction of deadline timers remain outside these two persisted projections."
+		"Persisted callback requirements use the existing boolean metadata. Mixed callback shapes, legacy or externally changed metadata, automatic worker registration and startup reconstruction of deadline timers remain outside these two persisted projections.",
+		"Attached metadata is projected away after the implementation conformance establishes that it cannot replace source-owned task options, approval request coordinates and callback requirements."
 	]
 }
