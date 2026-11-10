@@ -592,6 +592,7 @@ export class CreditsService {
   private async applyCreditIncrease(
     params: AddCreditsParams & {
       transactionType: "credit" | "refund" | "clawback";
+      recordZeroReceipt?: boolean;
     },
   ): Promise<{
     transaction: CreditTransaction;
@@ -606,7 +607,11 @@ export class CreditsService {
       transactionType,
     } = params;
     const amountDecimal = new Decimal(amount);
-    if (!amountDecimal.isFinite() || !amountDecimal.gt(0)) {
+    if (
+      !amountDecimal.isFinite() ||
+      amountDecimal.lt(0) ||
+      (amountDecimal.isZero() && !params.recordZeroReceipt)
+    ) {
       throw new InvalidCreditAmountError(Number(amount), "add_credits");
     }
     const amountText = amountDecimal.toDecimalPlaces(6).toFixed(6);
@@ -1266,39 +1271,34 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const {
-      organizationId,
-      amount,
-      description,
-      metadata,
-      stripePaymentIntentId,
-      db,
-      deferCacheInvalidation = false,
-    } = params;
+    return this.applyRefund(params, false);
+  }
 
-    const refundAmount = new Decimal(String(amount));
-    if (!refundAmount.isFinite() || !refundAmount.gt(0)) {
+  /** Keep the dispute reversal receipt even when the balance lost no credits. */
+  async recordDisputeReinstatement(
+    params: AddCreditsParams & { stripePaymentIntentId: string },
+  ): Promise<{ transaction: CreditTransaction; newBalance: number }> {
+    return this.applyRefund(params, true);
+  }
+
+  private async applyRefund(
+    params: AddCreditsParams,
+    recordZeroReceipt: boolean,
+  ): Promise<{ transaction: CreditTransaction; newBalance: number }> {
+    const amount = new Decimal(String(params.amount));
+    if (!amount.isFinite() || amount.lt(0) || (amount.isZero() && !recordZeroReceipt)) {
       throw new Error("Refund amount must be positive");
     }
 
-    return await this.applyCreditIncrease({
-      organizationId,
-      amount,
-      description,
-      metadata,
-      // Thread the idempotency key so a reconcile retry doesn't double-refund
-      // (applyCreditIncrease dedupes on stripe_payment_intent_id via ON
-      // CONFLICT DO NOTHING). (#10846)
-      stripePaymentIntentId,
-      db,
-      deferCacheInvalidation: true,
+    const result = await this.applyCreditIncrease({
+      ...params,
       transactionType: "refund",
-    }).then(async (result) => {
-      if (!deferCacheInvalidation) {
-        await this.invalidateCreditCaches(organizationId);
-      }
-      return result;
+      recordZeroReceipt,
     });
+    if (!params.deferCacheInvalidation) {
+      await this.invalidateCreditCaches(params.organizationId);
+    }
+    return result;
   }
 
   /**

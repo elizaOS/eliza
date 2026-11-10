@@ -1,4 +1,59 @@
 {
+  "credit_reversal_reinstatement.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/stripe-dispute-reinstatement.pglite.test.ts",
+      "required": [
+        "a won dispute on a $10 / 500-credit pack restores all 500 credits exactly once",
+        "a partially consumed pack restores only the applied clawback, never the shortfall",
+        "a half dispute on a $15 fee-inclusive auto top-up claws back half of its 10 credits",
+        "a partial $3 dispute on a $10 / 500-credit pack restores 150 credits",
+        "a legacy 1:1 top-up without a checkout order restores dollars as credits",
+        "a dispute with nothing left to claw back reinstates nothing",
+        "a refund after a won zero-balance dispute creates its own shortfall",
+        "a partial refund then a dispute for the remainder claws back the whole grant",
+        "a dispute then a refund of the undisputed remainder claws back the whole grant",
+        "a full refund after a lost full dispute does not claw back twice",
+        "a full refund after a lost dispute that left a shortfall does not book the debt twice",
+        "cumulative partial refunds on a low balance book each unrecovered credit once",
+        "a fully recovered refund leaves no billing hold",
+        "a refund after consumption holds admission until a top-up repays the shortfall",
+        "a lost dispute keeps the shortfall hold; it clears only by repayment",
+        "a won dispute clears its hold and returns any repayment toward it",
+        "refunds of an auto top-up take back the same share of its affiliate fee",
+        "a dispute takes back the affiliate fee and a won dispute returns it",
+        "a full dispute and a full refund of one charge reverse the affiliate fee once, in either order",
+        "a won dispute and a full refund of one charge leave the affiliate fee reversed once",
+        "a refund that lands between a dispute and its reinstatement stays reversed",
+        "a partially applied refund recovers the rest after the overlapping dispute is won",
+        "a won dispute does not return an affiliate fee the affiliate already spent",
+        "a refund waits for the pending affiliate earning before acknowledgement",
+        "refunds of a referred Checkout purchase take back the same share of its revenue splits",
+        "a dispute takes back the revenue splits and a won dispute returns them",
+        "a refund waits for revenue splits that are owed but not booked yet",
+        "a referral applied after the purchase does not hold the refund",
+        "a retained NaN clawback cannot release its hold or reinstate affiliate earnings",
+        "a retained 1.000000 clawback cannot release its hold or reinstate affiliate earnings"
+      ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/stripe-reversal-before-grant.pglite.test.ts",
+      "required": [
+        "a refund delivered before the checkout grant is retried, then claws the grant back",
+        "a dispute delivered before the checkout grant is retried",
+        "a refund for a legacy credit-pack session, which is quarantined and never grants, is acknowledged",
+        "a refund for a payment that never grants credits is still acknowledged"
+      ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/stripe-webhook-outbox.pglite.test.ts",
+      "required": [
+        "the checked-in Worker cache config selects KV, which refuses to hold a work queue",
+        "concurrent deliveries that each got a 200 all reach the consumer, and a resend stays a duplicate",
+        "a resend of a dead-lettered delivery is delivered again",
+        "unverified or wrongly scoped Stripe payloads never enter the delivery outbox"
+      ]
+    }
+  ],
   "app_deploy_generation.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",

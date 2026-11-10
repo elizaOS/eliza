@@ -416,19 +416,33 @@
   },
   {
     "id": "cloud-flow-credit-reversal-and-reinstatement",
-    "model": null,
+    "model": "packages/cloud/quint/credit_reversal_reinstatement.qnt",
     "sources": [
+      "packages/cloud/api/src/queue/stripe-event.ts",
       "packages/cloud/shared/src/lib/services/credits.ts",
-      "packages/cloud/shared/src/db/repositories/payment-reversal-holds.ts"
+      "packages/cloud/shared/src/db/repositories/payment-reversal-holds.ts",
+      "packages/cloud/shared/src/db/schemas/organization-payment-reversal-holds.ts",
+      "packages/cloud/shared/src/lib/services/billing-hold.ts",
+      "packages/cloud/shared/src/lib/services/redeemable-earnings.ts",
+      "packages/cloud/api/__tests__/stripe-dispute-reinstatement.pglite.test.ts",
+      "packages/cloud/api/__tests__/stripe-reversal-before-grant.pglite.test.ts",
+      "packages/cloud/api/stripe/webhook/route.ts",
+      "packages/cloud/api/__tests__/stripe-webhook-outbox.pglite.test.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "Conserved",
+      "Capped",
+      "UniqueReceipts",
+      "AcknowledgedCovered"
+    ],
+    "status": "partial",
     "limitations": [
-      "Finite models cover only their documented bounds; implementation refinement is not established.",
-      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
-      "Build the finite transition model and connect adversarial implementation tests.",
-      "Required flow invariants: Cumulative reversal replay cannot over-claw credits. | Unrecovered shortfall remains explicit and account-scoped.",
-      "Abstract states: funded, partially_reversed, reversed, shortfall_held, reinstated"
+      "The finite model covers one payment grant, cumulative refund replay, dispute withdrawal and reinstatement, and one shortfall repayment.",
+      "An acknowledged reinstatement requires its durable credit receipt even when it returns no credit. The still-valid refund keeps its series and can book the previously capped amount through a new repair receipt.",
+      "SQL credit and hold mutations are separate from affiliate earnings and provider delivery. Full provider truth, multi-payment composition, operator release and production database isolation require separate evidence.",
+      "The real PGlite hook checks the production queue and ledger, including pre-grant retry, controlled external inputs and resuming a partial reinstatement.",
+      "Current-source revalidation also checks the real signed intake/outbox boundary, missing/wrong/stale/tampered signatures, test-secret live-event refusal, a neighboring tenant, and retained corrupt clawbacks. It does not prove arbitrary tenant composition or cryptography.",
+      "Reinstatement and refund recovery still commit separately. Restored credit can be visible before the refund continuation, so atomic paid-admission protection is not proved. Historical acknowledged deliveries need a separate reconciliation/backfill owner."
     ]
   },
   {

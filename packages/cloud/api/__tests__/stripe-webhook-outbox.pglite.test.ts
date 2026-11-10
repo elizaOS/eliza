@@ -20,6 +20,7 @@ process.env.NODE_ENV = "test";
 setDefaultTimeout(60_000);
 
 const WEBHOOK_SECRET = "whsec_outbox_replay";
+const TEST_WEBHOOK_SECRET = "whsec_secondary_outbox_replay";
 
 /** A KV namespace whose reads wait for each other while `contended`, as concurrent Worker isolates do. */
 class ContendedKv {
@@ -53,6 +54,7 @@ const bindings = {
   CACHE_BACKEND: "auto",
   CACHE_KV: kv,
   STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
+  STRIPE_TEST_WEBHOOK_SECRET: TEST_WEBHOOK_SECRET,
   STRIPE_SECRET_KEY: "sk_test_outbox_replay",
 };
 
@@ -61,7 +63,9 @@ const { runWithCloudBindingsAsync } = await import(
 );
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
   await import("@elizaos/cloud-shared/db/client");
-const { webhookEvents } = await import("@elizaos/cloud-shared/db/schemas");
+const { authEvents, webhookEvents } = await import(
+  "@elizaos/cloud-shared/db/schemas"
+);
 const { cache } = await import("@elizaos/cloud-shared/lib/cache/client");
 const { enqueue } = await import("@elizaos/cloud-shared/lib/redis-queue");
 const { drainStripeDeliveries } = await import(
@@ -80,7 +84,7 @@ beforeAll(async () => {
   const empty = generateDrizzleJson({});
   for (const statement of await generateMigration(
     empty,
-    generateDrizzleJson({ webhookEvents }, empty.id),
+    generateDrizzleJson({ authEvents, webhookEvents }, empty.id),
   ))
     await getPgliteClientForTests().exec(statement.replaceAll('"public".', ""));
   // The cache client and the database client both detect a Worker by this
@@ -197,4 +201,73 @@ test("a resend of a dead-lettered delivery is delivered again", async () => {
     json: { received: true, queued: true },
   });
   expect(await cronTick()).toEqual(["evt_outbox_dead"]);
+});
+
+test("unverified or wrongly scoped Stripe payloads never enter the delivery outbox", async () => {
+  const raw = event("evt_private_auth_boundary", "charge.refunded", {
+    id: "ch_private_auth_boundary",
+    object: "charge",
+  });
+  const valid = await signing.webhooks.generateTestHeaderStringAsync({
+    payload: raw,
+    secret: WEBHOOK_SECRET,
+  });
+  const live = JSON.stringify({ ...JSON.parse(raw), livemode: true });
+  const cases = [
+    { raw, signature: "" },
+    {
+      raw,
+      signature: await signing.webhooks.generateTestHeaderStringAsync({
+        payload: raw,
+        secret: "whsec_wrong_endpoint",
+      }),
+    },
+    { raw: live, signature: valid },
+    {
+      raw,
+      signature: await signing.webhooks.generateTestHeaderStringAsync({
+        payload: raw,
+        secret: WEBHOOK_SECRET,
+        timestamp: Math.floor(Date.now() / 1000) - 1000,
+      }),
+    },
+    {
+      raw: live,
+      signature: await signing.webhooks.generateTestHeaderStringAsync({
+        payload: live,
+        secret: TEST_WEBHOOK_SECRET,
+      }),
+    },
+  ];
+  for (const candidate of cases) {
+    const response = await inWorker(() =>
+      app.fetch(
+        new Request("https://cloud.test/", {
+          method: "POST",
+          body: candidate.raw,
+          headers: candidate.signature
+            ? { "stripe-signature": candidate.signature }
+            : {},
+        }),
+        bindings,
+      ),
+    );
+    expect(response.status).toBe(400);
+    expect(
+      (
+        await getPgliteClientForTests().query(
+          "SELECT event_id FROM webhook_events WHERE event_id=$1",
+          ["evt_private_auth_boundary"],
+        )
+      ).rows,
+    ).toEqual([]);
+  }
+  const audits = await getPgliteClientForTests().query<{
+    result: string;
+    reason: string;
+  }>(
+    "SELECT result,metadata->>'reason' AS reason FROM auth_events ORDER BY ts",
+  );
+  expect(audits.rows).toHaveLength(4);
+  expect(audits.rows.every((row) => row.result === "denied")).toBe(true);
 });
