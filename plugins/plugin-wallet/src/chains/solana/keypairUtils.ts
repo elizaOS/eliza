@@ -23,7 +23,8 @@ function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   if (typeof value !== "string") {
     throw new Error(`Setting ${key} must be a string, got ${typeof value}`);
   }
-  return value;
+  // A blank placeholder is unset, so it cannot shadow the WALLET_* fallback.
+  return value.length > 0 ? value : null;
 }
 
 function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
