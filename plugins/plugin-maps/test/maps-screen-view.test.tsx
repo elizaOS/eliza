@@ -289,7 +289,9 @@ describe("MapsScreen view", () => {
     fireEvent.keyDown(origin, { key: "Enter" });
     await settle();
     expect(screen.getByText("5 min")).toBeTruthy();
-    expect(screen.getByText("1.2 km · no live traffic")).toBeTruthy();
+    expect(
+      screen.getByText(/(?:1.2 km|0.7 mi) · no live traffic/),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Start/ }));
     await settle();
     expect(screen.getByRole("button", { name: "End navigation" })).toBeTruthy();

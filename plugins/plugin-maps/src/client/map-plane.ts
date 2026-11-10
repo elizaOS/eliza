@@ -74,6 +74,8 @@ export type MapOverlay = Readonly<{
 export interface MapPlaneOptions {
   /** Called when the user taps a result pin. */
   onPin?(id: string): void;
+  /** Only direct map gestures interrupt camera following. */
+  onInteraction?(): void;
   fontUrl: string;
   workerUrl: string;
   accent: string;
@@ -355,6 +357,9 @@ export class MapPlane {
       if (protocol) removeProtocol(protocol);
       throw error;
     }
+    this.map.on("movestart", (event) => {
+      if (event.originalEvent) options.onInteraction?.();
+    });
     this.map.on("idle", () => {
       if (this.destroyed) return;
       container.dataset.mapZoom = String(this.map.getZoom());
