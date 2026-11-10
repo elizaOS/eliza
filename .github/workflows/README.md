@@ -15,6 +15,12 @@ parallel with static checks. Manual certification and protected release workflow
 remain available for target-specific qualification.
 Live deployment requires the protected environment gates.
 
+Apps deployment is paused because the feature is unused. The Apps worker workflow
+is disabled in GitHub Actions and is absent from the staging and main effect
+registries. Both API environments set `APPS_DEPLOY_ENABLED=0`, so new app container
+deploy requests return `503` without creating a job. Resume these controls together
+only after the Apps service is approved and qualified.
+
 `staging-launch-gate.yml` is the manual exact-SHA staging certification. It
 runs front door, first turn, reload, messaging, and routing against the staging
 head that Pages and the API Worker both serve, and uploads privacy-safe lane

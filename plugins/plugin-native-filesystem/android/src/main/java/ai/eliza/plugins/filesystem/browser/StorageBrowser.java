@@ -423,6 +423,8 @@ public final class StorageBrowser {
   }
   public synchronized boolean isCurrent(long ticket){return ticket==generation&&current!=null;}
   public synchronized void clear(){generation++;stopCurrent();}
+  /** A refused latest request releases the previous folder's watch; a newer request is untouched. */
+  public synchronized void fail(long ticket){if(ticket==generation)stopCurrent();}
   public synchronized boolean active(){return current!=null;}
   private void stopCurrent(){Watch old=current;current=null;if(old!=null)old.stop();}
  }

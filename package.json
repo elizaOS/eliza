@@ -41,6 +41,7 @@
     "publish:eliza1": "uv run --project packages/training python -m eliza_training.publish.publish_eliza1_all",
     "dev:agent": "bun run --cwd packages/agent dev",
     "build": "node packages/scripts/run-turbo.ts run build --concurrency=8 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.ts",
+    "build:npm": "node packages/scripts/run-turbo.ts run build --filter=!@elizaos/electrobun --concurrency=3 --cache=local:rw,remote:r --output-logs=errors-only && bun packages/scripts/view-bundle-import-guard.ts",
     "build:client": "node packages/scripts/run-turbo.ts run build --filter=@elizaos/app",
     "build:views": "node packages/scripts/build-views.ts",
     "format": "node packages/scripts/check-biome-version-consistency.ts && node packages/scripts/run-turbo.ts run format",
