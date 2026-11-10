@@ -465,7 +465,8 @@ export class MapPlane {
               show(attributed.text);
               return;
             }
-            container.dataset.mapError = "copyright";
+            if (!container.dataset.mapError)
+              container.dataset.mapError = "copyright";
             onError();
           },
         );
