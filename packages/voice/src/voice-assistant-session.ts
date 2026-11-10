@@ -37,6 +37,20 @@
  * The tentative and ignored segment paths below (`bargeInConfirmMs`, `fullDuplex`) only act on a
  * capture that is open while a reply is pending or playing, which the hold never leaves.
  *
+ * Open microphone (`openMic` option, used only over a capture that reports `fullDuplex`): there
+ * is no busy hold. The capture stays open through the request and the reply, so:
+ *
+ *  - Speculative turns. The host sets short gaps and a turn is sent at the first pause. Speech
+ *    that resumes before any reply audio is audible (held for `bargeInConfirmMs`, or a segment
+ *    whose transcript passes the gate) aborts that request and carries its text into the
+ *    utterance in progress: the next submission sends the joined text and names the aborted turn
+ *    in `supersedes`. Nothing from the aborted request is spoken.
+ *  - Barge-in. Speech during playback interrupts once its transcript passes the gate, or earlier
+ *    when it is held for `playbackBargeInMs` (0 leaves the transcript gate alone). The reply is
+ *    aborted, what was heard is reported, and the speech already captured becomes the next turn.
+ *
+ * A capture without `fullDuplex` keeps the busy hold even when `openMic` is set.
+ *
  * Heard content: interrupting aborts the reply (the request and playback are cancelled through the
  * port's AbortSignal). Replies are played one sentence at a time; only sentences whose playback
  * completed count as heard. The sentence playing when the user interrupted is reported as
@@ -228,6 +242,8 @@ export interface AssistantPorts {
     voiceTurnSignal: unknown;
     signal: AbortSignal;
     onText?: (text: string, frame?: AssistantTextFrame) => void;
+    /** The turn this one replaces: sent at a pause, then aborted unheard when speech resumed. */
+    supersedes?: string;
   }): Promise<AssistantReply>;
   /** Text the speaker can say ('' to stay silent). */
   speakable?(text: string): string;
@@ -245,7 +261,7 @@ export interface AssistantPorts {
   onLevel?(peak: number): void;
   /** Diagnostics hooks: numbers, enums and ids only. `submitted` carries how the turn was endpointed. */
   onTurn?(
-    event: "submitted" | "first-audio" | "finished" | "interrupted",
+    event: "submitted" | "first-audio" | "finished" | "interrupted" | "resumed",
     turnId: string,
     detail?: { endpoint: EndpointRecord },
   ): void;
@@ -256,6 +272,11 @@ export interface AssistantTiming {
   endpointDeadlineMs: number;
   /** Speech held this long while a request is pending (before playback) interrupts it before its transcript. */
   bargeInConfirmMs: number;
+  /**
+   * Open microphone only: speech held this long while the reply plays interrupts it before its
+   * transcript. 0 (the default) leaves playback interruption to the transcript gate.
+   */
+  playbackBargeInMs: number;
 }
 /**
  * Engineering defaults, not accepted measurements or product-set constants. Gaps follow the VAD
@@ -270,6 +291,7 @@ export const ASSISTANT_TIMING_DEFAULTS: AssistantTiming = Object.freeze({
   longGapMs: 1200,
   endpointDeadlineMs: 600,
   bargeInConfirmMs: 700,
+  playbackBargeInMs: 0,
 });
 export interface AssistantClock {
   now(): number;
@@ -354,6 +376,8 @@ type Segment = {
 };
 type Response = {
   turnId: string;
+  /** The utterance this turn was sent with. */
+  text: string;
   controller: AbortController;
   replyId?: string;
   sentences: string[];
@@ -399,13 +423,22 @@ export class VoiceAssistantSession {
   private state: AssistantState = { phase: "idle" };
   private mutedValue = false;
   private hold?: Hold;
+  private readonly openMic: boolean;
+  /** The aborted speculative turn whose text the utterance in progress carries. */
+  private superseded?: string;
 
   private readonly ports: AssistantPorts;
   constructor(
     ports: AssistantPorts,
-    options: { timing?: Partial<AssistantTiming>; clock?: AssistantClock } = {},
+    options: {
+      timing?: Partial<AssistantTiming>;
+      clock?: AssistantClock;
+      /** Keep the capture open through the reply (speculative turns and barge-in); needs `fullDuplex`. */
+      openMic?: boolean;
+    } = {},
   ) {
     this.ports = ports;
+    this.openMic = options.openMic === true;
     const timing = { ...ASSISTANT_TIMING_DEFAULTS, ...options.timing };
     for (const value of Object.values(timing))
       if (!Number.isFinite(value) || value < 0)
@@ -514,6 +547,7 @@ export class VoiceAssistantSession {
     }
     this.awaiting = undefined;
     this.segments = [];
+    this.superseded = undefined;
     const capture = this.capture,
       opening = this.opening;
     this.capture = undefined;
@@ -790,30 +824,43 @@ export class VoiceAssistantSession {
       ...(response ? { tentative: response } : {}),
     };
     this.segments.push(segment);
-    if (response && !response.started) {
-      const session = this.session;
+    if (response) {
+      const session = this.session,
+        playing = response.started;
       // Held speech interrupts a pending request before its transcript; a blip closes first and waits
-      // for the gate. While the reply plays only the transcript gate confirms: residual echo of a
-      // sentence can hold the VAD open longer than any fixed hold.
-      this.clock.setTimer(() => {
-        if (
-          this.current(session) &&
-          !segment.closed &&
-          segment.tentative === response &&
-          !response.started
-        )
-          this.confirmBargeIn(segment);
-      }, this.timing.bargeInConfirmMs);
+      // for the gate. While the reply plays the transcript gate confirms (residual echo of a sentence
+      // can hold the VAD open), unless the host set a hold for an echo-cancelled open microphone.
+      const hold = playing
+        ? this.timing.playbackBargeInMs
+        : this.timing.bargeInConfirmMs;
+      if (!playing || hold > 0)
+        this.clock.setTimer(() => {
+          if (
+            this.current(session) &&
+            !segment.closed &&
+            segment.tentative === response &&
+            response.started === playing
+          )
+            this.confirmBargeIn(segment);
+        }, hold);
       return;
     }
-    if (response) return;
     this.publish(this.listeningState());
   }
 
   private confirmBargeIn(segment: Segment) {
     const response = segment.tentative;
     delete segment.tentative;
-    if (response && this.response === response) this.interrupt();
+    if (response && this.response === response) {
+      // A speculative turn nobody heard: its text rejoins the utterance the user is still speaking.
+      const resumed = this.openMic && !response.started;
+      this.interrupt();
+      if (resumed) {
+        this.segments.unshift({ closed: true, done: true, text: response.text });
+        this.superseded = response.turnId;
+        this.ports.onTurn?.("resumed", response.turnId);
+      }
+    }
     this.publish(this.listeningState());
   }
 
@@ -988,16 +1035,35 @@ export class VoiceAssistantSession {
     this.endpointOutcome = undefined;
     this.segments = [];
     ++this.utteranceEpoch;
+    const supersedes = this.superseded;
+    this.superseded = undefined;
     if (!text) return;
     const turn = ++this.turn;
     const response: Response = {
       turnId: randomId(),
+      text,
       controller: new AbortController(),
       sentences: [],
       played: 0,
       started: false,
     };
     this.response = response;
+    if (this.openMic && this.capture?.fullDuplex === true) {
+      // Open microphone: no hold. The capture keeps listening for resumed speech and barge-in.
+      this.publish({ phase: "thinking", transcript: text });
+      this.ports.onTurn?.("submitted", response.turnId, { endpoint });
+      const run = this.respond(
+        session,
+        turn,
+        response,
+        text,
+        this.inflight,
+        Promise.resolve(),
+        supersedes,
+      );
+      this.inflight = run.catch(() => {});
+      return;
+    }
     // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
     // still in flight; a capture still opening is closed by open() as it arrives.
     const capture = this.capture,
@@ -1024,7 +1090,15 @@ export class VoiceAssistantSession {
     closed.catch(() => {});
     this.ports.onTurn?.("submitted", response.turnId, { endpoint });
     const previous = this.inflight;
-    const run = this.respond(session, turn, response, text, previous, closed);
+    const run = this.respond(
+      session,
+      turn,
+      response,
+      text,
+      previous,
+      closed,
+      supersedes,
+    );
     this.inflight = run.catch(() => {});
   }
 
@@ -1073,6 +1147,7 @@ export class VoiceAssistantSession {
     text: string,
     previous: Promise<unknown>,
     closed: Promise<void>,
+    supersedes?: string,
   ) {
     const guard = () => {
       if (!this.owned(session, turn, response)) throw stopped();
@@ -1183,6 +1258,7 @@ export class VoiceAssistantSession {
         voiceTurnSignal: this.ports.turnSignal?.(text),
         signal: response.controller.signal,
         onText,
+        ...(supersedes ? { supersedes } : {}),
       });
       guard();
       if (
