@@ -1,0 +1,57 @@
+{
+  "sources": [
+    "packages/auth/src/server/runtime.ts",
+    "packages/auth/src/server/webhooks/persistent-queue.ts",
+    "packages/auth/src/server/webhooks/dispatcher.ts",
+    "packages/auth/src/server/db/client.ts",
+    "packages/auth/src/server/db/pglite.ts",
+    "packages/core/src/services/task-scheduler.ts",
+    "packages/auth/test/login/webhook-timer.integration.test.ts"
+  ],
+  "conformance": "packages/auth/quint/check-login-webhook-timer.mjs",
+  "bounds": "One Core task adapter, one named login worker, two sequential Auth owners, and two durable jobs. The worker is retained through invocation, claim, network and receipt phases. Empty ticks stutter. Network success and HTTP failure can each commit a receipt. Failure retry delay has not elapsed inside the bound. Request-emitted delivery drainage and database shutdown are represented by the final close step after the worker settles.",
+  "cases": [
+    {
+      "name": "shared-login-webhook-timer",
+      "main": "LoginWebhookTimer",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TimerFollowsOwners",
+        "StorageOutlivesCallback",
+        "WorkerStopsAdmitting",
+        "AuthOwnsRegistration"
+      ],
+      "temporal": [
+        "CloseCompletes",
+        "DetachedDeliveryProgress",
+        "CloseWithoutFairness"
+      ],
+      "temporalChecks": [
+        {
+          "property": "CloseCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of listener retirement, the original worker continuation and final closure. Admitted claims and network work settle, receipt writes finish, and remaining request delivery drainage and storage close settle. Closing does not require successful network delivery."
+          ]
+        },
+        {
+          "property": "DetachedDeliveryProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of worker progress. A serving Auth owner with a due job still receives timer callbacks after the task adapter detaches. The bounded claim, network and receipt phases settle, or Auth leaves serving state."
+          ]
+        },
+        {
+          "property": "CloseWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted callback or shutdown continuation can remain unsettled, so the host can retain the database indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 48,
+      "samples": 700
+    }
+  ]
+}
