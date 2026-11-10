@@ -7,6 +7,7 @@
   <meta name="description" content="Sign in to ValhallaOS. Live trading is off.">
   <link rel="canonical" href="https://valhalla-app.xyz/">
   <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="preload" as="image" href="/assets/heaven-poster.jpg" fetchpriority="high">
   <link rel="stylesheet" href="/visual.css">
   <link rel="stylesheet" href="/home.css">
   <title>ValhallaOS</title>
@@ -20,7 +21,7 @@
       <figure class="stage-wrap backdrop" aria-hidden="true">
         <div class="stage">
           <div class="scene" id="hero-scene">
-            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="720" loading="lazy" decoding="async">
+            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="720" decoding="async" fetchpriority="high">
             <video id="hero-video" muted loop playsinline preload="none"></video>
             <p class="motion-slot"><button class="motion-control" id="hero-motion" type="button" aria-pressed="false" aria-label="Play motion" title="Play motion">▶</button></p>
           </div>
@@ -41,9 +42,9 @@
       <p>TokenJunction LLC. This is not financial advice.</p>
     </footer>
   </div>
-  <script src="/site-config.js"></script>
-  <script src="/home-motion.js"></script>
-  <script src="/supabase.js"></script>
-  <script src="/home.js"></script>
+  <script src="/site-config.js" defer></script>
+  <script src="/home-motion.js" defer></script>
+  <script src="/supabase.js" defer></script>
+  <script src="/home.js" defer></script>
 </body>
 </html>

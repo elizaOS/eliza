@@ -2,8 +2,8 @@
 
 const { publicSupabase } = require('./feed-core.cjs');
 
-const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
-const FALLBACK_MODEL = 'nvidia/nemotron-3.5-lightning:free';
+const DEFAULT_MODEL = 'nvidia/nemotron-3.5-lightning:free';
+const FALLBACK_MODEL = 'google/gemma-4-31b-it:free';
 const ALLOWED = new Set([DEFAULT_MODEL, FALLBACK_MODEL]);
 const WINDOW_MS = 60 * 1000;
 const LIMIT = 6;
@@ -102,7 +102,9 @@ async function complete(key, model, message, fetchImpl) {
       ]
     })
   });
-  if (!response || !response.ok) return { reply: '' };
+  if (!response) return { reply: '' };
+  if (response.status === 429) return { limited: true, reply: '' };
+  if (!response.ok) return { reply: '' };
   const body = await response.json();
   const text = body && body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content;
   return { reply: typeof text === 'string' ? text.trim() : '' };
@@ -128,10 +130,12 @@ async function handleAi(req, env, fetchImpl, now) {
     let used = parsed.model;
     let result = await complete(key, used, parsed.message, fetchImpl);
     if (result.rejected) return { status: 400, body: { error: 'Model not allowed.' } };
-    if (!result.reply && used !== FALLBACK_MODEL) {
-      used = FALLBACK_MODEL;
+    const next = used === DEFAULT_MODEL ? FALLBACK_MODEL : (used === FALLBACK_MODEL ? DEFAULT_MODEL : '');
+    if ((!result.reply || result.limited) && next) {
+      used = next;
       result = await complete(key, used, parsed.message, fetchImpl);
     }
+    if (result && result.limited && !result.reply) return { status: 429, body: { error: 'The free model is busy. Try again shortly.' } };
     if (!result || result.rejected || !result.reply) return { status: 502, body: { error: 'Assistant not connected' } };
     if (result.reply.includes(key)) return { status: 502, body: { error: 'Assistant not connected' } };
     return { status: 200, body: { reply: result.reply, model: used } };

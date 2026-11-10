@@ -50,6 +50,8 @@
         body: JSON.stringify({ message: text }),
         cache: 'no-store'
       });
+      var body = {};
+      try { body = await response.json(); } catch (error) { body = {}; }
       if (response.status === 503) {
         show('Assistant not connected', 'NOT CONNECTED');
         return;
@@ -59,11 +61,11 @@
         return;
       }
       if (response.status === 429) {
-        show('Too many assistant requests. Wait a minute.', 'NOT CONNECTED');
+        show(body.error === 'The free model is busy. Try again shortly.'
+          ? body.error
+          : 'Too many assistant requests. Wait a minute.', 'NOT CONNECTED');
         return;
       }
-      var body = {};
-      try { body = await response.json(); } catch (error) { body = {}; }
       if (!response.ok || typeof body.reply !== 'string' || !body.reply.trim()) {
         show('Assistant not connected', 'NOT CONNECTED');
         return;

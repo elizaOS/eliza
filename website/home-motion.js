@@ -40,13 +40,11 @@
   function attachSources() {
     if (sourcesReady) return;
     sourcesReady = true;
-    video.poster = "/assets/heaven-poster.jpg";
     var mp4 = document.createElement("source");
     mp4.src = filmSource();
     mp4.type = "video/mp4";
+    video.preload = "none";
     video.appendChild(mp4);
-    video.preload = "metadata";
-    video.load();
   }
 
   function setPlaying(playing) {
@@ -104,8 +102,12 @@
   video.addEventListener("pause", function () { setPlaying(false); });
   video.addEventListener("playing", function () { setPlaying(true); });
 
-  if (!heldOff()) startMotion();
-  else setPlaying(false);
+  setPlaying(false);
+  if (!heldOff()) {
+    var startLater = function () { startMotion(); };
+    if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(startLater, { timeout: 1500 });
+    else window.setTimeout(startLater, 400);
+  }
 
   if (typeof reduceQuery.addEventListener === "function") {
     reduceQuery.addEventListener("change", function () {
