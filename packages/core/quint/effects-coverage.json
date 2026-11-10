@@ -131,10 +131,11 @@
 			"TakenClearsDirty",
 			"TypeOK"
 		],
-		"status": "modeled",
+		"status": "partial",
 		"limitations": [
 			"One agent, two service instances, two adapters, three tick slots, two restarts and two registrations.",
-			"Model verification does not establish behavior outside these bounds."
+			"Model verification does not establish behavior outside these bounds.",
+			"TaskSchedulerQueryDrain covers query ownership across unregister and scheduler restart. Shared adapter lifetime across hosts and multiple agents remains externally owned."
 		]
 	},
 	{

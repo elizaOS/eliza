@@ -35,6 +35,8 @@ let schedulerGeneration = 0;
 let nextRegistrationId = 0;
 /** Services inside a scheduler runTick. A restart detaches activeTick, not these runs. */
 const busyServices = new Set<TaskServiceLike>();
+/** Detached generations retain their storage ownership until the query settles. */
+const pendingQueries = new Map<Promise<void>, Set<TaskServiceLike>>();
 
 const TICK_INTERVAL_MS = 1000;
 
@@ -132,12 +134,16 @@ async function tick(generation: number): Promise<void> {
 
 	const snapshot = Array.from(dirtyAgents);
 	const registrations = new Map<string, number>();
+	const queryOwners = new Set<TaskServiceLike>();
 	for (const agentId of snapshot) {
 		const entry = registry.get(agentId);
 		// A service still inside a detached tick's runTick stays dirty: its
 		// rows are read after that run, not before.
 		if (entry && busyServices.has(entry.taskService)) continue;
-		if (entry) registrations.set(agentId, entry.registrationId);
+		if (entry) {
+			registrations.set(agentId, entry.registrationId);
+			queryOwners.add(entry.taskService);
+		}
 		dirtyAgents.delete(agentId);
 	}
 	if (registrations.size === 0) return;
@@ -146,6 +152,11 @@ async function tick(generation: number): Promise<void> {
 	if (!adp) return;
 
 	const agentIds = Array.from(registrations.keys()) as UUID[];
+	let finishQuery!: () => void;
+	const queryDone = new Promise<void>((resolve) => {
+		finishQuery = resolve;
+	});
+	pendingQueries.set(queryDone, queryOwners);
 	let allTasks: Task[];
 	try {
 		allTasks = await adp.getTasks({
@@ -171,6 +182,9 @@ async function tick(generation: number): Promise<void> {
 			entry.runtime.reportError("TaskScheduler.query", error, { agentId: aid });
 		}
 		throw error;
+	} finally {
+		pendingQueries.delete(queryDone);
+		finishQuery();
 	}
 	if (generation !== schedulerGeneration) {
 		throw staleGenerationError(generation);
@@ -303,7 +317,8 @@ function ensureTimer(): void {
 	}, TICK_INTERVAL_MS);
 }
 
-export function stopTaskScheduler(): void {
+/** Fence the current generation now. Await the returned query drain before closing its adapter. */
+export function stopTaskScheduler(): Promise<void> {
 	schedulerGeneration += 1;
 	if (timer && processTasks.size === 0) {
 		clearInterval(timer);
@@ -315,6 +330,7 @@ export function stopTaskScheduler(): void {
 	// An in-flight adapter call cannot be cancelled. Detach it so a restarted
 	// generation is not blocked; its generation fence rejects its eventual result.
 	activeTick = null;
+	return drainQueries();
 }
 
 /** Called by TaskService.startTimer() when getTaskSchedulerAdapter() != null. WHY: runtime opts into shared tick instead of local timer. */
@@ -332,17 +348,27 @@ export function registerTaskSchedulerRuntime(
 	dirtyAgents.add(agentIdKey);
 }
 
-/** Called by TaskService.stop(). WHY: daemon must not call runTick after runtime has stopped. */
+/** Detach now and drain this service's queries, including detached generations. */
 export function unregisterTaskSchedulerRuntime(
 	agentId: UUID,
 	taskService?: TaskServiceLike,
-): void {
+): Promise<void> {
 	const agentIdKey = agentId;
+	const entry = registry.get(agentIdKey);
+	const owner = taskService ?? entry?.taskService;
 	// An older service may finish stopping after its replacement registers.
-	if (taskService && registry.get(agentIdKey)?.taskService !== taskService)
-		return;
-	registry.delete(agentIdKey);
-	dirtyAgents.delete(agentIdKey);
+	if (!taskService || entry?.taskService === taskService) {
+		registry.delete(agentIdKey);
+		dirtyAgents.delete(agentIdKey);
+	}
+	return owner ? drainQueries(owner) : Promise.resolve();
+}
+
+function drainQueries(owner?: TaskServiceLike): Promise<void> {
+	const queries = Array.from(pendingQueries)
+		.filter(([, owners]) => !owner || owners.has(owner))
+		.map(([done]) => done);
+	return Promise.all(queries).then(() => undefined);
 }
 
 /** Called by TaskService.markDirty() when daemon is present. WHY: next tick will include this agent in the batched getTasks. */

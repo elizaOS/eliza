@@ -1,0 +1,99 @@
+// External query ownership outlives scheduler attachment. Registration identity
+// controls dispatch, while service retirement waits for its actual adapter use.
+module TaskSchedulerQueryDrain {
+  val Services = Set("old", "replacement")
+  val Queries = Set("first", "second")
+  type Query = { phase: str, owner: str, registration: int, generation: int }
+  var s: { active: bool, generation: int, registry: str, registration: int,
+    queries: str -> Query, retired: Set[str], closed: Set[str],
+    stopRequested: bool, stopReturned: bool, restarted: bool,
+    stopQueries: Set[str], dispatched: Set[str] }
+
+  val pendingQueries = Queries.filter(q => s.queries.get(q).phase == "query")
+  def ownedPending(owner: str): Set[str] =
+    pendingQueries.filter(q => s.queries.get(q).owner == owner)
+  action init = s' = { active: true, generation: 0, registry: "none", registration: 0,
+    queries: Queries.mapBy(_ => { phase: "idle", owner: "none", registration: 0, generation: 0 }),
+    retired: Set(), closed: Set(), stopRequested: false, stopReturned: false,
+    restarted: false, stopQueries: Set(), dispatched: Set() }
+  action register(owner: str): bool = all {
+    s.active, not(s.retired.contains(owner)), s.registration < 2,
+    s' = { ...s, registry: owner, registration: s.registration + 1 },
+  }
+  action begin(q: str): bool = all {
+    s.active, s.registry != "none", s.queries.get(q).phase == "idle",
+    s' = { ...s, queries: s.queries.set(q, { phase: "query", owner: s.registry,
+      registration: s.registration, generation: s.generation }) },
+  }
+  action unregister(owner: str): bool = s' = { ...s,
+    retired: s.retired.union(Set(owner)),
+    registry: if (s.registry == owner) "none" else s.registry }
+  action closeStorage(owner: str): bool = all {
+    s.retired.contains(owner), ownedPending(owner).size() == 0,
+    s' = { ...s, closed: s.closed.union(Set(owner)) },
+  }
+  action settle(q: str, succeeded: bool): bool = all {
+    s.queries.get(q).phase == "query",
+    s' = { ...s, queries: s.queries.set(q, { ...s.queries.get(q),
+      phase: if (succeeded) "result" else "failed" }) },
+  }
+  action dispatch(q: str): bool = {
+    val query = s.queries.get(q)
+    all {
+      query.phase == "result", s.active, query.generation == s.generation,
+      query.registration == s.registration, query.owner == s.registry,
+      s' = { ...s, queries: s.queries.set(q, { ...query, phase: "dispatched" }),
+        dispatched: s.dispatched.union(Set(q)) },
+    }
+  }
+  action stopScheduler = all {
+    not(s.stopRequested),
+    s' = { ...s, active: false, generation: s.generation + 1, registry: "none",
+      stopRequested: true, stopQueries: pendingQueries },
+  }
+  action returnSchedulerStop = all {
+    s.stopRequested, s.stopQueries.intersect(pendingQueries).size() == 0,
+    s' = { ...s, stopReturned: true },
+  }
+  action restart = all {
+    s.stopRequested, not(s.restarted),
+    s' = { ...s, active: true, generation: s.generation + 1, restarted: true },
+  }
+  action step = {
+    nondet owner = Services.oneOf()
+    nondet q = Queries.oneOf()
+    nondet succeeded = Set(true, false).oneOf()
+    any {
+      register(owner), begin(q), unregister(owner), closeStorage(owner),
+      settle(q, succeeded), dispatch(q), stopScheduler, returnSchedulerStop,
+      restart, s' = s,
+    }
+  }
+
+  val ClosedStorageHasNoQueries = s.closed.forall(owner => ownedPending(owner).size() == 0)
+  val SchedulerStopDrainsCapturedQueries = s.stopReturned.implies(
+    s.stopQueries.intersect(pendingQueries).size() == 0)
+  temporal RetiredServicesReceiveNoNewDispatch = always(Services.forall(owner =>
+    s.retired.contains(owner).implies(Queries.forall(q =>
+      (not(s.dispatched.contains(q)) and next(s.dispatched).contains(q))
+        .implies(s.queries.get(q).owner != owner)))).orKeep(s))
+  temporal NoNewQueriesForClosedStorage = always(Queries.forall(q =>
+    (not(pendingQueries.contains(q)) and next(pendingQueries).contains(q))
+      .implies(not(s.closed.contains(next(s.queries.get(q).owner))))).orKeep(s))
+  temporal DrainFairness = Queries.forall(q => (settle(q, true) or settle(q, false)).weakFair(s))
+    and Services.forall(owner => closeStorage(owner).weakFair(s))
+    and returnSchedulerStop.weakFair(s)
+  temporal RetiredStorageCloses = DrainFairness.implies(
+    Services.forall(owner => s.retired.contains(owner).leadsTo(s.closed.contains(owner))))
+  temporal SchedulerStopReturns = DrainFairness.implies(s.stopRequested.leadsTo(s.stopReturned))
+
+  run stoppedServiceRetainsPendingQueryTest = init.then(register("old")).then(begin("first"))
+    .then(unregister("old")).expect(ownedPending("old") == Set("first"))
+    .then(settle("first", true)).then(closeStorage("old")).expect(ClosedStorageHasNoQueries)
+  run replacementRunsWhileOldQueryDrainsTest = init.then(register("old")).then(begin("first"))
+    .then(stopScheduler).then(restart).then(register("replacement")).then(unregister("old"))
+    .expect(s.registry == "replacement" and not(s.stopReturned))
+    .then(begin("second")).then(settle("second", true)).then(dispatch("second"))
+    .then(settle("first", false)).then(returnSchedulerStop).then(closeStorage("old"))
+    .expect(s.stopReturned and s.dispatched == Set("second") and ClosedStorageHasNoQueries)
+}

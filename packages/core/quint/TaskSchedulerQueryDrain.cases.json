@@ -1,0 +1,59 @@
+{
+	"sources": [
+		"packages/core/src/services/task-scheduler.ts",
+		"packages/core/src/services/task.ts",
+		"packages/core/test/task-scheduler-model.test.ts"
+	],
+	"conformance": "packages/core/scripts/quint-task-scheduler-conformance.mjs",
+	"bounds": "One agent, two service identities, two query slots, two registrations and one scheduler stop and restart. Query success, failure and a delayed result retain their exact owner until settlement. A scheduler stop captures the queries already in flight.",
+	"cases": [
+		{
+			"name": "external-query-retirement",
+			"main": "TaskSchedulerQueryDrain",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"ClosedStorageHasNoQueries",
+				"SchedulerStopDrainsCapturedQueries"
+			],
+			"temporal": [
+				"RetiredServicesReceiveNoNewDispatch",
+				"NoNewQueriesForClosedStorage",
+				"RetiredStorageCloses",
+				"SchedulerStopReturns"
+			],
+			"temporalChecks": [
+				{
+					"property": "RetiredServicesReceiveNoNewDispatch",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness assumption. A service unregisters synchronously before its outstanding query receipts are drained."
+					]
+				},
+				{
+					"property": "NoNewQueriesForClosedStorage",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness assumption. Exact service identity and retirement prevent a closed runtime from owning a new query."
+					]
+				},
+				{
+					"property": "RetiredStorageCloses",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of query settlement and closeStorage for each service. Every admitted adapter query eventually returns or throws, and the host waits for service stop before closing that runtime."
+					]
+				},
+				{
+					"property": "SchedulerStopReturns",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of query settlement and returnSchedulerStop. The stop receipt covers queries captured before the generation was detached, and later generations retain their own query owners."
+					]
+				}
+			],
+			"maxSteps": 35,
+			"samples": 500
+		}
+	]
+}

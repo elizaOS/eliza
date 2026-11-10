@@ -191,6 +191,113 @@ it("retirement refuses immediate resume before it changes stored pause state", a
 	}
 });
 
+it("service stop drains a shared query before its runtime storage closes", async () => {
+	const f = await createTestRuntime({ characterName: "SchedulerQueryDrain" });
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(f.runtime);
+	let runs = 0,
+		queryFinished = false;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "QUERY_DRAIN",
+			execute: async () => {
+				runs++;
+			},
+		});
+		await f.runtime.createTask({
+			name: "QUERY_DRAIN",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTasks = f.runtime.adapter.getTasks.bind(f.runtime.adapter);
+		vi.spyOn(f.runtime.adapter, "getTasks").mockImplementationOnce(
+			async (params) => {
+				entered.resolve();
+				await release.promise;
+				const rows = await getTasks(params);
+				queryFinished = true;
+				return rows;
+			},
+		);
+		startTaskScheduler(f.runtime.adapter);
+		service.startTimer();
+		await entered.promise;
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(stopped).toBe(false);
+		release.resolve();
+		await stopping;
+		expect(queryFinished).toBe(true);
+		expect(runs).toBe(0);
+	} finally {
+		release.resolve();
+		await service.stop();
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await f.cleanup();
+	}
+});
+
+it("scheduler stop drains its detached query while a replacement registration runs", async () => {
+	const f = await createTestRuntime({
+		characterName: "SchedulerRestartQueryDrain",
+	});
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(f.runtime);
+	const replacement = new TaskService(f.runtime);
+	let runs = 0;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "RESTART_QUERY",
+			execute: async () => {
+				runs++;
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "RESTART_QUERY",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTasks = f.runtime.adapter.getTasks.bind(f.runtime.adapter);
+		vi.spyOn(f.runtime.adapter, "getTasks").mockImplementationOnce(
+			async (params) => {
+				entered.resolve();
+				await release.promise;
+				await getTasks(params);
+				throw new Error("Detached query connection reset");
+			},
+		);
+		startTaskScheduler(f.runtime.adapter);
+		service.startTimer();
+		await entered.promise;
+		let drained = false;
+		const draining = Promise.resolve(stopTaskScheduler()).then(() => {
+			drained = true;
+		});
+		startTaskScheduler(f.runtime.adapter);
+		replacement.startTimer();
+		const retired = service.stop();
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(drained).toBe(false);
+		await expect.poll(() => runs, { timeout: 10000 }).toBe(1);
+		release.resolve();
+		await Promise.all([draining, retired]);
+		expect(await f.runtime.getTask(id)).toBeNull();
+		expect(runs).toBe(1);
+	} finally {
+		release.resolve();
+		await Promise.all([service.stop(), replacement.stop()]);
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await f.cleanup();
+	}
+});
+
 // TaskService.qnt OneShotAtMostOnce: runDueTasks() during a daemon runTick.
 it("a host runDueTasks during a daemon tick does not run a one-shot twice", async () => {
 	const f = await createTestRuntime({ characterName: "DaemonOneShot" });
