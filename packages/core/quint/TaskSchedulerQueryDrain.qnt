@@ -8,8 +8,9 @@ module TaskSchedulerQueryDrain {
   var s: { active: bool, adapter: str, retiredAdapters: Set[str], closedAdapters: Set[str], generation: int, registry: str, registration: int,
     queries: str -> Query, retired: Set[str], closed: Set[str],
     stopRequested: bool, stopReturned: bool, restarted: bool,
-    stopQueries: Set[str], dispatched: Set[str] }
+    stopQueries: Set[str] }
 
+  val dispatched = Queries.filter(q => s.queries.get(q).phase == "dispatched")
   val pendingQueries = Queries.filter(q => s.queries.get(q).phase == "query")
   def adapterPending(owner: str): Set[str] =
     pendingQueries.filter(q => s.queries.get(q).adapter == owner)
@@ -18,7 +19,7 @@ module TaskSchedulerQueryDrain {
   action init = s' = { active: true, adapter: "storage-old", retiredAdapters: Set(), closedAdapters: Set(), generation: 0, registry: "none", registration: 0,
     queries: Queries.mapBy(_ => { phase: "idle", owner: "none", registration: 0, generation: 0, adapter: "none" }),
     retired: Set(), closed: Set(), stopRequested: false, stopReturned: false,
-    restarted: false, stopQueries: Set(), dispatched: Set() }
+    restarted: false, stopQueries: Set() }
   action register(owner: str): bool = all {
     s.active, not(s.retired.contains(owner)), s.registration < 2,
     s' = { ...s, registry: owner, registration: s.registration + 1 },
@@ -54,8 +55,7 @@ module TaskSchedulerQueryDrain {
     all {
       query.phase == "result", s.active, query.generation == s.generation,
       query.registration == s.registration, query.owner == s.registry,
-      s' = { ...s, queries: s.queries.set(q, { ...query, phase: "dispatched" }),
-        dispatched: s.dispatched.union(Set(q)) },
+      s' = { ...s, queries: s.queries.set(q, { ...query, phase: "dispatched" }) },
     }
   }
   action stopScheduler = all {
@@ -90,7 +90,7 @@ module TaskSchedulerQueryDrain {
     s.stopQueries.intersect(pendingQueries).size() == 0)
   temporal RetiredServicesReceiveNoNewDispatch = always(Services.forall(owner =>
     s.retired.contains(owner).implies(Queries.forall(q =>
-      (not(s.dispatched.contains(q)) and next(s.dispatched).contains(q))
+      (not(dispatched.contains(q)) and next(dispatched).contains(q))
         .implies(s.queries.get(q).owner != owner)))).orKeep(s))
   temporal NoNewQueriesForClosedStorage = always(Queries.forall(q =>
     (not(pendingQueries.contains(q)) and next(pendingQueries).contains(q))
@@ -113,7 +113,7 @@ module TaskSchedulerQueryDrain {
     .expect(s.registry == "replacement" and not(s.stopReturned))
     .then(begin("second")).then(settle("second", true)).then(dispatch("second"))
     .then(settle("first", false)).then(returnSchedulerStop).then(closeStorage("old"))
-    .expect(s.stopReturned and s.dispatched == Set("second") and ClosedStorageHasNoQueries)
+    .expect(s.stopReturned and dispatched == Set("second") and ClosedStorageHasNoQueries)
   run adapterOwnerOutsideQuerySnapshotTest = init.then(register("replacement")).then(begin("first"))
     .then(stopScheduler).then(restart).then(register("replacement"))
     .then(retireAdapter("storage-old")).expect(adapterPending("storage-old") == Set("first"))
