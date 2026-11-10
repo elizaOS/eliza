@@ -1,0 +1,33 @@
+{
+  "sources": [
+    "packages/cloud/api/src/a2a-task-state.ts",
+    "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
+    "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+    "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+    "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
+      "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
+      "Arbitrary unconditional replacement, the Redis backend and semantic task status transitions are excluded. Ten real SQLite-backed workerd checks cover selected receipt and content-preservation scenarios, not general trace equivalence.",
+      "A foreign read is rejected before the owned import phase closes, matching the Durable Object transaction.",
+      "History is set-valued in this model. Real implementation checks assert ordered complete content and duplicate retention. Multi-task import conflict atomicity is checked by workerd outside the one-task model."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "a2a-task-store",
+      "main": "a2a_task_store",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-a2a-task-store.mjs"
+}

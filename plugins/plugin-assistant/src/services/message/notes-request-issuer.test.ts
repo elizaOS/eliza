@@ -82,9 +82,8 @@ it("retains a requested mutation through the actual bounded suppression wrapper"
         );
         const attempt = beginRequestOperationAttempt(f);
         await runWithSuppressedModelStream(async () => {
-          // The existing wrapper creates a NEW composite AbortSignal. Stable
-          // custody, not that signal's reference, preserves the request.
-          expect(getStreamingContext()?.abortSignal).not.toBe(root.signal);
+          // Stable custody, not the scope's signal reference, preserves the
+          // request through the wrapper.
           expect(
             checkBoundNotesOperation(f.state, f.message, "create", attempt),
           ).toEqual({ allowed: true, addsAuthority: false });

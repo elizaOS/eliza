@@ -1,0 +1,100 @@
+{
+  "sources": [
+    "packages/core/src/runtime/execute-planned-tool-call.ts",
+    "packages/testing/src/pglite-runtime.ts",
+    "plugins/plugin-assistant/src/index.ts",
+    "plugins/plugin-assistant/src/features/basic-capabilities/index.ts",
+    "plugins/plugin-assistant/src/services/approval/store.ts",
+    "plugins/plugin-assistant/src/services/device-actions/action.ts",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/photos-view-contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "plugins/plugin-assistant/src/services/device-actions/tools.ts",
+    "plugins/plugin-assistant/src/services/message/action-surface.ts",
+    "plugins/plugin-assistant/test/device-owner-turn.ts",
+    "plugins/plugin-assistant/test/photos-filter.e2e.test.ts",
+    "plugins/plugin-assistant/vitest.device-actions.config.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-device-action-flow.mjs",
+  "bounds": {
+    "domain": "One named Photos Filter tool, one operation key, one claim and one pending writer. Exact, foreign, stale and incomplete proof inputs abstract the authenticated proposal and execution identity. Count receipts carry shown 0..2 and more true or false.",
+    "abstraction": "Binding changes invalidate pending foreground admission. The final database callback decides whether the transaction commits. Closed covers review rejection, elapsed expiry and a reconciled not-applied outcome that this device claim API cannot redispatch.",
+    "limits": "Generic proposal discovery, native Photos review and direct dispatch, other photo operations, restart, multiple keys or writers, actual image data and transport failures are outside the projection. Applied evidence models only the count-only receipt accepted by the real server.",
+    "conformance": "Registered assistant actions and exact-name planner admission use a real AgentRuntime. Proposals, approval, dispatch claims and receipt replay use the maintained SQL queue on PGlite. The device result is supplied at the typed receipt boundary."
+  },
+  "cases": [
+    {
+      "name": "photos-filter-admission-and-receipt",
+      "main": "DevicePhotosFilter",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DiscoveryRequiresDevice",
+        "OnlyCurrentTurnCanCommit",
+        "ProposalRequiresRegistration"
+      ],
+      "temporal": [
+        "NewProposalRequiresEligibleTurn",
+        "CountRequiresDispatch",
+        "TerminalRecordIsStable",
+        "UnderFairCommit",
+        "UnderFairReview",
+        "UnderFairReceipt",
+        "ClaimedSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "NewProposalRequiresEligibleTurn",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A replacement turn cannot retain a checked write from a retired turn."
+          ]
+        },
+        {
+          "property": "CountRequiresDispatch",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The accepted result belongs to the exact durable attempt."
+          ]
+        },
+        {
+          "property": "TerminalRecordIsStable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The model has one immutable operation key and one attempt."
+          ]
+        },
+        {
+          "property": "UnderFairCommit",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the commit callback. A turn replacement can discard admission first."
+          ]
+        },
+        {
+          "property": "UnderFairReview",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of exact owner review or elapsed expiry. An owner can reject."
+          ]
+        },
+        {
+          "property": "UnderFairReceipt",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of delivery for the exact claimed receipt. An uncertain outcome can require a separate owner review."
+          ]
+        },
+        {
+          "property": "ClaimedSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A silent phone can leave a claimed proposal awaiting a receipt."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 300
+    }
+  ]
+}

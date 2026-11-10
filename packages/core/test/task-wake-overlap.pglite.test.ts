@@ -25,11 +25,11 @@ it("a host wake during a timer tick does not run a due one-shot task twice", asy
 	let tickCallback: (() => Promise<void>) | undefined;
 	const service = new TaskService(f.runtime, {
 		now: () => Date.now(),
-		setInterval: (callback) => {
+		setTimeout: (callback) => {
 			tickCallback = callback;
 			return 1;
 		},
-		clearInterval: () => {},
+		clearTimeout: () => {},
 	});
 	try {
 		f.runtime.registerTaskWorker({

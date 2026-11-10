@@ -6,22 +6,18 @@
  */
 
 import { logger } from "../logger.js";
+import type { FetchLike } from "../media/fetch.js";
 import {
 	isBlockedHostname,
 	isPrivateIpAddress,
 	type LookupFn,
+	normalizeHostLike,
 	type PinnedHostname,
 	type PinnedLookup,
-	resolvePinnedHostname,
 	resolvePinnedHostnameWithPolicy,
 	SsrfBlockedError,
 	type SsrfPolicy,
 } from "./ssrf.js";
-
-type FetchLike = (
-	input: RequestInfo | URL,
-	init?: RequestInit,
-) => Promise<Response>;
 
 export type GuardedFetchOptions = {
 	url: string;
@@ -253,6 +249,35 @@ function buildAbortSignal(params: {
 }
 
 /**
+ * Settles with `promise` unless `signal` aborts first, so a DNS lookup that
+ * never answers cannot outlive the deadline. The orphaned lookup finishes in
+ * the background and its result is ignored.
+ */
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+	if (!signal) {
+		return promise;
+	}
+	if (signal.aborted) {
+		promise.catch(() => {});
+		return Promise.reject(signal.reason);
+	}
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(
+			(value) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(value);
+			},
+			(error: unknown) => {
+				signal.removeEventListener("abort", onAbort);
+				reject(error);
+			},
+		);
+	});
+}
+
+/**
  * Fetch with SSRF protection.
  *
  * - Validates URL protocol (http/https only)
@@ -314,6 +339,10 @@ export async function fetchWithSsrfGuard(
 		cleanup();
 	};
 
+	const allowPrivateNetwork = Boolean(params.policy?.allowPrivateNetwork);
+	const allowedHostnames = new Set(
+		(params.policy?.allowedHostnames ?? []).map(normalizeHostLike),
+	);
 	const visited = new Set<string>();
 	let currentUrl = params.url;
 	let redirectCount = 0;
@@ -334,7 +363,7 @@ export async function fetchWithSsrfGuard(
 			await release();
 			throw new Error("Invalid URL: must be http or https", { cause: error });
 		}
-		if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+		if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
 			await release();
 			throw new Error("Invalid URL: must be http or https");
 		}
@@ -343,17 +372,17 @@ export async function fetchWithSsrfGuard(
 			if (lookupFn) {
 				// A DNS lookup is available → pin the resolved address(es). This is
 				// the strongest mode: it also defends against DNS rebinding.
-				const usePolicy = Boolean(
-					params.policy?.allowPrivateNetwork ||
-						params.policy?.allowedHostnames?.length,
+				pinned = await raceAbort(
+					resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+						lookupFn,
+						policy: params.policy,
+					}),
+					signal,
 				);
-				pinned = usePolicy
-					? await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-							lookupFn,
-							policy: params.policy,
-						})
-					: await resolvePinnedHostname(parsedUrl.hostname, lookupFn);
-			} else {
+			} else if (
+				!allowPrivateNetwork &&
+				!allowedHostnames.has(normalizeHostLike(parsedUrl.hostname))
+			) {
 				// EDGE-SSRF: no socket pinning on workerd — egress network policy
 				// required. This branch runs where there is no node:dns to pin with
 				// (Cloudflare Workers / environment-agnostic core). It blocks literal
@@ -369,29 +398,16 @@ export async function fetchWithSsrfGuard(
 				// internal hostnames. The redirect loop below re-runs this check for
 				// every hop, so redirect-to-internal is caught too. Pass a lookupFn
 				// where rebinding protection matters.
-				const allowPrivate = Boolean(params.policy?.allowPrivateNetwork);
-				const host = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
-				const allowed = new Set(
-					(params.policy?.allowedHostnames ?? []).map((value) =>
-						value.trim().toLowerCase().replace(/\.$/, ""),
-					),
-				);
-				if (!allowPrivate && !allowed.has(host)) {
-					if (isBlockedHostname(parsedUrl.hostname)) {
-						await release();
-						throw new SsrfBlockedError(
-							`Blocked hostname: ${parsedUrl.hostname}`,
-						);
-					}
-					if (isPrivateIpAddress(parsedUrl.hostname)) {
-						await release();
-						throw new SsrfBlockedError("Blocked: private/internal IP address");
-					}
+				if (isBlockedHostname(parsedUrl.hostname)) {
+					throw new SsrfBlockedError(`Blocked hostname: ${parsedUrl.hostname}`);
+				}
+				if (isPrivateIpAddress(parsedUrl.hostname)) {
+					throw new SsrfBlockedError("Blocked: private/internal IP address");
 				}
 			}
 
 			const init: RequestInit = {
-				...(params.init ? { ...params.init } : {}),
+				...params.init,
 				...(hopHeaders ? { headers: hopHeaders } : {}),
 				...(hopMethod !== undefined ? { method: hopMethod } : {}),
 				...(hopBodyDropped ? { body: undefined } : {}),
@@ -402,7 +418,6 @@ export async function fetchWithSsrfGuard(
 			// A signal that is already aborted (caller cancellation or an elapsed
 			// deadline during DNS pinning) must not dispatch a request at all.
 			if (signal?.aborted) {
-				await release();
 				throw signal.reason;
 			}
 
@@ -420,7 +435,6 @@ export async function fetchWithSsrfGuard(
 				const location = response.headers.get("location");
 				if (!location) {
 					cancelResponseBody(response);
-					await release();
 					throw new Error(
 						`Redirect missing location header (${response.status})`,
 					);
@@ -428,7 +442,6 @@ export async function fetchWithSsrfGuard(
 				redirectCount += 1;
 				if (redirectCount > maxRedirects) {
 					cancelResponseBody(response);
-					await release();
 					// Redirect budget and loop violations are policy blocks, not
 					// transient transport failures: retrying cannot succeed.
 					throw new SsrfBlockedError(
@@ -442,7 +455,6 @@ export async function fetchWithSsrfGuard(
 				const nextParsedUrl = new URL(location, parsedUrl);
 				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {
-					await release();
 					throw new SsrfBlockedError("Redirect loop detected");
 				}
 				visited.add(nextUrl);

@@ -1,0 +1,69 @@
+{
+	"sources": [
+		"packages/core/src/services/notification.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/test/notification.test.ts"
+	],
+	"conformance": "packages/core/scripts/quint-notification-conformance.mjs",
+	"bounds": "One runtime with five effective availability states and separate load, outcome and finally phases. The failure count saturates at the first 30-second delay, so repeated capped failures can continue without a bound on attempt count. Logical ticks count whole elapsed seconds. A wall-clock change is a stutter.",
+	"fairness": "The host load and its finally callback must settle. The monotonic clock must advance to exhaust a pending cooldown.",
+	"limitations": [
+		"Service replacement during recovery and concurrent runtimes require their separate lifecycle ownership models.",
+		"The model projects wall-clock changes away and uses elapsed seconds. The SQLite/runtime regression checks both wall-clock directions and the exact millisecond retry boundary, including repeated capped delays.",
+		"Exceptions from diagnostics and cross-process restart are outside this recovery projection."
+	],
+	"cases": [
+		{
+			"name": "recovery-admission",
+			"main": "NotificationRecovery",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"BusyRequestsJoin",
+				"BackoffBlocksAdmission",
+				"OnlyFailedServicesStart",
+				"BoundedCooldown",
+				"PhaseMatchesAvailability"
+			],
+			"temporal": [
+				"OnlyIdleEntersLoad",
+				"AttemptsSettle",
+				"FairCooldownElapses",
+				"CooldownElapses"
+			],
+			"maxSteps": 80,
+			"samples": 1000,
+			"temporalChecks": [
+				{
+					"property": "OnlyIdleEntersLoad",
+					"expect": "holds",
+					"assumptions": [
+						"No scheduling fairness. External availability changes are restricted to idle states."
+					]
+				},
+				{
+					"property": "AttemptsSettle",
+					"expect": "holds",
+					"assumptions": [
+						"The host service load eventually resolves or rejects and its finally callback runs."
+					]
+				},
+				{
+					"property": "FairCooldownElapses",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of monotonic elapsed-time ticks while a cooldown is active."
+					]
+				},
+				{
+					"property": "CooldownElapses",
+					"expect": "counterexample",
+					"assumptions": [
+						"No scheduling fairness. A cooldown can persist while elapsed time does not advance."
+					]
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "packages/agent/src/services/agent-backup-restore-v3-generation.ts",
+    "packages/agent/src/services/agent-backup-restore-v3-generation-commit.ts",
+    "packages/agent/src/services/agent-backup-restore-v3-generation-promotion.ts",
+    "packages/agent/src/services/agent-backup-restore-v3-serving-controller.ts",
+    "packages/agent/src/services/agent-backup-restore-v3-restored-runtime.ts"
+  ],
+  "bounds": {
+    "domain": "One generation publication and one boot grant.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_restore_generation",
+      "main": "services_restore_generation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -28,6 +28,11 @@ on:
         description: Exact npm username represented by NPM_TOKEN
         required: true
         type: string
+      publish_stores:
+        description: Also publish configured app stores after the npm release
+        required: false
+        type: boolean
+        default: false
       candidate_run_id:
         description: Prior workflow run whose immutable candidate should be resumed
         required: false
@@ -314,6 +319,7 @@ jobs:
       - name: Build and pack once
         if: inputs.candidate_run_id == 0
         env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
           RUN_TURBO_CONCURRENCY: "3"
         run: >-
           node packages/scripts/release-candidate.ts candidate
@@ -329,7 +335,7 @@ jobs:
           --publisher "${{ steps.release_inputs.outputs.publisher }}"
           --build-command bun
           --build-arg run
-          --build-arg build
+          --build-arg build:npm
 
       - name: Rebind source after pack
         if: inputs.candidate_run_id == 0
@@ -592,6 +598,7 @@ jobs:
 
   publish-snap:
     name: Publish Snap Store release
+    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read
@@ -605,6 +612,7 @@ jobs:
 
   publish-mobile-stores:
     name: Publish Google Play and Apple App Store releases
+    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read
@@ -618,6 +626,7 @@ jobs:
 
   publish-microsoft-store:
     name: Publish Microsoft Store release
+    if: inputs.publish_stores
     needs: finalize
     permissions:
       contents: read

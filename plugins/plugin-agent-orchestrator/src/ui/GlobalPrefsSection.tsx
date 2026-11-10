@@ -168,49 +168,6 @@ export function GlobalPrefsSection({
 
       <SettingsControls.Field>
         <SettingsControls.FieldLabel>
-          {t("codingagentsettingssection.ScratchRetention", {
-            defaultValue: "Scratch Retention",
-          })}
-        </SettingsControls.FieldLabel>
-        <Select
-          value={prefs.ELIZA_SCRATCH_RETENTION || "pending_decision"}
-          onValueChange={(value: string) => {
-            if (!prefs.ELIZA_SCRATCH_RETENTION && value === "pending_decision")
-              return;
-            setPref("ELIZA_SCRATCH_RETENTION", value);
-          }}
-        >
-          <SettingsControls.SelectTrigger variant="compact">
-            <SelectValue />
-          </SettingsControls.SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ephemeral">
-              {t("codingagentsettingssection.RetentionEphemeral", {
-                defaultValue: "Auto-delete",
-              })}
-            </SelectItem>
-            <SelectItem value="pending_decision">
-              {t("codingagentsettingssection.RetentionAskMe", {
-                defaultValue: "Ask me (default)",
-              })}
-            </SelectItem>
-            <SelectItem value="persistent">
-              {t("codingagentsettingssection.RetentionAlwaysKeep", {
-                defaultValue: "Always keep",
-              })}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <SettingsControls.FieldDescription className="sr-only">
-          {t("codingagentsettingssection.ScratchRetentionDesc", {
-            defaultValue:
-              "What happens to scratch workspace code when a task finishes.",
-          })}
-        </SettingsControls.FieldDescription>
-      </SettingsControls.Field>
-
-      <SettingsControls.Field>
-        <SettingsControls.FieldLabel>
           {t("codingagentsettingssection.CodingDirectory", {
             defaultValue: "Coding Directory",
           })}

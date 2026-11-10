@@ -1,4 +1,4 @@
-import { TASK_ID_PATTERN } from "@elizaos/core/protocol";
+import { TASK_ID_PATTERN } from "@elizaos/core/task-events";
 
 export type TaskView = {
   schemaVersion: 1;
@@ -83,6 +83,8 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 export class TaskLifecycle {
   private generation = 0;
   private starting: Promise<TaskView | null> | null = null;
+  /** The ticket of a Pause or Close that waits for a pending start. */
+  private deferredPause: number | null = null;
   private lastCommand: TaskLifecycleCommand = "pause";
   private state: TaskLifecycleState = { task: null, pending: false, error: "" };
   private readonly messages: TaskLifecycleMessages;
@@ -118,6 +120,7 @@ export class TaskLifecycle {
   reset() {
     this.generation++;
     this.starting = null;
+    this.deferredPause = null;
     this.publish({ task: null, pending: false, error: "" });
   }
   retry() {
@@ -127,14 +130,19 @@ export class TaskLifecycle {
     if (this.starting) void this.control("pause");
   }
   async start(goalRef: string): Promise<boolean> {
-    if (this.starting || this.state.pending) return false;
+    if (this.starting || this.state.pending || this.deferredPause !== null)
+      return false;
     if (!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(goalRef)) return false;
     const ticket = ++this.generation;
     this.publish({ ...this.state, pending: true, error: "" });
+    // Another goal's task holding the slot is shown, never reported as this
+    // start: the host answers with the current task only for this goal (a
+    // task whose creation reply was lost), and refuses any other goal.
+    let other: TaskView | null = null;
     const creation = (async () => {
-      const current = taskFrom(await this.request("/tasks/current"));
-      if (ticket !== this.generation) return current;
-      return current || taskFrom(await this.request("/tasks", { goalRef }));
+      other = taskFrom(await this.request("/tasks/current"));
+      if (ticket !== this.generation) return other;
+      return taskFrom(await this.request("/tasks", { goalRef }));
     })();
     this.starting = creation;
     try {
@@ -146,7 +154,7 @@ export class TaskLifecycle {
     } catch {
       if (ticket === this.generation)
         this.publish({
-          ...this.state,
+          task: other ?? this.state.task,
           pending: false,
           error: this.messages.start,
         });
@@ -157,8 +165,10 @@ export class TaskLifecycle {
   }
 
   async refresh() {
-    // A background read must never supersede a user control.
-    if (this.state.pending || this.starting) return;
+    // A background read must never supersede a user control, including a
+    // Pause that still waits for a pending start.
+    if (this.state.pending || this.starting || this.deferredPause !== null)
+      return;
     const ticket = ++this.generation;
     try {
       const task = taskFrom(await this.request("/tasks/current"));
@@ -199,6 +209,7 @@ export class TaskLifecycle {
       if (starting) {
         // Report the current pause immediately. Retain the owner's pause intent
         // separately until a pending creation settles, even if its reply is lost.
+        this.deferredPause = ticket;
         void (async () => {
           try {
             await starting;
@@ -209,14 +220,18 @@ export class TaskLifecycle {
           const task = await pause();
           if (ticket === this.generation)
             this.publish({ task, pending: false, error: "" });
-        })().catch(() => {
-          if (ticket === this.generation)
-            this.publish({
-              ...this.state,
-              pending: false,
-              error: this.messages.pause,
-            });
-        });
+        })()
+          .catch(() => {
+            if (ticket === this.generation)
+              this.publish({
+                ...this.state,
+                pending: false,
+                error: this.messages.pause,
+              });
+          })
+          .finally(() => {
+            if (this.deferredPause === ticket) this.deferredPause = null;
+          });
       }
     }
   }
@@ -246,7 +261,18 @@ export class TaskLifecycle {
         }
       }
       if (ticket !== this.generation) return false;
-      const task = taskFrom(await this.request("/tasks/current"));
+      // Cancel pauses first. The host reads the revision for the pause, and
+      // only her own controls move a paused task, so a planner step can no
+      // longer make the cancel's revision stale.
+      const task =
+        command === "cancel"
+          ? taskFrom(
+              await withTimeout(
+                this.request("/tasks/current/pause", {}),
+                TASK_PAUSE_TIMEOUT_MS,
+              ),
+            )
+          : taskFrom(await this.request("/tasks/current"));
       if (ticket !== this.generation) return false;
       if (!task) {
         this.publish({ task: null, pending: false, error: "" });

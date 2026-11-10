@@ -1,6 +1,7 @@
 /** /api/health reports the connectors of the runtime that is running now, after an in-process runtime swap. */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
@@ -80,4 +81,71 @@ it("checks the connectors of the new runtime after an in-process swap", async ()
     timeout: 25_000,
     interval: 500,
   });
+}, 90_000);
+
+it("does not publish a late failed probe from a replaced runtime", async () => {
+  let observeRequest!: () => void;
+  let releaseResponse!: () => void;
+  let observeResult!: () => void;
+  const requestReceived = new Promise<void>((resolve) => {
+    observeRequest = resolve;
+  });
+  const responseReleased = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  const resultReceived = new Promise<void>((resolve) => {
+    observeResult = resolve;
+  });
+  const probeServer = createServer(async (_req, res) => {
+    observeRequest();
+    await responseReleased;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, connected: false }));
+  });
+  await new Promise<void>((resolve) =>
+    probeServer.listen(0, "127.0.0.1", resolve),
+  );
+  const address = probeServer.address();
+  if (!address || typeof address === "string")
+    throw new Error("Missing probe port");
+  const probeUrl = `http://127.0.0.1:${address.port}`;
+  class SlowSlackConnectorService extends Service {
+    static override serviceType = "slack";
+    override capabilityDescription = "Slow Slack health transport";
+    static override async start(runtime: IAgentRuntime) {
+      return new SlowSlackConnectorService(runtime);
+    }
+    override async stop() {}
+    async getPollerHealth(): Promise<{ ok: boolean; connected: boolean }> {
+      const result = await (await fetch(probeUrl)).json();
+      observeResult();
+      return result;
+    }
+  }
+  const old = await createTestRuntime({
+    characterName: "HealthSlowOldRuntime",
+  });
+  try {
+    await old.runtime.registerService(SlowSlackConnectorService);
+    await old.runtime.getServiceLoadPromise("slack");
+    server.updateRuntime(old.runtime);
+    await requestReceived;
+    server.updateRuntime(second.runtime);
+    await vi.waitFor(async () => expect(await slackHealth()).toBe("ok"), {
+      timeout: 3_000,
+      interval: 25,
+    });
+    releaseResponse();
+    await resultReceived;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(await slackHealth()).toBe("ok");
+  } finally {
+    releaseResponse();
+    server.updateRuntime(second.runtime);
+    probeServer.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      probeServer.close((error) => (error ? reject(error) : resolve())),
+    );
+    await old.cleanup();
+  }
 }, 90_000);

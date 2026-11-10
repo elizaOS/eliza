@@ -13,7 +13,6 @@ import {
 } from "../types/content";
 import {
 	COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE,
-	COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES,
 	COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION,
 	type CompactionContentEntry,
 	type CompactionContentManifest,
@@ -22,30 +21,8 @@ import {
 } from "../types/content-manifest";
 import type { PlannerTrajectory } from "./planner-types";
 
-export interface DeriveCompactionContentManifestOptions {
-	lastUsedAt: string;
-	maxReferences?: number;
-	maxRangesPerReference?: number;
-}
-
 export interface DeriveCompactionContentManifestsOptions {
 	lastUsedAt: string;
-}
-
-const DEFAULT_MAX_REFERENCES = COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES;
-const DEFAULT_MAX_RANGES_PER_REFERENCE =
-	COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE;
-
-function positiveSafeInteger(
-	value: number | undefined,
-	fallback: number,
-	label: string,
-): number {
-	if (value === undefined) return fallback;
-	if (!Number.isSafeInteger(value) || value < 1) {
-		throw new TypeError(`${label} must be a positive safe integer`);
-	}
-	return value;
 }
 
 function canonicalTimestamp(value: string, label: string): string {
@@ -159,13 +136,13 @@ function collectRestartSafeContentEntries(
 		if (step.result.promptData !== undefined)
 			visit(step.result.promptData, reason);
 	}
-	return [...entries.values()].map(({ rangeKeys: _rangeKeys, ...entry }) => ({
-		...entry,
-		rangesUsed: [...entry.rangesUsed].sort(
+	return Array.from(entries.values(), ({ rangeKeys: _rangeKeys, ...entry }) => {
+		entry.rangesUsed.sort(
 			(a, b) =>
 				a.unit.localeCompare(b.unit) || a.start - b.start || a.end - b.end,
-		),
-	}));
+		);
+		return entry;
+	});
 }
 
 function manifestFor(contentRefs: CompactionContentEntry[]) {
@@ -175,52 +152,6 @@ function manifestFor(contentRefs: CompactionContentEntry[]) {
 		modifiedFiles: [],
 		pendingProcesses: [],
 	};
-}
-
-/**
- * Build one content-free manifest for compatibility callers with explicit
- * bounds. Durable publication uses deriveCompactionContentManifests so count
- * pressure creates additional immutable shards instead of losing continuity.
- */
-export function deriveCompactionContentManifest(
-	trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
-	options: DeriveCompactionContentManifestOptions,
-): CompactionContentManifest {
-	const maxReferences = positiveSafeInteger(
-		options.maxReferences,
-		DEFAULT_MAX_REFERENCES,
-		"maxReferences",
-	);
-	const maxRangesPerReference = positiveSafeInteger(
-		options.maxRangesPerReference,
-		DEFAULT_MAX_RANGES_PER_REFERENCE,
-		"maxRangesPerReference",
-	);
-	const entries = collectRestartSafeContentEntries(
-		trajectory,
-		canonicalTimestamp(options.lastUsedAt, "lastUsedAt"),
-	);
-	if (entries.length > maxReferences) {
-		throw new ElizaError(
-			"Content manifest exceeds the configured reference bound",
-			{
-				code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
-				context: { bound: "references", maxReferences },
-			},
-		);
-	}
-	if (
-		entries.some((entry) => entry.rangesUsed.length > maxRangesPerReference)
-	) {
-		throw new ElizaError(
-			"Content manifest exceeds the configured per-reference range bound",
-			{
-				code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
-				context: { bound: "ranges", maxRangesPerReference },
-			},
-		);
-	}
-	return validateCompactionContentManifest(manifestFor(entries));
 }
 
 /** Derive every restart-safe record and split only at lossless schema bounds. */
@@ -252,12 +183,12 @@ export function deriveCompactionContentManifests(
 	const manifests: CompactionContentManifest[] = [];
 	let current: CompactionContentEntry[] = [];
 	for (const entry of entries) {
-		const candidate = [...current, entry];
+		current.push(entry);
 		try {
-			validateCompactionContentManifest(manifestFor(candidate));
-			current = candidate;
+			validateCompactionContentManifest(manifestFor(current));
 		} catch (error) {
-			if (current.length === 0) throw error;
+			if (current.length === 1) throw error;
+			current.pop();
 			manifests.push(validateCompactionContentManifest(manifestFor(current)));
 			current = [entry];
 			validateCompactionContentManifest(manifestFor(current));

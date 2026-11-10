@@ -9,6 +9,8 @@ import {
   type TokenBucketLimit,
 } from "@elizaos/cloud-shared/lib/services/plan-request-limiter";
 
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+
 type Bucket = { tokens: number; at: number };
 type Window = {
   start: number;
@@ -48,7 +50,7 @@ function valid(value: unknown): value is MapsAllowanceRequest {
         Number.isSafeInteger(v.credential.issuedAt) &&
         v.credential.issuedAt > 0) &&
     id(v.credential.userId) &&
-    ["search", "geocode", "reverse", "details", "routes"].includes(
+    ["search", "geocode", "reverse", "details", "routes", "tiles"].includes(
       v.operation,
     ) &&
     !!v.policy &&
@@ -74,8 +76,19 @@ function refill(
         (Math.max(0, now - (current?.at ?? now)) * limit.refillPerSecond) /
           1000,
     ),
-    at: now,
+    at: Math.max(current?.at ?? now, now),
   };
+}
+function retrySeconds(
+  bucket: Bucket,
+  limit: TokenBucketLimit,
+  now: number,
+): number {
+  if (bucket.tokens >= 1) return 0;
+  return (
+    Math.max(0, bucket.at - now) / 1000 +
+    (1 - bucket.tokens) / limit.refillPerSecond
+  );
 }
 export class MapsRequestAllowanceController {
   constructor(
@@ -141,12 +154,27 @@ export class MapsRequestAllowanceController {
       return fail("maps_policy_stale", 503);
     let allowance;
     let limits;
+    let configurationStage = "allowance";
     try {
       allowance = mapsRequestAllowance(this.env, request.policy.planKey);
+      configurationStage = "rate-limits";
+      const mapsLimits = this.env.ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS;
       const config = readPlanRequestLimitConfig(
-        this.env as Record<string, string | undefined>,
+        mapsLimits === undefined
+          ? (this.env as Record<string, string | undefined>)
+          : {
+              ELIZA_CLOUD_PLAN_RATE_LIMITS:
+                typeof mapsLimits === "string" ? mapsLimits : "",
+            },
       );
-      if (!config?.selected) return fail("maps_allowance_unconfigured", 503);
+      if (!config?.selected) {
+        logger.warn("[MapsAllowance] configuration unavailable", {
+          stage: "rate-selection",
+          dedicatedRateType: typeof mapsLimits,
+          sharedRateType: typeof this.env.ELIZA_CLOUD_PLAN_RATE_LIMITS,
+        });
+        return fail("maps_allowance_unconfigured", 503);
+      }
       const plan = config
         ? Object.hasOwn(config.plans, request.policy.planKey)
           ? config.plans[request.policy.planKey]
@@ -154,9 +182,22 @@ export class MapsRequestAllowanceController {
         : undefined;
       limits = plan?.maps ?? plan;
     } catch {
+      logger.warn("[MapsAllowance] configuration invalid", {
+        stage: configurationStage,
+      });
       return fail("maps_allowance_unconfigured", 503);
     }
-    if (!allowance || !limits) return fail("maps_allowance_unconfigured", 503);
+    if (!allowance || !limits) {
+      logger.warn("[MapsAllowance] plan configuration unavailable", {
+        allowancePresent: allowance !== null,
+        rateLimitsPresent: limits !== undefined,
+        allowanceType: typeof this.env.ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES,
+        planSupported:
+          request.policy.planKey === "plus_monthly" ||
+          request.policy.planKey === "pro_monthly",
+      });
+      return fail("maps_allowance_unconfigured", 503);
+    }
     const period = allowance.windowSeconds * 1000;
     const start = Math.floor(now / period) * period,
       end = start + period;
@@ -215,8 +256,8 @@ export class MapsRequestAllowanceController {
               1,
               Math.ceil(
                 Math.max(
-                  (1 - burst.tokens) / limits.burst.refillPerSecond,
-                  (1 - sustained.tokens) / limits.sustained.refillPerSecond,
+                  retrySeconds(burst, limits.burst, now),
+                  retrySeconds(sustained, limits.sustained, now),
                 ),
               ),
             ),

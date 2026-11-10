@@ -60,7 +60,7 @@ import org.json.JSONObject;
  * <p>Bridge methods: recording start/stop/cancel/metrics, {@code transcribeLocalRecording},
  * {@code synthesizeLocal}, {@code play}/{@code stopPlayback}, {@code cancel}, live capture status and
  * start/stop with {@code liveCaptureFrames}/{@code liveCaptureEnded}/{@code liveCaptureTranscript}
- * events, {@code localSpeechStatus}/{@code releaseLocalSpeech}, {@code nativeVoiceTiming},
+ * events, {@code warmSpeechOutput}, {@code localSpeechStatus}/{@code releaseLocalSpeech}, {@code nativeVoiceTiming},
  * {@code markVoiceTurn} and {@code clearNativeVoiceTiming}.
  */
 public abstract class LocalSpeechBridgePlugin extends Plugin {
@@ -89,6 +89,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private PluginCall preparingPlayback;
  // The streamed local utterance (main thread, like player) and assistant-speech audio focus.
  private StreamingSpeechPlayback streamPlayback;
+ /** Silence that keeps the speech output awake between a sent voice turn and its first reply samples (main thread). */
+ private SpeechOutputWarmup outputWarmup;
  private SpeechAudioFocus focus;
  private volatile boolean destroyed;
  private volatile boolean speechForeground=true;
@@ -146,10 +148,21 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   File[] stale=getContext().getCacheDir().listFiles((dir,name)->name.startsWith(playbackPrefix));
   if(stale!=null)for(File file:stale)file.delete();
  }
- @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
- @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
+ /** A host credential change or protected secret surface retires capture and playback without
+  * changing activity foreground state. Already-owned transport cleanup still runs normally. */
+ protected final void retireSpeechAuthority(){
+  epoch.incrementAndGet();live.cancelAll();gate.cancelAll();
+  main.post(()->{if(capture!=null)capture.stopAutomatically();clearPlayback();});
+ }
+ protected boolean sensitiveSurfaceActive(){return false;}
+ @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);resumeLive();super.handleOnResume();}
+ /**
+  * A permission prompt pauses the activity: the reservations and epoch it holds survive the pause
+  * (a running capture still stops), so granting it starts the capture that asked.
+  */
+ @Override protected void handleOnPause(){speechForeground=false;rejectResumedLive();live.pause(livePermissionEpochs.values());scheduleLocalRelease(30000);if(permissionEpochs.isEmpty()&&livePermissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
-  destroyed=true;gate.destroy();main.post(()->{if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
+  destroyed=true;gate.destroy();main.post(()->{closeOutputWarmup();if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();rejectResumedLive();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
   if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);
   submitWork(localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();
  }
@@ -196,6 +209,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   * {@code request.failure}/{@code failureCode}; a request that resolved early settles nothing.
   */
  protected final void submit(PluginCall call,Work work){
+  if(sensitiveSurfaceActive()){call.reject("Close the protected credential surface before using speech.");return;}
   final String id;try{id=required(call.getString("requestId"),256);}catch(Exception error){call.reject("Invalid request");return;}
   SpeechRequestGate.Admission admission=gate.admit(id,!Boolean.FALSE.equals(call.getBoolean("replace",true)));
   if(admission.request==null){if(admission.refusal==SpeechRequestGate.Refusal.BUSY)call.reject("Speaker is in use","playback-busy");else call.reject("Voice request already active or unavailable");return;}
@@ -214,7 +228,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  protected final void cancelSpeech(String requestId){SpeechRequestGate.Request request=gate.get(requestId);if(request!=null)request.cancel();if(Objects.equals(playbackRequestId,requestId)){clearPlayback();notifyListeners("playbackFailed",new JSObject());}}
  /** True while a clip, a streamed utterance or a request holds the speaker. */
  protected final boolean speakerBusy(){return playbackFile!=null||streamPlayback!=null||!gate.idle();}
- @PluginMethod public void cancel(PluginCall call){SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
+ @PluginMethod public void cancel(PluginCall call){main.post(this::closeOutputWarmup);SpeechRequestGate.Request request=gate.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
 
  // ---- Recording drafts ----------------------------------------------------------------------
 
@@ -227,7 +241,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Capacitor's own permission request launches through the activity; see {@link #launch}. */
  @Override @PluginMethod public void requestPermissions(PluginCall call){launch(call,()->super.requestPermissions(call));}
  @PermissionCallback private void microphonePermission(PluginCall call){Long admitted=permissionEpochs.remove(call.getCallbackId());if(admitted==null||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startRecording(call,admitted);}
- private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
+ private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(focus!=null&&focus.callActive()){call.reject(CALL_MESSAGE,SpeechAudioFocusPolicy.CALL_ACTIVE);return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
  @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(js(capture.metrics(call.getString("recordingId"))));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(js(capture.stop()));}catch(Exception error){call.reject("Recording could not be saved");}});}
  private void finishDrain(boolean complete,String error){
@@ -247,7 +261,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   main.postDelayed(timeout,REQUEST_TIMEOUT_MS);
   if(drain==SpeechRequestGate.Drain.JOINED)return;
   main.post(()->{
-   try{capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
+   try{closeOutputWarmup();capture.cancel();}catch(RuntimeException error){finishDrain(false,"Recording cancellation failed");return;}
    // Never wait on the UI thread. The serial worker barrier follows cancelled work and its cleanup.
    submitWork(()->main.post(()->finishDrain(true,destroyed?"Voice unavailable":null)),()->finishDrain(false,"Voice cancellation is unavailable"));
   });
@@ -266,6 +280,18 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  // Local CPU execution has no dependency on an account, URL, or host process. The status resolves
  // only when the native pair loads, every bundle file verifies and a context opens. A build without
  // the voice bundle answers "unavailable" without loading any native library.
+ /**
+  * A foreground voice turn was sent: wake the speech output while the reply is produced. Advisory;
+  * skipped during a call, in the background or while the speaker is in use. The warm-up is bounded
+  * (SpeechOutputWarmup.LIMIT_NS) and closed by the first reply samples, any playback start or
+  * clear (stop, pause, a published clip), cancel, recording cancellation, a call and destroy.
+  */
+ @PluginMethod public void warmSpeechOutput(PluginCall call){main.post(()->{
+  if(!destroyed&&speechForeground&&!sensitiveSurfaceActive()&&(focus==null||!focus.callActive())&&!speakerBusy()){closeOutputWarmup();outputWarmup=new SpeechOutputWarmup(LocalSpeechEngine.STREAM_RATE);}
+  call.resolve();
+ });}
+ /** Main thread. */
+ private void closeOutputWarmup(){if(outputWarmup!=null){outputWarmup.close();outputWarmup=null;}}
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
   localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();engine.prepare();return null;});
   if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","fused-paradee-asr");request.result=out;
@@ -314,16 +340,23 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   request.keepEngine=true;
   final String id=UUID.randomUUID().toString();
   final StreamingSpeechPlayback[] self=new StreamingSpeechPlayback[1];
-  final StreamingSpeechPlayback playback=new StreamingSpeechPlayback(STREAM_CAPACITY,LocalSpeechEngine.STREAM_RATE,VoiceLatencyProbe.AUDIBLE_LEVEL,()->AudioTrackSpeechOutput.open(LocalSpeechEngine.STREAM_RATE),streamListener(id,reply?trial:null,self),System::nanoTime);
+  final StreamingSpeechPlayback.Listener listener=streamListener(id,reply?trial:null,self);
+  // The first PCM mark is the first write to the track, not the end of that (blocking) write.
+  final StreamingSpeechPlayback playback=new StreamingSpeechPlayback(STREAM_CAPACITY,LocalSpeechEngine.STREAM_RATE,VoiceLatencyProbe.AUDIBLE_LEVEL,()->new FirstWriteSpeechOutput(AudioTrackSpeechOutput.open(LocalSpeechEngine.STREAM_RATE),()->listener.firstFrame(System.nanoTime())),listener,System::nanoTime);
   self[0]=playback;
   // Cancelling the request also wakes a synthesis callback blocked on the full queue.
   final Runnable nativeCancel=request.cancelNative;
   request.cancelNative=()->{playback.stop();if(nativeCancel!=null)nativeCancel.run();};
   final String[] refused={null};
+  // The synthesized lead-in silence (about 300 ms) is dropped before playback; a short pre-roll stays.
+  final SpeechLeadTrim trim=new SpeechLeadTrim(VoiceLatencyProbe.AUDIBLE_LEVEL,LocalSpeechEngine.STREAM_RATE/33);
   try{
-   engine.synthesizeStream(text,()->request.cancelled||destroyed||playback.stopped(),(samples,complete)->{
+   engine.synthesizeStream(text,()->request.cancelled||destroyed||playback.stopped(),(raw,complete)->{
     if(request.cancelled||destroyed)return false;
+    final float[] samples=trim.next(raw);
+    if(samples.length==0&&!complete)return !playback.stopped();
     if(!request.resolvedEarly){
+     main.post(this::closeOutputWarmup);
      if(reply){VoiceLatencyProbe.TRIALS.mark(trial,"tts-ready",System.nanoTime());if(localEngine.loads()!=loadsBefore)VoiceLatencyProbe.TRIALS.engineLoaded(trial,"tts-load");}
      refused[0]=publishStream(call,request,playback,id,reply,trial);
      if(refused[0]!=null){Arrays.fill(samples,0);return false;}
@@ -404,15 +437,15 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   }
  }
  /** Clears unplayed speech and tells the renderer why. */
- private void stopSpeechFor(String reason){String previous=playbackId;if(previous==null)return;clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",previous);event.put("reason",reason);notifyListeners("playbackStopped",event);}
+ private void stopSpeechFor(String reason){closeOutputWarmup();String previous=playbackId;if(previous==null)return;clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",previous);event.put("reason",reason);notifyListeners("playbackStopped",event);}
  /** The audio mode entered a call (Android 12+ watcher): stop speech and assistant capture honestly. */
  private void callStarted(){if(destroyed)return;stopSpeechFor(SpeechAudioFocusPolicy.CALL_ACTIVE);stopCaptureForCall();}
  private void stopCaptureForCall(){
   live.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
-  if(capture!=null)capture.stopAutomatically();
+  if(capture!=null)capture.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);
  }
  private void clearPlayback(){clearPlayback(true);}
- private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
+ private void clearPlayback(boolean stopped){closeOutputWarmup();String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(streamPlayback!=null){streamPlayback.stop();streamPlayback=null;VoiceLatencyProbe.TRIALS.stopped(playbackTrial);}if(focus!=null)focus.release();if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackTrial=null;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
 
  // ---- Voice-turn latency --------------------------------------------------------------------
@@ -449,6 +482,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  // started the capture (residentRoute), never through the renderer.
  private final LiveCaptureController live=new LiveCaptureController(new LiveCaptureController.Host(){
   public boolean open(long admitted){return !destroyed&&speechForeground&&admitted==epoch.get();}
+  public boolean canStart(long admitted){return open(admitted)&&!sensitiveSurfaceActive()&&(focus==null||!focus.callActive());}
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel)throws Exception{return new LiveVoiceCapture(getContext(),VoiceAssets.sharedInference(getContext()),id,sink,echoCancel);}
   public void frames(String id,JSONArray frames,JSONArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",id).put("frames",frames).put("vad",vad).put("peak",peak));}
   public void ended(String id,String error){JSObject event=new JSObject().put("captureId",id);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
@@ -463,6 +497,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** The shared VAD opens on this process's inference session (verifies the bundle once; capture worker only). */
  private boolean vadAvailable(){try{return LiveVoiceCapture.vadAvailable(VoiceAssets.sharedInference(getContext()));}catch(Exception|Error unavailable){return false;}}
  @PluginMethod public void startLiveCapture(PluginCall call){
+  if(sensitiveSurfaceActive()){call.reject("Close the protected credential surface before using speech.");return;}
   String id=call.getString("captureId","");
   if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
   if(gate.draining()||destroyed||!speechForeground){call.reject(LiveCaptureController.CANCELLED);return;}
@@ -473,14 +508,42 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),ticket);if(!launch(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
   startLive(call,ticket);
  }
- @PermissionCallback private void liveMicrophonePermission(PluginCall call){LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());if(ticket==null||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,ticket);}
+ @PermissionCallback private void liveMicrophonePermission(PluginCall call){
+  LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());
+  if(destroyed||ticket==null||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  // A call that started while the prompt was open refuses with its code.
+  if(!live.current(ticket)){live.refuse(ticket,refusal(call));return;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}
+  // The result can arrive before the activity resumes: the capture then starts on resume.
+  if(!speechForeground){rejectResumedLive();resumedLiveCall=call;resumedLiveTicket=ticket;return;}
+  startLive(call,ticket);
+ }
+ // A granted live capture waiting for the activity to resume. Main thread only.
+ private PluginCall resumedLiveCall;
+ private LiveCaptureAdmission.Ticket resumedLiveTicket;
+ private void resumeLive(){
+  PluginCall call=resumedLiveCall;LiveCaptureAdmission.Ticket ticket=resumedLiveTicket;resumedLiveCall=null;resumedLiveTicket=null;
+  if(call==null)return;
+  if(destroyed||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  if(!live.current(ticket)){live.refuse(ticket,refusal(call));return;}
+  startLive(call,ticket);
+ }
+ private void rejectResumedLive(){PluginCall call=resumedLiveCall;resumedLiveCall=null;resumedLiveTicket=null;if(call!=null)call.reject(LiveCaptureController.CANCELLED);}
  private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
+  if(sensitiveSurfaceActive()){if(live.current(ticket))live.cancelAll();call.reject(LiveCaptureController.CANCELLED);return;}
   String owner=call.getString("ownerId","");
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;
   live.start(ticket,Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),route,call.getString("roomId",null),Boolean.TRUE.equals(call.getBoolean("reopen",false)),new LiveCaptureController.Started(){
    public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.resolve(new JSObject().put("captureId",id).put("sampleRate",sampleRate).put("echoCancelled",echoCancelled).put("nativeAsr",piped));}
    public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}
   });
+ }
+ /** Reports a refusal of a reservation that never started. */
+ private static LiveCaptureController.Started refusal(PluginCall call){
+  return new LiveCaptureController.Started(){
+   public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.reject(LiveCaptureController.CANCELLED);}
+   public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}
+  };
  }
  @PluginMethod public void stopLiveCapture(PluginCall call){
   live.stop(call.getString("captureId",""),Boolean.TRUE.equals(call.getBoolean("discard",false)),call.getData().optDouble("cutoffMs",System.currentTimeMillis()),

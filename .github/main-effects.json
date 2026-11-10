@@ -13,15 +13,6 @@
       }
     },
     {
-      "id": "apps-worker-production",
-      "workflow": "deploy-apps-worker.yml",
-      "surfaces": ["canonical", "cloud"],
-      "shaInput": "source_sha",
-      "inputs": {
-        "environment": "production"
-      }
-    },
-    {
       "id": "provisioning-worker-production",
       "workflow": "deploy-eliza-provisioning-worker.yml",
       "surfaces": ["canonical", "cloud"],

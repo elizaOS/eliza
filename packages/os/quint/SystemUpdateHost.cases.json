@@ -1,0 +1,49 @@
+{
+  "sources": [
+    "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateRunner.java",
+    "packages/os/android/system-updater/host/ai/eliza/systemupdater/SystemUpdateJob.java",
+    "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateActivity.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+    "packages/os/android/system-updater/sepolicy/eliza_system_updater.te",
+    "packages/os/android/system-updater/sepolicy/seapp_contexts",
+    "packages/os/android/system-updater/AndroidManifest.xml"
+  ],
+  "bounds": "One device, one candidate and binary current eligibility. Model safety covers stop/crash and policy changes; cryptographic checks, Android timing, storage and device behavior still require native qualification.",
+  "cases": [
+    {
+      "name": "interleavings",
+      "main": "SystemUpdateHost",
+      "init": "init",
+      "step": "step",
+      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 200
+    },
+    {
+      "name": "stable-delivery",
+      "main": "SystemUpdateHost",
+      "init": "init",
+      "step": "stableStep",
+      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+      "temporal": ["StableDeliveryCompletes"],
+      "temporalChecks": [
+        {
+          "property": "StableDeliveryCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Eligibility stays true and the package is valid.",
+            "No stop, crash, rejection or engine failure occurs in this case.",
+            "Scheduling, verification, engine completion and reboot observation are weakly fair."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 200
+    }
+  ]
+}

@@ -38,8 +38,8 @@ describe("Stage1 fresh-read contract", () => {
     expect(Object.keys(requiredFixtureValue(schema.properties))).toEqual([
       "contexts",
       "intents",
-      "replyText",
       "replyEffectStatus",
+      "replyText",
     ]);
     expect(
       requiredFixtureValue(schema.properties).intents.description,

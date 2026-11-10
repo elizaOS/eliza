@@ -1,0 +1,123 @@
+{
+  "cases": [
+    {
+      "name": "live",
+      "main": "TaskScheduler_live",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "NoStaleDispatch",
+        "OneRunTickPerService",
+        "AttachedTickCurrent",
+        "TakenClearsDirty"
+      ],
+      "temporal": ["DirtyServed", "TickSettles", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskScheduler.live.cfg",
+        "constants": [
+          "Services = {s1, s2}",
+          "Adapters = {a1, a2}",
+          "Ticks = {k1, k2, k3}",
+          "MaxRestarts = 2",
+          "MaxRegs = 2",
+          "QueryCanFail = FALSE",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "NoStaleDispatch",
+          "OneRunTickPerService",
+          "AttachedTickCurrent",
+          "TakenClearsDirty"
+        ],
+        "properties": ["DirtyServed", "TickSettles"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DirtyServed",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_live: DirtyServed = Fairness implies Services.forall(svc => (s.dirty and s.timer and s.adapter != None and s.registry != NoEntry and s.registry.svc == svc and not(s.stopped.get(svc))) leadsTo (s.taken == svc or s.registry == NoEntry or s.registry.svc != svc or s.adapter == None or s.stopped.get(svc)))",
+            "Model fairness predicate Fairness = AnyFire.weakFair(s) and Ticks.forall(k => Query(k).weakFair(s) and RunDone(k).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "TickSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_live: TickSettles = Fairness implies Ticks.forall(k => s.tk.get(k).pc == \"query\" leadsTo s.tk.get(k).pc == \"free\")",
+            "Model fairness predicate Fairness = AnyFire.weakFair(s) and Ticks.forall(k => Query(k).weakFair(s) and RunDone(k).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_live: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "restart",
+      "main": "TaskScheduler_restart",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "NoStaleDispatch",
+        "OneRunTickPerService",
+        "AttachedTickCurrent",
+        "TakenClearsDirty"
+      ],
+      "temporal": ["DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskScheduler.restart.cfg",
+        "constants": [
+          "Services = {s1, s2}",
+          "Adapters = {a1, a2}",
+          "Ticks = {k1, k2, k3}",
+          "MaxRestarts = 2",
+          "MaxRegs = 2",
+          "QueryCanFail = TRUE",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "NoStaleDispatch",
+          "OneRunTickPerService",
+          "AttachedTickCurrent",
+          "TakenClearsDirty"
+        ],
+        "properties": [],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_restart: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": ["packages/core/src/services/task-scheduler.ts"]
+}

@@ -5,7 +5,7 @@
  SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS += vendor/google_devices/stallion/sepolicy/system_ext/public
  PRODUCT_PUBLIC_SEPOLICY_DIRS += vendor/google_devices/stallion/sepolicy/product/public
 -SELINUX_IGNORE_NEVERALLOWS := true
-+# Alpha requires platform/vendor policy compatibility before image admission.
++# Require platform/vendor policy compatibility before image admission.
 +SELINUX_IGNORE_NEVERALLOWS := false
  
  # needed for overriding AOSP-available files with extracted prebuilts
@@ -16,4 +16,4 @@
 +
 +# Keep Citadel erase policy without the optional Graphene Wi-Fi fault injector.
 +BOARD_VENDOR_SEPOLICY_DIRS := $(filter-out vendor/adevtool/config/mk/google_devices/common/sepolicy/vendor,$(BOARD_VENDOR_SEPOLICY_DIRS))
-+BOARD_VENDOR_SEPOLICY_DIRS := vendor/alphaphone/stallion/sepolicy/vendor $(BOARD_VENDOR_SEPOLICY_DIRS)
++BOARD_VENDOR_SEPOLICY_DIRS := vendor/@VENDOR_DIRECTORY@/stallion/sepolicy/vendor $(BOARD_VENDOR_SEPOLICY_DIRS)

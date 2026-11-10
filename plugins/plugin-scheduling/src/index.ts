@@ -35,7 +35,6 @@ export type {
   DispatchResult,
 } from "./dispatch-types.ts";
 export {
-  registerOptInDefaultPacks,
   schedulingPlugin,
   waitForScheduledTaskRunnerService,
 } from "./plugin.ts";
@@ -45,13 +44,6 @@ export {
   SCHEDULED_TASKS_ROUTE_PATHS,
   type SchedulingRouteContext,
 } from "./routes/scheduled-tasks.ts";
-export {
-  ALPHA_ROUTINES_ENABLE_TRIGGERS,
-  ALPHA_ROUTINES_IDEMPOTENCY_KEYS,
-  ALPHA_ROUTINES_PACK_ID,
-  buildAlphaRoutinesPack,
-  SCHEDULING_DEFAULT_PACKS_SETTING,
-} from "./scheduled-task/alpha-routines-pack.ts";
 export {
   getScheduledTaskChannelDispatcher,
   listScheduledTaskChannelDispatcherKeys,
@@ -79,6 +71,11 @@ export {
   createConsolidationRegistry,
   registerFallbackAnchors,
 } from "./scheduled-task/consolidation-policy.ts";
+export {
+  buildDailyRoutinesPack,
+  DAILY_ROUTINES_ENABLE_TRIGGERS,
+  type DailyRoutineKeys,
+} from "./scheduled-task/daily-routines-pack.ts";
 export {
   appSchedulingPgSchema,
   lifeScheduledTaskLog,

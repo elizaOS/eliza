@@ -19,6 +19,7 @@ import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
 import {
   speechRelayMaxWindows,
+  speechSessionIdForConsent,
   speechTokenDigest,
 } from "../../../src/speech-relay-coordinator";
 
@@ -114,6 +115,21 @@ app.post("/consent", async (c) => {
     if (!prepared.ok)
       return c.json({ error: "speech_recovery_unavailable" }, 503);
     c.header("Cache-Control", "no-store");
+  } else {
+    // Start the new session object's first-touch wait now; /session reuses it.
+    // Never awaited: consent latency and its result do not depend on it.
+    const warm = c.env
+      .SPEECH_RELAY_SESSIONS!.getByName(
+        speechSessionIdForConsent(caller.user.id, consent.nonce),
+      )
+      .fetch("https://speech-relay.internal/warm", { method: "POST" })
+      .then((warmed) => warmed.body?.cancel())
+      .catch(() => {});
+    try {
+      c.executionCtx.waitUntil(warm);
+    } catch {
+      // No execution context outside Workers; the promise still settles.
+    }
   }
   return timer.apply(
     c.json({
@@ -162,7 +178,9 @@ app.post("/session", async (c) => {
   if (recovering && (typeof recoveryId !== "string" || !UUID.test(recoveryId)))
     return c.json({ error: "invalid_speech_session" }, 400);
   const sessionId =
-      typeof recoveryId === "string" ? recoveryId : crypto.randomUUID(),
+      typeof recoveryId === "string"
+        ? recoveryId
+        : speechSessionIdForConsent(caller.user.id, consentNonce),
     token = randomBytes(32).toString("base64url"),
     expiresAt = Math.min(
       Date.now() + 60000,
@@ -232,8 +250,11 @@ app.post("/session", async (c) => {
 /**
  * Staging-only measurement of first-touch cost by hosting script. Each new
  * object answers one read-only request and stores nothing: a gate object in the
- * lean admission Worker and a session object in the API Worker. Durations are
- * I/O waits in this Worker, so they include any wait before the object runs.
+ * lean admission Worker and a session object wherever SPEECH_RELAY_SESSIONS is
+ * hosted (the lean speech Worker on staging once its binding uses script_name;
+ * the API Worker otherwise). The `api*` keys keep their names for comparison
+ * across runs. Durations are I/O waits in this Worker, so they include any wait
+ * before the object runs.
  */
 app.post("/hosting-probe", async (c) => {
   if (c.env.ENVIRONMENT !== "staging")

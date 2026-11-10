@@ -70,7 +70,28 @@ jobs:
       ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
     steps:
+      - name: Check Android signing and Play credential presence
+        id: credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=(ANDROID_KEYSTORE_BASE64)
+          [[ -z "$ELIZAOS_KEYSTORE_PASSWORD" ]] && missing+=(ANDROID_KEYSTORE_PASSWORD)
+          [[ -z "$ELIZAOS_KEY_ALIAS" ]] && missing+=(ANDROID_KEY_ALIAS)
+          [[ -z "$ELIZAOS_KEY_PASSWORD" ]] && missing+=(ANDROID_KEY_PASSWORD)
+          [[ -z "$PLAY_STORE_SERVICE_ACCOUNT_JSON" ]] && missing+=(PLAY_STORE_SERVICE_ACCOUNT_JSON)
+          if (( ${#missing[@]} )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Google Play release; missing credentials: ${missing[*]}"
+            echo "Google Play release skipped; missing credentials: ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout exact release
+        if: steps.credentials.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_sha }}
@@ -78,6 +99,7 @@ jobs:
           persist-credentials: false
 
       - name: Bind build to finalized release and derive store plan
+        if: steps.credentials.outputs.ready == 'true'
         id: plan
         env:
           EXPECTED_SHA: ${{ inputs.source_sha }}
@@ -93,21 +115,12 @@ jobs:
             --source-sha "$EXPECTED_SHA" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Require Android signing and Play credentials
+      - name: Prepare Android signing and Play credentials
+        if: steps.credentials.outputs.ready == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          missing=()
-          [[ -z "$ANDROID_KEYSTORE_BASE64" ]] && missing+=(ANDROID_KEYSTORE_BASE64)
-          [[ -z "$ELIZAOS_KEYSTORE_PASSWORD" ]] && missing+=(ANDROID_KEYSTORE_PASSWORD)
-          [[ -z "$ELIZAOS_KEY_ALIAS" ]] && missing+=(ANDROID_KEY_ALIAS)
-          [[ -z "$ELIZAOS_KEY_PASSWORD" ]] && missing+=(ANDROID_KEY_PASSWORD)
-          [[ -z "$PLAY_STORE_SERVICE_ACCOUNT_JSON" ]] && missing+=(PLAY_STORE_SERVICE_ACCOUNT_JSON)
-          if (( ${#missing[@]} )); then
-            echo "::error::Missing required Google Play release secrets: ${missing[*]}"
-            exit 1
-          fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/eliza-upload.jks"
           chmod 600 "$RUNNER_TEMP/eliza-upload.jks"
           test -s "$RUNNER_TEMP/eliza-upload.jks"
@@ -120,12 +133,14 @@ jobs:
           chmod 600 "$RUNNER_TEMP/play-store-key.json"
 
       - name: Setup Java
+        if: steps.credentials.outputs.ready == 'true'
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Setup workspace
+        if: steps.credentials.outputs.ready == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
           setup-python: "true"
@@ -136,6 +151,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Build and audit signed Play bundle
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
@@ -146,13 +162,15 @@ jobs:
           bun run build:android:cloud
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        if: steps.credentials.outputs.ready == 'true'
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
           working-directory: packages/app/platforms/android
 
       - name: Publish exact AAB to Google Play
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app/platforms/android
         env:
           PLAY_STORE_TRACK: ${{ steps.plan.outputs.android_track }}
@@ -161,6 +179,7 @@ jobs:
         run: bundle exec fastlane publish_aab
 
       - name: Upload Android release evidence
+        if: steps.credentials.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-google-play-${{ inputs.version }}
@@ -205,7 +224,26 @@ jobs:
       APP_STORE_API_ISSUER_ID: ${{ secrets.APP_STORE_API_ISSUER_ID }}
       APP_STORE_API_KEY_P8: ${{ secrets.APP_STORE_API_KEY_P8 }}
     steps:
+      - name: Check Apple signing and API credential presence
+        id: credentials
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in APPLE_ID APPLE_TEAM_ID ITC_TEAM_ID APP_STORE_APP_ID \
+            MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_BASIC_AUTHORIZATION \
+            APP_STORE_API_KEY_ID APP_STORE_API_ISSUER_ID APP_STORE_API_KEY_P8; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Apple App Store release; missing credentials: ${missing[*]}"
+            echo "Apple App Store release skipped; missing credentials: ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout exact release
+        if: steps.credentials.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_sha }}
@@ -213,6 +251,7 @@ jobs:
           persist-credentials: false
 
       - name: Bind build to finalized release and derive store plan
+        if: steps.credentials.outputs.ready == 'true'
         id: plan
         env:
           EXPECTED_SHA: ${{ inputs.source_sha }}
@@ -228,21 +267,8 @@ jobs:
             --source-sha "$EXPECTED_SHA" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Require Apple signing and API credentials
-        run: |
-          set -euo pipefail
-          missing=()
-          for name in APPLE_ID APPLE_TEAM_ID ITC_TEAM_ID APP_STORE_APP_ID \
-            MATCH_PASSWORD MATCH_GIT_URL MATCH_GIT_BASIC_AUTHORIZATION \
-            APP_STORE_API_KEY_ID APP_STORE_API_ISSUER_ID APP_STORE_API_KEY_P8; do
-            [[ -z "${!name}" ]] && missing+=("$name")
-          done
-          if (( ${#missing[@]} )); then
-            echo "::error::Missing required Apple release secrets: ${missing[*]}"
-            exit 1
-          fi
-
       - name: Setup workspace
+        if: steps.credentials.outputs.ready == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
           setup-python: "true"
@@ -253,10 +279,12 @@ jobs:
           no-vision-deps: "true"
 
       - name: Build store web assets
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app
         run: bun run build
 
       - name: Prepare and sync native iOS project
+        if: steps.credentials.outputs.ready == 'true'
         run: |
           bash packages/app/scripts/prepare-ios-cocoapods.sh
           bun run --cwd packages/app cap:sync:ios
@@ -266,10 +294,12 @@ jobs:
           ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.ios_build_number }}
 
       - name: Install CocoaPods
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app/ios/App
         run: pod install
 
       - name: Resolve app identifiers
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app
         run: |
           set -euo pipefail
@@ -288,23 +318,27 @@ jobs:
           echo "APP_IDENTIFIER_EXTRA=$extension_ids" >> "$GITHUB_ENV"
 
       - name: Run iOS store preflight
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app
         run: bun run preflight:ios:store
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        if: steps.credentials.outputs.ready == 'true'
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
           working-directory: packages/app/ios
 
       - name: Build and publish iOS release
+        if: steps.credentials.outputs.ready == 'true'
         working-directory: packages/app/ios
         env:
           APPLE_LANE: ${{ steps.plan.outputs.apple_lane }}
         run: bundle exec fastlane "$APPLE_LANE"
 
       - name: Upload iOS release evidence
+        if: steps.credentials.outputs.ready == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-ios-${{ inputs.version }}

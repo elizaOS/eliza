@@ -1,11 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
+  expectNoRenderTelemetryErrors,
   installDefaultAppRoutes,
+  installRenderTelemetryGuard,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
 
-async function fixture(page: Page) {
+async function fixture(page: Page, receiptLinks = false) {
   const apiBase = test.info().project.use.baseURL;
   if (!apiBase) throw new Error("Mobile entry fixture requires a base URL");
   await seedAppStorage(page, {
@@ -18,110 +20,199 @@ async function fixture(page: Page) {
     }),
   });
   await installDefaultAppRoutes(page);
-  await page.addInitScript(() => {
-    Reflect.set(window, "androidBridge", {});
-    Reflect.set(window, "u1NativeLaunches", 0);
-    const storage = new Map(Object.entries(localStorage));
-    const protectedKeys: Record<string, string> = {
-      "session.device_auth": "eliza.device.auth",
-      "session.steward_token": "steward_session_token",
-      "runtime.active_server": "elizaos:active-server",
-      "runtime.agent_profiles": "elizaos:agent-profiles",
-    };
-    const methods: Record<string, string[]> = {
-      ElizaSecureStore: ["get", "set", "remove", "status"],
-      ElizaSense: ["turnOff"],
-      Preferences: ["get", "set", "remove", "keys", "clear"],
-      ElizaSystem: [
-        "listLauncherApps",
-        "launchApp",
-        "getBuildInfo",
-        "getLocaleInfo",
-      ],
-      App: ["getLaunchUrl", "getInfo", "getState"],
-      DeepLinkBuffer: [
-        "takePending",
-        "drain",
-        "peekPendingUrl",
-        "clearPendingUrl",
-      ],
-      Keyboard: [
-        "setScroll",
-        "setResizeMode",
-        "hide",
-        "show",
-        "setAccessoryBarVisible",
-      ],
-    };
-    Reflect.set(window, "Capacitor", {
-      Plugins: {},
-      PluginHeaders: Object.entries(methods).map(([name, names]) => ({
-        name,
-        methods: [
-          ...names.map((name) => ({ name, rtype: "promise" })),
-          { name: "addListener", rtype: "callback" },
-          { name: "removeListener", rtype: "promise" },
+  await page.addInitScript(
+    ({ receiptLinks }) => {
+      Reflect.set(window, "androidBridge", {});
+      Reflect.set(window, "u1NativeLaunches", 0);
+      const storage = new Map(Object.entries(localStorage));
+      const receiptProbe = {
+        requests: 0,
+        deliveries: 0,
+        acknowledgements: [] as Array<{
+          id: string;
+          requests: number;
+          cleared: boolean;
+        }>,
+        beforeReady: null as null | {
+          requests: number;
+          acknowledgements: number;
+        },
+      };
+      Reflect.set(window, "u1ReceiptProbe", receiptProbe);
+      let pendingReceipt: string | null = "B";
+      if (receiptLinks) {
+        const dispatch = window.dispatchEvent.bind(window);
+        const seenRequests = new WeakSet<object>();
+        window.dispatchEvent = ((event: Event) => {
+          if (
+            event.type === "eliza:navigate:view" &&
+            (event as CustomEvent<{ viewId?: string }>).detail?.viewId ===
+              "notes"
+          ) {
+            receiptProbe.deliveries += 1;
+            const detail = (event as CustomEvent<object>).detail;
+            // The retained FIFO can emit one request several times before a
+            // destination claims it. Count its identity once across replays.
+            if (!seenRequests.has(detail)) {
+              seenRequests.add(detail);
+              receiptProbe.requests += 1;
+            }
+          }
+          return dispatch(event);
+        }) as typeof window.dispatchEvent;
+      }
+      const protectedKeys: Record<string, string> = {
+        "session.device_auth": "eliza.device.auth",
+        "session.steward_token": "steward_session_token",
+        "runtime.active_server": "elizaos:active-server",
+        "runtime.agent_profiles": "elizaos:agent-profiles",
+      };
+      const methods: Record<string, string[]> = {
+        ElizaSecureStore: ["get", "set", "remove", "status"],
+        ElizaSense: ["turnOff"],
+        Preferences: ["get", "set", "remove", "keys", "clear"],
+        ElizaSystem: [
+          "listLauncherApps",
+          "launchApp",
+          "getBuildInfo",
+          "getLocaleInfo",
         ],
-      })),
-      nativeCallback: () => "",
-      nativePromise: async (
-        plugin: string,
-        method: string,
-        options: { key?: string; value?: string } = {},
-      ) => {
-        if (plugin === "ElizaSense" && method === "turnOff") {
-          Reflect.set(
-            window,
-            "u1NativeStopCalls",
-            Number(Reflect.get(window, "u1NativeStopCalls") ?? 0) + 1,
-          );
-          return {
-            available: true,
-            state: "OFF",
-            listening:
-              Reflect.get(window, "u1UnconfirmedListenerStop") === true,
-            microphoneOpen: false,
-          };
-        }
-        if (plugin === "ElizaSecureStore" || plugin === "Preferences") {
-          const key =
-            plugin === "ElizaSecureStore"
-              ? protectedKeys[options.key ?? ""]
-              : (options.key ?? "");
-          if (method === "get") {
-            const value = key ? (storage.get(key) ?? null) : null;
-            return plugin === "Preferences"
-              ? { value }
-              : value === null
-                ? { ok: false, error: "not_found" }
-                : { ok: true, value };
+        App: ["getLaunchUrl", "getInfo", "getState"],
+        DeepLinkBuffer: [
+          "takePending",
+          "drain",
+          "peekPendingUrl",
+          "clearPendingUrl",
+          "acknowledgePendingUrl",
+        ],
+        Keyboard: [
+          "setScroll",
+          "setResizeMode",
+          "hide",
+          "show",
+          "setAccessoryBarVisible",
+        ],
+      };
+      Reflect.set(window, "Capacitor", {
+        Plugins: {},
+        PluginHeaders: Object.entries(methods).map(([name, names]) => ({
+          name,
+          methods: [
+            ...names.map((name) => ({ name, rtype: "promise" })),
+            { name: "addListener", rtype: "callback" },
+            { name: "removeListener", rtype: "promise" },
+          ],
+        })),
+        nativeCallback: (
+          plugin: string,
+          method: string,
+          options: { eventName?: string },
+          callback: (value: unknown) => void,
+        ) => {
+          if (
+            receiptLinks &&
+            plugin === "App" &&
+            method === "addListener" &&
+            options.eventName === "appUrlOpen"
+          ) {
+            callback({ url: "elizaos://notes", receiptId: "A" });
+            callback({ url: "elizaos://notes", receiptId: "B" });
+            receiptProbe.beforeReady = {
+              requests: receiptProbe.requests,
+              acknowledgements: receiptProbe.acknowledgements.length,
+            };
           }
-          if (method === "set") {
-            storage.set(key, options.value ?? "");
-            return { ok: true };
+          return receiptLinks
+            ? `${plugin}:${method}:${options.eventName ?? ""}`
+            : "";
+        },
+        nativePromise: async (
+          plugin: string,
+          method: string,
+          options: {
+            key?: string;
+            value?: string;
+            url?: string;
+            receiptId?: string;
+          } = {},
+        ) => {
+          if (plugin === "ElizaSense" && method === "turnOff") {
+            Reflect.set(
+              window,
+              "u1NativeStopCalls",
+              Number(Reflect.get(window, "u1NativeStopCalls") ?? 0) + 1,
+            );
+            return {
+              available: true,
+              state: "OFF",
+              listening:
+                Reflect.get(window, "u1UnconfirmedListenerStop") === true,
+              microphoneOpen: false,
+            };
           }
-          if (method === "remove") {
-            storage.delete(key);
-            return { ok: true, deleted: true };
+          if (plugin === "ElizaSecureStore" || plugin === "Preferences") {
+            const key =
+              plugin === "ElizaSecureStore"
+                ? protectedKeys[options.key ?? ""]
+                : (options.key ?? "");
+            if (method === "get") {
+              const value = key ? (storage.get(key) ?? null) : null;
+              return plugin === "Preferences"
+                ? { value }
+                : value === null
+                  ? { ok: false, error: "not_found" }
+                  : { ok: true, value };
+            }
+            if (method === "set") {
+              storage.set(key, options.value ?? "");
+              return { ok: true };
+            }
+            if (method === "remove") {
+              storage.delete(key);
+              return { ok: true, deleted: true };
+            }
+            if (method === "keys") return { keys: [...storage.keys()] };
+            return { ok: true, available: true };
           }
-          if (method === "keys") return { keys: [...storage.keys()] };
-          return { ok: true, available: true };
-        }
-        if (plugin === "ElizaSystem" && method === "launchApp")
-          Reflect.set(
-            window,
-            "u1NativeLaunches",
-            Number(Reflect.get(window, "u1NativeLaunches")) + 1,
-          );
-        if (plugin === "ElizaSystem" && method === "listLauncherApps")
-          return { apps: [] };
-        if (method === "getLaunchUrl") return {};
-        if (method === "getState") return { isActive: true };
-        if (method === "takePending" || method === "drain") return { urls: [] };
-        return {};
-      },
-    });
-  });
+          if (plugin === "ElizaSystem" && method === "launchApp")
+            Reflect.set(
+              window,
+              "u1NativeLaunches",
+              Number(Reflect.get(window, "u1NativeLaunches")) + 1,
+            );
+          if (plugin === "ElizaSystem" && method === "listLauncherApps")
+            return { apps: [] };
+          if (receiptLinks && plugin === "DeepLinkBuffer") {
+            if (method === "peekPendingUrl")
+              return {
+                receiptVersion: 2,
+                url: pendingReceipt ? "elizaos://notes" : null,
+                receiptId: pendingReceipt,
+              };
+            if (method === "acknowledgePendingUrl") {
+              const cleared =
+                options.url === "elizaos://notes" &&
+                options.receiptId === pendingReceipt;
+              receiptProbe.acknowledgements.push({
+                id: options.receiptId ?? "",
+                requests: receiptProbe.requests,
+                cleared,
+              });
+              if (cleared) pendingReceipt = null;
+              return { cleared };
+            }
+          }
+          if (method === "getLaunchUrl")
+            return receiptLinks ? { url: "elizaos://notes" } : {};
+          if (method === "getState") return { isActive: true };
+          if (method === "takePending" || method === "drain")
+            return { urls: [] };
+          return {};
+        },
+      });
+    },
+    { receiptLinks },
+  );
 }
 test("Android production root owns Home and preserves Projects routes", async ({
   page,
@@ -833,3 +924,79 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
     contentType: "application/json",
   });
 });
+
+for (const device of [
+  { name: "desktop", viewport: { width: 1280, height: 900 }, mobile: false },
+  { name: "mobile", viewport: { width: 393, height: 851 }, mobile: true },
+]) {
+  test.describe(`native receipts on ${device.name}`, () => {
+    test.use({
+      viewport: device.viewport,
+      isMobile: device.mobile,
+      hasTouch: device.mobile,
+    });
+    test("Android retained link receipts apply after readiness and preserve repeated URLs", async ({
+      page,
+    }, info) => {
+      await fixture(page, true);
+      await installRenderTelemetryGuard(page);
+      await page.goto("/chat", { waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByRole("button", {
+          name: "Note Launch checklist",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const state = Reflect.get(window, "u1ReceiptProbe") as {
+              beforeReady: { requests: number; acknowledgements: number };
+              requests: number;
+              acknowledgements: Array<{
+                id: string;
+                requests: number;
+                cleared: boolean;
+              }>;
+            };
+            return {
+              beforeReady: state.beforeReady,
+              requests: state.requests,
+              receipts: [
+                ...new Set(state.acknowledgements.map((entry) => entry.id)),
+              ].sort(),
+              premature: state.acknowledgements.some(
+                (entry) => entry.requests === 0,
+              ),
+              cleared: state.acknowledgements
+                .filter((entry) => entry.cleared)
+                .map((entry) => entry.id),
+            };
+          }),
+        )
+        .toEqual({
+          beforeReady: { requests: 0, acknowledgements: 0 },
+          requests: 2,
+          receipts: ["A", "B"],
+          premature: false,
+          cleared: ["B"],
+        });
+      await page
+        .getByRole("button", { name: "Note Launch checklist", exact: true })
+        .click();
+      await expect(
+        page.getByRole("textbox", { name: "Note", exact: true }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: info.outputPath("receipt-navigation-notes.png"),
+      });
+      await expectNoRenderTelemetryErrors(page, "retained native receipts");
+      await info.attach("native-receipt-observations", {
+        body: JSON.stringify(
+          await page.evaluate(() => Reflect.get(window, "u1ReceiptProbe")),
+        ),
+        contentType: "application/json",
+      });
+    });
+  });
+}

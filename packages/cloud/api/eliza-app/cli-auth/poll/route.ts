@@ -38,11 +38,12 @@ app.get("/", async (c) => {
       // D-6: plaintext is no longer stored on the session row. Decrypt the
       // associated api_keys row in-memory, mark this session consumed +
       // expired so the plaintext is single-use, and return the token.
-      const { cliAuthSessionsService } = await import(
-        "@elizaos/cloud-shared/lib/services/cli-auth-sessions"
+      const { CLI_AUTH_SESSION_VERIFIER_HEADER, cliAuthSessionsService } =
+        await import("@elizaos/cloud-shared/lib/services/cli-auth-sessions");
+      const retrieved = await cliAuthSessionsService.getAndClearApiKey(
+        sessionId,
+        c.req.header(CLI_AUTH_SESSION_VERIFIER_HEADER) ?? null,
       );
-      const retrieved =
-        await cliAuthSessionsService.getAndClearApiKey(sessionId);
       // Preserve the legacy terminal status only after this poll actually won
       // the reveal claim. A missing key or failed decrypt must leave the
       // authenticated session retryable instead of expiring it permanently.

@@ -49,9 +49,13 @@ const { Hono } = await import("hono");
 const { default: speechRoute } = await import("../v1/voice/speech/route");
 const app = new Hono().route("/api/v1/voice/speech", speechRoute);
 
+let touched: { name: string; path: string }[] = [];
 const sessions = {
-  getByName: () => ({
+  getByName: (name: string) => ({
     fetch: async (url: string, init: RequestInit) => {
+      touched.push({ name, path: new URL(url).pathname });
+      if (url === "https://speech-relay.internal/warm")
+        return new Response(null, { status: 200 });
       expect(url).toBe("https://speech-relay.internal/initialize");
       const body = JSON.parse(String(init.body));
       expect(body.caller.user).toEqual({ id: USER, organization_id: ORG });
@@ -96,6 +100,7 @@ async function settle(pending: Promise<Response>) {
 beforeEach(() => {
   consented = true;
   order = [];
+  touched = [];
 });
 
 test("consent consume and the session ledger write overlap, each with its own timing", async () => {
@@ -195,4 +200,42 @@ test("the window bound is an integer 1-120 and defaults to 10", async () => {
   expect(resolveSpeechRelayMaxWindows(" 120 ")).toBe(120);
   for (const bound of ["0", "121", "-1", "2.5", "1e1", "0x10", "ten"])
     expect(() => resolveSpeechRelayMaxWindows(bound)).toThrow();
+});
+
+test("consent warms the session object that the mint then initializes", async () => {
+  const consent = await app.request(
+    "/api/v1/voice/speech/consent",
+    { method: "POST", headers: { "Content-Type": "application/json" } },
+    env(),
+  );
+  expect(consent.status).toBe(200);
+  // The warm is not awaited by the route; let it dispatch.
+  for (let n = 0; n < 50 && touched.length < 1; n++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  expect(touched).toHaveLength(1);
+  expect(touched[0]!.path).toBe("/warm");
+  const response = await settle(mint());
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { sessionId: string; wsUrl: string };
+  expect(touched[1]).toEqual({ name: touched[0]!.name, path: "/initialize" });
+  expect(body.sessionId).toBe(touched[0]!.name);
+  expect(new URL(body.wsUrl).searchParams.get("sessionId")).toBe(
+    body.sessionId,
+  );
+});
+
+test("a consent session name is a UUID bound to its user and nonce", async () => {
+  const { speechSessionIdForConsent } = await import(
+    "../src/speech-relay-coordinator"
+  );
+  const id = speechSessionIdForConsent(USER, NONCE);
+  expect(id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  expect(speechSessionIdForConsent(USER, NONCE)).toBe(id);
+  expect(speechSessionIdForConsent(ORG, NONCE)).not.toBe(id);
+  expect(
+    speechSessionIdForConsent(USER, "44444444-4444-4444-8444-444444444444"),
+  ).not.toBe(id);
+  expect(id).not.toContain(NONCE.slice(0, 8));
 });

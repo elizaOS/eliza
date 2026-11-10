@@ -25,7 +25,11 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import {
+  STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS,
+  StripeCheckoutAuthorityError,
+  stripeCheckoutOrdersService,
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
 import { stripeCustomerAuthorityService } from "@elizaos/cloud-shared/lib/services/stripe-customer-authority";
 import {
   isStripeConfigured,
@@ -395,11 +399,14 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
           return c.json({ sessionId: recovered.id, url: recovered.url });
         }
         if (
-          Date.now() - checkoutOrder.updated_at.getTime() >=
-          23 * 60 * 60 * 1000
+          !checkoutOrder.provider_started_at ||
+          Date.now() - checkoutOrder.provider_started_at.getTime() >=
+            STRIPE_CHECKOUT_PROVIDER_RETRY_WINDOW_MS
         ) {
-          throw new Error(
+          throw new StripeCheckoutAuthorityError(
+            "STRIPE_CHECKOUT_RECONCILIATION_REQUIRED",
             "Stripe Checkout creation is ambiguous and requires reconciliation",
+            { checkoutOrderId: checkoutOrder.id },
           );
         }
       }

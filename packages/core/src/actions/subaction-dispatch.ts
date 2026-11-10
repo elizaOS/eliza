@@ -14,19 +14,15 @@ export type SubactionHandlerMap<TSubaction extends string, TContext = void> = {
 /** The primary discriminator is action; subaction, op, operation, and verb are accepted aliases. Owners may specify a different key when action names a nested choice. */
 export const CANONICAL_SUBACTION_KEY = "action" as const;
 
-export const LEGACY_SUBACTION_KEYS: readonly string[] = [
+/** Discriminator keys in lookup order; the primary key takes precedence. */
+export const DEFAULT_SUBACTION_KEYS: readonly string[] = [
+	CANONICAL_SUBACTION_KEY,
 	"subaction",
 	"op",
 	"operation",
 	"verb",
 	"subAction",
 	"__subaction",
-];
-
-/** Discriminator keys in lookup order; the primary key takes precedence. */
-export const DEFAULT_SUBACTION_KEYS: readonly string[] = [
-	CANONICAL_SUBACTION_KEY,
-	...LEGACY_SUBACTION_KEYS,
 ];
 
 export function normalizeSubaction(value: unknown): string | undefined {
@@ -47,17 +43,18 @@ export function readSubaction<TSubaction extends string>(
 		defaultValue?: TSubaction;
 	},
 ): TSubaction | undefined {
-	const keys = options.keys ?? DEFAULT_SUBACTION_KEYS;
-	const allowed = new Set<string>(options.allowed);
-	const aliases = options.aliases ?? {};
-
-	for (const key of keys) {
+	for (const key of options.keys ?? DEFAULT_SUBACTION_KEYS) {
 		const normalized = normalizeSubaction(parameters?.[key]);
 		if (!normalized) continue;
-		const aliased = aliases[normalized];
+		const { aliases } = options;
+		const aliased =
+			aliases && Object.hasOwn(aliases, normalized)
+				? aliases[normalized]
+				: undefined;
 		if (aliased) return aliased;
-		if (allowed.has(normalized)) return normalized as TSubaction;
-		return undefined;
+		return (options.allowed as readonly string[]).includes(normalized)
+			? (normalized as TSubaction)
+			: undefined;
 	}
 
 	return options.defaultValue;
@@ -68,7 +65,8 @@ export async function dispatchSubaction<TSubaction extends string, TContext>(
 	handlers: SubactionHandlerMap<TSubaction, TContext>,
 	context: TContext,
 ): Promise<ActionResult> {
-	if (!subaction || !(subaction in handlers)) {
+	// Own keys only: an inherited name such as `constructor` is not a handler.
+	if (!subaction || !Object.hasOwn(handlers, subaction)) {
 		return {
 			success: false,
 			error: "UNKNOWN_SUBACTION",

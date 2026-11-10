@@ -14,7 +14,7 @@ import {
 	getTrustedDeliveryAudience,
 } from "../security/trusted-delivery-audience";
 import type { Action } from "../types/components";
-import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
+import type { AgentContext, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
@@ -86,17 +86,91 @@ export function withActionGatePolicy<T>(
 	);
 }
 
+let cachedActionAllowlist:
+	| { raw: string; names: ReadonlySet<string> }
+	| undefined;
+
+/**
+ * The host's product allowlist from `ELIZA_ACTION_ALLOWLIST`: a JSON array of
+ * exact action names, or `null` when the setting is unset (every action stays
+ * subject to its own gates). Unlike `ACTION_ROLE_POLICY`, which can only set
+ * minimum roles, the allowlist also refuses an OWNER caller and the agent's
+ * own autonomous and trigger turns. An empty value, malformed JSON or a
+ * non-string entry throws, so a broken setting never disables the allowlist.
+ */
+export function readActionAllowlist(
+	env: NodeJS.ProcessEnv = process.env,
+): ReadonlySet<string> | null {
+	const raw = env.ELIZA_ACTION_ALLOWLIST;
+	if (raw === undefined) return null;
+	// An empty value is a policy that failed to render, not "no allowlist".
+	if (raw.trim() === "") {
+		throw new ElizaError("ELIZA_ACTION_ALLOWLIST is set but empty", {
+			code: "INVALID_ACTION_ALLOWLIST",
+		});
+	}
+	if (cachedActionAllowlist?.raw === raw) return cachedActionAllowlist.names;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		// error-policy:J2 The product allowlist is a security boundary; a
+		// malformed setting must fail startup rather than disable it.
+		throw new ElizaError("Failed to parse ELIZA_ACTION_ALLOWLIST", {
+			code: "INVALID_ACTION_ALLOWLIST",
+			cause: error,
+		});
+	}
+	if (
+		!Array.isArray(parsed) ||
+		!parsed.every((name) => typeof name === "string" && name.length > 0)
+	) {
+		throw new ElizaError(
+			"ELIZA_ACTION_ALLOWLIST must be a JSON array of action names",
+			{ code: "INVALID_ACTION_ALLOWLIST" },
+		);
+	}
+	cachedActionAllowlist = { raw, names: new Set(parsed) };
+	return cachedActionAllowlist.names;
+}
+
+/**
+ * Throw when an `ELIZA_ACTION_ALLOWLIST` entry names no registered action, so
+ * an action renamed upstream fails the boot instead of silently leaving the
+ * product without it. Names are exact: a simile never matches. The check sees
+ * only the actions passed in: the agent runs it once, when the deferred boot
+ * ends, so an action a plugin registers later (a runtime hot-apply) is not
+ * checked.
+ */
+export function assertActionAllowlistMatchesActions(
+	actions: readonly Pick<Action, "name">[],
+): void {
+	const allowlist = readActionAllowlist();
+	if (!allowlist) return;
+	const registered = new Set(actions.map((action) => action.name));
+	const unmatched = [...allowlist].filter((name) => !registered.has(name));
+	if (unmatched.length > 0) {
+		throw new ElizaError(
+			`ELIZA_ACTION_ALLOWLIST names no registered action: ${unmatched.join(", ")}`,
+			{ code: "INVALID_ACTION_ALLOWLIST", context: { unmatched } },
+		);
+	}
+}
+
 /**
  * The single role/context/policy gate deciding whether `action` may run for
  * `ctx`. Composes, in order:
  *
  * 1. the private-action gate (unless `skipPrivateGate`),
  * 2. the non-overridable destination disclosure gate,
- * 3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
+ * 3. the host's `ELIZA_ACTION_ALLOWLIST`, for every caller including the
+ * agent itself,
+ * 4. the request-scoped {@link withActionGatePolicy} restriction,
+ * 5. the operator `ACTION_ROLE_POLICY` override — when set for this action it
  * **replaces** the declared gates and access is decided solely by the
  * policy role,
- * 4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
- * 5. the top-level roleGate.
+ * 6. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
+ * 7. the top-level roleGate.
  *
  * Returns a human-readable failure reason, or `undefined` when the action is
  * allowed. Every exposure and execution path — planner selection, sub-planner
@@ -132,6 +206,14 @@ export function actionGateRejection(
 		};
 	}
 
+	const allowlist = readActionAllowlist();
+	if (allowlist && !allowlist.has(action.name)) {
+		return {
+			kind: "context",
+			reason: `Action ${action.name} is not available in this product`,
+		};
+	}
+
 	const requestFailure = requestPolicy.getStore()?.(action, ctx);
 	if (requestFailure) return { kind: "context", reason: requestFailure };
 
@@ -145,8 +227,10 @@ export function actionGateRejection(
 				};
 	}
 
-	const contextRoleGate = action.contextGate?.roleGate ?? action.roleGate;
-	if (!satisfiesRoleGate(ctx.userRoles, contextRoleGate)) {
+	// The context gate's own roleGate replaces the top-level one for this check;
+	// the top-level roleGate still applies afterwards (checked last).
+	const contextGateRole = action.contextGate?.roleGate;
+	if (!satisfiesRoleGate(ctx.userRoles, contextGateRole ?? action.roleGate)) {
 		return {
 			kind: "role",
 			reason: `Action ${action.name} is not allowed for the current role`,
@@ -161,9 +245,7 @@ export function actionGateRejection(
 		};
 	}
 
-	if (
-		!satisfiesRoleGate(ctx.userRoles, action.roleGate as RoleGate | undefined)
-	) {
+	if (contextGateRole && !satisfiesRoleGate(ctx.userRoles, action.roleGate)) {
 		return {
 			kind: "role",
 			reason: `Action ${action.name} is not allowed for the current role`,
@@ -186,7 +268,7 @@ export function canActionRun(
 	action: GateableAction,
 	ctx: ActionGateContext,
 ): boolean {
-	return actionGateFailure(action, ctx) === undefined;
+	return actionGateRejection(action, ctx) === undefined;
 }
 
 /**
@@ -198,17 +280,14 @@ export async function resolveActionCallerRoles(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<RoleGateRole[]> {
-	if (
-		typeof message.entityId === "string" &&
-		message.entityId === runtime.agentId
-	) {
+	if (message.entityId === runtime.agentId) {
 		return ["OWNER"];
 	}
 
 	try {
 		const result = await checkSenderRole(runtime, message);
 		if (result?.role) {
-			return [result.role as RoleGateRole];
+			return [result.role];
 		}
 	} catch (error) {
 		// error-policy:J2 A role-store failure cannot be converted into a role
@@ -278,12 +357,6 @@ export async function resolveActionGateFailure(
 }
 
 /**
- * Gate that keeps `private` actions off any non-autonomous turn — exposing and
- * executing them only when the triggering message is one of the autonomy
- * service's own self-prompts.
- */
-
-/**
  * "Private" actions (see {@link Action.private}) may only run inside the
  * agent's own autonomous loop, never in direct response to a user request.
  *
@@ -294,23 +367,9 @@ export async function resolveActionGateFailure(
  * withheld.
  *
  * The marker is trustworthy here because inbound messages are stripped of a
- * forged `isAutonomous` upstream: `hardenIncomingUserMessage`
- * removes it from every
- * message whose source is not the autonomy service, so a connector forwarding
- * client-supplied metadata cannot use it to unlock private actions.
- */
-function isAutonomousTurn(message: Memory | undefined): boolean {
-	const metadata = message?.content?.metadata;
-	if (typeof metadata !== "object" || metadata === null) {
-		return false;
-	}
-	return (metadata as { isAutonomous?: unknown }).isAutonomous === true;
-}
-
-/**
- * Returns true when `action` is allowed to be exposed/executed on the current
- * turn given its private-mode flag. Private actions are allowed only on
- * autonomous turns; non-private actions are always allowed.
+ * forged `isAutonomous` upstream: `hardenIncomingUserMessage` removes it from
+ * every message whose source is not the autonomy service, so a connector
+ * forwarding client-supplied metadata cannot use it to unlock private actions.
  */
 function privateActionAllowedOnTurn(
 	action: Pick<Action, "private">,
@@ -319,5 +378,10 @@ function privateActionAllowedOnTurn(
 	if (!action.private) {
 		return true;
 	}
-	return isAutonomousTurn(message);
+	const metadata = message?.content?.metadata;
+	return (
+		typeof metadata === "object" &&
+		metadata !== null &&
+		(metadata as { isAutonomous?: unknown }).isAutonomous === true
+	);
 }

@@ -917,6 +917,7 @@ it("prefetched replacement waits for predecessor relay retirement before provide
   vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
   vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
   vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let prepared = 0;
   let opened = 0,
     active = 0,
     maxActive = 0,
@@ -927,7 +928,11 @@ it("prefetched replacement waits for predecessor relay retirement before provide
   host.close();
   host = createSelfHostedVoice(state, {
     ...hostOptions,
-    createCloudSpeechPorts: async () => {
+    createCloudSpeechPorts: async (options) => {
+      if (options.beforeProviderAdmission) prepared++;
+      await options.beforeProviderAdmission?.();
+      options.signal?.throwIfAborted();
+      options.assertCurrent();
       const index = ++opened;
       active++;
       maxActive = Math.max(maxActive, active);
@@ -966,6 +971,7 @@ it("prefetched replacement waits for predecessor relay retirement before provide
   expect(response.status).toBe(200);
   const second = await response.json();
   expect(opened).toBe(1);
+  expect(prepared).toBe(1);
   const duplicate = await request("", {
     agentId,
     conversationId,
@@ -1011,7 +1017,10 @@ for (const fault of [
     host.close();
     host = createSelfHostedVoice(state, {
       ...hostOptions,
-      createCloudSpeechPorts: async () => {
+      createCloudSpeechPorts: async (options) => {
+        await options.beforeProviderAdmission?.();
+        options.signal?.throwIfAborted();
+        options.assertCurrent();
         opened++;
         return {
           sessionId: randomUUID(),
@@ -1382,7 +1391,10 @@ async function stopIntentHost() {
   await host.close();
   host = createSelfHostedVoice(state, {
     ...hostOptions,
-    createCloudSpeechPorts: async () => {
+    createCloudSpeechPorts: async (options) => {
+      await options.beforeProviderAdmission?.();
+      options.signal?.throwIfAborted();
+      options.assertCurrent();
       opened++;
       return {
         sessionId: randomUUID(),
@@ -1414,6 +1426,148 @@ async function stopIntentHost() {
   const second = await response.json();
   return { first, second, live, opened: () => opened };
 }
+for (const stage of ["upgrade", "hello"] as const) {
+  for (const changed of ["route", "credential", "origin"] as const) {
+    it(`prepared successor rejects ${changed} drift before ${stage}`, async () => {
+      const f = await stopIntentHost();
+      const drift = () => {
+        if (changed === "route")
+          vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "");
+        if (changed === "credential")
+          vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "different-account");
+        if (changed === "origin")
+          vi.stubEnv(
+            "ELIZAOS_CLOUD_BASE_URL",
+            "https://other.eliza.app/api/v1",
+          );
+      };
+      if (stage === "upgrade") drift();
+      const ws = new WebSocket(f.second.wsUrl);
+      if (stage === "upgrade") {
+        const status = await new Promise<number>((resolve) => {
+          ws.on("unexpected-response", (_req, res) => {
+            resolve(res.statusCode ?? 0);
+            res.resume();
+            ws.terminate();
+          });
+          ws.on("error", () => {});
+        });
+        expect(status).toBe(401);
+      } else {
+        await once(ws, "open");
+        drift();
+        const message = once(ws, "message");
+        ws.send(
+          JSON.stringify({
+            t: "hello",
+            turnTerminal: true,
+            token: f.second.token,
+            protocol: 1,
+            uplinkCodec: "pcm16",
+            downlinkCodec: "pcm16",
+            sampleRate: 16000,
+          }),
+        );
+        expect(JSON.parse(String((await message)[0])).t).toBe("error");
+        ws.close();
+      }
+      expect(f.opened()).toBe(1);
+      expect(sessions).toHaveLength(1);
+      expect(f.live.ws.readyState).toBe(WebSocket.OPEN);
+    });
+  }
+}
+
+it.each(["revoke", "socket"] as const)(
+  "%s cancellation releases only its predecessor link for explicit retry",
+  async (cancel) => {
+    const f = await stopIntentHost();
+    if (cancel === "revoke") {
+      expect((await request(`/${f.second.sessionId}/revoke`, {})).status).toBe(
+        200,
+      );
+    } else {
+      const ws = new WebSocket(f.second.wsUrl);
+      await once(ws, "open");
+      const closed = once(ws, "close");
+      ws.close();
+      await closed;
+    }
+    const prepare = async () =>
+      request("", {
+        agentId,
+        conversationId,
+        transport: "websocket",
+        turnTerminal: true,
+        consentNonce: await nonce(),
+        predecessorSessionId: f.first.sessionId,
+      });
+    const retry = await vi.waitFor(async () => {
+      const response = await prepare();
+      expect(response.status).toBe(200);
+      return response;
+    });
+    expect((await retry.json()).sessionId).not.toBe(f.second.sessionId);
+    expect((await request(`/${f.second.sessionId}/revoke`, {})).status).toBe(
+      404,
+    );
+    expect((await prepare()).status).toBe(403);
+    expect(f.opened()).toBe(1);
+    expect(f.live.ws.readyState).toBe(WebSocket.OPEN);
+  },
+);
+
+it("failed consent preparation permits explicit retry without retiring its predecessor", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let fail = true,
+    opened = 0;
+  await host.close();
+  host = createSelfHostedVoice(state, {
+    ...hostOptions,
+    createCloudSpeechPorts: async (options) => {
+      if (options.beforeProviderAdmission && fail) {
+        fail = false;
+        throw Error("consent unavailable");
+      }
+      await options.beforeProviderAdmission?.();
+      options.signal?.throwIfAborted();
+      options.assertCurrent();
+      opened++;
+      return {
+        sessionId: randomUUID(),
+        expiresAt: clock + 60000,
+        close: async () => {},
+        speechPorts: {
+          openStt: () => ({ sendAudioChunk() {}, close() {}, cancel() {} }),
+          tts: {
+            createStream() {
+              throw Error("No TTS expected");
+            },
+            close() {},
+          },
+        },
+      };
+    },
+  });
+  const first = await mint();
+  const live = await connect(first);
+  const prepare = async () =>
+    request("", {
+      agentId,
+      conversationId,
+      transport: "websocket",
+      turnTerminal: true,
+      consentNonce: await nonce(),
+      predecessorSessionId: first.sessionId,
+    });
+  expect((await prepare()).status).toBe(503);
+  expect((await prepare()).status).toBe(200);
+  expect(opened).toBe(1);
+  expect(live.ws.readyState).toBe(WebSocket.OPEN);
+});
+
 it("public normal Stop cancels its prepared successor", async () => {
   const f = await stopIntentHost();
   const closed = once(f.live.ws, "close");

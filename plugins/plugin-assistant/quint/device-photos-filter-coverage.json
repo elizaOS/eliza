@@ -1,0 +1,23 @@
+[
+  {
+    "id": "DevicePhotosFilter",
+    "model": "plugins/plugin-assistant/quint/DevicePhotosFilter.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/services/device-actions/tools.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-assistant/src/services/device-actions/photos-view-contract.ts",
+      "plugins/plugin-assistant/src/services/message/action-surface.ts",
+      "plugins/plugin-assistant/test/photos-filter.e2e.test.ts"
+    ],
+    "invariants": [
+      "DiscoveryRequiresDevice",
+      "OnlyCurrentTurnCanCommit",
+      "ProposalRequiresRegistration"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Photos Filter operation key, one in-flight callback and one execution attempt.",
+      "Real runtime admission and PGlite verify the reviewed server path. Native screen, direct handoff, arbitrary concurrency and restart remain separate state owners."
+    ]
+  }
+]

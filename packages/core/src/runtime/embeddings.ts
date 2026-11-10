@@ -2,8 +2,11 @@
 import {
 	copyEmbeddingVectorSpace,
 	getEmbeddingVectorSpace,
+	getEmbeddingVectorSpaceIdentity,
+	identifyEmbeddingVector,
 } from "../embedding-vector-space";
 import { ElizaError } from "../errors";
+import type { IDatabaseAdapter } from "../types/database.js";
 import { EventType } from "../types/events.js";
 import type { Memory } from "../types/memory.js";
 import { ModelType, type ModelTypeName } from "../types/model.js";
@@ -84,11 +87,11 @@ export class RuntimeEmbeddings {
 			: null;
 	}
 
-	/** Pins model identity, warns when the store has no identity, and rejects same-width model changes without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL. Dimension changes use the stale-vector reconciliation path. */
-	private async guardEmbeddingStoreIdentity(
+	/** Resolve and validate identity before changing the active adapter width. */
+	private async prepareEmbeddingStoreIdentity(
 		registration: ResolvedModelRegistration,
 		dimension: number,
-	): Promise<string | null> {
+	): Promise<{ modelLabel: string | null; next?: EmbeddingStoreIdentity }> {
 		const { provider } = registration;
 		const modelLabel = this.embeddingModelLabelForRegistration(registration);
 		const next: EmbeddingStoreIdentity = {
@@ -105,28 +108,25 @@ export class RuntimeEmbeddings {
 		if (!stored) {
 			this.runtime.logger.warn(
 				{ src: "agent", agentId: this.runtime.agentId, identity: next },
-				"No embedding store identity recorded for this agent; adopting the active embedder. If the existing vectors came from a different model, back up and rebuild a fresh index.",
+				"No embedding store identity recorded for this agent; the active embedder must be recorded. If the existing vectors came from a different model, back up and rebuild a fresh index.",
 			);
-			await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			return modelLabel;
+			return { modelLabel, next };
 		}
 		if (stored.dimension !== dimension) {
 			this.runtime.logger.info(
 				{ src: "agent", agentId: this.runtime.agentId, from: stored, to: next },
-				"Embedding width changed; the stale-dimension reconcile owns the old vectors",
+				"Embedding width is changing; the stale-dimension reconcile owns the old vectors",
 			);
-			await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			return modelLabel;
+			return { modelLabel, next };
 		}
 		const sameModel =
 			stored.modelLabel !== null && modelLabel !== null
 				? stored.modelLabel === modelLabel
 				: stored.provider === provider;
 		if (sameModel) {
-			if (stored.provider !== provider || stored.modelLabel !== modelLabel) {
-				await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			}
-			return modelLabel;
+			return stored.provider !== provider || stored.modelLabel !== modelLabel
+				? { modelLabel, next }
+				: { modelLabel };
 		}
 		const acknowledged = this.runtime.getSetting(
 			EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
@@ -138,10 +138,9 @@ export class RuntimeEmbeddings {
 		) {
 			this.runtime.logger.warn(
 				{ src: "agent", agentId: this.runtime.agentId, from: stored, to: next },
-				"Embedding store identity changed with operator acknowledgement",
+				"Embedding store identity change acknowledged by operator",
 			);
-			await this.runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next);
-			return modelLabel;
+			return { modelLabel, next };
 		}
 		const reason =
 			`Embedding model changed from ${describe(stored)} to ${describe(next)} at the same ${dimension}-dim width; refusing to mix vector spaces. ` +
@@ -175,14 +174,21 @@ export class RuntimeEmbeddings {
 		signal?: AbortSignal,
 	): Promise<void> {
 		const batch = modelType === ModelType.TEXT_EMBEDDING_BATCH;
+		if (this.embeddingStoreTransition && (params !== null || batch)) {
+			throw new ElizaError("Embedding store transition is not yet confirmed", {
+				code: "EMBEDDING_STORE_TRANSITION_UNCONFIRMED",
+			});
+		}
 		const sources =
 			batch && Array.isArray(embeddingProviderOutput)
 				? embeddingProviderOutput
 				: [embeddingProviderOutput];
 		const targets = batch && Array.isArray(result) ? result : [result];
-		const namedSpace = sources
-			.map(getEmbeddingVectorSpace)
-			.find((space) => space !== undefined);
+		let namedSpace: string | undefined;
+		for (const source of sources) {
+			namedSpace = getEmbeddingVectorSpace(source);
+			if (namedSpace !== undefined) break;
+		}
 		// A named vector cannot escape before its adapter representation commits.
 		// Recall may precede the host's deferred probe, so initialize on first use
 		// as well as sharing an in-flight probe. The null probe must never await
@@ -193,8 +199,7 @@ export class RuntimeEmbeddings {
 			(params !== null || batch)
 		) {
 			signal?.throwIfAborted();
-			const initialization =
-				this.embeddingInitialization ?? this.ensureEmbeddingDimension();
+			const initialization = this.ensureEmbeddingDimension();
 			if (!signal) await initialization;
 			else {
 				signal.throwIfAborted();
@@ -242,12 +247,23 @@ export class RuntimeEmbeddings {
 					"Embedding provider returned a different or unidentified representation",
 					{
 						code: "EMBEDDING_SPACE_MISMATCH",
-						context: { expected, provider: provider },
+						context: { expected, provider },
 					},
 				);
 			}
 			for (let index = 0; index < sources.length; index++) {
 				copyEmbeddingVectorSpace(sources[index], targets[index]);
+			}
+		} else {
+			// Preserve the representation at generation time. A later named pin
+			// must not make a pending legacy vector appear to come from that model.
+			for (const target of targets) {
+				if (
+					Array.isArray(target) &&
+					getEmbeddingVectorSpaceIdentity(target) === undefined
+				) {
+					identifyEmbeddingVector(target, null);
+				}
 			}
 		}
 	}
@@ -276,19 +292,25 @@ export class RuntimeEmbeddings {
 	 */
 	private embeddingGenerationDisabledReason: string | null = null;
 
+	/** Once a width or identity change starts, only confirmed initialization can publish vectors again. */
+	private embeddingStoreTransition = false;
+
 	/** Once-latch so the embedding-skip warning fires once, not per write. */
 	private embeddingSkipWarned = false;
 
 	/**
-	 * True while embedding generation is disabled because every registered
-	 * TEXT_EMBEDDING provider failed the dimension probe. While true, memory
+	 * True when probing disabled generation or a store transition is unconfirmed.
+	 * While true, memory
 	 * writes persist without vectors (recall over new memories is degraded)
 	 * rather than emitting vectors the SQL adapter would silently drop against
 	 * a default-sized column. Cleared by the next successful
 	 * {@link ensureEmbeddingDimension} (e.g. the deferred boot re-probe).
 	 */
 	isEmbeddingGenerationDisabled(): boolean {
-		return this.embeddingGenerationDisabledReason !== null;
+		return (
+			this.embeddingStoreTransition ||
+			this.embeddingGenerationDisabledReason !== null
+		);
 	}
 
 	disableEmbeddingGeneration(reason: string): void {
@@ -321,9 +343,11 @@ export class RuntimeEmbeddings {
 			{
 				src: "agent",
 				agentId: this.runtime.agentId,
-				reason: this.embeddingGenerationDisabledReason,
+				reason:
+					this.embeddingGenerationDisabledReason ??
+					"Embedding store transition is not yet confirmed",
 			},
-			"Embedding generation is disabled (every TEXT_EMBEDDING provider failed the dimension probe); memory writes are persisted WITHOUT vectors — recall over new memories is degraded until a provider recovers",
+			"Embedding generation is disabled; memory writes are persisted WITHOUT vectors — recall over new memories is degraded until embedding initialization succeeds",
 		);
 	}
 
@@ -447,17 +471,18 @@ export class RuntimeEmbeddings {
 				if (!(error instanceof NoModelProviderConfiguredError)) {
 					allFailuresBenign = false;
 				}
+				const message = error instanceof Error ? error.message : String(error);
 				attempts.push({
 					provider: registration.provider,
 					modelKey: registration.modelKey,
-					error: error instanceof Error ? error.message : String(error),
+					error: message,
 				});
 				this.runtime.logger.warn(
 					{
 						src: "agent",
 						agentId: this.runtime.agentId,
 						provider: registration.provider,
-						error: error instanceof Error ? error.message : String(error),
+						error: message,
 					},
 					localOnly
 						? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
@@ -506,21 +531,47 @@ export class RuntimeEmbeddings {
 					},
 				);
 			}
+			const identity =
+				spaceId === undefined
+					? await this.prepareEmbeddingStoreIdentity(
+							registration,
+							embedding.length,
+						)
+					: undefined;
+			if (
+				identity &&
+				(identity.next || this.pinnedEmbeddingDimension !== embedding.length) &&
+				!this.embeddingStoreTransition
+			) {
+				this.embeddingStoreTransition = true;
+				this.embeddingSkipWarned = false;
+			}
+			// A rejected adapter operation may already have committed. Leave the
+			// fence closed until a retry reads the real store and confirms both steps.
 			await this.runtime.adapter.ensureEmbeddingDimension(embedding.length);
 			const representationMemoryIds =
 				spaceId !== undefined && this.runtime.adapter.ensureEmbeddingSpace
 					? await this.runtime.adapter.ensureEmbeddingSpace(spaceId)
 					: [];
-			const modelLabel =
-				spaceId === undefined
-					? await this.guardEmbeddingStoreIdentity(
-							registration,
-							embedding.length,
-						)
-					: spaceId;
+			if (
+				identity?.next &&
+				!(await this.runtime.setCache(
+					EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+					identity.next,
+				))
+			) {
+				throw new ElizaError(
+					"Embedding store identity write is not confirmed",
+					{
+						code: "EMBEDDING_STORE_IDENTITY_WRITE_UNCONFIRMED",
+					},
+				);
+			}
+			const modelLabel = identity?.modelLabel ?? spaceId ?? null;
 			this.pinnedEmbeddingSpace = spaceId;
 			this.pinnedEmbeddingDimension = embedding.length;
 			this.pinnedEmbeddingProvider = registration.provider;
+			this.embeddingStoreTransition = false;
 			this.enableEmbeddingGeneration();
 			if (representationMemoryIds.length > 0)
 				void this.reembedMemoriesByIds(representationMemoryIds);
@@ -607,11 +658,8 @@ export class RuntimeEmbeddings {
 		if (!memoryText) {
 			throw new Error("Cannot generate embedding: Memory content is empty");
 		}
-		if (this.embeddingGenerationDisabledReason !== null) {
-			// Every TEXT_EMBEDDING provider failed the dimension probe, so the
-			// vector column was never sized for this runtime. Skip generation
-			// explicitly (warn once) instead of producing a vector the SQL
-			// adapter would silently drop on dimension mismatch.
+		if (this.isEmbeddingGenerationDisabled()) {
+			// Skip generating a vector without a confirmed embedding store.
 			this.warnEmbeddingGenerationSkipped();
 			return memory;
 		}
@@ -682,9 +730,8 @@ export class RuntimeEmbeddings {
 	 */
 	async queueEmbeddingGeneration(
 		memory: Memory,
-		priority?: "high" | "normal" | "low",
+		priority: "high" | "normal" | "low" = "normal",
 	): Promise<void> {
-		priority = priority || "normal";
 		if (
 			!memory ||
 			(Array.isArray(memory.embedding) && memory.embedding.length > 0) ||
@@ -692,10 +739,7 @@ export class RuntimeEmbeddings {
 		) {
 			return;
 		}
-		if (this.embeddingGenerationDisabledReason !== null) {
-			// See addEmbeddingToMemory: no provider passed the dimension probe,
-			// so queueing would only produce per-item generation failures (or
-			// silently dropped vectors). Skip explicitly, warn once.
+		if (this.isEmbeddingGenerationDisabled()) {
 			this.warnEmbeddingGenerationSkipped();
 			return;
 		}
@@ -737,14 +781,9 @@ export class RuntimeEmbeddings {
 		return this.runtime.adapter.clearEmbeddingsOutsideActiveDimension();
 	}
 
-	async getCachedEmbeddings(params: {
-		query_table_name: string;
-		query_threshold: number;
-		query_input: string;
-		query_field_name: string;
-		query_field_sub_name: string;
-		query_match_count: number;
-	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
+	getCachedEmbeddings(
+		params: Parameters<IDatabaseAdapter["getCachedEmbeddings"]>[0],
+	): ReturnType<IDatabaseAdapter["getCachedEmbeddings"]> {
 		return this.runtime.adapter.getCachedEmbeddings(params);
 	}
 }

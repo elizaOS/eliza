@@ -49,6 +49,7 @@ import {
   isBrowserDispatchFailure,
   isIdempotentBrowserSubaction,
 } from "./dispatch-types.js";
+import type { NativeHistorySelection } from "./native-client-command.js";
 import {
   type NativeBrowserClientTransport,
   readNativeBrowserPage,
@@ -467,6 +468,7 @@ export class BrowserService extends Service {
     command: BrowserWorkspaceCommand,
     targetId?: string,
     nativeClientId?: string,
+    selection?: NativeHistorySelection,
   ): Promise<BrowserWorkspaceCommandResult> {
     command = normalizeBrowserWorkspaceCommand(command);
     const blockedCommand = findBlockedGenericCommand(command);
@@ -555,6 +557,7 @@ export class BrowserService extends Service {
           return await this.nativeClientTransport.executeCommand(
             nativeClientId,
             command,
+            selection,
           );
         } catch (error) {
           // error-policy:J2 preserve native failures and prevent uncertain effects from being replayed.
