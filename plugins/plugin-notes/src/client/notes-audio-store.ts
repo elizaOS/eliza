@@ -26,6 +26,12 @@ export interface NotesAudioRow {
   expired?: true;
   deletionOperations?: Record<string, NotesAudioDeletionStatus>;
   activeDeletionOperation?: string;
+  /** Durable browser save journal. Only a claimed recording can bind to a canonical note. */
+  recordingSave?: {
+    ownerDigest: string;
+    folderId: string | null;
+    phase: "stopped" | "claimed" | "committed";
+  };
 }
 export type NotesAudioMetadata = Omit<NotesAudioRow, "blob" | "bytes">;
 export interface NotesAudioReceipt {
@@ -48,6 +54,21 @@ export interface NotesAudioStoreOptions {
   now?: () => number;
 }
 export interface NotesAudioStore {
+  retainPendingAudio(
+    audioId: string,
+    binding: { ownerDigest: string; folderId: string | null },
+    clip: { blob: Blob; durationMs: number },
+    transcript: string,
+  ): Promise<void>;
+  pendingAudio(): Promise<NotesAudioRow[]>;
+  claimPendingAudio(audioId: string, ownerDigest: string): Promise<boolean>;
+  commitPendingAudio(
+    audioId: string,
+    ownerDigest: string,
+    noteId: string,
+    transcript: string,
+  ): Promise<NotesAudioMetadata>;
+  discardPendingAudio(audioId: string, ownerDigest: string): Promise<void>;
   retainAudio(
     audioId: string,
     noteId: string,
@@ -173,6 +194,19 @@ export function createNotesAudioStore(
       throw Error("Recording metadata needs recovery.");
     identity(row.audioId);
     identity(row.noteId);
+    if (row.recordingSave) {
+      const save = row.recordingSave;
+      if (
+        !/^[a-f0-9]{64}$/.test(save.ownerDigest) ||
+        (save.folderId !== null &&
+          (typeof save.folderId !== "string" ||
+            !/^f-[A-Za-z0-9_-]{1,64}$/.test(save.folderId))) ||
+        !["stopped", "claimed", "committed"].includes(save.phase) ||
+        (save.phase !== "committed" &&
+          (row.noteId !== row.audioId || row.deletedAt))
+      )
+        throw Error("Recording save journal needs recovery.");
+    }
     return {
       ...row,
       transcript: typeof row.transcript === "string" ? row.transcript : "",
@@ -228,6 +262,123 @@ export function createNotesAudioStore(
   }
 
   return {
+    async retainPendingAudio(audioId, binding, clip, transcript) {
+      if (
+        !/^[a-f0-9]{64}$/.test(binding.ownerDigest) ||
+        (binding.folderId !== null &&
+          !/^f-[A-Za-z0-9_-]{1,64}$/.test(binding.folderId))
+      )
+        throw Error("Invalid recording ownership.");
+      if (
+        typeof transcript !== "string" ||
+        transcript.length > NOTES_AUDIO_TRANSCRIPT_LIMIT
+      )
+        throw Error("Transcript is too long.");
+      const bytes = await clip.blob.arrayBuffer();
+      await mutate(audioId, (prior, store) => {
+        if (prior) {
+          if (
+            !prior.recordingSave ||
+            prior.recordingSave.ownerDigest !== binding.ownerDigest ||
+            prior.recordingSave.folderId !== binding.folderId ||
+            !sameClip(prior, clip, bytes)
+          )
+            throw Error("Recording save owner changed.");
+          return;
+        }
+        store.add(
+          stored(
+            normalize({
+              audioId,
+              noteId: audioId,
+              ...clip,
+              bytes,
+              mimeType: clip.blob.type,
+              transcript,
+              createdAt: now(),
+              recordingSave: { ...binding, phase: "stopped" },
+            }),
+          ),
+        );
+      });
+    },
+    async pendingAudio() {
+      const d = await db();
+      return new Promise((resolve, reject) => {
+        const tx = d.transaction(STORE, "readonly"),
+          rows: NotesAudioRow[] = [];
+        let error: unknown;
+        tx.oncomplete = () => resolve(rows);
+        tx.onabort = tx.onerror = () =>
+          reject(
+            error || tx.error || Error("Recording recovery is unavailable."),
+          );
+        const request = tx.objectStore(STORE).openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          try {
+            if (
+              cursor.value.recordingSave &&
+              cursor.value.recordingSave.phase !== "committed"
+            )
+              rows.push(normalize(cursor.value));
+          } catch (cause) {
+            error = cause;
+            tx.abort();
+            return;
+          }
+          cursor.continue();
+        };
+      });
+    },
+    async claimPendingAudio(audioId, ownerDigest) {
+      return mutate(audioId, (row, store) => {
+        if (
+          !row?.recordingSave ||
+          row.recordingSave.ownerDigest !== ownerDigest
+        )
+          throw Error("Recording save owner changed.");
+        if (row.recordingSave.phase !== "stopped") return false;
+        row.recordingSave = { ...row.recordingSave, phase: "claimed" };
+        store.put(stored(row));
+        return true;
+      });
+    },
+    async commitPendingAudio(audioId, ownerDigest, noteId, transcript) {
+      identity(noteId);
+      if (
+        typeof transcript !== "string" ||
+        transcript.length > NOTES_AUDIO_TRANSCRIPT_LIMIT
+      )
+        throw Error("Transcript is too long.");
+      return mutate(audioId, (row, store) => {
+        if (
+          !row?.recordingSave ||
+          row.recordingSave.ownerDigest !== ownerDigest ||
+          row.recordingSave.phase === "stopped" ||
+          row.deletedAt ||
+          (row.recordingSave.phase === "committed" && row.noteId !== noteId)
+        )
+          throw Error("Recording save owner changed.");
+        row.noteId = noteId;
+        row.transcript = transcript;
+        row.recordingSave = { ...row.recordingSave, phase: "committed" };
+        store.put(stored(row));
+        return notesAudioMetadata(row);
+      });
+    },
+    async discardPendingAudio(audioId, ownerDigest) {
+      await mutate(audioId, (row, store) => {
+        if (!row) return;
+        if (!row.recordingSave || row.recordingSave.ownerDigest !== ownerDigest)
+          throw Error("Recording save owner changed.");
+        if (row.recordingSave.phase === "committed") return;
+        if (row.recordingSave.phase === "claimed")
+          throw Error("Check Notes before discarding this recording.");
+        store.delete(audioId);
+      });
+    },
     async retainAudio(audioId, noteId, transcript, clip) {
       identity(noteId);
       if (
@@ -237,7 +388,12 @@ export function createNotesAudioStore(
         throw Error("Transcript is too long.");
       const bytes = clip ? await clip.blob.arrayBuffer() : undefined;
       return mutate(audioId, (prior, store) => {
-        if (prior && (prior.noteId !== noteId || prior.deletedAt))
+        if (
+          prior &&
+          (prior.noteId !== noteId ||
+            prior.deletedAt ||
+            (prior.recordingSave && prior.recordingSave.phase !== "committed"))
+        )
           throw Error("This recording is not available for this note.");
         if (!prior && !clip) throw Error("Record a clip first.");
         // A saved recording keeps its bytes; a different clip is refused, not dropped.
@@ -264,6 +420,8 @@ export function createNotesAudioStore(
     async audioRecord(audioId, includeDeleted = false) {
       return mutate(audioId, (row, store) => {
         if (!row) throw Error("Recording not found.");
+        if (row.recordingSave && row.recordingSave.phase !== "committed")
+          throw Error("Recording is not saved to a note.");
         if (row.deletedAt && !includeDeleted)
           throw Error("Restore this recording before playing it.");
         store.put(stored(row));
@@ -273,7 +431,11 @@ export function createNotesAudioStore(
     async audioDeletionStatus(audioId, noteId, operation) {
       operationId(operation);
       return mutate(audioId, (row) => {
-        if (!row || row.noteId !== noteId)
+        if (
+          !row ||
+          row.noteId !== noteId ||
+          (row.recordingSave && row.recordingSave.phase !== "committed")
+        )
           throw Error("Recording owner changed");
         return receipt(row, operation);
       });
@@ -282,7 +444,11 @@ export function createNotesAudioStore(
       identity(noteId);
       operationId(operation);
       return mutate(audioId, (row, store) => {
-        if (!row || row.noteId !== noteId)
+        if (
+          !row ||
+          row.noteId !== noteId ||
+          (row.recordingSave && row.recordingSave.phase !== "committed")
+        )
           throw Error("This recording belongs to another note.");
         const operations = row.deletionOperations || {};
         const prior = operations[operation];
@@ -328,7 +494,11 @@ export function createNotesAudioStore(
       identity(noteId);
       operationId(operation);
       return mutate(audioId, (row, store) => {
-        if (!row || row.noteId !== noteId)
+        if (
+          !row ||
+          row.noteId !== noteId ||
+          (row.recordingSave && row.recordingSave.phase !== "committed")
+        )
           throw Error("This recording belongs to another note.");
         const operations = row.deletionOperations || {};
         const prior = operations[operation];

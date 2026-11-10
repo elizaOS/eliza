@@ -203,8 +203,10 @@ export interface TriggerRouteContext extends RouteRequestContext {
   ownerEntityId?: string;
   /** Canonical local owner for ownerless legacy trigger compatibility. */
   localOwnerEntityId?: string;
-  /** Host-owned app conversation; never accept a delivery room from request data. */
-  resolvePromptDeliveryRoom: (runtime: IAgentRuntime) => Promise<UUID>;
+  /** Synchronous host lease check, called immediately before task persistence. */
+  assertCurrentRuntime: (runtime: IAgentRuntime) => void;
+  /** Host resolves an optional app conversation selector; a client never supplies a delivery room. */
+  resolvePromptDeliveryRoom: (runtime: IAgentRuntime, conversationId?: string) => Promise<UUID>;
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
@@ -323,8 +325,19 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
   const listResponse = (triggers: TriggerSummary[], status = 200): void => {
     json(res, { triggers }, status);
   };
-  const itemResponse = (summary: TriggerSummary, status = 200): void => {
-    json(res, { trigger: summary }, status);
+  const itemResponse = (
+    summary: TriggerSummary,
+    status = 200,
+    deliveryConversationId?: string
+  ): void => {
+    json(
+      res,
+      {
+        trigger: summary,
+        ...(deliveryConversationId === undefined ? {} : { deliveryConversationId }),
+      },
+      status
+    );
   };
   if (!pathname.startsWith('/api/triggers')) return false;
   if (!runtime) {
@@ -341,6 +354,15 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     error(res, 'Owner role required', 403);
     return true;
   }
+  const canPersist = (): boolean => {
+    try {
+      ctx.assertCurrentRuntime(runtime);
+      return true;
+    } catch {
+      error(res, 'Agent changed before saving automation', 409);
+      return false;
+    }
+  };
   const listOwnedTriggerTasks = async (currentRuntime: IAgentRuntime): Promise<Task[]> =>
     (await listTriggerTasks(currentRuntime)).filter((task) =>
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
@@ -365,6 +387,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
   if (method === 'POST' && pathname === '/api/triggers') {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (
+      body.deliveryConversationId !== undefined &&
+      typeof body.deliveryConversationId !== 'string'
+    ) {
+      error(res, 'deliveryConversationId must name an owner conversation', 400);
+      return true;
+    }
     if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
       error(res, 'enabled must be a boolean', 400);
       return true;
@@ -483,14 +512,20 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Unable to compute trigger schedule', 400);
       return true;
     }
-    const roomId =
-      trigger.kind === 'prompt'
-        ? await ctx.resolvePromptDeliveryRoom(runtime)
-        : (
-            runtime.getService('AUTONOMY') as {
-              getAutonomousRoomId?(): UUID;
-            } | null
-          )?.getAutonomousRoomId?.();
+    let roomId: UUID | undefined;
+    if (trigger.kind === 'prompt') {
+      try {
+        roomId = await ctx.resolvePromptDeliveryRoom(runtime, body.deliveryConversationId);
+      } catch (failure) {
+        if (body.deliveryConversationId === undefined) throw failure;
+        error(res, 'Selected prompt delivery conversation is unavailable', 409);
+        return true;
+      }
+    } else {
+      roomId = (
+        runtime.getService('AUTONOMY') as { getAutonomousRoomId?(): UUID } | null
+      )?.getAutonomousRoomId?.();
+    }
     if (
       trigger.kind === 'prompt' &&
       (!roomId || !(await runtime.getRoom(roomId))?.source?.trim())
@@ -498,6 +533,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Prompt automation delivery conversation is unavailable', 503);
       return true;
     }
+    if (!canPersist()) return true;
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,
@@ -515,7 +551,11 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Trigger created but summary could not be generated', 500);
       return true;
     }
-    itemResponse(summary, 201);
+    itemResponse(
+      summary,
+      201,
+      requestedKind === 'prompt' ? body.deliveryConversationId : undefined
+    );
     return true;
   }
   const runsMatch = /^\/api\/triggers\/([^/]+)\/runs$/.exec(pathname);
@@ -668,6 +708,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (
+      body.deliveryConversationId !== undefined &&
+      typeof body.deliveryConversationId !== 'string'
+    ) {
+      error(res, 'deliveryConversationId must name an owner conversation', 400);
+      return true;
+    }
     if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
       error(res, 'enabled must be a boolean', 400);
       return true;
@@ -783,8 +830,17 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     // A trigger switched to prompt delivers to the owner conversation, as a
     // prompt trigger created over POST does, not to the workflow trigger's room.
     let promptRoomId: UUID | undefined;
-    if (nextKind === 'prompt' && current.kind !== 'prompt') {
-      promptRoomId = await ctx.resolvePromptDeliveryRoom(runtime);
+    if (
+      nextKind === 'prompt' &&
+      (current.kind !== 'prompt' || body.deliveryConversationId !== undefined)
+    ) {
+      try {
+        promptRoomId = await ctx.resolvePromptDeliveryRoom(runtime, body.deliveryConversationId);
+      } catch (failure) {
+        if (body.deliveryConversationId === undefined) throw failure;
+        error(res, 'Selected prompt delivery conversation is unavailable', 409);
+        return true;
+      }
       if (!(await runtime.getRoom(promptRoomId))?.source?.trim()) {
         error(res, 'Prompt automation delivery conversation is unavailable', 503);
         return true;
@@ -833,6 +889,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
             }
           : built;
     }
+    if (!canPersist()) return true;
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
       metadata: nextMeta as Task['metadata'],
@@ -848,7 +905,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Trigger metadata is invalid', 500);
       return true;
     }
-    itemResponse(summary);
+    itemResponse(summary, 200, nextKind === 'prompt' ? body.deliveryConversationId : undefined);
     return true;
   }
   return false;

@@ -3485,9 +3485,26 @@ const ownerConversationCreations = new WeakMap<
 export async function resolvePromptDeliveryRoom(
   state: ConversationRouteState & { activeConversationId?: string | null },
   runtime: IAgentRuntime,
+  requestedConversationId?: string,
 ): Promise<UUID> {
   if (runtime !== state.runtime) {
     throw new Error("Runtime changed before prompt automation creation");
+  }
+  // A client-selected conversation must resolve on this owner runtime. Never
+  // substitute a different window's most-recent conversation when it is gone.
+  if (requestedConversationId !== undefined) {
+    const id = validateUuid(requestedConversationId);
+    const conversation = id
+      ? await getConversationWithRestore(state, id)
+      : null;
+    if (
+      runtime !== state.runtime ||
+      !conversation ||
+      !isOwnerConversation(conversation)
+    ) {
+      throw new Error("Selected prompt delivery conversation is unavailable");
+    }
+    return conversation.roomId;
   }
   const conversation = await ensureOwnerConversation(state, state.runtime);
   if (runtime !== state.runtime) {

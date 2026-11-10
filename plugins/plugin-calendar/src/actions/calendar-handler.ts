@@ -4737,6 +4737,7 @@ export function formatCalendarSearchResults(
   events: LifeOpsCalendarEvent[],
   query: string,
   label: string,
+  reference?: { asOf: Date; timeZone: string },
 ): string {
   const queryEcho = describeUserReference(query, "that request");
   if (events.length === 0) {
@@ -4749,7 +4750,7 @@ export function formatCalendarSearchResults(
     }
     // Keep the internal event label generic. The existing planner evaluator
     // uses these facts and receipts to choose the final natural phrasing.
-    return `Your matching calendar event is **${event.title}** (${formatCalendarMoment(event)}).`;
+    return `Your matching calendar event is **${event.title}** (${reference ? formatCalendarEventTimeRange(event, reference) : formatCalendarMoment(event)}).`;
   }
   const lines = [
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
@@ -4757,7 +4758,9 @@ export function formatCalendarSearchResults(
   for (const event of events) {
     const when = event.isAllDay
       ? "all day"
-      : formatCalendarEventDateTime(event);
+      : reference
+        ? formatCalendarEventTimeRange(event, reference)
+        : formatCalendarEventDateTime(event);
     lines.push(`- **${event.title}** (${when})`);
     if (event.location) {
       lines.push(`  Location: ${event.location}`);
@@ -5450,9 +5453,19 @@ export function createCalendarActionRunner(
         runtime,
         new Date(),
       );
+      // The current client's clock owns an unqualified conversational date.
+      // A remote host's default zone must not move its day boundary; explicit
+      // requested zones still win below. Invalid client hints grant nothing.
+      const metadata = message.content.metadata;
+      const clientZone =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>).uiTimeZone
+          : undefined;
       const planningTimeZone = resolveCalendarTimeZone(
         details,
-        calendarZone.timeZone,
+        typeof clientZone === "string" && isValidTimeZone(clientZone)
+          ? clientZone
+          : calendarZone.timeZone,
       );
       const explicitSubaction = normalizeCalendarSubaction(params.subaction);
       // A promoted CALENDAR_* tool call is already the action planner's typed
@@ -5644,6 +5657,7 @@ export function createCalendarActionRunner(
               }
             : scenario === "search_results"
               ? {
+                  timeZone: planningTimeZone,
                   selection: "filtered_search",
                   contentFilterApplied: true,
                   nextEventLookupPerformed: false,
@@ -7318,6 +7332,7 @@ export function createCalendarActionRunner(
                   filteredEvents,
                   queryFallback,
                   label,
+                  { asOf: new Date(), timeZone: planningTimeZone },
                 );
                 return respond({
                   success: true,
@@ -7363,7 +7378,10 @@ export function createCalendarActionRunner(
                   hostDeps,
                 );
               if (recoveredReadPlan?.subaction === "feed") {
-                const fallback = formatCalendarFeed(feed, label);
+                const fallback = formatCalendarFeed(feed, label, {
+                  asOf: new Date(),
+                  timeZone: planningTimeZone,
+                });
                 return respond({
                   success: true,
                   text: await renderReply("feed_results", fallback, {
@@ -7383,7 +7401,10 @@ export function createCalendarActionRunner(
           const query = queriesForSearch[0];
           if (!query || queriesForSearch.length === 0) {
             if (hasExplicitWindow) {
-              const fallback = formatCalendarFeed(feed, label);
+              const fallback = formatCalendarFeed(feed, label, {
+                asOf: new Date(),
+                timeZone: planningTimeZone,
+              });
               return respond({
                 success: true,
                 text: await renderReply("feed_results", fallback, {
@@ -7489,6 +7510,7 @@ export function createCalendarActionRunner(
             filteredEvents,
             query,
             label,
+            { asOf: new Date(), timeZone: planningTimeZone },
           );
           // queriesForSearch values are LLM-extracted and can be blobs; clamp
           // every machine-facing render while matching above kept the raw values.
@@ -7515,7 +7537,10 @@ export function createCalendarActionRunner(
           });
         }
 
-        const fallback = formatCalendarFeed(feed, label);
+        const fallback = formatCalendarFeed(feed, label, {
+          asOf: new Date(),
+          timeZone: planningTimeZone,
+        });
         return respond({
           success: true,
           text: await renderReply("feed_results", fallback, {
