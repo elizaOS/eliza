@@ -45,6 +45,10 @@ module speech_host_cutover {
     s.attestation == "fresh" and s.identityMatches
   action preflight = all { canSwitch, s' = s.with("preflight", true) }
   action switchBinding = all { canSwitch, s.preflight, s' = s.with("host", "speech") }
+  // The source may retain the API host without provisioning or draining a new
+  // namespace. Live metadata must still prove the namespace remains on the API.
+  val canRetainApi = s.host == "api" and s.identityMatches
+  action retainApiBinding = all { canRetainApi, s' = s }
   // Routine updates to the already-active target do not need a new attestation.
   action routineUpdate = all { s.host == "speech", s' = s }
   action startNew = all { s.host == "speech", not(s.newActive), s' = s.with("newActive", true) }
@@ -54,7 +58,7 @@ module speech_host_cutover {
   action step = any { acceptOld, finishPreparation, startOld, freezeAdmission,
     deployTarget, beginRetirement, providerStops, accountingCommits, confirmReceipt,
     truthfulAttest, expireAttestation, identityDrifts, preflight, switchBinding,
-    routineUpdate, startNew, revokeOld, idle }
+    retainApiBinding, routineUpdate, startNew, revokeOld, idle }
   val receiptSafety = s.oldNamespace and (not(s.receipt) or
     (s.providerClosed and s.settled and s.oldPhase == "closed"))
   val safety = receiptSafety and not(s.missedRevoke) and (s.host == "api" or drained)
@@ -64,6 +68,15 @@ module speech_host_cutover {
 
   run absentTargetCannotActivateTest = init.then(freezeAdmission).then(truthfulAttest)
     .expect(not(canSwitch) and not(s.targetReady) and safety)
+  run apiRetentionPreservesActiveSessionTest = init.then(acceptOld)
+    .then(finishPreparation).then(startOld).then(retainApiBinding)
+    .expect(s.host == "api" and not(s.targetReady) and not(s.frozen) and safety)
+    .then(revokeOld).expect(s.oldPhase == "retiring" and safety)
+  run apiRetentionCannotReverseCutoverTest = init.then(freezeAdmission).then(deployTarget)
+    .then(truthfulAttest).then(preflight).then(switchBinding)
+    .expect(not(canRetainApi) and safety)
+  run apiRetentionRequiresStableIdentityTest = init.then(identityDrifts)
+    .expect(not(canRetainApi) and safety)
   run drainedCutoverTest = init.then(acceptOld).then(finishPreparation).then(startOld)
     .then(freezeAdmission).then(beginRetirement).then(providerStops).then(accountingCommits)
     .then(confirmReceipt).then(deployTarget).then(truthfulAttest).then(preflight)

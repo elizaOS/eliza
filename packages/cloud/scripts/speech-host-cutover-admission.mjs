@@ -174,17 +174,26 @@ export async function admitSpeechHostCutover(
     !/^[0-9a-f]{40}$/.test(environment.GITHUB_SHA ?? "")
   )
     fail("invalid_release_identity");
+  const desiredHost = environment.STAGING_SPEECH_HOST ?? "speech";
+  if (desiredHost !== "api" && desiredHost !== "speech")
+    fail("invalid_desired_host");
   const apiBindings = await fetchWorkerBindings(environment, API, fetchImpl);
   let targetBindings;
-  try {
-    targetBindings = await fetchWorkerBindings(environment, TARGET, fetchImpl);
-  } catch (error) {
-    throw new StateBackendInventoryError(
-      "speech_cutover:target_host_unavailable; complete host-only provisioning before first activation",
-      error instanceof StateBackendInventoryError
-        ? error.message
-        : "read failed",
-    );
+  if (desiredHost === "speech") {
+    try {
+      targetBindings = await fetchWorkerBindings(
+        environment,
+        TARGET,
+        fetchImpl,
+      );
+    } catch (error) {
+      throw new StateBackendInventoryError(
+        "speech_cutover:target_host_unavailable; complete host-only provisioning before first activation",
+        error instanceof StateBackendInventoryError
+          ? error.message
+          : "read failed",
+      );
+    }
   }
   const namespaces = await fetchSpeechNamespaces(environment, fetchImpl);
   const current = namespaceFor(
@@ -192,12 +201,20 @@ export async function admitSpeechHostCutover(
     API,
     namespaces,
   );
-  const target = namespaceFor(
-    uniqueBinding(targetBindings, "SPEECH_RELAY_SESSIONS"),
-    TARGET,
-    namespaces,
-  );
-  if (target.script !== TARGET) fail("unexpected_target_owner");
+  // Retaining the API host cannot move sessions back from the speech host.
+  // Read its actual namespace even when the unused target has not been created.
+  if (desiredHost === "api" && current.script !== API)
+    fail("api_retention_requires_local_namespace");
+  const target =
+    desiredHost === "api"
+      ? current
+      : namespaceFor(
+          uniqueBinding(targetBindings, "SPEECH_RELAY_SESSIONS"),
+          TARGET,
+          namespaces,
+        );
+  if (desiredHost === "speech" && target.script !== TARGET)
+    fail("unexpected_target_owner");
   const identity = {
     sourceSha: environment.GITHUB_SHA,
     fromWorker: current.script,
