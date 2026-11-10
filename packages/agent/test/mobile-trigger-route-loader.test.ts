@@ -1,6 +1,6 @@
 /** Packed server loader regression. Native media/providers and personal stores are not used. */
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -28,9 +28,13 @@ it("packs the cold trigger API with its real paused-prompt handler and retains o
       "type BrowserWorkspaceCommand",
     );
   const scratch = await mkdtemp(path.join(tmpdir(), "eliza-packed-trigger-"));
-  const output = testOutputPath("mobile-trigger-route-loader");
+  const outputRoot = testOutputPath("mobile-trigger-route-loader");
   const { mkdir } = await import("node:fs/promises");
-  await mkdir(output, { recursive: true });
+  await mkdir(outputRoot, { recursive: true });
+  const output = await mkdtemp(path.join(outputRoot, "run-"));
+  // The generated probe lives outside the package. Resolve its imports against
+  // the agent's declared dependencies, including isolated workspace installs.
+  await symlink(path.join(root, "packages/agent/node_modules"), path.join(output, "node_modules"), "dir");
   const corePort = path.join(output, "core-port.ts"),
     entry = path.join(output, "probe.ts"),
     builder = path.join(output, "build.ts");
