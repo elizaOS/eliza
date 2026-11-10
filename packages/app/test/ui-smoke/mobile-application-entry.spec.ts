@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
@@ -752,9 +752,32 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   await expect(card).toContainText("First today");
   // Dynamic views use this emitted public API to share the host's actual
   // client singleton. A built renderer does not serve Vite's /@fs source URLs.
-  const publicApiAssets = readdirSync(
-    new URL("../../web-dist/assets/", import.meta.url),
-  ).filter((name) => /^view-public-api-[\w-]+\.js$/.test(name));
+  const loadedAssets = await page.evaluate(() =>
+    performance
+      .getEntriesByType("resource")
+      .map((entry) => new URL(entry.name))
+      .filter(
+        (url) =>
+          url.origin === location.origin &&
+          /^\/assets\/[^/]+\.js$/.test(url.pathname),
+      )
+      .map((url) => url.pathname),
+  );
+  const publicApiAssets = [
+    ...new Set(
+      loadedAssets.flatMap((path) =>
+        Array.from(
+          readFileSync(
+            new URL(`../../web-dist${path}`, import.meta.url),
+            "utf8",
+          ).matchAll(
+            /\bimport\s*\(\s*["']\.\/(view-public-api-[\w-]+\.js)["']\s*\)/g,
+          ),
+          (match) => match[1],
+        ),
+      ),
+    ),
+  ];
   expect(publicApiAssets, "one compiled public host API").toHaveLength(1);
   const clientPath = `/assets/${publicApiAssets[0]}`;
   const originalToken = await page.evaluate(async (path) => {
