@@ -399,7 +399,12 @@ button:focus-visible, select:focus-visible, a:focus-visible, iframe:focus-visibl
 .taskbar-clock { border: 1px solid #423623; color: #d3c7b5; }
 .desktop-heading { pointer-events: auto; }
 .menu-signin { margin-left: 8px; }
-.feed-panel, .market-panel, .telemetry-panel, .cyber-desk { grid-column: 1 / -1; }
+.feed-panel, .ai-panel, .market-panel, .telemetry-panel, .cyber-desk { grid-column: 1 / -1; }
+#ai-status { margin: 16px 16px 0; color: var(--ink, #f4efe6); font-size: 15px; line-height: 1.5; }
+#ai-reply { margin: 8px 16px 0; color: var(--muted, #b7b0a4); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+#ai-reply:empty { display: none; }
+#ai-form { display: flex; gap: 8px; align-items: flex-end; padding: 12px 16px 16px; }
+#ai-form textarea { min-width: 0; flex: 1; min-height: 72px; resize: vertical; padding: 10px; border: 1px solid var(--line, rgba(244, 239, 230, .14)); border-radius: 10px; background: var(--bg, #090a0c); color: var(--ink, #f4efe6); font: inherit; }
 .market-panel > p, .telemetry-panel > p, #feed-status { margin: 16px; color: var(--muted, #b7b0a4); font-size: 13px; line-height: 1.5; }
 #feed-status { color: var(--ink, #f4efe6); font-size: 15px; }
 #feed-list { margin: 0 16px 16px; padding: 0; list-style: none; }
@@ -423,8 +428,8 @@ button:focus-visible, select:focus-visible, a:focus-visible, iframe:focus-visibl
   .header-state { font-size: 11px; }
   .header-state > .state-dot { display: none; }
   .paper-badge { font-size: 11px; }
-  .chat-form { flex-wrap: wrap; }
-  .chat-form textarea, .chat-form button { width: 100%; }
+  .chat-form, #ai-form { flex-wrap: wrap; }
+  .chat-form textarea, .chat-form button, #ai-form textarea, #ai-form button { width: 100%; }
   .desktop-icons { position: relative; top: auto; right: auto; bottom: auto; left: auto; inset: auto; width: 100%; flex-direction: row; overflow-x: auto; padding: 8px 0; border: 0; }
   .desktop-icon { width: auto; min-width: max-content; min-height: 44px; padding: 7px; }
   .desktop-icon span { font-size: 12px; }
