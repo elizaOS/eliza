@@ -50,10 +50,14 @@ public final class LiveCaptureController {
   default boolean canStart(long epoch){return open(epoch);}
   /** The capture for {@code id} (normally {@code new LiveVoiceCapture(context,inference,id,sink,echoCancel)}). */
   LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel)throws Exception;
+  /** The capture for {@code id} with the gate timing and barge-in reports of {@code options}; a host that honours them overrides this. */
+  default LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,LiveCaptureOptions options)throws Exception{return capture(id,sink,options.echoCancel);}
   void frames(String id,JSONArray frames,JSONArray vad,float peak);
   void ended(String id,String error);
   /** A piped final transcript ({@code error} null) or a pipe failure code ({@code value} null). */
   default void transcript(String id,JSONObject value,String error){}
+  /** Sustained speech on a barge-in capture; see {@link LiveVoiceCapture.Sink#bargeIn}. Runs on the capture thread. */
+  default boolean bargeIn(String id,long atMs){return true;}
  }
  /** Opens the owner-bound transport for one capture's pipe; throws when no owner is enrolled. */
  public interface Route { LiveSegmentPipe.Transport open()throws Exception; }
@@ -95,7 +99,9 @@ public final class LiveCaptureController {
   * automatic reopen after a busy hold) is refused after a call or pause since the last capture; a
   * user-initiated start clears that.
   */
- public void start(LiveCaptureAdmission.Ticket ticket,boolean echoCancel,Route route,String roomId,boolean reopen,Started result){
+ public void start(LiveCaptureAdmission.Ticket ticket,boolean echoCancel,Route route,String roomId,boolean reopen,Started result){start(ticket,LiveCaptureOptions.of(echoCancel),route,roomId,reopen,result);}
+ /** As above, with the gate timing and barge-in reports of {@code options}. */
+ public void start(LiveCaptureAdmission.Ticket ticket,LiveCaptureOptions options,Route route,String roomId,boolean reopen,Started result){
   final String id=ticket.id;final long epoch=ticket.epoch;
   submit(worker,()->{
    String since=interrupted;
@@ -136,7 +142,8 @@ public final class LiveCaptureController {
      private boolean admitted(){return host.open(epoch)&&admission.events(ticket);}
      public void frames(String captureId,JSONArray frames,JSONArray vad,float peak){if(!admitted())return;host.frames(captureId,pipe==null?frames:new JSONArray(),vad,peak);if(pipe!=null)pipe.offer(frames,vad);}
      public void ended(String captureId,String error){if(!host.open(epoch)||!admission.end(ticket))return;host.ended(captureId,error);if(error!=null&&pipe!=null)pipe.close(true,now());}
-    },echoCancel);
+     public boolean bargeIn(String captureId,long atMs){return admitted()&&host.bargeIn(captureId,atMs);}
+    },options);
    }catch(Exception|Error unavailable){closePipe(id,true,now());result.refused("Live capture could not start",CAPTURE);return;}
    // Publish cancellation before native startup. The callback only marks and schedules: no join on the caller.
    if(!admission.attach(ticket,()->{next.cancelPending();if(pipe!=null&&!admission.events(ticket))pipe.close(true,now());submit(stopWorker,next::requestStop,()->{/* The capture worker's cleanup still stops this source. */});})){closePipe(id,true,now());refuse(ticket,startup,result);return;}
