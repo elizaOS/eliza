@@ -1,0 +1,23 @@
+[
+  {
+    "id": "assistant-choice-approval-cancellation",
+    "model": "plugins/plugin-assistant/quint/ChoiceApprovalCancellation.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/features/basic-capabilities/actions/choice.ts",
+      "packages/core/src/services/approval.ts",
+      "plugins/plugin-assistant/src/integration/choice-schedule.test.ts"
+    ],
+    "invariants": [
+      "OwnerSettledBeforeDelete",
+      "AckRequiresDeletion",
+      "AckSettlesOwner",
+      "GenericHasNoApprovalCaller"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One unclaimed approval with a stable registered Core owner, or one generic task. Concurrent selection, timeout, service replacement, lost storage acknowledgements and callback execution already claimed by another path are outside this cancellation projection.",
+      "The model starts after action authorization and choice validation. Real conformance resolves the canonical runtime OWNER role, checks the production action gate and precondition, then invokes the registered action handler. It does not prove arbitrary role policies or the complete planner/message pipeline.",
+      "Deletion and confirmation may fail. Progress means the attempt reports an outcome; it does not require provider success, automatic retry, eventual row removal or delivery to an external client."
+    ]
+  }
+]
