@@ -596,11 +596,24 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       repaint();
     }
   }
-  const summarize = (outcomes: Outcome[], done: string, verb: string) => {
+  /** `nameOf` gives an item's name before the operation (a restore outcome's path is its Trash
+   * id, not a name). */
+  const summarize = (
+    outcomes: Outcome[],
+    done: string,
+    verb: string,
+    nameOf: (outcome: Outcome) => string | undefined = (o) => baseName(o.path),
+  ) => {
     const ok = outcomes.filter((o) => o.status === done).length,
-      renamed = outcomes.filter(
-        (o) => o.status === done && o.to && baseName(o.to) !== baseName(o.path),
-      ).length;
+      renamed = outcomes.filter((o) => {
+        const name = nameOf(o);
+        return (
+          o.status === done &&
+          o.to &&
+          name !== undefined &&
+          baseName(o.to) !== name
+        );
+      }).length;
     if (ok === outcomes.length)
       toast(
         `${verb} ${countLabel(ok)}` + (renamed ? ` · ${renamed} renamed` : ""),
@@ -655,20 +668,22 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       const value = await storage.storageTrash({ paths, ...onVolume(volume) });
       if (failed(value)) return;
       const outcomes = value.outcomes || [],
-        ids = outcomes.flatMap((o) =>
-          o.status === "trashed" && o.to ? [o.to] : [],
+        items = outcomes.flatMap((o) =>
+          o.status === "trashed" && o.to
+            ? [{ id: o.to, name: baseName(o.path) }]
+            : [],
         );
       if (
         opened &&
         outcomes.some((o) => o.path === opened?.path && o.status === "trashed")
       )
         closePreview();
-      if (ids.length)
+      if (items.length)
         api?.toast(
-          ids.length === outcomes.length
-            ? `${countLabel(ids.length)} moved to Trash`
-            : `${ids.length} of ${outcomes.length} moved to Trash`,
-          { undo: () => void restore(ids, volume) },
+          items.length === outcomes.length
+            ? `${countLabel(items.length)} moved to Trash`
+            : `${items.length} of ${outcomes.length} moved to Trash`,
+          { undo: () => void restore(items, volume) },
         );
       else toast("Nothing was moved to Trash.");
     } catch {
@@ -679,13 +694,24 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       void reload();
     }
   }
-  async function restore(ids: string[], volume?: string) {
+  /** Restores Trash items. `name` is the item's name when it went to Trash, so the toast reports
+   * a rename only when the restore had to choose a free name. */
+  async function restore(
+    items: { id: string; name: string }[],
+    volume?: string,
+  ) {
     busy = true;
     repaint();
     try {
-      const value = await storage.storageRestore({ ids, ...onVolume(volume) });
+      const value = await storage.storageRestore({
+        ids: items.map((item) => item.id),
+        ...onVolume(volume),
+      });
+      const names = new Map(items.map((item) => [item.id, item.name]));
       if (!failed(value))
-        summarize(value.outcomes || [], "restored", "Restored");
+        summarize(value.outcomes || [], "restored", "Restored", (o) =>
+          names.get(o.path),
+        );
     } catch {
       toast("The operation could not be confirmed.");
     } finally {
@@ -1614,8 +1640,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             }
           },
           restore: () => {
-            if (d.kind === "trashItem")
-              void restore([d.item.id], d.item.volume);
+            if (d.kind === "trashItem") void restore([d.item], d.item.volume);
           },
           deleteNow: () => {
             if (d.kind !== "trashItem" || busy) return;
