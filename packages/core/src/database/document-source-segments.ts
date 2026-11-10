@@ -70,7 +70,9 @@ export interface DocumentSourceProjection {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
+// ignoreBOM keeps U+FEFF bytes in decoded text: a BOM is source bytes, and
+// per-segment decode must preserve them or byte accounting breaks on read.
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 function bytes(value: string): Uint8Array {
 	return encoder.encode(value);
