@@ -22,6 +22,8 @@
  * (serviceType `"lifeops_scheduled_task_runner"`, runtime first-wins dedup) and
  * exactly one set of injected deps per runtime.
  */
+
+import { resolveDefaultTimeZone } from "@elizaos/contracts";
 import {
   agentProcessStartedAtMs,
   ElizaError,
@@ -442,7 +444,7 @@ const ALWAYS_ALLOW_GLOBAL_PAUSE: GlobalPauseView = {
  * The default (no-PA) deps provider. Uses scheduling-owned SQL persistence
  * when the runtime DB is present, then falls back to in-memory for isolated
  * tests/hosts without `@elizaos/plugin-sql`; the rest of the bundle is built-in
- * registries, warn-once activity/subject ports, permissive global-pause, empty
+ * registries, warn-once activity/subject ports, permissive global-pause, host-zone
  * owner-facts, notification-only dispatch, and platform capability probing.
  */
 function defaultRunnerDeps(
@@ -467,12 +469,11 @@ function defaultRunnerDeps(
         ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
         : createInMemoryScheduledTaskLogStore()),
     dispatcher: createDefaultScheduledTaskDispatcher(runtime),
-    // Without an owner fact store, the owner zone is the one saved in the
-    // plugin settings (owner_local triggers otherwise run in UTC).
-    ownerFacts: () => {
-      const timezone = configuredDefaultTimeZone(runtime);
-      return (timezone ? { timezone } : {}) as OwnerFactsView;
-    },
+    // Without an owner fact store, use the saved scheduling zone or the local
+    // host zone (the native host passes the device zone to its process).
+    ownerFacts: () => ({
+      timezone: configuredDefaultTimeZone(runtime) ?? resolveDefaultTimeZone(),
+    }),
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
     activity: makeMissingActivityBusView(runtime),
     subjectStore: makeMissingSubjectStoreView(runtime),

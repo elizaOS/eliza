@@ -691,7 +691,25 @@ async function dispatchPrompt(
       entityId,
     );
     try {
-      await messageService.handleMessage(runtime, message, deliveryCallback);
+      const result = await messageService.handleMessage(
+        runtime,
+        message,
+        deliveryCallback,
+      );
+      // A resolved turn can still fail or be cancelled after an earlier reply or
+      // effect. Preserve that outcome; neither promise resolution nor delivery
+      // proves completion, and a completed action need not produce chat text.
+      if (result.outcome.status === "failed") {
+        throw new ElizaError(result.outcome.error.message, {
+          code: result.outcome.error.code ?? "PROMPT_AUTOMATION_FAILED",
+        });
+      }
+      if (result.outcome.status !== "completed") {
+        throw new ElizaError(
+          `Prompt automation ${result.outcome.status}: ${result.outcome.reason}`,
+          { code: `PROMPT_AUTOMATION_${result.outcome.status.toUpperCase()}` },
+        );
+      }
     } finally {
       releaseInternalActor();
     }

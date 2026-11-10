@@ -22,6 +22,49 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public final class MediaConsumerTest {
+  @Test
+  public void interruptedPhotoCopyRemovesOnlyItsPendingRow() throws Exception {
+    Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+    ContentResolver resolver = context.getContentResolver();
+    String namespace = "fixture" + UUID.randomUUID().toString().replace("-", "");
+    OwnedMediaConfig config = OwnedMediaConfig.builder(namespace)
+                                  .edits("Pictures/OwnedMediaRecovery/", "edit-")
+                                  .captures("Pictures/OwnedMediaRecovery/", "capture-")
+                                  .build();
+    SharedPreferences journal =
+        context.getSharedPreferences(config.preferences("photo-edit-results"), 0);
+    String token = UUID.randomUUID().toString();
+    ContentValues values = new ContentValues();
+    values.put("_display_name", config.editName(token));
+    values.put("mime_type", "image/png");
+    values.put("relative_path", config.editRelativePath);
+    values.put("is_pending", 1);
+    Uri partial = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+    assertNotNull(partial);
+    boolean removed = false;
+    try {
+      try (OutputStream output = resolver.openOutputStream(partial, "w")) {
+        assertNotNull(output);
+        output.write(new byte[] {1, 2, 3});
+      }
+      assertTrue(journal.edit()
+              .putString(token, new JSONObject().put("status", "writing").toString())
+              .commit());
+      // A new engine sees durable pre-publication state, as after a process interruption.
+      assertEquals("failed", new OwnedPhotoEdits(context, config).result(token).getString("status"));
+      try (Cursor row = resolver.query(MediaStore.setIncludePending(partial),
+               new String[] {"_id"}, null, null, null)) {
+        assertNotNull(row);
+        assertFalse("The interrupted copy must not remain hidden in MediaStore", row.moveToFirst());
+        removed = true;
+      }
+      assertEquals("failed", new OwnedPhotoEdits(context, config).result(token).getString("status"));
+    } finally {
+      if (!removed) resolver.delete(MediaStore.setIncludePending(partial), null, null);
+      context.deleteSharedPreferences(config.preferences("photo-edit-results"));
+    }
+  }
+
   private static String hash(byte[] bytes) throws Exception {
     return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes));
   }

@@ -98,3 +98,90 @@ test("a read-only filter retains its results during Files activation", async (t)
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(selected, ["bank statement.pdf"]);
 });
+
+for (const [legacy, label] of [
+  [true, "Allow storage access"],
+  [false, "Allow all files access"],
+  [undefined, "Allow all files access"],
+]) {
+  test(`storage permission label follows native legacy=${legacy}`, async (t) => {
+    const previousDocument = globalThis.document;
+    globalThis.document = new EventTarget();
+    t.after(() => {
+      globalThis.document = previousDocument;
+    });
+    const view = { render: () => ({}) };
+    const api = { set() {}, toast() {}, isActive: () => true };
+    installFilesBrowserAdapter(
+      view,
+      async () => {},
+      () => {},
+      {
+        storage: {
+          storageState: async () => ({
+            status: "ready",
+            access: "denied",
+            legacy,
+          }),
+          storageUnwatch: async () => {},
+          addListener: async () => ({ remove: async () => {} }),
+        },
+        createInlineModal: () => ({ ref() {} }),
+        menuFocus: () => null,
+        forgetSelected: async () => {},
+      },
+    );
+    view.render({}, api);
+    await new Promise((resolve) => setImmediate(resolve));
+    const denied = view.render({}, api).browse;
+    assert.equal(denied.denied, true);
+    assert.equal(denied.deniedLabel, label);
+    view.onLeave();
+  });
+}
+
+test("a denied folder read updates the permission label without a second state read", async (t) => {
+  const previousDocument = globalThis.document;
+  globalThis.document = new EventTarget();
+  t.after(() => {
+    globalThis.document = previousDocument;
+  });
+  const view = { render: () => ({}) };
+  const api = { set() {}, toast() {}, isActive: () => true };
+  installFilesBrowserAdapter(
+    view,
+    async () => {},
+    () => {},
+    {
+      storage: {
+        storageState: async () => ({
+          status: "ready",
+          access: "granted",
+          legacy: false,
+          volumes: [{ id: "primary", name: "Internal storage", primary: true }],
+        }),
+        storageCategory: async () => ({ status: "ready", count: 0 }),
+        storageTrashList: async () => ({ status: "ready", items: [] }),
+        storageWatch: async () => ({}),
+        storageUnwatch: async () => {},
+        storageList: async () => ({
+          status: "denied",
+          access: "denied",
+          legacy: true,
+        }),
+        addListener: async () => ({ remove: async () => {} }),
+      },
+      createInlineModal: () => ({ ref() {} }),
+      menuFocus: () => null,
+      forgetSelected: async () => {},
+    },
+  );
+  view.render({}, api);
+  await new Promise((resolve) => setImmediate(resolve));
+  view.render({}, api).browse.allFiles();
+  await new Promise((resolve) => setImmediate(resolve));
+  const denied = view.render({}, api).browse;
+  assert.equal(denied.denied, true);
+  assert.equal(denied.deniedLabel, "Allow storage access");
+  view.onLeave();
+});

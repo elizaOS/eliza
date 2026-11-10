@@ -307,8 +307,9 @@ public final class OwnedPhotoEdits {
     String savedId = saved.optString("id", null);
     if (published && savedId != null)
       return receipt("saved", token, source(savedId));
-    // The deterministic owned display name closes publish→receipt crash ambiguity.
-    try (Cursor row = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+    // Pending rows from an interrupted save must be visible to recovery as well as published copies.
+    try (Cursor row = resolver.query(
+             MediaStore.setIncludePending(MediaStore.Images.Media.EXTERNAL_CONTENT_URI),
              new String[] {"_id", "is_pending"}, "owner_package_name=? AND _display_name=?",
              new String[] {context.getPackageName(), name(token)}, null)) {
       if (row == null)
@@ -328,7 +329,7 @@ public final class OwnedPhotoEdits {
         // A previously confirmed save remains a historical success, even if its item changed.
         if (published)
           return receipt("saved", token, null);
-        if (resolver.delete(copy, "is_pending=1", null) != 1)
+        if (resolver.delete(MediaStore.setIncludePending(copy), "is_pending=1", null) != 1)
           throw new IOException("Pending copy cleanup was not confirmed");
         saved.put("status", "failed");
         if (!journal.edit().putString(token, saved.toString()).commit())
