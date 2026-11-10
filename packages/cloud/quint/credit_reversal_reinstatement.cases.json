@@ -17,13 +17,18 @@
     "packages/cloud/shared/src/types/stripe-queue-message.ts",
     "packages/cloud/api/__tests__/stripe-webhook-outbox.pglite.test.ts",
     "packages/cloud/api/src/services/audit-events.ts",
-    "packages/cloud/shared/src/db/schemas/auth-events.ts"
+    "packages/cloud/shared/src/db/schemas/auth-events.ts",
+    "packages/cloud/shared/src/db/helpers.ts",
+    "packages/cloud/shared/src/db/execute-helpers.ts",
+    "packages/cloud/shared/src/lib/services/inference-policy-fence.ts",
+    "packages/cloud/shared/src/lib/services/ai-billing.ts",
+    "packages/cloud/shared/package.json"
   ],
   "bounds": {
-    "domain": "One organization, one paid Checkout grant of two abstract credit units, one dispute and two cumulative refund targets for the same charge. One additional credit unit can arrive. Outstanding amounts are repaid oldest first. The queue may redeliver any admitted event.",
-    "atomicity": "Each credit and hold mutation represents its own committed SQL transaction. A stopped consumer can leave the durable reinstatement steps partially applied. Retrying them uses the same receipt keys. A committed reinstatement may temporarily reduce covered refunds until the continuation reapplies the provider total.",
-    "conformance": "The required PGlite suites run the production queue consumer and the credits, earnings and hold repositories. The refund repair test interrupts the real last credit insert after the reinstatement receipt has committed. Stripe inputs and external calls are controlled. Local Stripe SDK signatures exercise valid delivery, missing or incorrect signatures, changed payloads, expired timestamps and a test endpoint signing a live event. A neighboring tenant remains unchanged through the repair. Retained NaN and positive clawback rows cannot release a shortfall or reinstate affiliate earnings.",
-    "gaps": "No live Stripe proof or cryptographic model. Local SDK signature conformance is bounded to the maintained intake route; provider identity truth remains assumed. The model omits provider currency conversion, multi-payment and multi-tenant composition, operator release, affiliate ledger behavior, PostgreSQL isolation, migration of acknowledged historical events, and queue dead-letter budgets. The repayment continuation is bounded to one top-up. The provider refund observation is current when recovery reads it. Atomic paid-admission protection during the separate reinstatement/refund continuation is not established: restored credit may become visible before the outstanding refund is reapplied. Already acknowledged historical deliveries require a separate reconciliation/backfill owner."
+    "domain": "One organization, one paid grant and captured charge of two abstract credits, one dispute, two monotonic cumulative refund targets, one additional credit and one optional pre-commit failure. Preparation may observe an older provider total while the current durable series high-water mark is read under the organization lock.",
+    "atomicity": "Hold release, repayment return, exact reinstatement receipt, refund repair and shortfall settlement publish in one managed organization transaction. Failure before COMMIT publishes none of them. Failure after COMMIT but before cache/publication acknowledgement retains all receipts for safe retry. Cumulative zero-delta reversals retain their observed target in the existing credit ledger. A newer committed refund invalidates stale preparation before any credit/hold effect.",
+    "conformance": "The required PGlite suites run the production queue consumer and the credits, earnings and hold repositories. The refund repair test interrupts the real last credit insert after the reinstatement receipt is written in the same uncommitted transaction. An overlapping actual paid reservation waits for recovery to commit, then rejects insufficient credit. Stripe inputs and external calls are controlled. Local Stripe SDK signatures exercise valid delivery, missing or incorrect signatures, changed payloads, expired timestamps and a test endpoint signing a live event. A neighboring tenant remains unchanged through the repair. Retained NaN and positive clawback rows cannot release a shortfall or reinstate affiliate earnings. Coupled tests reject actual paid flat reservations after rollback, retain holds and repayment amounts, observe a newer committed zero-delta refund during preparation, replay a post-COMMIT acknowledgement loss, and reconcile a historical partial receipt.",
+    "gaps": "No live Stripe proof or cryptographic model. Provider reads and affiliate effects remain outside the organization credit transaction. The model covers only one organization/payment/dispute and finite input changes, not arbitrary tenant/affiliate composition, operator release, production PostgreSQL isolation or an external refund that has not yet reached the maintained ledger owner. Existing historical partial rows are repaired when their original delivery resumes; admission before that recovery and historical backfill remain separate. Local SDK signatures and current-source legacy recovery are checked by real PGlite conformance, not general refinement. Outbox lease/dead-letter budgets, operator resend and multi-charge/multi-dispute composition remain separate protocols; fair redelivery is an explicit environmental assumption."
   },
   "cases": [
     {
@@ -35,7 +40,9 @@
         "Conserved",
         "Capped",
         "UniqueReceipts",
-        "AcknowledgedCovered"
+        "AcknowledgedCovered",
+        "KnownRefundRetained",
+        "PaidAdmissionCovered"
       ],
       "temporal": [
         "HoldAuthority",
@@ -54,7 +61,7 @@
           "property": "FairReversalDelivery",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of the next enabled reinstatement continuation, delivery of the latest observed refund and requested settlement of available repayment. Provider data and SQL are eventually available. The original credit grant and the exact withdrawal row must already exist for their dependent progress obligations."
+            "Weak fairness of eligible preparation/commit continuation, latest refund delivery, repayment and post-commit acknowledgement. One pre-commit failure and two target changes bound interference; SQL/provider/cache eventually permit completion. The exact original grant and withdrawal row exist for dependent progress."
           ]
         },
         {
@@ -65,7 +72,7 @@
           ]
         }
       ],
-      "maxSteps": 35,
+      "maxSteps": 45,
       "samples": 1000,
       "deadlock": false
     }

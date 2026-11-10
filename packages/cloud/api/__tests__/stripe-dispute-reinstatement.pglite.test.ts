@@ -6,7 +6,14 @@
  * reinstatement clears it (#22930). Expanded synthetic charges keep every case
  * free of provider requests.
  */
-import { afterAll, beforeAll, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  expect,
+  setDefaultTimeout,
+  spyOn,
+  test,
+} from "bun:test";
 import { randomUUID } from "node:crypto";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import type Stripe from "stripe";
@@ -49,9 +56,30 @@ const { redeemableEarningsService } = await import(
 const { billingHoldService, BillingHoldActiveError } = await import(
   "@elizaos/cloud-shared/lib/services/billing-hold"
 );
-const { creditsService } = await import(
+const { creditsService, InsufficientCreditsError } = await import(
   "@elizaos/cloud-shared/lib/services/credits"
 );
+const { reserveFlatUsageCredits } = await import(
+  "@elizaos/cloud-shared/lib/services/ai-billing"
+);
+async function paidFlatReservation(org: string, amount: number) {
+  const owner = await getPgliteClientForTests().query<{ id: string }>(
+    "SELECT id FROM users WHERE organization_id=$1 AND role='owner' LIMIT 1",
+    [org],
+  );
+  return reserveFlatUsageCredits(
+    {
+      organizationId: org,
+      userId: owner.rows[0]!.id,
+      model: "local-flat-fixture",
+      provider: "local",
+      requestId: randomUUID(),
+      affiliateAttribution: null,
+    },
+    { totalCost: amount, baseTotalCost: amount, platformMarkup: 0 },
+    { subscriptionFunded: false },
+  );
+}
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
 const pg = () => getPgliteClientForTests();
@@ -422,6 +450,7 @@ test("a full refund after a lost full dispute does not claw back twice", async (
   expect(await ledger(buyer.org)).toEqual([
     ["credit", 500],
     ["clawback", -500],
+    ["clawback", 0],
   ]);
   expect(await holdRows(buyer.org)).toEqual([]);
 });
@@ -456,6 +485,7 @@ test("a full refund after a lost dispute that left a shortfall does not book the
   expect(await ledger(buyer.org)).toEqual([
     ["credit", 500],
     ["clawback", -100],
+    ["clawback", 0],
   ]);
   expect(await holdRows(buyer.org)).toEqual([
     {
@@ -945,7 +975,7 @@ test("a partially applied refund recovers the rest after the overlapping dispute
       charge: Record<string, unknown>;
     }
   ).charge.amount_refunded = 1500;
-  // Lose the last credit write after the reinstatement receipt has committed.
+  // The failed repair must roll back the credit receipt and hold mutations.
   const repairKey = `stripe:refund:ch_${disputeId}:1500:reinstatement:${disputeId}`;
   await pg().exec(`
     CREATE FUNCTION fail_test_credit_reversal_repair() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -961,8 +991,16 @@ test("a partially applied refund recovers the rest after the overlapping dispute
   `);
   try {
     expect(await processStripeEvent(reinstated)).toBe("retry");
-    expect(await balance(buyer.org)).toBe(5);
+    expect(await balance(buyer.org)).toBe(0);
     expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+    expect(
+      await creditsService.getTransactionByStripePaymentIntent(
+        `stripe:dispute:${disputeId}:reinstated`,
+      ),
+    ).toBeUndefined();
+    await expect(paidFlatReservation(buyer.org, 5)).rejects.toBeInstanceOf(
+      InsufficientCreditsError,
+    );
   } finally {
     await pg().exec(`
       DROP TRIGGER fail_test_credit_reversal_repair ON credit_transactions;
@@ -978,6 +1016,309 @@ test("a partially applied refund recovers the rest after the overlapping dispute
   expect(await balance(neighbor.org)).toBe(17);
   expect(await holdRows(neighbor.org)).toEqual([]);
   expect(await ledger(neighbor.org)).toEqual([["credit", 17]]);
+});
+
+test("a failed reinstatement rolls back hold release and repayment return together", async () => {
+  const buyer = await purchase({ credits: "500", cents: 1000, balance: "50" });
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        1000,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(await processStripeEvent(topUpEvent(buyer.org, 100))).toBe("ack");
+  expect(await billingHoldService.getState(buyer.org)).toMatchObject({
+    status: "held",
+    outstandingUsd: "350.000000",
+  });
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    1000,
+    buyer.paymentIntentId,
+  );
+  (
+    reinstated.body.event.data.object as unknown as {
+      charge: Record<string, unknown>;
+    }
+  ).charge.amount_refunded = 1000;
+  const repairKey = `stripe:refund:ch_${disputeId}:1000:reinstatement:${disputeId}`;
+  await pg().exec(`CREATE FUNCTION fail_repaid_reinstatement() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.stripe_payment_intent_id = '${repairKey}' THEN
+      RAISE EXCEPTION 'test rollback after repayment return'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER fail_repaid_reinstatement BEFORE INSERT ON credit_transactions
+    FOR EACH ROW EXECUTE FUNCTION fail_repaid_reinstatement();`);
+  try {
+    expect(await processStripeEvent(reinstated)).toBe("retry");
+    expect(await balance(buyer.org)).toBe(0);
+    expect(await billingHoldService.getState(buyer.org)).toMatchObject({
+      status: "held",
+      outstandingUsd: "350.000000",
+    });
+    expect(
+      await creditsService.getTransactionByStripePaymentIntent(
+        `stripe:dispute:${disputeId}:reinstated`,
+      ),
+    ).toBeUndefined();
+    expect(
+      await creditsService.getTransactionByStripePaymentIntent(
+        `stripe:dispute:${disputeId}:repayment-returned`,
+      ),
+    ).toBeUndefined();
+    await expect(paidFlatReservation(buyer.org, 1)).rejects.toBeInstanceOf(
+      BillingHoldActiveError,
+    );
+  } finally {
+    await pg().exec(
+      "DROP TRIGGER fail_repaid_reinstatement ON credit_transactions; DROP FUNCTION fail_repaid_reinstatement();",
+    );
+  }
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await billingHoldService.getState(buyer.org)).toMatchObject({
+    status: "held",
+    outstandingUsd: "350.000000",
+  });
+  expect(
+    (await ledger(buyer.org)).filter(([type]) => type === "refund"),
+  ).toEqual([
+    ["refund", 100],
+    ["refund", 50],
+  ]);
+});
+
+test("a concurrent paid reservation cannot observe an uncommitted reinstatement receipt", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        750,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId),
+    ),
+  ).toBe("ack");
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    750,
+    buyer.paymentIntentId,
+  );
+  (
+    reinstated.body.event.data.object as unknown as {
+      charge: Record<string, unknown>;
+    }
+  ).charge.amount_refunded = 1500;
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const record = creditsService.recordDisputeReinstatement.bind(creditsService);
+  const paused = spyOn(
+    creditsService,
+    "recordDisputeReinstatement",
+  ).mockImplementationOnce(async (params) => {
+    const result = await record(params);
+    entered.resolve();
+    await release.promise;
+    return result;
+  });
+  const recovery = processStripeEvent(reinstated);
+  await entered.promise;
+  let admissionSettled = false;
+  const paid = paidFlatReservation(buyer.org, 5).then(
+    (reservation) => {
+      admissionSettled = true;
+      return { kind: "reserved" as const, reservation };
+    },
+    (error) => {
+      admissionSettled = true;
+      return { kind: "rejected" as const, error };
+    },
+  );
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(admissionSettled).toBe(false);
+  } finally {
+    release.resolve();
+    await Promise.allSettled([recovery, paid]);
+    paused.mockRestore();
+  }
+  expect(await recovery).toBe("ack");
+  const outcome = await paid;
+  expect(outcome.kind).toBe("rejected");
+  if (outcome.kind === "rejected")
+    expect(outcome.error).toBeInstanceOf(InsufficientCreditsError);
+  expect(await balance(buyer.org)).toBe(0);
+});
+
+test("a committed refund during preparation aborts reinstatement before paid credit becomes visible", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        1500,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  const refund = refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId);
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    1500,
+    buyer.paymentIntentId,
+  );
+  const original = redeemableEarningsService.reinstateRevenueSplits.bind(
+    redeemableEarningsService,
+  );
+  const duringPreparation = spyOn(
+    redeemableEarningsService,
+    "reinstateRevenueSplits",
+  ).mockImplementationOnce(async (params) => {
+    const result = await original(params);
+    expect(await processStripeEvent(refund)).toBe("ack");
+    return result;
+  });
+  try {
+    expect(await processStripeEvent(reinstated)).toBe("retry");
+  } finally {
+    duringPreparation.mockRestore();
+  }
+  expect(await balance(buyer.org)).toBe(0);
+  expect(
+    await creditsService.getTransactionByStripePaymentIntent(
+      `stripe:dispute:${disputeId}:reinstated`,
+    ),
+  ).toBeUndefined();
+  const observed = await creditsService.getTransactionByStripePaymentIntent(
+    `stripe:refund:ch_${disputeId}:1500`,
+  );
+  expect(Number(observed?.amount)).toBe(0);
+  expect(observed?.metadata?.reversed_usd).toBe(15);
+  await expect(paidFlatReservation(buyer.org, 5)).rejects.toBeInstanceOf(
+    InsufficientCreditsError,
+  );
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(await affiliatePayable(buyer.affiliate)).toBe(0);
+});
+
+test("a lost post-commit cache acknowledgement retains one complete reinstatement", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        750,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  const refund = refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId);
+  expect(await processStripeEvent(refund)).toBe("ack");
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    750,
+    buyer.paymentIntentId,
+  );
+  (
+    reinstated.body.event.data.object as unknown as {
+      charge: Record<string, unknown>;
+    }
+  ).charge.amount_refunded = 1500;
+  const invalidate = creditsService.invalidateCreditCaches.bind(creditsService);
+  const lost = spyOn(
+    creditsService,
+    "invalidateCreditCaches",
+  ).mockImplementationOnce(async (org) => {
+    await invalidate(org);
+    throw new Error("test lost post-commit cache acknowledgement");
+  });
+  try {
+    expect(await processStripeEvent(reinstated)).toBe("retry");
+  } finally {
+    lost.mockRestore();
+  }
+  expect(await balance(buyer.org)).toBe(0);
+  expect(
+    await creditsService.getTransactionByStripePaymentIntent(
+      `stripe:dispute:${disputeId}:reinstated`,
+    ),
+  ).toMatchObject({ amount: "5.000000" });
+  const committed = await ledger(buyer.org);
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await ledger(buyer.org)).toEqual(committed);
+  expect(await balance(buyer.org)).toBe(0);
+  await expect(paidFlatReservation(buyer.org, 5)).rejects.toBeInstanceOf(
+    InsufficientCreditsError,
+  );
+});
+
+test("a retained partial reinstatement repairs its refund without returning credit twice", async () => {
+  const buyer = await affiliateTopUp();
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        disputeId,
+        750,
+        buyer.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${disputeId}`, 1500, buyer.paymentIntentId),
+    ),
+  ).toBe("ack");
+  // The original implementation could commit this receipt without its continuation.
+  await pg().query(
+    "INSERT INTO credit_transactions(organization_id,amount,type,description,stripe_payment_intent_id,metadata) VALUES ($1,5,'refund','retained partial recovery',$2,$3)",
+    [
+      buyer.org,
+      `stripe:dispute:${disputeId}:reinstated`,
+      JSON.stringify({
+        payment_intent_id: buyer.paymentIntentId,
+        source: "charge.dispute.funds_reinstated",
+      }),
+    ],
+  );
+  await pg().query("UPDATE organizations SET credit_balance=5 WHERE id=$1", [
+    buyer.org,
+  ]);
+  const reinstated = disputeEvent(
+    "charge.dispute.funds_reinstated",
+    disputeId,
+    750,
+    buyer.paymentIntentId,
+  );
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await processStripeEvent(reinstated)).toBe("ack");
+  expect(await balance(buyer.org)).toBe(0);
+  expect(
+    (await ledger(buyer.org)).filter(([type]) => type === "refund"),
+  ).toEqual([["refund", 5]]);
 });
 
 test.each(["NaN", "1.000000"])(

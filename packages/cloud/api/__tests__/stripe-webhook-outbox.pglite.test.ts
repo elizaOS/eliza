@@ -240,7 +240,7 @@ test("unverified or wrongly scoped Stripe payloads never enter the delivery outb
     },
   ];
   for (const candidate of cases) {
-    const response = await inWorker(() =>
+    const response = await inWorker(async () =>
       app.fetch(
         new Request("https://cloud.test/", {
           method: "POST",

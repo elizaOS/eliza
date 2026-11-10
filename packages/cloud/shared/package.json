@@ -25,6 +25,7 @@
     "./db/database-url": "./src/db/database-url.ts",
     "./db/ensure-agent-sandbox-schema": "./src/db/ensure-agent-sandbox-schema.ts",
     "./db/helpers": "./src/db/helpers.ts",
+    "./db/execute-helpers": "./src/db/execute-helpers.ts",
     "./db/migration-sandbox-schema-executor": "./src/db/migration-sandbox-schema-executor.ts",
     "./db/repositories": "./src/db/repositories/index.ts",
     "./db/repositories/account-billing-snapshot": "./src/db/repositories/account-billing-snapshot.ts",

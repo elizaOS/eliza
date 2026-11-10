@@ -427,22 +427,25 @@
       "packages/cloud/api/__tests__/stripe-dispute-reinstatement.pglite.test.ts",
       "packages/cloud/api/__tests__/stripe-reversal-before-grant.pglite.test.ts",
       "packages/cloud/api/stripe/webhook/route.ts",
-      "packages/cloud/api/__tests__/stripe-webhook-outbox.pglite.test.ts"
+      "packages/cloud/api/__tests__/stripe-webhook-outbox.pglite.test.ts",
+      "packages/cloud/shared/src/db/helpers.ts",
+      "packages/cloud/shared/src/lib/services/inference-policy-fence.ts",
+      "packages/cloud/shared/src/lib/services/ai-billing.ts"
     ],
     "invariants": [
       "Conserved",
       "Capped",
       "UniqueReceipts",
-      "AcknowledgedCovered"
+      "AcknowledgedCovered",
+      "KnownRefundRetained",
+      "PaidAdmissionCovered"
     ],
     "status": "partial",
     "limitations": [
-      "The finite model covers one payment grant, cumulative refund replay, dispute withdrawal and reinstatement, and one shortfall repayment.",
-      "An acknowledged reinstatement requires its durable credit receipt even when it returns no credit. The still-valid refund keeps its series and can book the previously capped amount through a new repair receipt.",
-      "SQL credit and hold mutations are separate from affiliate earnings and provider delivery. Full provider truth, multi-payment composition, operator release and production database isolation require separate evidence.",
-      "The real PGlite hook checks the production queue and ledger, including pre-grant retry, controlled external inputs and resuming a partial reinstatement.",
-      "Current-source revalidation also checks the real signed intake/outbox boundary, missing/wrong/stale/tampered signatures, test-secret live-event refusal, a neighboring tenant, and retained corrupt clawbacks. It does not prove arbitrary tenant composition or cryptography.",
-      "Reinstatement and refund recovery still commit separately. Restored credit can be visible before the refund continuation, so atomic paid-admission protection is not proved. Historical acknowledged deliveries need a separate reconciliation/backfill owner."
+      "One organization/payment/charge/dispute, two cumulative refund targets, one repayment top-up and one optional pre-commit failure.",
+      "One existing managed organization transaction publishes hold release, repayment return, reinstatement receipt, refund repair and shortfall settlement. New paid credit is never published ahead of that repair. Capped cumulative events retain zero-delta receipts, and the locked durable high-water mark rejects stale preparation.",
+      "Real PGlite checks actual paid reservations, rollback, newer refunds during preparation, post-COMMIT acknowledgement loss, signed intake, neighboring tenant isolation, corrupt retained inputs and historical partial-receipt convergence.",
+      "Provider truth, arbitrary tenant and affiliate composition, native PostgreSQL scheduling, operator release and historical backfill remain separate. Historical partial credit that was already visible before its original delivery resumes is not retroactively fenced. Outbox delivery budgets and multi-charge/multi-dispute composition remain separate."
     ]
   },
   {

@@ -209,11 +209,14 @@ export async function settleReversalShortfalls(
  * can return any repayment already applied to it, or null when that clawback
  * left no shortfall.
  */
-export async function releaseShortfallHoldForReinstatement(input: {
-  clawbackTransactionId: string;
-  stripeDisputeId: string;
-}): Promise<OrganizationPaymentReversalHold | null> {
-  const [owner] = await dbWrite
+export async function releaseShortfallHoldForReinstatement(
+  input: {
+    clawbackTransactionId: string;
+    stripeDisputeId: string;
+  },
+  transaction?: DbTransaction,
+): Promise<OrganizationPaymentReversalHold | null> {
+  const [owner] = await (transaction ?? dbWrite)
     .select({ organization_id: organizationPaymentReversalHolds.organization_id })
     .from(organizationPaymentReversalHolds)
     .where(
@@ -221,7 +224,7 @@ export async function releaseShortfallHoldForReinstatement(input: {
     )
     .limit(1);
   if (!owner) return null;
-  return withInferencePolicyMutation({ organizationIds: [owner.organization_id] }, async (tx) => {
+  const release = async (tx: DbTransaction) => {
     const [released] = await tx
       .update(organizationPaymentReversalHolds)
       .set({
@@ -245,7 +248,14 @@ export async function releaseShortfallHoldForReinstatement(input: {
       )
       .limit(1);
     return existing ?? null;
-  });
+  };
+  return transaction
+    ? withInferencePolicyMutationInTransaction(
+        transaction,
+        { organizationIds: [owner.organization_id] },
+        release,
+      )
+    : withInferencePolicyMutation({ organizationIds: [owner.organization_id] }, release);
 }
 
 /**

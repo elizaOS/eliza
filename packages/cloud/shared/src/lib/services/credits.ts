@@ -5,8 +5,9 @@
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
-import { dbWrite, writeTransaction } from "../../db/helpers";
+import { dbWrite, registerAfterCommit, writeTransaction } from "../../db/helpers";
 import { appsRepository } from "../../db/repositories/apps";
 import {
   type CreditTransaction,
@@ -33,7 +34,10 @@ import {
   lowerOrgBalanceHint,
   republishOrgBalanceHint,
 } from "./inference-auth-cache";
-import { withInferencePolicyMutation } from "./inference-policy-fence";
+import {
+  withInferencePolicyMutation,
+  withInferencePolicyMutationInTransaction,
+} from "./inference-policy-fence";
 import { organizationsService } from "./organizations";
 import { userSessionsService } from "./user-sessions";
 import {
@@ -803,7 +807,15 @@ export class CreditsService {
 
   async getTransactionByStripePaymentIntent(
     paymentIntentId: string,
+    executor?: SqlExecutor,
   ): Promise<CreditTransaction | undefined> {
+    if (executor) {
+      const [row] = await sqlRows<CreditMutationRow>(
+        executor,
+        sql`SELECT * FROM credit_transactions WHERE stripe_payment_intent_id = ${paymentIntentId} LIMIT 1`,
+      );
+      return row ? toCreditTransaction(row) : undefined;
+    }
     return await creditTransactionsRepository.findByStripePaymentIntent(paymentIntentId);
   }
 
@@ -1328,6 +1340,8 @@ export class CreditsService {
     description: string;
     stripePaymentIntentId: string;
     metadata?: Record<string, unknown>;
+    db?: DbTransaction;
+    deferCacheInvalidation?: boolean;
   }): Promise<{
     transaction: CreditTransaction;
     newBalance: number;
@@ -1350,22 +1364,20 @@ export class CreditsService {
       params.cumulativeTargetAmount === undefined ? null : String(params.cumulativeTargetAmount);
     const originalPaymentIntentId = params.originalPaymentIntentId ?? null;
     const reversalSeries = params.reversalSeries ?? null;
-    const rows = await withInferencePolicyMutation(
-      { organizationIds: [params.organizationId] },
-      async (tx) => {
-        const lockRows = await sqlRows<{ id: string }>(
-          tx,
-          sql`SELECT id FROM organizations WHERE id = ${params.organizationId} FOR UPDATE`,
-        );
-        if (!lockRows[0]) throw new Error("Organization not found");
+    const mutate = async (tx: DbTransaction) => {
+      const lockRows = await sqlRows<{ id: string }>(
+        tx,
+        sql`SELECT id FROM organizations WHERE id = ${params.organizationId} FOR UPDATE`,
+      );
+      if (!lockRows[0]) throw new Error("Organization not found");
 
-        // The reversal query runs as a second READ COMMITTED statement after
-        // acquiring the org lock. A contender that waited for this lock now gets
-        // a fresh snapshot containing the winner's committed clawback before it
-        // derives its cumulative delta.
-        return await sqlRows<ClawbackMutationRow>(
-          tx,
-          sql`
+      // The reversal query runs as a second READ COMMITTED statement after
+      // acquiring the org lock. A contender that waited for this lock now gets
+      // a fresh snapshot containing the winner's committed clawback before it
+      // derives its cumulative delta.
+      return await sqlRows<ClawbackMutationRow>(
+        tx,
+        sql`
         WITH org AS (
           SELECT id, credit_balance::numeric AS current_balance
           FROM organizations
@@ -1445,7 +1457,8 @@ export class CreditsService {
           ) AS target
           WHERE NOT EXISTS (SELECT 1 FROM existing)
             AND (${originalPaymentIntentId}::text IS NULL OR EXISTS (SELECT 1 FROM grant_lock))
-            AND target.requested_amount > 0
+            -- Even a fully capped cumulative event retains its observed target.
+            AND (target.requested_amount > 0 OR ${cumulativeTarget}::numeric IS NOT NULL)
         ),
         inserted AS (
           INSERT INTO credit_transactions (
@@ -1551,9 +1564,16 @@ export class CreditsService {
         FROM (SELECT 1) AS singleton
         LEFT JOIN chosen_transaction ON true
         `,
-        );
-      },
-    );
+      );
+    };
+    const rows = params.db
+      ? await withInferencePolicyMutationInTransaction(
+          params.db,
+          { organizationIds: [params.organizationId] },
+          mutate,
+        )
+      : await withInferencePolicyMutation({ organizationIds: [params.organizationId] }, mutate);
+    const executor = params.db ?? dbWrite;
 
     const row = rows[0];
     if (!row || !isPgTrue(row.org_exists)) {
@@ -1562,7 +1582,7 @@ export class CreditsService {
     if (!row.id) {
       if (cumulativeTarget !== null && originalPaymentIntentId) {
         const priorRows = await sqlRows<ClawbackMutationRow>(
-          dbWrite,
+          executor,
           sql`
             SELECT
               id,
@@ -1588,7 +1608,10 @@ export class CreditsService {
           `,
         );
         const prior = priorRows[0];
-        const org = await organizationsRepository.findById(params.organizationId);
+        const [org] = await sqlRows<{ credit_balance: string }>(
+          executor,
+          sql`SELECT credit_balance FROM organizations WHERE id = ${params.organizationId}`,
+        );
         if (prior?.id && org) {
           return {
             transaction: toCreditTransaction(prior),
@@ -1599,8 +1622,14 @@ export class CreditsService {
           };
         }
       }
-      const existing = await this.getTransactionByStripePaymentIntent(params.stripePaymentIntentId);
-      const org = await organizationsRepository.findById(params.organizationId);
+      const existing = await this.getTransactionByStripePaymentIntent(
+        params.stripePaymentIntentId,
+        executor,
+      );
+      const [org] = await sqlRows<{ credit_balance: string }>(
+        executor,
+        sql`SELECT credit_balance FROM organizations WHERE id = ${params.organizationId}`,
+      );
       if (existing && org) {
         const metadata = parseMetadata(existing.metadata);
         // Fail-closed replay parse. A bare `Number(... ?? 0)` reported a
@@ -1632,11 +1661,16 @@ export class CreditsService {
       alreadyProcessed: isPgTrue(row.already_processed),
     };
 
-    invalidateOrganizationCache(params.organizationId).catch((error) => {
-      logger.error("[CreditsService] Failed to invalidate org cache:", error);
-    });
-    // A reversal lowers the purchased-credit total behind the RPM tier.
-    await CacheInvalidation.onPurchasedCreditMutation(params.organizationId);
+    if (!params.deferCacheInvalidation) {
+      const invalidate = async () => {
+        await invalidateOrganizationCache(params.organizationId).catch((error) => {
+          logger.error("[CreditsService] Failed to invalidate org cache:", error);
+        });
+        await CacheInvalidation.onPurchasedCreditMutation(params.organizationId);
+      };
+      if (params.db) registerAfterCommit(params.db, invalidate);
+      else await invalidate();
+    }
     return result;
   }
 

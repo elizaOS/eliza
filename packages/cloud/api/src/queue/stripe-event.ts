@@ -49,8 +49,20 @@ import {
   CONTAINER_BACKED_TARGET_REJECTION_REASON,
   provisioningJobService,
 } from "@elizaos/cloud-shared/agents";
-import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import {
+  type SqlExecutor,
+  sqlRows,
+} from "@elizaos/cloud-shared/db/execute-helpers";
+import {
+  dbRead,
+  dbWrite,
+  registerAfterCommit,
+} from "@elizaos/cloud-shared/db/helpers";
 import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import {
+  releaseShortfallHoldForReinstatement,
+  settleReversalShortfalls,
+} from "@elizaos/cloud-shared/db/repositories/payment-reversal-holds";
 import { referralSignupsRepository } from "@elizaos/cloud-shared/db/repositories/referrals";
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
@@ -61,6 +73,7 @@ import { autoTopUpService } from "@elizaos/cloud-shared/lib/services/auto-top-up
 import { autoTopUpChargeBreakdownFromMetadata } from "@elizaos/cloud-shared/lib/services/auto-top-up-charge-breakdown";
 import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { discordService } from "@elizaos/cloud-shared/lib/services/discord";
+import { withInferencePolicyMutation } from "@elizaos/cloud-shared/lib/services/inference-policy-fence";
 import { invoicesService } from "@elizaos/cloud-shared/lib/services/invoices";
 import { invalidateOrgTierCache } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
 import { JOB_TYPES } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
@@ -78,7 +91,7 @@ import { STRIPE_API_VERSION } from "@elizaos/cloud-shared/lib/stripe-api-version
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import { ElizaError } from "@elizaos/core/protocol";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { ZodError } from "zod";
 
@@ -1841,7 +1854,7 @@ async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
  * past what was already clawed for this payment intent is removed, so multiple
  * partial refunds and re-delivered webhooks are safe.
  */
-async function clawbackForReversal(params: {
+async function prepareCreditReversal(params: {
   paymentIntentId: string | undefined;
   usdReversed: number;
   idempotencyKey: string;
@@ -1849,7 +1862,7 @@ async function clawbackForReversal(params: {
   reversalSeries: string;
   source: string;
   reference: string;
-}): Promise<void> {
+}): Promise<Parameters<typeof creditsService.clawbackCredits>[0] | null> {
   const {
     paymentIntentId,
     usdReversed,
@@ -1858,11 +1871,13 @@ async function clawbackForReversal(params: {
     source,
     reference,
   } = params;
-  if (!paymentIntentId || usdReversed <= 0) return;
+  if (!paymentIntentId || usdReversed <= 0) return null;
 
   // Only top-ups that actually granted org credits are clawable.
-  const grant =
-    await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
+  const grant = await creditsService.getTransactionByStripePaymentIntent(
+    paymentIntentId,
+    dbWrite,
+  );
   if (!grant) {
     if (await topUpGrantPending(paymentIntentId)) {
       // Stripe does not guarantee event ordering: the reversal can arrive
@@ -1875,7 +1890,7 @@ async function clawbackForReversal(params: {
     logger.info(
       `[Stripe Queue] ${source} ${reference}: no credit grant for PI ${paymentIntentId}; nothing to claw back`,
     );
-    return;
+    return null;
   }
 
   const grantAmountMicros = parseCreditMicros(grant.amount);
@@ -1884,7 +1899,7 @@ async function clawbackForReversal(params: {
       `[Stripe Queue] ${source} ${reference}: invalid credit grant amount for PI ${paymentIntentId}`,
       { amount: grant.amount },
     );
-    return;
+    return null;
   }
 
   const checkoutOrder =
@@ -1956,7 +1971,7 @@ async function clawbackForReversal(params: {
       owedRecipients: owedSplits.map((split) => split.userId),
     });
   }
-  const result = await creditsService.clawbackCredits({
+  return {
     organizationId: grant.organization_id,
     amount: cappedUsdReversed,
     cumulativeTargetAmount: cappedUsdReversed,
@@ -1984,7 +1999,17 @@ async function clawbackForReversal(params: {
       source,
       reference,
     },
-  });
+  };
+}
+
+async function clawbackForReversal(
+  params: Parameters<typeof prepareCreditReversal>[0],
+): Promise<void> {
+  const prepared = await prepareCreditReversal(params);
+  if (!prepared) return;
+  const result = await creditsService.clawbackCredits(prepared);
+  const { source, reference } = params;
+  const cappedUsdReversed = prepared.amount;
 
   if (result.alreadyProcessed) {
     logger.info(
@@ -1994,7 +2019,7 @@ async function clawbackForReversal(params: {
   }
 
   logger.warn(
-    `[Stripe Queue] Clawed back $${result.appliedAmount.toFixed(2)} from org ${grant.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
+    `[Stripe Queue] Clawed back $${result.appliedAmount.toFixed(2)} from org ${prepared.organizationId} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
     {
       cumulativeTargetUsd: cappedUsdReversed,
       unrecoveredUsd: result.shortfallAmount,
@@ -2063,157 +2088,261 @@ async function handleChargeDisputeClosed(event: Stripe.Event): Promise<void> {
   );
 }
 
+/** Highest provider refund target already retained in this charge's ledger series. */
+async function knownRefundCents(
+  executor: SqlExecutor,
+  paymentIntentId: string,
+  series: string,
+): Promise<bigint> {
+  const rows = await sqlRows<{ reversed_usd: string | null }>(
+    executor,
+    sql`
+    SELECT metadata->>'reversed_usd' AS reversed_usd FROM credit_transactions
+    WHERE type = 'clawback' AND metadata->>'payment_intent_id' = ${paymentIntentId}
+      AND starts_with(stripe_payment_intent_id, ${series})
+  `,
+  );
+  let maximum = 0n;
+  for (const row of rows) {
+    const micros =
+      row.reversed_usd === null ? null : parseCreditMicros(row.reversed_usd);
+    if (micros === null || micros < 0n || micros % 10_000n !== 0n)
+      throw new ElizaError("Original cumulative refund amount unavailable", {
+        code: "PAYMENT_REVERSAL_REFUND_UNAVAILABLE",
+      });
+    const cents = micros / 10_000n;
+    if (cents > maximum) maximum = cents;
+  }
+  return maximum;
+}
+
 async function handleChargeDisputeFundsReinstated(
   event: Stripe.Event,
 ): Promise<void> {
   const dispute = event.data.object as Stripe.Dispute;
   const chargeId =
     typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
-  const paymentIntentId =
+  const suppliedPaymentIntentId =
     typeof dispute.payment_intent === "string"
       ? dispute.payment_intent
       : dispute.payment_intent?.id;
   const source = "charge.dispute.funds_reinstated";
   const reference = `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`;
   const clawbackKey = `stripe:dispute:${dispute.id}`;
-
-  const clawback =
-    await creditsService.getTransactionByStripePaymentIntent(clawbackKey);
-  if (clawback?.type !== "clawback") {
-    // Stripe does not guarantee event ordering. Retry until the corresponding
-    // funds-withdrawn mutation commits (or the message reaches reconciliation)
-    // instead of acknowledging and permanently dropping a valid reinstatement.
+  const clawback = await creditsService.getTransactionByStripePaymentIntent(
+    clawbackKey,
+    dbWrite,
+  );
+  if (clawback?.type !== "clawback")
     throw new Error(
       `Dispute clawback is not yet available for reinstatement ${reference}`,
     );
-  }
-
   const clawbackMicros = parseCreditMicros(clawback.amount);
-  if (clawbackMicros === null || clawbackMicros > 0n) {
+  if (clawbackMicros === null || clawbackMicros > 0n)
     throw new ElizaError("Invalid credit clawback amount for reinstatement", {
       code: "PAYMENT_REVERSAL_CLAWBACK_CORRUPT",
       context: { reference },
     });
-  }
-
-  if (paymentIntentId) {
-    const reinstatement = {
-      paymentIntentId,
-      reversalSeries: clawbackKey,
-      reinstatementKey: `${clawbackKey}:reinstated`,
-    };
-    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee(
-      reinstatement,
-    );
-    await redeemableEarningsService.reinstateRevenueSplits(reinstatement);
-  }
-
-  // Stripe returned the disputed funds, so the unrecovered shortfall is no
-  // longer owed: clear the hold this clawback placed first (#22930). Its
-  // outstanding amount is frozen at release, which keeps the repayment
-  // returned below stable across redeliveries.
-  const { releaseShortfallHoldForReinstatement } = await import(
-    "@elizaos/cloud-shared/db/repositories/payment-reversal-holds"
-  );
-  const hold = await releaseShortfallHoldForReinstatement({
-    clawbackTransactionId: clawback.id,
-    stripeDisputeId: dispute.id,
-  });
-  const shortfallMicros = hold
-    ? parseCreditMicros(hold.shortfall_usd ?? "")
-    : 0n;
-  const outstandingMicros = hold
-    ? parseCreditMicros(hold.outstanding_usd ?? "")
-    : 0n;
-  if (shortfallMicros === null || outstandingMicros === null) {
-    throw new Error(
-      `Invalid shortfall hold amounts for reinstatement ${reference}`,
-    );
-  }
-  const repaidMicros = shortfallMicros - outstandingMicros;
-
-  // Return any repayment the organization already made toward that shortfall
-  // as its own ledger entry. It is deliberately not tagged with the payment
-  // intent, so the cumulative reversal tally for later refunds nets only the
-  // clawback reinstatement below.
-  if (repaidMicros > 0n) {
-    const repaidUsd = formatCreditMicros(repaidMicros);
-    await creditsService.refundCredits({
-      organizationId: clawback.organization_id,
-      amount: repaidUsd,
-      description: `Stripe ${source} return of shortfall repayment — ${reference}`,
-      stripePaymentIntentId: `${clawbackKey}:repayment-returned`,
-      metadata: {
-        type: "reversal_shortfall_repayment_return",
-        hold_id: hold?.id,
-        clawback_key: clawbackKey,
-        reference,
-      },
+  const paymentIntentId = clawback.metadata?.payment_intent_id;
+  if (
+    typeof paymentIntentId !== "string" ||
+    !paymentIntentId ||
+    !chargeId ||
+    (suppliedPaymentIntentId && suppliedPaymentIntentId !== paymentIntentId)
+  )
+    throw new ElizaError("Original dispute payment identity unavailable", {
+      code: "PAYMENT_REVERSAL_OWNER_UNAVAILABLE",
     });
-  }
-
-  // `clawback.amount` is the credit amount actually removed by the matching
-  // funds-withdrawn event (already scaled from the disputed provider amount to
-  // the pack's credit units and capped at the balance then available). Winning
-  // the dispute restores exactly that — never provider dollars, which differ
-  // from credit units for packs, and never the unrecovered shortfall. (#31449)
-  const reinstatedUsd = formatCreditMicros(-clawbackMicros);
-  const result = await creditsService.recordDisputeReinstatement({
-    organizationId: clawback.organization_id,
-    amount: reinstatedUsd,
-    description: `Stripe ${source} reinstatement — ${reference}`,
-    stripePaymentIntentId: `${clawbackKey}:reinstated`,
-    metadata: {
-      payment_intent_id: paymentIntentId,
-      disputed_usd: (dispute.amount ?? 0) / 100,
-      applied_reinstatement_usd: Number(reinstatedUsd),
-      clawback_key: clawbackKey,
-      source,
-      reference,
-    },
-  });
-
-  logger.info(
-    `[Stripe Queue] Reinstated $${reinstatedUsd} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
-  );
-  await reapplyRefundAfterReinstatement(
-    dispute,
+  const grant = await creditsService.getTransactionByStripePaymentIntent(
     paymentIntentId,
-    source,
-    reference,
+    dbWrite,
   );
-  await settleShortfallsAfterCredit(clawback.organization_id, source);
-}
+  if (
+    grant?.type !== "credit" ||
+    grant.organization_id !== clawback.organization_id
+  )
+    throw new ElizaError("Original dispute credit grant unavailable", {
+      code: "PAYMENT_REVERSAL_GRANT_UNAVAILABLE",
+    });
 
-/**
- * A refund of the same charge that landed while the dispute was open took
- * nothing back, because the dispute had already reversed the grant and the
- * affiliate fee (one charge reverses them once across its series). Winning the
- * dispute returns that share, but the refund still stands: apply the charge's
- * current cumulative refund in the same series. Use a separate receipt for
- * this reinstatement because the original refund may have booked only the
- * amount that remained while the dispute was open.
- */
-async function reapplyRefundAfterReinstatement(
-  dispute: Stripe.Dispute,
-  paymentIntentId: string | undefined,
-  source: string,
-  reference: string,
-): Promise<void> {
-  if (!paymentIntentId || !dispute.charge) return;
+  // Provider reads and independent affiliate transactions finish before taking
+  // the organization lock. No external call or independent writer runs inside it.
   const charge =
     typeof dispute.charge === "string"
       ? await requireStripe().charges.retrieve(dispute.charge)
       : dispute.charge;
-  const refundedCents = charge.amount_refunded ?? 0;
-  if (refundedCents <= 0) return;
-  await clawbackForReversal({
+  const observed = charge.amount_refunded ?? 0;
+  if (!Number.isSafeInteger(observed) || observed < 0)
+    throw new ElizaError("Original charge refund total unavailable", {
+      code: "PAYMENT_REVERSAL_REFUND_UNAVAILABLE",
+    });
+  const series = `stripe:refund:${chargeId}:`;
+  const known = await knownRefundCents(dbWrite, paymentIntentId, series);
+  const preparedCents = known > BigInt(observed) ? known : BigInt(observed);
+  if (preparedCents > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new ElizaError("Original charge refund total unavailable", {
+      code: "PAYMENT_REVERSAL_REFUND_UNAVAILABLE",
+    });
+  const reinstatement = {
     paymentIntentId,
-    usdReversed: refundedCents / 100,
-    idempotencyKey: `stripe:refund:${charge.id}:${refundedCents}:reinstatement:${dispute.id}`,
-    reversalSeries: `stripe:refund:${charge.id}:`,
-    source,
-    reference,
+    reversalSeries: clawbackKey,
+    reinstatementKey: `${clawbackKey}:reinstated`,
+  };
+  await redeemableEarningsService.reinstateAutoTopUpAffiliateFee(reinstatement);
+  await redeemableEarningsService.reinstateRevenueSplits(reinstatement);
+  const refund =
+    preparedCents > 0n
+      ? await prepareCreditReversal({
+          paymentIntentId,
+          usdReversed: Number(preparedCents) / 100,
+          idempotencyKey: `${series}${preparedCents}:reinstatement:${dispute.id}`,
+          reversalSeries: series,
+          source,
+          reference,
+        })
+      : null;
+  if (
+    preparedCents > 0n &&
+    (!refund || refund.organizationId !== clawback.organization_id)
+  )
+    throw new ElizaError(
+      "Original refund grant unavailable for dispute reinstatement",
+      { code: "PAYMENT_REVERSAL_OWNER_UNAVAILABLE" },
+    );
+
+  await withInferencePolicyMutation(
+    { organizationIds: [clawback.organization_id] },
+    async (tx) => {
+      const [owner] = await sqlRows<{ id: string }>(
+        tx,
+        sql`SELECT id FROM organizations WHERE id = ${clawback.organization_id} FOR UPDATE`,
+      );
+      if (!owner)
+        throw new ElizaError("Dispute organization unavailable", {
+          code: "PAYMENT_REVERSAL_OWNER_UNAVAILABLE",
+        });
+      await tx.execute(
+        sql`SELECT id FROM credit_transactions WHERE stripe_payment_intent_id IN (${clawbackKey}, ${paymentIntentId}) ORDER BY id FOR UPDATE`,
+      );
+      for (const original of [clawback, grant]) {
+        const current =
+          await creditsService.getTransactionByStripePaymentIntent(
+            original.stripe_payment_intent_id!,
+            tx,
+          );
+        if (
+          !current ||
+          current.id !== original.id ||
+          current.organization_id !== original.organization_id ||
+          current.type !== original.type ||
+          current.amount !== original.amount ||
+          JSON.stringify(current.metadata) !== JSON.stringify(original.metadata)
+        )
+          throw new ElizaError("Dispute source changed during preparation", {
+            code: "PAYMENT_REVERSAL_PREPARATION_STALE",
+          });
+      }
+      if (refund) {
+        const [order] = await sqlRows<{
+          id: string;
+          organization_id: string;
+          charge_amount_cents: string;
+        }>(
+          tx,
+          sql`SELECT id, organization_id, charge_amount_cents::text AS charge_amount_cents
+          FROM stripe_checkout_orders WHERE stripe_payment_intent_id = ${paymentIntentId}`,
+        );
+        const preparedOrder = refund.metadata?.checkout_order_id;
+        const preparedPrice = refund.metadata?.original_charge_usd;
+        if (
+          order?.id !==
+            (typeof preparedOrder === "string" ? preparedOrder : undefined) ||
+          (order &&
+            (order.organization_id !== clawback.organization_id ||
+              typeof preparedPrice !== "string" ||
+              parseCreditMicros(preparedPrice) !==
+                BigInt(order.charge_amount_cents) * 10_000n))
+        )
+          throw new ElizaError(
+            "Refund quote changed during dispute preparation",
+            {
+              code: "PAYMENT_REVERSAL_PREPARATION_STALE",
+            },
+          );
+      }
+      if ((await knownRefundCents(tx, paymentIntentId, series)) > preparedCents)
+        throw new ElizaError(
+          "Refund state changed during dispute preparation",
+          { code: "PAYMENT_REVERSAL_PREPARATION_STALE" },
+        );
+
+      const hold = await releaseShortfallHoldForReinstatement(
+        { clawbackTransactionId: clawback.id, stripeDisputeId: dispute.id },
+        tx,
+      );
+      const shortfall = hold ? parseCreditMicros(hold.shortfall_usd ?? "") : 0n;
+      const outstanding = hold
+        ? parseCreditMicros(hold.outstanding_usd ?? "")
+        : 0n;
+      if (
+        shortfall === null ||
+        outstanding === null ||
+        outstanding > shortfall ||
+        outstanding < 0n
+      )
+        throw new ElizaError(
+          `Invalid shortfall hold amounts for reinstatement ${reference}`,
+          {
+            code: "PAYMENT_REVERSAL_HOLD_CORRUPT",
+          },
+        );
+      if (shortfall > outstanding)
+        await creditsService.refundCredits({
+          organizationId: clawback.organization_id,
+          amount: formatCreditMicros(shortfall - outstanding),
+          description: `Stripe ${source} return of shortfall repayment — ${reference}`,
+          stripePaymentIntentId: `${clawbackKey}:repayment-returned`,
+          metadata: {
+            type: "reversal_shortfall_repayment_return",
+            hold_id: hold?.id,
+            clawback_key: clawbackKey,
+            reference,
+          },
+          db: tx,
+          deferCacheInvalidation: true,
+        });
+      await creditsService.recordDisputeReinstatement({
+        organizationId: clawback.organization_id,
+        amount: formatCreditMicros(-clawbackMicros),
+        description: `Stripe ${source} reinstatement — ${reference}`,
+        stripePaymentIntentId: `${clawbackKey}:reinstated`,
+        metadata: {
+          payment_intent_id: paymentIntentId,
+          disputed_usd: (dispute.amount ?? 0) / 100,
+          applied_reinstatement_usd: Number(
+            formatCreditMicros(-clawbackMicros),
+          ),
+          clawback_key: clawbackKey,
+          source,
+          reference,
+        },
+        db: tx,
+        deferCacheInvalidation: true,
+      });
+      if (refund)
+        await creditsService.clawbackCredits({
+          ...refund,
+          db: tx,
+          deferCacheInvalidation: true,
+        });
+      await settleReversalShortfalls(clawback.organization_id, tx);
+      registerAfterCommit(tx, () =>
+        creditsService.invalidateCreditCaches(clawback.organization_id),
+      );
+    },
+  );
+  logger.info(`[Stripe Queue] Reinstated and reconciled ${reference}`, {
+    organizationId: clawback.organization_id,
   });
 }
 
