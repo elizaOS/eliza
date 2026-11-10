@@ -798,7 +798,7 @@
     "uuid": "^14.0.0",
     "viem": "^2.56.9",
     "wadis": "^1.0.2",
-    "ws": "^8.21.3",
+    "ws": "^8.22.1",
     "yaml": "2.9.1",
     "zod": "^4.6.5",
     "@elizaos/contracts": "workspace:*"
@@ -809,7 +809,7 @@
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",
     "@types/ssh2": "^1.15.6",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "bun-types": "1.4.2",
     "drizzle-kit": "^0.31.10",
     "ioredis-mock": "^8.13.1",

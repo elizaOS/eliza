@@ -79,7 +79,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5",
-    "@types/ws": "^8.18.1"
+    "@types/ws": "^8.18.2"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"
@@ -100,6 +100,6 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "ws": "^8.21.3"
+    "ws": "^8.22.1"
   }
 }

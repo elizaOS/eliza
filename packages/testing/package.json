@@ -79,7 +79,7 @@
     "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0",
     "typescript": "^6.0.3",
-    "ws": "^8.21.3",
+    "ws": "^8.22.1",
     "zod": "^4.6.5",
     "@elizaos/contracts": "workspace:*"
   },
