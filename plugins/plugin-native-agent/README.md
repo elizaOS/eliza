@@ -319,7 +319,11 @@ private publisher and broker custody. The publisher receives the standard
 agent-token, gateway-token and credential-binding.json names before either child
 exists; hosts retain storage layout and binding schema. A gateway must therefore
 start without a live agent (`startLocalGateway` reads only the published files; its
-proxied routes answer "unavailable" until the agent does). Every launch secret is
+proxied routes answer "unavailable" until the agent does). The gateway's startup
+must not mutate the agent's state while the agent boots: a host that must change
+agent state at launch (for example wiping a revoked account's data) does that
+before calling `launch`, never in the gateway's startup. A child that exits while
+another is being awaited fails the launch at once. Every launch secret is
 redacted from both children's output. Endpoints alone do not prove readiness:
 requests still need session fencing. `NativeRuntimeSession.Scope.start` and
 `awaitReady` are the spawn and readiness halves of `startReady`. Portable tests use

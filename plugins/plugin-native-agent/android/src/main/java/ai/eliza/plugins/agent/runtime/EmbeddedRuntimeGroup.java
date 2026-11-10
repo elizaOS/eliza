@@ -9,6 +9,10 @@ import java.util.*;
  * boot together, and the launch returns (the session reports RUNNING) only after the agent and
  * then the gateway answer their readiness probes. The gateway's boot must not need a live agent:
  * it reads the published files, and its proxied routes answer "unavailable" until the agent does.
+ * The gateway's startup must also not mutate the agent's state while the agent boots: a host
+ * that must change agent state at launch (for example wiping a revoked account's data) does so
+ * before calling {@link #launch}. A gateway that exits during the agent's wait fails the launch
+ * at once rather than after the agent's readiness budget.
  * Use one group per serialized session, never across separate supervisors.
  * No request is replayed and no independent restart policy is introduced.
  */
