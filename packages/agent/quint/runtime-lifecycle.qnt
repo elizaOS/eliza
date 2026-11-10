@@ -21,6 +21,141 @@ module runtime_lifecycle {
   run reentrantDisposeWitnessTest = init.then(legacyBeginDispose).then(legacyBeginDispose).expect(not(safety))
 }
 
+// startEliza's restored-generation onRestart clears lifecycleRuntime before
+// owning shutdown, then builds against the same durable database. The API
+// clears an unavailable disposed runtime on failure. A later Start skips the
+// already-closed runtime, and activation publishes one fresh lifecycle owner.
+// Three runtime identities, four build calls and one initially admitted job
+// bound the maintained actual startEliza / HTTP / PGlite restore scenario.
+module runtime_restore_replacement {
+  pure val Runtimes = Set(0, 1, 2)
+  var s: {
+    phase: str, reported: str, operation: str, attempts: int,
+    apiRuntime: int, hostRuntime: int, lifecycleRuntime: int, target: int,
+    created: Set[int], openAdapters: Set[int], closes: int -> int,
+    workOwner: int, disposedBeforeBuild: bool, authorityOpen: bool
+  }
+  action initialize(withWork: bool): bool = s' = {
+    phase: "idle", reported: "running", operation: "none", attempts: 0,
+    apiRuntime: 0, hostRuntime: 0, lifecycleRuntime: 0, target: -1,
+    created: Set(0), openAdapters: Set(0), closes: Runtimes.mapBy(_ => 0),
+    workOwner: if (withWork) 0 else -1, disposedBeforeBuild: false, authorityOpen: true
+  }
+  action init = any { initialize(false), initialize(true) }
+  action beginBuild(kind: str): bool = all {
+    s.phase == "idle", s.attempts < 4,
+    kind == "restart" or (kind == "start" and s.apiRuntime == -1),
+    s' = { ...s, operation: kind, attempts: s.attempts + 1,
+      reported: if (kind == "start") "starting" else "restarting",
+      phase: if (s.lifecycleRuntime >= 0) "retiring" else "building",
+      target: s.lifecycleRuntime, lifecycleRuntime: -1, disposedBeforeBuild: false }
+  }
+  action beginStop = all {
+    s.phase == "idle", s.apiRuntime >= 0,
+    s' = { ...s, operation: "stop", phase: "retiring",
+      target: s.apiRuntime, lifecycleRuntime: -1, disposedBeforeBuild: false }
+  }
+  action stopEmpty = all {
+    s.phase == "idle", s.apiRuntime == -1,
+    s' = { ...s, reported: "stopped" }
+  }
+  action pause = all {
+    s.phase == "idle", s.apiRuntime >= 0,
+    s' = { ...s, reported: "paused" }
+  }
+  action existingStart = all {
+    s.phase == "idle", s.apiRuntime >= 0,
+    s' = { ...s, reported: "running" }
+  }
+  action finishOwnedWork = all {
+    s.phase == "retiring", s.workOwner == s.target,
+    s' = { ...s, workOwner: -1 }
+  }
+  action retire(ok: bool): bool = all {
+    s.phase == "retiring", s.target >= 0, s.workOwner != s.target,
+    {
+      val base = { ...s,
+        openAdapters: s.openAdapters.exclude(Set(s.target)),
+        closes: s.closes.set(s.target, s.closes.get(s.target) + 1) }
+      s' = if (s.operation == "stop")
+        { ...base, phase: "idle", reported: if (ok) "stopped" else "error", apiRuntime: -1 }
+      else if (ok)
+        { ...base, phase: "building", disposedBeforeBuild: true }
+      else
+        { ...base, phase: "idle", reported: "error", apiRuntime: -1, disposedBeforeBuild: false }
+    }
+  }
+  action buildFailure = all {
+    s.phase == "building",
+    // The catch clears this flag even if disposal had succeeded. No later
+    // unrelated replacement may skip its own outgoing runtime's cleanup.
+    s' = { ...s, phase: "idle", reported: "error", apiRuntime: -1,
+      disposedBeforeBuild: false }
+  }
+  action buildSuccess = all {
+    s.phase == "building", s.authorityOpen, s.created.size() < 3,
+    {
+      val fresh = s.created.size()
+      s' = { ...s, phase: "idle", reported: "running",
+        apiRuntime: fresh, hostRuntime: fresh, lifecycleRuntime: fresh,
+        created: s.created.union(Set(fresh)), openAdapters: s.openAdapters.union(Set(fresh)),
+        disposedBeforeBuild: false, target: -1 }
+    }
+  }
+  action closeAuthority = all {
+    s.phase == "idle", s.authorityOpen,
+    s' = { ...s, authorityOpen: false }
+  }
+  action pendingControls = all { s.phase != "idle", s' = s }
+  action advance = any { finishOwnedWork, retire(true), retire(false), buildSuccess, buildFailure }
+  action idle = s' = s
+  action step = any {
+    beginBuild("start"), beginBuild("restart"), beginStop, stopEmpty,
+    pause, existingStart, closeAuthority, pendingControls, advance, idle
+  }
+  val safety = all {
+    s.attempts >= 0, s.attempts <= 4, s.created.subseteq(Runtimes),
+    s.openAdapters.subseteq(s.created), s.closes.keys() == Runtimes,
+    Runtimes.forall(id => s.closes.get(id) >= 0 and s.closes.get(id) <= 1),
+    s.workOwner >= 0 implies s.openAdapters.contains(s.workOwner),
+    s.lifecycleRuntime >= 0 implies s.lifecycleRuntime == s.hostRuntime and s.openAdapters.contains(s.lifecycleRuntime),
+    s.phase == "building" implies s.lifecycleRuntime == -1 and s.workOwner == -1,
+    s.phase == "retiring" implies s.lifecycleRuntime == -1 and s.openAdapters.contains(s.target),
+    s.phase == "idle" and s.reported.in(Set("running", "paused")) implies
+      s.apiRuntime == s.lifecycleRuntime and s.apiRuntime >= 0 and s.openAdapters.contains(s.apiRuntime),
+    s.phase == "idle" and s.reported.in(Set("error", "stopped")) implies
+      s.apiRuntime == -1 and s.lifecycleRuntime == -1 and not(s.disposedBeforeBuild)
+  }
+  temporal RequestWithoutFairness = (s.phase != "idle").leadsTo(s.phase == "idle")
+  temporal RequestSettles = advance.weakFair(s).implies(RequestWithoutFairness)
+
+  // A fast room-drain timeout throws before strict drain; shutdownRuntime then
+  // closes the old adapter and returns the error while an admitted owner lives.
+  action legacyFastFailure = all {
+    s.phase == "retiring", s.workOwner == s.target,
+    s' = { ...s, phase: "idle", reported: "error", apiRuntime: -1,
+      openAdapters: s.openAdapters.exclude(Set(s.target)),
+      closes: s.closes.set(s.target, s.closes.get(s.target) + 1) }
+  }
+  run restoreRetiresBeforeRebuildTest = initialize(true).then(beginBuild("restart"))
+    .then(pendingControls).expect(safety and s.openAdapters.contains(0))
+    .then(finishOwnedWork).then(retire(true)).then(buildSuccess)
+    .expect(safety and s.apiRuntime == 1 and s.closes.get(0) == 1)
+  run stopThenStartDoesNotCloseTwiceTest = initialize(false).then(beginStop).then(retire(true))
+    .then(beginBuild("start")).then(buildSuccess)
+    .expect(safety and s.apiRuntime == 1 and s.closes.get(0) == 1)
+  run failedBuildDoesNotSkipLaterCleanupTest = initialize(false).then(beginBuild("restart"))
+    .then(retire(true)).then(buildFailure).then(beginBuild("start")).then(buildSuccess)
+    .then(beginBuild("restart")).then(retire(true)).then(buildSuccess)
+    .expect(safety and s.apiRuntime == 2 and s.closes.get(0) == 1 and s.closes.get(1) == 1)
+  run closedAuthorityRemainsUnavailableTest = initialize(false).then(closeAuthority)
+    .then(beginBuild("restart")).then(retire(true)).then(buildFailure)
+    .then(stopEmpty).then(beginBuild("start")).then(buildFailure)
+    .expect(safety and s.reported == "error" and s.apiRuntime == -1 and s.created == Set(0))
+  run preRestoreFastCloseWitnessTest = initialize(true).then(beginBuild("restart"))
+    .then(legacyFastFailure).expect(not(safety))
+}
+
 // eliza.ts disposeReplacedRuntime reuses core's strict retirement owner after
 // the fast stop cap. service-lifecycle.ts retains original callbacks after
 // services.clear(); TaskService.stop and MemoryRetentionService.stop both wait

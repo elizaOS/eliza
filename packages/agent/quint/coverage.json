@@ -363,14 +363,19 @@
       "packages/core/src/runtime/service-lifecycle.ts",
       "packages/core/src/services/task.ts",
       "packages/agent/test/hot-reload-shared-database.test.ts",
-      "packages/core/src/services/task-scheduler.ts"
+      "packages/core/src/services/task-scheduler.ts",
+      "packages/agent/src/runtime/restore-generation.boot.test.ts",
+      "packages/agent/src/api/agent-lifecycle-routes.ts",
+      "packages/agent/src/api/agent-admin-routes.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
+      "packages/core/src/runtime/room-handler-queue.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases and two deferred task identities. The retirement refinement has one outgoing and one active replacement runtime, shared/distinct connections, one initially active write or no write, and two original stop callbacks.",
-      "Five maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check. The detached scheduler-query case also verifies that an outgoing adapter is drained without stopping the replacement scheduler, even when the outgoing runtime was outside the dirty snapshot.",
-      "Retirement progress assumes fair storage success/failure settlement, callback settlement, continuation and host cleanup. Individual boot resources, arbitrary callback internals, post-delivery work, late service starts, adapter-close failures, signal exit budgets and self-awaiting hooks remain partial. No wall-clock, implementation trace-refinement or unbounded proof is claimed."
+      "Eight boot phases/two deferred tasks; adapter retirement has one outgoing/replacement pair, shared/distinct adapters, one active write or none and two stop callbacks. Restore replacement has three runtime identities, four build calls, one admitted owner and authority closure only between requests.",
+      "Nine maintained cases cover shared/distinct PGlite, detached scheduler queries outside the outgoing runtime's dirty snapshot, real HTTP/SQLite retention completion and write refusal, and actual startEliza restored-host HTTP retirement while a real evaluator owns retention deletion past the default fast caps. They include replacement readback, stop/start without duplicate closure, closed-authority failure, invalid cold-boot authority and restored persona/database persistence.",
+      "Progress requires fair owner, teardown, factory and host continuation settlement; success is not assumed. Factory-internal cleanup of a constructed failed runtime, post-publication activation exceptions, mid-request authority revocation, individual boot resources, post-delivery work, late starts, adapter-close failures, signal budgets and self-awaiting hooks remain partial. No wall-clock or unbounded refinement proof is claimed."
     ]
   },
   {

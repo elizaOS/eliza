@@ -12,11 +12,16 @@
     "packages/core/src/runtime/service-lifecycle.ts",
     "packages/core/src/services/task.ts",
     "packages/core/src/services/task-scheduler.ts",
-    "packages/agent/test/hot-reload-shared-database.test.ts"
+    "packages/agent/test/hot-reload-shared-database.test.ts",
+    "packages/agent/src/runtime/restore-generation.boot.test.ts",
+    "packages/agent/src/api/agent-lifecycle-routes.ts",
+    "packages/agent/src/api/agent-admin-routes.ts",
+    "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
+    "packages/core/src/runtime/room-handler-queue.ts"
   ],
   "bounds": {
-    "domain": "Eight boot phases and two deferred task identities. A separate retirement projection has one outgoing and one active replacement runtime, a shared or distinct adapter, one initially active write or no write, and two original service-stop callbacks.",
-    "scope": "Finite boot/teardown safety and conditional retirement progress. Fast completion and lookup clearing do not release callback ownership. The retirement receipt is the host helper's resolution/rejection; the CLI reports cleanup failure after publishing its replacement. Real HTTP, file-backed SQLite scheduler/retention, shared PGlite and distinct PGlite conformance. Host conformance additionally exercises detached shared-scheduler queries when the outgoing runtime is outside the dirty query snapshot."
+    "domain": "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests.",
+    "scope": "Finite ownership safety and conditional retirement/request progress. Real HTTP with file-backed SQLite scheduler/retention, shared/distinct PGlite, and the actual startEliza restored host with evaluator-owned retention, stop/start, closed-authority failure, cold boot authority validation and durable readback. Host conformance also drains detached scheduler queries when the outgoing runtime is outside the dirty query snapshot. Factory-internal constructed-resource cleanup and post-publication activation failure remain external."
   },
   "cases": [
     {
@@ -54,6 +59,33 @@
         }
       ],
       "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "runtime_restore_replacement",
+      "main": "runtime_restore_replacement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RequestSettles", "RequestWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "RequestSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: admitted owner work settles, retirement and adapter closure settle, and each replacement build eventually returns a runtime or fails. Failure is permitted and there is no guarantee of eventual successful boot.",
+            "This projection assumes settling host teardown and factory callbacks and no authority closure during a request. It proves no wall-clock bound, arbitrary startup resource cleanup or unbounded implementation refinement."
+          ]
+        },
+        {
+          "property": "RequestWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. An admitted owner or a replacement factory can remain pending indefinitely; an in-process restore replacement cannot release its database at a fast exit cap."
+          ]
+        }
+      ],
+      "maxSteps": 70,
       "samples": 1000
     }
   ],

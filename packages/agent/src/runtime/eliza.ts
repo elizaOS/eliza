@@ -6319,7 +6319,9 @@ export async function startEliza(
             const teardown = shutdownRuntime(
               runtime,
               "pre-restore runtime disposal",
-              { fast: true },
+              // This process keeps serving after replacement. A fast room
+              // timeout cannot release the old adapter under an admitted owner.
+              { requireQuiescence: true },
             );
             pendingRuntimeTeardown = teardown;
             try {

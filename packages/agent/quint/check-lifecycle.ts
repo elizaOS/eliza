@@ -33,53 +33,74 @@ const requiredTests = retirement
       "owns HTTP teardown before a disposer re-enters close",
       "retains paused ownership after failed builds and drains admitted work before HTTP replacement",
     ];
+const suites = [
+  { file: testFile, required: requiredTests },
+  ...(retirement
+    ? [
+        {
+          file: "packages/agent/src/runtime/restore-generation.boot.test.ts",
+          required: [
+            "does not boot or promote an unfinished generation and rejects a missing physical database",
+            "retains restore authority across server restarts without self-registering routes",
+            "initializes and restarts the real runtime on the committed database without losing later writes",
+            "rejects conflicting identity, config and replaced directories before runtime construction",
+          ],
+        },
+      ]
+    : []),
+];
 const output = testOutputPath(
   retirement ? "quint-agent-adapter-retirement" : "quint-agent-lifecycle",
 );
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
-const resultPath = path.join(directory, "tests.json");
-const result = spawnSync(
-  process.execPath,
-  [
-    "--conditions=eliza-source",
-    path.join(root, "node_modules/vitest/vitest.mjs"),
-    "run",
-    "--config",
-    "packages/agent/vitest.config.ts",
-    testFile,
-    "--maxWorkers=1",
-    "--reporter=json",
-    `--outputFile=${resultPath}`,
-  ],
-  {
-    cwd: root,
-    env: process.env,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  },
-);
-await writeFile(
-  path.join(directory, "tests.log"),
-  `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
-);
-if (result.error) throw result.error;
-if (result.signal) process.kill(process.pid, result.signal);
-assert.equal(result.signal, null, `Conformance terminated by ${result.signal}`);
-assert.equal(
-  result.status,
-  0,
-  `Conformance failed. See ${directory}/tests.log`,
-);
-const tests = requireVitestConformance(
-  JSON.parse(await readFile(resultPath, "utf8")),
-  path.join(root, testFile),
-  requiredTests,
-);
+const tests: Array<{ name: string; status: string }> = [];
+const reports: Array<{ file: string; report: string }> = [];
+for (const [index, suite] of suites.entries()) {
+  const resultPath = path.join(directory, `${index}-tests.json`);
+  const logPath = path.join(directory, `${index}-tests.log`);
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--conditions=eliza-source",
+      path.join(root, "node_modules/vitest/vitest.mjs"),
+      "run",
+      "--config",
+      "packages/agent/vitest.config.ts",
+      suite.file,
+      "--maxWorkers=1",
+      "--reporter=json",
+      `--outputFile=${resultPath}`,
+    ],
+    {
+      cwd: root,
+      env: process.env,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  await writeFile(logPath, `${result.stdout ?? ""}\n${result.stderr ?? ""}`);
+  if (result.error) throw result.error;
+  if (result.signal) process.kill(process.pid, result.signal);
+  assert.equal(
+    result.signal,
+    null,
+    `Conformance terminated by ${result.signal}`,
+  );
+  assert.equal(result.status, 0, `Conformance failed. See ${logPath}`);
+  tests.push(
+    ...requireVitestConformance(
+      JSON.parse(await readFile(resultPath, "utf8")),
+      path.join(root, suite.file),
+      suite.required,
+    ),
+  );
+  reports.push({ file: suite.file, report: resultPath });
+}
 const inputs: Record<string, string> = {};
 for (const source of [
   model,
-  testFile,
+  ...suites.map((suite) => suite.file),
   ...(retirement
     ? [
         "packages/agent/src/runtime/eliza.ts",
@@ -91,6 +112,10 @@ for (const source of [
         "packages/core/src/runtime/service-lifecycle.ts",
         "packages/core/src/services/task.ts",
         "packages/core/src/services/task-scheduler.ts",
+        "packages/core/src/runtime/room-handler-queue.ts",
+        "packages/agent/src/api/agent-lifecycle-routes.ts",
+        "packages/agent/src/api/agent-admin-routes.ts",
+        "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
       ]
     : [
         "packages/agent/src/api/agent-lifecycle-routes.ts",
@@ -107,7 +132,7 @@ for (const source of [
 }
 await writeFile(
   path.join(directory, "evidence.json"),
-  `${JSON.stringify({ model, inputs, tests, report: resultPath }, null, 2)}\n`,
+  `${JSON.stringify({ model, inputs, tests, reports }, null, 2)}\n`,
 );
 console.log(
   `Conformance passed ${tests.length} required cases. Evidence ${directory}`,
