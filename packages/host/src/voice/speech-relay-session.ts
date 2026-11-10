@@ -140,15 +140,6 @@ export interface SpeechRelayPorts {
   ): Pick<CartesiaSonicTtsStream, "sendPhrase" | "finish" | "cancel">;
   emit(event: SpeechRelayEvent): void;
   onClosed(result: Promise<void>): void;
-  /**
-   * Opens speech input as soon as consent is verified. The usage minute and
-   * the credit reservation are decided concurrently, off the path to the
-   * first audio frame. A refusal is reported here with the error admission
-   * would have thrown, then the session retires and settles what it used.
-   * Audio sent before a refusal is not paid for. Excludes retirement proof,
-   * whose evidence requires a reservation before any provider dispatch.
-   */
-  admissionFailed?: (error: unknown) => void;
   registerRetirement?: (handle: SpeechRelayRetirementHandle) => void;
   confirmTtsTransportStopped?: () => Promise<
     "not_dispatched" | "transport_closed" | "unknown"
@@ -261,12 +252,6 @@ export async function createSpeechRelaySession(
     (maxWindows > 1 && (!ports.extend || requireRetirementProof))
   )
     throw new SpeechRelayError("identity", "Invalid speech window budget");
-  const admissionFailed = ports.admissionFailed;
-  if (admissionFailed && requireRetirementProof)
-    throw new SpeechRelayError(
-      "identity",
-      "Deferred speech admission cannot carry retirement proof",
-    );
   let deadline = Math.min(
       started + SPEECH_RELAY_BUDGET.durationMs,
       ports.expiresAt ?? Number.POSITIVE_INFINITY,
@@ -686,8 +671,7 @@ export async function createSpeechRelaySession(
   /** Failure to renew is not an error: the session still ends at `deadline`. */
   async function renew() {
     const extend = ports.extend;
-    // A renewal extends a first window that already holds its reservation.
-    if (closed || windows >= maxWindows || !extend || !credits) return;
+    if (closed || windows >= maxWindows || !extend) return;
     // The renewal's quota minute and reservation belong to a window only once
     // `extend` has moved the authoritative end. Until then a refusal returns
     // both; the current end and every granted window's settlement are unchanged.
@@ -741,7 +725,38 @@ export async function createSpeechRelaySession(
     }
   }
   ports.registerRetirement?.(retirement);
-  const openSpeechInput = () => {
+  try {
+    preparation = (async () => {
+      current();
+      if (!(await ports.consumeConsent(scope, consentNonce)))
+        throw new SpeechRelayError(
+          "consent",
+          "Speech consent was not verified",
+        );
+      current();
+      const admission = await ports.usageStore.checkAndRecord(
+        scope,
+        1,
+        ports.usageLimits,
+      );
+      if (!admission.allowed)
+        throw new SpeechRelayError("quota", "Speech quota exhausted");
+      quota = true;
+      current();
+      credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+      reservations.push(credits);
+    })();
+    await preparation;
+    current();
+    unsubscribe = ports.subscribeRevoked(scope, retire);
+    current();
+    if (!credits)
+      throw new SpeechRelayError(
+        "closed",
+        "Speech admission did not return a reservation",
+      );
+    await credits.beforeProviderDispatch("stt");
+    current();
     providerMayHaveStarted = true;
     dispatched.stt = true;
     stt = ports.openStt((event) => {
@@ -784,72 +799,6 @@ export async function createSpeechRelaySession(
     });
     current();
     arm();
-  };
-  const verifyConsent = async () => {
-    current();
-    if (!(await ports.consumeConsent(scope, consentNonce)))
-      throw new SpeechRelayError("consent", "Speech consent was not verified");
-    current();
-  };
-  try {
-    if (admissionFailed) {
-      await verifyConsent();
-      unsubscribe = ports.subscribeRevoked(scope, retire);
-      current();
-      preparation = (async () => {
-        const [usage, reserved] = await Promise.allSettled([
-          ports.usageStore.checkAndRecord(scope, 1, ports.usageLimits),
-          ports.reserveCredits(scope, SPEECH_RELAY_BUDGET),
-        ]);
-        // Keep whatever was granted so closing settles and accounts for it.
-        if (usage.status === "fulfilled" && usage.value.allowed) quota = true;
-        if (reserved.status === "fulfilled") {
-          credits = reserved.value;
-          reservations.push(credits);
-        }
-        if (usage.status === "rejected") throw usage.reason;
-        if (!usage.value.allowed)
-          throw new SpeechRelayError("quota", "Speech quota exhausted");
-        if (reserved.status === "rejected") throw reserved.reason;
-        await reserved.value.beforeProviderDispatch("stt");
-      })();
-      void preparation.catch((error) => {
-        if (closed) return;
-        try {
-          admissionFailed(error);
-        } finally {
-          retire();
-        }
-      });
-      openSpeechInput();
-    } else {
-      preparation = (async () => {
-        await verifyConsent();
-        const admission = await ports.usageStore.checkAndRecord(
-          scope,
-          1,
-          ports.usageLimits,
-        );
-        if (!admission.allowed)
-          throw new SpeechRelayError("quota", "Speech quota exhausted");
-        quota = true;
-        current();
-        credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
-        reservations.push(credits);
-      })();
-      await preparation;
-      current();
-      unsubscribe = ports.subscribeRevoked(scope, retire);
-      current();
-      if (!credits)
-        throw new SpeechRelayError(
-          "closed",
-          "Speech admission did not return a reservation",
-        );
-      await credits.beforeProviderDispatch("stt");
-      current();
-      openSpeechInput();
-    }
   } catch (error) {
     try {
       await close();
@@ -976,8 +925,6 @@ export async function createSpeechRelaySession(
       // provider dispatch once the session's admission and budget allow it.
       let attemptedProviderForFrame = false;
       try {
-        // Deferred admission may still be deciding; speech output waits for it.
-        if (admissionFailed) await preparation;
         if (!credits)
           throw new SpeechRelayError(
             "closed",

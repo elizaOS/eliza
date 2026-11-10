@@ -2,7 +2,6 @@
 
 import { randomBytes } from "node:crypto";
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import {
   consumeConsentNonce,
   issueConsentNonce,
@@ -151,19 +150,10 @@ app.post("/session", async (c) => {
     requireGenerativeRouteCaller(c, {
       includeVerifiedCredential: true,
       rateLimitEndpoint: "strict",
-      // The relay's admission lease consumes the strong standing check with
-      // the credential handed to it below. Retirement proof keeps it here.
-      deferStrongCredentialCheck: !proofVersion,
     }),
   );
   if (!caller.credential)
     return c.json({ error: "speech_identity_unavailable" }, 403);
-  // A return before the session ledger receives the credential performs the
-  // standalone strong check instead.
-  await using credentialGuard = deferredCredentialAdmissionGuard({
-    organizationId: () => caller.user.organization_id,
-    credential: () => (proofVersion ? undefined : caller.credential),
-  });
   let body: unknown;
   try {
     body = await c.req.json();
@@ -202,9 +192,8 @@ app.post("/session", async (c) => {
   const consuming = timer.time("speech_consent_consume", () =>
     consumeConsentNonce(caller.user.id, consentNonce),
   );
-  const initialize = () => {
-    credentialGuard.credentialForAdmission();
-    return timer.time("speech_directory_write", () =>
+  const initialize = () =>
+    timer.time("speech_directory_write", () =>
       c.env
         .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
         .fetch("https://speech-relay.internal/initialize", {
@@ -222,7 +211,6 @@ app.post("/session", async (c) => {
           }),
         }),
     );
-  };
   let result: Response;
   if (proofVersion) {
     if (!(await consuming))
