@@ -1,7 +1,8 @@
 /**
  * Hydrates the immutable admission projection stored beside inference identity.
- * Warm requests consume the projection from their single cache read; a cold or
- * superseded projection is filled from the primary once, inline.
+ * Warm requests consume the projection from their single cache read. An aged
+ * projection still decides its request and is refreshed under `waitUntil`;
+ * only a request with no projection at all is filled from the primary inline.
  */
 
 import type { DbTransaction } from "../../db/client";
@@ -228,6 +229,47 @@ export async function peekInferenceAdmissionSnapshot(
     });
     return null;
   }
+}
+
+/** The isolate's copy of the published projection; never reads a shared store. */
+export function peekInferenceAdmissionSnapshotInIsolate(
+  organizationId: string,
+): InferenceAdmissionSnapshot | undefined {
+  const local = admissionMemoryCache.get(CacheKeys.inference.orgAdmission(organizationId));
+  return isInferenceAdmissionSnapshot(local) ? local : undefined;
+}
+
+/**
+ * Refresh the projection after the response it was served to. The request
+ * that noticed an aged or refusing projection keeps its decision; this fill
+ * republishes the primary state to the gate and both caches for later calls.
+ * `force` skips the shared-cache copy, for a refusal that copy would repeat.
+ */
+export function refreshInferenceAdmissionSnapshotOffResponse(
+  organizationId: string,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void },
+  options: { force?: boolean } = {},
+): void {
+  executionCtx.waitUntil(
+    (async () => {
+      if (!options.force) {
+        const published = await peekInferenceAdmissionSnapshot(organizationId);
+        if (
+          published &&
+          Date.now() - published.balance.balanceAt <= CacheTTL.inference.orgAdmission * 1000
+        )
+          return;
+      }
+      await fillInferenceAdmissionSnapshot(organizationId);
+    })().catch((error) => {
+      // error-policy:J7 the served decision stands; the next aged request
+      // schedules the refresh again and the gate keeps its own fences.
+      logger.warn("[inference-admission] off-response snapshot refresh failed", {
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }),
+  );
 }
 
 const inflightAdmissionFills = new Map<string, Promise<InferenceAdmissionSnapshot>>();

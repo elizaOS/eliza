@@ -289,7 +289,9 @@ describe("MapsScreen view", () => {
     fireEvent.keyDown(origin, { key: "Enter" });
     await settle();
     expect(screen.getByText("5 min")).toBeTruthy();
-    expect(screen.getByText("1.2 km · no live traffic")).toBeTruthy();
+    expect(
+      screen.getByText(/(?:1.2 km|0.7 mi) · no live traffic/),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Start/ }));
     await settle();
     expect(screen.getByRole("button", { name: "End navigation" })).toBeTruthy();
@@ -405,6 +407,45 @@ describe("MapsScreen view", () => {
     expect(destroyed).toBe(2);
     expect(handle.controller.isNavigating()).toBe(true);
     expect(handle.controller.view().map.route).toEqual(before.route);
+  });
+
+  it("recovers the screen when current viewport copyright becomes ready", async () => {
+    const handle = setup();
+    let planeElement: HTMLElement | undefined;
+    let reportError: (() => void) | undefined;
+    render(
+      <MapsScreen
+        screen={handle}
+        attribution="credits"
+        createPlane={(element, onError) => {
+          planeElement = element;
+          reportError = onError;
+          return { update() {}, destroy() {} };
+        }}
+      />,
+    );
+    await act(async () => {
+      if (planeElement) planeElement.dataset.mapReady = "true";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    act(() => {
+      if (planeElement) {
+        delete planeElement.dataset.mapReady;
+        planeElement.dataset.mapError = "copyright";
+      }
+      reportError?.();
+    });
+    await settle();
+    expect(handle.controller.view().status.map).toBe("error");
+    await act(async () => {
+      if (planeElement) {
+        delete planeElement.dataset.mapError;
+        planeElement.dataset.mapReady = "true";
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(handle.controller.view().status.map).toBe("ready");
+    expect(screen.queryByRole("button", { name: "Retry map" })).toBeNull();
   });
 
   it("shows navigation notices while preserving guidance controls", async () => {

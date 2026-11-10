@@ -1,9 +1,24 @@
-/** Exercises actual SQL list reads and choice dispatch with a corrupt stored schedule. */
-import { ChannelType, type Memory, type UUID } from "@elizaos/core";
+/** Exercises actual SQL choice dispatch and owned approval cancellation. */
+import assert from "node:assert/strict";
+import {
+  AgentRuntime,
+  type ApprovalResult,
+  ApprovalService,
+  ChannelType,
+  canActionRun,
+  createCharacter,
+  ElizaError,
+  type Memory,
+  resolveActionCallerRoles,
+  ServiceType,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { taskTable } from "@elizaos/plugin-sql";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { eq } from "drizzle-orm";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createIsolatedTestDatabase } from "../../../plugin-sql/src/__tests__/test-helpers";
 import { choiceAction } from "../features/basic-capabilities/actions/choice";
 import { choiceProvider } from "../features/basic-capabilities/providers/choice";
@@ -106,6 +121,144 @@ it("rejects a damaged choice before worker effects while healthy and repaired ch
     expect(effects).toEqual([healthy, damaged]);
   } finally {
     f.runtime.unregisterTaskWorker("choice-schedule");
+    await f.cleanup();
+  }
+});
+
+/** Exercise the actual registered approval owner and choice action over SQLite. */
+async function approvalChoiceFixture() {
+  const name = "ChoiceApprovalCancellationAgent";
+  const runtime = new AgentRuntime({
+    character: createCharacter({ name }),
+    adapter: SQLiteDatabaseAdapter.create(":memory:", stringToUuid(name)),
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  await runtime.initialize();
+  await runtime.registerPlugin({
+    name: "choice-approval-conformance",
+    description: "Actual choice and approval lifecycle",
+    services: [ApprovalService],
+    actions: [choiceAction],
+  });
+  const service = (await runtime.getServiceLoadPromise(
+    ServiceType.APPROVAL,
+  )) as ApprovalService;
+  const roomId = stringToUuid("choice-approval-cancellation-room");
+  await runtime.adapter.createRooms([
+    {
+      id: roomId,
+      agentId: runtime.agentId,
+      name: "Approval cancellation",
+      source: "test",
+      type: ChannelType.GROUP,
+      messageServerId: stringToUuid("choice-approval-cancellation-server"),
+    },
+  ]);
+  const message: Memory = {
+    id: stringToUuid("choice-approval-cancellation-message"),
+    agentId: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId,
+    content: { text: "Cancel the pending approval", source: "test" },
+  };
+  const state = { values: {}, data: {}, text: "" };
+  const calls: string[] = [];
+  let approvalResult: ApprovalResult | undefined;
+  const waiting = service
+    .requestApproval({
+      name: "CHOICE_APPROVAL",
+      description: "Confirm the pending operation",
+      roomId,
+      options: [{ name: "approve" }, { name: "deny", isCancel: true }],
+      onSelect: async (option) => {
+        calls.push(option);
+      },
+    })
+    .then((result) => {
+      approvalResult = result;
+      return result;
+    });
+  await vi.waitFor(() =>
+    expect(service.listPendingUserActions()).toHaveLength(1),
+  );
+  const taskId = service.listPendingUserActions()[0].id as UUID;
+  const replies: { text: string | undefined; settled: boolean }[] = [];
+  const abort = async () => {
+    const roles = await resolveActionCallerRoles(runtime, message);
+    expect(roles).toEqual(["OWNER"]);
+    expect(
+      canActionRun(choiceAction, {
+        message,
+        userRoles: roles,
+        activeContexts: ["tasks"],
+      }),
+    ).toBe(true);
+    expect(await choiceAction.validate(runtime, message, state)).toBe(true);
+    return choiceAction.handler(
+      runtime,
+      message,
+      state,
+      { parameters: { taskId, option: "ABORT" } },
+      async (content) => {
+        replies.push({
+          text: content.text,
+          settled: approvalResult?.cancelled === true,
+        });
+        return [];
+      },
+    );
+  };
+  return {
+    runtime,
+    service,
+    taskId,
+    calls,
+    waiting,
+    replies,
+    abort,
+    cleanup: async () => {
+      vi.restoreAllMocks();
+      await runtime.stop();
+      await runtime.close();
+    },
+  };
+}
+
+it("ABORT settles the SQLite approval caller before confirming cancellation", async () => {
+  const f = await approvalChoiceFixture();
+  try {
+    expect(await f.abort()).toMatchObject({ success: true });
+    expect(f.replies).toHaveLength(1);
+    expect(f.replies[0].settled).toBe(true);
+    expect(await f.waiting).toMatchObject({ cancelled: true, success: false });
+    expect(f.calls).toEqual([]);
+    expect(f.service.listPendingUserActions()).toEqual([]);
+    expect(await f.runtime.getTask(f.taskId)).toBeNull();
+  } finally {
+    await f.cleanup();
+  }
+});
+
+it("ABORT exposes SQLite deletion failure and retries without replaying approval effects", async () => {
+  const f = await approvalChoiceFixture();
+  try {
+    const failure = new ElizaError("cancel task delete failed", {
+      code: "DB_QUERY_FAILED",
+    });
+    vi.spyOn(f.runtime.adapter, "deleteTasks").mockRejectedValueOnce(failure);
+    await expect(f.abort()).rejects.toBe(failure);
+    expect(f.replies).toEqual([]);
+    expect(f.service.listPendingUserActions()).toEqual([]);
+    const row = await f.runtime.getTask(f.taskId);
+    assert(row);
+    expect(await f.waiting).toMatchObject({ cancelled: true, success: false });
+    expect(await f.abort()).toMatchObject({ success: true });
+    expect(f.replies).toHaveLength(1);
+    expect(f.replies[0].settled).toBe(true);
+    expect(f.calls).toEqual([]);
+    expect(await f.runtime.getTask(f.taskId)).toBeNull();
+  } finally {
     await f.cleanup();
   }
 });

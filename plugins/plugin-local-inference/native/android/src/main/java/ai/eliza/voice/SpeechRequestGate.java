@@ -7,7 +7,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Admission of one speech bridge's requests (recognition, synthesis, status): at most one runs at
- * a time, none is admitted while a cancellation drain is open, and none after destroy.
+ * a time, none is admitted while a cancellation drain is open, and none after destroy. A request
+ * that continues the utterance being spoken may wait behind the running one (a bounded few); the
+ * host's serial worker runs them in order.
  *
  * <p>A drain ({@link #beginDrain}) cancels every request and stays closed until the host's serial
  * worker barrier reports that cancelled work and its cleanup have finished ({@link #finishDrain}
@@ -51,10 +53,20 @@ public final class SpeechRequestGate {
  private final Map<Object,Runnable> waiters=new LinkedHashMap<>(); // Guarded by pending.
  private boolean draining,barrier,destroyed; // Guarded by pending. barrier: a drain barrier is in flight.
 
+ /** Requests admitted at once with {@code queue}: the running one and two waiting. */
+ public static final int QUEUE_LIMIT=3;
  /** Admits {@code id} when nothing else runs; {@code replace=false} reports a busy speaker as BUSY. */
- public Admission admit(String id,boolean replace){
+ public Admission admit(String id,boolean replace){return admit(id,replace,false);}
+ /**
+  * {@code queue}: {@code id} is also admitted behind other requests, up to {@link #QUEUE_LIMIT} in
+  * all; beyond that it is refused as BUSY, and the caller offers it again once one has settled.
+  */
+ public Admission admit(String id,boolean replace,boolean queue){
   synchronized(pending){
-   if(destroyed||draining||!pending.isEmpty())return new Admission(null,!destroyed&&!draining&&!replace?Refusal.BUSY:Refusal.UNAVAILABLE);
+   if(queue&&!destroyed&&!draining&&!pending.isEmpty()){
+    if(pending.containsKey(id))return new Admission(null,Refusal.UNAVAILABLE);
+    if(pending.size()>=QUEUE_LIMIT)return new Admission(null,Refusal.BUSY);
+   }else if(destroyed||draining||!pending.isEmpty())return new Admission(null,!destroyed&&!draining&&!replace?Refusal.BUSY:Refusal.UNAVAILABLE);
    Request request=new Request(id);pending.put(id,request);return new Admission(request,null);
   }
  }

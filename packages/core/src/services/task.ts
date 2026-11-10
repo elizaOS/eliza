@@ -195,6 +195,7 @@ export class TaskService extends Service {
 	private localTimer = false;
 	private maxTickMs = DEFAULT_MAX_TICK_MS;
 	private activeTick: Promise<void> | null = null;
+	private schedulerDrain: Promise<void> | undefined;
 	private readonly clock: TaskServiceTimeoutClock;
 	/** Count overlapping invocations so exclusivity sees every active owner. */
 	private executingTasks = new Map<string, number>();
@@ -1329,13 +1330,17 @@ export class TaskService extends Service {
 	/** Stop new ticks before the runtime closes room admissions. */
 	prepareStop() {
 		this.stopped = true;
-		unregisterTaskSchedulerRuntime(this.runtime.agentId, this);
+		this.schedulerDrain = unregisterTaskSchedulerRuntime(
+			this.runtime.agentId,
+			this,
+		);
 		this.localTimer = false;
 		this.clearTimer();
 	}
 
 	async stop() {
 		this.prepareStop();
+		await this.schedulerDrain;
 		if (this.activeTick) {
 			await this.activeTick;
 		}

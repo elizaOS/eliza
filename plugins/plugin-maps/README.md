@@ -21,7 +21,8 @@ Use `./client/map-plane` for the optional MapLibre renderer and supply its worke
 fonts, colors, regional transport and protocol. Native location uses the host
 bridge supplied to `./client/native-location`; no plugin registry or provider
 authority is chosen by the client library. Callers cancel regional requests and
-retire location ownership; the library does not impose elapsed-time deadlines.
+retire location ownership. A user-requested one-shot location read times out after 15 seconds;
+continuous navigation waits for later usable fixes.
 
 Device navigation exposes provider-reported maneuvers, route progress, origin
 search, saved-place matches and explicit rerouting. Route projection uses the
@@ -46,7 +47,7 @@ same helper when a route is fitted. Controls outside the map reserve no space.
 markup: search and coordinate pins, place detail with saved places and renaming,
 directions from an explicit origin, provider-limited travel modes, foreground
 guidance from fresh precise fixes, explicit reroute, screen-off sessions, voice,
-sharing, cross-app hand-offs (for example a Calendar event's location, with Back
+sharing, retained place/route state across view changes, cross-app hand-offs (for example a Calendar event's location, with Back
 to that event) and the agent's `MapsNavigationSurface`. A host renders `view()`
 in its own markup and supplies the platform ports: provider connection, location,
 voice, screen-off session, share sheet, website opening and agent context.

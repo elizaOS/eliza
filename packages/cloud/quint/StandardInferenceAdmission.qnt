@@ -80,6 +80,14 @@ module StandardInferenceAdmission {
     s' = s.with("phase", "released").with("client", "cancelled")
   }
 
+  // The caller holds the acknowledgement and declines to invoke the provider:
+  // the rate verdict joined at the boundary denied it, or the client left.
+  // The live zero settlement returns the hold; no debit exists to collect.
+  action abandonAuthorized = all {
+    s.phase == "dispatched" and s.client == "authorized" and not(s.invoked),
+    s' = s.with("phase", "released").with("client", "cancelled")
+  }
+
   action expireUndispatched = all {
     s.phase == "leased" and s.dueAt <= s.now,
     s' = s.with("phase", "released")
@@ -135,7 +143,7 @@ module StandardInferenceAdmission {
 
   action step = any {
     reserve, startMark, finishMark, invokeProvider, cancelBeforeProvider(true),
-    expireUndispatched, beginFence, abortFence, advancePolicy, revokeCredential,
+    abandonAuthorized, expireUndispatched, beginFence, abortFence, advancePolicy, revokeCredential,
     claimRecovery, debitRecovery, settleKnown, tick, wait,
     {
       nondet owner = Owners.oneOf()
@@ -197,6 +205,12 @@ module StandardInferenceAdmission {
     .then(publishRecoveryBalance(1)).then(tick).then(tick).then(claimRecovery)
     .expect(s.publishedBy != s.recoveryOwner and hold == 1)
     .then(publishRecoveryBalance(2)).then(finishRecovery(2)).expect(s.phase == "settled")
+
+  run authorizedCallerAbandonsWithoutProviderTest = initialize("combined")
+    .then(startMark).then(persistMark(true)).then(acceptAck)
+    .expect(hold == 1 and s.client == "authorized" and not(s.invoked))
+    .then(abandonAuthorized)
+    .expect(s.phase == "released" and available == 2 and s.sqlDebit == 0 and not(s.invoked))
 
   run leaseExpiryBeforeDispatchReturnsCapacityTest = initialize("ordinary").then(reserve)
     .then(tick).then(tick).then(expireUndispatched)

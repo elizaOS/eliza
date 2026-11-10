@@ -94,14 +94,17 @@
       "packages/agent/src/api/agent-admin-routes.ts",
       "packages/agent/src/api/runtime-replacement-ownership.ts",
       "packages/agent/src/api/server.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "plugins/plugin-wallet/src/api/wallet-routes.ts",
+      "packages/agent/src/config/feature-flags.ts",
       "packages/agent/test/agent-lifecycle-stop-start.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One initial boot or running-runtime restart owner and two admitted turns.",
-      "Pausing/error-state restart rollback, host adapter disposal, authentication and multi-process restart coordination remain external. The real HTTP conformance check covers start/stop while a restart retains its outgoing runtime.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One initial boot/restart owner, two admitted turns and one persisted wallet-primary update while Start is held. The replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
+      "Five maintained cases include authenticated HTTP/PGlite wallet reload admission with ENABLE_CLOUD_WALLET on, actual configuration persistence and pending-restart status, paused build rollback, queued cancellation, closed admissions and active commit before replacement. The saved-config and API replacement-publication abstraction does not assert final activation, wallet readiness or that a returned runtime applied the configuration.",
+      "Initial boot and replacement drain progress assume fair factory or callback success/failure settlement and continuation; expected unfair witnesses preserve pending work. Idle runtime-less automatic boots, arbitrary config/body-read races, post-publication activation, authentication and multi-process coordination remain partial. Restore pre-disposal and adapter retirement are separate runtime-lifecycle projections. No wall-clock or unbounded refinement proof is claimed."
     ]
   },
   {
@@ -143,6 +146,23 @@
       "Two owners, bounded epoch and three output frames.",
       "HTTP transport, arbitrary text, storage failures and multi-client scheduling are excluded.",
       "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentNativeAccountMigration",
+    "model": "packages/agent/quint/NativeAccountMigration.qnt",
+    "sources": ["packages/agent/native-host/account-state.mjs"],
+    "invariants": [
+      "TypeOK",
+      "CompletedPrefixIsClean",
+      "OnlyDirtyFilesAreStaged",
+      "SuccessHasNoSelectedCredential"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One serialized host, three selected configuration files, one credential and two calls. Real disk cases cover namespace/profile selection, nested scrub, malformed-file repair/retry, unsafe-file rejection and idempotency; the existing real child-process case covers prepared account storage.",
+      "Per-file atomic rename is assumed and settles with its acknowledgement. Multiple writers/processes, applied-but-unacknowledged effects, crash/fsync durability, temporary-file cleanup, hostile parent paths and arbitrary JSON roots/nesting remain open.",
+      "Progress assumes admitted filesystem calls settle and continuation is fair; neither success nor retry is guaranteed. The model excludes namespace creation/chmod failures. The documented downstream source API has no in-tree migration caller, so this does not prove downstream invocation, credential verification or broader account authorization."
     ]
   },
   {
@@ -352,14 +372,31 @@
     "sources": [
       "packages/agent/src/runtime/boot-pipeline.ts",
       "packages/agent/src/runtime/deferred-boot-owner.ts",
-      "packages/agent/src/runtime/process-lifecycle.ts"
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/src/runtime/eliza-plugin.ts",
+      "packages/agent/src/runtime/memory-retention-service.ts",
+      "packages/agent/src/runtime/retention-task.ts",
+      "packages/core/src/runtime.ts",
+      "packages/core/src/runtime/retirement.ts",
+      "packages/core/src/runtime/service-lifecycle.ts",
+      "packages/core/src/services/task.ts",
+      "packages/agent/test/hot-reload-shared-database.test.ts",
+      "packages/core/src/services/task-scheduler.ts",
+      "packages/agent/src/runtime/restore-generation.boot.test.ts",
+      "packages/agent/src/api/agent-lifecycle-routes.ts",
+      "packages/agent/src/api/agent-admin-routes.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/agent/src/api/runtime-replacement-ownership.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases and two deferred task identities.",
-      "Individual boot resources, real shutdown failures and async self-awaiting callbacks are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none, and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests. Shared-query handoff has four initialization modes, three handles for one physical connection, one unrelated handle, two queries, at most two handoffs, and one final close. Shared callback retirement has one outgoing admitted write, one or two published replacements, and strict or fast final stop.",
+      "Twelve hot-reload cases cover shared/distinct PGlite, actual HTTP/SQLite retention callbacks, and detached queries outside the outgoing runtime dirty snapshot. Four of these test live, identical, chained and unrelated scheduler handles. Three use authenticated HTTP with held PGlite retention writes, including failed completion and durable readback. Four additional restored-host cases cover actual startEliza evaluator retention past the fast cap, stop/start, closed and invalid authority, and durable persona/database readback.",
+      "Progress assumes fair owner, callback, storage, factory and host settlement, without requiring successful effects. Published handoff assumes outgoing rooms are drained before activation. Factory-internal cleanup, other activation errors, mid-request authority revocation, arbitrary callback internals, late starts, reopen and physical close failures, hard signal exit, cyclic adoption and self-awaiting hooks remain partial."
     ]
   },
   {

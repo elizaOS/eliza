@@ -74,6 +74,8 @@ export type MapOverlay = Readonly<{
 export interface MapPlaneOptions {
   /** Called when the user taps a result pin. */
   onPin?(id: string): void;
+  /** Only direct map gestures interrupt camera following. */
+  onInteraction?(): void;
   fontUrl: string;
   workerUrl: string;
   accent: string;
@@ -355,6 +357,9 @@ export class MapPlane {
       if (protocol) removeProtocol(protocol);
       throw error;
     }
+    this.map.on("movestart", (event) => {
+      if (event.originalEvent) options.onInteraction?.();
+    });
     this.map.on("idle", () => {
       if (this.destroyed) return;
       container.dataset.mapZoom = String(this.map.getZoom());
@@ -376,37 +381,102 @@ export class MapPlane {
           : /fetch|request|tile|load/i.test(message)
             ? "resource-load"
             : "render-error";
+      delete container.dataset.mapReady;
       onError();
     });
     if (raster?.copyright) {
       const copyright = raster.copyright.bind(raster);
+      type Viewport = Parameters<typeof copyright>[0];
       let pending: AbortController | undefined;
+      let attributed: { view: Viewport; text: string } | undefined;
+      const canvas = this.map.getCanvas();
+      const visibility = canvas.style.visibility;
+      const viewport = (): Viewport => {
+        const bounds = this.map.getBounds();
+        const west = bounds.getWest(),
+          east = bounds.getEast();
+        const wraps = west < -180 || east > 180 || west > east;
+        return {
+          zoom: Math.round(this.map.getZoom()),
+          north: Math.min(90, bounds.getNorth()),
+          south: Math.max(-90, bounds.getSouth()),
+          east: wraps ? 180 : east,
+          west: wraps ? -180 : west,
+        };
+      };
+      const covers = (area: Viewport | undefined, view: Viewport) =>
+        !!area &&
+        area.zoom === view.zoom &&
+        area.north >= view.north &&
+        area.south <= view.south &&
+        area.east >= view.east &&
+        area.west <= view.west;
+      const hide = () => {
+        canvas.style.visibility = "hidden";
+        delete container.dataset.mapCopyright;
+        delete container.dataset.mapReady;
+        this.options.onCopyright?.("");
+      };
+      const show = (text: string) => {
+        container.dataset.mapCopyright = text;
+        canvas.style.visibility = visibility;
+        if (container.dataset.mapError === "copyright")
+          delete container.dataset.mapError;
+        if (this.styleReady && !container.dataset.mapError)
+          container.dataset.mapReady = "true";
+        this.options.onCopyright?.(text);
+      };
+      const updateVisibility = () => {
+        if (this.destroyed) return;
+        if (attributed && covers(attributed.view, viewport()))
+          show(attributed.text);
+        else hide();
+      };
+      hide();
       const refresh = () => {
         if (this.destroyed) return;
+        const view = viewport();
+        if (attributed && covers(attributed.view, view)) {
+          show(attributed.text);
+          return;
+        }
         pending?.abort();
+        hide();
         const controller = new AbortController();
         pending = controller;
-        const bounds = this.map.getBounds();
-        copyright(
-          {
-            zoom: Math.round(this.map.getZoom()),
-            north: Math.min(90, bounds.getNorth()),
-            south: Math.max(-90, bounds.getSouth()),
-            east: Math.min(180, bounds.getEast()),
-            west: Math.max(-180, bounds.getWest()),
-          },
-          controller.signal,
-        ).then(
+        // One viewport of margin keeps GPS follow animations inside already attributed imagery.
+        const latitudeMargin = view.north - view.south;
+        const longitudeMargin = view.east - view.west;
+        const requested = {
+          ...view,
+          north: Math.min(90, view.north + latitudeMargin),
+          south: Math.max(-90, view.south - latitudeMargin),
+          east: Math.min(180, view.east + longitudeMargin),
+          west: Math.max(-180, view.west - longitudeMargin),
+        };
+        copyright(requested, controller.signal).then(
           (text) => {
             if (this.destroyed || controller.signal.aborted) return;
-            container.dataset.mapCopyright = text;
-            this.options.onCopyright?.(text);
+            if (!covers(requested, viewport())) {
+              refresh();
+              return;
+            }
+            attributed = { view: requested, text };
+            show(text);
           },
           () => {
-            // error-policy:J4 the static attribution stays shown when the copyright read fails.
+            if (this.destroyed || controller.signal.aborted) return;
+            if (attributed && covers(attributed.view, viewport())) {
+              show(attributed.text);
+              return;
+            }
+            if (!container.dataset.mapError)
+              container.dataset.mapError = "copyright";
+            onError();
           },
         );
       };
+      this.map.on("move", updateVisibility);
       this.map.on("moveend", refresh);
       this.refreshCopyright = refresh;
       this.disposeCopyright = () => pending?.abort();
@@ -414,7 +484,8 @@ export class MapPlane {
     this.map.on("load", () => {
       if (this.destroyed) return;
       this.styleReady = true;
-      container.dataset.mapReady = "true";
+      if (!this.refreshCopyright && !container.dataset.mapError)
+        container.dataset.mapReady = "true";
       this.refreshCopyright?.();
       this.update(this.requested, this.requestedRoute, this.requestedOverlay);
     });

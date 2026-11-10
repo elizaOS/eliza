@@ -118,6 +118,19 @@ function lacksRecoveryProtectedExecutionLease(): SQL {
   return sql`NOT (${hasRecoveryProtectedExecutionLease()})`;
 }
 
+// App admission commits before external revocation delivery. Only its durable
+// inline acknowledgement makes the original root ready for a worker claim.
+function hasPendingClaimAuthority(): SQL {
+  return sql`(
+    ${jobs.type} <> ${JOB_TYPES.APP_DELETE}
+    OR (
+      ${jobs.result_storage} = 'inline'
+      AND ${jobs.result_key} IS NULL
+      AND ${jobs.result}->'revocationsConfirmed' = 'true'::jsonb
+    )
+  )`;
+}
+
 function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
   return updates.data !== undefined || updates.result !== undefined || updates.error !== undefined;
 }
@@ -920,6 +933,7 @@ export class JobsRepository {
           SELECT id FROM ${jobs}
           WHERE type = ${filters.type}
             AND status = 'pending'
+            AND ${hasPendingClaimAuthority()}
             ${orgFilter}
             AND scheduled_for <= (clock_timestamp() AT TIME ZONE 'UTC')
           ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
@@ -991,6 +1005,7 @@ export class JobsRepository {
             SELECT id FROM ${jobs}
             WHERE type = ${filters.type}
               AND status = 'pending'
+              AND ${hasPendingClaimAuthority()}
               ${orgFilter}
               AND scheduled_for <= (clock_timestamp() AT TIME ZONE 'UTC')
             ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC

@@ -27,6 +27,10 @@ the conversation, with nothing reopened, and so does a Mute close that fails bef
 waits on it, at once and also with nothing to send (Unmute never reopens over it). The host
 bounds `close()`: one that never settles keeps the turn unsent until Stop.
 `interruptSpeech()` cuts a playing reply, and only fully played sentences count as heard.
+Optional `openMic` keeps an echo-cancelled full-duplex capture open through ordinary replies;
+resumed speech can replace an unheard speculative turn and interrupt playback. Owner-input
+review still closes capture through the separately approved reply. Optional `pipelineSpeech`
+requires a host that queues sentences in order and settles each at its playback end.
 Generation fencing drops late endpoint, reply and playback callbacks, so a submitted turn is
 never resent. Mute,
 stop, binding changes and owner-input pauses are handled; approvals are never given by voice.

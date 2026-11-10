@@ -300,7 +300,10 @@ no task authority, task store, browser profile or Chromium-extension identity.
 Source-bundle consumers must include the gateway, channel, and task-id source modules.
 
 `native-host/account-state.mjs` preserves private credential-derived namespaces
-and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+and configuration migration. Run credential scrubbing while no other process
+or task writes those files. Each file is replaced separately. A failed call
+keeps earlier rewrites. Resolve the error before retrying.
+`native-host/runtime-supervisor.mjs` serializes
 identity transitions and stops only the child returned by the host launcher.
 These are source entrypoints for explicit payload composition, not additional
 browser SDK or published dist exports. Production consumers must preserve their

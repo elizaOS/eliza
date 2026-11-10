@@ -4,10 +4,11 @@
     "packages/ui/src/platform/browser-document-store.ts",
     "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
   ],
+  "conformance": "packages/ui/quint/check-browser-draft-storage.mjs",
   "bounds": {
     "domain": "One database and key, two writers with one write each, one external reset, one reopened reader, one serialized write transaction, and initial absence or one legacy draft. The two writes use distinct opaque draft byte values, including a revisioned empty row.",
     "assumptions": "IndexedDB serializes readwrite transactions on the store and exposes a staged put only on commit. Document revisions are fresh. Two raw no-draft values, absence and reset tombstone, share the draft-layer null value. Once the raw-slot write is dispatched, its caller's signal is not forwarded to the IndexedDB transaction.",
-    "limitations": "The browser conformance command is bun run --cwd packages/ui test:browser-document-store. It exercises the actual adapter and transactions. The strict Quint jobs lack installed browser engines, so the command runs separately. The model excludes arbitrary external byte restoration, Web Locks editing, version upgrades, disk eviction, and generated trace replay."
+    "limitations": "The mandatory Chromium conformance hook runs all 12 maintained browser adapter groups. The direct command bun run --cwd packages/ui test:browser-document-store continues to run Chromium, Firefox and WebKit, or its explicitly selected engines. Firefox and WebKit remain outside the mandatory Chromium lane. The model excludes arbitrary external byte restoration, Web Locks editing, version upgrades, disk eviction, and generated trace replay."
   },
   "cases": [
     {

@@ -108,6 +108,57 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
             loader: "js",
             contents: "export class ElizaError extends Error {}",
           }));
+          // Delay delivery after the actual deferred modules load. The coordinator,
+          // durable claim, close, and native sockets/storage remain production code.
+          build.onLoad(
+            { filter: /[/]speech-relay-coordinator\.ts$/ },
+            async (args) => {
+              let contents = await Bun.file(args.path).text();
+              const upgrade = `          "@elizaos/cloud-shared/lib/services/credits"
+        );`;
+              const closing = `          "@elizaos/cloud-shared/db/client"
+        );`;
+              const opening = `      ]);
+      await runWithCloudBindingsAsync`;
+              if (
+                contents.split(upgrade).length !== 2 ||
+                contents.split(closing).length !== 2 ||
+                contents.split(opening).length !== 2
+              )
+                throw Error("Speech deferred import boundary changed");
+              contents = contents
+                .replace(
+                  upgrade,
+                  `          "@elizaos/cloud-shared/lib/services/credits"
+        ).then((modules) => testDeliverSpeechImport(modules, "upgrade"));`,
+                )
+                .replace(
+                  closing,
+                  `          "@elizaos/cloud-shared/db/client"\n        ).then((modules) => testDeliverSpeechImport(modules, "closing"));`,
+                )
+                .replace(
+                  opening,
+                  `      ]).then((modules) => testDeliverSpeechImport(modules, "opening"));
+      await runWithCloudBindingsAsync`,
+                );
+              contents += `
+async function testDeliverSpeechImport(modules, kind) {
+              const stats = globalThis.__speechStats ??= {};
+              if (stats[kind + "HoldImport"]) {
+                stats[kind + "HoldImport"] = false;
+                stats[kind + "ImportPending"] = true;
+                try { await new Promise(resolve => stats[kind + "ReleaseImport"] = resolve); }
+                finally { stats[kind + "ImportPending"] = false; }
+              }
+              if (stats[kind + "RejectImport"]) {
+                delete stats[kind + "RejectImport"];
+                throw Error("Controlled speech dependency delivery failure");
+              }
+              return modules;
+            }`;
+              return { loader: "ts", contents };
+            },
+          );
           for (const [filter, contents] of sources)
             build.onLoad({ filter }, () => ({ loader: "js", contents }));
         },
@@ -1726,4 +1777,197 @@ test("a new host cannot revoke an old legacy session; the retained namespace can
   } finally {
     await runtime.dispose();
   }
+});
+
+async function deferredImportSession(kind: "upgrade" | "opening" | "closing") {
+  const name = `deferred-${kind}-${crypto.randomUUID()}`;
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "x-test-session": name,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await request("/test-allow-settlement");
+  const token = `deferred-${kind}-capability`;
+  const sessionId = crypto.randomUUID();
+  const owner = {
+    id: crypto.randomUUID(),
+    organization_id: crypto.randomUUID(),
+  };
+  const credentialId = crypto.randomUUID();
+  expect(
+    (
+      await request("/initialize", {
+        sessionId,
+        tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+        expiresAt: Date.now() + 60_000,
+        caller: {
+          user: owner,
+          apiKeyId: credentialId,
+          authSource: "combined_cache",
+          appScopeId: null,
+          credential: { kind: "api_key", credentialId, userId: owner.id },
+        },
+        proofVersion: 1,
+      })
+    ).status,
+  ).toBe(200);
+  const before = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  await request("/test-hold-import", { kind });
+  const upgrade = () =>
+    worker.dispatchFetch("https://speech-relay.internal/ws", {
+      headers: { Upgrade: "websocket", "x-test-session": name },
+    });
+  const waitUntil = async (predicate: () => Promise<boolean>) => {
+    for (let i = 0; i < 200; i++) {
+      if (await predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw Error("Speech import boundary did not settle");
+  };
+  const held = () =>
+    waitUntil(
+      async () =>
+        (
+          (await (await request("/test-stats")).json()) as Record<
+            string,
+            unknown
+          >
+        )[`${kind}ImportPending`] === true,
+    );
+  const revoke = () =>
+    request("/revoke", {
+      userId: owner.id,
+      organizationId: owner.organization_id,
+      proofVersion: 1,
+    });
+  const release = () => request("/test-release-import", { kind });
+  return {
+    owner,
+    request,
+    token,
+    sessionId,
+    before,
+    upgrade,
+    held,
+    waitUntil,
+    revoke,
+    release,
+  };
+}
+
+test("revoke during deferred upgrade import refuses late public socket allocation", async () => {
+  const f = await deferredImportSession("upgrade");
+  const upgrade = f.upgrade();
+  try {
+    await f.held();
+    const revoked = await f.revoke();
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toMatchObject({
+      revoked: true,
+      retirement: { state: "confirmed", mode: "never_started" },
+    });
+  } finally {
+    await f.release();
+  }
+  expect((await upgrade).status).toBe(410);
+  expect(await (await f.request("/test-ledger")).json()).toMatchObject({
+    phase: "closed",
+    retirement: { acquisition: "never_started", proof: { state: "confirmed" } },
+  });
+  const after = (await (await f.request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  expect(after.sttOpened ?? 0).toBe(f.before.sttOpened ?? 0);
+  expect(after.admissions ?? 0).toBe(f.before.admissions ?? 0);
+});
+
+test("revoke joins a claimed opening across deferred imports before confirming no dispatch", async () => {
+  const f = await deferredImportSession("opening");
+  const upgrade = await f.upgrade();
+  expect(upgrade.status).toBe(101);
+  const socket = upgrade.webSocket;
+  if (!socket) throw Error("Expected the admitted public socket");
+  socket.accept();
+  socket.send(JSON.stringify({ t: "hello", token: f.token }));
+  await f.held();
+  expect(await (await f.request("/test-ledger")).json()).toMatchObject({
+    phase: "starting",
+    retirement: { acquisition: "opening", openingGeneration: 1 },
+  });
+  let acknowledged = false;
+  const revoke = f.revoke().then((result) => {
+    acknowledged = true;
+    return result;
+  });
+  try {
+    await f.waitUntil(
+      async () =>
+        ((await (await f.request("/test-ledger")).json()) as { phase: string })
+          .phase === "retiring",
+    );
+    expect(acknowledged).toBe(false);
+  } finally {
+    await f.release();
+  }
+  const revoked = await revoke;
+  expect(revoked.status).toBe(200);
+  expect(await revoked.json()).toMatchObject({
+    revoked: true,
+    retirement: { state: "confirmed", mode: "not_dispatched" },
+  });
+  expect(await (await f.request("/test-ledger")).json()).toMatchObject({
+    phase: "closed",
+    retirement: {
+      generation: 2,
+      openingGeneration: 1,
+      proof: { state: "confirmed", mode: "not_dispatched" },
+    },
+  });
+  const after = (await (await f.request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  expect(after.sttOpened ?? 0).toBe(f.before.sttOpened ?? 0);
+  expect(after.admissions ?? 0).toBe(f.before.admissions ?? 0);
+  expect(after.quota ?? 0).toBe(f.before.quota ?? 0);
+  const fenceCounts = (
+    (await (await f.request("/test-stats")).json()) as {
+      speechFenceCounts: Record<string, number>;
+    }
+  ).speechFenceCounts;
+  expect(fenceCounts[f.owner.organization_id]).toBe(1);
+});
+
+test("failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade", async () => {
+  const f = await deferredImportSession("closing");
+  await f.request("/test-reject-import", { kind: "closing" });
+  const revoke = f.revoke();
+  try {
+    await f.held();
+    expect((await f.upgrade()).status).toBe(410);
+    expect(await (await f.request("/test-ledger")).json()).toMatchObject({
+      phase: "minted",
+      retirement: { generation: 0 },
+    });
+  } finally {
+    await f.release();
+  }
+  const response = await revoke;
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    revoked: false,
+    retirement: { state: "unconfirmed" },
+  });
+  expect(await (await f.request("/test-ledger")).json()).toMatchObject({
+    phase: "minted",
+    retirement: { generation: 0 },
+  });
 });

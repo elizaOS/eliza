@@ -638,13 +638,42 @@ test("failed revocation delivery blocks teardown and original replay retries the
   await expect(run(() => appsService.requestDeletion(request()))).rejects.toMatchObject({
     code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
   });
-  const root = await claim("app_delete");
-  await expect(executeAppDeletion(root)).rejects.toMatchObject({
-    code: "APP_DELETION_RECOVERY_PENDING",
-  });
+  const original = await appDeletionOperations.admit(request());
+  if (!original) throw new Error("No original deletion");
+  const expectUnclaimed = async () => {
+    expect(await jobsRepository.claimPendingJobs({ type: "app_delete", limit: 1 })).toEqual([]);
+    expect(
+      await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+        type: "app_delete",
+        sharedTypes: ["app_delete"],
+        maxRunning: 1,
+        limit: 1,
+      }),
+    ).toEqual([]);
+    const [pending] = await dbWrite.select().from(jobs).where(eq(jobs.id, original.job.id));
+    expect(pending?.status).toBe("pending");
+    expect(pending?.execution_generation).toBeNull();
+    expect(pending?.retryable_requeues).toBe(0);
+  };
+  await expectUnclaimed();
+  // Opaque storage and malformed acknowledgements cannot authorize execution.
+  await dbWrite
+    .update(jobs)
+    .set({ result_storage: "r2", result_key: "unknown-revocation", result: null })
+    .where(eq(jobs.id, original.job.id));
+  await expectUnclaimed();
+  for (const revocationsConfirmed of [false, "true"]) {
+    await dbWrite
+      .update(jobs)
+      .set({ result_storage: "inline", result_key: null, result: { revocationsConfirmed } })
+      .where(eq(jobs.id, original.job.id));
+    await expectUnclaimed();
+  }
   fail = false;
-  expect((await run(() => appsService.requestDeletion(request())))?.jobId).toBe(root.jobId);
+  expect((await run(() => appsService.requestDeletion(request())))?.jobId).toBe(original.job.id);
   expect(deliveries).toEqual([key, key]);
+  const root = await claim("app_delete");
+  expect(root.jobId).toBe(original.job.id);
   await executeAppDeletion(root);
   expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
 });
@@ -840,12 +869,56 @@ test("suppressed GitHub completion receipt retains an explicit operator recovery
 
 test("the real apps worker completes the API's original deletion job before success replay", async () => {
   const { ProvisioningJobService } = await import("../../../node/provisioning-worker");
-  const response = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
-    method: "DELETE",
+  const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+  const key = randomUUID();
+  await dbWrite.insert(schema.apiKeys).values({
+    id: key,
+    name: "mobile",
+    key_hash: key,
+    key_prefix: "eliza_mobile_",
+    user_id: userId,
+    organization_id: organizationId,
+    source_app_id: appId,
   });
+  const revocationStarted = Promise.withResolvers<void>();
+  const revocationDelivery = Promise.withResolvers<void>();
+  const responsePromise = runWithCloudBindingsAsync(
+    {
+      DATABASE_URL: "pglite://memory",
+      TEST_DATABASE_URL: "pglite://memory",
+      NODE_ENV: "test",
+      MOCK_REDIS: "1",
+      INFERENCE_ADMISSION_GATES: {
+        getByName: () => ({
+          fetch: async () => {
+            revocationStarted.resolve();
+            await revocationDelivery.promise;
+            return Response.json({ committed: true });
+          },
+        }),
+      },
+    },
+    () =>
+      router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+        method: "DELETE",
+      }),
+  );
+  const service = new ProvisioningJobService();
+  try {
+    await revocationStarted.promise;
+    // Admission has committed, but the external revocation is still in flight.
+    await service.processPendingJobs(1, { jobTypes: ["app_delete"] });
+  } finally {
+    revocationDelivery.resolve();
+  }
+  const response = await responsePromise;
   expect(response.status).toBe(202);
   const body = await response.json();
-  const service = new ProvisioningJobService();
+  const ready = await jobsRepository.findByIdForWrite(body.jobId);
+  expect(ready?.status).toBe("pending");
+  expect(ready?.execution_generation).toBeNull();
+  expect(ready?.retryable_requeues).toBe(0);
+  expect(ready?.result?.revocationsConfirmed).toBe(true);
   await service.processPendingJobs(1, { jobTypes: ["app_delete"] });
   const job = await jobsRepository.findByIdForWrite(body.jobId);
   expect(job?.status).toBe("completed");

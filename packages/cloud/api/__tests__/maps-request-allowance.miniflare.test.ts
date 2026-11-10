@@ -22,6 +22,7 @@ describe("Maps shared allowance", () => {
       ],
       target: "browser",
       format: "esm",
+      conditions: ["eliza-source"],
       plugins: [
         {
           name: "explicit-env-only",
@@ -83,6 +84,7 @@ describe("Maps shared allowance", () => {
       },
     };
     mf = new Miniflare(config);
+    await mf.ready;
   });
   afterAll(async () => {
     await mf?.dispose();
@@ -263,6 +265,70 @@ describe("Maps shared allowance", () => {
     expect(JSON.parse(await missing.text()).error.code).toBe(
       "maps_allowance_unconfigured",
     );
+  });
+  test("Maps retains original receipts and first outcomes across allowance windows", async () => {
+    const gate = "maps-window-receipts";
+    const now = Date.parse("2027-01-01T00:02:00Z");
+    const later = now + 3_600_000;
+    const original = mapsRequest("original");
+    original.policy.effectiveUntil = new Date(now + 1000).toISOString();
+    expect((await post("/maps/admit", original, gate, now)).status).toBe(200);
+    expect(
+      (await post("/maps/admit", mapsRequest("new-window"), gate, later))
+        .status,
+    ).toBe(200);
+    expect(
+      (await post("/maps/admit", mapsRequest("original"), gate, later)).status,
+    ).toBe(409);
+    // Usage belongs to the original admission even after its policy expired.
+    expect(
+      (
+        await post(
+          "/maps/usage",
+          { ...original, outcome: "cancelled" },
+          gate,
+          later,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/maps/usage",
+          { ...original, outcome: "succeeded" },
+          gate,
+          later,
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      await (
+        await post(
+          "/test/read",
+          { key: "maps:usage:key:maps-key:original" },
+          gate,
+        )
+      ).json(),
+    ).toEqual({
+      operation: "search",
+      userId: "maps-user",
+      admittedAt: now,
+      windowStart: Math.floor(now / 3_600_000) * 3_600_000,
+      outcome: "cancelled",
+    });
+    const otherCredential = mapsRequest("original");
+    otherCredential.credential.credentialId = "maps-other-key";
+    expect(
+      (await post("/maps/admit", otherCredential, gate, later)).status,
+    ).toBe(200);
+    expect(
+      await (
+        await post("/test/read", { key: "maps:allowance:window" }, gate)
+      ).json(),
+    ).toMatchObject({
+      start: Math.floor(later / 3_600_000) * 3_600_000,
+      used: 2,
+    });
   });
   test("Maps refuses malformed policy, expired windows, and credential revocation before admission", async () => {
     const gate = "maps-revocation",

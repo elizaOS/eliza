@@ -4,11 +4,14 @@
     "packages/agent/src/api/agent-admin-routes.ts",
     "packages/agent/src/api/runtime-replacement-ownership.ts",
     "packages/agent/src/api/server.ts",
+    "packages/core/src/runtime/room-handler-queue.ts",
+    "plugins/plugin-wallet/src/api/wallet-routes.ts",
+    "packages/agent/src/config/feature-flags.ts",
     "packages/agent/test/agent-lifecycle-stop-start.test.ts"
   ],
   "bounds": {
-    "domain": "One boot/restart owner and two admitted turns.",
-    "scope": "Finite protocol safety; no temporal/fairness claim."
+    "domain": "One boot/restart owner, two admitted turns and one successfully persisted wallet-primary change while initial Start is held. The replacement refinement has distinct outgoing/replacement runtimes, one room, two FIFO callbacks, one shared abort signal and up to three build attempts from running or paused.",
+    "scope": "Finite lifecycle/admission safety, conditional initial-boot and replacement-drain progress. A saved configuration and deferred-reload reason survive initial boot; API replacement publication clears the reason but does not prove wallet configuration, readiness or final activation outcome. Dispose-before-build and post-publication activation remain outside these API projections."
   },
   "cases": [
     {
@@ -17,7 +20,51 @@
       "init": "init",
       "step": "step",
       "invariants": ["safety"],
-      "temporal": [],
+      "temporal": ["InitialBootSettles", "InitialBootWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "InitialBootSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finishInitialBoot: an admitted host factory eventually returns a runtime or fails. Provider success and wall-clock completion are not assumed.",
+            "The checked wallet request commits and completes while the initial boot is held. Arbitrary config/body-read schedules, transport cancellation and wallet service readiness remain external."
+          ]
+        },
+        {
+          "property": "InitialBootWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A host boot callback may never settle, while competing controls and wallet reloads retain its admission fence."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "api_runtime_replacement",
+      "main": "api_runtime_replacement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["ReplacementCompletes", "ReplacementWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "ReplacementCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: an active old-runtime callback eventually settles with success or failure; queued non-cancelled callbacks also settle; a ready publication is eventually scheduled.",
+            "This property starts only after a replacement build succeeds and closes admission. It assumes no wall-clock bound or successful database result, and does not require a replacement build to succeed."
+          ]
+        },
+        {
+          "property": "ReplacementWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. Cancelling the queued callback cannot settle an active callback which never returns, so publication can remain pending indefinitely."
+          ]
+        }
+      ],
       "maxSteps": 50,
       "samples": 1000
     }

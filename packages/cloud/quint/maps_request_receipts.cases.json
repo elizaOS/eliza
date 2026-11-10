@@ -1,0 +1,56 @@
+{
+  "sources": [
+    "packages/cloud/api/src/maps-request-allowance-controller.ts",
+    "packages/cloud/api/src/inference-admission-gate.ts",
+    "packages/cloud/api/src/lib/maps-request-admission.ts",
+    "packages/cloud/shared/src/lib/services/maps-request-policy.ts",
+    "packages/cloud/api/__tests__/maps-request-allowance.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/maps-request-allowance-worker.ts",
+    "packages/cloud/quint/check-maps-request-buckets.mjs",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "bounds": {
+    "domain": "One initially empty organization Durable Object, two credential identities, three credential/request keys, two allowance windows, integer clock 0..3, and an allowance of two requests per window. Calls preserve one original operation/user binding or conflict with it.",
+    "atomicity": "Durable Object SQLite transactions atomically retain the window count and receipt. The production gate serializes credential revocation with each controller operation. Restart and transaction abort preserve durable state.",
+    "progress": "A matching terminal usage observation eventually settles while its credential remains active if that observation is continuously scheduled and the transaction completes. This assumes a supplied observation, not provider success.",
+    "conformance": "The existing strict hook runs the real production controller and actual Miniflare SQLite storage, including concurrent admission, acknowledgement loss, first-terminal usage, restart, and count rollover. Credential authority and clock are explicit fixture boundaries."
+  },
+  "limitations": [
+    "Paired bucket arithmetic is delegated to maps_request_buckets.qnt. The finite model treats that predicate as an independent admission condition.",
+    "Configuration selection, policy freshness and bucket availability are abstract per-request guard inputs. The caller's primary SQL policy lock, real credential verification, authorization changes, organization routing, and provider dispatch are separate protocols.",
+    "Historical receipts are retained for both windows. There is no modeled receipt purge or request-ID reuse. Outcome observation does not refund the allowance.",
+    "The fixed allowance omits live configuration changes, arbitrary time ranges and numeric limits. The model does not claim monetary accounting, backend migration, arbitrary crash scheduling, or general TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "maps-request-receipts",
+      "main": "maps_request_receipts",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "boundedAllowance",
+        "countMatchesReceipts",
+        "oneAdmissionPerReceipt",
+        "firstTerminalOutcomeWins",
+        "unknownReplyRetainsReceipt",
+        "windowNeverRetreats"
+      ],
+      "temporal": ["ObservedUsageSettles"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "ObservedUsageSettles",
+          "expect": "holds",
+          "assumptions": [
+            "For each outstanding request, a matching terminal observation is weakly fair while its credential remains valid.",
+            "The durable transaction eventually completes. Credential revocation can end the observation obligation. No provider completion or automatic observation is assumed."
+          ]
+        }
+      ]
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-maps-request-buckets.mjs"
+}

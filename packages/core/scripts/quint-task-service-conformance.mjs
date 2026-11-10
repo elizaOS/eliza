@@ -7,12 +7,15 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.ts";
 
 const core = path.resolve(import.meta.dirname, "..");
-const models = ["TaskService", "TaskRetirement"].map((name) =>
-	path.join(core, "quint", `${name}.qnt`),
+const models = ["TaskService", "TaskRetirement", "TaskSchedulerQueryDrain"].map(
+	(name) => path.join(core, "quint", `${name}.qnt`),
 );
 if (process.argv[2]) assert(models.includes(path.resolve(process.argv[2])));
 const test = "test/task-scheduler-model.test.ts";
 const required = [
+	"runtime close drains its detached adapter query outside the dirty snapshot",
+	"service stop drains a shared query before its runtime storage closes",
+	"scheduler stop drains its detached query while a replacement registration runs",
 	"stop drains daemon preflight before runtime storage closes",
 	"stop drains an admitted by-id read and refuses its late worker",
 	"stop drains every overlapping nonblocking owner and blocks an exclusive replacement",
