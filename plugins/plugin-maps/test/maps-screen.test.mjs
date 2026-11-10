@@ -1120,3 +1120,14 @@ test("hiding without background admission during reroute retains the admitted ro
   assert.deepEqual(surface.snapshot().origin, route.from);
   f.screen.dispose();
 });
+
+test("retiring a provider clears a recentered location without a selected place", async () => {
+  const f = fixture();
+  f.setDeviceFix(f.fix());
+  f.screen.recenter();
+  await settle();
+  assert.deepEqual(f.screen.view().map.selected, OFF_ROUTE);
+  f.screen.release(false);
+  assert.equal(f.screen.view().map.selected, undefined);
+  f.screen.dispose();
+});

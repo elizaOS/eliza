@@ -379,6 +379,8 @@ export class MapsScreenController {
     clearTimeout(this.locationTimeout);
     this.locationTimeout = undefined;
     this.recenterOnly = false;
+    this.recenterSelection = undefined;
+    this.recenterPosition = undefined;
     this.sharing?.abort.abort();
     this.sharing = undefined;
     this.host.voice.pause();
