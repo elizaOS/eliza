@@ -47,7 +47,6 @@ pins of the same package; only those exact bytes may be cleaned after an
 instrumented update. Device-owner and network changes remain explicit caller
 policy and must be restored by the cleanup callback.
 
-
 For process-death qualification, an explicit single-method scenario can call
 `context.interruptPhase(name, {args, markerPath, timeoutMs})` from
 `collectVariant` after successful setup instrumentation. The app must write a
