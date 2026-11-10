@@ -2,7 +2,9 @@
 // A running-runtime restart retains that runtime while the replacement builds.
 // Repeated start requests preserve the pending phase. The replacement closes
 // room admission and drains existing turns before publishing. Two active turns
-// bound the queue projection. Host disposal and process failures are external.
+// bound the queue projection. One persisted wallet configuration change during
+// initial Start is deferred rather than entering a second host boot callback.
+// Host disposal and process failures are external.
 module api_lifecycle {
   var s: {
     phase: str,
@@ -10,7 +12,10 @@ module api_lifecycle {
     boot: bool,
     stopping: bool,
     active: int,
-    cordoned: bool
+    cordoned: bool,
+    configSaved: bool,
+    reloadPublished: bool,
+    pendingReload: bool
   }
 
   action init = s' = {
@@ -19,7 +24,10 @@ module api_lifecycle {
     boot: false,
     stopping: false,
     active: 0,
-    cordoned: false
+    cordoned: false,
+    configSaved: false,
+    reloadPublished: false,
+    pendingReload: false
   }
 
   // /start begins one boot when no runtime or other lifecycle owner exists.
@@ -123,16 +131,32 @@ module api_lifecycle {
   // runtime-replacement-ownership.ts closes admission before quiesceAll.
   action cordon = all {
     s.runtime,
+    s.phase == "restarting",
+    s.boot,
     not(s.stopping),
     s' = { ...s, cordoned: true }
   }
 
   action replace = all {
     s.cordoned,
+    s.phase == "restarting",
+    s.boot,
     not(s.stopping),
     s.active == 0,
-    s' = { ...s, cordoned: false, phase: "running", boot: false }
+    s' = { ...s, cordoned: false, phase: "running", boot: false,
+      reloadPublished: true, pendingReload: false }
   }
+
+  // The checked scenario holds initial boot until the wallet request settles.
+  // Its real config write persists, applyRuntimeRestart declines during Start,
+  // and triggerWalletRuntimeReload records the pending restart reason.
+  action walletReloadDuringStart = all {
+    s.phase == "starting", s.boot, not(s.configSaved),
+    s' = { ...s, configSaved: true, reloadPublished: false, pendingReload: true }
+  }
+  action finishInitialBoot = any { bootSuccess, bootFailure }
+  temporal InitialBootWithoutFairness = (s.phase == "starting").leadsTo(s.phase != "starting")
+  temporal InitialBootSettles = finishInitialBoot.weakFair(s).implies(InitialBootWithoutFairness)
 
   action legacyResume = s' = { ...s, phase: "running" }
   action legacyPause = s' = { ...s, phase: "paused" }
@@ -150,7 +174,7 @@ module api_lifecycle {
   action step = any {
     start, startRetry, existingStart, bootSuccess, bootFailure, restart,
     restartFailure, stop, stopSettles, pause, resume, enterTurn, exitTurn,
-    cordon, replace, idle
+    cordon, replace, walletReloadDuringStart, idle
   }
   action legacyStep = any {
     step, legacyResume, legacyPause, legacyExistingStart, legacyRestartDuringBoot
@@ -166,7 +190,8 @@ module api_lifecycle {
       "restarting", "error"
     )),
     s.boot implies s.phase.in(Set("starting", "restarting")),
-    s.stopping implies s.runtime and not(s.boot)
+    s.stopping implies s.runtime and not(s.boot),
+    s.configSaved and not(s.reloadPublished) implies s.pendingReload
   }
 
   run resumeWithoutRuntimeRegressionTest = init
@@ -187,7 +212,12 @@ module api_lifecycle {
     .then(enterTurn).then(restart).then(startRetry).then(cordon)
     .then(exitTurn).then(replace).expect(safety and not(s.boot))
   run drainBeforeReplaceTest = init.then(start).then(bootSuccess)
-    .then(enterTurn).then(cordon).then(exitTurn).then(replace).expect(safety)
+    .then(enterTurn).then(restart).then(cordon).then(exitTurn).then(replace).expect(safety)
+  run walletReloadDefersToInitialBootOwnerTest = init.then(start).then(walletReloadDuringStart)
+    .expect(safety and s.phase == "starting" and s.boot)
+    .then(bootSuccess).expect(safety and s.configSaved and s.pendingReload and not(s.reloadPublished))
+    .then(restart).then(cordon).then(replace)
+    .expect(safety and not(s.pendingReload) and s.reloadPublished)
 }
 
 // agent-admin-routes.ts retains the old runtime and reported phase if a normal

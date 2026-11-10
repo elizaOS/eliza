@@ -29,7 +29,7 @@ const requiredTests = retirement
   : [
       "boots a new runtime after a successful stop",
       "boots a new runtime after teardown reports a failure",
-      "rejects pause and resume without a live runtime or during boot and teardown over HTTP",
+      "rejects competing lifecycle and wallet reloads during HTTP boot and teardown",
       "owns HTTP teardown before a disposer re-enters close",
       "retains paused ownership after failed builds and drains admitted work before HTTP replacement",
     ];
@@ -123,6 +123,8 @@ for (const source of [
         "packages/agent/src/api/runtime-replacement-ownership.ts",
         "packages/agent/src/api/server.ts",
         "packages/core/src/runtime/room-handler-queue.ts",
+        "plugins/plugin-wallet/src/api/wallet-routes.ts",
+        "packages/agent/src/config/feature-flags.ts",
       ]),
   "packages/scripts/lib/vitest-conformance.ts",
 ]) {

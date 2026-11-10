@@ -95,14 +95,16 @@
       "packages/agent/src/api/runtime-replacement-ownership.ts",
       "packages/agent/src/api/server.ts",
       "packages/core/src/runtime/room-handler-queue.ts",
+      "plugins/plugin-wallet/src/api/wallet-routes.ts",
+      "packages/agent/src/config/feature-flags.ts",
       "packages/agent/test/agent-lifecycle-stop-start.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One initial boot or restart owner and two admitted turns. A separate normal-replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
-      "Five maintained conformance cases include real HTTP/PGlite paused null/thrown build rollback, cancellation of queued work while active work retains ownership, closed admissions, active database commit before publication and replacement admission. Error-state rollback, dispose-before-build hosts, post-publication activation failures, adapter disposal, authentication and multi-process coordination remain external.",
-      "Replacement drain progress assumes weak fairness of callback success/failure settlement and publication. An expected unfair counterexample retains active work indefinitely. There is no implementation trace-refinement, wall-clock deadline or unbounded progress proof."
+      "One initial boot/restart owner, two admitted turns and one persisted wallet-primary update while Start is held. The replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
+      "Five maintained cases include authenticated HTTP/PGlite wallet reload admission with ENABLE_CLOUD_WALLET on, actual configuration persistence and pending-restart status, paused build rollback, queued cancellation, closed admissions and active commit before replacement. The saved-config and API replacement-publication abstraction does not assert final activation, wallet readiness or that a returned runtime applied the configuration.",
+      "Initial boot and replacement drain progress assume fair factory or callback success/failure settlement and continuation; expected unfair witnesses preserve pending work. Idle runtime-less automatic boots, arbitrary config/body-read races, post-publication activation, authentication and multi-process coordination remain partial. Restore pre-disposal and adapter retirement are separate runtime-lifecycle projections. No wall-clock or unbounded refinement proof is claimed."
     ]
   },
   {
