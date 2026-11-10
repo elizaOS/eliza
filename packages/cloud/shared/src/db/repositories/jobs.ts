@@ -34,6 +34,7 @@ import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
+import { apps } from "../schemas/apps";
 import { containers } from "../schemas/containers";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
@@ -609,12 +610,19 @@ export class JobsRepository {
   async findAppDeployProvisionHandoff(
     appId: string,
     organizationId: string,
-    userId: string,
     generation: string,
-  ): Promise<string | undefined> {
+  ): Promise<{ jobId: string; containerId: string } | undefined> {
     const receipts = await dbWrite
-      .select({ containerId: containers.id })
+      .select({ jobId: jobs.id, containerId: containers.id })
       .from(containers)
+      .innerJoin(
+        apps,
+        and(
+          eq(apps.id, appId),
+          eq(apps.organization_id, containers.organization_id),
+          eq(apps.created_by_user_id, containers.user_id),
+        ),
+      )
       .innerJoin(
         jobs,
         and(
@@ -630,14 +638,13 @@ export class JobsRepository {
       .where(
         and(
           eq(containers.organization_id, organizationId),
-          eq(containers.user_id, userId),
           eq(containers.project_name, appId),
           sql`${containers.metadata}->>'appId' = ${appId}`,
           sql`${containers.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
         ),
       )
       .limit(2);
-    return receipts.length === 1 ? receipts[0].containerId : undefined;
+    return receipts.length === 1 ? receipts[0] : undefined;
   }
 
   /** Complete primary inventory before an app deletion snapshots owned resources. */

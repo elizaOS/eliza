@@ -13,10 +13,12 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { containersRepository } from "../../../db/repositories/containers";
 import { jobsRepository } from "../../../db/repositories/jobs";
+import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appDeploymentStatusEnum, appReviewStatusEnum, apps } from "../../../db/schemas/apps";
 import { containers } from "../../../db/schemas/containers";
+import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { generations } from "../../../db/schemas/generations";
 import { jobExecutionLeases } from "../../../db/schemas/job-execution-leases";
 import { jobs } from "../../../db/schemas/jobs";
@@ -33,7 +35,8 @@ import {
 import { DefaultAppDeployRunner } from "../app-deploy-runner";
 import { appDeploymentsService } from "../app-deployments";
 import { appsService } from "../apps";
-import { ContainerJobEnqueuer } from "../container-job-service";
+import { buildContainerExecutorDeps } from "../container-executor-deps";
+import { ContainerJobEnqueuer, setContainerExecutorDeps } from "../container-job-service";
 import { containerJobsWriter } from "../container-jobs-writer";
 import { JOB_TYPES } from "../provisioning-job-types";
 
@@ -49,12 +52,14 @@ beforeAll(async () => {
     users,
     userCharacters,
     agentSandboxes,
+    agentNodeIncarnationHistories,
     apiKeys,
     generations,
     appDeploymentStatusEnum,
     appReviewStatusEnum,
     apps,
     containers,
+    dockerNodes,
     jobs,
     jobExecutionLeases,
     usageRecords,
@@ -142,6 +147,7 @@ async function persistContainerForDeployment(
       project_name: deployment.appId,
       organization_id: deployment.organizationId,
       user_id: deployment.userId,
+      image_tag: "ghcr.io/elizaos/fixture:latest",
       metadata: { appId: deployment.appId, deploymentGeneration: deployment.deploymentGeneration },
     })
     .returning({ id: containers.id });
@@ -326,6 +332,73 @@ test(
     expect(await appDeploymentsService.getLatestDeployment(deployment.appId)).toMatchObject({
       status: "READY",
       vercelUrl: publishedUrl,
+    });
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a live provision child links its container when its original parent is terminal",
+  async () => {
+    const deployment = await seedInterruptedDeployment();
+    const containerId = await persistContainerForDeployment(deployment);
+    const child = await new ContainerJobEnqueuer(containerJobsWriter).enqueueProvision({
+      containerId,
+      organizationId: deployment.organizationId,
+      userId: deployment.userId,
+      deploymentGeneration: deployment.deploymentGeneration,
+    });
+    const completedAt = new Date();
+    await dbWrite
+      .update(jobs)
+      .set({ status: "completed", completed_at: completedAt, execution_quiesced_at: completedAt })
+      .where(eq(jobs.id, deployment.deploymentGeneration));
+    const nodeId = `fixture-${crypto.randomUUID()}`;
+    const hostname = "fixture.example.com";
+    await dbWrite.insert(dockerNodes).values({ node_id: nodeId, hostname });
+
+    const env = {
+      APPS_CONTAINERS_ENABLED: "1",
+      CONTAINERS_DOCKER_NODES: `${nodeId}:${hostname}:8`,
+      CONTAINERS_SSH_KEY: "Zml4dHVyZQ==",
+    };
+    const previousEnv = Object.entries(env).map(([key]) => [key, process.env[key]] as const);
+    Object.assign(process.env, env);
+    try {
+      setContainerExecutorDeps((authority) => {
+        const deps = buildContainerExecutorDeps(authority);
+        deps.provider.provision = async () => ({
+          containerId: "fixture-docker-id",
+          hostPort: 3000,
+          network: "fixture-network",
+          nodeId,
+          nodeHost: hostname,
+        });
+        return { ...deps, onRouteAdded: undefined, probeAppReachable: undefined };
+      });
+      await new ProvisioningJobService().processPendingJobs(5, {
+        jobTypes: [JOB_TYPES.CONTAINER_PROVISION],
+      });
+    } finally {
+      setContainerExecutorDeps(buildContainerExecutorDeps);
+      for (const [key, value] of previousEnv) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    expect(await readJob(child.id)).toMatchObject({ status: "completed" });
+    expect(await readJob(deployment.deploymentGeneration)).toMatchObject({
+      status: "completed",
+      completed_at: completedAt,
+    });
+    const linked = await appsService.findByDeploymentGeneration(
+      deployment.appId,
+      deployment.deploymentGeneration,
+    );
+    expect(linked).toMatchObject({
+      deployment_status: "deployed",
+      metadata: { deploymentGeneration: deployment.deploymentGeneration, containerId },
     });
   },
   TEST_TIMEOUT,
