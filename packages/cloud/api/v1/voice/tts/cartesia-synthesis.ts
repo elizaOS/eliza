@@ -134,6 +134,8 @@ function safeCartesiaRestMessage(status: number): string {
  */
 export function makeWorkersCartesiaWebSocketFactory(
   beforeProviderDispatch?: () => Promise<void>,
+  /** The HTTP status of an upgrade Cartesia refused; no socket ever opened. */
+  onUpgradeRefused?: (status: number) => void,
 ): CartesiaWebSocketFactory {
   return (url, options) => {
     const openListeners: Array<() => void> = [];
@@ -161,6 +163,7 @@ export function makeWorkersCartesiaWebSocketFactory(
         });
         const ws = (response as unknown as { webSocket?: WebSocket }).webSocket;
         if (!ws) {
+          onUpgradeRefused?.(response.status);
           throw new Error(
             `Cartesia WebSocket upgrade failed (status ${response.status})`,
           );
@@ -267,12 +270,20 @@ export async function synthesizeCartesiaWav(args: {
   timeoutMs?: number;
   beforeProviderDispatch?: () => Promise<void>;
 }): Promise<CartesiaWavResult> {
+  // The upgrade status survives the host adapter's socket-error mapping,
+  // which carries no status; a refused upgrade is a refusal before audio.
+  let upgradeStatus: number | undefined;
   const adapter = new CartesiaSonicTtsAdapter({
     apiKey: args.apiKey,
     voiceId: args.voiceId,
     websocketFactory:
       args.webSocketFactory ??
-      makeWorkersCartesiaWebSocketFactory(args.beforeProviderDispatch),
+      makeWorkersCartesiaWebSocketFactory(
+        args.beforeProviderDispatch,
+        (status) => {
+          upgradeStatus = status;
+        },
+      ),
     sampleRate: args.sampleRate,
     encoding: "pcm_s16le",
   });
@@ -309,11 +320,14 @@ export async function synthesizeCartesiaWav(args: {
         pcmBytes += event.bytes.byteLength;
       },
       onProviderError: (event) => {
-        const status = event.statusCode ?? 502;
+        const status = event.statusCode ?? upgradeStatus ?? 502;
+        // No audio yet means the provider refused the request itself; the
+        // route releases the hold for a known refusal instead of charging.
         providerError = new CartesiaRestTtsError(
           status,
           classifyCartesiaRestFailure(status),
           safeCartesiaRestMessage(status),
+          pcmBytes === 0,
         );
         signalProviderError?.();
       },
@@ -343,6 +357,12 @@ export async function synthesizeCartesiaWav(args: {
         }, timeoutMs);
       }),
     ]);
+  } catch (error) {
+    // The adapter rejects `opened` with its own socket error after it has
+    // reported the provider error; the classified one carries the status
+    // the route's billing needs.
+    if (providerError) throw providerError;
+    throw error;
   } finally {
     if (timeoutId !== null) clearTimeout(timeoutId);
   }
