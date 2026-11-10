@@ -610,7 +610,14 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     const url = new URL(`2dtiles/${request.z}/${request.x}/${request.y}`, TILES_URL);
     url.searchParams.set("session", session.token);
     url.searchParams.set("key", this.apiKey);
-    return upstreamFetch(url, { method: "GET" }, signal, this.fetchImpl, [200, 401, 403, 404]);
+    // Fetch the current tile without retaining provider content in an HTTP cache.
+    return upstreamFetch(
+      url,
+      { method: "GET", cache: "no-store" },
+      signal,
+      this.fetchImpl,
+      [200, 401, 403, 404],
+    );
   }
 
   private tileSessionKey(): string {

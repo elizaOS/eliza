@@ -189,6 +189,8 @@ export interface MapsScreenView {
   noResults: boolean;
   emptyQuery: boolean;
   place?: {
+    origin: "manual" | "location" | "saved" | "provider";
+    providerId?: string;
     name: string;
     meta: string;
     address: string;
@@ -1390,6 +1392,8 @@ export class MapsScreenController {
       const existing = this.savedFor(selected);
       const detail = this.detail();
       view.place = {
+        origin: selected.origin,
+        ...(selected.providerId ? { providerId: selected.providerId } : {}),
         name: selected.label,
         meta:
           (selected.origin === "saved"

@@ -613,7 +613,13 @@ describe("Google Map Tiles", () => {
         });
       const status = tileStatus();
       return status === 200
-        ? new Response(PNG, { headers: { "content-type": "image/png" } })
+        ? new Response(PNG, {
+            headers: {
+              "content-type": "image/png",
+              "cache-control": "private, max-age=30, must-revalidate",
+              etag: '"google-tile-fixture"',
+            },
+          })
         : new Response("denied", { status });
     });
   }
@@ -638,6 +644,7 @@ describe("Google Map Tiles", () => {
     );
     expect(tileCall?.url.searchParams.get("session")).toBe("session-1");
     expect(tileCall?.url.searchParams.get("key")).toBe(KEY);
+    expect(tileCall?.init.cache).toBe("no-store");
   });
 
   test("a refused session is renewed once", async () => {
@@ -689,7 +696,7 @@ describe("Google Map Tiles", () => {
     );
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toBe("image/png");
-    expect(ok.headers.get("cache-control")).toBe("private, max-age=86400");
+    expect(ok.headers.get("cache-control")).toBe("no-store");
     expect(new Uint8Array(await ok.arrayBuffer())).toEqual(PNG);
     const jsonTile = await mounted().request(
       "/api/v1/maps/tiles/2/1/3",
