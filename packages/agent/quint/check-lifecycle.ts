@@ -15,6 +15,7 @@ const requiredTests = [
   "boots a new runtime after teardown reports a failure",
   "rejects pause and resume without a live runtime or during boot and teardown over HTTP",
   "owns HTTP teardown before a disposer re-enters close",
+  "retains paused ownership after failed builds and drains admitted work before HTTP replacement",
 ];
 const output = testOutputPath("quint-agent-lifecycle");
 await mkdir(output, { recursive: true });
@@ -61,6 +62,11 @@ const inputs: Record<string, string> = {};
 for (const source of [
   model,
   testFile,
+  "packages/agent/src/api/agent-lifecycle-routes.ts",
+  "packages/agent/src/api/agent-admin-routes.ts",
+  "packages/agent/src/api/runtime-replacement-ownership.ts",
+  "packages/agent/src/api/server.ts",
+  "packages/core/src/runtime/room-handler-queue.ts",
   "packages/scripts/lib/vitest-conformance.ts",
 ]) {
   inputs[source] = createHash("sha256")

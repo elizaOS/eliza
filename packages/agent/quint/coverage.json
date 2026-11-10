@@ -94,14 +94,15 @@
       "packages/agent/src/api/agent-admin-routes.ts",
       "packages/agent/src/api/runtime-replacement-ownership.ts",
       "packages/agent/src/api/server.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
       "packages/agent/test/agent-lifecycle-stop-start.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One initial boot or running-runtime restart owner and two admitted turns.",
-      "Pausing/error-state restart rollback, host adapter disposal, authentication and multi-process restart coordination remain external. The real HTTP conformance check covers start/stop while a restart retains its outgoing runtime.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One initial boot or restart owner and two admitted turns. A separate normal-replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
+      "Five maintained conformance cases include real HTTP/PGlite paused null/thrown build rollback, cancellation of queued work while active work retains ownership, closed admissions, active database commit before publication and replacement admission. Error-state rollback, dispose-before-build hosts, post-publication activation failures, adapter disposal, authentication and multi-process coordination remain external.",
+      "Replacement drain progress assumes weak fairness of callback success/failure settlement and publication. An expected unfair counterexample retains active work indefinitely. There is no implementation trace-refinement, wall-clock deadline or unbounded progress proof."
     ]
   },
   {

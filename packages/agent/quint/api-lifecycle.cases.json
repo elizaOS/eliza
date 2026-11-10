@@ -4,11 +4,12 @@
     "packages/agent/src/api/agent-admin-routes.ts",
     "packages/agent/src/api/runtime-replacement-ownership.ts",
     "packages/agent/src/api/server.ts",
+    "packages/core/src/runtime/room-handler-queue.ts",
     "packages/agent/test/agent-lifecycle-stop-start.test.ts"
   ],
   "bounds": {
-    "domain": "One boot/restart owner and two admitted turns.",
-    "scope": "Finite protocol safety; no temporal/fairness claim."
+    "domain": "One boot/restart owner and two admitted turns. The replacement refinement has distinct outgoing/replacement runtimes, one room, two FIFO callbacks, one shared abort signal and up to three build attempts from running or paused.",
+    "scope": "Finite lifecycle safety plus replacement drain progress under weak fairness of callback settlement and publication. The normal replacement refinement does not cover dispose-before-build hosts or post-publication activation failures."
   },
   "cases": [
     {
@@ -18,6 +19,33 @@
       "step": "step",
       "invariants": ["safety"],
       "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "api_runtime_replacement",
+      "main": "api_runtime_replacement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["ReplacementCompletes", "ReplacementWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "ReplacementCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: an active old-runtime callback eventually settles with success or failure; queued non-cancelled callbacks also settle; a ready publication is eventually scheduled.",
+            "This property starts only after a replacement build succeeds and closes admission. It assumes no wall-clock bound or successful database result, and does not require a replacement build to succeed."
+          ]
+        },
+        {
+          "property": "ReplacementWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. Cancelling the queued callback cannot settle an active callback which never returns, so publication can remain pending indefinitely."
+          ]
+        }
+      ],
       "maxSteps": 50,
       "samples": 1000
     }
