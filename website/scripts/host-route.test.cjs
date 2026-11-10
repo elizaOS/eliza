@@ -20,10 +20,17 @@ test('volOS root is host-specific and does not replace the Valhalla entrance', (
   assert.equal(routeForHost('', '/'), null);
 });
 
-test('deployment config keeps the proxy on the entrance paths only', () => {
+test('the entrance stays a static file and only volOS hosts rewrite', () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
-  assert.equal(config.proxy.entrypoint, 'website/proxy.js');
-  assert.deepEqual(config.proxy.matcher, ['/', '/index.html']);
+  assert.equal(config.proxy, undefined);
+  assert.deepEqual(config.rewrites, [
+    { source: '/', has: [{ type: 'host', value: 'valos.live' }], destination: '/volos/index.html' },
+    { source: '/index.html', has: [{ type: 'host', value: 'valos.live' }], destination: '/volos/index.html' },
+    { source: '/', has: [{ type: 'host', value: 'www.valos.live' }], destination: '/volos/index.html' },
+    { source: '/index.html', has: [{ type: 'host', value: 'www.valos.live' }], destination: '/volos/index.html' },
+    { source: '/', destination: '/home/index.html' },
+    { source: '/index.html', destination: '/home/index.html' }
+  ]);
   assert.deepEqual(config.redirects, [
     { source: '/app', destination: '/', permanent: false },
     { source: '/app/', destination: '/', permanent: false }

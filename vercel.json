@@ -2,12 +2,30 @@
   "framework": null,
   "buildCommand": "bash website/scripts/vercel-build.sh",
   "outputDirectory": "site-build",
-  "proxy": {
-    "entrypoint": "website/proxy.js",
-    "matcher": ["/", "/index.html"]
-  },
   "redirects": [
     { "source": "/app", "destination": "/", "permanent": false },
     { "source": "/app/", "destination": "/", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/", "has": [{ "type": "host", "value": "valos.live" }], "destination": "/volos/index.html" },
+    { "source": "/index.html", "has": [{ "type": "host", "value": "valos.live" }], "destination": "/volos/index.html" },
+    { "source": "/", "has": [{ "type": "host", "value": "www.valos.live" }], "destination": "/volos/index.html" },
+    { "source": "/index.html", "has": [{ "type": "host", "value": "www.valos.live" }], "destination": "/volos/index.html" },
+    { "source": "/", "destination": "/home/index.html" },
+    { "source": "/index.html", "destination": "/home/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)\\.(png|jpg|jpeg|webp|svg|gif|mp4|woff2)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=2592000, stale-while-revalidate=604800" }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(js|css)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
   ]
 }

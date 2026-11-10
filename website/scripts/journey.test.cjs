@@ -32,10 +32,12 @@ test('entrance and volOS copy stay honest', () => {
   assert.match(desk, /data-open="wallet"/);
   assert.match(desk, /LIVE TRADING OFF/);
   assert.match(desk, /Feed not connected/);
-  assert.match(home, /visual\.css/);
+  assert.doesNotMatch(home, /rel="stylesheet"/);
+  assert.match(home, /<style>/);
   assert.match(volos, /visual\.css/);
   assert.match(desk, /visual\.css/);
   assert.match(home, /rel="preload" as="image" href="\/assets\/heaven-poster\.jpg"/);
+  assert.doesNotMatch(home, /heaven-poster-720/);
   assert.match(home, /defer/);
   assert.match(home, /preload="none"/);
   assert.match(desk, /disabled/);

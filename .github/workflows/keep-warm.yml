@@ -1,0 +1,18 @@
+name: Keep warm
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping the public site and the Render health check
+        run: |
+          curl -fsS --retry 2 --max-time 20 -o /dev/null https://valhalla-app.xyz/
+          curl -sS -o /dev/null -w 'render %{http_code}\n' --max-time 90 https://valhalla-elizaos.onrender.com/health || true

@@ -8,9 +8,46 @@
   <link rel="canonical" href="https://valhalla-app.xyz/">
   <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="preload" as="image" href="/assets/heaven-poster.jpg" fetchpriority="high">
-  <link rel="stylesheet" href="/visual.css">
-  <link rel="stylesheet" href="/home.css">
   <title>ValhallaOS</title>
+  <style>
+:root{color-scheme:dark;--bg:#090a0c;--surface:#121316;--ink:#f4efe6;--muted:#b7b0a4;--line:rgba(244,239,230,.14);--gold:#d7b06a;--gold-ink:#1c160e;--radius:14px;--font:"Segoe UI",Tahoma,sans-serif;--text:15px;--small:13px;--title:clamp(28px,4vw,36px);--space:16px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:var(--text)}
+*{box-sizing:border-box}
+a{color:inherit}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+h1,p{margin:0}
+.page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+.topbar,footer{width:min(1440px,100%);margin:0 auto;padding-left:clamp(20px,4vw,56px);padding-right:clamp(20px,4vw,56px)}
+.topbar{min-height:64px;display:flex;align-items:center}
+.brand{display:inline-flex;align-items:center;gap:10px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:650;letter-spacing:.18em}
+.brand-mark{display:block;width:28px;height:28px}
+.citadel-main{position:relative;display:flex;flex:1;align-items:center;justify-content:center;min-height:0;padding:24px 0 32px}
+.stage-wrap.backdrop{position:absolute;inset:0;z-index:0;margin:0;overflow:hidden}
+.stage-wrap.backdrop .stage,.scene{position:absolute;inset:0}
+.scene{overflow:hidden;background:#101826}
+.still,.scene video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scene video{opacity:0}
+.scene.is-playing video{opacity:1}
+.motion-slot{position:absolute;z-index:5;left:12px;bottom:12px;margin:0}
+.motion-control{width:44px;height:44px;padding:0;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(16,24,38,.16);color:rgba(255,255,255,.68);opacity:.2;font:inherit;font-size:16px;line-height:1;cursor:pointer}
+.motion-control:hover,.motion-control:focus-visible,.motion-control.is-touched{opacity:1}
+.citadel-card{position:relative;z-index:3;width:min(400px,calc(100% - 32px));padding:28px 24px 24px;border:1px solid var(--line);border-radius:var(--radius);background:rgba(9,10,12,.84);box-shadow:0 16px 40px rgba(0,0,0,.4)}
+.citadel-card h1{margin-bottom:8px;color:var(--ink);font-size:var(--title);font-weight:650}
+#auth-status{margin:0 0 16px;color:var(--muted);font-size:var(--small);line-height:1.45}
+#google-sign-in,#magic-link button{display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;margin-top:8px;border:0;border-radius:10px;background:var(--gold);color:var(--gold-ink);font:inherit;font-size:var(--small);font-weight:650;cursor:pointer}
+#google-sign-in{background:transparent;color:var(--ink);border:1px solid var(--line)}
+#magic-link{display:grid;gap:8px;margin-top:16px}
+#magic-link label{color:var(--muted);font-size:var(--small)}
+#magic-link input{min-height:44px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:var(--text)}
+footer{display:flex;padding-top:8px;padding-bottom:20px;color:var(--muted);font-size:12px}
+footer p{max-width:42ch;line-height:1.5}
+@media (max-width:720px){
+.citadel-main{padding:16px 0 24px}
+.citadel-card{width:calc(100% - 24px);padding:24px 18px 20px}
+.topbar{min-height:0;padding-top:14px;padding-bottom:8px}
+}
+@media (prefers-reduced-motion:reduce){.scene video{transition:none}}
+  </style>
 </head>
 <body>
   <div class="page">
@@ -21,7 +58,7 @@
       <figure class="stage-wrap backdrop" aria-hidden="true">
         <div class="stage">
           <div class="scene" id="hero-scene">
-            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="720" decoding="async" fetchpriority="high">
+            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="725" decoding="async" fetchpriority="high">
             <video id="hero-video" muted loop playsinline preload="none"></video>
             <p class="motion-slot"><button class="motion-control" id="hero-motion" type="button" aria-pressed="false" aria-label="Play motion" title="Play motion">▶</button></p>
           </div>
