@@ -16,7 +16,7 @@ import { vector } from "@electric-sql/pglite/vector";
 import { logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
-import { initdbSnapshotPath, readInitdbSnapshot } from "./initdb-snapshot";
+import { loadInitdbSnapshot } from "./initdb-snapshot";
 import { isMemoryDataDir, withMemorySettings } from "./memory-settings";
 
 // User tables to VACUUM, and whether each has an HNSW or IVFFlat index.
@@ -448,10 +448,19 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     // An empty in-memory database starts from the bundled initdb snapshot when
     // there is one, so PGlite never creates (and keeps) its temporary initdb
     // instance. See initdb-snapshot.ts.
-    const snapshot = readInitdbSnapshot(initdbSnapshotPath(options));
+    const snapshot = loadInitdbSnapshot(options);
+    if (snapshot?.skipped.length) {
+      logger.warn(
+        { src: "plugin:sql", skipped: snapshot.skipped, using: snapshot.path },
+        "pglite: skipped an unusable snapshot (unreadable, too large or not gzip)"
+      );
+    }
     if (snapshot) {
-      options = { ...options, loadDataDir: snapshot };
-      logger.debug({ src: "plugin:sql" }, "pglite: starting from the bundled initdb snapshot");
+      options = { ...options, loadDataDir: snapshot.blob };
+      logger.debug(
+        { src: "plugin:sql", path: snapshot.path },
+        "pglite: starting from the bundled initdb snapshot"
+      );
     }
     options = withMemorySettings(options);
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {

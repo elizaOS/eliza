@@ -1,4 +1,4 @@
-# Alpha agent on dstack
+# Agent on dstack
 
 Reproducible deployment of a fresh Eliza agent in a dstack CVM (#31018, #31328).
 Text runs on Cerebras; embeddings and speech use Eliza Cloud or an
@@ -12,8 +12,8 @@ Nothing secret is committed, rendered into compose or printed.
 ## Inputs
 
 - `$D/deployment.json`: copy `deployment.example.json` and fill in the agent ID,
-  dstack OS image hash, KMS/VMM endpoints and pins, and the stable `publicOrigin`
-  (the phone APK pins this origin).
+  dstack OS image hash, KMS/VMM endpoints and pins, stable `publicOrigin`,
+  explicit `textProvider`, models, processor approval and character. The client pins this origin.
 - `$D/authority.pem` and `$D/authority.pub.pem`: Ed25519 release authority.
 - `$D/secrets.json` (mode 0600): `CEREBRAS_API_KEY`, `ELIZAOS_CLOUD_API_KEY`,
   `ELIZA_API_TOKEN` and `ELIZA_VAULT_PASSPHRASE` (each at least 32 characters),
@@ -22,8 +22,8 @@ Nothing secret is committed, rendered into compose or printed.
 ## Deploy
 
 ```bash
-C="bun --conditions=eliza-source packages/app/scripts/alpha-dstack.ts"
-bash packages/app/deploy/dstack-alpha/build-image.sh --registry ghcr.io/<org>/eliza-alpha --out $D
+C="bun --conditions=eliza-source packages/app/scripts/dstack.ts"
+bash packages/app/deploy/dstack/build-image.sh --registry ghcr.io/<org>/eliza-dstack --out $D
 $C render --deployment $D/deployment.json --image $D/image.json --authority-pub $D/authority.pub.pem --out $D/r1
 bun packages/app/scripts/sign-confidential-release.ts --input $D/r1/release.json --key $D/authority.pem --output $D/r1/release.envelope.json
 $C encrypt-env --deployment $D/deployment.json --out-dir $D/r1 --secrets $D/secrets.json --authority-pub $D/authority.pub.pem --launch-key $D/authority.pem
@@ -44,21 +44,25 @@ The compose uses a persistent `eliza-state` volume at `/data/eliza`,
 authenticates the encrypted launch variables against the signed release before
 the agent loads. The agent then admits itself through the `dstack-cpu` boot gate.
 
-The environment also seeds the `alpha-routines` pack (morning brief, reminders,
-nudge) in a disabled state. After the owner's timezone is set, enable a routine
-by posting its `metadata.enableTrigger` as the new `trigger` to
-`POST /api/lifeops/scheduled-tasks/:id/edit`. If onboarding later links Eliza
-Cloud, the agent config's service routing overrides these environment
-defaults. Keep text on Cerebras and speech on Cloud.
+This renderer currently supports Cerebras text inference. The deployment must
+select `textProvider: "cerebras"` and supply the approved endpoint; the measured
+runtime and signed processor policy use that same endpoint and exact model names.
+The deployment's character is also measured. No product routine pack is enabled.
+A consumer that needs routines registers them through the scheduling pack API and
+keeps its installed pack, idempotency and record identifiers in its own source.
+
+The image lock is unchanged by this configuration refactor. Existing signed
+releases keep their original measured bytes. A new image and compose need fresh
+build, release signatures and attestation; source tests do not provide that acceptance.
 
 ## Verify and pair
 
 ```bash
-export ELIZA_ALPHA_API_TOKEN=...   # the ELIZA_API_TOKEN from secrets.json
+export ELIZA_DSTACK_API_TOKEN=...   # the ELIZA_API_TOKEN from secrets.json
 $C verify-attestation --deployment $D/deployment.json --image $D/image.json --out-dir $D/r1 \
   --authority-pub $D/authority.pub.pem --verifier /abs/dstack-verifier --verifier-config /abs/dstack-verifier.toml \
-  --endpoint https://alpha-agent.example.com
-$C pair-link --endpoint https://alpha-agent.example.com | qrencode -t ansiutf8
+  --endpoint https://agent.example.com
+$C pair-link --endpoint https://agent.example.com | qrencode -t ansiutf8
 ```
 
 Verification needs the same `dstack-verifier` binary and config as the image
@@ -68,7 +72,7 @@ processor policy. It fails on any mismatch, debug platform, stale TCB or
 replayed challenge.
 
 `pair-link` prints a single-use `elizaos://remote/agent-pair` link that carries
-no token. The phone app must trust `publicOrigin`; build it with
+no token. The client must trust `publicOrigin`; build it with
 `VITE_ELIZA_REMOTE_FALLBACK_API_BASE=<publicOrigin>`.
 
 ## Upgrade and rollback

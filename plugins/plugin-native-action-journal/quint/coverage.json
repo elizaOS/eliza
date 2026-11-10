@@ -1,0 +1,23 @@
+[
+  {
+    "id": "QueuedDeletionOwnerAdmission",
+    "model": "plugins/plugin-native-action-journal/quint/DeletionOwnerAdmission.qnt",
+    "sources": [
+      "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeferredDeletionCoordinator.java",
+      "plugins/plugin-native-action-journal/test/native-host/DeferredDeletionTest.java"
+    ],
+    "invariants": [
+      "TypeOK",
+      "EffectRequiresCurrentOwner",
+      "ChangedOwnerPauses",
+      "UncertainFenceNeverDispatches",
+      "PausedNeverDispatches"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One already reviewed, expired queued row and one final admission boundary. Known owner changes pause without asking a strict host to confirm the retired identity; equal owners still require a fresh final fence.",
+      "Conformance checks the real Java coordinator and journal against controlled owner, clock, storage, provider and scheduler ports. A failed final fence pauses Calendar without effects and keeps a reminder queued until a later authenticated owner change pauses it. Repeated reconciliation cannot repeat effects.",
+      "Full storage/process races, all retry-window states, Undo, provider uncertainty and installed Android behavior remain outside this projection. No global liveness or complete state coverage is claimed."
+    ]
+  }
+]

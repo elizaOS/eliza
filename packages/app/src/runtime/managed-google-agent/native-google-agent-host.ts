@@ -86,6 +86,7 @@ export async function startNativeGoogleAgentHost(
     access: options.access,
     apiOrigin: options.apiOrigin,
     calendarReadTiming: options.calendarReadTiming,
+    gmailReadBodyMaxCharacters: options.gmailReadBodyMaxCharacters,
   });
   return {
     port: host.port,
