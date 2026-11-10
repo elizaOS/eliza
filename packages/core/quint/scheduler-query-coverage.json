@@ -5,18 +5,20 @@
 		"sources": [
 			"packages/core/src/services/task-scheduler.ts",
 			"packages/core/src/services/task.ts",
-			"packages/core/test/task-scheduler-model.test.ts"
+			"packages/core/test/task-scheduler-model.test.ts",
+			"packages/core/src/runtime.ts"
 		],
 		"invariants": [
 			"ClosedStorageHasNoQueries",
-			"SchedulerStopDrainsCapturedQueries"
+			"SchedulerStopDrainsCapturedQueries",
+			"ClosedAdapterHasNoQueries"
 		],
 		"status": "partial",
 		"limitations": [
-			"The finite query ownership case uses two service identities and two query slots for one agent. TaskScheduler retains the model for dirty agents, busy services, generations and dispatch.",
-			"Runtime closure follows the existing host contract to stop its services first. The host owns the shared adapter lifetime across all runtimes and must await scheduler stop before closing that adapter.",
-			"Per-service worker and preflight drainage are covered separately by TaskRetirement. Query ownership does not cancel a hung adapter call.",
-			"Real PGlite conformance delays a real adapter query and injects a stale query failure after reading actual storage. Multiple agents in one batch and concurrent independent schedulers remain outside this model."
+			"The finite query ownership case uses two service identities, two adapter identities and two query slots for one agent. TaskScheduler retains the dirty-agent and dispatch model.",
+			"The adapter owner may be absent from the queried service identities. Runtime.close fences and drains its exact adapter while preserving a different active adapter.",
+			"Per-service worker and preflight drainage are covered separately by TaskRetirement. A hung adapter call cannot satisfy the stated progress assumption.",
+			"Real PGlite conformance checks delayed queries, stale query failure, unregister and adapter-owner closure across two runtimes. Multiple agents per batch, distinct adapters sharing one external pool, and host reopening of retired adapters remain outside this model."
 		]
 	}
 ]

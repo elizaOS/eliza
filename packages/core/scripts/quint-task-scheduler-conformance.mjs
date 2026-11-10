@@ -10,6 +10,7 @@ const model = path.join(core, "quint/TaskSchedulerQueryDrain.qnt");
 if (process.argv[2]) assert.equal(path.resolve(process.argv[2]), model);
 const test = "test/task-scheduler-model.test.ts";
 const required = [
+	"runtime close drains its detached adapter query outside the dirty snapshot",
 	"service stop drains a shared query before its runtime storage closes",
 	"scheduler stop drains its detached query while a replacement registration runs",
 	"a host runDueTasks during a daemon tick does not run a one-shot twice",

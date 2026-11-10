@@ -6,6 +6,7 @@ import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import { TaskService } from "../src/services/task";
 import {
+	getTaskSchedulerAdapter,
 	startTaskScheduler,
 	stopTaskScheduler,
 } from "../src/services/task-scheduler";
@@ -295,6 +296,74 @@ it("scheduler stop drains its detached query while a replacement registration ru
 		await stopTaskScheduler();
 		vi.restoreAllMocks();
 		await f.cleanup();
+	}
+});
+
+it("runtime close drains its detached adapter query outside the dirty snapshot", async () => {
+	const owner = await createTestRuntime({
+		characterName: "SchedulerAdapterOwner",
+	});
+	const consumer = await createTestRuntime({
+		characterName: "SchedulerAdapterConsumer",
+	});
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(consumer.runtime);
+	let runs = 0,
+		closes = 0,
+		queryFinished = false;
+	let closing: Promise<void> | undefined;
+	try {
+		consumer.runtime.registerTaskWorker({
+			name: "ADAPTER_REPLACEMENT",
+			execute: async () => {
+				runs++;
+			},
+		});
+		await consumer.runtime.createTask({
+			name: "ADAPTER_REPLACEMENT",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTasks = owner.runtime.adapter.getTasks.bind(owner.runtime.adapter);
+		vi.spyOn(owner.runtime.adapter, "getTasks").mockImplementationOnce(
+			async (params) => {
+				expect(params.agentIds).toEqual([consumer.runtime.agentId]);
+				entered.resolve();
+				await release.promise;
+				const rows = await getTasks(params);
+				queryFinished = true;
+				return rows;
+			},
+		);
+		const close = owner.runtime.adapter.close.bind(owner.runtime.adapter);
+		vi.spyOn(owner.runtime.adapter, "close").mockImplementation(async () => {
+			closes++;
+			await close();
+		});
+		startTaskScheduler(owner.runtime.adapter);
+		service.startTimer();
+		await entered.promise;
+		const oldDrain = stopTaskScheduler();
+		startTaskScheduler(consumer.runtime.adapter);
+		service.startTimer();
+		await owner.runtime.stop();
+		closing = owner.runtime.close();
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(closes).toBe(0);
+		await expect.poll(() => runs, { timeout: 10000 }).toBe(1);
+		release.resolve();
+		await Promise.all([closing, oldDrain]);
+		expect(queryFinished).toBe(true);
+		expect(closes).toBe(1);
+		expect(getTaskSchedulerAdapter()).toBe(consumer.runtime.adapter);
+	} finally {
+		release.resolve();
+		await closing;
+		await service.stop();
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await Promise.all([owner.cleanup(), consumer.cleanup()]);
 	}
 });
 

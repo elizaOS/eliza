@@ -36,7 +36,10 @@ let nextRegistrationId = 0;
 /** Services inside a scheduler runTick. A restart detaches activeTick, not these runs. */
 const busyServices = new Set<TaskServiceLike>();
 /** Detached generations retain their storage ownership until the query settles. */
-const pendingQueries = new Map<Promise<void>, Set<TaskServiceLike>>();
+const pendingQueries = new Map<
+	Promise<void>,
+	{ adapter: IDatabaseAdapter; services: Set<TaskServiceLike> }
+>();
 
 const TICK_INTERVAL_MS = 1000;
 
@@ -156,7 +159,7 @@ async function tick(generation: number): Promise<void> {
 	const queryDone = new Promise<void>((resolve) => {
 		finishQuery = resolve;
 	});
-	pendingQueries.set(queryDone, queryOwners);
+	pendingQueries.set(queryDone, { adapter: adp, services: queryOwners });
 	let allTasks: Task[];
 	try {
 		allTasks = await adp.getTasks({
@@ -319,6 +322,19 @@ function ensureTimer(): void {
 
 /** Fence the current generation now. Await the returned query drain before closing its adapter. */
 export function stopTaskScheduler(): Promise<void> {
+	detachTaskScheduler();
+	return drainQueries();
+}
+
+/** Runtime storage can own the shared adapter without owning any queried tasks. */
+export function stopTaskSchedulerForAdapter(
+	closingAdapter: IDatabaseAdapter,
+): Promise<void> {
+	if (adapter === closingAdapter) detachTaskScheduler();
+	return drainQueries(undefined, closingAdapter);
+}
+
+function detachTaskScheduler(): void {
 	schedulerGeneration += 1;
 	if (timer && processTasks.size === 0) {
 		clearInterval(timer);
@@ -330,7 +346,6 @@ export function stopTaskScheduler(): Promise<void> {
 	// An in-flight adapter call cannot be cancelled. Detach it so a restarted
 	// generation is not blocked; its generation fence rejects its eventual result.
 	activeTick = null;
-	return drainQueries();
 }
 
 /** Called by TaskService.startTimer() when getTaskSchedulerAdapter() != null. WHY: runtime opts into shared tick instead of local timer. */
@@ -364,9 +379,16 @@ export function unregisterTaskSchedulerRuntime(
 	return owner ? drainQueries(owner) : Promise.resolve();
 }
 
-function drainQueries(owner?: TaskServiceLike): Promise<void> {
+function drainQueries(
+	owner?: TaskServiceLike,
+	closingAdapter?: IDatabaseAdapter,
+): Promise<void> {
 	const queries = Array.from(pendingQueries)
-		.filter(([, owners]) => !owner || owners.has(owner))
+		.filter(
+			([, ownership]) =>
+				(!owner || ownership.services.has(owner)) &&
+				(!closingAdapter || ownership.adapter === closingAdapter),
+		)
 		.map(([done]) => done);
 	return Promise.all(queries).then(() => undefined);
 }

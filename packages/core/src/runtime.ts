@@ -99,6 +99,7 @@ import {
 	pendingPostDeliveryTaskCount,
 } from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
+import { stopTaskSchedulerForAdapter } from "./services/task-scheduler";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	invalidateTurnMemoPrefix,
@@ -3895,6 +3896,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
 	 */
 	async close(): Promise<void> {
+		if (this.adapter) await stopTaskSchedulerForAdapter(this.adapter);
 		await this.modelDispatch.drainDiagnostics();
 		if (this.adapter) {
 			await this.adapter.close();
