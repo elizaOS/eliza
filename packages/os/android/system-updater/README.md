@@ -1,7 +1,8 @@
 # On-device OS updater
 
 Candidate implementation of the approved on-device A/B update path (Alpha
-P-75 / issue 680). It is separate from the ordinary launcher and from the
+[P-75](https://github.com/eliza-research/alphaphone/blob/main/docs/decisions.md) /
+[issue 680](https://github.com/eliza-research/alphaphone/issues/680)). It is separate from the ordinary launcher and from the
 computer-operated recovery/sideload tool. Product hosts own release enrollment.
 The generic resource configuration disables every entry point and schedules
 nothing. This is not yet a qualified or installed updater.
@@ -36,3 +37,19 @@ downloads, package and metadata rejection, permission and SELinux checks,
 reviewed channel/key enrollment, a signed image, and physical wireless update,
 interruption, source-retention/rollback and data-retention drills. No release
 or device-acceptance flag is set by these models or helpers.
+
+## Host decision and enrollment
+
+The host uses the platform A/B update engine in a separate app. The existing
+computer-operated recovery tool cannot provide cable-free delivery. Giving the
+launcher reboot or update privileges would combine unrelated authority. The
+separate host keeps those permissions and the small data directory isolated.
+A discovery manifest proposes a package; Android's OTA trust store and signed
+package metadata authorize its installation.
+
+The product includes `product.mk` and supplies a reviewed resource overlay for
+`os_update_manifest`, `os_update_hosts`, `os_update_product`, `os_update_device`
+and `os_update_ota_certificate`. Keep `os_update_enabled` false until the exact
+image, certificate, channel and device qualification are complete. The platform
+signing identity must match the product's system image. No key or release URL
+is supplied by this shared package.
