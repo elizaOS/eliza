@@ -7,7 +7,20 @@
     "packages/scripts/cloud/admin/plan-mobile-client-addition.test.mjs"
   ],
   "bounds": "One canonical client and one installed-client alias; boolean presence, enabled state, exact binding equality and chained-alias state.",
-  "cases": [{"name":"registration-continuity","main":"MobileClientCompatibility","init":"init","step":"step","invariants":["safety"],"maxSteps":40,"samples":1000}],
+  "cases": [
+    {
+      "name": "registration-continuity",
+      "main": "MobileClientCompatibility",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "maxSteps": 40,
+      "samples": 1000,
+      "temporal": []
+    }
+  ],
   "limitations": [
     "Exact binding equality includes the app UUID, callback, enabled flag and credential lifetime. Existing parser regression cases exercise each mismatch separately.",
     "Grant acknowledgement, key expiry and account/organization authority are still enforced by the unchanged owner-credential path and modeled separately. This model does not authorize a database or registry mutation.",
