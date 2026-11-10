@@ -41,7 +41,6 @@ import shutil
 import subprocess
 import sys
 import time
-from threading import Event
 import urllib.error
 import urllib.request
 from pathlib import Path
