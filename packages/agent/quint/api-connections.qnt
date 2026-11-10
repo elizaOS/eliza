@@ -1,17 +1,17 @@
 // conversation-connection-readiness.ts owns one raw mutation queue per runtime.
-// One room and one proof identity are observed here. Tokens are never reused.
+// One room lifecycle and two proof identities are observed. Tokens are never reused.
 module api_connections {
   type Stamp = { topology: int, room: int }
-  type Job = { stamp: Stamp, deletion: bool, timedOut: bool, joined: bool }
+  type Job = { stamp: Stamp, proof: int, deletion: bool, timedOut: bool, joined: bool }
   type Outcome = Quiet | Ready(Stamp) | Failed | Deadline | Deleted
   var s: {
-    topology: int, room: int, roomSequence: int, captured: Stamp,
+    topology: int, room: int, roomSequence: int, captured: Stamp, capturedProof: int,
     queue: List[Job], running: bool, outcome: Outcome,
   }
 
   pure val emptyStamp: Stamp = { topology: -1, room: -1 }
   action init = s' = {
-    topology: 0, room: 0, roomSequence: 0, captured: emptyStamp,
+    topology: 0, room: 0, roomSequence: 0, captured: emptyStamp, capturedProof: 0,
     queue: [], running: false, outcome: Quiet,
   }
   val blocked = s.queue.indices().exists(index => s.queue.nth(index).deletion)
@@ -21,7 +21,7 @@ module api_connections {
     stamp.topology == s.topology and stamp.room == s.room and s.room >= 0 and not(blocked)
   val matching = s.queue.indices().exists(index => {
     val job = s.queue.nth(index)
-    not(job.deletion) and job.stamp == s.captured
+    not(job.deletion) and job.stamp == s.captured and job.proof == s.capturedProof
   })
   val canEnqueue = not(quarantined) and s.queue.length() < 2
 
@@ -30,17 +30,24 @@ module api_connections {
     s' = s.with("room", roomToken).with("roomSequence", roomToken)
       .with("captured", { topology: s.topology, room: roomToken }).with("outcome", Quiet),
   }
+  // Distinct descriptors can share current generations while retaining separate
+  // work. Exact proof matches join the same observer instead of another slot.
+  action captureOther = all {
+    s.room >= 0,
+    s' = s.with("captured", { topology: s.topology, room: s.room })
+      .with("capturedProof", 1 - s.capturedProof).with("outcome", Quiet),
+  }
   action enqueue = all {
     current(s.captured), canEnqueue, not(matching),
     s' = s.with("queue", s.queue.append({
-      stamp: s.captured, deletion: false, timedOut: false, joined: false,
+      stamp: s.captured, proof: s.capturedProof, deletion: false, timedOut: false, joined: false,
     })).with("outcome", Quiet),
   }
   action join(index) = all {
     current(s.captured), index < s.queue.length(),
     val job = s.queue.nth(index)
     all {
-      not(job.deletion), job.stamp == s.captured, not(job.timedOut), not(job.joined),
+      not(job.deletion), job.stamp == s.captured, job.proof == s.capturedProof, not(job.timedOut), not(job.joined),
       s' = s.with("queue", s.queue.replaceAt(index, job.with("joined", true))).with("outcome", Quiet),
     },
   }
@@ -52,7 +59,7 @@ module api_connections {
     not(blocked), canEnqueue, s.roomSequence < 2,
     s' = s.with("room", s.roomSequence + 1).with("roomSequence", s.roomSequence + 1)
       .with("queue", s.queue.append({
-        stamp: emptyStamp, deletion: true, timedOut: false, joined: false,
+        stamp: emptyStamp, proof: -1, deletion: true, timedOut: false, joined: false,
       })).with("outcome", Quiet),
   }
   action timeout(index) = all {
@@ -104,7 +111,7 @@ module api_connections {
   action advanceRaw = any { begin, skip, settle(true), settle(false) }
   action idle = s' = s
   action step = any {
-    capture, enqueue, join(0), join(1), invalidate, enqueueDeletion,
+    capture, captureOther, enqueue, join(0), join(1), invalidate, enqueueDeletion,
     timeout(0), timeout(1), advanceRaw, idle,
   }
 
@@ -136,6 +143,16 @@ module api_connections {
     .then(settle(false)).expect(s.topology == 1 and not(current(s.captured)))
     .then(capture).then(enqueue).then(begin).then(settle(true))
     .expect(s.outcome == Ready(s.captured))
+  run settledSuccessIsNotReadinessCacheTest = init.then(capture).then(enqueue).then(begin)
+    .then(settle(true)).expect(s.outcome == Ready(s.captured))
+    .then(enqueue).then(begin).then(settle(true)).expect(s.outcome == Ready(s.captured) and safety)
+  run distinctDescriptorsTimeoutAndRecoverTest = init.then(capture).then(enqueue).then(join(0))
+    .then(begin).then(captureOther).then(enqueue)
+    .expect(s.queue.length() == 2 and s.queue.head().joined)
+    .then(timeout(0)).then(timeout(1)).expect(s.running and quarantined)
+    .then(settle(true)).then(skip).expect(s.queue.length() == 0 and not(quarantined))
+    .then(capture).then(enqueue).then(begin).then(settle(true))
+    .expect(s.outcome == Ready(s.captured) and safety)
   run deletionRetiresRoomTokenTest = init.then(capture).then(enqueueDeletion).then(begin)
     .then(capture).then(settle(true))
     .expect(s.room == -1 and not(current(s.captured)) and s.outcome == Deleted)
