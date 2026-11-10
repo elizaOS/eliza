@@ -118,6 +118,106 @@ function normalizeIpv6(addr: string): string {
 }
 
 /**
+ * Expand an IPv6 literal into its eight 16-bit groups, handling `::`
+ * compression and a dotted-quad tail (`64:ff9b::169.254.169.254`). Returns
+ * null when the string is not a syntactically valid IPv6 address.
+ */
+function parseIpv6Hextets(address: string): number[] | null {
+  let input = address;
+  if (input.includes(".")) {
+    const colon = input.lastIndexOf(":");
+    if (colon === -1) return null;
+    const ipv4 = parseIpv4Octets(input.slice(colon + 1));
+    if (!ipv4) return null;
+    input = `${input.slice(0, colon + 1)}${(((ipv4[0] << 8) | ipv4[1]) & 0xffff).toString(16)}:${(((ipv4[2] << 8) | ipv4[3]) & 0xffff).toString(16)}`;
+  }
+  const parseGroups = (text: string): number[] | null => {
+    if (!text) return [];
+    const groups: number[] = [];
+    for (const part of text.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/i.test(part)) return null;
+      groups.push(Number.parseInt(part, 16));
+    }
+    return groups;
+  };
+  const halves = input.split("::");
+  if (halves.length > 2) return null;
+  const head = parseGroups(halves[0] ?? "");
+  if (head === null) return null;
+  if (halves.length === 1) {
+    return head.length === 8 ? head : null;
+  }
+  const tail = parseGroups(halves[1] ?? "");
+  if (tail === null) return null;
+  // "::" must compress at least one all-zero group.
+  const zeros = 8 - (head.length + tail.length);
+  if (zeros < 1) return null;
+  return [...head, ...new Array<number>(zeros).fill(0), ...tail];
+}
+
+/**
+ * Extract the policy-relevant embedded IPv4 from the transition ranges an
+ * attacker can route to internal space: IPv4-compatible `::/96` (deprecated,
+ * still honored by some stacks), NAT64 `64:ff9b::/96` (RFC 6052 well-known
+ * prefix — live on AWS IPv6-only/DNS64 subnets), 6to4 `2002::/16` (RFC 3056,
+ * IPv4 in bits 16..48), and Teredo `2001:0000::/32` (RFC 4380, client IPv4
+ * XOR-obfuscated in the low 32 bits). On those network paths a literal URL
+ * never touches DNS, so screening the embedded IPv4 is the only chance to
+ * classify the address the packet actually reaches. Returns null when the
+ * address is outside those ranges. (`::1` is classified by the loopback
+ * check before this runs.)
+ */
+function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
+  const [h0, h1, h2, , , h5, h6, h7] = hextets;
+  const low32ToIpv4 = (): number[] => [
+    (h6 >> 8) & 0xff,
+    h6 & 0xff,
+    (h7 >> 8) & 0xff,
+    h7 & 0xff,
+  ];
+  // IPv4-compatible ::/96 and the RFC 6145 IPv4-translated ::ffff:0:0:0/96
+  // form, which SIIT translators map to the embedded IPv4.
+  if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {
+    if (hextets[4] === 0 && (h5 === 0 || h5 === 0xffff)) {
+      return low32ToIpv4();
+    }
+    if (hextets[4] === 0xffff && h5 === 0) {
+      return low32ToIpv4();
+    }
+  }
+  // NAT64 well-known prefix 64:ff9b::/96 — embedded IPv4 is the low 32 bits.
+  if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && hextets[3] === 0) {
+    if (hextets[4] === 0 && h5 === 0) {
+      return low32ToIpv4();
+    }
+  }
+  // 6to4 2002::/16 — embedded IPv4 sits in bits 16..48.
+  if (h0 === 0x2002) {
+    return [(h1 >> 8) & 0xff, h1 & 0xff, (h2 >> 8) & 0xff, h2 & 0xff];
+  }
+  // Teredo 2001:0000::/32 — client IPv4 is the low 32 bits XOR 0xffffffff.
+  if (h0 === 0x2001 && h1 === 0x0000) {
+    return [
+      ((h6 ^ 0xffff) >> 8) & 0xff,
+      (h6 ^ 0xffff) & 0xff,
+      ((h7 ^ 0xffff) >> 8) & 0xff,
+      (h7 ^ 0xffff) & 0xff,
+    ];
+  }
+  return null;
+}
+
+/**
+ * NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215). Site translators carve
+ * /48-/96 network-specific prefixes from it, each embedding the IPv4 at a
+ * different offset, so the literal does not identify the reached IPv4. The
+ * range is not globally routable, so every address in it is internal.
+ */
+function isNat64LocalUsePrefix(hextets: number[]): boolean {
+  return hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0x1;
+}
+
+/**
  * Is this IPv6 literal a loopback address (::1)? Also treats IPv4-mapped
  * loopback (::ffff:127.x.x.x) as loopback.
  */
@@ -128,6 +228,14 @@ function isLoopbackIpv6(addr: string): boolean {
   if (mapped) {
     const octets = parseIpv4Octets(mapped);
     return octets ? isLoopbackIpv4(octets) : false;
+  }
+  // Transition ranges (NAT64, 6to4, Teredo) embed an IPv4 the network may
+  // translate the literal to; a NAT64 spelling of loopback is loopback, so
+  // the caller-side port gate still applies to it.
+  const hextets = parseIpv6Hextets(norm);
+  if (hextets) {
+    const embedded = embeddedIpv4ForPolicy(hextets);
+    if (embedded) return isLoopbackIpv4(embedded);
   }
   return false;
 }
@@ -162,8 +270,11 @@ function ipv4MappedAddress(addr: string): string | null {
 /**
  * Is this IPv6 literal off the public Internet (and not loopback)? Covers the
  * unspecified address, ULA (fc00::/7), link-local (fe80::/10), the IPv6
- * cloud-metadata addresses (fd00:ec2::254), and IPv4-mapped addresses that
- * embed a blocked IPv4.
+ * cloud-metadata addresses (fd00:ec2::254), IPv4-mapped addresses that
+ * embed a blocked IPv4, and the IPv4/IPv6 transition ranges (NAT64, 6to4,
+ * Teredo) whose embedded IPv4 the network translates the literal to — a
+ * NAT64 spelling of the metadata IP (`64:ff9b::a9fe:a9fe`) must not pass as
+ * a public address.
  */
 function isBlockedIpv6(addr: string): boolean {
   const norm = normalizeIpv6(addr);
@@ -175,6 +286,15 @@ function isBlockedIpv6(addr: string): boolean {
     if (octets) return isBlockedIpv4(octets);
   }
   const head = norm.replace(/^\[|\]$/g, "");
+  // Transition ranges embed an IPv4 the network may translate the literal
+  // to (e.g. http://[64:ff9b::a9fe:a9fe]/ reaching 169.254.169.254 through
+  // NAT64), so screen that embedded address with the IPv4 policy too.
+  const hextets = parseIpv6Hextets(head);
+  if (hextets) {
+    if (isNat64LocalUsePrefix(hextets)) return true;
+    const embedded = embeddedIpv4ForPolicy(hextets);
+    if (embedded) return isBlockedIpv4(embedded);
+  }
   // Unique local addresses fc00::/7 (fc.. and fd..).
   if (/^f[cd][0-9a-f]{0,2}:/.test(head)) return true;
   // Link-local fe80::/10 (fe8.., fe9.., fea.., feb..).
