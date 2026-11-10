@@ -212,9 +212,12 @@ function spoolConfig(directory: string): AgentBackupCaptureV3SpoolConfig {
   };
 }
 
-async function capturedFixture(directory: string): Promise<AgentBackupCaptureV3Artifacts> {
+async function capturedFixture(
+  directory: string,
+  acknowledgeCatalog = true,
+): Promise<AgentBackupCaptureV3Artifacts> {
   let captured: AgentBackupCaptureV3Artifacts | undefined;
-  await runAgentBackupCaptureV2Pipeline({
+  const capture = runAgentBackupCaptureV2Pipeline({
     request,
     runtimePrincipalSha256: "3".repeat(64),
     executionToken: CAPTURE_EXECUTION,
@@ -228,12 +231,17 @@ async function capturedFixture(directory: string): Promise<AgentBackupCaptureV3A
       mode: "capture-only",
       async recordCaptured(artifacts) {
         captured = artifacts;
-        return true;
+        return acknowledgeCatalog;
       },
     },
     heartbeat: () => true,
     now: () => NOW_MS,
   });
+  if (acknowledgeCatalog) await capture;
+  else
+    await expect(capture).rejects.toMatchObject({
+      code: "AGENT_BACKUP_V2_RECORD_CAPTURED_UNCONFIRMED",
+    });
   if (!captured) throw new Error("capture fixture did not record manifest");
   return captured;
 }
@@ -339,17 +347,28 @@ describe("capture-v3 publication source", () => {
       expect(createHash("sha256").update(bytes).digest("hex")).toBe(firstChunk.ciphertextSha256);
       bytes.fill(0);
       await first.markPrimaryChunkUploaded(firstChunk);
+      await expect(first.markPrimaryPublished()).rejects.toMatchObject({
+        code: "AGENT_BACKUP_V2_SPOOL_PUBLISH_INCOMPLETE",
+      });
+      const retryClaim = claim(artifacts, RETRY_EXECUTION);
+      const retryExecution = { ownerId: retryClaim.ownerId, generation: retryClaim.generation };
+      await expect(resolve({ claim: retryClaim, execution: retryExecution })).rejects.toMatchObject(
+        {
+          code: "AGENT_BACKUP_V2_SPOOL_LOCKED",
+        },
+      );
       // Simulate response/process loss after one immutable PUT receipt. Close
       // releases only ownership; it does not remove the sealed operation.
       await first.close();
 
-      const retryClaim = claim(artifacts, RETRY_EXECUTION);
       const retry = await resolve({
         claim: retryClaim,
-        execution: { ownerId: retryClaim.ownerId, generation: retryClaim.generation },
+        execution: retryExecution,
       });
       await retry.beginPrimaryPublication();
-      for (const chunk of retry.chunks) await retry.markPrimaryChunkUploaded(chunk);
+      // The first receipt remains durable. The next owner only supplies the
+      // remaining receipts before the journal can record publication.
+      for (const chunk of retry.chunks.slice(1)) await retry.markPrimaryChunkUploaded(chunk);
       await retry.markPrimaryPublished();
       await retry.close();
 
@@ -372,21 +391,13 @@ describe("capture-v3 publication source", () => {
   test("repairs a lost recordCaptured response before captured advances to uploading", async () => {
     const directory = await stateDirectory();
     try {
-      const artifacts = await capturedFixture(directory);
+      const artifacts = await capturedFixture(directory, false);
       const operationDirectory = path.join(directory, "agent-backup-capture-v3", OPERATION_ID);
       const journalPath = path.join(operationDirectory, "journal.json");
-      const journal = JSON.parse(await fs.promises.readFile(journalPath, "utf8")) as {
-        recordCaptured: "pending" | "confirmed";
-        committedBytes: number;
-        catalogManifest?: { bytes: number };
-      };
-      expect(journal.recordCaptured).toBe("confirmed");
-      expect(journal.catalogManifest).toBeDefined();
-      journal.committedBytes -= journal.catalogManifest?.bytes ?? 0;
-      journal.recordCaptured = "pending";
-      delete journal.catalogManifest;
-      await fs.promises.unlink(path.join(operationDirectory, "catalog-manifest.json"));
-      await fs.promises.writeFile(journalPath, `${JSON.stringify(journal)}\n`);
+      const journal = JSON.parse(await fs.promises.readFile(journalPath, "utf8"));
+      expect(journal).toMatchObject({ phase: "sealed", recordCaptured: "pending" });
+      expect(journal.catalogManifest).toBeUndefined();
+      expect(await fs.promises.readdir(operationDirectory)).not.toContain("catalog-manifest.json");
 
       let terminalAuthorizations = 0;
       const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(
@@ -420,12 +431,23 @@ describe("capture-v3 publication source", () => {
       });
       const capturedClaim = claim(artifacts);
       capturedClaim.backup.catalog_state = "captured";
+      const execution = { ownerId: capturedClaim.ownerId, generation: capturedClaim.generation };
+      await expect(
+        resolve({
+          claim: {
+            ...capturedClaim,
+            backup: {
+              ...capturedClaim.backup,
+              manifest_object_count: artifacts.catalogManifest.objectCount + 1,
+            },
+          },
+          execution,
+        }),
+      ).rejects.toMatchObject({ code: "AGENT_BACKUP_V3_PUBLICATION_CATALOG_MISMATCH" });
+      expect(JSON.parse(await fs.promises.readFile(journalPath, "utf8"))).toEqual(journal);
       const source = await resolve({
         claim: capturedClaim,
-        execution: {
-          ownerId: capturedClaim.ownerId,
-          generation: capturedClaim.generation,
-        },
+        execution,
       });
       await source.close();
 

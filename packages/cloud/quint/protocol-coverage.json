@@ -850,21 +850,28 @@
   },
   {
     "id": "cloud-flow-agent-backup-and-restore",
-    "model": null,
+    "model": "packages/cloud/quint/agent_backup_capture_handoff.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/eliza-sandbox.ts",
       "packages/cloud/shared/src/lib/storage/agent-backup-object-store.ts",
-      "packages/cloud/api/v1/cron/agent-backups/route.ts"
+      "packages/cloud/api/v1/cron/agent-backups/route.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v2-pipeline.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v2-spool.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "ExactCaptureReceipt",
+      "PublicationNeedsCaptureReceipt",
+      "CompletePublicationReceipts",
+      "OwnedSourceNeedsCaptureReceipt"
+    ],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite restore/activation model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Restore source identity is immutable | Activation belongs to the selected generation | Cleanup cannot remove the active replacement",
-      "Abstract states: admitted, capturing, sealed, restoring, activating, ready, retired, failed"
+      "The capture-only model starts at one sealed manifest-v3 spool and covers missing local catalogue acknowledgement, exact exclusive reopen, durable chunk receipts and publication completion.",
+      "The maintained local-filesystem suite exercises the pipeline and resolver with a local key provider. Catalogue claims and remote upload receipts are fixture inputs. Lease issuance and renewal, process-death reclamation, failed filesystem writes and inline upload are separate.",
+      "RestoreLease, RestorePublication, exact_restore_recovery and restore_cleanup_rotation cover separate bounded restore obligations. They do not establish the complete backup and restore lifecycle.",
+      "Scheduled admission, remote object publication and verification, retention, full restore-source and activation identity, cleanup authority and end-to-end failure recovery remain open."
     ]
   },
   {
