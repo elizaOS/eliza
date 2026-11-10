@@ -18,7 +18,7 @@
 			"The finite query ownership case uses two service identities, two adapter identities and two query slots for one agent. TaskScheduler retains the dirty-agent and dispatch model.",
 			"The adapter owner may be absent from the queried service identities. Runtime.close fences and drains its exact adapter while preserving a different active adapter.",
 			"Per-service worker and preflight drainage are covered separately by TaskRetirement. A hung adapter call cannot satisfy the stated progress assumption.",
-			"Real PGlite conformance checks delayed queries, stale query failure, unregister and adapter-owner closure across two runtimes. Multiple agents per batch, distinct adapters sharing one external pool, and host reopening of retired adapters remain outside this model."
+			"Real PGlite conformance checks delayed queries, stale query failure, unregister and adapter-owner closure across two runtimes. Multiple agents per batch and host reopening of retired adapters remain outside this model. Agent runtime-lifecycle models the host-confirmed physical alias handoff separately and binds real shared PGlite handle conformance. Core never inspects physical connections."
 		]
 	}
 ]

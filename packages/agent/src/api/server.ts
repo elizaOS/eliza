@@ -1308,7 +1308,7 @@ async function applyRuntimeRestart(
   if (state.runtimeStopPromise) {
     return false;
   }
-  if (state.agentState === "restarting") {
+  if (state.agentState === "starting" || state.agentState === "restarting") {
     return false;
   }
   const previousState = state.agentState;

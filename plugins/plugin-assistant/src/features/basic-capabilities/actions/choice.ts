@@ -3,13 +3,14 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  ApprovalService,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, ServiceType } from "@elizaos/core";
 
 function _readChoiceParameters(
   message: Memory,
@@ -237,7 +238,14 @@ export const choiceAction: Action = {
         };
       }
       if (selectedOption === "ABORT") {
-        await runtime.deleteTask(selectedTaskId);
+        const approval = selectedTask.tags?.includes("APPROVAL")
+          ? runtime.getService<ApprovalService>(ServiceType.APPROVAL)
+          : null;
+        if (approval) {
+          await approval.cancelApproval(selectedTaskId);
+        } else {
+          await runtime.deleteTask(selectedTaskId);
+        }
         const cancelledText = `Task "${selectedTask.name}" has been cancelled.`;
         if (callback) {
           await callback({
