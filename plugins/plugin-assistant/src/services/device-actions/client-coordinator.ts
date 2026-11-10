@@ -1083,7 +1083,7 @@ export interface DeviceActionCoordinatorPorts<
   /** The agent negotiated reviewed reminder creation. */
   reminderCreate?: boolean;
   /**
-   * Reads each path's identity (size, modified time) as Files sees it now, in
+   * Reads each path's opaque storage identity as Files sees it now, in
    * order; rejects when a path is missing. A Files move or trash is reviewable
    * only with it, and carries it so the phone acts only on the reviewed files.
    */
@@ -1107,6 +1107,7 @@ export class DeviceActionCoordinator<
   readonly session: DeviceClientSession;
   readonly credential: DeviceCredential;
   readonly scope: string;
+  private reviewSequence = 0;
   private readonly filesReviews = new Map<
     string,
     { digest: string; identities: FilesIdentity[] }
@@ -1561,12 +1562,21 @@ export class DeviceActionCoordinator<
     signal: AbortSignal,
     proof?: CurrentDeviceActionRequest,
   ): Promise<{ items: PendingReviewItem[]; failures: Error[] }> {
+    const sequence = ++this.reviewSequence;
+    const assertCurrentReview = () => {
+      signal.throwIfAborted();
+      if (sequence !== this.reviewSequence)
+        throw new DOMException(
+          "A newer device action review replaced this request",
+          "AbortError",
+        );
+    };
     const browserRequestKey = proof
       ? this.requestKey(proof.messageId)
       : undefined;
     if (this.options.currentRequestBrowserPolicy) proof?.current();
     const { valid, invalid } = await this.listing(signal);
-    signal.throwIfAborted();
+    assertCurrentReview();
     if (this.options.currentRequestBrowserPolicy && proof) {
       proof.current();
       if (browserRequestKey !== this.requestKey(proof.messageId))
@@ -1634,7 +1644,7 @@ export class DeviceActionCoordinator<
           const identities =
             before?.identities ??
             (await this.ports.filesIdentity?.(op.paths, signal));
-          signal.throwIfAborted();
+          assertCurrentReview();
           // Once a card has been shown, a refresh must not bind its approval to replacement files.
           const recorded = this.filesReviews.get(proposal.id);
           if (
@@ -1659,7 +1669,7 @@ export class DeviceActionCoordinator<
         } catch {
           operation = undefined;
         }
-        signal.throwIfAborted();
+        assertCurrentReview();
         if (!operation) {
           items.push({
             proposalId: proposal.id,
