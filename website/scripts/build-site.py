@@ -16,7 +16,7 @@ files = (
     "home-motion.js home.css home.js index.html landing.css manifest.webmanifest "
     "merch-promo.js monetization.json nacl.min.js offers.json privacy-policy.md "
     "robots.txt site-chrome.js site-config.js site-motion.js site-offers.js "
-    "site-wallet.js site.js sitemap.xml status.js styles.css terms.md ticker.js "
+    "site-wallet.js site.js sitemap.xml status.js styles.css terms.md ticker.js visual.css "
     "trust.js valhalla-command.css version.json"
 ).split()
 

@@ -40,6 +40,7 @@
   function attachSources() {
     if (sourcesReady) return;
     sourcesReady = true;
+    video.poster = "/assets/heaven-poster.jpg";
     var mp4 = document.createElement("source");
     mp4.src = filmSource();
     mp4.type = "video/mp4";

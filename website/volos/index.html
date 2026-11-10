@@ -3,49 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07110e">
+  <meta name="theme-color" content="#090a0c">
   <meta name="description" content="Official valOS token page. Name ValhallaOS. Live trading on this page is off. Not financial advice.">
   <link rel="canonical" href="https://valos.live/">
   <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="stylesheet" href="/visual.css">
   <title>valOS — ValhallaOS</title>
   <style>
-    :root { color-scheme: dark; }
     * { box-sizing: border-box; }
     html, body { margin: 0; }
-    body {
-      min-height: 100vh;
-      background: #07110e;
-      color: #f4f7f2;
-      font-family: "Segoe UI", Tahoma, sans-serif;
-    }
-    a { color: #e2b055; }
-    a:focus-visible, button:focus-visible { outline: 3px solid #f3e0b0; outline-offset: 3px; }
-    .wrap { width: min(720px, calc(100% - 28px)); margin: 0 auto; padding: 22px 0 56px; }
+    body { min-height: 100vh; }
+    a { color: var(--ink); }
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    .wrap { width: min(640px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 56px; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .mark { color: inherit; font-weight: 750; letter-spacing: .06em; text-decoration: none; }
-    .mark span { color: #e2b055; }
-    .pill { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(142, 240, 194, .45); color: #c9ffe6; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
-    h1 { margin: 22px 0 8px; font-size: clamp(40px, 8vw, 64px); line-height: .95; letter-spacing: -.03em; }
-    h1 span { color: #e2b055; }
+    .mark { color: var(--ink); font-size: 13px; font-weight: 650; letter-spacing: .14em; text-decoration: none; }
+    .mark span { color: var(--gold); }
+    .pill { min-height: 32px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--gold); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+    h1 { margin: 28px 0 8px; font-size: var(--title); font-weight: 650; line-height: 1.1; letter-spacing: 0; }
+    h1 span { color: var(--gold); }
     .lede, p { margin: 0; line-height: 1.5; }
-    .lede { max-width: 40rem; margin-bottom: 16px; color: #d5e4da; }
-    article { margin-top: 12px; padding: 16px; border: 1px solid rgba(142, 240, 194, .22); border-radius: 16px; background: rgba(8, 20, 16, .9); }
-    h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #b7f5d4; }
-    dl { display: grid; grid-template-columns: 9.5rem 1fr; gap: 8px 12px; margin: 0; }
-    dt { color: #9eb0a6; }
-    dd { margin: 0; }
-    .contract { margin: 0; font-family: ui-monospace, "Cascadia Mono", monospace; font-size: 15px; line-height: 1.45; word-break: break-all; }
-    .copy { min-height: 44px; margin-top: 10px; padding: 0 16px; border: 0; border-radius: 10px; background: #e2b055; color: #1a1408; font: inherit; font-weight: 700; cursor: pointer; }
-    .links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-    .links a { min-height: 44px; display: inline-flex; align-items: center; }
-    .risk { border-color: rgba(226, 176, 85, .4); }
+    .lede { max-width: 38rem; margin-bottom: 8px; color: var(--muted); font-size: var(--small); }
+    article { margin-top: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    h2 { margin: 0 0 12px; font-size: 13px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    dl { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 10px 12px; margin: 0; }
+    dt { color: var(--muted); font-size: var(--small); }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .contract { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-family: ui-monospace, "Cascadia Mono", monospace; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+    .copy { min-height: 44px; margin-top: 12px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--gold); color: var(--gold-ink); font: inherit; font-size: var(--small); font-weight: 650; cursor: pointer; }
+    .links { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .links a { min-height: 44px; display: flex; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); text-decoration: none; }
+    .links a:hover { border-color: var(--gold); }
     .risk p + p { margin-top: 8px; }
-    button.swap { width: 100%; min-height: 44px; margin-top: 8px; border: 1px solid rgba(142, 240, 194, .3); border-radius: 10px; background: #143028; color: #9eb0a6; font: inherit; cursor: not-allowed; }
-    footer { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 18px; color: #d5e4da; }
-    footer a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 999px; background: #e2b055; color: #1a1408; font-weight: 750; text-decoration: none; }
+    button.swap { width: 100%; min-height: 44px; margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; cursor: not-allowed; }
+    footer { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; margin-top: 20px; color: var(--muted); font-size: var(--small); }
+    footer a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 10px; background: var(--gold); color: var(--gold-ink); font-weight: 650; text-decoration: none; }
     @media (max-width: 800px) {
-      header { align-items: flex-start; flex-wrap: wrap; }
-      dl { grid-template-columns: 1fr; }
+      .wrap { width: min(640px, calc(100% - 24px)); }
+      header { align-items: flex-start; }
+      dl { grid-template-columns: 1fr; gap: 2px 0; }
+      dl div, dl dt, dl dd { min-width: 0; }
+      dd { margin-bottom: 8px; }
       .copy { width: 100%; }
     }
   </style>
@@ -78,12 +76,12 @@
       </article>
       <article aria-labelledby="link-title">
         <h2 id="link-title">Links</h2>
-        <p class="links" id="official-link">
-          <a href="https://pump.fun/coin/AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump">Pump.fun</a>
-          <a href="https://solscan.io/token/AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump">Solscan</a>
-          <a href="https://dexscreener.com/solana/fwrzklr118ppxyoj4lsh317rrfjaduhatmnayezbgr5j">DexScreener</a>
-          <a href="https://solscan.io/tx/jFgUp1TvrvAf6BvJxUVQ3PNiuXYDSekedWyLqgGvHnLVUxNjFuYsBjMX3xXWfbmwGbWjVpa2Gg6cDngDVjaBTa1">Jupiter Lock proof</a>
-        </p>
+        <ul class="links" id="official-link">
+          <li><a href="https://pump.fun/coin/AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump">Pump.fun</a></li>
+          <li><a href="https://solscan.io/token/AwRR84BRbzPKSvWnw4BBNYmFYmRdRTBkLxCiKzTvpump">Solscan</a></li>
+          <li><a href="https://dexscreener.com/solana/fwrzklr118ppxyoj4lsh317rrfjaduhatmnayezbgr5j">DexScreener</a></li>
+          <li><a href="https://solscan.io/tx/jFgUp1TvrvAf6BvJxUVQ3PNiuXYDSekedWyLqgGvHnLVUxNjFuYsBjMX3xXWfbmwGbWjVpa2Gg6cDngDVjaBTa1">Jupiter Lock proof</a></li>
+        </ul>
       </article>
       <article aria-labelledby="swap-title">
         <h2 id="swap-title">Swap</h2>

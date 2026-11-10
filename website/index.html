@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07090c">
+  <meta name="theme-color" content="#090a0c">
   <meta name="description" content="Sign in to ValhallaOS. Live trading is off.">
   <link rel="canonical" href="https://valhalla-app.xyz/">
   <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
-  <link rel="preload" as="image" href="/assets/heaven-poster.jpg" fetchpriority="high">
+  <link rel="stylesheet" href="/visual.css">
   <link rel="stylesheet" href="/home.css">
   <title>ValhallaOS</title>
 </head>
@@ -20,8 +20,8 @@
       <figure class="stage-wrap backdrop" aria-hidden="true">
         <div class="stage">
           <div class="scene" id="hero-scene">
-            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="720">
-            <video id="hero-video" muted loop playsinline preload="none" poster="/assets/heaven-poster.jpg"></video>
+            <img class="still" src="/assets/heaven-poster.jpg" alt="" width="1280" height="720" loading="lazy" decoding="async">
+            <video id="hero-video" muted loop playsinline preload="none"></video>
             <p class="motion-slot"><button class="motion-control" id="hero-motion" type="button" aria-pressed="false" aria-label="Play motion" title="Play motion">▶</button></p>
           </div>
         </div>

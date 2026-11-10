@@ -31,6 +31,11 @@ test('entrance and volOS copy stay honest', () => {
   }
   assert.match(desk, /data-open="wallet"/);
   assert.match(desk, /LIVE TRADING OFF/);
+  assert.match(desk, /Feed not connected/);
+  assert.match(home, /visual\.css/);
+  assert.match(volos, /visual\.css/);
+  assert.match(desk, /visual\.css/);
+  assert.match(home, /loading="lazy"/);
   assert.match(desk, /disabled/);
   assert.match(desk, /id="desktop" hidden/);
   assert.match(desk, /id="sign-out"/);

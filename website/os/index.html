@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#080a0c">
+  <meta name="theme-color" content="#090a0c">
   <meta name="description" content="ValhallaOS command desk for wallet connections and assistant chat.">
   <title>ValhallaOS · Workstation</title>
+  <link rel="stylesheet" href="/visual.css">
   <link rel="stylesheet" href="/os/os.css?v=1.4.2">
   <link rel="stylesheet" href="/desk.css?v=1.4.2">
   <script src="/site-config.js?v=1.4.2" defer></script>
@@ -73,7 +74,7 @@
     </nav>
 
     <div class="workspace">
-      <section class="workspace-panel" aria-labelledby="feed-title">
+      <section class="workspace-panel feed-panel" aria-labelledby="feed-title">
         <div class="panel-heading"><h2 id="feed-title">Live feed</h2><span id="feed-state">NOT CONNECTED</span></div>
         <p id="feed-status" role="status">Feed not connected</p>
         <ul id="feed-list"></ul>
@@ -81,11 +82,6 @@
       <section class="workspace-panel market-panel" aria-labelledby="market-title">
         <div class="panel-heading"><h2 id="market-title">Market</h2><span>NOT CONNECTED</span></div>
         <p>No prices, volume, or token lists are loaded. A blank tile is not a live quote.</p>
-        <ul class="placeholder-row">
-          <li>Price feed not connected</li>
-          <li>Volume feed not connected</li>
-          <li>Route feed not connected</li>
-        </ul>
       </section>
       <section class="workspace-panel telemetry-panel" aria-labelledby="telemetry-title">
         <div class="panel-heading"><h2 id="telemetry-title">Hardware</h2><span>NOT CONNECTED</span></div>

@@ -1,0 +1,23 @@
+:root {
+  color-scheme: dark;
+  --bg: #090a0c;
+  --surface: #121316;
+  --ink: #f4efe6;
+  --muted: #b7b0a4;
+  --line: rgba(244, 239, 230, 0.14);
+  --gold: #d7b06a;
+  --gold-ink: #1c160e;
+  --radius: 14px;
+  --font: "Segoe UI", Tahoma, sans-serif;
+  --text: 15px;
+  --small: 13px;
+  --title: clamp(28px, 4vw, 36px);
+  --space: 16px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--text);
+}
