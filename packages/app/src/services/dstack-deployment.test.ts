@@ -1,5 +1,5 @@
 /**
- * CI-safe validation of the Alpha dstack deployment package: the committed
+ * CI-safe validation of the dstack deployment package: the committed
  * example renders a measured application accepted by the existing release,
  * signing and bootstrap contracts; compose keeps secrets out, pins the image
  * by digest, persists state, restarts and health-checks; and off-box
@@ -17,20 +17,20 @@ import {
   buildTdxQuote,
   packMsgpack,
 } from "../../../agent/test/support/dstack-tdx-harness.ts";
-import {
-  signAlphaProcessorPolicy,
-  verifyAlphaAttestation,
-} from "./alpha-dstack-attestation.ts";
-import {
-  alphaProcessorPolicy,
-  alphaReleaseInput,
-  renderAlphaApplication,
-  validateAlphaSecrets,
-} from "./alpha-dstack-deployment.ts";
 import { signConfidentialRelease } from "./confidential-release.ts";
+import {
+  signDstackProcessorPolicy,
+  verifyDstackDeploymentAttestation,
+} from "./dstack-attestation.ts";
+import {
+  dstackProcessorPolicy,
+  dstackReleaseInput,
+  renderDstackApplication,
+  validateDstackSecrets,
+} from "./dstack-deployment.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const packageDir = path.resolve(here, "../../deploy/dstack-alpha");
+const packageDir = path.resolve(here, "../../deploy/dstack");
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 const privatePem = privateKey
   .export({ format: "pem", type: "pkcs8" })
@@ -53,7 +53,7 @@ async function example() {
 
 const IMAGE = {
   schemaVersion: 1,
-  image: `ghcr.io/elizaos/eliza-alpha@sha256:${"a".repeat(64)}`,
+  image: `ghcr.io/elizaos/eliza-dstack@sha256:${"a".repeat(64)}`,
   sourceCommit: "b".repeat(40),
   verifier: {
     image: "ghcr.io/dstack-tee/dstack-verifier:0.6.0@sha256:x",
@@ -68,20 +68,28 @@ afterEach(async () => {
   }
 });
 
-describe("Alpha dstack application", () => {
+describe("dstack application", () => {
   it("renders exact bytes the release signer and bootstrap accept", async () => {
     const deployment = await example();
-    const rendered = renderAlphaApplication(deployment, IMAGE, publicPem);
+    deployment.character = {
+      name: "Independent consumer",
+      bio: ["Consumer-owned biography"],
+      system: "Consumer-owned instructions",
+    };
+    deployment.models = { small: "consumer-small", large: "consumer-large" };
+    deployment.processors.cerebras.endpoint =
+      "https://processor.example.test/v1";
+    const rendered = renderDstackApplication(deployment, IMAGE, publicPem);
     expect(rendered.composeHash).toBe(
       createHash("sha256").update(rendered.appCompose).digest("hex"),
     );
     expect(rendered.appId).toBe(rendered.composeHash.slice(0, 40));
     // Same input renders identical measured bytes.
-    expect(renderAlphaApplication(deployment, IMAGE, publicPem)).toEqual(
+    expect(renderDstackApplication(deployment, IMAGE, publicPem)).toEqual(
       rendered,
     );
     const envelope = signConfidentialRelease(
-      alphaReleaseInput(deployment, rendered),
+      dstackReleaseInput(deployment, rendered),
       privatePem,
     );
     const identity = JSON.parse(
@@ -103,7 +111,7 @@ describe("Alpha dstack application", () => {
     );
     expect(manifest.public_logs).toBe(false);
     const compose = JSON.parse(manifest.docker_compose_file);
-    const service = compose.services["eliza-alpha"];
+    const service = compose.services["eliza-dstack"];
     expect(service.image).toBe(IMAGE.image);
     expect(service.restart).toBe("unless-stopped");
     expect(service.healthcheck.test).toContain(
@@ -132,9 +140,30 @@ describe("Alpha dstack application", () => {
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
       ELIZA_DISABLE_FFI_LLAMA: "1",
       ELIZA_TEE_PRODUCTION_PROFILE: "dstack-cpu",
-      ELIZA_SCHEDULING_DEFAULT_PACKS: "alpha-routines",
     });
     expect(env.ELIZA_LOCAL_LLAMA).toBeUndefined();
+    expect(env.ELIZA_SCHEDULING_DEFAULT_PACKS).toBeUndefined();
+    expect(env.ELIZA_PROVIDER).toBe(deployment.textProvider);
+    expect(env.CEREBRAS_BASE_URL).toBe(deployment.processors.cerebras.endpoint);
+    expect(JSON.parse(env.ELIZA_AGENT_CHARACTER_JSON ?? "")).toEqual(
+      deployment.character,
+    );
+    expect(
+      dstackProcessorPolicy(deployment, rendered, "r1").routes,
+    ).toMatchObject([
+      {
+        endpoint: deployment.processors.cerebras.endpoint,
+        model: "consumer-small",
+        modelTypes: ["TEXT_SMALL"],
+        processorApproval: { provider: deployment.textProvider },
+      },
+      {
+        endpoint: deployment.processors.cerebras.endpoint,
+        model: "consumer-large",
+        modelTypes: ["TEXT_LARGE"],
+        processorApproval: { provider: deployment.textProvider },
+      },
+    ]);
     // Measured evidence config is complete except the signed release identity.
     expect(
       dstackEvidenceConfiguration
@@ -144,8 +173,8 @@ describe("Alpha dstack application", () => {
 
     // confidential-bootstrap.mjs launch contract: exact secret names, none of
     // the loader/admission prefixes it refuses.
-    const launch = JSON.parse(compose.configs["alpha-launch"].content);
-    expect(service.entrypoint.at(-1)).toBe("/etc/eliza-alpha/launch.json");
+    const launch = JSON.parse(compose.configs["agent-launch"].content);
+    expect(service.entrypoint.at(-1)).toBe("/etc/eliza-dstack/launch.json");
     expect(launch.environmentNames).toEqual(rendered.secretNames);
     expect(launch.publicKey).toBe(publicPem.trim());
     for (const name of launch.environmentNames) {
@@ -156,16 +185,16 @@ describe("Alpha dstack application", () => {
   it("keeps secrets and floating images out of the measured application", async () => {
     const deployment = await example();
     expect(() =>
-      renderAlphaApplication(
+      renderDstackApplication(
         { ...deployment, CEREBRAS_API_KEY: "sk-live" },
         IMAGE,
         publicPem,
       ),
     ).toThrow();
     expect(() =>
-      renderAlphaApplication(
+      renderDstackApplication(
         deployment,
-        { ...IMAGE, image: "ghcr.io/elizaos/eliza-alpha:latest" },
+        { ...IMAGE, image: "ghcr.io/elizaos/eliza-dstack:latest" },
         publicPem,
       ),
     ).toThrow(/digest/);
@@ -175,21 +204,21 @@ describe("Alpha dstack application", () => {
       ELIZA_API_TOKEN: "t".repeat(32),
       ELIZA_VAULT_PASSPHRASE: "p".repeat(32),
     };
-    const rendered = renderAlphaApplication(deployment, IMAGE, publicPem);
+    const rendered = renderDstackApplication(deployment, IMAGE, publicPem);
     for (const value of Object.values(secrets)) {
       expect(rendered.appCompose).not.toContain(value);
     }
-    expect(validateAlphaSecrets(deployment, secrets).map((s) => s.key)).toEqual(
-      rendered.secretNames,
-    );
+    expect(
+      validateDstackSecrets(deployment, secrets).map((s) => s.key),
+    ).toEqual(rendered.secretNames);
     expect(() =>
-      validateAlphaSecrets(deployment, {
+      validateDstackSecrets(deployment, {
         ...secrets,
         ELIZA_API_TOKEN: "short",
       }),
     ).toThrow(/32/);
     expect(() =>
-      validateAlphaSecrets(deployment, { ...secrets, EXTRA: "x" }),
+      validateDstackSecrets(deployment, { ...secrets, EXTRA: "x" }),
     ).toThrow(/exactly/);
   });
 
@@ -199,10 +228,10 @@ describe("Alpha dstack application", () => {
   it.runIf(composeCli.status === 0)(
     "passes docker compose config validation",
     async () => {
-      const dir = await mkdtemp(path.join(tmpdir(), "alpha-compose-"));
+      const dir = await mkdtemp(path.join(tmpdir(), "dstack-compose-"));
       directories.push(dir);
       const manifest = JSON.parse(
-        renderAlphaApplication(await example(), IMAGE, publicPem).appCompose,
+        renderDstackApplication(await example(), IMAGE, publicPem).appCompose,
       );
       const file = path.join(dir, "docker-compose.json");
       await writeFile(file, manifest.docker_compose_file);
@@ -220,9 +249,9 @@ describe("Alpha dstack application", () => {
   );
 });
 
-describe("Alpha attestation appraisal", () => {
+describe("Dstack attestation appraisal", () => {
   async function setup(verifierReport: (reportData: string) => unknown) {
-    const dir = await mkdtemp(path.join(tmpdir(), "alpha-attest-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "dstack-attest-"));
     directories.push(dir);
     const deployment = await example();
     const reportFile = path.join(dir, "report.json");
@@ -245,15 +274,15 @@ describe("Alpha attestation appraisal", () => {
         configSha256: await digest(config),
       },
     };
-    const rendered = renderAlphaApplication(deployment, image, publicPem);
-    const release = alphaReleaseInput(deployment, rendered);
+    const rendered = renderDstackApplication(deployment, image, publicPem);
+    const release = dstackReleaseInput(deployment, rendered);
     const releaseEnvelope = signConfidentialRelease(release, privatePem);
     const processorPolicyPath = path.join(dir, "processors.envelope.json");
     await writeFile(
       processorPolicyPath,
       JSON.stringify(
-        signAlphaProcessorPolicy(
-          alphaProcessorPolicy(deployment, rendered, "r1"),
+        signDstackProcessorPolicy(
+          dstackProcessorPolicy(deployment, rendered, "r1"),
           privatePem,
         ),
       ),
@@ -332,7 +361,10 @@ describe("Alpha attestation appraisal", () => {
       composeHash: rendered.composeHash,
       osImageHash: deployment.osImageHash,
     };
-    const result = await verifyAlphaAttestation(inputs, requestEvidence);
+    const result = await verifyDstackDeploymentAttestation(
+      inputs,
+      requestEvidence,
+    );
     expect(result).toMatchObject({
       appId: rendered.appId,
       measurements: { compose: rendered.composeHash },
@@ -341,7 +373,7 @@ describe("Alpha attestation appraisal", () => {
 
     // A positive verifier report cannot admit malformed raw evidence.
     await expect(
-      verifyAlphaAttestation(inputs, async (nonce) => ({
+      verifyDstackDeploymentAttestation(inputs, async (nonce) => ({
         ...(await requestEvidence(nonce)),
         attestation: "abcd",
       })),
@@ -353,7 +385,7 @@ describe("Alpha attestation appraisal", () => {
     // A different (e.g. rolled-back or tampered) compose is rejected.
     expected = { ...expected, composeHash: "f".repeat(64) };
     await expect(
-      verifyAlphaAttestation(inputs, requestEvidence),
+      verifyDstackDeploymentAttestation(inputs, requestEvidence),
     ).rejects.toMatchObject({ code: "TEE_DSTACK_EVIDENCE_REJECTED" });
   });
 
@@ -367,11 +399,11 @@ describe("Alpha attestation appraisal", () => {
         }),
     );
     await expect(
-      verifyAlphaAttestation(inputs, async (nonce) => ({
+      verifyDstackDeploymentAttestation(inputs, async (nonce) => ({
         ...(await requestEvidence(nonce)),
         reportData: "0".repeat(64),
       })),
-    ).rejects.toMatchObject({ code: "ALPHA_ATTESTATION_CHALLENGE_MISMATCH" });
+    ).rejects.toMatchObject({ code: "DSTACK_ATTESTATION_CHALLENGE_MISMATCH" });
 
     const forged = JSON.parse(
       await readFile(inputs.processorPolicyPath, "utf8"),
@@ -379,7 +411,7 @@ describe("Alpha attestation appraisal", () => {
     forged.payload = forged.payload.replace('"region":"us"', '"region":"eu"');
     await writeFile(inputs.processorPolicyPath, JSON.stringify(forged));
     await expect(
-      verifyAlphaAttestation(inputs, requestEvidence),
+      verifyDstackDeploymentAttestation(inputs, requestEvidence),
     ).rejects.toMatchObject({ code: "CONFIDENTIAL_HOST_POLICY_REJECTED" });
   });
 });

@@ -106,11 +106,22 @@ export type ManagedGoogleAgentHostOptions = {
   apiOrigin: string;
   access: () => GoogleAgentAccess;
   calendarReadTiming?: boolean;
+  /** Optional product limit in UTF-16 code units. Omit to retain the complete body. */
+  gmailReadBodyMaxCharacters?: number;
 };
 export function createManagedGoogleAgentHost(
   host: ManagedGoogleAgentPort,
   options: ManagedGoogleAgentHostOptions,
 ) {
+  const gmailReadBodyMaxCharacters = options.gmailReadBodyMaxCharacters;
+  if (
+    gmailReadBodyMaxCharacters !== undefined &&
+    (!Number.isSafeInteger(gmailReadBodyMaxCharacters) ||
+      gmailReadBodyMaxCharacters <= 0)
+  )
+    throw new TypeError(
+      "gmailReadBodyMaxCharacters must be a positive safe integer",
+    );
   const timing = createCalendarReadTiming(options.calendarReadTiming === true);
   const allowed = (kind: keyof GoogleAgentAccess) => {
     if (options.access()[kind] !== true)
@@ -808,12 +819,20 @@ export function createManagedGoogleAgentHost(
               "invalid-request",
               "Invalid Gmail message identity.",
             );
-          const result = await client.gmailRead(grantId, providerId, signal);
+          const result = await client.gmailRead(grantId, providerId, signal),
+            truncated =
+              gmailReadBodyMaxCharacters !== undefined &&
+              result.bodyText.length > gmailReadBodyMaxCharacters;
           return {
             id: messageId,
             from: result.message.from,
             subject: decodeBasicHtmlEntities(result.message.subject),
-            bodyText: result.bodyText,
+            bodyText: truncated
+              ? result.bodyText
+                  .slice(0, gmailReadBodyMaxCharacters)
+                  .replace(/[\uD800-\uDBFF]$/, "")
+              : result.bodyText,
+            ...(truncated ? { truncated: true } : {}),
             receivedAt: result.message.receivedAt,
             unread: result.message.unread,
             hasAttachments: result.message.hasAttachments === true,

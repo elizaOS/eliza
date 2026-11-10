@@ -21,6 +21,12 @@
  */
 
 const HEX64 = /^[0-9a-f]{64}$/;
+const CLOUD_VOICE_FORMATS = new Map([
+  ["cloud-voice-qualification-v1", "cloud-voice-admission-v1"],
+  // Preserve the exact installed consumer receipt format on legacy reads/writes.
+  ["alpha-cloud-voice-qualification-v1", "alpha-cloud-voice-admission-v1"],
+]);
+const CLOUD_VOICE_ADMISSION_FORMATS = new Set(CLOUD_VOICE_FORMATS.values());
 
 export const CLOUD_VOICE_CHECKS = Object.freeze([
   "consent",
@@ -36,14 +42,14 @@ export const CLOUD_VOICE_CHECKS = Object.freeze([
 
 /** Bind an external, content-free Cloud QA receipt to one exact APK. */
 export function cloudVoiceAdmission(apkSha256, evidence, evidenceSha256) {
+  const format = CLOUD_VOICE_FORMATS.get(evidence?.format);
   const rows =
-    evidence?.format === "alpha-cloud-voice-qualification-v1" &&
-    Array.isArray(evidence.results)
+    format && Array.isArray(evidence.results)
       ? evidence.results.filter((row) => row?.apkSha256 === apkSha256)
       : [];
   const row = rows.length === 1 ? rows[0] : null;
   const admission = {
-    format: "alpha-cloud-voice-admission-v1",
+    format: format ?? "cloud-voice-admission-v1",
     apkSha256,
     evidenceSha256: HEX64.test(evidenceSha256 ?? "") ? evidenceSha256 : null,
     provider: row?.provider === "cartesia" ? "cartesia" : null,
@@ -63,7 +69,7 @@ export function cloudVoiceBlockers(row, provider) {
     return ["Cloud speech release policy is not configured"];
   const voice = row.cloudVoice;
   if (
-    voice?.format !== "alpha-cloud-voice-admission-v1" ||
+    !CLOUD_VOICE_ADMISSION_FORMATS.has(voice?.format) ||
     !HEX64.test(voice.evidenceSha256 ?? "")
   )
     return ["Cloud voice qualification evidence is missing or invalid"];

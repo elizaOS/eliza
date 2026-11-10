@@ -1,9 +1,9 @@
 /**
- * Operator CLI for the Alpha dstack deployment (deploy/dstack-alpha/README.md).
- * Run with `bun --conditions=eliza-source packages/app/scripts/alpha-dstack.ts
+ * Operator CLI for the dstack deployment (deploy/dstack/README.md).
+ * Run with `bun --conditions=eliza-source packages/app/scripts/dstack.ts
  * <command>`. Outputs are written exclusively (never overwritten) with mode
  * 0600, and neither secrets nor parser diagnostics that could contain them
- * are printed. API tokens are read from ELIZA_ALPHA_API_TOKEN, never argv.
+ * are printed. API tokens are read from ELIZA_DSTACK_API_TOKEN, never argv.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,20 +14,20 @@ import {
   normalizeRemoteAgentOrigin,
   REMOTE_AGENT_ENDPOINTS,
 } from "@elizaos/contracts";
-import {
-  signAlphaProcessorPolicy,
-  verifyAlphaAttestation,
-} from "../src/services/alpha-dstack-attestation.ts";
-import {
-  alphaDeploymentSchema,
-  alphaProcessorPolicy,
-  alphaReleaseInput,
-  renderAlphaApplication,
-  validateAlphaSecrets,
-} from "../src/services/alpha-dstack-deployment.ts";
 import { encryptConfidentialEnvironment } from "../src/services/confidential-environment.ts";
+import {
+  signDstackProcessorPolicy,
+  verifyDstackDeploymentAttestation,
+} from "../src/services/dstack-attestation.ts";
+import {
+  dstackDeploymentSchema,
+  dstackProcessorPolicy,
+  dstackReleaseInput,
+  renderDstackApplication,
+  validateDstackSecrets,
+} from "../src/services/dstack-deployment.ts";
 
-const USAGE = `Usage: alpha-dstack.ts <command> [options]
+const USAGE = `Usage: dstack.ts <command> [options]
   render            --deployment F --image F --authority-pub F --out DIR
   encrypt-env       --deployment F --out-dir DIR --secrets F --authority-pub F --launch-key F
   provision-request --deployment F --out-dir DIR
@@ -78,8 +78,8 @@ async function writeNew(path: string, content: string): Promise<void> {
   await writeFile(path, content, { flag: "wx", mode: 0o600 });
 }
 function apiToken(): string {
-  const token = process.env.ELIZA_ALPHA_API_TOKEN;
-  if (!token) throw new UsageError("Set ELIZA_ALPHA_API_TOKEN");
+  const token = process.env.ELIZA_DSTACK_API_TOKEN;
+  if (!token) throw new UsageError("Set ELIZA_DSTACK_API_TOKEN");
   return token;
 }
 function endpoint(): string {
@@ -117,7 +117,7 @@ async function main(command: string | undefined): Promise<void> {
   switch (command) {
     case "render": {
       const deployment = await json(absolute("deployment"));
-      const rendered = renderAlphaApplication(
+      const rendered = renderDstackApplication(
         deployment,
         await json(absolute("image")),
         await readFile(absolute("authority-pub"), "utf8"),
@@ -127,7 +127,7 @@ async function main(command: string | undefined): Promise<void> {
       await writeNew(`${out}/app-compose.json`, rendered.appCompose);
       await writeNew(
         `${out}/release.json`,
-        `${JSON.stringify(alphaReleaseInput(deployment, rendered), null, 2)}\n`,
+        `${JSON.stringify(dstackReleaseInput(deployment, rendered), null, 2)}\n`,
       );
       process.stdout.write(
         `${JSON.stringify({
@@ -139,12 +139,12 @@ async function main(command: string | undefined): Promise<void> {
       return;
     }
     case "encrypt-env": {
-      const deployment = alphaDeploymentSchema.parse(
+      const deployment = dstackDeploymentSchema.parse(
         await json(absolute("deployment")),
       );
       const outDir = absolute("out-dir");
       const { release, envelope } = await releaseFiles(outDir);
-      const environment = validateAlphaSecrets(
+      const environment = validateDstackSecrets(
         deployment,
         await json(absolute("secrets")),
       );
@@ -167,7 +167,7 @@ async function main(command: string | undefined): Promise<void> {
       return;
     }
     case "provision-request": {
-      const deployment = alphaDeploymentSchema.parse(
+      const deployment = dstackDeploymentSchema.parse(
         await json(absolute("deployment")),
       );
       if (deployment.variant !== "dstack-tdx") {
@@ -220,8 +220,8 @@ async function main(command: string | undefined): Promise<void> {
         appId: composeHash.slice(0, 40),
         secretNames: [],
       };
-      const envelope = signAlphaProcessorPolicy(
-        alphaProcessorPolicy(deployment, rendered, need("revision")),
+      const envelope = signDstackProcessorPolicy(
+        dstackProcessorPolicy(deployment, rendered, need("revision")),
         await readFile(absolute("key"), "utf8"),
       );
       await writeNew(
@@ -235,7 +235,7 @@ async function main(command: string | undefined): Promise<void> {
       const outDir = absolute("out-dir");
       const { release, envelope } = await releaseFiles(outDir);
       const origin = endpoint();
-      const result = await verifyAlphaAttestation(
+      const result = await verifyDstackDeploymentAttestation(
         {
           deployment: await json(absolute("deployment")),
           image: await json(absolute("image")),
@@ -296,7 +296,7 @@ try {
   process.stderr.write(
     error instanceof UsageError
       ? `${error.message}\n`
-      : `alpha-dstack ${positionals[0] ?? ""} failed: ${
+      : `dstack ${positionals[0] ?? ""} failed: ${
           error instanceof Error && "code" in error
             ? String((error as { code: unknown }).code)
             : "check inputs"

@@ -183,8 +183,18 @@ public final class NoticeDelivery {
   poster.cancel(id);
  }}
  boolean shown(String id){return poster.shown(id);}
- /** The status of an approval receipt, or null when there is none. */
- String approvalStatus(String id)throws Exception{synchronized(LOCK){JSONObject record=approvals().optJSONObject(id);return record==null?null:record.optString("status");}}
+ /** Read-only status of this exact approval; malformed storage is never definite cleanup. */
+ String approvalStatus(String id,String binding,long expiresAt)throws Exception{synchronized(LOCK){
+  JSONObject ledger=approvals();if(!ledger.has(id))return null;
+  JSONObject record=ledger.getJSONObject(id);
+  if(record.length()==2&&"withdrawn".equals(record.optString("status"))){
+   Object until=record.get("expiresAt");if(!(until instanceof Integer||until instanceof Long))throw new IllegalStateException("Invalid withdrawal receipt");
+   return "withdrawn";
+  }
+  approvalRecord(record,binding,identity(id,binding,config.approvalTitle,config.approvalBody));
+  if(expiresAt!=record.getLong("expiresAt"))throw new IllegalStateException("Approval notice expiry changed");
+  return record.getString("status");
+ }}
  /** Removes receipts whose approval expired (the OS already timed the notice out) and returns their IDs. */
  public java.util.List<String> expireApprovals(long now)throws Exception{synchronized(LOCK){
   JSONObject ledger=approvals();java.util.List<String> expired=new java.util.ArrayList<>();

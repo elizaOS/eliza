@@ -116,6 +116,12 @@ the post resolves `failed`: nothing was recorded or shown. Rows written before r
 creation time and retire first. Approval receipts are bounded at 256 and removed at expiry.
 A body over Android's 1024-character text limit matches when the shown text is its exact prefix.
 
+An approval publication failure keeps its original exception. Cleanup removes its
+route only after a definite absent receipt or a validated terminal receipt for the
+same binding, content digest and expiry. An opaque withdrawal intent also blocks
+publication by its approval ID. Unreadable, malformed, foreign and uncertain
+receipts keep their routes; cleanup errors are attached to the publication error.
+
 ## Host notice routes, owner fence and recovery
 
 The host-level pieces around the ledger are shared too; a host supplies only its deployed

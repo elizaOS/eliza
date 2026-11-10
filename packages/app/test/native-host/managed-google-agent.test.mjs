@@ -29,13 +29,15 @@ async function fixture({
   accounts,
   retireAfterCalendars = false,
   access = hostOptions.access,
+  gmailReadBodyMaxCharacters,
 } = {}) {
   const calls = [],
     receipts = new Map();
   let current = true,
     otherOwner = false,
     dispatches = 0,
-    messageBody = "A complete message";
+    messageBody = "A complete message",
+    messageSubject = "A &amp; B";
   const request = async (url, init = {}) => {
     const u = new URL(url);
     calls.push(u.pathname);
@@ -89,7 +91,7 @@ async function fixture({
         message: {
           externalId: "mail1",
           threadId: "thread1",
-          subject: "A &amp; B",
+          subject: messageSubject,
           from: "Sender",
           to: [],
           snippet: "Hello",
@@ -156,6 +158,7 @@ async function fixture({
   const host = await startNativeGoogleAgentHost({
     ...hostOptions,
     access,
+    gmailReadBodyMaxCharacters,
     binding: binding(),
     apiToken,
     request,
@@ -187,6 +190,9 @@ async function fixture({
     messageBody: (value) => {
       messageBody = value;
     },
+    messageSubject: (value) => {
+      messageSubject = value;
+    },
     retire: () => {
       current = false;
     },
@@ -207,6 +213,7 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
     const message = await f.call({ messageId });
     assert.equal(message.status, 200);
     assert.equal(message.data.message.bodyText, fullBody);
+    assert.equal(Object.hasOwn(message.data.message, "truncated"), false);
     f.messageBody("x".repeat(256 * 1024));
     const oversized = await f.call({ messageId });
     assert.equal(oversized.status, 409);
@@ -245,6 +252,47 @@ test("native HTTP host uses the SDK token and prepares, dispatches and reads one
     );
   } finally {
     await f.host.close();
+  }
+});
+test("configured native Gmail limits mark truncation without splitting a Unicode character", async () => {
+  for (const maximum of [32_000, 7]) {
+    const f = await fixture({ gmailReadBodyMaxCharacters: maximum });
+    try {
+      const messageId = (await f.call({ limit: 1 })).data.items[0].id;
+      for (const [body, expected, truncated] of [
+        ["a".repeat(maximum), "a".repeat(maximum), false],
+        ["a".repeat(maximum + 1), "a".repeat(maximum), true],
+        [`${"a".repeat(maximum - 1)}😀tail`, "a".repeat(maximum - 1), true],
+        [`${"a".repeat(maximum - 2)}😀`, `${"a".repeat(maximum - 2)}😀`, false],
+        ["x".repeat(256 * 1024), "x".repeat(maximum), true],
+      ]) {
+        f.messageBody(body);
+        const result = await f.call({ messageId });
+        assert.equal(result.status, 200);
+        assert.equal(result.data.message.bodyText, expected);
+        assert.equal(
+          Object.hasOwn(result.data.message, "truncated"),
+          truncated,
+        );
+        if (truncated) assert.equal(result.data.message.truncated, true);
+      }
+      // A caller's body limit does not waive the complete response bound.
+      f.messageBody("A complete message");
+      f.messageSubject("x".repeat(256 * 1024));
+      const oversized = await f.call({ messageId });
+      assert.equal(oversized.status, 409);
+      assert.equal(oversized.data.reason, "result-too-large");
+      assert.equal(oversized.data.message, undefined);
+      assert.equal(f.dispatches(), 0);
+    } finally {
+      await f.host.close();
+    }
+  }
+  for (const invalid of [0, -1, 1.5, NaN, Infinity]) {
+    await assert.rejects(
+      fixture({ gmailReadBodyMaxCharacters: invalid }),
+      /gmailReadBodyMaxCharacters must be a positive safe integer/,
+    );
   }
 });
 test("native host refuses foreign callers, browser origins, wrong Cloud owners and retired native bindings", async () => {

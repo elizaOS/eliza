@@ -1,5 +1,5 @@
 /**
- * Off-box appraisal of the Alpha agent's dstack evidence. The expected
+ * Off-box appraisal of an agent's dstack evidence. The expected
  * identity comes only from the operator's signed release, the pinned verifier
  * digests from the image record, and processor approval from the signed
  * processor policy (confidential-host-policy). The agent supplies raw evidence
@@ -15,16 +15,16 @@ import {
 import { verifyDstackAttestation } from "@elizaos/agent/services/tee-dstack-evidence";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
-import {
-  ALPHA_AGENT_PORT,
-  ALPHA_STATE_DIR,
-  alphaDeploymentSchema,
-  alphaImageRecordSchema,
-} from "./alpha-dstack-deployment.ts";
 import { verifyConfidentialRelease } from "./confidential-release.ts";
+import {
+  DSTACK_AGENT_PORT,
+  DSTACK_STATE_DIR,
+  dstackDeploymentSchema,
+  dstackImageRecordSchema,
+} from "./dstack-deployment.ts";
 
 /** Signs a processor policy in the envelope createConfidentialHostPolicy reads. */
-export function signAlphaProcessorPolicy(
+export function signDstackProcessorPolicy(
   policy: unknown,
   authorityPrivateKeyPem: string,
 ): { payload: string; signature: string } {
@@ -37,7 +37,7 @@ export function signAlphaProcessorPolicy(
   return { payload, signature };
 }
 
-export interface AlphaAttestationInputs {
+export interface DstackAttestationInputs {
   deployment: unknown;
   image: unknown;
   /** Release input (from `render`) and its signed envelope. */
@@ -50,11 +50,11 @@ export interface AlphaAttestationInputs {
 }
 
 /** Builds the eliza-confidential-host-v1 document this deployment must satisfy. */
-export function alphaHostConfiguration(
-  inputs: AlphaAttestationInputs,
+export function dstackHostConfiguration(
+  inputs: DstackAttestationInputs,
 ): ConfidentialHostConfiguration {
-  const deployment = alphaDeploymentSchema.parse(inputs.deployment);
-  const image = alphaImageRecordSchema.parse(inputs.image);
+  const deployment = dstackDeploymentSchema.parse(inputs.deployment);
+  const image = dstackImageRecordSchema.parse(inputs.image);
   const identity = verifyConfidentialRelease(
     inputs.release,
     inputs.releaseEnvelope,
@@ -64,7 +64,7 @@ export function alphaHostConfiguration(
     schema: "eliza-confidential-host-v1",
     agentId: deployment.agentId,
     deploymentId: deployment.deploymentId,
-    stateDirectory: ALPHA_STATE_DIR,
+    stateDirectory: DSTACK_STATE_DIR,
     processorPolicyPath: inputs.processorPolicyPath,
     processorPolicyPublicKey: inputs.authorityPublicKeyPem.trim(),
     allowedRegions: deployment.processors.allowedRegions,
@@ -82,12 +82,8 @@ export function alphaHostConfiguration(
         expiresAt: identity.expiresAt,
       },
     },
-    listen: { host: "127.0.0.1", port: ALPHA_AGENT_PORT },
-    character: {
-      name: `alpha-${deployment.deploymentId}`,
-      bio: [],
-      system: "",
-    },
+    listen: { host: "127.0.0.1", port: DSTACK_AGENT_PORT },
+    character: deployment.character,
   };
 }
 
@@ -104,19 +100,19 @@ const attestationResponse = z
  * release/processor policy, a verifier digest mismatch, a replayed or foreign
  * challenge, a debug or out-of-date platform, or any identity difference.
  */
-export async function verifyAlphaAttestation(
-  inputs: AlphaAttestationInputs,
+export async function verifyDstackDeploymentAttestation(
+  inputs: DstackAttestationInputs,
   requestEvidence: (nonce: string) => Promise<unknown>,
   signal?: AbortSignal,
 ) {
-  const policy = createConfidentialHostPolicy(alphaHostConfiguration(inputs));
+  const policy = createConfidentialHostPolicy(dstackHostConfiguration(inputs));
   const profile = policy.currentProfile();
   const nonce = randomBytes(32).toString("hex");
   const reportDataHex = dstackOperatorReportData(nonce);
   const response = attestationResponse.parse(await requestEvidence(nonce));
   if (response.nonce !== nonce || response.reportData !== reportDataHex) {
     throw new ElizaError("Agent answered a different attestation challenge", {
-      code: "ALPHA_ATTESTATION_CHALLENGE_MISMATCH",
+      code: "DSTACK_ATTESTATION_CHALLENGE_MISMATCH",
     });
   }
   const evidence = await verifyDstackAttestation(

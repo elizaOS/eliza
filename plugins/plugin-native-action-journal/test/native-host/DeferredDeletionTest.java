@@ -39,6 +39,7 @@ public final class DeferredDeletionTest {
   journal();
   claimAndRecovery();
   coordinator();
+  strictOwnerFence();
   System.out.println(checks + " assertions passed");
  }
 
@@ -244,6 +245,7 @@ public final class DeferredDeletionTest {
   final Map<String, Integer> slotReads = new HashMap<>();
   String boot = "boot:1"; long elapsed = 1000;
   JSONObject identity; String fence = "fence-1"; boolean offline; int identityReads; long identityDelay;
+  boolean strictFence; int fenceReads, rotateAtFence = -1;
   DeferredDeletionCoordinator coordinator;
   final List<Long> scheduled = new ArrayList<>();
   final List<String> dispatched = new ArrayList<>();
@@ -267,7 +269,12 @@ public final class DeferredDeletionTest {
    return new JSONObject(identity.toString());
   }
   /** The fence names the current session, so an owner captured in an older session is stale. */
-  public String reviewFence(JSONObject value) { return fence + ":" + identity.optString("sessionId"); }
+  public String reviewFence(JSONObject value) throws Exception {
+   fenceReads++;
+   if (fenceReads == rotateAtFence) identity.put("sessionId", "raced-session");
+   if (strictFence && !DeferredDeletionJournal.same(value, identity)) throw new SecurityException("Retired owner identity");
+   return fence + ":" + identity.optString("sessionId");
+  }
   public JSONArray pendingDeletions() throws Exception { JSONArray rows = new JSONArray(); for (JSONObject row : reminderRows.values()) rows.put(new JSONObject(row.toString())); return rows; }
   public JSONObject stageDeletion(String id, String owner, JSONObject target, JSONObject clock, JSONObject binding) throws Exception {
    JSONObject row = new JSONObject().put("id", id).put("owner", owner).put("target", target).put("phase", "queued").put("continuity", clock.getString("continuity")).put("createdElapsed", clock.getLong("elapsed")).put("expiresElapsed", clock.getLong("elapsed") + DeletionDeadline.WINDOW_MS).put("delivery", "suspended");
@@ -297,6 +304,58 @@ public final class DeferredDeletionTest {
   DeferredDeletionCoordinator coordinator = new DeferredDeletionCoordinator(new DeferredDeletionCoordinator.Configuration("native-delete-journal:v1", "native-delete-installation:v1"), ports, ports, ports, ports, ports, ports);
   ports.coordinator = coordinator;
   return coordinator;
+ }
+
+ /** A host may throw when asked to confirm a retired identity, instead of returning a new fence. */
+ static void strictOwnerFence() throws Exception {
+  Ports changed = new Ports(); changed.strictFence = true;
+  DeferredDeletionCoordinator c = coordinator(changed);
+  JSONObject owner = c.agentOwner();
+  c.stageCalendar(event("strict-calendar"), owner, "strict-calendar");
+  c.stageReminder(reminder("strict-reminder"), owner, "strict-reminder", null);
+  changed.identity.put("sessionId", "new-session");
+  changed.elapsed += DeletionDeadline.WINDOW_MS;
+  int reads = changed.fenceReads;
+  check(!c.reconcile());
+  check(changed.fenceReads == reads + 1); // Only the newly authenticated owner needs a fence.
+  check(c.receipt("calendar", "strict-calendar").getString("phase").equals("paused"));
+  check(c.receipt("calendar", "strict-calendar").getString("blocked").equals("owner-changed"));
+  check(changed.paused.equals(List.of("strict-reminder:owner-changed")));
+  check(changed.dispatched.isEmpty() && changed.settled.isEmpty());
+  check(!c.reconcile());
+  check(changed.paused.size() == 1 && changed.dispatched.isEmpty() && changed.settled.isEmpty());
+
+  // An equal authenticated snapshot still needs the final fence. A race must not dispatch.
+  Ports raced = new Ports(); raced.strictFence = true;
+  DeferredDeletionCoordinator r = coordinator(raced);
+  JSONObject beforeRace = r.agentOwner();
+  r.stageCalendar(event("race-calendar"), beforeRace, "race-calendar");
+  r.stageReminder(reminder("race-reminder"), beforeRace, "race-reminder", null);
+  raced.elapsed += DeletionDeadline.WINDOW_MS;
+  raced.rotateAtFence = raced.fenceReads + 2; // Authenticate once, then rotate at the final check.
+  check(r.reconcile());
+  check(r.receipt("calendar", "race-calendar").getString("phase").equals("paused"));
+  check(r.receipt("calendar", "race-calendar").getString("blocked").equals("owner-unavailable"));
+  check(raced.reminderRows.get("race-reminder").getString("phase").equals("queued"));
+  check(raced.dispatched.isEmpty() && raced.settled.isEmpty() && raced.paused.isEmpty());
+  // The next owner read makes that change definite, so both rows can pause without effects.
+  check(!r.reconcile());
+  check(r.receipt("calendar", "race-calendar").getString("phase").equals("paused"));
+  check(raced.paused.equals(List.of("race-reminder:owner-changed")));
+  check(raced.dispatched.isEmpty() && raced.settled.isEmpty());
+
+  // The same owner and unchanged final fence still settle each kind once.
+  Ports same = new Ports(); same.strictFence = true;
+  DeferredDeletionCoordinator s = coordinator(same);
+  JSONObject current = s.agentOwner();
+  s.stageCalendar(event("same-calendar"), current, "same-calendar");
+  s.stageReminder(reminder("same-reminder"), current, "same-reminder", null);
+  same.elapsed += DeletionDeadline.WINDOW_MS;
+  check(!s.reconcile());
+  check(same.dispatched.equals(List.of("same-calendar")));
+  check(same.settled.equals(List.of("same-reminder:false")) && same.paused.isEmpty());
+  check(!s.reconcile());
+  check(same.dispatched.size() == 1 && same.settled.size() == 1);
  }
 
  static JSONObject event(String id) throws Exception { return new JSONObject().put("version", 3).put("sourceId", "7").put("eventId", id).put("revision", "r1").put("fields", new JSONObject().put("title", "Standup")); }
