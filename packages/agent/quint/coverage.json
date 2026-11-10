@@ -833,5 +833,20 @@
     "implementationTests": [
       "packages/agent/test/api-log-buffer-retention-http.test.ts"
     ]
+  },
+  {
+    "id": "PromptDeliveryConversation",
+    "model": "packages/agent/quint/prompt-delivery.qnt",
+    "sources": [
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/server.ts",
+      "plugins/plugin-workflow/src/trigger-routes.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two owner conversations and one asynchronous selection. An explicit missing or non-owner selection never falls back to another active window.",
+      "Existing HTTP/SQL delivery suite proves persisted target and callback delivery. Real provider outputs, native packaging and unbounded concurrency remain outside this scope."
+    ]
   }
 ]

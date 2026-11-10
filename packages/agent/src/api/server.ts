@@ -2286,8 +2286,10 @@ async function handleRequestForViewClient(
       pathname,
       runtime: state.runtime,
       ownerEntityId: automationOwnerEntityId,
-      resolvePromptDeliveryRoom: (runtime: IAgentRuntime) =>
-        resolvePromptDeliveryRoom(state, runtime),
+      resolvePromptDeliveryRoom: (
+        runtime: IAgentRuntime,
+        conversationId?: string,
+      ) => resolvePromptDeliveryRoom(state, runtime, conversationId),
       localOwnerEntityId: state.runtime
         ? resolveOwnerEntityIdOrDefault(state.runtime)
         : undefined,

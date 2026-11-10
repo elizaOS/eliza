@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "packages/agent/src/api/conversation-routes.ts",
+    "packages/agent/src/api/server.ts",
+    "plugins/plugin-workflow/src/trigger-routes.ts",
+    "packages/agent/test/trigger-schedule-persistence.test.ts"
+  ],
+  "conformance": "packages/agent/quint/check-prompt-delivery.ts",
+  "bounds": {
+    "domain": "Two owner conversations, one creation request, one runtime replacement, one removal or ownership change per room.",
+    "scope": "Safety of selected conversation resolution. Provider execution, delivery timing and unbounded concurrency are outside this model. No liveness guarantee is asserted."
+  },
+  "cases": [
+    {
+      "name": "prompt_delivery",
+      "main": "prompt_delivery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

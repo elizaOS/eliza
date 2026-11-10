@@ -938,8 +938,8 @@ async function requestTrigger(
         req,
         res,
         runtime: fixture.runtime,
-        resolvePromptDeliveryRoom: (runtime) =>
-          resolvePromptDeliveryRoom(state, runtime),
+        resolvePromptDeliveryRoom: (runtime, conversationId) =>
+          resolvePromptDeliveryRoom(state, runtime, conversationId),
         ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
         readJsonBody: async () => {
@@ -1332,6 +1332,8 @@ it.each([
   "delivery-failure",
   "missing-at-create",
   "missing-at-dispatch",
+  "two-windows",
+  "missing-selected",
 ])(
   "delivers an API Once reply through the persisted owner room (%s)",
   async (scenario) => {
@@ -1359,6 +1361,16 @@ it.each([
     if (scenario === "missing-at-create" && original) {
       await runtime.deleteRoom(original.roomId);
     }
+    if (scenario === "two-windows" || scenario === "missing-selected") {
+      const otherState = {
+        ...state,
+        conversations: new Map(),
+        activeConversationId: null,
+      } as ServerState;
+      const other = await ensureOwnerConversation(otherState, runtime);
+      state.conversations.set(other.id, other);
+      state.activeConversationId = other.id;
+    }
     registerClientChatSendHandler(runtime, state);
     const instructions = `Offline Once delivery ${randomUUID()}`;
     const response = await requestTrigger(
@@ -1371,9 +1383,23 @@ it.each([
         triggerType: "once",
         scheduledAtIso: new Date(Date.now() + 60_000).toISOString(),
         roomId: randomUUID(),
+        ...(scenario === "two-windows"
+          ? { deliveryConversationId: original!.id }
+          : scenario === "missing-selected"
+            ? { deliveryConversationId: randomUUID() }
+            : {}),
       },
       state,
     );
+    if (scenario === "missing-selected") {
+      expect(response.status).toBe(409);
+      expect(
+        (await listTriggerTasks(runtime)).some(
+          (task) => readTriggerConfig(task)?.instructions === instructions,
+        ),
+      ).toBe(false);
+      return;
+    }
     if (scenario === "missing-at-create") {
       expect(response.status).toBe(503);
       expect(
@@ -1385,8 +1411,13 @@ it.each([
       return;
     }
     expect(response.status).toBe(201);
-    expect(state.conversations.size).toBe(1);
-    const conversation = await ensureOwnerConversation(state, runtime);
+    if (scenario === "two-windows")
+      expect(response.payload.deliveryConversationId).toBe(original!.id);
+    expect(state.conversations.size).toBe(scenario === "two-windows" ? 2 : 1);
+    const conversation =
+      scenario === "two-windows"
+        ? original!
+        : await ensureOwnerConversation(state, runtime);
     if (original) expect(conversation.id).toBe(original.id);
     const task = (await listTriggerTasks(runtime)).find(
       (task) => readTriggerConfig(task)?.instructions === instructions,
