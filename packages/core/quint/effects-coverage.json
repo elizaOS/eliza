@@ -160,7 +160,7 @@
 			"One task row. Runner sets, wake requests and pause writes use the four original finite configurations.",
 			"Model verification does not establish behavior outside these bounds.",
 			"The four scheduling cases cover blocking claims. TaskRetirement adds stop and overlapping nonblocking ownership with real PGlite conformance.",
-			"Orphan quarantine, adaptive intervals, metadata conflict policy, and external daemon query retirement require further coverage."
+			"TaskSchedulerQueryDrain covers external daemon query retirement. Orphan quarantine, adaptive intervals and metadata conflict policy still require coverage."
 		]
 	}
 ]

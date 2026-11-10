@@ -5,7 +5,7 @@
 		"packages/core/test/task-scheduler-model.test.ts",
 		"packages/core/src/runtime.ts"
 	],
-	"conformance": "packages/core/scripts/quint-task-scheduler-conformance.mjs",
+	"conformance": "packages/core/scripts/quint-task-service-conformance.mjs",
 	"bounds": "One agent, two service identities, two adapter identities, two query slots and two registrations. One scheduler stop and restart plus adapter retirement. The adapter owner may be absent from queried services. Query success, failure and delayed results retain exact service and adapter ownership until settlement.",
 	"cases": [
 		{

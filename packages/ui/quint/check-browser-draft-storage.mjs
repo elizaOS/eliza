@@ -6,6 +6,14 @@ import path from "node:path";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
+assert(process.argv.length <= 3, "Expected only the browser draft model path");
+if (process.argv[2]) {
+  assert.equal(
+    path.resolve(process.argv[2]),
+    path.join(root, "packages/ui/quint/BrowserDraftStorage.qnt"),
+    "Browser draft conformance requires its own model",
+  );
+}
 const output = testOutputPath("quint-browser-draft-storage");
 mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
