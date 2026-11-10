@@ -875,6 +875,28 @@
     ]
   },
   {
+    "id": "cloud-agent-backup-spool-cleanup",
+    "model": "packages/cloud/quint/agent_backup_spool_cleanup.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v2-spool.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-spool-cleanup.ts",
+      "packages/cloud/shared/src/db/repositories/agent-backup-publication.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts"
+    ],
+    "invariants": [
+      "IntentOwnsAttempt",
+      "LockMatchesExecution",
+      "PartialSpoolNeedsIntent",
+      "ConfirmedAbsence"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One local protected or terminal cleanup intent, one operation, two executions and one active attempt. Covers fresh catalogue proof, exclusive open, partial unlink, cancellation, release, retained intent, absence confirmation and fair restart.",
+      "Real filesystem conformance supplies catalogue and process-identity observations as fixtures. Database and remote receipt issuance, terminal candidate promotion, filesystem crash recovery, and unresolved lock release remain outside the progress proof.",
+      "The separate backup and restore lifecycle still needs remote object, scheduling, retention and activation conformance."
+    ]
+  },
+  {
     "id": "cloud-flow-durable-jobs-and-schedulers",
     "model": "packages/cloud/quint/job_time_authority.qnt",
     "sources": [

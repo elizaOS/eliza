@@ -375,7 +375,22 @@
         "repairs a lost recordCaptured response before captured advances to uploading",
         "rejects stale execution before taking the spool lock",
         "stops the cleanup janitor after abort during its first await without starting another action",
-        "propagates abort during cleanup without starting a catch-path close",
+        "releases the spool lock after abort and resumes partial cleanup",
+        "keeps published spool until authoritative protected proof, then removes it",
+        "retains changed partial replay until terminal settlement authorizes bounded cleanup",
+        "retains a durable cleanup intent across retention expiry and retries it"
+      ]
+    }
+  ],
+  "agent_backup_spool_cleanup.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts",
+      "required": [
+        "reopens capture-only handoff, verifies bytes, and resumes partial publication",
+        "repairs a lost recordCaptured response before captured advances to uploading",
+        "rejects stale execution before taking the spool lock",
+        "stops the cleanup janitor after abort during its first await without starting another action",
+        "releases the spool lock after abort and resumes partial cleanup",
         "keeps published spool until authoritative protected proof, then removes it",
         "retains changed partial replay until terminal settlement authorizes bounded cleanup",
         "retains a durable cleanup intent across retention expiry and retries it"

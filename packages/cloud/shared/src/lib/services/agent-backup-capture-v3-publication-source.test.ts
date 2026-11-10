@@ -1,4 +1,4 @@
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -559,77 +559,95 @@ describe("capture-v3 publication source", () => {
     }
   });
 
-  test("propagates abort during cleanup without starting a catch-path close", async () => {
+  test("releases the spool lock after abort and resumes partial cleanup", async () => {
     const directory = await stateDirectory();
     const controller = new AbortController();
     const reason = new Error("shutdown during spool cleanup");
-    let releaseCleanup!: () => void;
-    let markCleanupStarted!: () => void;
-    const cleanupStarted = new Promise<void>((resolve) => {
-      markCleanupStarted = resolve;
-    });
-    const cleanupRelease = new Promise<void>((resolve) => {
-      releaseCleanup = resolve;
-    });
-    let cleanupCalls = 0;
-    let closeCalls = 0;
     try {
       const artifacts = await capturedFixture(directory);
+      const config = { spool: spoolConfig(directory), batchSize: 1 };
+      const resolve = createAgentBackupCaptureV3PublicationSourceResolver({
+        spool: config.spool,
+        now: () => NOW_MS,
+      });
+      const publicationClaim = claim(artifacts);
+      const source = await resolve({
+        claim: publicationClaim,
+        execution: { ownerId: publicationClaim.ownerId, generation: publicationClaim.generation },
+      });
+      await source.beginPrimaryPublication();
+      for (const chunk of source.chunks) await source.markPrimaryChunkUploaded(chunk);
+      await source.markPrimaryPublished();
+      await source.close();
+
       const protectedBackup = {
-        ...claim(artifacts).backup,
+        ...publicationClaim.backup,
         catalog_state: "protected" as const,
         catalog_lease_owner: null,
         catalog_lease_generation: null,
         catalog_lease_expires_at: null,
         secondary_verified_at: new Date(NOW_MS),
       };
-      const protectedAuthority =
-        await deriveAgentBackupCaptureV3SpoolAuthorityFromCatalogBackup(protectedBackup);
-      const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(
-        { spool: spoolConfig(directory), batchSize: 1 },
-        {
-          now: () => NOW_MS,
-          executionToken: () => RETRY_EXECUTION,
-          listDurableOperations: async () => [
-            {
-              operationId: protectedAuthority.operationId,
-              requestSha256: protectedAuthority.requestSha256,
-              authoritySha256: protectedAuthority.authoritySha256,
-              phase: "published",
-              recordCaptured: true,
-            },
-          ],
-          listCandidates: async () => [protectedBackup],
-          authorize: async () => protectedBackup,
-          openExisting: async () =>
-            ({
-              operationId: protectedAuthority.operationId,
-              phase: "published",
-              recordCaptured: true,
-              async cleanup() {
-                cleanupCalls += 1;
-                markCleanupStarted();
-                await cleanupRelease;
-                return { operationId: protectedAuthority.operationId, status: "pending" };
-              },
-              async close() {
-                closeCalls += 1;
-              },
-            }) as unknown as AgentBackupCaptureV3Spool,
+      let authorizedBackup: AgentBackupOperationClaim["backup"] | undefined = protectedBackup;
+      let authorizations = 0;
+      const dependencies = {
+        now: () => NOW_MS,
+        listCandidates: async () => [protectedBackup],
+        authorize: async () => {
+          authorizations += 1;
+          if (!authorizedBackup) throw new Error("Cleanup catalogue authority unavailable");
+          return authorizedBackup;
         },
-      );
+      };
+      const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(config, dependencies);
+      const namespace = path.join(directory, "agent-backup-capture-v3");
+      const operation = path.join(namespace, OPERATION_ID);
+      const journal = path.join(operation, "journal.json");
+      const deleted = path.join(operation, "catalog-manifest.json");
+      const remaining = path.join(operation, "chunk-character-000000.bin");
+      const outbox = path.join(directory, "agent-backup-capture-v3-cleanup-outbox");
+      const intent = `${OPERATION_ID}.json`;
+      await fs.promises.access(deleted);
+      await fs.promises.access(remaining);
+      const unlink = fs.promises.unlink;
+      const interruptedUnlink = spyOn(fs.promises, "unlink").mockImplementation(async (file) => {
+        if (file === remaining) {
+          controller.abort(reason);
+          throw new Error("interrupted ciphertext unlink");
+        }
+        return unlink(file);
+      });
+      try {
+        await expect(janitor.runCycle(controller.signal)).rejects.toBe(reason);
+      } finally {
+        interruptedUnlink.mockRestore();
+      }
+      await expect(fs.promises.access(deleted)).rejects.toMatchObject({ code: "ENOENT" });
+      await fs.promises.access(remaining);
+      await fs.promises.access(journal);
+      expect(await fs.promises.readdir(outbox)).toEqual([intent]);
+      await expect(
+        fs.promises.access(path.join(namespace, `.${OPERATION_ID}.lock`)),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
 
-      const cycle = janitor.runCycle(controller.signal);
-      await cleanupStarted;
-      controller.abort(reason);
-      releaseCleanup();
+      const restarted = createAgentBackupCaptureV3SpoolCleanupJanitor(config, dependencies);
+      authorizedBackup = undefined;
+      expect(await restarted.runCycle()).toMatchObject({ authorized: 0, completed: 0, pending: 1 });
+      await fs.promises.access(remaining);
+      expect(await fs.promises.readdir(outbox)).toEqual([intent]);
 
-      await expect(cycle).rejects.toBe(reason);
-      expect(cleanupCalls).toBe(1);
-      expect(closeCalls).toBe(0);
-      expect(
-        await fs.promises.readdir(path.join(directory, "agent-backup-capture-v3-cleanup-outbox")),
-      ).toContain(`${OPERATION_ID}.json`);
+      authorizedBackup = {
+        ...protectedBackup,
+        catalog_state: "deleting",
+        retention_until: new Date(NOW_MS - 1),
+      };
+      expect(await restarted.runCycle()).toMatchObject({ authorized: 0, completed: 1, pending: 0 });
+      await expect(fs.promises.access(operation)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await fs.promises.readdir(outbox)).toEqual([]);
+      expect(await restarted.runCycle()).toMatchObject({ discovered: 0, completed: 0, pending: 0 });
+      expect(authorizations).toBe(4);
     } finally {
       await fs.promises.rm(directory, { recursive: true, force: true });
     }
@@ -777,11 +795,19 @@ describe("capture-v3 publication source", () => {
       let terminalSettled = false;
       let terminalProofStable = false;
       let terminalProofs = 0;
+      let abortAfterOpen = false;
+      const controller = new AbortController();
+      const reason = new Error("shutdown after terminal spool open");
       const janitor = createAgentBackupCaptureV3SpoolCleanupJanitor(
         { spool: spoolConfig(directory), batchSize: 1 },
         {
           now: () => NOW_MS,
           executionToken: () => RETRY_EXECUTION,
+          async openExisting(config, input) {
+            const spool = await AgentBackupCaptureV3Spool.openExisting(config, input);
+            if (spool && abortAfterOpen) controller.abort(reason);
+            return spool;
+          },
           authorizeTerminal: async () => {
             if (!terminalSettled) throw new Error("terminal CAS is not yet visible");
             terminalProofs += 1;
@@ -844,6 +870,14 @@ describe("capture-v3 publication source", () => {
       ).toHaveLength(1);
 
       terminalProofStable = true;
+      abortAfterOpen = true;
+      await expect(janitor.runCycle(controller.signal)).rejects.toBe(reason);
+      expect(await fs.promises.readdir(terminalOutbox)).toEqual([`${OPERATION_ID}.json`]);
+      expect(
+        await AgentBackupCaptureV3Spool.listDurableOperationAuthorities(spoolConfig(directory)),
+      ).toHaveLength(1);
+
+      abortAfterOpen = false;
       const cleaned = await janitor.runCycle();
       expect(cleaned).toMatchObject({ authorized: 0, completed: 1, pending: 0 });
       expect(await fs.promises.readdir(terminalOutbox)).toEqual([]);
