@@ -14,12 +14,13 @@ for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await seedAppStorage(page);
       await installDefaultAppRoutes(page);
-      await openAppPath(page, "/camera");
+      // Native telephony has no browser fallback.
+      await openAppPath(page, "/phone");
       await page.evaluate((size) => {
         document.documentElement.style.fontSize = `${size}px`;
       }, fontSize);
       const recovery = page.locator(
-        '[data-view-status="unavailable"][data-view-id="camera"]',
+        '[data-view-status="unavailable"][data-view-id="phone"]',
       );
       await expect(recovery).toBeVisible();
       let release: (() => void) | undefined;

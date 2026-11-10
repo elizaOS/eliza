@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
@@ -749,12 +750,17 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
     return;
   }
   await expect(card).toContainText("First today");
-  const clientPath = new URL("../../../ui/src/api/client.ts", import.meta.url)
-    .pathname;
+  // Dynamic views use this emitted public API to share the host's actual
+  // client singleton. A built renderer does not serve Vite's /@fs source URLs.
+  const publicApiAssets = readdirSync(
+    new URL("../../web-dist/assets/", import.meta.url),
+  ).filter((name) => /^view-public-api-[\w-]+\.js$/.test(name));
+  expect(publicApiAssets, "one compiled public host API").toHaveLength(1);
+  const clientPath = `/assets/${publicApiAssets[0]}`;
   const originalToken = await page.evaluate(async (path) => {
     const { client } = await import(path);
     return client.getRestAuthToken();
-  }, `/@fs${clientPath}`);
+  }, clientPath);
   const initial = { feed: feedReads, sources: sourceReads };
   await page.keyboard.press("Escape");
   await page.screenshot({ path: info.outputPath("home-shared-feed.png") });
@@ -857,7 +863,7 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   await page.evaluate(async (path) => {
     const { client } = await import(path);
     client.setToken("synthetic-owner-two-fixture");
-  }, `/@fs${clientPath}`);
+  }, clientPath);
   await expect(card).toContainText("Second today");
   const retired = held;
   if (!retired) throw new Error("Held Calendar read was not captured");
@@ -891,7 +897,7 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
       const { client } = await import(path);
       client.setToken(token);
     },
-    { path: `/@fs${clientPath}`, token: originalToken },
+    { path: clientPath, token: originalToken },
   );
   await page.goto("/chat?shellMode=tray-popover", {
     waitUntil: "domcontentloaded",
