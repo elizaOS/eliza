@@ -619,6 +619,12 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   let clock = new Date("2026-10-02T12:00:00Z");
   await page.clock.setFixedTime(clock);
   await fixture(page);
+  const loadedScriptUrls = new Set<string>();
+  page.on("response", (response) => {
+    if (response.request().resourceType() === "script") {
+      loadedScriptUrls.add(response.url());
+    }
+  });
   await page.route("**/api/plugins", (route) =>
     route.fulfill({
       json: {
@@ -752,17 +758,13 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   await expect(card).toContainText("First today");
   // Dynamic views use this emitted public API to share the host's actual
   // client singleton. A built renderer does not serve Vite's /@fs source URLs.
-  const loadedAssets = await page.evaluate(() =>
-    performance
-      .getEntriesByType("resource")
-      .map((entry) => new URL(entry.name))
-      .filter(
-        (url) =>
-          url.origin === location.origin &&
-          /^\/assets\/[^/]+\.js$/.test(url.pathname),
-      )
-      .map((url) => url.pathname),
-  );
+  const origin = new URL(page.url()).origin;
+  const loadedAssets = Array.from(loadedScriptUrls, (url) => new URL(url))
+    .filter(
+      (url) =>
+        url.origin === origin && /^\/assets\/[^/]+\.js$/.test(url.pathname),
+    )
+    .map((url) => url.pathname);
   const publicApiAssets = [
     ...new Set(
       loadedAssets.flatMap((path) =>
