@@ -40,7 +40,7 @@ assert.equal(
   `Maps tile cache conformance failed: ${result.signal}`,
 );
 const summary = parseJunitSummary(await readFile(report, "utf8"));
-assert.equal(summary.tests - summary.skipped, 4);
+assert.equal(summary.tests - summary.skipped, 5);
 assert.equal(summary.failures + summary.errors, 0);
 await writeFile(
   path.join(directory, "results.json"),

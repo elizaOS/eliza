@@ -771,6 +771,32 @@ describe("Google Map Tiles", () => {
     );
   });
 
+  test("missing or malformed viewport copyright is refused", async () => {
+    for (const copyright of [undefined, "", " ", 12, "x".repeat(501)]) {
+      const { provider } = google((url) =>
+        url.pathname === "/v1/createSession"
+          ? Response.json({
+              session: "copyright-fixture",
+              expiry: String(Math.floor(Date.now() / 1000) + 36000),
+              tileWidth: 256,
+              imageFormat: "png",
+            })
+          : Response.json({ copyright }),
+      );
+      expect(
+        await refusal(
+          provider.viewport!({
+            zoom: 15,
+            north: 44,
+            south: 43,
+            east: 8,
+            west: 7,
+          }),
+        ),
+      ).toBe("provider_invalid_response");
+    }
+  });
+
   test("the viewport copyright reuses the tile session and needs no allowance key", async () => {
     const { calls, provider } = tiles();
     const view = {
