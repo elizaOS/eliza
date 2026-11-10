@@ -689,7 +689,7 @@ if (isMainThread) {
 			workerPath,
 			deadlineMs: 10_000,
 		});
-		const text = "Line one line two line three";
+		const text = "Line one\u2028line two\u2029line three";
 		const audio = await client.synthesize(text, () => false);
 		expect((audio.length - 44) / 2).toBe(text.length);
 		// The same worker serves the next request.
