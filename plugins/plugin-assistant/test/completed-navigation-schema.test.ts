@@ -192,7 +192,7 @@ it("offers each telephony action only with its own capability and states its lim
   const telephony = {
     "phone.call.v1": ["phone_call"],
     "contacts.write.v1": ["contact_create", "contact_update", "contact_delete"],
-    "sms.compose.v1": ["sms_compose"],
+    "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
     "voicemail.read.v1": ["voicemail_read_selected"],
     "voicemail.delete.v1": ["voicemail_delete_selected"],
@@ -234,6 +234,10 @@ it("offers each telephony action only with its own capability and states its lim
     "never the address book",
     "Use sms_send instead when the exact number is known",
     "An unknown outcome must never be automatically retried",
+    "sms_reply_selected {body} takes only body",
+    "prefer it over sms_compose whenever the owner is talking about the open conversation",
+    "Typically call messages_read_selected first",
+    "never a sent message",
     "return only what the owner has open in front",
     "never use them to enumerate",
   ])
@@ -242,6 +246,7 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "phone_call", target: { kind: "contact", query: "Ada" } },
     { type: "contact_delete", query: "Ada" },
     { type: "sms_compose", query: "Ada", body: "Late." },
+    { type: "sms_reply_selected", body: "Late." },
     { type: "messages_read_selected" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },
@@ -261,6 +266,9 @@ it("offers each telephony action only with its own capability and states its lim
       target: { kind: "number", number: "911", now: true },
     },
     { type: "messages_read_selected", threadId: "4" },
+    { type: "sms_reply_selected", body: "Late.", query: "Ada" },
+    { type: "sms_reply_selected", body: "Late.", threadId: "4" },
+    { type: "sms_reply_selected", body: " " },
     { type: "contact_update", query: "Ada", set: {} },
   ])
     expect(() =>

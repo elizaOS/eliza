@@ -828,6 +828,15 @@ const telephonyActionSchemas: ActionParameterSchema[] = [
       body: { type: "string" },
     },
   },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "body"],
+    properties: {
+      type: { type: "string", enum: ["sms_reply_selected"] },
+      body: { type: "string" },
+    },
+  },
   ...[
     "messages_read_selected",
     "voicemail_read_selected",
@@ -888,6 +897,10 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   {
     types: ["sms_compose"],
     text: "sms_compose {query, body} is a reviewed SMS to one contact named by text; requires sms.compose.v1. The phone resolves the name and the owner reviews the exact recipient and body on the unlocked phone. Use sms_send instead when the exact number is known. submitted proves submission only; sent is not delivery; only delivered establishes delivery. An unknown outcome must never be automatically retried.",
+  },
+  {
+    types: ["sms_reply_selected"],
+    text: "sms_reply_selected {body} takes only body and puts it into the text field of the conversation the owner has open in Messages, as a draft the owner edits and sends; requires sms.compose.v1. Use it for reply for me or draft a reply requests, and prefer it over sms_compose whenever the owner is talking about the open conversation; it names no recipient, so it also works for an unknown number or a group. Typically call messages_read_selected first to read the conversation. It never sends: drafted proves only that the draft is in the text field, never a sent message. none-selected means no conversation is open: ask the owner to open it. occupied means the owner is writing their own message and nothing was changed.",
   },
   {
     types: ["messages_read_selected", "voicemail_read_selected"],

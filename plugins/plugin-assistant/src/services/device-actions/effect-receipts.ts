@@ -325,6 +325,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "contact_update":
     case "contact_delete":
     case "sms_compose":
+    case "sms_reply_selected":
     case "voicemail_delete_selected":
     case "clock_handoff":
     case "clock_alarm":

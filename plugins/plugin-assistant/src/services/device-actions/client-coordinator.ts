@@ -1771,6 +1771,8 @@ export class DeviceActionCoordinator<
   /** Only proposals bound by the host to this exact freshly sent user message may run.
    * Only reversible local actions bypass the optional review. Sends, deletes, private
    * reads and Calendar/reminder writes retain their recorded separate review policy.
+   * A reply draft is such a local action: it lands in the open conversation's text
+   * field, visible and editable, and only the owner's own Send tap sends it.
    * Recovery, workflows and old hosts remain review-only; ordinary OS permissions still apply. */
   async performRequested(
     messageId: string,
@@ -1786,6 +1788,7 @@ export class DeviceActionCoordinator<
       "browser_navigate",
       "camera_capture_photo",
       "photo_library_select",
+      "sms_reply_selected",
       ...NOTES_ORGANIZE_DIRECT_TYPES,
       ...FILES_DIRECT_TYPES,
       ...PHOTOS_VIEW_DIRECT_TYPES,
@@ -3590,6 +3593,11 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
       return {
         title: "Review SMS",
         description: `To contact: ${operation.query}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
+      };
+    case "sms_reply_selected":
+      return {
+        title: "Draft reply",
+        description: `${operation.body}\n\nPuts this in the open conversation's text field. Nothing is sent until you tap Send there.`,
       };
     case "messages_read_selected":
       return {

@@ -1,4 +1,4 @@
-/** Owner-approved calls, contact changes, contact SMS and open-item reads are shared with native telephony clients through @elizaos/contracts. */
+/** Owner-approved calls, contact changes, contact SMS, reply drafts and open-item reads are shared with native telephony clients through @elizaos/contracts. */
 import {
   type ContactWriteResult,
   contactWriteReceiptOutcome,
@@ -7,14 +7,18 @@ import {
   isMessagesRead,
   isPhoneCall,
   isSmsCompose,
+  isSmsReply,
   isVoicemailRead,
   type MessagesReadResult,
   type PhoneCallResult,
   phoneCallReceiptOutcome,
   phoneCallResultText,
   type SmsComposeResult,
+  type SmsReplyResult,
   smsComposeReceiptOutcome,
   smsComposeResultText,
+  smsReplyReceiptOutcome,
+  smsReplyResultText,
   TELEPHONY_ACTION_OPERATION_TYPES,
   type TelephonyActionOperation,
   type TelephonyActionType,
@@ -25,6 +29,7 @@ import {
   validateMessagesReadResult,
   validatePhoneCallResult,
   validateSmsComposeResult,
+  validateSmsReplyResult,
   validateVoicemailDeleteResult,
   validateVoicemailReadResult,
   voicemailDeleteResultText,
@@ -37,6 +42,7 @@ export type TelephonyActionResult =
   | PhoneCallResult
   | ContactWriteResult
   | SmsComposeResult
+  | SmsReplyResult
   | MessagesReadResult
   | VoicemailReadResult
   | VoicemailDeleteResult;
@@ -68,6 +74,7 @@ export function validateTelephonyActionResult(
   if (isContactWrite(operation))
     return validateContactWriteResult(operation, value);
   if (isSmsCompose(operation)) return validateSmsComposeResult(value);
+  if (isSmsReply(operation)) return validateSmsReplyResult(value);
   if (isMessagesRead(operation)) return validateMessagesReadResult(value);
   if (isVoicemailRead(operation)) return validateVoicemailReadResult(value);
   return validateVoicemailDeleteResult(value);
@@ -86,6 +93,8 @@ export function telephonyActionReceiptOutcome(
       return contactWriteReceiptOutcome(result);
     case "sms-compose":
       return smsComposeReceiptOutcome(result);
+    case "sms-reply":
+      return smsReplyReceiptOutcome(result);
     case "messages-read":
     case "voicemail-read":
       return result.status === "read" ? "applied" : "failed";
@@ -101,6 +110,16 @@ export function smsComposeNotSubmitted(result: unknown): boolean {
     ["cancelled", "not-found", "unavailable"].includes(value.status as string)
   );
 }
+/** A reply-draft result that proves the open conversation was left as it was. */
+export function smsReplyNotDrafted(result: unknown): boolean {
+  const value = result as { kind?: unknown; status?: unknown } | undefined;
+  return (
+    value?.kind === "sms-reply" &&
+    ["none-selected", "occupied", "unavailable"].includes(
+      value.status as string,
+    )
+  );
+}
 /** Fixed, factual text for a telephony receipt. A read's content is untrusted data. */
 export function telephonyActionResultText(
   result: TelephonyActionResult,
@@ -112,6 +131,8 @@ export function telephonyActionResultText(
       return contactWriteResultText(result);
     case "sms-compose":
       return smsComposeResultText(result);
+    case "sms-reply":
+      return smsReplyResultText(result);
     case "voicemail-delete":
       return voicemailDeleteResultText(result);
     case "messages-read":

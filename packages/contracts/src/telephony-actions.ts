@@ -18,7 +18,9 @@
  *
  * `sms.compose.v1` is a reviewed SMS whose recipient is a contact name. The
  * phone resolves the name, then runs the same native review and journalled
- * send as `sms.send.v1`.
+ * send as `sms.send.v1`. Under the same capability, `sms_reply_selected` puts
+ * a draft into the text field of the conversation the owner has open. It names
+ * no recipient and never sends: the owner edits it and taps Send.
  *
  * `messages.read.v1` and `voicemail.read.v1` return what the owner has open in
  * front: the visible tail of one thread, or one voicemail's transcript. They
@@ -374,6 +376,7 @@ export type SmsComposeOperation = {
   body: string;
 };
 export type SmsComposeStatus =
+  | "drafted"
   | "submitted"
   | "sent"
   | "delivered"
@@ -387,6 +390,7 @@ export type SmsComposeResult = {
   status: SmsComposeStatus;
 };
 const COMPOSE_STATUS: readonly SmsComposeStatus[] = [
+  "drafted",
   "submitted",
   "sent",
   "delivered",
@@ -401,21 +405,25 @@ export function isSmsCompose(value: {
 }): value is SmsComposeOperation {
   return value.type === "sms_compose";
 }
+function body(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !value.trim() ||
+    value.length > SMS_COMPOSE_BODY_MAX ||
+    UNSAFE_BODY.test(value)
+  )
+    throw Error("Invalid message");
+  return value;
+}
 export function validateSmsCompose(value: unknown): SmsComposeOperation {
   const v = record(value, "message");
   exact(v, ["type", "query", "body"], "message");
-  if (
-    v.type !== "sms_compose" ||
-    typeof v.body !== "string" ||
-    !v.body.trim() ||
-    v.body.length > SMS_COMPOSE_BODY_MAX ||
-    UNSAFE_BODY.test(v.body)
-  )
-    throw Error("Invalid message");
+  if (v.type !== "sms_compose") throw Error("Invalid message");
+  const text = body(v.body);
   return {
     type: "sms_compose",
     query: validateContactLookupQuery(v.query),
-    body: v.body,
+    body: text,
   };
 }
 export function validateSmsComposeResult(value: unknown): SmsComposeResult {
@@ -427,16 +435,22 @@ export function validateSmsComposeResult(value: unknown): SmsComposeResult {
     status: oneOf(v.status, COMPOSE_STATUS, "message result"),
   };
 }
-/** `unknown` is not a failure and is never retried: the radio may have taken the message. */
+/**
+ * `unknown` is not a failure and is never retried: the radio may have taken the
+ * message. `drafted`: the contact's conversation was already open, so the body
+ * went into its text field instead of a review; nothing was sent.
+ */
 export function smsComposeReceiptOutcome(
   result: SmsComposeResult,
 ): "applied" | "failed" | "unknown" {
-  if (["submitted", "sent", "delivered"].includes(result.status))
+  if (["drafted", "submitted", "sent", "delivered"].includes(result.status))
     return "applied";
   return result.status === "unknown" ? "unknown" : "failed";
 }
 export function smsComposeResultText(result: SmsComposeResult): string {
   switch (result.status) {
+    case "drafted":
+      return "The message is in that conversation's text field for the owner to edit and send. Nothing was sent.";
     case "submitted":
       return "The owner approved and the phone handed the message to the carrier. It is not yet confirmed sent.";
     case "sent":
@@ -453,6 +467,66 @@ export function smsComposeResultText(result: SmsComposeResult): string {
       return "This phone cannot send messages right now. Nothing was sent.";
     case "failed":
       return "The message was not sent.";
+  }
+}
+
+/**
+ * A draft for the conversation the owner has open in Messages. It names no
+ * recipient, so it works for an unknown number or a group, and it never sends.
+ */
+export type SmsReplyOperation = { type: "sms_reply_selected"; body: string };
+export type SmsReplyStatus =
+  | "drafted"
+  | "none-selected"
+  | "occupied"
+  | "unavailable";
+/**
+ * `drafted`: the body is in the open conversation's text field. `occupied`:
+ * the field already held the owner's own text, which was left untouched.
+ */
+export type SmsReplyResult = { kind: "sms-reply"; status: SmsReplyStatus };
+const REPLY_STATUS: readonly SmsReplyStatus[] = [
+  "drafted",
+  "none-selected",
+  "occupied",
+  "unavailable",
+];
+export function isSmsReply(value: {
+  type?: unknown;
+}): value is SmsReplyOperation {
+  return value.type === "sms_reply_selected";
+}
+export function validateSmsReply(value: unknown): SmsReplyOperation {
+  const v = record(value, "reply draft");
+  exact(v, ["type", "body"], "reply draft");
+  if (v.type !== "sms_reply_selected") throw Error("Invalid reply draft");
+  return { type: "sms_reply_selected", body: body(v.body) };
+}
+export function validateSmsReplyResult(value: unknown): SmsReplyResult {
+  const v = record(value, "reply draft result");
+  exact(v, ["kind", "status"], "reply draft result");
+  if (v.kind !== "sms-reply") throw Error("Invalid reply draft result");
+  return {
+    kind: "sms-reply",
+    status: oneOf(v.status, REPLY_STATUS, "reply draft result"),
+  };
+}
+/** A draft is placed or it is not; no outcome is uncertain because nothing is sent. */
+export function smsReplyReceiptOutcome(
+  result: SmsReplyResult,
+): "applied" | "failed" {
+  return result.status === "drafted" ? "applied" : "failed";
+}
+export function smsReplyResultText(result: SmsReplyResult): string {
+  switch (result.status) {
+    case "drafted":
+      return "The draft is in the open conversation's text field for the owner to edit and send. Nothing was sent.";
+    case "none-selected":
+      return "The owner has no conversation open. Nothing was drafted.";
+    case "occupied":
+      return "The owner is writing their own message in that conversation. Nothing was changed.";
+    case "unavailable":
+      return "This phone cannot draft messages right now. Nothing was drafted.";
   }
 }
 
@@ -710,6 +784,7 @@ export type TelephonyActionOperation =
   | PhoneCallOperation
   | ContactWriteOperation
   | SmsComposeOperation
+  | SmsReplyOperation
   | MessagesReadOperation
   | VoicemailReadOperation
   | VoicemailDeleteOperation;
@@ -717,6 +792,7 @@ export const TELEPHONY_ACTION_OPERATION_TYPES = [
   "phone_call",
   ...CONTACT_WRITE_OPERATION_TYPES,
   "sms_compose",
+  "sms_reply_selected",
   "messages_read_selected",
   "voicemail_read_selected",
   "voicemail_delete_selected",
@@ -734,6 +810,7 @@ export function telephonyActionCapability(type: TelephonyActionType): string {
     case "contact_delete":
       return CONTACT_WRITE_CAPABILITY;
     case "sms_compose":
+    case "sms_reply_selected":
       return SMS_COMPOSE_CAPABILITY;
     case "messages_read_selected":
       return MESSAGES_READ_CAPABILITY;
@@ -756,6 +833,7 @@ export function validateTelephonyAction(
   const type = record(value, "telephony action").type;
   if (type === "phone_call") return validatePhoneCall(value);
   if (type === "sms_compose") return validateSmsCompose(value);
+  if (type === "sms_reply_selected") return validateSmsReply(value);
   if (type === "messages_read_selected") return validateMessagesRead(value);
   if (type === "voicemail_read_selected") return validateVoicemailRead(value);
   if (type === "voicemail_delete_selected")

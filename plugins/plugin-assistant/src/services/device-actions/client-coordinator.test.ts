@@ -1601,6 +1601,12 @@ describe("shared phone and reminder-read parity", () => {
       "Review SMS",
     ],
     [
+      { type: "sms_reply_selected", body: "On my way" },
+      "sms.compose.v1",
+      { kind: "sms-reply", status: "drafted" },
+      "Draft reply",
+    ],
+    [
       { type: "messages_read_selected" },
       "messages.read.v1",
       {
@@ -1760,6 +1766,34 @@ describe("shared phone and reminder-read parity", () => {
           telephonyResult: { kind: "voicemail-read", status: "none-selected" },
         },
       ],
+      // A reply draft is never a send, and an untouched field is not a draft.
+      [
+        { type: "sms_reply_selected", body: "On my way" },
+        "sms.compose.v1",
+        {
+          status: "succeeded",
+          summary: "Sent",
+          telephonyResult: { kind: "sms-compose", status: "sent" },
+        },
+      ],
+      [
+        { type: "sms_reply_selected", body: "On my way" },
+        "sms.compose.v1",
+        {
+          status: "succeeded",
+          summary: "Owner was typing",
+          telephonyResult: { kind: "sms-reply", status: "occupied" },
+        },
+      ],
+      [
+        { type: "sms_compose", query: "Ada", body: "Running late" },
+        "sms.compose.v1",
+        {
+          status: "failed",
+          summary: "A placed draft is not a failure",
+          telephonyResult: { kind: "sms-compose", status: "drafted" },
+        },
+      ],
     ] as const) {
       const { server, request } = fixtureServer(operation);
       const { journal, entries } = memoryJournal();
@@ -1809,6 +1843,88 @@ describe("shared phone and reminder-read parity", () => {
       outcome: "failed",
       result: telephonyResult,
     });
+  });
+  it("places a reply draft without a review only for the requesting message", async () => {
+    const bound = (operation: Record<string, unknown>) => {
+      const fixture = fixtureServer(operation);
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await fixture.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      return { server: fixture.server, request };
+    };
+    const reply = { type: "sms_reply_selected", body: "On my way" };
+    for (const [telephonyResult, status, outcome] of [
+      [{ kind: "sms-reply", status: "drafted" }, "succeeded", "applied"],
+      [{ kind: "sms-reply", status: "occupied" }, "failed", "failed"],
+      [{ kind: "sms-reply", status: "none-selected" }, "failed", "failed"],
+    ] as const) {
+      const { server, request } = bound(reply);
+      let effects = 0;
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async () => {
+          effects++;
+          return { status, summary: "Done", telephonyResult };
+        },
+        ["sms.compose.v1"],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "other-message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(effects).toBe(0);
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status }]);
+      expect(effects).toBe(1);
+      expect(server.receipts[0].receipt).toMatchObject({
+        outcome,
+        result: telephonyResult,
+      });
+    }
+    // A contact SMS and a call keep their review even when bound to the message.
+    for (const [operation, capability] of [
+      [telephonyCases[4][0], "sms.compose.v1"],
+      [call, "phone.call.v1"],
+    ] as const) {
+      const { server, request } = bound(operation);
+      let effects = 0;
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async () => {
+          effects++;
+          return { status: "succeeded", summary: "Done" };
+        },
+        [capability],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(effects).toBe(0);
+      expect(server.state).toBe("pending");
+    }
   });
   it("leaves a contact SMS with an unknown outcome unresolved and never sends it again", async () => {
     const { server, request } = fixtureServer({

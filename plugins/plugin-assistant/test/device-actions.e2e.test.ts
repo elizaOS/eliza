@@ -1599,6 +1599,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           service.propose(c, bad, "compose-invalid", "fixture"),
         ).rejects.toThrow();
       for (const [status, outcome, state] of [
+        ["drafted", "applied", "done"],
         ["submitted", "applied", "done"],
         ["sent", "applied", "done"],
         ["delivered", "applied", "done"],
@@ -1675,6 +1676,93 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           (await send(`/proposals/${item.id}/claim`, { digest: item.digest }))
             .status,
         ).toBe(409);
+      }
+      // A reply draft shares the capability and names no recipient. It is
+      // placed or the conversation is left as it was: both settle, and no
+      // status claims a send.
+      const reply = { type: "sms_reply_selected", body: "Late." };
+      await expect(
+        service.propose(
+          { ...credentials, capabilities: ["sms.send.v1", "messages.read.v1"] },
+          reply,
+          "reply-no-cap",
+          "fixture",
+        ),
+      ).rejects.toThrow();
+      for (const bad of [
+        { ...reply, body: "" },
+        { ...reply, body: "x".repeat(1601) },
+        { ...reply, query: "Ada" },
+        { ...reply, recipients: ["+15555550123"] },
+        { ...reply, threadId: "4" },
+      ])
+        await expect(
+          service.propose(c, bad, "reply-invalid", "fixture"),
+        ).rejects.toThrow();
+      for (const [status, outcome] of [
+        ["drafted", "applied"],
+        ["none-selected", "failed"],
+        ["occupied", "failed"],
+        ["unavailable", "failed"],
+      ] as const) {
+        const key = `reply-${status}`;
+        const proposal = await service.propose(c, reply, key, "fixture");
+        const item = (await send("/proposals")).body.proposals.find(
+          (p: any) => p.id === proposal.id,
+        );
+        expect(
+          (
+            await send(`/proposals/${item.id}/decision`, {
+              digest: item.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        const claim = await send(`/proposals/${item.id}/claim`, {
+          digest: item.digest,
+        });
+        const post = (receipt: unknown) =>
+          send(`/proposals/${item.id}/receipt`, {
+            digest: item.digest,
+            attemptId: claim.body.proposal.execution.attemptId,
+            receipt,
+          });
+        const result = { kind: "sms-reply", status };
+        for (const wrong of [
+          {
+            outcome: outcome === "applied" ? "failed" : "applied",
+            operationId: item.id,
+            result,
+          },
+          { outcome: "unknown", operationId: item.id, result },
+          {
+            outcome: "applied",
+            operationId: item.id,
+            result: { kind: "sms-compose", status: "sent" },
+          },
+          {
+            outcome,
+            operationId: item.id,
+            result: { ...result, recipient: "+15555550123" },
+          },
+        ])
+          expect((await post(wrong)).status).toBe(409);
+        const recorded = await post({ outcome, operationId: item.id, result });
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.state).toBe("done");
+        const replayed = await service.proposeWithOutcome(
+          c,
+          reply,
+          key,
+          "fixture",
+        );
+        expect(replayed.reused).toBe(true);
+        const receipts = activeCommittedEffectReceipts(
+          deviceActionEffectReceipts(replayed),
+        );
+        expect(receipts).toHaveLength(outcome === "applied" ? 1 : 0);
+        if (outcome === "applied")
+          expect(receipts[0].operation).toBe("device.sms_reply_selected");
       }
     }
     {
