@@ -439,6 +439,72 @@ describe("FirstLineCache — persistence across reopen", () => {
 	});
 });
 
+describe("FirstLineCache — TTL enforcement at read time", () => {
+	it("returns null and removes entries idle past the TTL on read", () => {
+		let now = 1_700_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		const key = makeKey();
+		const cache = makeCache({ ttlDays: 30 });
+		expect(
+			cache.put({
+				...key,
+				bytes: makeBytes(48),
+				rawText: "Got it.",
+				contentType: "audio/mpeg",
+				durationMs: 100,
+			}),
+		).toBe(true);
+		// 31 days idle: past the 30-day TTL, with no sweep() call in between.
+		now += 31 * 86_400_000;
+		expect(cache.get(key)).toBeNull();
+		expect(cache.has(key)).toBe(false);
+		expect(cache.stats()).toMatchObject({ entries: 0, bytes: 0 });
+	});
+
+	it("reports idle-expired entries as absent from has()", () => {
+		let now = 1_700_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		const key = makeKey();
+		const cache = makeCache({ ttlDays: 30 });
+		expect(
+			cache.put({
+				...key,
+				bytes: makeBytes(48),
+				rawText: "Got it.",
+				contentType: "audio/mpeg",
+				durationMs: 100,
+			}),
+		).toBe(true);
+		now += 31 * 86_400_000;
+		expect(cache.has(key)).toBe(false);
+		expect(cache.stats()).toMatchObject({ entries: 0, bytes: 0 });
+	});
+
+	it("keeps entries read within the TTL and refreshes their idle clock", () => {
+		let now = 1_700_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		const key = makeKey();
+		const cache = makeCache({ ttlDays: 30 });
+		expect(
+			cache.put({
+				...key,
+				bytes: makeBytes(48),
+				rawText: "Got it.",
+				contentType: "audio/mpeg",
+				durationMs: 100,
+			}),
+		).toBe(true);
+		// 20 days idle: inside the TTL, so the read hits and refreshes the clock.
+		now += 20 * 86_400_000;
+		expect(cache.get(key)).not.toBeNull();
+		// 20 more days (40 days after the write, 20 after the last read):
+		// still inside the TTL because the earlier read refreshed it.
+		now += 20 * 86_400_000;
+		expect(cache.get(key)).not.toBeNull();
+		expect(cache.stats()).toMatchObject({ entries: 1, bytes: 48 });
+	});
+});
+
 describe("FirstLineCache — blob layout", () => {
 	it("writes blobs under <root>/blobs/<provider>/<voiceId>/<voiceRevision>/", () => {
 		const cache = makeCache();

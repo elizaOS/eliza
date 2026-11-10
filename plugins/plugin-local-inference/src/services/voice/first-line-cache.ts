@@ -415,7 +415,9 @@ export class FirstLineCache {
 
 	/**
 	 * Look up a cached entry. Returns null on miss. Touches `lastAccessedAtMs`
-	 * + `hitCount` on hit. Lazy-reads the blob bytes from disk.
+	 * + `hitCount` on hit. Lazy-reads the blob bytes from disk. Entries idle
+	 * past the TTL return null and are removed: `sweep()` is the only other
+	 * TTL enforcement and no production caller runs it, so reads enforce it.
 	 */
 	get(key: FirstLineCacheKey): FirstLineCacheEntry | null {
 		if (!this.ensureInit() || !this.db) return null;
@@ -425,6 +427,12 @@ export class FirstLineCache {
 			.prepare(`SELECT * FROM tts_first_line WHERE key_hash = ?`)
 			.get(keyHash);
 		if (!row) return null;
+
+		const now = Date.now();
+		if (now - (row.last_accessed_at_ms as number) > this.ttlMs) {
+			this.deleteEntry(keyHash, row.blob_path as string);
+			return null;
+		}
 
 		const blobAbs = this.resolveBlobAbs(row.blob_path as string);
 		let bytes: Uint8Array;
@@ -438,7 +446,6 @@ export class FirstLineCache {
 			return null;
 		}
 
-		const now = Date.now();
 		this.db
 			.prepare(
 				`UPDATE tts_first_line
@@ -470,10 +477,36 @@ export class FirstLineCache {
 	has(key: FirstLineCacheKey): boolean {
 		if (!this.ensureInit() || !this.db) return false;
 		if (!key.voiceRevision) return false;
+		const keyHash = hashCacheKey(key);
 		const row = this.db
-			.prepare(`SELECT 1 FROM tts_first_line WHERE key_hash = ?`)
-			.get(hashCacheKey(key));
-		return row !== undefined;
+			.prepare(
+				`SELECT last_accessed_at_ms, blob_path FROM tts_first_line WHERE key_hash = ?`,
+			)
+			.get(keyHash) as
+			| { last_accessed_at_ms: number; blob_path: string }
+			| undefined;
+		if (!row) return false;
+		if (Date.now() - row.last_accessed_at_ms > this.ttlMs) {
+			this.deleteEntry(keyHash, row.blob_path);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Delete one index row and its blob. A missing blob is ignored: the row
+	 * is gone, so the bytes are unreachable either way.
+	 */
+	private deleteEntry(keyHash: string, blobPath: string): void {
+		if (!this.db) return;
+		this.db
+			.prepare(`DELETE FROM tts_first_line WHERE key_hash = ?`)
+			.run(keyHash);
+		try {
+			unlinkSync(this.resolveBlobAbs(blobPath));
+		} catch {
+			/* ignore */
+		}
 	}
 
 	/**
