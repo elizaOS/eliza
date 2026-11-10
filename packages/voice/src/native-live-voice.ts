@@ -639,6 +639,7 @@ export function createNativeLiveVoice(options: NativeLiveVoiceOptions) {
         roomId?: string;
         onInterim?: (text: string) => void;
         onLatency?: (latency: LiveVoiceLatency) => void;
+        endHangoverMs?: number;
       } = {},
     ) {
       return liveAssistantListener(open, listen);
