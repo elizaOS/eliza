@@ -53,3 +53,10 @@ and `os_update_ota_certificate`. Keep `os_update_enabled` false until the exact
 image, certificate, channel and device qualification are complete. The platform
 signing identity must match the product's system image. No key or release URL
 is supplied by this shared package.
+
+The shared Pixel product composer accepts `systemUpdater: true` to copy this
+client, its permissions and its policy into the product output. The resulting
+`physical-product.json` records each staged source hash and `enabled: false`.
+The option cannot carry an enrollment or enable the updater. An existing updater
+staging directory is refused and preserved. Other products can still include
+`product.mk` directly.

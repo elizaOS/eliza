@@ -52,7 +52,6 @@
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
-      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
       "packages/os/android/system-updater/sepolicy/eliza_system_updater.te",
       "packages/os/android/system-updater/sepolicy/seapp_contexts",
       "packages/os/android/system-updater/AndroidManifest.xml"
@@ -62,6 +61,20 @@
     "limitations": [
       "Finite phase model, one candidate and binary eligibility; native adapter conformance is not established by source links.",
       "Android resource/permission/SELinux admission, download interruptions, storage crashes, real signature checks and physical update/reboot/recovery remain qualification gates."
+    ]
+  },
+  {
+    "id": "os.SystemUpdateStaging",
+    "model": "packages/os/quint/SystemUpdateStaging.qnt",
+    "sources": [
+      "packages/os/scripts/android/system-updater-staging.mjs",
+      "packages/os/scripts/android/pixel10a-product.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One explicit optional product, fixed updater source and an atomic outer staging directory. Pixel product tests exercise real file copies, recorded hashes, inactive configuration and collision refusal.",
+      "Package compilation, enabled enrollment, signing, Android installation and interrupted publication remain separate gates."
     ]
   }
 ]
