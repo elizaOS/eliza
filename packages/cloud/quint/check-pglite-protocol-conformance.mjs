@@ -13,6 +13,7 @@ assert.equal(
   path.join(root, "packages/cloud/quint/pglite_protocol_ownership.qnt"),
 );
 const scenarios = [
+  "retired handler rejects reattachment and fresh handler serves client",
   "extended cycle retains its portal until own Sync",
   "SQL error and ignored owner Query retain cycle until Sync",
   "Sync retains explicit transaction until COMMIT",
@@ -80,5 +81,5 @@ writeFileSync(
   `${JSON.stringify({ status: "passed", names, summary }, null, 2)}\n`,
 );
 console.log(
-  `PGlite protocol conformance passed 22 real-wire tests. Report ${report}`,
+  `PGlite protocol conformance passed ${expected.length} real-wire tests. Report ${report}`,
 );

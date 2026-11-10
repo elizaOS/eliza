@@ -15,6 +15,7 @@
     "effects": "A successful Execute can leave one provisional write. Cleanup cannot publish a write orphaned before the client admitted Sync or COMMIT. An already-admitted commit may have an unknown successful outcome after disconnection; cancellation does not undo such a commit. The initial ROLLBACK precedes Sync to avoid committing an orphaned successful implicit transaction."
   },
   "limitations": [
+    "Each socket handler owns one connection lifetime. After detach starts it rejects attach without owning the supplied socket. The server creates a fresh handler for each connection; its queue retains no closed-client identity tombstones. Real-wire conformance checks retirement and a fresh client's continued use.",
     "Messages are complete abstract frames, not arbitrary TCP bytes. The real-wire conformance owns framing, actual PostgreSQL responses, parameter values, and portal retention checks.",
     "Named statement uniqueness, SQL parsing, every PostgreSQL message, multiple portals per client, unbounded queues, repeated client lifetimes, provider scheduling, and all application transaction isolation are outside these finite bounds. Close and Flush share the extended-cycle ownership boundary but are not separate modeled frames.",
     "Backend acknowledgements abstract successful protocol reset. Real conformance must verify cleanup with disconnects before Sync, after Execute, and after SQL error; a model pass alone does not establish TypeScript or vendor-patch refinement.",
