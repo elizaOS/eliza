@@ -353,14 +353,23 @@
     "sources": [
       "packages/agent/src/runtime/boot-pipeline.ts",
       "packages/agent/src/runtime/deferred-boot-owner.ts",
-      "packages/agent/src/runtime/process-lifecycle.ts"
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/src/runtime/eliza-plugin.ts",
+      "packages/agent/src/runtime/memory-retention-service.ts",
+      "packages/agent/src/runtime/retention-task.ts",
+      "packages/core/src/runtime.ts",
+      "packages/core/src/runtime/retirement.ts",
+      "packages/core/src/runtime/service-lifecycle.ts",
+      "packages/core/src/services/task.ts",
+      "packages/agent/test/hot-reload-shared-database.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases and two deferred task identities.",
-      "Individual boot resources, real shutdown failures and async self-awaiting callbacks are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "Eight boot phases and two deferred task identities. The retirement refinement has one outgoing and one active replacement runtime, shared/distinct connections, one initially active write or no write, and two original stop callbacks.",
+      "Four maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check.",
+      "Retirement progress assumes fair storage success/failure settlement, callback settlement, continuation and host cleanup. Individual boot resources, arbitrary callback internals, post-delivery work, late service starts, adapter-close failures, signal exit budgets and self-awaiting hooks remain partial. No wall-clock, implementation trace-refinement or unbounded proof is claimed."
     ]
   },
   {

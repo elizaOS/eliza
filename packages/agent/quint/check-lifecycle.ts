@@ -8,16 +8,33 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
-const testFile = "packages/agent/test/agent-lifecycle-stop-start.test.ts";
-const model = "packages/agent/quint/api-lifecycle.qnt";
-const requiredTests = [
-  "boots a new runtime after a successful stop",
-  "boots a new runtime after teardown reports a failure",
-  "rejects pause and resume without a live runtime or during boot and teardown over HTTP",
-  "owns HTTP teardown before a disposer re-enters close",
-  "retains paused ownership after failed builds and drains admitted work before HTTP replacement",
-];
-const output = testOutputPath("quint-agent-lifecycle");
+const retirement =
+  process.argv[2] !== undefined &&
+  path.resolve(root, process.argv[2]) ===
+    path.join(root, "packages/agent/quint/runtime-lifecycle.qnt");
+const testFile = retirement
+  ? "packages/agent/test/hot-reload-shared-database.test.ts"
+  : "packages/agent/test/agent-lifecycle-stop-start.test.ts";
+const model = retirement
+  ? "packages/agent/quint/runtime-lifecycle.qnt"
+  : "packages/agent/quint/api-lifecycle.qnt";
+const requiredTests = retirement
+  ? [
+      "keeps the shared connection open for the replacement and closes it on the replacement's shutdown",
+      "closes the replaced runtime's database when the replacement uses another one",
+      "drains the real retention callback before HTTP replacement closes its SQLite adapter",
+      "reports a real SQLite callback failure after retirement without closing replacement storage",
+    ]
+  : [
+      "boots a new runtime after a successful stop",
+      "boots a new runtime after teardown reports a failure",
+      "rejects pause and resume without a live runtime or during boot and teardown over HTTP",
+      "owns HTTP teardown before a disposer re-enters close",
+      "retains paused ownership after failed builds and drains admitted work before HTTP replacement",
+    ];
+const output = testOutputPath(
+  retirement ? "quint-agent-adapter-retirement" : "quint-agent-lifecycle",
+);
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
 const resultPath = path.join(directory, "tests.json");
@@ -62,11 +79,24 @@ const inputs: Record<string, string> = {};
 for (const source of [
   model,
   testFile,
-  "packages/agent/src/api/agent-lifecycle-routes.ts",
-  "packages/agent/src/api/agent-admin-routes.ts",
-  "packages/agent/src/api/runtime-replacement-ownership.ts",
-  "packages/agent/src/api/server.ts",
-  "packages/core/src/runtime/room-handler-queue.ts",
+  ...(retirement
+    ? [
+        "packages/agent/src/runtime/eliza.ts",
+        "packages/agent/src/runtime/eliza-plugin.ts",
+        "packages/agent/src/runtime/memory-retention-service.ts",
+        "packages/agent/src/runtime/retention-task.ts",
+        "packages/core/src/runtime.ts",
+        "packages/core/src/runtime/retirement.ts",
+        "packages/core/src/runtime/service-lifecycle.ts",
+        "packages/core/src/services/task.ts",
+      ]
+    : [
+        "packages/agent/src/api/agent-lifecycle-routes.ts",
+        "packages/agent/src/api/agent-admin-routes.ts",
+        "packages/agent/src/api/runtime-replacement-ownership.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/core/src/runtime/room-handler-queue.ts",
+      ]),
   "packages/scripts/lib/vitest-conformance.ts",
 ]) {
   inputs[source] = createHash("sha256")

@@ -2,11 +2,20 @@
   "sources": [
     "packages/agent/src/runtime/boot-pipeline.ts",
     "packages/agent/src/runtime/deferred-boot-owner.ts",
-    "packages/agent/src/runtime/process-lifecycle.ts"
+    "packages/agent/src/runtime/process-lifecycle.ts",
+    "packages/agent/src/runtime/eliza.ts",
+    "packages/agent/src/runtime/eliza-plugin.ts",
+    "packages/agent/src/runtime/memory-retention-service.ts",
+    "packages/agent/src/runtime/retention-task.ts",
+    "packages/core/src/runtime.ts",
+    "packages/core/src/runtime/retirement.ts",
+    "packages/core/src/runtime/service-lifecycle.ts",
+    "packages/core/src/services/task.ts",
+    "packages/agent/test/hot-reload-shared-database.test.ts"
   ],
   "bounds": {
-    "domain": "Eight boot phases and two deferred task identities.",
-    "scope": "Finite protocol safety; no temporal/fairness claim."
+    "domain": "Eight boot phases and two deferred task identities. A separate retirement projection has one outgoing and one active replacement runtime, a shared or distinct adapter, one initially active write or no write, and two original service-stop callbacks.",
+    "scope": "Finite boot/teardown safety and conditional retirement progress. Fast completion and lookup clearing do not release callback ownership. The retirement receipt is the host helper's resolution/rejection; the CLI reports cleanup failure after publishing its replacement. Real HTTP, file-backed SQLite scheduler/retention, shared PGlite and distinct PGlite conformance."
   },
   "cases": [
     {
@@ -18,6 +27,34 @@
       "temporal": [],
       "maxSteps": 50,
       "samples": 1000
+    },
+    {
+      "name": "runtime_adapter_retirement",
+      "main": "runtime_adapter_retirement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RetirementCompletes", "RetirementWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "RetirementCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: accepted storage work eventually succeeds or fails, each original stop callback settles, the fast-stop continuation and strict-retirement continuation run, and host cleanup settles.",
+            "Escalation cleanup and adapter closure are abstracted as a settling host cleanup step. Callback failure produces a failed receipt after drain. This is not a wall-clock bound or a proof of process-signal exit."
+          ]
+        },
+        {
+          "property": "RetirementWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A callback whose accepted storage work never settles can retain the outgoing adapter indefinitely; the fast cap does not prove retirement."
+          ]
+        }
+      ],
+      "maxSteps": 50,
+      "samples": 1000
     }
-  ]
+  ],
+  "conformance": "packages/agent/quint/check-lifecycle.ts"
 }

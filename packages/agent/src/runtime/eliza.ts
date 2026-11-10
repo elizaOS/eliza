@@ -1774,6 +1774,9 @@ export async function disposeReplacedRuntime(
   const shared = connection(previousRuntime);
   await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
     fast: true,
+    // Fast stop clears service lookups at its cap; original callbacks can still
+    // own database work. Retire them before releasing an unshared adapter.
+    requireQuiescence: true,
     keepAdapterOpen:
       shared !== undefined && shared === connection(activeRuntime),
   });
