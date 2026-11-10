@@ -1,6 +1,7 @@
 // CacheClient.getWithOutcome, delConfirmed, recordFailure, resetFailures,
 // and isCircuitOpen. One client and one cached value. Backend commands can
 // settle after the breaker opens. The threshold/cooldown are scaled to two.
+// This projection assumes a monotonic host performance clock.
 module cache_breaker_receipts {
   type State = {
     configured: bool, present: bool,

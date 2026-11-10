@@ -1,5 +1,49 @@
 [
   {
+    "id": "cloud-protocol-worker-cache-circuit",
+    "model": "packages/cloud/quint/worker_cache_circuit.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/cache/client.ts",
+      "packages/cloud/shared/src/lib/cache/cache-circuit-clock.ts",
+      "packages/cloud/shared/src/lib/runtime/cloud-bindings.ts",
+      "packages/cloud/shared/src/lib/runtime/request-context.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/kv-cache-adapter.ts",
+      "packages/cloud/api/src/cache-circuit-clock.ts",
+      "packages/cloud/api/src/inference-admission-gate.ts",
+      "packages/cloud/admission-worker/src/index.ts",
+      "packages/cloud/api/wrangler.toml",
+      "packages/cloud/admission-worker/wrangler.toml",
+      "packages/cloud/speech-worker/wrangler.toml",
+      "packages/cloud/api/test/fixtures/cache-circuit-worker.ts",
+      "packages/cloud/api/__tests__/cache-circuit.miniflare.test.ts",
+      "packages/cloud/shared/package.json",
+      "packages/cloud/quint/check-reviewed-cloud.mjs",
+      "packages/cloud/quint/reviewed-cloud-checks.json",
+      "packages/cloud/shared/src/lib/services/inference-admission-gate.ts",
+      "packages/cloud/shared/src/lib/services/inference-policy-fence.ts",
+      "packages/cloud/shared/src/lib/services/inference-funded-budget-admission.ts",
+      "packages/cloud/shared/src/lib/services/inference-credential-revocation.ts",
+      "packages/cloud/api/src/lib/maps-request-admission.ts",
+      "packages/cloud/api/src/speech-revocation-subscription.ts",
+      "packages/cloud/api/v1/voice/speech/route.ts"
+    ],
+    "invariants": [
+      "durableReadyHasElapsedOwner",
+      "clientReadyHasOriginalElapsedOwner",
+      "noReopenFromOldGeneration",
+      "boundedOwners"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Worker CacheClient, two failure generations, two unique timer owners and two response slots. Production uses UUID identities and monotonically increasing in-memory generations. The bounded model can rearm at most twice.",
+      "The existing private INFERENCE_ADMISSION_GATES binding owns reserved cache-circuit:<UUID> identities. Only their POST /cache-circuit route enters the clock controller. Other identities cannot enter it; reserved identities cannot run tenant ledger routes. Public control Worker fetch is always 404. Other public application routes do not forward arbitrary object names or clock paths.",
+      "Relative timer expiry, durable publication and response delivery are distinct. A matching durable owner can publish readiness; only an exact current client generation can consume it. Lost acknowledgements fail closed. Restart preserves completed receipts and rearms an unfinished receipt with a new full wait. Old callbacks are retained as a conservative overapproximation after restart.",
+      "Conformance executes production CacheClient and KV adapter plus gate/controller in real Workerd at compatibility date 2026-04-01. Node-only Wadis/Redis branches and unrelated database/funding recovery are rejecting fixture boundaries. Routine race tests scale only the cooldown to 500 ms. An additional production 60,000 ms run proves the actual relative delay across ordinary request completion and both wall-clock corrections.",
+      "Synchronous isAvailable can observe readiness without issuing a cache command, using the current request task registrar or native Worker waitUntil fallback. Progress assumes a stable generation, no further restart, fair relative timer completion, successful durable storage and an eventually acknowledged current-generation observation. Backend availability is not guaranteed.",
+      "No migration, tenant ledger authority, durable alarm or Date/performance deadline is introduced. Runtime eviction can extend the wait; repeated restart, storage errors, missing bindings or lost acknowledgements may keep the circuit open. Object cleanup, transport reconnects, backend operations other than the linked receipt paths and unbounded concurrent callers remain outside this model."
+    ]
+  },
+  {
     "id": "cloud-protocol-cache-breaker-receipts",
     "model": "packages/cloud/quint/cache_breaker_receipts.qnt",
     "sources": [
@@ -8,7 +52,8 @@
       "packages/cloud/shared/src/lib/cache/adapters/wadis-redis-adapter.ts",
       "packages/cloud/shared/src/lib/cache/adapters/types.ts",
       "packages/cloud/quint/check-reviewed-cloud.mjs",
-      "packages/cloud/quint/reviewed-cloud-checks.json"
+      "packages/cloud/quint/reviewed-cloud-checks.json",
+      "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts"
     ],
     "invariants": [
       "counterBound",
@@ -19,10 +64,11 @@
     ],
     "status": "partial",
     "limitations": [
-      "One client and cached value, two reusable in-flight commands, threshold two and cooldown two elapsed ticks. Production tests retain the actual five-failure threshold and 60,000 ms cooldown.",
-      "getWithOutcome and delConfirmed share process-local failure state. Clock corrections cannot bypass or prolong the cooldown. A blocked or rejected delete stays unconfirmed, and an observed backend acknowledgement grants its confirmed receipt.",
+      "One client with a monotonic host performance clock and cached value, two reusable in-flight commands, threshold two and cooldown two elapsed ticks. Production tests retain the actual five-failure threshold and 60,000 ms cooldown.",
+      "getWithOutcome and delConfirmed share process-local failure state. Under the stated host clock assumption, wall-clock corrections cannot bypass or prolong the cooldown. A blocked or rejected delete stays unconfirmed, and an observed backend acknowledgement grants its confirmed receipt.",
       "Existing commands can finish after opening and a late hit can close the breaker. Recovery requires a fair eligible probe; later failures can restart the wait and backend success is not guaranteed.",
-      "Conformance uses actual Redis WASM through the production Wadis adapter, with separate controlled clocks and an injected lost response after a real DEL. Native transport reconnects, backend migration, other cache operations, cache fills, SWR invalidation races, cross-client coordination and persisted policy deadlines remain outside this model."
+      "Conformance runs on Bun with actual Wadis Redis WASM and an additional native loopback Redis 7.4.2 run. Clocks are separately controlled and one lost response is injected after a real DEL. Worker relative timer receipts are covered separately by worker_cache_circuit.",
+      "Native transport reconnects, backend migration, other cache operations, cache fills, SWR invalidation races, cross-client coordination and persisted policy deadlines remain outside this model."
     ]
   },
   {

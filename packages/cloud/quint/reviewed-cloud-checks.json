@@ -1,4 +1,16 @@
 {
+  "worker_cache_circuit.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/cache-circuit.miniflare.test.ts",
+      "required": [
+        "Worker circuit crosses response boundaries using a relative DO timer",
+        "clock identities cannot mutate tenant admission and the control Worker has no public clock route",
+        "an unknown clock acknowledgement retains its owner and restart can only extend its wait",
+        "a delayed ready receipt cannot reopen a later failure generation",
+        "a new request owns its probe while an older deferred clock reply is pending"
+      ]
+    }
+  ],
   "cache_breaker_receipts.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/cache/client-circuit.test.ts",

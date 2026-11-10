@@ -1,8 +1,20 @@
-/** Production CacheClient and Redis WASM adapter with explicit clock boundaries. */
+/** Production cache adapters with explicit clock boundaries and isolated Redis. */
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { CacheClient } from "./client";
 
 const savedEnvironment = { ...process.env };
+const nativeRedisUrl = process.env.CACHE_CIRCUIT_TEST_REDIS_URL;
+if (nativeRedisUrl) {
+  const endpoint = new URL(nativeRedisUrl);
+  if (
+    endpoint.protocol !== "redis:" ||
+    !["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname) ||
+    !endpoint.port ||
+    endpoint.port === "6379" ||
+    !endpoint.password
+  )
+    throw new Error("Native circuit tests require an authenticated private loopback Redis port");
+}
 const clients: CacheClient[] = [];
 let wall: number;
 let elapsed: number;
@@ -12,24 +24,32 @@ type RedisProbe = {
   redis: {
     client: {
       get(key: string): Promise<string | null>;
-      call(...args: string[]): Promise<unknown>;
+      call?(...args: string[]): Promise<unknown>;
+      sendCommand?(args: string[]): Promise<unknown>;
       del(...keys: string[]): Promise<unknown>;
       quit(): Promise<unknown>;
     };
   };
 };
 const raw = (client: CacheClient) => (client as unknown as RedisProbe).redis.client;
+function command(client: CacheClient, args: string[]): Promise<unknown> {
+  const backend = raw(client);
+  if (backend.call) return backend.call(...args);
+  if (backend.sendCommand) return backend.sendCommand(args);
+  throw new Error("Cache backend exposes no command interface");
+}
 const prefix = "cache-circuit-conformance:";
 
 beforeEach(() => {
   Object.assign(process.env, {
     CACHE_ENABLED: "true",
-    CACHE_BACKEND: "wadis",
+    CACHE_BACKEND: nativeRedisUrl ? "redis" : "wadis",
     CACHE_METRICS_SAMPLE_RATE: "0",
     MOCK_REDIS: "0",
     NODE_ENV: "test",
     ENVIRONMENT: "cache-circuit-conformance",
   });
+  if (nativeRedisUrl) process.env.REDIS_URL = nativeRedisUrl;
   wall = Date.parse("2026-11-10T12:00:00Z");
   elapsed = 100_000;
   wallClock = spyOn(Date, "now").mockImplementation(() => wall);
@@ -53,7 +73,7 @@ async function failingClient(failures = 5): Promise<CacheClient> {
   for (let attempt = 0; attempt < failures; attempt++) {
     expect(await client.getWithOutcome("wrong-type")).toMatchObject({
       kind: "error",
-      backend: "wadis",
+      backend: nativeRedisUrl ? "redis_native" : "wadis",
     });
   }
   expect(client.isBackendConfigured()).toBe(true);
@@ -106,12 +126,12 @@ test("cache hits reset failures while successful misses retain them", async () =
 
 test("a rejected backend delete is unconfirmed and preserves the cached value", async () => {
   const client = await failingClient(0);
-  await raw(client).call("ACL", "SETUSER", "default", "-del");
+  await command(client, ["ACL", "SETUSER", "default", "-del"]);
   try {
     expect(await client.delConfirmed("authority")).toBe(false);
     expect(await raw(client).get(`${prefix}authority`)).not.toBeNull();
   } finally {
-    await raw(client).call("ACL", "SETUSER", "default", "+del");
+    await command(client, ["ACL", "SETUSER", "default", "+del"]);
   }
   expect(await client.delConfirmed("authority")).toBe(true);
   expect(await raw(client).get(`${prefix}authority`)).toBeNull();
@@ -131,6 +151,10 @@ test("already admitted reads can settle after the cache breaker opens", async ()
     client.getWithOutcome("authority"),
   ]);
   expect(recovered.map((reply) => reply.kind)).toEqual([...Array(5).fill("error"), "hit"]);
+  // Native Redis can deliver the successful response before earlier rejections
+  // settle in JavaScript. A fresh acknowledged hit closes either resulting state.
+  elapsed += 60_001;
+  expect(await client.getWithOutcome("authority")).toMatchObject({ kind: "hit" });
   expect(client.isAvailable()).toBe(true);
 });
 
