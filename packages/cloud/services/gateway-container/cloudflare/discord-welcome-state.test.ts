@@ -7,6 +7,7 @@ import {
   DISCORD_WELCOME_PENDING,
   DISCORD_WELCOME_PROCESSING,
   DISCORD_WELCOME_REQUEUE,
+  DISCORD_WELCOME_REQUEUE_HEADER,
 } from "@elizaos/cloud-services-common/discord-welcome-state";
 import { Miniflare } from "miniflare";
 import { discordWelcomeStore } from "../../gateway-discord/src/cloudflare-welcome-store";
@@ -92,7 +93,10 @@ const fixtureProvider = (
     },
     { preconnect: () => {} },
   );
-type StoreObserver = (input: Record<string, unknown>) => void | Promise<void>;
+type StoreObserver = (
+  input: Record<string, unknown>,
+  headers?: Headers,
+) => void | Promise<void>;
 const welcomeStore = (
   hooks: { before?: StoreObserver; after?: StoreObserver } = {},
 ) =>
@@ -117,10 +121,11 @@ const welcomeStore = (
         body: init.body,
       });
       const bytes = await response.arrayBuffer();
-      if (response.ok) await hooks.after?.(input);
+      const headers = new Headers(Object.fromEntries(response.headers));
+      if (response.ok) await hooks.after?.(input, headers);
       return new Response(bytes, {
         status: response.status,
-        headers: Object.fromEntries(response.headers),
+        headers,
       });
     },
   );
@@ -618,4 +623,45 @@ test("retry replacement preserves unrelated and duplicate legacy processing memb
       "left",
     ),
   ).toBeNull();
+}, 30_000);
+
+test("the same welcome poller resumes its retained claim after the state owner supports atomic retry", async () => {
+  const queued = job("compatibility-retained-claim");
+  const refusedRead = deferred();
+  const sent = deferred();
+  let legacy = true;
+  let sends = 0;
+  const store = welcomeStore({
+    after: (input, headers) => {
+      if (legacy && input.operation === "get") {
+        headers?.delete(DISCORD_WELCOME_REQUEUE_HEADER);
+        refusedRead.resolve();
+      }
+    },
+  });
+  const queue = new DiscordInstallWelcomeQueue(
+    store,
+    "fixture-token",
+    fixtureProvider(() => {
+      sends++;
+      sent.resolve();
+      return Response.json({ id: "fixture-accepted" });
+    }),
+  );
+  await queue.enqueue(queued);
+  try {
+    await queue.start();
+    await refusedRead.promise;
+    await Bun.sleep(0);
+    expect(sends).toBe(0);
+    legacy = false;
+    await sent.promise;
+  } finally {
+    await queue.stop();
+  }
+  expect(sends).toBe(1);
+  expect(
+    await store.get<string>(`${DISCORD_WELCOME_DELIVERED}${queued.id}`),
+  ).toBe("1");
+  expect(await queue.drainOnce()).toBe(false);
 }, 30_000);

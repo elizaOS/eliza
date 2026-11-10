@@ -3,6 +3,7 @@ import {
   DISCORD_WELCOME_DELIVERED,
   DISCORD_WELCOME_PENDING,
   DISCORD_WELCOME_PROCESSING,
+  DISCORD_WELCOME_REQUEUE_HEADER,
 } from "@elizaos/cloud-services-common/discord-welcome-state";
 
 const listKey = (key: unknown): key is string =>
@@ -315,7 +316,15 @@ export class DiscordWelcomeState {
       return { status: 200, value: result };
     });
     await this.schedule();
-    return Response.json(result.value, { status: result.status });
+    // Older writers still receive the same marker body. Only this state
+    // owner can advertise that it implements atomic retry replacement.
+    return Response.json(result.value, {
+      status: result.status,
+      headers:
+        operation === "get"
+          ? { [DISCORD_WELCOME_REQUEUE_HEADER]: "1" }
+          : undefined,
+    });
   }
 }
 export async function handleDiscordWelcome(

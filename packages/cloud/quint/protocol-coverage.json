@@ -955,13 +955,15 @@
       "RemovalRequiresDurableReplacement",
       "RetryRetiresOriginal",
       "NoDuplicateRetry",
-      "MarkerPreventsRecoverySend"
+      "MarkerPreventsRecoverySend",
+      "LegacyWorkerCannotAdmit"
     ],
     "status": "partial",
     "limitations": [
       "One managed owner, one symbolic valid job, at most two starts and one original processing row. Startup recovery and an admitted drain stay owned until stop settles. A transient retry replaces the exact processing member in one storage operation. Retained markers skip provider sends.",
       "Real Workerd SQLite exercises startup/stop, claim retention, recovery after restart, stable retry identity and marker replay, with controlled provider responses. Import, FIFO among several jobs and public request boundaries are named tests outside the finite model.",
       "A second bounded case separates durable commits from missing marker, removal and retry replacement replies. A retry that committed leaves only the delayed row. Repeating the original command observes the claim absent and creates no second row. Workerd checks the exact payload, replay and deadline behavior. Existing duplicate rows and old writers remain outside the proof.",
+      "A third case checks that an older Worker without the marker-read capability cannot admit a welcome send. The original processing claim remains available to the same poller after upgrade once pending empties. Release order is manual. Protocol stability from the accepted marker read through the drain is assumed. Worker rollback during that interval remains open.",
       "Progress assumes admitted operations settle and recovery uses the same storage. Cross-pod leadership, overlapping live owners, marker expiry, repeated storage failures, actual provider nonce guarantees, retry deadlines/budgets and recovery past the bounded duplicate-copy window remain open."
     ]
   },

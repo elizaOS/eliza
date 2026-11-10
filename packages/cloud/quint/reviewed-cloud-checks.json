@@ -13,7 +13,8 @@
         "lost delivered-marker reply preserves the claim for marker replay",
         "lost processing-removal reply does not requeue a delivered welcome",
         "lost retry replacement reply retains only the delayed retry after restart",
-        "retry replacement preserves unrelated and duplicate legacy processing members"
+        "retry replacement preserves unrelated and duplicate legacy processing members",
+        "the same welcome poller resumes its retained claim after the state owner supports atomic retry"
       ]
     }
   ],

@@ -219,3 +219,44 @@ module DiscordWelcomeReceiptRecovery {
     .then(restart).then(recover).then(claim).then(readMarker)
     .expect(s.phase == "needsSend" and s.original == "processing" and s.retryCopies == 0)
 }
+
+// One admitted marker lookup for a retained processing row. The reply is
+// delivered separately from the Worker version that computed its header.
+// Recovery uses the same queue's ordinary empty-pending fallback.
+module DiscordWelcomeCompatibility {
+  var s: { capable: bool, phase: str }
+  action initialize(capable: bool): bool = s' = { capable: capable, phase: "reading" }
+  action init = any { initialize(false), initialize(true) }
+  action upgrade = all { not(s.capable), s' = { ...s, capable: true } }
+  action readMarker = all {
+    s.phase == "reading",
+    s' = { ...s, phase: if (s.capable) "supportedReply" else "legacyReply" },
+  }
+  action deliver = all {
+    s.phase.in(Set("legacyReply", "supportedReply")),
+    s' = { ...s, phase: if (s.phase == "legacyReply") "blocked" else "admitted" },
+  }
+  action recover = all { s.phase == "blocked", s' = { ...s, phase: "pending" } }
+  action claim = all { s.phase == "pending", s' = { ...s, phase: "reading" } }
+  action dispatch = all { s.phase == "admitted", s' = { ...s, phase: "dispatched" } }
+  action advance = any { readMarker, deliver, recover, claim, dispatch }
+  action step = any { upgrade, advance, s' = s }
+
+  val TypeOK = s.phase.in(Set("reading", "legacyReply", "supportedReply", "blocked", "pending", "admitted", "dispatched"))
+  val LegacyWorkerCannotAdmit = not(s.capable).implies(not(s.phase.in(Set("admitted", "dispatched"))))
+  temporal LegacyReplyRemainsUntrusted = always((s.phase == "legacyReply").implies(
+    next(s.phase).in(Set("legacyReply", "blocked"))
+  ).orKeep(s))
+  temporal DispatchRequiresSupport = always((s.phase != "dispatched" and next(s.phase) == "dispatched").implies(
+    s.phase == "admitted"
+  ).orKeep(s))
+  temporal UpgradeAllowsProgress = advance.weakFair(s).implies(s.capable.leadsTo(s.phase == "dispatched"))
+
+  run oldReplyStaysBlockedThroughUpgradeTest = initialize(false).then(readMarker)
+    .then(upgrade).then(deliver).expect(s.phase == "blocked")
+    .then(recover).then(claim).then(readMarker).then(deliver).then(dispatch)
+    .expect(s.phase == "dispatched" and s.capable)
+  run oldWorkerKeepsRetainedClaimTest = initialize(false).then(readMarker).then(deliver)
+    .then(recover).then(claim).then(readMarker).then(deliver)
+    .expect(s.phase == "blocked" and LegacyWorkerCannotAdmit)
+}

@@ -2,6 +2,7 @@ import {
   DISCORD_WELCOME_PENDING,
   DISCORD_WELCOME_PROCESSING,
   DISCORD_WELCOME_REQUEUE,
+  DISCORD_WELCOME_REQUEUE_HEADER,
   DiscordWelcomeStateError,
 } from "@elizaos/cloud-services-common/discord-welcome-state";
 import type { DiscordInstallWelcomeRedis } from "./discord-install-welcome-queue";
@@ -46,6 +47,15 @@ export function discordWelcomeStore(
       throw new DiscordWelcomeStateError(
         `Discord welcome state failed (${response.status})`,
       );
+    if (
+      operation === "get" &&
+      response.headers.get(DISCORD_WELCOME_REQUEUE_HEADER) !== "1"
+    ) {
+      await response.body?.cancel();
+      throw new DiscordWelcomeStateError(
+        "Discord welcome state lacks atomic retry support",
+      );
+    }
     return response.json();
   }
   async function count(operation: string, fields: object): Promise<number> {
