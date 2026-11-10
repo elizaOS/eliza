@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<exceptions>
+    <exception package="ai.eliza.systemupdater">
+        <!-- Call state only, to defer installation/restart during a call. No number access. -->
+        <permission name="android.permission.READ_PHONE_STATE" fixed="true"/>
+    </exception>
+</exceptions>

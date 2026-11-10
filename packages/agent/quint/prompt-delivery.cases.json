@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "packages/agent/src/api/conversation-routes.ts",
+    "packages/agent/src/api/server.ts",
+    "plugins/plugin-workflow/src/trigger-routes.ts",
+    "packages/agent/test/trigger-schedule-persistence.test.ts",
+    "packages/agent/src/triggers/runtime.ts"
+  ],
+  "conformance": "packages/agent/quint/check-prompt-delivery.ts",
+  "bounds": {
+    "domain": "Two owner conversations, one creation or update, one host replacement before persistence, four terminal outcomes and optional prior delivery.",
+    "scope": "Selection and host-current admission through the final synchronous persistence check; prompt outcome versus reply delivery. The room read is an atomic snapshot. Deletion after that read, in-flight database commits, real model/provider execution and unbounded concurrency are outside this model. No liveness guarantee is asserted."
+  },
+  "cases": [
+    {
+      "name": "prompt_delivery",
+      "main": "prompt_delivery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ]
+}

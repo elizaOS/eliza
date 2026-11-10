@@ -1,5 +1,7 @@
 import { AgentRuntime, type Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { calendarReadPromptProjection } from "../calendar-read-result.ts";
+import { withCalendarSearchAuthorization } from "../search-filter-evidence.ts";
 import { CalendarService } from "../service/CalendarService.ts";
 import { createCalendarActionRunner } from "./calendar-handler.ts";
 
@@ -149,4 +151,123 @@ describe("Calendar explicit date grounding through real handler", () => {
     expect(read).not.toHaveBeenCalled();
     expect(unexpectedModel).not.toHaveBeenCalled();
   });
+});
+
+it("uses the current UI clock when the remote host and source calendar have different zones", async () => {
+  const runtime = new AgentRuntime({
+    character: {
+      name: "Calendar UI clock",
+      bio: [],
+      settings: { TIMEZONE: "UTC" },
+    },
+  });
+  const service = new CalendarService(runtime);
+  runtime.services.set(CalendarService.serviceType, [service]);
+  const appointment = {
+    id: "event-1",
+    externalId: "event-1",
+    agentId: runtime.agentId,
+    provider: "google" as const,
+    side: "owner" as const,
+    grantId: "grant-1",
+    calendarId: "primary",
+    title: "Review",
+    description: "",
+    location: "",
+    status: "confirmed",
+    startAt: "2026-11-10T19:00:00.000Z",
+    endAt: "2026-11-10T19:30:00.000Z",
+    timezone: "America/New_York",
+    isAllDay: false,
+    htmlLink: null,
+    conferenceLink: null,
+    organizer: null,
+    attendees: [],
+    metadata: {},
+  };
+  const feed = {
+    calendarId: "primary",
+    events: [appointment],
+    source: "synced" as const,
+    state: "complete" as const,
+    sources: [],
+    timeMin: "2026-11-10T08:00:00.000Z",
+    timeMax: "2026-11-11T08:00:00.000Z",
+    syncedAt: "2026-11-10T06:00:00.000Z",
+  };
+  const before = structuredClone(feed);
+  const read = vi.spyOn(service, "getCalendarFeed").mockResolvedValue(feed);
+  const noModel = vi.fn(async () => {
+    throw Error("Typed feed must not call a model");
+  });
+  const action = createCalendarActionRunner({
+    runTextModel: noModel,
+    runJsonModel: noModel,
+    recentConversationTexts: async () => [],
+  });
+  const message = {
+    id: "00000000-0000-0000-0000-000000000021",
+    entityId: "00000000-0000-0000-0000-000000000002",
+    roomId: "00000000-0000-0000-0000-000000000003",
+    agentId: runtime.agentId,
+    createdAt: Date.parse("2026-11-10T06:00:00Z"),
+    content: {
+      text: "My calendar on November 10, 2026",
+      metadata: { uiTimeZone: "America/Los_Angeles" },
+    },
+  } as Memory;
+  const result = await action.handler(runtime, message, undefined, {
+    parameters: {
+      subaction: "feed",
+      details: { date: "2026-11-10", endDate: "2026-11-10" },
+    },
+  });
+  expect(read.mock.calls[0]?.[1]).toMatchObject({
+    timeZone: "America/Los_Angeles",
+    timeMin: feed.timeMin,
+    timeMax: feed.timeMax,
+  });
+  expect(result).toMatchObject({
+    success: true,
+    data: {
+      requestWindow: { timeZone: "America/Los_Angeles" },
+      replyContext: { context: { timeZone: "America/Los_Angeles" } },
+    },
+  });
+  expect(JSON.stringify(result)).toContain("11:00 AM");
+  const searchMessage = {
+    ...message,
+    content: {
+      ...message.content,
+      text: "Find Review on my calendar on November 10, 2026",
+    },
+  };
+  const search = await withCalendarSearchAuthorization(
+    {
+      current: searchMessage,
+      agentId: String(runtime.agentId),
+      recent: [],
+      filterEvidence: [{ query: "Review", quote: "Review", origin: "current" }],
+      signal: new AbortController().signal,
+    },
+    () =>
+      action.handler(runtime, searchMessage, undefined, {
+        parameters: {
+          subaction: "search_events",
+          query: "Review",
+          details: { date: "2026-11-10", endDate: "2026-11-10" },
+        },
+      }),
+  );
+  if (!search || typeof search !== "object")
+    throw Error("Missing search result");
+  expect(search, JSON.stringify(search)).toMatchObject({
+    success: true,
+    data: { replyContext: { context: { timeZone: "America/Los_Angeles" } } },
+  });
+  expect(
+    calendarReadPromptProjection(search.data).promptData?.events,
+  ).toMatchObject([{ displayTime: "Nov 10, 11:00 AM – 11:30 AM PST" }]);
+  expect(feed).toEqual(before);
+  expect(noModel).not.toHaveBeenCalled();
 });
