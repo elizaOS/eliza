@@ -198,7 +198,15 @@ export function unwrapWholeCodeFence(
 		.toLowerCase();
 	const acceptedLanguage = [...languages]
 		.sort((left, right) => right.length - left.length)
-		.find((language) => lowerLabel.startsWith(language.toLowerCase()));
+		.find((language) => {
+			if (!lowerLabel.startsWith(language.toLowerCase())) return false;
+			// A longer label only shares the prefix (json5, jsonc,
+			// javascript): the match must end at a word boundary, or the
+			// label's tail leaks into the returned body. The JSON5 parser's
+			// fence pattern already requires the same boundary.
+			const next = value[fenceLength + language.length];
+			return next === undefined || !/[A-Za-z0-9_-]/.test(next);
+		});
 	let cursor = acceptedLanguage
 		? fenceLength + acceptedLanguage.length
 		: fenceLength;
