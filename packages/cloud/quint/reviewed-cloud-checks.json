@@ -54,6 +54,8 @@
         "a lost child insert response retains the committed child without failing the app",
         "app deploy handoff recovery preserves the URL published by its ready child",
         "a live provision child links its container when its original parent is terminal",
+        "exhausted provision acknowledgement preserves the committed app READY result",
+        "an exhausted pre-READY provision failure still marks the current deployment failed",
         "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
         "an app deletion claim does not hide its interrupted deployment from recovery",
         "a deploy attempt that fails after the runner claims it leaves the app redeployable",
@@ -102,7 +104,7 @@
       "required": [
         "a delete that completes inside markRunning's read/write window cannot resurrect the row",
         "the same interleave on the pre-fix statement resurrects the row to running",
-        "sequential execution \u2014 one worker, one batch \u2014 is never corrupted",
+        "sequential execution — one worker, one batch — is never corrupted",
         "markError cannot flip a completed delete back to failed",
         "markCleanupRequired cannot pin node capacity on a completed delete",
         "markDeleted stays idempotent and stays organization-scoped",
@@ -407,6 +409,26 @@
         "keeps published spool until authoritative protected proof, then removes it",
         "retains changed partial replay until terminal settlement authorizes bounded cleanup",
         "retains a durable cleanup intent across retention expiry and retries it"
+      ]
+    }
+  ],
+  "app_deploy_ready_writeback.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+      "required": [
+        "an interrupted deploy without an exact child retains an unresolved job and app generation",
+        "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
+        "a lost child insert response retains the committed child without failing the app",
+        "app deploy handoff recovery preserves the URL published by its ready child",
+        "a live provision child links its container when its original parent is terminal",
+        "exhausted provision acknowledgement preserves the committed app READY result",
+        "an exhausted pre-READY provision failure still marks the current deployment failed",
+        "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
+        "an app deletion claim does not hide its interrupted deployment from recovery",
+        "a deploy attempt that fails after the runner claims it leaves the app redeployable",
+        "a worker that sees an already failed current generation settles it failed",
+        "an older queued generation cannot change a newer deployment",
+        "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
       ]
     }
   ]

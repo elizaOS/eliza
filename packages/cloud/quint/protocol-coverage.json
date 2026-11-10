@@ -1070,6 +1070,29 @@
     ]
   },
   {
+    "id": "cloud-app-deploy-ready-writeback",
+    "model": "packages/cloud/quint/app_deploy_ready_writeback.qnt",
+    "sources": [
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/lib/services/container-executor-deps.ts",
+      "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+      "packages/cloud/shared/src/lib/services/app-deployments.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts"
+    ],
+    "invariants": [
+      "ReadyMatchesReceipt",
+      "FailedAppNeedsFailedJob",
+      "SupersededAppRemainsBuilding"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One app provision child at terminal exhaustion and one replacement generation. Models tenant, generation, job and pre-READY app status authority. A committed app READY result survives a lost job acknowledgement while the original job error remains durable.",
+      "Direct pre-READY failure and loss after READY use actual PGlite worker settlement. The model abstracts eligibility for stale recovery. Provider reachability, repair, cache acknowledgement and retry composition remain outside this proof."
+    ]
+  },
+  {
     "id": "cloud-flow-app-build-and-deployment",
     "model": null,
     "sources": [
