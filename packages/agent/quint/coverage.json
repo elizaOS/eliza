@@ -94,14 +94,15 @@
       "packages/agent/src/api/agent-admin-routes.ts",
       "packages/agent/src/api/runtime-replacement-ownership.ts",
       "packages/agent/src/api/server.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
       "packages/agent/test/agent-lifecycle-stop-start.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One initial boot or running-runtime restart owner and two admitted turns.",
-      "Pausing/error-state restart rollback, host adapter disposal, authentication and multi-process restart coordination remain external. The real HTTP conformance check covers start/stop while a restart retains its outgoing runtime.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One initial boot or restart owner and two admitted turns. A separate normal-replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
+      "Five maintained conformance cases include real HTTP/PGlite paused null/thrown build rollback, cancellation of queued work while active work retains ownership, closed admissions, active database commit before publication and replacement admission. Error-state rollback, dispose-before-build hosts, post-publication activation failures, adapter disposal, authentication and multi-process coordination remain external.",
+      "Replacement drain progress assumes weak fairness of callback success/failure settlement and publication. An expected unfair counterexample retains active work indefinitely. There is no implementation trace-refinement, wall-clock deadline or unbounded progress proof."
     ]
   },
   {
@@ -352,14 +353,24 @@
     "sources": [
       "packages/agent/src/runtime/boot-pipeline.ts",
       "packages/agent/src/runtime/deferred-boot-owner.ts",
-      "packages/agent/src/runtime/process-lifecycle.ts"
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/src/runtime/eliza-plugin.ts",
+      "packages/agent/src/runtime/memory-retention-service.ts",
+      "packages/agent/src/runtime/retention-task.ts",
+      "packages/core/src/runtime.ts",
+      "packages/core/src/runtime/retirement.ts",
+      "packages/core/src/runtime/service-lifecycle.ts",
+      "packages/core/src/services/task.ts",
+      "packages/agent/test/hot-reload-shared-database.test.ts",
+      "packages/core/src/services/task-scheduler.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases and two deferred task identities.",
-      "Individual boot resources, real shutdown failures and async self-awaiting callbacks are excluded.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "Eight boot phases and two deferred task identities. The retirement refinement has one outgoing and one active replacement runtime, shared/distinct connections, one initially active write or no write, and two original stop callbacks.",
+      "Five maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check. The detached scheduler-query case also verifies that an outgoing adapter is drained without stopping the replacement scheduler, even when the outgoing runtime was outside the dirty snapshot.",
+      "Retirement progress assumes fair storage success/failure settlement, callback settlement, continuation and host cleanup. Individual boot resources, arbitrary callback internals, post-delivery work, late service starts, adapter-close failures, signal exit budgets and self-awaiting hooks remain partial. No wall-clock, implementation trace-refinement or unbounded proof is claimed."
     ]
   },
   {

@@ -1596,7 +1596,8 @@ export async function closeRuntimeAdapter(
   if (!adapter || typeof adapter.close !== "function") return;
   try {
     logger.debug(`[eliza] ${context}: closing database adapter`);
-    await adapter.close();
+    // Core owns adapter-wide scheduler queries and pending diagnostics.
+    await runtime.close();
     logger.debug(`[eliza] ${context}: database adapter closed`);
   } catch (err) {
     logger.warn(
@@ -1774,6 +1775,9 @@ export async function disposeReplacedRuntime(
   const shared = connection(previousRuntime);
   await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
     fast: true,
+    // Fast stop clears service lookups at its cap; original callbacks can still
+    // own database work. Retire them before releasing an unshared adapter.
+    requireQuiescence: true,
     keepAdapterOpen:
       shared !== undefined && shared === connection(activeRuntime),
   });

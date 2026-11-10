@@ -1,0 +1,67 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/cache/client.ts",
+    "packages/cloud/shared/src/lib/cache/client-circuit.test.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/wadis-redis-adapter.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/types.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts"
+  ],
+  "bounds": {
+    "domain": "One process-local CacheClient with a monotonic host performance clock, one cached value, two reusable in-flight command slots, failure threshold two and cooldown two elapsed ticks. Production uses threshold five and a 60,000 ms cooldown. Elapsed time only advances through 0..3, while wall time may move anywhere in 0..4.",
+    "atomicity": "This outcome projection settles a backend mutation and its client receipt in one transition. A separate lost-DEL-reply outcome records backend absence and client failure together. Existing commands can settle after the breaker opens.",
+    "progress": "An eligible cooldown probe reopens the client under weak fairness while no later failure restarts the cooldown. This does not require successful backend recovery.",
+    "conformance": "Named tests run the production CacheClient on Bun and the Wadis adapter against its actual Redis WASM build. WRONGTYPE and ACL command errors are real. Clocks are controlled separately, and one acknowledgement loss is injected after a real DEL. The same cases also run against actual loopback Redis 7.4.2 through the native adapter as an additional receipt path."
+  },
+  "limitations": [
+    "This process-local projection uses the monotonic Node/Bun performance clock. The separate worker_cache_circuit model covers Worker relative timer receipts because Worker performance.now aliases wall time.",
+    "The checked entry points are getWithOutcome and delConfirmed, plus their shared failure/cooldown methods. A successful single-key miss retains failures, while a hit or acknowledged delete resets them. This is the existing heuristic, not a global health authority.",
+    "An applied backend deletion whose acknowledgement remains pending is not an independently scheduled state in this projection. Real adapter conformance injects acknowledgement loss after DEL, but does not establish all intervening backend interleavings.",
+    "The model starts after backend selection. Network connection initialization, transport reconnects, backend migration, persisted TTL/policy deadlines, cache fills, SWR invalidation races and cross-client coordination remain separate protocols.",
+    "Only two overlapping commands and a scaled failure threshold are modeled. Backend correctness and arbitrary caller counts are not proved, and no general TypeScript refinement is claimed."
+  ],
+  "cases": [
+    {
+      "name": "configured-client",
+      "main": "cache_breaker_receipts",
+      "init": "initConfigured",
+      "step": "step",
+      "invariants": [
+        "counterBound",
+        "cooldownUsesElapsedTime",
+        "confirmedDeletionHasBackendAbsence",
+        "unconfiguredConfirmationHasNoBackend",
+        "noCommandWithoutBackend"
+      ],
+      "temporal": ["EligibleProbeReopens"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "EligibleProbeReopens",
+          "expect": "holds",
+          "assumptions": [
+            "The process remains alive and a continuously eligible cooldown probe is weakly fair.",
+            "A later completed failure can restart the wait. Backend success and clock advancement are not guaranteed."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unconfigured-client",
+      "main": "cache_breaker_receipts",
+      "init": "initUnconfigured",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 15,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

@@ -974,6 +974,11 @@ jobs:
             sudo apt-get install -y --no-install-recommends redis-server
           fi
           redis-server --version
+      - name: Install Chromium for browser conformance
+        if: steps.changes.outputs.run == 'true'
+        env:
+          PLAYWRIGHT_INSTALL_CWD: packages/ui
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Verify Quint models and real transitions
         if: steps.changes.outputs.run == 'true'
         env:

@@ -166,6 +166,7 @@
     "./lib/auth/wallet-auth": "./src/lib/auth/wallet-auth.ts",
     "./lib/blob": "./src/lib/blob.ts",
     "./lib/cache/client": "./src/lib/cache/client.ts",
+    "./lib/cache/cache-circuit-clock": "./src/lib/cache/cache-circuit-clock.ts",
     "./lib/cache/keys": "./src/lib/cache/keys.ts",
     "./lib/cache/redis-factory": "./src/lib/cache/redis-factory.ts",
     "./lib/cache/socket-redis": "./src/lib/cache/socket-redis.ts",

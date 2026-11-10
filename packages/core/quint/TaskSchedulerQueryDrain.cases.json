@@ -1,0 +1,69 @@
+{
+	"sources": [
+		"packages/core/src/services/task-scheduler.ts",
+		"packages/core/src/services/task.ts",
+		"packages/core/test/task-scheduler-model.test.ts",
+		"packages/core/src/runtime.ts"
+	],
+	"conformance": "packages/core/scripts/quint-task-service-conformance.mjs",
+	"bounds": "One agent, two service identities, two adapter identities, two query slots and two registrations. One scheduler stop and restart plus adapter retirement. The adapter owner may be absent from queried services. Query success, failure and delayed results retain exact service and adapter ownership until settlement.",
+	"cases": [
+		{
+			"name": "external-query-retirement",
+			"main": "TaskSchedulerQueryDrain",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"ClosedStorageHasNoQueries",
+				"SchedulerStopDrainsCapturedQueries",
+				"ClosedAdapterHasNoQueries"
+			],
+			"temporal": [
+				"RetiredServicesReceiveNoNewDispatch",
+				"NoNewQueriesForClosedStorage",
+				"RetiredStorageCloses",
+				"SchedulerStopReturns",
+				"RetiredAdaptersClose"
+			],
+			"temporalChecks": [
+				{
+					"property": "RetiredServicesReceiveNoNewDispatch",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness assumption. A service unregisters synchronously before its outstanding query receipts are drained."
+					]
+				},
+				{
+					"property": "NoNewQueriesForClosedStorage",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness assumption. Exact service identity and retirement prevent a closed runtime from owning a new query."
+					]
+				},
+				{
+					"property": "RetiredStorageCloses",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of query settlement and closeStorage for each service. Every admitted adapter query eventually returns or throws, and the host waits for service stop before closing that runtime."
+					]
+				},
+				{
+					"property": "SchedulerStopReturns",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of query settlement and returnSchedulerStop. The stop receipt covers queries captured before the generation was detached, and later generations retain their own query owners."
+					]
+				},
+				{
+					"property": "RetiredAdaptersClose",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of query settlement and closeAdapter for each adapter. Every admitted adapter query eventually returns or throws. A retired adapter is not reopened by the host."
+					]
+				}
+			],
+			"maxSteps": 35,
+			"samples": 500
+		}
+	]
+}

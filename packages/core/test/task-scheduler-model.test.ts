@@ -6,6 +6,7 @@ import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import { TaskService } from "../src/services/task";
 import {
+	getTaskSchedulerAdapter,
 	startTaskScheduler,
 	stopTaskScheduler,
 } from "../src/services/task-scheduler";
@@ -188,6 +189,181 @@ it("retirement refuses immediate resume before it changes stored pause state", a
 	} finally {
 		await service.stop();
 		await f.cleanup();
+	}
+});
+
+it("service stop drains a shared query before its runtime storage closes", async () => {
+	const f = await createTestRuntime({ characterName: "SchedulerQueryDrain" });
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(f.runtime);
+	let runs = 0,
+		queryFinished = false;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "QUERY_DRAIN",
+			execute: async () => {
+				runs++;
+			},
+		});
+		await f.runtime.createTask({
+			name: "QUERY_DRAIN",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTasks = f.runtime.adapter.getTasks.bind(f.runtime.adapter);
+		vi.spyOn(f.runtime.adapter, "getTasks").mockImplementationOnce(
+			async (params) => {
+				entered.resolve();
+				await release.promise;
+				const rows = await getTasks(params);
+				queryFinished = true;
+				return rows;
+			},
+		);
+		startTaskScheduler(f.runtime.adapter);
+		service.startTimer();
+		await entered.promise;
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(stopped).toBe(false);
+		release.resolve();
+		await stopping;
+		expect(queryFinished).toBe(true);
+		expect(runs).toBe(0);
+	} finally {
+		release.resolve();
+		await service.stop();
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await f.cleanup();
+	}
+});
+
+it("scheduler stop drains its detached query while a replacement registration runs", async () => {
+	const f = await createTestRuntime({
+		characterName: "SchedulerRestartQueryDrain",
+	});
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(f.runtime);
+	const replacement = new TaskService(f.runtime);
+	let runs = 0;
+	try {
+		f.runtime.registerTaskWorker({
+			name: "RESTART_QUERY",
+			execute: async () => {
+				runs++;
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "RESTART_QUERY",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTasks = f.runtime.adapter.getTasks.bind(f.runtime.adapter);
+		vi.spyOn(f.runtime.adapter, "getTasks").mockImplementationOnce(
+			async (params) => {
+				entered.resolve();
+				await release.promise;
+				await getTasks(params);
+				throw new Error("Detached query connection reset");
+			},
+		);
+		startTaskScheduler(f.runtime.adapter);
+		service.startTimer();
+		await entered.promise;
+		let drained = false;
+		const draining = Promise.resolve(stopTaskScheduler()).then(() => {
+			drained = true;
+		});
+		startTaskScheduler(f.runtime.adapter);
+		replacement.startTimer();
+		const retired = service.stop();
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(drained).toBe(false);
+		await expect.poll(() => runs, { timeout: 10000 }).toBe(1);
+		release.resolve();
+		await Promise.all([draining, retired]);
+		expect(await f.runtime.getTask(id)).toBeNull();
+		expect(runs).toBe(1);
+	} finally {
+		release.resolve();
+		await Promise.all([service.stop(), replacement.stop()]);
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await f.cleanup();
+	}
+});
+
+it("runtime close drains its detached adapter query outside the dirty snapshot", async () => {
+	const owner = await createTestRuntime({
+		characterName: "SchedulerAdapterOwner",
+	});
+	const consumer = await createTestRuntime({
+		characterName: "SchedulerAdapterConsumer",
+	});
+	const entered = latch(),
+		release = latch();
+	const service = new TaskService(consumer.runtime);
+	let runs = 0,
+		closes = 0,
+		queryFinished = false;
+	let closing: Promise<void> | undefined;
+	try {
+		consumer.runtime.registerTaskWorker({
+			name: "ADAPTER_REPLACEMENT",
+			execute: async () => {
+				runs++;
+			},
+		});
+		await consumer.runtime.createTask({
+			name: "ADAPTER_REPLACEMENT",
+			tags: ["queue"],
+			metadata: {},
+		});
+		const getTasks = owner.runtime.adapter.getTasks.bind(owner.runtime.adapter);
+		vi.spyOn(owner.runtime.adapter, "getTasks").mockImplementationOnce(
+			async (params) => {
+				expect(params.agentIds).toEqual([consumer.runtime.agentId]);
+				entered.resolve();
+				await release.promise;
+				const rows = await getTasks(params);
+				queryFinished = true;
+				return rows;
+			},
+		);
+		const close = owner.runtime.adapter.close.bind(owner.runtime.adapter);
+		vi.spyOn(owner.runtime.adapter, "close").mockImplementation(async () => {
+			closes++;
+			await close();
+		});
+		startTaskScheduler(owner.runtime.adapter);
+		service.startTimer();
+		await entered.promise;
+		const oldDrain = stopTaskScheduler();
+		startTaskScheduler(consumer.runtime.adapter);
+		service.startTimer();
+		await owner.runtime.stop();
+		closing = owner.runtime.close();
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(closes).toBe(0);
+		await expect.poll(() => runs, { timeout: 10000 }).toBe(1);
+		release.resolve();
+		await Promise.all([closing, oldDrain]);
+		expect(queryFinished).toBe(true);
+		expect(closes).toBe(1);
+		expect(getTaskSchedulerAdapter()).toBe(consumer.runtime.adapter);
+	} finally {
+		release.resolve();
+		await closing;
+		await service.stop();
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await Promise.all([owner.cleanup(), consumer.cleanup()]);
 	}
 });
 

@@ -25,7 +25,11 @@ await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const url = `http://127.0.0.1:${server.address().port}/`;
 try {
   for (const [name, engine] of Object.entries(engines).filter(([name]) => selected.length === 0 || selected.includes(name))) {
-    const browser = await engine.launch({ headless: true });
+    const executablePath = name === "chromium"
+      ? process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim() || undefined
+      : undefined;
+    const browser = await engine.launch({ headless: true, executablePath });
+    console.log(`${name} browser ${browser.version()}`);
     const deadline = setTimeout(() => {
       console.error(`${name}: document-store checks exceeded 60 seconds`);
       void browser.close();
