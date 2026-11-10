@@ -15,6 +15,7 @@
     if (badge) badge.textContent = level;
     if (hold) hold.hidden = true;
     if (desk) desk.hidden = false;
+    window.dispatchEvent(new Event('valhalla-signed-in'));
   }
 
   if (!window.ValhallaSupabase || !window.ValhallaSupabase.config()) {

@@ -11,6 +11,7 @@
   <script src="/site-config.js?v=1.4.2" defer></script>
   <script src="/supabase.js" defer></script>
   <script src="/os/session.js" defer></script>
+  <script src="/os/feed.js" defer></script>
   <script src="/os/app.js?v=1.4.2" defer></script>
   <script src="/os/bridge.js?v=1.4.2" defer></script>
   <script src="/desk.js?v=1.4.2" defer></script>
@@ -72,6 +73,11 @@
     </nav>
 
     <div class="workspace">
+      <section class="workspace-panel" aria-labelledby="feed-title">
+        <div class="panel-heading"><h2 id="feed-title">Live feed</h2><span id="feed-state">NOT CONNECTED</span></div>
+        <p id="feed-status" role="status">Feed not connected</p>
+        <ul id="feed-list"></ul>
+      </section>
       <section class="workspace-panel market-panel" aria-labelledby="market-title">
         <div class="panel-heading"><h2 id="market-title">Market</h2><span>NOT CONNECTED</span></div>
         <p>No prices, volume, or token lists are loaded. A blank tile is not a live quote.</p>

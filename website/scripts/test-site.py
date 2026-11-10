@@ -90,7 +90,8 @@ class SiteTests(unittest.TestCase):
             "node --test website/scripts/gate.test.cjs website/scripts/os.test.cjs "
             "website/scripts/desk.test.cjs website/scripts/host-route.test.cjs "
             "website/scripts/journey.test.cjs website/scripts/desktop.test.cjs "
-            "website/scripts/minify.test.cjs website/scripts/supabase-auth.test.cjs",
+            "website/scripts/minify.test.cjs website/scripts/supabase-auth.test.cjs "
+            "website/scripts/feed.test.cjs",
             "node website/scripts/minify-site.mjs",
         )
         position = -1

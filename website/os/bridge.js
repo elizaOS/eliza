@@ -14,16 +14,23 @@
     });
     listeners = [];
   }
+  function notifyWallet() {
+    if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('valhalla-wallet-changed'));
+  }
   function clearWallet(message) {
     removeListeners(); active = null;
     overview.textContent = 'Not connected';
     detail.textContent = 'Connect a wallet to view its public address.';
     status.textContent = message || 'No wallet connected.';
     disconnect.hidden = true;
+    if (document.body && document.body.dataset) delete document.body.dataset.wallet;
+    notifyWallet();
   }
   function showWallet(name, address) {
     overview.textContent = name + ' connected'; detail.textContent = address;
     status.textContent = name + ' connected: ' + address; disconnect.hidden = false;
+    if (document.body && document.body.dataset) document.body.dataset.wallet = address;
+    notifyWallet();
   }
   function listen(provider, event, handler) {
     if (typeof provider.on !== 'function') return;
