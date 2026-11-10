@@ -104,3 +104,84 @@ module LoginWebhookTimer {
     .then(stopAuth).then(retireWorker).then(finishCallback).then(closeAuth)
     .expect(s.claims == 0 and Jobs.forall(job => s.queue.get(job) == "pending"))
 }
+
+// A verified request can publish immediate delivery work outside its tenant
+// transaction. The tracked fan-out joins all destination promises before Auth
+// shutdown releases the database, including when a sibling fails before insert.
+module LoginRequestWebhookFanout {
+  var s: {
+    auth: str, tracked: bool, healthy: str, unreadable: str,
+    receipt: str, result: str, fanout: str, responded: bool
+  }
+  action init = s' = {
+    auth: "serving", tracked: false, healthy: "none", unreadable: "none",
+    receipt: "none", result: "none", fanout: "none", responded: false
+  }
+  action emit = all {
+    s.auth == "serving", s.fanout == "none",
+    s' = { ...s, tracked: true, healthy: "preparing", unreadable: "preparing", fanout: "pending" }
+  }
+  action respond = all {
+    s.auth == "serving", s.fanout != "none", not(s.responded),
+    s' = { ...s, responded: true }
+  }
+  action rejectUnreadable = all {
+    s.unreadable == "preparing", s' = { ...s, unreadable: "rejected" }
+  }
+  action enqueueHealthy = all {
+    s.healthy == "preparing", s.auth != "closed",
+    s' = { ...s, healthy: "queued", receipt: "pending" }
+  }
+  action claimHealthy = all {
+    s.healthy == "queued", s.auth != "closed",
+    s' = { ...s, healthy: "sending", receipt: "processing" }
+  }
+  action receiveHealthy(ok: bool): bool = all {
+    s.healthy == "sending",
+    s' = { ...s, healthy: "writing", result: if (ok) "delivered" else "failed" }
+  }
+  action commitHealthy = all {
+    s.healthy == "writing", s.auth != "closed",
+    s' = { ...s, healthy: "settled", receipt: s.result }
+  }
+  val siblingsSettled = s.healthy == "settled" and s.unreadable == "rejected"
+  action joinFanout = all {
+    s.tracked, siblingsSettled,
+    s' = { ...s, tracked: false, fanout: "failed" }
+  }
+  action requestStop = all {
+    s.auth == "serving", s' = { ...s, auth: "closing-listener" }
+  }
+  action beginDrain = all {
+    s.auth == "closing-listener", s' = { ...s, auth: "draining" }
+  }
+  action closeAuth = all {
+    s.auth == "draining", not(s.tracked), s' = { ...s, auth: "closed" }
+  }
+  action settleBranches = any { rejectUnreadable, enqueueHealthy, claimHealthy,
+    receiveHealthy(true), receiveHealthy(false), commitHealthy, joinFanout }
+  action step = any { emit, respond, requestStop, beginDrain, settleBranches, closeAuth, s' = s }
+  val siblingsActive = s.fanout != "none" and not(siblingsSettled)
+  val StorageOutlivesSiblings = siblingsActive implies s.auth != "closed"
+  val FanoutTracksSiblings = siblingsActive implies s.tracked
+  val FailureFollowsSiblings = s.fanout == "failed" implies siblingsSettled and not(s.tracked)
+  temporal CloseCompletes = (beginDrain.weakFair(s) and settleBranches.weakFair(s)
+    and closeAuth.weakFair(s)).implies(
+      s.auth.in(Set("closing-listener", "draining")).leadsTo(s.auth == "closed"))
+  temporal CloseWithoutFairness = (s.auth == "draining" and s.healthy == "sending")
+    .leadsTo(s.auth == "closed")
+
+  // Promise.all used to release the parent receipt on the first rejection.
+  action legacyFailFast = all {
+    s.tracked, s.unreadable == "rejected",
+    s' = { ...s, tracked: false, fanout: "failed" }
+  }
+  run failedConfigKeepsHealthyReceiptTest = init.then(emit).then(rejectUnreadable)
+    .then(enqueueHealthy).then(claimHealthy).then(respond).then(requestStop).then(beginDrain)
+    .expect(s.tracked and s.responded and s.receipt == "processing" and StorageOutlivesSiblings)
+    .then(receiveHealthy(true)).then(commitHealthy).then(joinFanout).then(closeAuth)
+    .expect(s.receipt == "delivered" and s.fanout == "failed" and FailureFollowsSiblings)
+  run failFastCloseWitnessTest = init.then(emit).then(enqueueHealthy).then(claimHealthy)
+    .then(rejectUnreadable).then(legacyFailFast).then(requestStop).then(beginDrain).then(closeAuth)
+    .expect(not(StorageOutlivesSiblings) and not(FanoutTracksSiblings) and s.receipt == "processing")
+}

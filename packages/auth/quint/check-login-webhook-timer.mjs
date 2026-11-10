@@ -1,4 +1,4 @@
-/** Requires both production login timer scenarios with local HTTPS and PGlite. */
+/** Requires production timer and immediate request delivery with local HTTPS and PGlite. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -9,7 +9,10 @@ import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const testFile = "packages/auth/test/login/webhook-timer.integration.test.ts";
+const testFiles = [
+  "packages/auth/test/login/webhook-timer.integration.test.ts",
+  "packages/auth/test/login/request-webhook.integration.test.ts",
+];
 const output = testOutputPath("quint-auth-webhook-timer");
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
@@ -20,7 +23,7 @@ const run = spawnSync(
     "--conditions=eliza-source",
     "test",
     "--isolate",
-    testFile,
+    ...testFiles,
     "--reporter=junit",
     `--reporter-outfile=${report}`,
   ],
@@ -51,6 +54,7 @@ parser.write(xml).close();
 assert.deepEqual(names.sort(), [
   "detaching the task adapter preserves login delivery and shutdown commits its receipt",
   "login shutdown drains a failed delivery and leaves the next claim for restart",
+  "shutdown retains request webhook siblings through a configuration failure",
 ]);
 await writeFile(
   path.join(directory, "results.json"),
