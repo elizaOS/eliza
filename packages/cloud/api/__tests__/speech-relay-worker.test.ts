@@ -315,7 +315,7 @@ test("ready speech streams PCM and multiple TTS contexts without another DB/auth
   ).toBe(410);
 });
 
-test("a refused credit reservation preserves the allowlisted recovery reason before providers open", async () => {
+test("a refused credit reservation reports the allowlisted recovery reason after ready and retires the opened input", async () => {
   const request = (path: string, body?: unknown) =>
     worker.dispatchFetch(`https://speech-relay.internal${path}`, {
       method: body === undefined ? "GET" : "POST",
@@ -354,6 +354,12 @@ test("a refused credit reservation preserves the allowlisted recovery reason bef
   );
   const socket = upgraded.webSocket!;
   socket.accept();
+  // Speech input opens and `ready` is sent without waiting for the
+  // reservation; its refusal then arrives with the same error and reason.
+  const frames: string[] = [];
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data).t);
+  });
   const refused = next(socket as any, (value) => value.t === "error");
   socket.send(JSON.stringify({ t: "hello", token, errorReasons: true }));
   expect(await refused).toEqual({
@@ -361,11 +367,13 @@ test("a refused credit reservation preserves the allowlisted recovery reason bef
     code: "unavailable",
     reason: "insufficient_credits",
   });
+  expect(frames.indexOf("ready")).toBeGreaterThanOrEqual(0);
+  expect(frames.indexOf("ready")).toBeLessThan(frames.indexOf("error"));
   const after = (await (await request("/test-stats")).json()) as Record<
     string,
     number
   >;
-  expect(after.sttOpened).toBe(baseline.sttOpened);
+  expect(after.sttOpened).toBe(baseline.sttOpened + 1);
   expect(after.ttsOpened).toBe(baseline.ttsOpened);
 });
 
@@ -526,7 +534,7 @@ test("staging reports numeric bootstrap phases only to a client that asked in he
   production.socket.close();
 });
 
-test("a refused revocation fence releases the concurrently admitted leases before any provider opens", async () => {
+test("a refused revocation fence retires the opened input and releases the concurrently admitted leases", async () => {
   const organizationId = "66666666-6666-4666-8666-666666666666";
   await worker.dispatchFetch("https://speech-relay.internal/test-lifecycle", {
     method: "POST",
@@ -557,7 +565,8 @@ test("a refused revocation fence releases the concurrently admitted leases befor
     if ((after.settlements ?? 0) - (before.settlements ?? 0) >= 2) break;
     await Bun.sleep(20);
   }
-  expect(after.sttOpened).toBe(before.sttOpened);
+  // Speech input opened before the fence answered; speech output never did.
+  expect(after.sttOpened).toBe(before.sttOpened + 1);
   expect(after.ttsOpened).toBe(before.ttsOpened);
   const admitted = (after.admissions ?? 0) - (before.admissions ?? 0);
   const settled = (after.settledAmounts ?? []).slice(
