@@ -17,6 +17,30 @@ describe("parseAiJson", () => {
     });
   });
 
+  test("prefers a fenced object over a JSON snippet quoted in the prose", () => {
+    const AdCopyVariants = z.object({
+      headlines: z.array(z.string()),
+      descriptions: z.array(z.string()),
+      callToActions: z.array(z.string()),
+      hashtags: z.array(z.string()),
+    });
+    const payload = {
+      headlines: ["Ship agents faster"],
+      descriptions: ["Build once"],
+      callToActions: ["Try Eliza"],
+      hashtags: ["agents"],
+    };
+    const json = JSON.stringify(payload);
+    const reply = [
+      'The status badge reads {"ok": true}.',
+      "Here is the promotional JSON:",
+      "```json",
+      json,
+      "```",
+    ].join("\n");
+    expect(parseAiJson(reply, AdCopyVariants, "ad copy variants")).toEqual(payload);
+  });
+
   test("reports output that holds no JSON object", () => {
     expect(() => parseAiJson("No variants today.", AdCopy, "ad copy variants")).toThrow();
   });

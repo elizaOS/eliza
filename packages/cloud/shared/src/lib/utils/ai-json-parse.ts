@@ -3,12 +3,17 @@ import { ElizaError, parseJsonObject, toWellFormedUnicode } from "@elizaos/core"
 import type { z } from "zod";
 
 /**
- * Read the JSON object in a model reply. Core's tolerant reader skips prose
- * around the object, so a `[` before it or a `{…}` note after it does not
- * break the parse.
+ * Read the JSON object in a model reply. A fenced JSON body is tried first so
+ * a snippet quoted in the prose (for example `{"ok": true}`) does not beat
+ * the real answer. If there is no fence, or the fenced body does not parse,
+ * core's tolerant reader scans the whole reply, so a `[` before the object or
+ * a `{…}` note after it does not break the parse.
  */
 export function parseAiJsonObject(text: string, context?: string): Record<string, unknown> {
-  const parsed = parseJsonObject<Record<string, unknown>>(text);
+  const fenceMatch = text.trim().match(/```(?:json)?\s*([\s\S]*?)```/);
+  const parsed =
+    (fenceMatch ? parseJsonObject<Record<string, unknown>>(fenceMatch[1]) : null) ??
+    parseJsonObject<Record<string, unknown>>(text);
   if (parsed) return parsed;
 
   const completeOutput = toWellFormedUnicode(text.trim());

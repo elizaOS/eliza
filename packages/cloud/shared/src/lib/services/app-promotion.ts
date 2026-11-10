@@ -303,7 +303,7 @@ Return ONLY valid JSON, no markdown.`;
         } catch (parseError) {
           logger.error("[AppPromotion] Failed to parse AI response JSON", {
             appId: app.id,
-            error: parseError instanceof Error ? parseError.message : "Unknown error",
+            error: parseError instanceof Error ? parseError.message.slice(0, 500) : "Unknown error",
           });
           throw new Error("Failed to parse promotional content JSON");
         }
