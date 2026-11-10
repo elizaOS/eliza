@@ -5,7 +5,10 @@ import net from "node:net";
 import path from "node:path";
 import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
+import {
+  type PGLiteSocketHandler,
+  PGLiteSocketServer,
+} from "@electric-sql/pglite-socket";
 import { Client } from "pg";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
@@ -288,6 +291,40 @@ for (const { name, Server } of variants) {
     test(`${name}: ${scenario}`, { timeout: 20000 }, () =>
       withFixture(Server, body),
     );
+
+  check(
+    "retired handler rejects reattachment and fresh handler serves client",
+    async ({ make, server }) => {
+      await make();
+      const handlers = (
+        server as unknown as { handlers: Set<PGLiteSocketHandler> }
+      ).handlers;
+      const retired = [...handlers][0];
+      assert.ok(retired);
+      const originalSocket = (retired as unknown as { socket: net.Socket })
+        .socket;
+      const detaching = retired.detach(true);
+      await assert.rejects(retired.attach(originalSocket), /has been detached/);
+      await detaching;
+      assert.equal(retired.isAttached, false);
+      assert.equal(originalSocket.destroyed, true);
+
+      const replacement = await make();
+      const fresh = [...handlers][0];
+      assert.ok(fresh && fresh !== retired);
+      const replacementSocket = (fresh as unknown as { socket: net.Socket })
+        .socket;
+      await assert.rejects(
+        retired.attach(replacementSocket),
+        /has been detached/,
+      );
+      await retired.detach(true);
+      assert.equal(retired.isAttached, false);
+      assert.equal(fresh.isAttached, true);
+      assert.equal(replacementSocket.destroyed, false);
+      await simple(replacement, "SELECT 99 AS other");
+    },
+  );
 
   check(
     "extended cycle retains its portal until own Sync",
