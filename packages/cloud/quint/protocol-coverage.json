@@ -898,6 +898,8 @@
       "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
       "packages/cloud/shared/src/lib/services/app-deploy-orchestrator.ts",
       "packages/cloud/shared/src/lib/services/app-deploy-runner.ts",
+      "packages/cloud/shared/src/lib/services/container-executor-deps.ts",
+      "packages/cloud/shared/src/lib/services/container-job-executors.ts",
       "packages/cloud/shared/src/lib/services/container-jobs-writer.ts",
       "packages/cloud/shared/src/db/repositories/apps.ts",
       "packages/cloud/shared/src/db/repositories/jobs.ts",
@@ -912,13 +914,14 @@
       "deployingCompletionRequiresHandoff",
       "unconfirmedKeepsOriginalFence",
       "currentHandoffCompletionLinksContainer",
-      "appLinkRequiresHandoff"
+      "appLinkRequiresHandoff",
+      "currentChildReadinessLinksContainer"
     ],
     "status": "partial",
     "limitations": [
       "One app, two generations, one parent job, two insert attempts, and three queue attempts. The real PGlite checks cover admission, known failures, interrupted handoff, app-link recovery, lost child insert responses, and deletion inventory.",
-      "An exact durable child confirms parent handoff and identifies the container for a generation-scoped app link. Missing or conflicting evidence retains an unresolved parent for operator reconciliation.",
-      "The model abstracts child readiness only for the race with app linking. Already terminal parents with missing links require separate reconciliation. Coverage gaps include live image builds, Docker, tenant databases, ingress, and child execution and publication protocols."
+      "An exact durable child identifies the container for parent handoff and READY publication. A live child can link the container after its parent has completed. Missing or conflicting evidence retains an unresolved parent for operator reconciliation.",
+      "Historical deployments with both jobs terminal and a missing link require separate reconciliation. Coverage gaps include live image builds, Docker, tenant databases, ingress, and provider behavior before the child can publish READY."
     ]
   },
   {
