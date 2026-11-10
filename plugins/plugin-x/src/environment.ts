@@ -606,11 +606,13 @@ export function getRandomInterval(
       throw new Error(`Unknown interval type: ${type}`);
   }
 
-  // If MIN/MAX are properly configured, use random value between them
+  // If MIN/MAX are properly configured, use random value between them.
+  // MIN equal to MAX pins one exact interval: the random draw then returns
+  // MIN itself instead of falling back to the fixed interval.
   if (
     minInterval !== undefined &&
     maxInterval !== undefined &&
-    minInterval < maxInterval
+    minInterval <= maxInterval
   ) {
     const randomInterval =
       Math.random() * (maxInterval - minInterval) + minInterval;
