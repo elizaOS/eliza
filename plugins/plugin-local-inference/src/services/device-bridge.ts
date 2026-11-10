@@ -50,6 +50,10 @@ import { localInferenceRoot } from "./paths";
 const DEFAULT_CALL_TIMEOUT_MS = 60000;
 const DEFAULT_LOAD_TIMEOUT_MS = 120000;
 const HEARTBEAT_INTERVAL_MS = 15000;
+// A registered device that sends nothing (not even a pong) for this many
+// heartbeat intervals is treated as gone: its socket is closed and its routing
+// slot is released instead of holding every request until the call deadline.
+const MAX_MISSED_HEARTBEATS = 3;
 const PENDING_LOG_FILENAME = "pending-requests.json";
 const MAX_TIMER_DELAY_MS = 2147483647;
 /**
@@ -215,6 +219,8 @@ interface MinimalWebSocket {
 	readyState: number;
 	send(data: string): void;
 	close(code?: number, reason?: string): void;
+	/** Present on the `ws` server socket; destroys a peer that never answers. */
+	terminate?(): void;
 	on(event: "message", listener: (data: Buffer | string) => void): unknown;
 	on(event: "close", listener: () => void): unknown;
 	on(event: "error", listener: (err: Error) => void): unknown;
@@ -316,6 +322,8 @@ interface ConnectedDevice {
 	loadedPath: string | null;
 	connectedAt: number;
 	lastHeartbeatAt: number;
+	/** Ping intervals elapsed without any frame from this device. */
+	missedHeartbeats: number;
 	heartbeatTimer: ReturnType<typeof setInterval>;
 }
 interface PersistedGenerateRequest {
@@ -402,6 +410,7 @@ export class DeviceBridge {
 	private static readonly RECENT_GENERATIONS_CAP = 200;
 	private readonly expectedPairingToken: string | null =
 		process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() || null;
+	private heartbeatIntervalMs: number = HEARTBEAT_INTERVAL_MS;
 	status(): DeviceBridgeStatus {
 		const summaries: DeviceSummary[] = [];
 		for (const device of this.devices.values()) {
@@ -500,6 +509,10 @@ export class DeviceBridge {
 	}
 	async attachToHttpServer(server: HttpServer): Promise<void> {
 		if (this.wss) return;
+		this.heartbeatIntervalMs = resolveDeviceTimeoutMs(
+			"ELIZA_DEVICE_HEARTBEAT_INTERVAL_MS",
+			HEARTBEAT_INTERVAL_MS,
+		);
 		const ws = await importWsModule();
 		const wss = new ws.WebSocketServer({
 			noServer: true,
@@ -548,6 +561,11 @@ export class DeviceBridge {
 			} catch {
 				logger.warn("[device-bridge] Ignoring non-JSON frame");
 				return;
+			}
+			// Any frame from the device proves the peer is alive, not only its pong.
+			if (registeredDeviceId) {
+				const device = this.devices.get(registeredDeviceId);
+				if (device?.socket === socket) device.missedHeartbeats = 0;
 			}
 			if (!registered) {
 				if (msg.type !== "register") {
@@ -610,14 +628,21 @@ export class DeviceBridge {
 			loadedPath: registration.loadedPath,
 			connectedAt: Date.now(),
 			lastHeartbeatAt: Date.now(),
+			missedHeartbeats: 0,
 			heartbeatTimer: setInterval(() => {
 				if (socket.readyState !== WsCtor.OPEN) return;
+				if (device.missedHeartbeats >= MAX_MISSED_HEARTBEATS) {
+					clearInterval(device.heartbeatTimer);
+					this.evictUnresponsiveDevice(device.deviceId, socket);
+					return;
+				}
+				device.missedHeartbeats += 1;
 				try {
 					this.sendToDevice(device.deviceId, { type: "ping", at: Date.now() });
 				} catch {
 					/* ignore after close */
 				}
-			}, HEARTBEAT_INTERVAL_MS),
+			}, this.heartbeatIntervalMs),
 		};
 		if (
 			typeof device.heartbeatTimer === "object" &&
@@ -832,6 +857,30 @@ export class DeviceBridge {
 				pending.resolve({ embedding: msg.embedding, tokens: msg.tokens });
 			}
 			return;
+		}
+	}
+	private evictUnresponsiveDevice(
+		deviceId: string,
+		socket: MinimalWebSocket,
+	): void {
+		logger.warn(
+			`[device-bridge] Closing device ${deviceId}: no reply to ${MAX_MISSED_HEARTBEATS} heartbeats`,
+		);
+		// Reuse the disconnect path so orphaned requests re-route to a live
+		// device now instead of waiting for the call deadline.
+		if (this.devices.get(deviceId)?.socket === socket) {
+			this.onDeviceDisconnected(deviceId);
+		}
+		try {
+			if (socket.terminate) socket.terminate();
+			else socket.close(4008, "heartbeat-timeout");
+		} catch (error) {
+			// error-policy:J6 The device is already evicted and its requests
+			// re-routed; a failed transport close only leaves a dead socket.
+			logger.warn(
+				"[device-bridge] Failed to close unresponsive device socket:",
+				error instanceof Error ? error.message : String(error),
+			);
 		}
 	}
 	private sendToDevice(deviceId: string, msg: AgentOutbound): void {
