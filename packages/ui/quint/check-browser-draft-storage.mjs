@@ -52,6 +52,8 @@ const required = [
   "same-key consume preserves the send receipt and non-dispatch recovery",
   "hold wins the queued same-key consume race",
   "separate-key consume acknowledges its clear before old send release",
+  "stale cross-tab consume preserves the send mark and requires explicit recovery",
+  "stale cross-tab hold preserves a consume clear pending host acknowledgement",
   "async conflict, tab death and reload recovery pass",
   "draft adapter reload preserves cleared rows and writes cancelled after dispatch",
 ];

@@ -367,3 +367,125 @@ module BrowserDraftHoldConsume {
     .then(requestRelease).expect(PendingRestoreBlocksRelease and HeldSendOwnsReceipt)
     .then(acknowledgeFormRestore).then(finishRelease).expect(ReleasePreservesDrafts)
 }
+
+// Two tabs open one unmarked draft before either starts writing. The first
+// successful CAS takes the initial receipt. The losing controller must recover
+// independently while the winning send or form restore is still pending.
+module BrowserDraftCrossTabClaims {
+  type Document = {
+    documentRevision: int, draftRevision: int, text: str, sending: bool,
+  }
+  type State = {
+    document: Document,
+    send: str,
+    consume: str,
+    senderText: str,
+    formText: str,
+    formOffer: str,
+  }
+
+  var s: State
+
+  pure val original: Document = {
+    documentRevision: 1, draftRevision: 1, text: "draft", sending: false,
+  }
+  pure val marked: Document = {
+    ...original, documentRevision: 2, draftRevision: 2, sending: true,
+  }
+  pure val cleared: Document = {
+    ...original, documentRevision: 2, draftRevision: 2, text: "",
+  }
+  pure val released: Document = { ...original, documentRevision: 3, draftRevision: 3 }
+  pure val confirmed: Document = { ...released, documentRevision: 4 }
+
+  action init = s' = {
+    document: original, send: "ready", consume: "ready",
+    senderText: "draft", formText: "draft", formOffer: "",
+  }
+
+  action attemptHold = all {
+    s.send == "ready",
+    s' = if (s.document == original) {
+      ...s, document: marked, send: "held", senderText: "",
+    } else { ...s, send: "refused" },
+  }
+
+  action attemptConsume = all {
+    s.consume == "ready",
+    s' = if (s.document == original) {
+      ...s, document: cleared, consume: "restoring",
+    } else { ...s, consume: "unsettled", formOffer: s.document.text },
+  }
+
+  action acknowledgeClear = all {
+    s.consume == "restoring" and s.send == "refused",
+    s' = { ...s, consume: "cleared", formText: "" },
+  }
+
+  action release = all {
+    s.send == "held" and s.consume == "unsettled",
+    s' = { ...s, document: released, send: "released", senderText: "draft" },
+  }
+
+  // The stale consume's failed receipt still needs review even when the
+  // released copy and the form editor now hold identical text.
+  action retry = all {
+    s.send == "released" and s.consume == "unsettled",
+    s' = { ...s, consume: "retained" },
+  }
+
+  // keepCurrent performs a new CAS. The unmarked draft bytes stay identical,
+  // while IndexedDB publishes a fresh document revision for the confirmation.
+  action confirm = all {
+    s.consume == "retained",
+    s' = { ...s, document: confirmed, consume: "confirmed" },
+  }
+
+  action step = any {
+    attemptHold, attemptConsume, acknowledgeClear, release, retry, confirm,
+    s' = s,
+  }
+
+  val InitialReceiptHasOneWinner = not(
+    Set("held", "released").contains(s.send) and
+      Set("restoring", "cleared").contains(s.consume)
+  )
+
+  val StaleConsumePreservesMarkedReceipt = and {
+    s.send == "held" implies s.document == marked,
+    s.consume == "unsettled" implies s.formOffer == "draft" and s.formText == "draft",
+  }
+
+  val StaleHoldPreservesClearReceipt = and {
+    Set("restoring", "cleared").contains(s.consume) implies s.document == cleared,
+    s.send == "refused" implies s.senderText == "draft",
+  }
+
+  val RecoveryRequiresConfirmation = and {
+    s.consume == "retained" implies s.document == released and s.formOffer == "draft",
+    s.consume == "confirmed" implies s.document == confirmed and s.formText == "draft",
+  }
+
+  temporal StartedOperationsReachOutcome = always(
+    (s.send != "ready" or s.consume != "ready") implies eventually(
+      s.consume == "confirmed" or (s.consume == "cleared" and s.send == "refused")
+    )
+  )
+
+  temporal UnderFairCrossTabRecovery = and {
+    weakFair(attemptHold, s), weakFair(attemptConsume, s),
+    weakFair(acknowledgeClear, s), weakFair(release, s), weakFair(retry, s),
+    weakFair(confirm, s),
+  } implies StartedOperationsReachOutcome
+
+  run markWinsThenConsumeNeedsReviewTest = init
+    .then(attemptHold).then(attemptConsume)
+    .expect(s.consume == "unsettled" and StaleConsumePreservesMarkedReceipt)
+    .then(release).then(retry).expect(s.consume == "retained" and RecoveryRequiresConfirmation)
+    .then(confirm).expect(s.consume == "confirmed" and RecoveryRequiresConfirmation)
+
+  run clearWinsBeforeHostAcknowledgementTest = init
+    .then(attemptConsume).then(attemptHold)
+    .expect(s.consume == "restoring" and s.send == "refused" and StaleHoldPreservesClearReceipt)
+    .then(acknowledgeClear).expect(s.formText == "" and StaleHoldPreservesClearReceipt)
+}

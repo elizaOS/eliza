@@ -525,6 +525,138 @@ try {
       assert.equal(independent.after.consuming, false);
       console.log(`${name}: separate-key consume acknowledges its clear before old send release`);
 
+      // Both tabs capture the same receipt before either controller writes.
+      const sharedText = "Shared reviewed draft";
+      const openSharedDraft = async (key) => {
+        await a.evaluate(([key, text]) => window.draftStore(key).save(null, text), [key, sharedText]);
+        const editors = await Promise.all([a, b].map((page) => page.evaluate(async (key) => {
+          const shared = {};
+          shared.editor = window.createDraftEditor(() => shared.beforeRestore?.());
+          window.sharedDraft = shared;
+          await shared.editor.controller.open(key);
+          return shared.editor.text;
+        }, key)));
+        assert.deepEqual(editors, [sharedText, sharedText]);
+      };
+
+      const sendFirstKey = "shared-draft-send-first";
+      await openSharedDraft(sendFirstKey);
+      const sendMark = await a.evaluate(async ([key, text]) => {
+        const { editor } = window.sharedDraft;
+        await editor.controller.hold(text);
+        editor.type("");
+        return window.store.read(key);
+      }, [sendFirstKey, sharedText]);
+      assert.equal(JSON.parse(sendMark.raw).sending, true);
+      const staleConsume = await b.evaluate(async ([key, text]) => {
+        const { editor } = window.sharedDraft;
+        const outcome = await editor.controller.consume(text).then(
+          () => "admitted",
+          (error) => error.name,
+        );
+        return {
+          outcome, snapshot: await window.store.read(key), text: editor.text,
+          state: editor.controller.state,
+        };
+      }, [sendFirstKey, sharedText]);
+      assert.equal(staleConsume.outcome, "DurableDraftConflict");
+      assert.deepEqual(staleConsume.snapshot, sendMark);
+      assert.equal(staleConsume.text, sharedText);
+      assert.equal(staleConsume.state.conflict, true);
+      assert.equal(staleConsume.state.unsettled, true);
+      assert.equal(staleConsume.state.savedText, sharedText);
+      assert.equal(staleConsume.state.consuming, false);
+
+      const afterRelease = await a.evaluate(async (key) => {
+        await window.sharedDraft.editor.controller.release();
+        return window.store.read(key);
+      }, sendFirstKey);
+      assert.notEqual(afterRelease.revision, sendMark.revision);
+      assert.equal(JSON.parse(afterRelease.raw).sending, undefined);
+      assert.equal(JSON.parse(afterRelease.raw).text, sharedText);
+      const reopened = await b.evaluate(async (key) => {
+        const { editor } = window.sharedDraft;
+        await editor.controller.retry();
+        return {
+          snapshot: await window.store.read(key), text: editor.text,
+          conflict: editor.controller.state.conflict, unsettled: editor.controller.state.unsettled,
+          offered: editor.controller.state.savedText,
+          flush: await editor.controller.flush().then(() => "saved", (error) => error.message),
+        };
+      }, sendFirstKey);
+      assert.deepEqual(reopened.snapshot, afterRelease);
+      assert.equal(reopened.text, sharedText);
+      assert.equal(reopened.conflict, true);
+      assert.equal(reopened.unsettled, false);
+      assert.equal(reopened.offered, sharedText);
+      const confirmed = await b.evaluate(async (key) => {
+        const { controller } = window.sharedDraft.editor;
+        const { DEFAULT_DURABLE_DRAFT_MESSAGES } = await import("/store.js");
+        controller.keepCurrent();
+        await controller.flush();
+        return {
+          snapshot: await window.store.read(key), conflict: controller.state.conflict,
+          storageUnavailable: DEFAULT_DURABLE_DRAFT_MESSAGES.storageUnavailable,
+        };
+      }, sendFirstKey);
+      assert.equal(reopened.flush, confirmed.storageUnavailable);
+      assert.notEqual(confirmed.snapshot.revision, afterRelease.revision);
+      assert.equal(confirmed.snapshot.raw, afterRelease.raw);
+      assert.equal(confirmed.conflict, false);
+      console.log(`${name}: stale cross-tab consume preserves the send mark and requires explicit recovery`);
+
+      const consumeFirstKey = "shared-draft-consume-first";
+      await openSharedDraft(consumeFirstKey);
+      const clearReceipt = await b.evaluate(async ([key, text]) => {
+        const shared = window.sharedDraft;
+        const entered = Promise.withResolvers();
+        const acknowledgement = Promise.withResolvers();
+        shared.beforeRestore = () => {
+          entered.resolve();
+          return acknowledgement.promise;
+        };
+        shared.acknowledge = acknowledgement.resolve;
+        shared.consume = shared.editor.controller.consume(text);
+        await Promise.race([
+          entered.promise,
+          shared.consume.then(() => { throw new Error("Missing host restore"); }),
+        ]);
+        return { snapshot: await window.store.read(key), text: shared.editor.text };
+      }, [consumeFirstKey, sharedText]);
+      assert.equal(JSON.parse(clearReceipt.snapshot.raw).text, "");
+      assert.equal(JSON.parse(clearReceipt.snapshot.raw).sending, undefined);
+      assert.equal(clearReceipt.text, sharedText);
+      const staleHold = await a.evaluate(async ([key, text]) => {
+        const { editor } = window.sharedDraft;
+        const outcome = await editor.controller.hold(text).then(
+          () => "admitted",
+          (error) => error.message,
+        );
+        const { DEFAULT_DURABLE_DRAFT_MESSAGES } = await import("/store.js");
+        return {
+          outcome, storageUnavailable: DEFAULT_DURABLE_DRAFT_MESSAGES.storageUnavailable,
+          snapshot: await window.store.read(key), text: editor.text,
+          holding: editor.controller.holding, state: editor.controller.state,
+        };
+      }, [consumeFirstKey, sharedText]);
+      assert.equal(staleHold.outcome, staleHold.storageUnavailable);
+      assert.deepEqual(staleHold.snapshot, clearReceipt.snapshot);
+      assert.equal(staleHold.text, sharedText);
+      assert.equal(staleHold.holding, false);
+      assert.equal(staleHold.state.conflict, true);
+      assert.equal(staleHold.state.unsettled, false);
+      const acknowledged = await b.evaluate(async (key) => {
+        const shared = window.sharedDraft;
+        shared.acknowledge();
+        await shared.consume;
+        return {
+          snapshot: await window.store.read(key), text: shared.editor.text,
+          consuming: shared.editor.controller.state.consuming,
+        };
+      }, consumeFirstKey);
+      assert.deepEqual(acknowledged, { snapshot: clearReceipt.snapshot, text: "", consuming: false });
+      console.log(`${name}: stale cross-tab hold preserves a consume clear pending host acknowledgement`);
+
       await a.evaluate(() => {
         window.release = undefined;
         void window.store.edit("abandoned", async () => {
