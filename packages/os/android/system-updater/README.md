@@ -1,0 +1,38 @@
+# On-device OS updater
+
+Candidate implementation of the approved on-device A/B update path (Alpha
+P-75 / issue 680). It is separate from the ordinary launcher and from the
+computer-operated recovery/sideload tool. Product hosts own release enrollment.
+The generic resource configuration disables every entry point and schedules
+nothing. This is not yet a qualified or installed updater.
+
+The host uses Android JobScheduler, platform OTA signature verification and
+UpdateEngine. It accepts an enrolled HTTPS channel, verifies the complete package
+and its signed product/device/build metadata, then passes a read-only payload
+file descriptor to the engine. It does not change the launcher package or read
+its private data. The small SELinux domain grants only the updater and engine
+connection; payload access needs separate qualification of the exact policy.
+
+The job requires the primary unlocked user, unmetered connectivity and enough
+battery. Apply and reboot also require an idle display and no call. A stopped
+download retains a content-addressed partial file and resumes with a checked
+HTTP range; a server that ignores ranges starts a known-unapplied download over.
+The ordinary app remains nonprivileged. Android's shutdown path owns the reboot.
+
+The durable journal records an apply intent before Binder. An unsettled apply
+after process death becomes unknown; it is never silently submitted again. Only
+the live owned callback records reboot readiness. Booting the exact target
+fingerprint records completion. Seeing the source after reboot records source
+retention, not proof of a rollback. Bad state is held for review.
+
+Validation: the journal has source-linked Quint checks, finite-state checking
+and generated traces replayed through its real Java implementation. The host
+model separately covers interruption and fair successful completion. These do
+not prove Android execution, package-signature rejection, power/call constraints
+or preservation of app data across an OS update.
+
+Remaining gates: real Android compilation and adapter tests, interrupted/range
+downloads, package and metadata rejection, permission and SELinux checks,
+reviewed channel/key enrollment, a signed image, and physical wireless update,
+interruption, source-retention/rollback and data-retention drills. No release
+or device-acceptance flag is set by these models or helpers.

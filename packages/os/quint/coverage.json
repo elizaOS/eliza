@@ -21,5 +21,44 @@
       "Generated Quint sequences replay against real Go admission, commit and recovery functions. Existing full two-descriptor differential cases provide additional implementation checks.",
       "This instance models completed floor/refresh publication atomically. Separate-file crash recovery, file locks, corrupt state, authority enrollment and full OTA transport/install lifecycles remain separate obligations."
     ]
+  },
+  {
+    "id": "os.SystemUpdateJournal",
+    "model": "packages/os/quint/SystemUpdateJournal.qnt",
+    "sources": [
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateJournal.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/VerifiedPayload.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java"
+    ],
+    "invariants": ["AtMostOneApply", "TypeOK"],
+    "status": "partial",
+    "limitations": [
+      "One candidate with atomic host persistence assumed. Generated traces replay the real Java transition implementation.",
+      "Android package authentication, downloader, scheduled host, binder attribution, disk durability and reboot/boot-control qualification remain implementation and device gates.",
+      "Accepted or rejected package verification is an abstract boundary in this journal model. Android signature checks and actual payload extraction still require the native package-verifier and adversarial artifact campaign.",
+      "The journal model assumes atomic persistence. JournalStore, Binder callback timing and Android framework error paths require native adapter qualification; the generated Java replay covers the transition reducer only."
+    ]
+  },
+  {
+    "id": "os.SystemUpdateHost",
+    "model": "packages/os/quint/SystemUpdateHost.qnt",
+    "sources": [
+      "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateRunner.java",
+      "packages/os/android/system-updater/host/ai/eliza/systemupdater/SystemUpdateJob.java",
+      "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateActivity.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java"
+    ],
+    "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+    "status": "partial",
+    "limitations": [
+      "Finite phase model, one candidate and binary eligibility; native adapter conformance is not established by source links.",
+      "Android resource/permission/SELinux admission, download interruptions, storage crashes, real signature checks and physical update/reboot/recovery remain qualification gates."
+    ]
   }
 ]
