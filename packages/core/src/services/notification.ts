@@ -318,6 +318,7 @@ export class NotificationService extends Service {
 						"Recovered notification service has an unexpected implementation",
 					);
 				}
+				if (recoveryByRuntime.get(runtime) !== recovery) return null;
 				recoveryByRuntime.delete(runtime);
 				recordAvailability(runtime, "registered");
 				logger.info(

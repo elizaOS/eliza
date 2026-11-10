@@ -15,10 +15,12 @@ import {
 } from "vitest";
 import { createCharacter } from "../src/character.ts";
 import { ElizaError } from "../src/errors.js";
+import { addLogListener } from "../src/logger.ts";
 import { AgentRuntime } from "../src/runtime.ts";
 import { AgentEventService } from "../src/services/agent-event.ts";
 import { NotificationService } from "../src/services/notification.ts";
 import type { AgentEventPayload } from "../src/types/agent-event.ts";
+import { EventType } from "../src/types/events.ts";
 import {
 	type AgentNotification,
 	NATIVE_NOTIFICATION_PAGE_BYTES,
@@ -28,6 +30,7 @@ import {
 	type NotificationPriority,
 } from "../src/types/notification.ts";
 import type { Plugin } from "../src/types/plugin.ts";
+import type { IAgentRuntime } from "../src/types/runtime.ts";
 import { ServiceType } from "../src/types/service.ts";
 import { stringToUuid as sqliteTestAgentId } from "../src/utils/string-to-uuid.js";
 
@@ -1311,6 +1314,194 @@ describe("NotificationService", () => {
 			).toBe("registered");
 		} finally {
 			await transient.cleanup();
+		}
+	});
+
+	it("retains replacement cooldown when an older successful recovery receipt arrives late", async () => {
+		const fixture = await createRuntime([AgentEventService]);
+		let releaseOriginal!: () => void,
+			oldReturned!: () => void,
+			releaseReplacement!: () => void,
+			replacementEntered!: () => void;
+		const oldReturn = new Promise<void>((resolve) => {
+			oldReturned = resolve;
+		});
+		const originalGate = new Promise<void>((resolve) => {
+			releaseOriginal = resolve;
+		});
+		const replacementGate = new Promise<void>((resolve) => {
+			releaseReplacement = resolve;
+		});
+		const replacementStarted = new Promise<void>((resolve) => {
+			replacementEntered = resolve;
+		});
+		let oldStarts = 0,
+			replacementStarts = 0;
+		class OriginalNotification extends NotificationService {
+			static override async start(owner: IAgentRuntime) {
+				if (++oldStarts === 1)
+					throw new Error("Original hydration unavailable");
+				return NotificationService.start(owner);
+			}
+		}
+		class ReplacementNotification extends NotificationService {
+			static override async start(_owner: IAgentRuntime) {
+				if (++replacementStarts === 1)
+					throw new Error("Replacement hydration unavailable");
+				replacementEntered();
+				await replacementGate;
+				throw new Error("Replacement recovery still unavailable");
+			}
+		}
+		const getLoad = fixture.runtime.getServiceLoadPromise.bind(fixture.runtime);
+		vi.spyOn(performance, "now").mockReturnValue(10000);
+		try {
+			await fixture.runtime.registerPlugin({
+				name: "original-notifier",
+				description: "Owns original notification class",
+				init: async (_config, owner) => {
+					await owner.registerService(OriginalNotification);
+				},
+			});
+			await expect(getLoad(ServiceType.NOTIFICATION)).rejects.toThrow(
+				"failed to start",
+			);
+			// Hold delivery after the actual runtime and SQLite startup has completed.
+			vi.spyOn(fixture.runtime, "getServiceLoadPromise").mockImplementationOnce(
+				async (type) => {
+					const loaded = await getLoad(type);
+					oldReturned();
+					await originalGate;
+					return loaded;
+				},
+			);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			await oldReturn;
+			expect(NotificationService.getAvailability(fixture.runtime)).toBe(
+				"registered",
+			);
+			await fixture.runtime.unloadPlugin("original-notifier");
+			await fixture.runtime.registerPlugin({
+				name: "replacement-notifier",
+				description: "Owns replacement notification class",
+				init: async (_config, owner) => {
+					await owner.registerService(ReplacementNotification);
+				},
+			});
+			await expect(getLoad(ServiceType.NOTIFICATION)).rejects.toThrow(
+				"failed to start",
+			);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			await replacementStarted;
+			const replacementLoad = getLoad(ServiceType.NOTIFICATION);
+			const result = replacementLoad.then(
+				() => undefined,
+				(error: unknown) => error,
+			);
+			releaseOriginal();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			releaseReplacement();
+			expect(await result).toBeInstanceOf(Error);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(NotificationService.requestRecovery(fixture.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			expect(oldStarts).toBe(2);
+			expect(replacementStarts).toBe(2);
+		} finally {
+			releaseOriginal();
+			releaseReplacement();
+			vi.restoreAllMocks();
+			await fixture.cleanup();
+		}
+	});
+
+	it("keeps recovery backoff when real log event and agent-error observers throw", async () => {
+		class UnavailableCacheAdapter extends SQLiteDatabaseAdapter {
+			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+				if (keys.some((key) => key.startsWith("notifications:")))
+					throw new ElizaError("Recovery storage unavailable", {
+						code: "TEST_STORAGE_UNAVAILABLE",
+					});
+				return super.getCaches<T>(keys);
+			}
+		}
+		const fixture = await createRuntime(
+			[AgentEventService],
+			UnavailableCacheAdapter.create(
+				":memory:",
+				sqliteTestAgentId("NotificationIntegrationAgent"),
+			),
+		);
+		let errorReported!: () => void;
+		const reported = new Promise<void>((resolve) => {
+			errorReported = resolve;
+		});
+		let logFailures = 0,
+			busFailures = 0;
+		let removeLog: (() => void) | undefined,
+			removeBus: (() => void) | undefined;
+		const elapsed = vi.spyOn(performance, "now").mockReturnValue(10000);
+		try {
+			await fixture.runtime.registerService(NotificationService);
+			await expect(
+				fixture.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			removeLog = addLogListener((entry) => {
+				if (!entry.msg.includes("NotificationService")) return;
+				logFailures++;
+				throw new Error("Log observer unavailable");
+			});
+			const bus = fixture.runtime.getService<AgentEventService>(
+				ServiceType.AGENT_EVENT,
+			);
+			if (!bus) throw new Error("Agent event service is missing");
+			removeBus = bus.subscribe((event) => {
+				if (
+					event.stream !== "error" ||
+					event.data.scope !== "NotificationService.recovery"
+				)
+					return;
+				busFailures++;
+				throw new Error("Agent diagnostic observer unavailable");
+			});
+			fixture.runtime.registerEvent(
+				EventType.ERROR_REPORTED,
+				async ({ scope }) => {
+					if (scope !== "NotificationService.recovery") return;
+					errorReported();
+					throw new Error("Runtime diagnostic observer unavailable");
+				},
+			);
+			expect(NotificationService.requestRecovery(fixture.runtime).state).toBe(
+				"started",
+			);
+			await expect(
+				fixture.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			await reported;
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(NotificationService.requestRecovery(fixture.runtime)).toEqual({
+				state: "backoff",
+				retryAfterSeconds: 1,
+			});
+			expect(logFailures).toBeGreaterThan(0);
+			expect(busFailures).toBe(1);
+			expect(fixture.runtime.getRecentReportedErrors()).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ scope: "NotificationService.recovery" }),
+				]),
+			);
+		} finally {
+			removeLog?.();
+			removeBus?.();
+			elapsed.mockRestore();
+			await fixture.cleanup();
 		}
 	});
 

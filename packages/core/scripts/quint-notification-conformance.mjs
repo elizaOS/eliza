@@ -31,6 +31,8 @@ const requiredNames = new Set([
 	"NotificationService recovers a repaired coordinate snapshot through the runtime lifecycle",
 	"NotificationService restores committed migration coordinates after a lost acknowledgement",
 	"NotificationService refuses an unencodable legacy coordinate map before replacing history",
+	"NotificationService retains replacement cooldown when an older successful recovery receipt arrives late",
+	"NotificationService keeps recovery backoff when real log event and agent-error observers throw",
 	"NotificationService creates, stores, and returns a stamped notification",
 	"NotificationService preserves exact lifeops reminder bodies in storage and events while generic bodies normalize",
 	"NotificationService rejects an empty title",
