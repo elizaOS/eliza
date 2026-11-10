@@ -7,7 +7,13 @@
  * link. Delete removes the mirror too.
  */
 
-import { type AccessContext, logger, type UUID } from "@elizaos/core";
+import {
+	type AccessContext,
+	logger,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	type PiiEntityRecognizerService,
+	type UUID,
+} from "@elizaos/core";
 import {
 	type Transcript,
 	type TranscriptScope,
@@ -99,7 +105,8 @@ export class TranscriptService {
 	 * persist it, re-mirroring the new text into the knowledge index so search
 	 * reflects the correction. Returns the updated record, or null if no record
 	 * with that id exists. Timing/speaker metadata is re-derived from the edited
-	 * segments; the knowledge mirror is replaced (old doc removed best-effort).
+	 * segments; the knowledge mirror is replaced (old doc removed best-effort)
+	 * and a linked redacted variant is rebuilt.
 	 */
 	async update(
 		id: UUID,
@@ -138,7 +145,23 @@ export class TranscriptService {
 			next,
 		);
 		next.knowledgeDocumentId = knowledgeDocumentId;
-		return this.store.update(next);
+		const updated = await this.store.update(next);
+		// Viewers with a redacted grant read the linked redacted variant, so
+		// rebuild it from the edited text.
+		const row = await this.runtime.getMemoryById(id);
+		const metadata = row?.metadata as Record<string, unknown> | undefined;
+		if (typeof metadata?.redactedVariantId === "string") {
+			const recognizer = this.runtime
+				.getService<Partial<PiiEntityRecognizerService>>(
+					PII_ENTITY_RECOGNIZER_SERVICE,
+				)
+				?.getRecognizer?.();
+			await this.store.createRedactedVariant({
+				originalId: id,
+				...(recognizer ? { recognizer } : {}),
+			});
+		}
+		return updated;
 	}
 	/** Delete the record + its knowledge mirror (mirror removal best-effort). */
 	async delete(id: UUID): Promise<void> {
