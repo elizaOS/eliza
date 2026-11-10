@@ -549,6 +549,8 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 	private lastDecodeAt = 0;
 	/** Decode chain — `asr_transcribe` calls serialize on the native ASR mutex anyway. */
 	private decodeChain: Promise<void> = Promise.resolve();
+	/** First decode error of the current segment, rethrown by `onFlush`. */
+	private segmentFailure: unknown = null;
 
 	/** Per-pass decode timing — the measurement that gates a shorter step. */
 	private readonly passStats: AsrDecodePassStats = {
@@ -600,6 +602,9 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 	}
 
 	protected onFrame(frame: PcmFrame): void {
+		// A failed segment has no transcript to continue: drop its remaining
+		// audio instead of decoding it into the next turn's buffer (#38966).
+		if (this.segmentFailure !== null) return;
 		const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
 		this.buf = concatFloat32(this.buf, pcm);
 		if (this.buf.length - this.lastDecodeAt < this.stepSamples) return;
@@ -610,6 +615,14 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 	protected async onFlush(): Promise<TranscriptUpdate> {
 		this.scheduleDecode(true);
 		await this.decodeChain;
+		const failure = this.segmentFailure;
+		this.segmentFailure = null;
+		// The segment failed: its audio is already dropped, so the next turn
+		// starts clean. Report the failure instead of a partial transcript.
+		if (failure !== null) {
+			this.resetSegment();
+			throw failure;
+		}
 		const final = this.committed.trim();
 		this.resetSegment();
 		return { partial: final, isFinal: true };
@@ -627,7 +640,15 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 	}
 
 	private scheduleDecode(final: boolean): void {
-		this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
+		const pass = this.decodeChain.then(() => this.runDecode(final));
+		// A failed decode must not poison the chain: every later pass would be
+		// skipped and every later `flush()` would reject with this error. Keep
+		// the chain resolved, drop the failed segment's audio, and let the
+		// awaiting `onFlush` report this segment's failure once.
+		this.decodeChain = pass.catch((error: unknown) => {
+			this.segmentFailure ??= error;
+			this.resetSegment();
+		});
 	}
 
 	private async runDecode(final: boolean): Promise<void> {
