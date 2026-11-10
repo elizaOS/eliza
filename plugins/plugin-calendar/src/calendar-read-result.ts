@@ -1,9 +1,13 @@
 /** Calendar model view and reversible event encoding; canonical data/receipts stay intact. */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type {
   ActionResult,
   ProviderDataRecord,
   ProviderValue,
 } from "@elizaos/core";
+import { isValidTimeZone } from "./internal/constants.js";
+import { formatCalendarEventTimeRange } from "./internal/format.js";
 export function calendarReadPromptProjection(
   data: ActionResult["data"],
 ): Pick<ActionResult, "promptData" | "promptDataMode"> {
@@ -18,6 +22,20 @@ export function calendarReadPromptProjection(
       ? calendarSources
       : undefined;
   const unified = sourceInventory !== undefined;
+  const rawReply = data.replyContext;
+  const reply =
+    rawReply && typeof rawReply === "object" && !Array.isArray(rawReply)
+      ? (rawReply as ProviderDataRecord)
+      : undefined;
+  const context = reply?.context;
+  const contextZone =
+    context && typeof context === "object" && !Array.isArray(context)
+      ? (context as ProviderDataRecord).timeZone
+      : undefined;
+  const displayZone =
+    typeof contextZone === "string" && isValidTimeZone(contextZone)
+      ? contextZone
+      : undefined;
   const modelEvent = (event: ProviderValue): ProviderValue => {
     if (!event || typeof event !== "object" || Array.isArray(event))
       return event;
@@ -26,13 +44,26 @@ export function calendarReadPromptProjection(
       calendarSummary: _calendarSummary,
       ...record
     } = event as ProviderDataRecord;
-    return record;
+    // Keep the canonical instants and source zone. Supply the already computed
+    // local range as well, so a response never needs to guess the DST offset.
+    return displayZone &&
+      typeof record.startAt === "string" &&
+      typeof record.endAt === "string" &&
+      typeof record.isAllDay === "boolean" &&
+      Number.isFinite(Date.parse(record.startAt)) &&
+      Number.isFinite(Date.parse(record.endAt))
+      ? {
+          ...record,
+          displayTime: formatCalendarEventTimeRange(
+            record as unknown as LifeOpsCalendarEvent,
+            {
+              asOf: new Date(),
+              timeZone: displayZone,
+            },
+          ),
+        }
+      : record;
   };
-  const rawReply = data.replyContext;
-  const reply =
-    rawReply && typeof rawReply === "object" && !Array.isArray(rawReply)
-      ? (rawReply as ProviderDataRecord)
-      : undefined;
   // Facts duplicate the structured events and can contain a legacy source
   // enumeration. Keep the actual scope/selection constraints, not that prose.
   const {
