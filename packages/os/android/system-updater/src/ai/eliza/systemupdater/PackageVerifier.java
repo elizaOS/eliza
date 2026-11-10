@@ -81,10 +81,7 @@ final class PackageVerifier {
                 throw new IOException("Payload directory is unavailable");
             }
             File destination = new File(outputDirectory, expectedSha256 + ".payload");
-            long requiredSpace = (destination.exists() ? 0 : size) + 2L * 1024 * 1024 * 1024;
-            if (outputDirectory.getUsableSpace() < requiredSpace) {
-                throw new IOException("Insufficient space to verify the update payload");
-            }
+            requirePayloadSpace(outputDirectory, destination, size);
             if (destination.exists()) {
                 if (!destination.isFile() || !destination.getCanonicalFile().equals(destination.getAbsoluteFile())
                         || destination.length() != size || !digestBase64(destination).equals(fileHash)) {
@@ -121,6 +118,16 @@ final class PackageVerifier {
             return new VerifiedPayload(destination, expectedFingerprint, expectedSha256,
                     timestamp, headers);
         }
+    }
+
+    static final class StorageDeferred extends IOException {
+        StorageDeferred() { super("Insufficient space to verify the update payload"); }
+    }
+
+    static void requirePayloadSpace(File outputDirectory, File destination, long size)
+            throws StorageDeferred {
+        long requiredSpace = (destination.exists() ? 0 : size) + 2L * 1024 * 1024 * 1024;
+        if (outputDirectory.getUsableSpace() < requiredSpace) throw new StorageDeferred();
     }
 
     private static void verifyTrustStore(String expected) throws IOException, GeneralSecurityException {
