@@ -14,9 +14,7 @@
       "main": "PhotoCopyRecovery",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
+      "invariants": ["safety"],
       "temporal": [],
       "maxSteps": 10,
       "samples": 1000
