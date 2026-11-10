@@ -36,6 +36,12 @@ const CAPTION_MAX_BYTES = 10 * 1024 * 1024;
  */
 const DIRECT_MEDIA_MAX_BYTES = 256 * 1024 * 1024;
 
+/** Replace the trailing extension (or append one when there is none). */
+function replaceFileExtension(filePath: string, extension: string): string {
+  const current = path.extname(filePath);
+  return `${filePath.slice(0, filePath.length - current.length)}.${extension}`;
+}
+
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {
   url: string;
@@ -265,8 +271,15 @@ export class VideoService extends IVideoService {
     options?: VideoDownloadOptions,
   ): Promise<string> {
     const videoId = this.getVideoId(url);
-    const outputFile =
+    const requestedOutput =
       options?.outputPath || path.join(this.dataDir, `${videoId}.mp4`);
+    // yt-dlp rewrites the container extension when it extracts audio
+    // (`-x --audio-format mp3`): it writes `<name>.mp3` and deletes the
+    // requested `<name>.mp4`. Use the artifact path that yt-dlp produces so
+    // the caller receives a file that exists, and so a later call reuses it.
+    const outputFile = options?.audioOnly
+      ? replaceFileExtension(requestedOutput, "mp3")
+      : requestedOutput;
 
     // if it already exists, return it
     if (fs.existsSync(outputFile)) {

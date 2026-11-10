@@ -394,4 +394,35 @@ describe("VideoService deterministic behavior", () => {
       embedSubs: true,
     });
   });
+
+  it("returns the mp3 file that yt-dlp writes for an audioOnly download", async () => {
+    const outputPath = path.join(
+      tmpdir(),
+      `eliza-video-audio-${randomUUID()}.mp4`,
+    );
+    const audioPath = `${outputPath.slice(0, -".mp4".length)}.mp3`;
+    const runYtDlp = vi.fn(async (_url: string, flags: { output: string }) => {
+      // yt-dlp replaces the container extension for `-x --audio-format mp3`:
+      // it writes the .mp3 and deletes the requested .mp4.
+      fs.writeFileSync(`${flags.output.slice(0, -".mp4".length)}.mp3`, "mp3");
+      return {};
+    });
+    const binaries = {
+      getFfmpegPath: vi.fn(async () => null),
+      runYtDlp,
+    } as unknown as BinaryResolver;
+    const service = new VideoService(undefined, binaries);
+
+    try {
+      const returned = await service.downloadVideo(
+        "https://youtu.be/audio-only-test",
+        { outputPath, audioOnly: true },
+      );
+
+      expect(returned).toBe(audioPath);
+      expect(fs.existsSync(returned)).toBe(true);
+    } finally {
+      fs.rmSync(audioPath, { force: true });
+    }
+  });
 });
