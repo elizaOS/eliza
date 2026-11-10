@@ -1,55 +1,31 @@
 {
   "compilerOptions": {
-    "customConditions": [
-      "eliza-source"
-    ],
+    "customConditions": ["eliza-source"],
     "target": "ES2022",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun",
-      "react",
-      "react-dom",
-      "vite/client"
-    ],
+    "types": ["node", "bun", "react", "react-dom", "vite/client"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-pdf": [
-        "../../plugins/plugin-pdf/index.ts"
-      ],
+      "@elizaos/plugin-pdf": ["../../plugins/plugin-pdf/index.ts"],
       "@elizaos/plugin-native-phone/*": [
         "../../plugins/plugin-native-phone/src/*"
       ],
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
-      "@elizaos/agent/*": [
-        "./src/*"
-      ],
-      "@elizaos/auth/auth/*": [
-        "../auth/src/auth/*"
-      ],
-      "@elizaos/plugin-discord/*": [
-        "../../plugins/plugin-discord/*"
-      ],
-      "@elizaos/plugin-elizacloud/*": [
-        "../../plugins/plugin-elizacloud/src/*"
-      ],
-      "@elizaos/capacitor-*": [
-        "../../plugins/plugin-native-*/src/index.ts"
-      ],
+      "@elizaos/agent/*": ["./src/*"],
+      "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/capacitor-*": ["../../plugins/plugin-native-*/src/index.ts"],
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
@@ -74,35 +50,21 @@
       "@elizaos/plugin-native-inference/shared/stdio-bridge": [
         "../../plugins/plugin-native-inference/src/shared/stdio-bridge.ts"
       ],
-      "@elizaos/cloud-sdk/*": [
-        "../cloud/sdk/src/*"
-      ],
-      "@elizaos/plugin-anthropic": [
-        "../../plugins/plugin-anthropic/index.ts"
-      ],
-      "@elizaos/plugin-openai": [
-        "../../plugins/plugin-openai/index.ts"
-      ],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/plugin-anthropic": ["../../plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-native-messages/bridge": [
         "../../plugins/plugin-native-messages/src/bridge.ts"
       ],
-      "@elizaos/core/protocol": [
-        "../core/src/protocol"
-      ],
+      "@elizaos/core/protocol": ["../core/src/protocol"],
       "@elizaos/plugin-personal-assistant/*": [
         "../../plugins/plugin-personal-assistant/src/*"
       ],
       "@elizaos/plugin-reminders": [
         "../../plugins/plugin-reminders/src/index.ts"
       ],
-      "@elizaos/plugin-goals": [
-        "../../plugins/plugin-goals/src/index.ts"
-      ]
+      "@elizaos/plugin-goals": ["../../plugins/plugin-goals/src/index.ts"]
     }
   },
-  "include": [
-    "src",
-    "test",
-    "scripts/**/*.test.ts"
-  ]
+  "include": ["src", "test", "scripts/**/*.test.ts"]
 }

@@ -843,9 +843,7 @@
       "plugins/plugin-workflow/src/trigger-routes.ts",
       "packages/agent/src/triggers/runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owner conversations, one selection/persistence attempt and one host replacement. Explicit missing or non-owner selection never falls back; a host change after the room read rejects persistence.",
