@@ -303,5 +303,32 @@
         "an immutable invoice receipt cannot enter terminal lifecycle finalization"
       ]
     }
+  ],
+  "speech_deferred_opening.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+      "required": [
+        "ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation",
+        "a refused credit reservation preserves the allowlisted recovery reason before providers open",
+        "legacy speech clients receive no unnegotiated billing reason",
+        "staging reports numeric bootstrap phases only to a client that asked in hello",
+        "a refused revocation fence releases the concurrently admitted leases before any provider opens",
+        "authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket",
+        "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
+        "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context",
+        "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
+        "an extending client keeps one live session past its minted end with a fresh fence and reservation",
+        "a declined renewal keeps the minted end and holds no lease for it",
+        "pre-hello revoke closes the public socket and late hello cannot open providers",
+        "real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof",
+        "unknown STT drain charges one initial hold and zero for an unused renewal",
+        "complete STT drain charges exact PCM once and zero for the unused renewed budget",
+        "a consent warm instantiates the session object without a ledger, and one mint owns it",
+        "a new host cannot revoke an old legacy session; the retained namespace can settle it once",
+        "revoke during deferred upgrade import refuses late public socket allocation",
+        "revoke joins a claimed opening across deferred imports before confirming no dispatch",
+        "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade"
+      ]
+    }
   ]
 }
