@@ -24,6 +24,11 @@ public final class MailHistoryReconciliation {
  public interface Poster {boolean allowed();boolean active(String key);void post(String key);void cancel(String key);}
  /** Upper bound on retained notice identities; overflow refuses the page instead of truncating it. */
  public static final int MAXIMUM_NOTICES=1000;
+ /** Upper bound on notices shown at once; a newer arrival withdraws the oldest shown one. */
+ public static final int MAX_ACTIVE_NOTICES=5;
+ /** Consecutive authorization refusals before the grant is reported unavailable. */
+ public static final int MAXIMUM_AUTH_FAILURES=3;
+ private static final long LIFETIME_MS=86400000L;
  private final Store store;private final Guard guard;private final Poster poster;
  public MailHistoryReconciliation(Store store,Guard guard,Poster poster){this.store=java.util.Objects.requireNonNull(store);this.guard=java.util.Objects.requireNonNull(guard);this.poster=java.util.Objects.requireNonNull(poster);}
  public static List<String> keys(JSONObject value){List<String> keys=new ArrayList<>();value.keys().forEachRemaining(keys::add);return keys;}
@@ -46,7 +51,7 @@ public final class MailHistoryReconciliation {
    if(status.equals("baseline-required")){if(start!=null)throw new IllegalArgumentException("Unexpected Gmail baseline");revision(current);}
    else if(start==null||current!=null)throw new IllegalArgumentException("Invalid Gmail reset");
    // A profile watermark starts future observation quietly; it never claims missed mail was read.
-   s.put("historyId",current==null?JSONObject.NULL:current).put("pageToken",JSONObject.NULL).put("lastPageHistory",JSONObject.NULL).put("incompleteCatchup",true).put("status",status.equals("reset-required")?"history-expired":"watching-new-mail").put("lastSyncAt",now);save(s);return;
+   s.put("historyId",current==null?JSONObject.NULL:current).put("pageToken",JSONObject.NULL).put("lastPageHistory",JSONObject.NULL).put("incompleteCatchup",true).put("status",status.equals("reset-required")?"history-expired":"watching-new-mail").put("lastSyncAt",now).put("authFailures",0);save(s);return;
   }
   if(!status.equals("page")||start==null||page.getBoolean("backfillRequired"))throw new IllegalArgumentException("Invalid Gmail page");
   BigInteger floor=new BigInteger(revision(start)),ceiling=new BigInteger(revision(current));if(ceiling.compareTo(floor)<0)throw new IllegalArgumentException("History reversed");
@@ -54,12 +59,13 @@ public final class MailHistoryReconciliation {
   String prior=optional(s,"lastPageHistory");BigInteger previous=prior==null?floor:new BigInteger(revision(prior));
   Set<String> seen=new HashSet<>();JSONObject notices=s.getJSONObject("notices");String last=null;
   // Only retire records behind an already committed checkpoint, never the current batch.
-  // Pending, ambiguous, active and captured notices keep their durable identity.
+  // Pending, active and captured notices keep their durable identity. A shown or ambiguous post older than
+  // the notice lifetime has timed out; the cursor already passed its message, so retiring it cannot repost.
   if(token==null){JSONObject tap=s.optJSONObject("tap");for(String key:keys(notices)){
    JSONObject notice=notices.getJSONObject(key);String phase=notice.getString("phase");
    if(tap!=null&&key.equals(tap.optString("key"))||!notice.has("historyId")||new BigInteger(revision(notice.getString("historyId"))).compareTo(floor)>0)continue;
    boolean terminal=Set.of("opened","withdrawn","denied").contains(phase);
-   boolean expired=phase.equals("posted")&&now-notice.getLong("createdAt")>=86400000L&&!poster.active(key);
+   boolean expired=Set.of("posted","uncertain","dispatching").contains(phase)&&now-notice.getLong("createdAt")>=LIFETIME_MS&&!poster.active(key);
    if(terminal||expired){poster.cancel(key);notices.remove(key);}
   }}
   for(int i=0;i<events.length();i++){
@@ -76,22 +82,44 @@ public final class MailHistoryReconciliation {
   // Bound retained notice identities without forgetting a current pagination batch. Refuse overflow:
   // never truncate an event page or advance a checkpoint past unsaved events.
   if(notices.length()>MAXIMUM_NOTICES)throw new IllegalStateException("Gmail notice history full");
-  s.put("historyId",next==null?checkpoint:start).put("pageToken",next==null?JSONObject.NULL:next).put("lastPageHistory",next==null?JSONObject.NULL:last==null?s.get("lastPageHistory"):last).put("status",next==null?"watching-new-mail":"catching-up").put("lastSyncAt",now);save(s);
+  s.put("historyId",next==null?checkpoint:start).put("pageToken",next==null?JSONObject.NULL:next).put("lastPageHistory",next==null?JSONObject.NULL:last==null?s.get("lastPageHistory"):last).put("status",next==null?"watching-new-mail":"catching-up").put("lastSyncAt",now).put("authFailures",0);save(s);
  }
  /** Reservation precedes the OS side effect. Ambiguous dispatch is never automatically replayed. */
  public void publish()throws Exception{
-  JSONObject s=state(),notices=s.getJSONObject("notices");for(String key:keys(notices)){
+  JSONObject s=state(),notices=s.getJSONObject("notices");List<String> ordered=keys(notices);
+  // Oldest first, so the shade cap keeps the newest arrivals.
+  ordered.sort((x,y)->{JSONObject a=notices.optJSONObject(x),b=notices.optJSONObject(y);return older(a,b)?-1:older(b,a)?1:0;});
+  for(String key:ordered){
    guard.check();JSONObject n=notices.getJSONObject(key);String phase=n.getString("phase");
    if(phase.equals("withdrawn")){poster.cancel(key);continue;}
    if(phase.equals("dispatching")){n.put("phase",poster.active(key)?"posted":"uncertain");save(s);continue;}
    if(!phase.equals("pending"))continue;
-   n.put("phase",poster.allowed()?"dispatching":"denied");save(s);
-   if(n.getString("phase").equals("denied"))continue;
+   if(!poster.allowed()){n.put("phase","denied");save(s);continue;}
+   // Keep the shade bounded: withdraw the oldest shown notices (never a captured tap) before a new one.
+   List<String> withdrawn=new ArrayList<>();JSONObject tap=s.optJSONObject("tap");
+   while(true){
+    String oldest=null;int shown=0;
+    for(String other:keys(notices)){
+     JSONObject o=notices.getJSONObject(other);if(!Set.of("posted","uncertain").contains(o.getString("phase"))||!poster.active(other))continue;shown++;
+     if(tap!=null&&other.equals(tap.optString("key")))continue;
+     if(oldest==null||older(o,notices.getJSONObject(oldest)))oldest=other;
+    }
+    if(shown<MAX_ACTIVE_NOTICES||oldest==null)break;
+    notices.getJSONObject(oldest).put("phase","withdrawn");withdrawn.add(oldest);
+   }
+   if(!withdrawn.isEmpty()){save(s);for(String other:withdrawn)poster.cancel(other);guard.check();}
+   n.put("phase","dispatching");save(s);
    guard.check();try{poster.post(key);n.put("phase",poster.active(key)?"posted":"uncertain");}catch(SecurityException denied){n.put("phase","denied");}save(s);return;
   }
  }
+ private static boolean older(JSONObject a,JSONObject b){int c=Long.compare(a.optLong("createdAt"),b.optLong("createdAt"));return c!=0?c<0:new BigInteger(a.optString("historyId","0")).compareTo(new BigInteger(b.optString("historyId","0")))<0;}
  public boolean hasPending()throws Exception{JSONObject notices=state().getJSONObject("notices");for(String key:keys(notices))if("pending".equals(notices.getJSONObject(key).getString("phase")))return true;return false;}
  public void failure(String status)throws Exception{if(!Set.of("unsupported","retrying","grant-unavailable","capacity-reached").contains(status))throw new IllegalArgumentException();JSONObject s=state();s.put("status",status).put("lastAttemptAt",System.currentTimeMillis());save(s);}
+ /**
+  * Records one more consecutive authorization refusal and returns the count: retrying below the limit,
+  * grant-unavailable at it. An accepted page resets the count. Shown notices are left to time out.
+  */
+ public int authFailure()throws Exception{JSONObject s=state();int count=s.optInt("authFailures",0)+1;s.put("authFailures",count).put("status",count>=MAXIMUM_AUTH_FAILURES?"grant-unavailable":"retrying").put("lastAttemptAt",System.currentTimeMillis());save(s);return count;}
  public JSONObject status()throws Exception{JSONObject s=state();int uncertain=0,denied=0;JSONObject notices=s.getJSONObject("notices");for(String key:keys(notices)){String phase=notices.getJSONObject(key).getString("phase");if(phase.equals("uncertain")||phase.equals("dispatching"))uncertain++;if(phase.equals("denied"))denied++;}return new JSONObject().put("status",s.getString("status")).put("lastSyncAt",s.getLong("lastSyncAt")).put("incompleteCatchup",s.getBoolean("incompleteCatchup")).put("uncertainNotices",uncertain).put("deniedNotices",denied).put("grantId",s.getJSONObject("binding").getString("grantId"));}
  public void capture(String key)throws Exception{capture(key,false);}
  public void capture(String key,boolean question)throws Exception{if(key==null||!key.matches("[a-f0-9]{64}"))return;JSONObject s=state(),record=s.getJSONObject("notices").optJSONObject(key);if(question&&!poster.active(key))return;if(record==null||!Set.of("posted","dispatching","uncertain").contains(record.getString("phase")))return;s.put("tap",new JSONObject().put("key",key).put("token",UUID.randomUUID().toString()).put("question",question));save(s);}

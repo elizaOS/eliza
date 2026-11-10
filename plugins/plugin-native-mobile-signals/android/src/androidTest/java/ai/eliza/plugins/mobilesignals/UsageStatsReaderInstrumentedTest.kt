@@ -61,6 +61,29 @@ class UsageStatsReaderInstrumentedTest {
     }
 
     @Test
+    fun collectLastDay_mergesPackagesWithinTheWindow() {
+        val reader = UsageStatsReader(context)
+        assumeTrue("PACKAGE_USAGE_STATS not granted", reader.hasUsageStatsAccess())
+
+        val summary = reader.collectLastDay()
+
+        // Daily buckets that overlap the window used to list an app once per
+        // bucket and count most of the previous day as well.
+        val packages = summary.topApps.map { it.packageName }
+        assertEquals("each package appears once", packages.distinct(), packages)
+        assertTrue(
+            "total ${summary.totalTimeForegroundMs} ms fits the 24 h window",
+            summary.totalTimeForegroundMs in 0..UsageStatsReader.WINDOW_MS,
+        )
+        for (app in summary.topApps) {
+            assertTrue(
+                "${app.packageName} ${app.totalTimeForegroundMs} ms fits the 24 h window",
+                app.totalTimeForegroundMs <= UsageStatsReader.WINDOW_MS,
+            )
+        }
+    }
+
+    @Test
     fun idleSeconds_isNonNegativeWhenGranted() {
         val reader = UsageStatsReader(context)
         assumeTrue("PACKAGE_USAGE_STATS not granted", reader.hasUsageStatsAccess())

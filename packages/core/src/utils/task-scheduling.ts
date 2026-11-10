@@ -15,17 +15,12 @@ import type { Task } from "../types/task.js";
 export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
 	let lock: Promise<void> = Promise.resolve();
 	return <T>(fn: () => Promise<T>): Promise<T> => {
-		if (typeof fn !== "function") {
-			return Promise.reject(
-				new TypeError("Expected function for serialised execution"),
-			);
-		}
 		const prev = lock;
-		let resolve: () => void;
-		lock = new Promise<void>((r) => {
-			resolve = r;
+		let release: () => void;
+		lock = new Promise<void>((resolve) => {
+			release = resolve;
 		});
-		return prev.then(fn).finally(() => resolve());
+		return prev.then(fn).finally(() => release());
 	};
 }
 
@@ -34,13 +29,10 @@ export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
 /** FIFO permit admission shared by asynchronous task processors. */
 export class Semaphore {
 	private permits: number;
-	private waiters: Array<() => void> = [];
+	private waiters: Array<() => boolean> = [];
 
 	constructor(count: number) {
-		this.permits =
-			typeof count === "number" && Number.isFinite(count)
-				? Math.max(1, Math.floor(count))
-				: 1;
+		this.permits = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
 	}
 
 	/** Number of currently available permits. */
@@ -53,23 +45,46 @@ export class Semaphore {
 		return this.waiters.length;
 	}
 
-	async acquire(): Promise<void> {
+	/** Cancelled waiters own no permit; callers release only after admission. */
+	async acquire(signal?: AbortSignal): Promise<void> {
+		signal?.throwIfAborted();
 		if (this.permits > 0) {
 			this.permits -= 1;
 			return;
 		}
 
-		await new Promise<void>((resolve) => {
-			this.waiters.push(resolve);
+		await new Promise<void>((resolve, reject) => {
+			const admitted = () => {
+				signal?.removeEventListener("abort", cancelled);
+				if (signal?.aborted) {
+					reject(signal.reason);
+					return false;
+				}
+				resolve();
+				return true;
+			};
+			const cancelled = () => {
+				const index = this.waiters.indexOf(admitted);
+				if (index < 0) return;
+				this.waiters.splice(index, 1);
+				signal?.removeEventListener("abort", cancelled);
+				reject(signal?.reason);
+			};
+			this.waiters.push(admitted);
+			signal?.addEventListener("abort", cancelled, { once: true });
 		});
 	}
 
 	release(): void {
 		this.permits += 1;
-		const next = this.waiters.shift();
-		if (next && this.permits > 0) {
+		while (this.permits > 0) {
+			const next = this.waiters.shift();
+			if (!next) return;
 			this.permits -= 1;
-			next();
+			if (next()) return;
+			// An earlier abort listener can release before this waiter's listener.
+			// Keep that permit available and skip the cancelled waiter without recursion.
+			this.permits += 1;
 		}
 	}
 }
@@ -112,7 +127,6 @@ export class TaskDrain {
 	private readonly idleIntervalMs?: number;
 	private intervalMs: number;
 	private taskId: UUID | null = null;
-	private workerRegistered = false;
 	private disposed = false;
 
 	private readonly description: string;
@@ -165,7 +179,6 @@ export class TaskDrain {
 					};
 				},
 			});
-			this.workerRegistered = true;
 		}
 
 		await this.ensureTask(runtime);
@@ -298,8 +311,5 @@ export class TaskDrain {
 			this.taskId = null;
 		}
 		// Runtime has no unregisterTaskWorker; a later service may call registerTaskWorker again.
-		if (this.workerRegistered) {
-			this.workerRegistered = false;
-		}
 	}
 }

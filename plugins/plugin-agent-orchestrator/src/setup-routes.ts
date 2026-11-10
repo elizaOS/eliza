@@ -69,12 +69,20 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
     }
   };
 }
+/** Why the sub-agent bridge bypasses the server's central auth gate: a child
+ * CLI has no owner token, so each handler checks loopback plus the session's
+ * own bridge token (parent-context-routes.ts, bridge-routes.ts). */
+const SUB_AGENT_BRIDGE_PUBLIC_REASON =
+  "sub-agent bridge: loopback plus per-session X-Eliza-Session-Token checked in handler";
+
 /** Path templates registered with the runtime route registry. The handler
  * delegates internally based on the actual `req.url`, so several entries
- * resolve to the same dispatcher. */
+ * resolve to the same dispatcher. `bridge` entries are public to the central
+ * gate and authenticate in the handler. */
 export const CODING_AGENT_ROUTE_PATHS: Array<{
   type: string;
   path: string;
+  bridge?: true;
 }> = [
   // Orchestrator durable-task surface
   { type: "GET", path: "/api/orchestrator/status" },
@@ -114,6 +122,7 @@ export const CODING_AGENT_ROUTE_PATHS: Array<{
   { type: "GET", path: "/api/orchestrator/tasks/:taskId/timeline" },
   { type: "GET", path: "/api/orchestrator/tasks/:taskId/events" },
   { type: "GET", path: "/api/orchestrator/tasks/:taskId/usage" },
+  { type: "GET", path: "/api/orchestrator/tasks/:taskId/trace-usage" },
   { type: "GET", path: "/api/orchestrator/tasks/:taskId/stream" },
   { type: "POST", path: "/api/orchestrator/tasks/:taskId/agents" },
   {
@@ -137,14 +146,34 @@ export const CODING_AGENT_ROUTE_PATHS: Array<{
   { type: "POST", path: "/api/coding-agents/:agentId/stop" },
   { type: "GET", path: "/api/coding-agents/:agentId/output" },
   { type: "GET", path: "/api/coding-agents/:agentId/buffered-output" },
-  // Sub-agent bridge (parent-context / memory / active-workspaces)
-  { type: "GET", path: "/api/coding-agents/:sessionId/parent-context" },
-  { type: "GET", path: "/api/coding-agents/:sessionId/memory" },
-  { type: "GET", path: "/api/coding-agents/:sessionId/active-workspaces" },
-  { type: "POST", path: "/api/coding-agents/:sessionId/credentials/request" },
+  // Sub-agent bridge (parent-context / memory / active-workspaces / skills /
+  // credentials)
+  {
+    type: "GET",
+    path: "/api/coding-agents/:sessionId/parent-context",
+    bridge: true,
+  },
+  { type: "GET", path: "/api/coding-agents/:sessionId/memory", bridge: true },
+  {
+    type: "GET",
+    path: "/api/coding-agents/:sessionId/active-workspaces",
+    bridge: true,
+  },
+  { type: "GET", path: "/api/coding-agents/:sessionId/skills", bridge: true },
+  {
+    type: "GET",
+    path: "/api/coding-agents/:sessionId/skills/:slug",
+    bridge: true,
+  },
+  {
+    type: "POST",
+    path: "/api/coding-agents/:sessionId/credentials/request",
+    bridge: true,
+  },
   {
     type: "GET",
     path: "/api/coding-agents/:sessionId/credentials/:key",
+    bridge: true,
   },
   // Workspace routes
   { type: "POST", path: "/api/workspace/provision" },
@@ -168,6 +197,16 @@ const codingAgentRoutes: Route[] = CODING_AGENT_ROUTE_PATHS.map(
       path: r.path,
       rawPath: true as const,
       handler: sharedHandler,
+      ...(r.bridge
+        ? {
+            public: true as const,
+            name: `coding-agent-bridge ${r.type} ${r.path}`,
+            publicReason: SUB_AGENT_BRIDGE_PUBLIC_REASON,
+            ...(r.type === "GET"
+              ? {}
+              : { publicWrite: SUB_AGENT_BRIDGE_PUBLIC_REASON }),
+          }
+        : {}),
     }) as Route,
 );
 export const codingAgentRoutePlugin: Plugin = {

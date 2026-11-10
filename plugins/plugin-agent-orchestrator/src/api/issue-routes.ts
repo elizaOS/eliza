@@ -139,9 +139,9 @@ export async function handleIssueRoutes(
     return true;
   }
 
-  // POST /api/issues/:repo/:number/comment
+  // POST /api/issues/:owner/:repo/:number/comments
   const commentMatch = pathname.match(
-    /^\/api\/issues\/([^/]+)\/([^/]+)\/(\d+)\/comment$/,
+    /^\/api\/issues\/([^/]+)\/([^/]+)\/(\d+)\/comments$/,
   );
   if (method === "POST" && commentMatch) {
     if (!ctx.workspaceService) {

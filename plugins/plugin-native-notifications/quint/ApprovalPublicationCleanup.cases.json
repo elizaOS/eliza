@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeCoordinator.java",
+    "plugins/plugin-native-notifications/android/src/main/java/ai/eliza/plugins/notifications/NoticeDelivery.java",
+    "plugins/plugin-native-notifications/test/native-host/NoticeHostTest.java"
+  ],
+  "conformance": "plugins/plugin-native-notifications/quint/check-approval-publication-cleanup.mjs",
+  "bounds": {
+    "domain": "One approval publication failure, one receipt inspection and one optional route removal under the shared notice lock.",
+    "limitations": [
+      "Authorization, owner checks, expiry preflight and route preparation have already succeeded. Exact terminal states include matching binding, digest and expiry; foreign or changed-expiry records are distinct invalid observations. A validated opaque withdrawal intent is terminal by approval ID without a missing original binding.",
+      "The publication may have posted once before its response failed. Cleanup must never post, replace the publication error or discard a live, uncertain, corrupt or foreign route. One storage read and one route write each either return or fail. Hanging storage, cross-process mutation, arbitrary ledger sizes and later expiry/recovery are outside this projection; no unconditional progress is claimed.",
+      "Conformance executes the actual Java ledger/coordinator against controlled storage and poster boundaries. It covers full history, malformed and mismatched receipts, committed applying claims, cleanup read/write failure, exact original exception identity and uncertain retry. It is scenario conformance, not generated-trace equivalence or Android/device acceptance."
+    ]
+  },
+  "cases": [
+    {
+      "name": "approval-failure-cleanup",
+      "main": "ApprovalPublicationCleanup",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "CleanupRequiresProof",
+        "UncertainRoutesRemain",
+        "PublicationErrorSurvives",
+        "CleanupNeverPosts",
+        "FailedCleanupRetainsRoute"
+      ],
+      "maxSteps": 6,
+      "samples": 1000,
+      "temporal": []
+    }
+  ]
+}

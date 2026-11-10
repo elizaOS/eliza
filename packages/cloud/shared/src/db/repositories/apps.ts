@@ -17,11 +17,14 @@ import {
 } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
+import { buildAppDeletionCleanupPlan } from "../../lib/services/app-deletion-cleanup-plan";
 import {
   APP_DEPLOYMENT_GENERATION_KEY,
   metadataForDeploymentGeneration,
 } from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import type { JobExecutionAuthority } from "../../lib/services/job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -46,9 +49,21 @@ import {
 import { apiKeys } from "../schemas/api-keys";
 import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
+import {
+  type AppFrontendDeployment,
+  appFrontendDeployments,
+} from "../schemas/app-frontend-deployments";
+import { jobs } from "../schemas/jobs";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { materializeAppBillingAccounts } from "./app-billing-accounts";
+import {
+  type AppDeletionExecutionContext,
+  withAppDeletionExecution,
+} from "./app-deletion-execution";
+import { assertAppDeletionReady, removeAppDeletionMetadata } from "./app-deletion-finalization";
+import { restoreAppDeletionQuiescence } from "./app-deletion-quiescence";
+import { assertJobExecutionAuthority, lockJobExecutionAuthority } from "./job-execution-authority";
 
 interface AppCacheFenceIdentity {
   appId?: string;
@@ -132,6 +147,13 @@ export type {
 export interface AppMobileAuthRevocationMutation {
   app: App | undefined;
   revokedKeyHashes: string[];
+  revokedKeys: { id: string; organizationId: string }[];
+}
+
+/** Acknowledged row deletion authorizes cleanup of these exact retained manifests. */
+export interface AppDeletionReceipt {
+  app: App;
+  frontendDeployments: AppFrontendDeployment[];
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -152,6 +174,14 @@ export class AppsRepository {
   /**
    * Finds an app by ID.
    */
+  /** Primary identity for trusted internal deletion callers; routes pass their own scope. */
+  async findByIdForWrite(id: string): Promise<App | undefined> {
+    if (!UUID_PATTERN.test(id)) return undefined;
+    /* global-scope: Trusted internal cleanup resolves the primary identity here; HTTP deletion uses scoped requestDeletion admission. */
+    const [app] = await dbWrite.select().from(apps).where(eq(apps.id, id));
+    return app;
+  }
+
   async findById(id: string): Promise<App | undefined> {
     if (!UUID_PATTERN.test(id)) {
       return undefined;
@@ -678,20 +708,38 @@ export class AppsRepository {
       );
     }
     /* global-scope: by-id mutation; route handlers authorize org ownership before calling. */
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({
-        ...data,
-        updated_at: new Date(),
-      })
-      .where(eq(apps.id, id))
-      .returning();
+    const updated = await dbWrite.transaction(async (tx) => {
+      const [current] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
+      if (!current) return undefined;
+      if (current.deletion_job_id)
+        throw new AppDeletionInProgressError(id, current.deletion_job_id);
+      const [row] = await tx
+        .update(apps)
+        .set({ ...data, updated_at: new Date() })
+        .where(eq(apps.id, id))
+        .returning();
+      return row;
+    });
 
     if (updated) {
       await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
     }
 
     return updated;
+  }
+
+  async assertNotDeleting(id: string): Promise<void> {
+    /* global-scope: Internal container-job lifecycle guard only; it returns no app data and grants no tenant access. */
+    const [app] = await dbWrite
+      .select({ deletionJobId: apps.deletion_job_id })
+      .from(apps)
+      .where(eq(apps.id, id));
+    if (!app)
+      throw new ElizaError("App no longer exists", {
+        code: "APP_NOT_FOUND",
+        context: { appId: id },
+      });
+    if (app.deletionJobId) throw new AppDeletionInProgressError(id, app.deletionJobId);
   }
 
   /**
@@ -712,7 +760,13 @@ export class AppsRepository {
         metadata: metadataForDeploymentGeneration(data.metadata, generation),
         updated_at: new Date(),
       })
-      .where(and(eq(apps.id, id), notInArray(apps.deployment_status, ["building", "deploying"])))
+      .where(
+        and(
+          eq(apps.id, id),
+          isNull(apps.deletion_job_id),
+          notInArray(apps.deployment_status, ["building", "deploying"]),
+        ),
+      )
       .returning();
 
     if (updated) {
@@ -721,14 +775,21 @@ export class AppsRepository {
     return updated;
   }
 
-  /** Reads one app only when the caller still owns its persisted generation. */
-  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+  /** Reads a persisted generation on the primary, including deletion for daemon reconciliation. */
+  async findByDeploymentGeneration(
+    id: string,
+    generation: string,
+    recoveryOrganizationId?: string,
+  ): Promise<App | undefined> {
     const [app] = await dbWrite
       .select()
       .from(apps)
       .where(
         and(
           eq(apps.id, id),
+          recoveryOrganizationId
+            ? eq(apps.organization_id, recoveryOrganizationId)
+            : isNull(apps.deletion_job_id),
           sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
         ),
       )
@@ -736,12 +797,13 @@ export class AppsRepository {
     return app;
   }
 
-  /** Applies a generation-owned transition without touching a newer deployment. */
+  /** Applies a generation-owned transition, merging metadata into the locked row. */
   async updateDeploymentGeneration(
     id: string,
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
     const generationFilter = generation
       ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
@@ -751,13 +813,46 @@ export class AppsRepository {
       : undefined;
     const nextData =
       generation && data.metadata
-        ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
+        ? {
+            ...data,
+            metadata: sql`${apps.metadata} || ${JSON.stringify(
+              metadataForDeploymentGeneration(data.metadata, generation),
+            )}::jsonb`,
+          }
         : data;
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({ ...nextData, updated_at: new Date() })
-      .where(and(eq(apps.id, id), generationFilter, statusFilter))
-      .returning();
+    const write = async (database: typeof dbWrite | DbTransaction) => {
+      const [updated] = await database
+        .update(apps)
+        .set({ ...nextData, updated_at: new Date() })
+        .where(
+          and(
+            eq(apps.id, id),
+            isNull(apps.deletion_job_id),
+            generationFilter,
+            statusFilter,
+            executionAuthority
+              ? eq(apps.organization_id, executionAuthority.organizationId)
+              : undefined,
+          ),
+        )
+        .returning();
+      return updated;
+    };
+    const updated = executionAuthority
+      ? await dbWrite.transaction(async (tx) => {
+          await lockJobExecutionAuthority(tx, executionAuthority);
+          await tx
+            .select({ id: apps.id })
+            .from(apps)
+            .where(
+              and(eq(apps.id, id), eq(apps.organization_id, executionAuthority.organizationId)),
+            )
+            .for("update")
+            .limit(1);
+          await assertJobExecutionAuthority(tx, executionAuthority);
+          return write(tx);
+        })
+      : await write(dbWrite);
 
     if (updated) {
       await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
@@ -776,6 +871,7 @@ export class AppsRepository {
       .where(
         and(
           eq(apps.id, id),
+          isNull(apps.deletion_job_id),
           generationFilter,
           inArray(apps.deployment_status, ["building", "deploying"]),
         ),
@@ -804,8 +900,10 @@ export class AppsRepository {
     const mutation = await dbWrite.transaction(async (tx) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) {
-        return { existing: undefined, updated: undefined, revokedKeyHashes: [] };
+        return { existing: undefined, updated: undefined, revokedKeyHashes: [], revokedKeys: [] };
       }
+      if (existing.deletion_job_id)
+        throw new AppDeletionInProgressError(id, existing.deletion_job_id);
       const [updated] = await tx
         .update(apps)
         .set({ ...data, updated_at: now })
@@ -821,7 +919,11 @@ export class AppsRepository {
 
       await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
       const credentials = await tx
-        .select({ keyHash: apiKeys.key_hash })
+        .select({
+          id: apiKeys.id,
+          organizationId: apiKeys.organization_id,
+          keyHash: apiKeys.key_hash,
+        })
         .from(apiKeys)
         .where(eq(apiKeys.source_app_id, id))
         .for("update");
@@ -842,6 +944,7 @@ export class AppsRepository {
         existing,
         updated,
         revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+        revokedKeys: credentials.map(({ id, organizationId }) => ({ id, organizationId })),
       };
     });
 
@@ -851,7 +954,11 @@ export class AppsRepository {
         invalidateAppCacheEntries(id, mutation.updated.api_key_id, mutation.updated.slug),
       ]);
     }
-    return { app: mutation.updated, revokedKeyHashes: mutation.revokedKeyHashes };
+    return {
+      app: mutation.updated,
+      revokedKeyHashes: mutation.revokedKeyHashes,
+      revokedKeys: mutation.revokedKeys,
+    };
   }
 
   async prepareDeleteWithMobileAuthRevocation(
@@ -878,7 +985,11 @@ export class AppsRepository {
         await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
       }
       const credentials = await tx
-        .select({ keyHash: apiKeys.key_hash })
+        .select({
+          id: apiKeys.id,
+          organizationId: apiKeys.organization_id,
+          keyHash: apiKeys.key_hash,
+        })
         .from(apiKeys)
         .where(eq(apiKeys.source_app_id, id))
         .for("update");
@@ -898,6 +1009,7 @@ export class AppsRepository {
       return {
         inactive,
         revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+        revokedKeys: credentials.map(({ id, organizationId }) => ({ id, organizationId })),
       };
     });
 
@@ -906,15 +1018,33 @@ export class AppsRepository {
     } else {
       await invalidateAppCacheEntries(id);
     }
-    return { app: mutation.inactive, revokedKeyHashes: mutation.revokedKeyHashes };
+    return {
+      app: mutation.inactive,
+      revokedKeyHashes: mutation.revokedKeyHashes,
+      revokedKeys: mutation.revokedKeys,
+    };
   }
 
   /** Permanently removes only an app whose mobile authorization is already revoked. */
-  async finalizeDelete(id: string): Promise<App | undefined> {
+  async finalizeDelete(
+    id: string,
+    authority?: JobExecutionAuthority,
+  ): Promise<AppDeletionReceipt | undefined> {
     /* global-scope: by-id final delete; AppsService calls this only after owned revocation/teardown. */
-    const deleted = await dbWrite.transaction(async (tx) => {
+    const quiescence = authority
+      ? await restoreAppDeletionQuiescence(authority.organizationId)
+      : [];
+    const finalize = async (tx: DbTransaction, context?: AppDeletionExecutionContext) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) return undefined;
+      if (
+        existing.deletion_job_id &&
+        (!context || context.job.id !== existing.deletion_job_id || context.data.appId !== id)
+      )
+        throw new AppDeletionInProgressError(id, existing.deletion_job_id);
+      const confirmedChildIds = context
+        ? await assertAppDeletionReady(tx, context, quiescence)
+        : undefined;
 
       const [grant] = await tx
         .select({ id: mobileAppAuthGrants.id })
@@ -926,7 +1056,10 @@ export class AppsRepository {
         .from(apiKeys)
         .where(
           and(
-            eq(apiKeys.source_app_id, id),
+            or(
+              eq(apiKeys.source_app_id, id),
+              existing.api_key_id ? eq(apiKeys.id, existing.api_key_id) : undefined,
+            ),
             or(eq(apiKeys.is_active, true), isNull(apiKeys.deleted_at)),
           ),
         )
@@ -938,12 +1071,75 @@ export class AppsRepository {
           severity: "fatal",
         });
       }
+      // Lock the app before its deployment rows. The FK serializes concurrent
+      // inserts with app deletion; row locks retain any publication that wins
+      // before this snapshot. Read every manifest from the primary without a
+      // listing limit so acknowledged deletion can clean up all retained sites.
+      // Activation takes this same parent app lock first, so concurrent
+      // activation cannot hold a deployment while waiting for our snapshot.
+      const frontendDeployments = await tx
+        .select()
+        .from(appFrontendDeployments)
+        .where(eq(appFrontendDeployments.app_id, id))
+        .orderBy(appFrontendDeployments.id)
+        .for("update");
+      if (context) {
+        const cleanupPlan =
+          context.data.version === 2 ? buildAppDeletionCleanupPlan(frontendDeployments) : null;
+        await removeAppDeletionMetadata(tx, id);
+        await assertJobExecutionAuthority(tx, authority!);
+        const [receipt] = await tx
+          .update(jobs)
+          .set({
+            ...(cleanupPlan
+              ? {
+                  data: { ...context.job.data, frontendCleanupPlan: cleanupPlan },
+                  data_storage: "inline",
+                  data_key: null,
+                }
+              : {}),
+            result: {
+              ...context.job.result,
+              ...(cleanupPlan
+                ? {
+                    cleanupManifestDigest: cleanupPlan.digest,
+                    cleanupObjectCount: cleanupPlan.objectCount,
+                    cleanupCursor: 0,
+                    cleanupConfirmed: cleanupPlan.objectCount === 0,
+                  }
+                : {}),
+              appDeleted: true,
+              appId: id,
+              deletionJobId: context.job.id,
+              confirmedChildIds,
+            },
+            result_storage: "inline",
+            result_key: null,
+            updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
+          })
+          .where(eq(jobs.id, context.job.id))
+          .returning({ id: jobs.id });
+        if (!receipt)
+          throw new ElizaError("App deletion completion receipt was not persisted", {
+            code: "APP_DELETION_COMPLETION_UNCONFIRMED",
+          });
+      }
       const [removed] = await tx.delete(apps).where(eq(apps.id, id)).returning();
-      return removed;
-    });
+      if (!removed) {
+        throw new ElizaError("App deletion did not return its locked row", {
+          code: "APP_DELETE_NOT_PERSISTED",
+          context: { appId: id },
+          severity: "fatal",
+        });
+      }
+      return { app: removed, frontendDeployments };
+    };
+    const deleted = authority
+      ? await withAppDeletionExecution(authority, (tx, context) => finalize(tx, context))
+      : await dbWrite.transaction((tx) => finalize(tx));
 
     if (deleted) {
-      await invalidateAppCacheEntries(id, deleted.api_key_id, deleted.slug);
+      await invalidateAppCacheEntries(id, deleted.app.api_key_id, deleted.app.slug);
     } else {
       await invalidateAppCacheEntries(id);
     }

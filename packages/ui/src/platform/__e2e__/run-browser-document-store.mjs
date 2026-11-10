@@ -8,7 +8,13 @@ const engines = { chromium, firefox, webkit };
 const selected = process.argv.slice(2);
 assert.ok(selected.every(name => Object.hasOwn(engines, name)), "Choose chromium, firefox or webkit");
 const bundle = await build({
-  entryPoints: [fileURLToPath(new URL("../browser-document-store.ts", import.meta.url))],
+  stdin: {
+    contents: `
+      export { BrowserDocumentStore } from "./browser-document-store.ts";
+      export { browserDocumentDraftSlot, compareExchangeDraftStore } from "../state/durable-draft.ts";
+    `,
+    resolveDir: fileURLToPath(new URL("..", import.meta.url)),
+  },
   bundle: true, format: "esm", platform: "browser", write: false,
 });
 const server = createServer((request, response) => {
@@ -30,8 +36,17 @@ try {
       for (const page of [a, b]) {
         await page.goto(url);
         await page.evaluate(async () => {
-          const { BrowserDocumentStore } = await import("/store.js");
+          const {
+            BrowserDocumentStore,
+            browserDocumentDraftSlot,
+            compareExchangeDraftStore,
+          } = await import("/store.js");
           window.store = new BrowserDocumentStore("transaction-test");
+          window.draftStore = (key, documents = window.store) =>
+            compareExchangeDraftStore(
+              "draft-binding",
+              browserDocumentDraftSlot(documents, key),
+            );
         });
       }
       // Rapid acquisition reproduces the localStorage/Web Locks lost-update case.
@@ -194,6 +209,138 @@ try {
       const conflict = await a.evaluate(async () => { window.release(); return { error: await window.pending, calls: window.calls }; });
       assert.deepEqual(conflict, { error: "BrowserDocumentConflict", calls: 1 });
 
+      const createDraft = (page, text) => page.evaluate(async text => {
+        const draft = window.draftStore("draft");
+        try {
+          return { saved: await draft.save(null, text) };
+        } catch (error) {
+          return { error: error.name };
+        }
+      }, text);
+      const createdDrafts = await Promise.all([
+        createDraft(a, "draft from a"),
+        createDraft(b, "draft from b"),
+      ]);
+      assert.equal(createdDrafts.filter(result => result.saved).length, 1);
+      assert.equal(createdDrafts.filter(result => result.error === "DurableDraftConflict").length, 1);
+      const initialDraft = createdDrafts.find(result => result.saved).saved;
+      const clearedDraft = await b.evaluate(async initialDraft => {
+        const draft = window.draftStore("draft");
+        const before = await draft.read();
+        const cleared = await draft.save(before, "");
+        const raw = await window.store.read("draft");
+        let stale;
+        try {
+          await draft.save(initialDraft, "stale draft");
+        } catch (error) {
+          stale = error.name;
+        }
+        return { before, cleared, raw, stale };
+      }, initialDraft);
+      assert.deepEqual(clearedDraft.before, initialDraft);
+      assert.equal(clearedDraft.cleared.text, "");
+      assert.notEqual(clearedDraft.cleared.revision, initialDraft.revision);
+      assert.deepEqual(JSON.parse(clearedDraft.raw.raw), clearedDraft.cleared);
+      assert.equal(clearedDraft.stale, "DurableDraftConflict");
+      assert.deepEqual(await createDraft(a, "stale absence"), { error: "DurableDraftConflict" });
+      console.log(`${name}: draft adapter admits one cross-tab creator and keeps a revisioned clear`);
+
+      // Delay delivery of a real IndexedDB read to the adapter. The subsequent
+      // compare-and-exchange still uses the captured document receipt.
+      const holdDraftWrite = (page, input) => page.evaluate(async ({ key, text, cancel }) => {
+        const current = await window.draftStore(key).read();
+        const controller = new AbortController();
+        let markCaptured;
+        const captured = new Promise(resolve => { markCaptured = resolve; });
+        const held = new Promise(resolve => {
+          window.releaseDraftWrite = () => {
+            if (cancel) controller.abort();
+            resolve();
+          };
+        });
+        const documents = {
+          async read(key) {
+            const snapshot = await window.store.read(key);
+            markCaptured();
+            await held;
+            return snapshot;
+          },
+          compareExchange: (key, expected, raw) =>
+            window.store.compareExchange(key, expected, raw),
+        };
+        window.pendingDraftWrite = window.draftStore(key, documents)
+          .save(current, text, controller.signal)
+          .then(saved => ({ saved }), error => ({ error: error.name }));
+        await captured;
+      }, input);
+      const releaseDraftWrite = page => page.evaluate(async () => {
+        window.releaseDraftWrite();
+        return await window.pendingDraftWrite;
+      });
+
+      await holdDraftWrite(a, { key: "draft-race", text: "late writer" });
+      const reset = await b.evaluate(() =>
+        window.store.compareExchange("draft-race", undefined, null),
+      );
+      assert.deepEqual(await releaseDraftWrite(a), { error: "DurableDraftConflict" });
+      assert.deepEqual(await a.evaluate(() => window.store.read("draft-race")), reset);
+      const winner = await b.evaluate(async () => {
+        const draft = window.draftStore("draft-race");
+        await draft.save(await draft.read(), "winner");
+        return await window.store.read("draft-race");
+      });
+      console.log(`${name}: draft adapter refuses an absent receipt after a tombstone wins`);
+
+      const rollback = await a.evaluate(async () => {
+        const draft = window.draftStore("draft-race");
+        const current = await draft.read();
+        const put = IDBObjectStore.prototype.put;
+        let staged = false;
+        let error;
+        IDBObjectStore.prototype.put = function (...args) {
+          const request = put.apply(this, args);
+          request.addEventListener("success", () => {
+            staged = true;
+            this.transaction.abort();
+          }, { once: true });
+          return request;
+        };
+        try {
+          await draft.save(current, "uncommitted draft");
+        } catch (failure) {
+          error = failure.name;
+        } finally {
+          IDBObjectStore.prototype.put = put;
+        }
+        return { staged, error };
+      });
+      assert.deepEqual(rollback, { staged: true, error: "AbortError" });
+      assert.deepEqual(await b.evaluate(() => window.store.read("draft-race")), winner);
+      const retried = await b.evaluate(async () => {
+        const draft = window.draftStore("draft-race");
+        return await draft.save(await draft.read(), "retry");
+      });
+      assert.equal(retried.text, "retry");
+      console.log(`${name}: abort after staged IndexedDB put rolls back and permits a draft retry`);
+
+      const cancelledBeforeDispatch = await a.evaluate(async () => {
+        const controller = new AbortController();
+        controller.abort();
+        let error;
+        try {
+          await window.draftStore("draft-cancelled").save(null, "lost", controller.signal);
+        } catch (failure) {
+          error = failure.name;
+        }
+        return { error, snapshot: await window.store.read("draft-cancelled") };
+      });
+      assert.deepEqual(cancelledBeforeDispatch, { error: "AbortError", snapshot: undefined });
+      await holdDraftWrite(a, { key: "draft-cancelled", text: "committed draft", cancel: true });
+      assert.deepEqual(await releaseDraftWrite(a), { error: "AbortError" });
+      const committedAfterCancel = await b.evaluate(() => window.draftStore("draft-cancelled").read());
+      assert.equal(committedAfterCancel.text, "committed draft");
+      console.log(`${name}: late caller cancellation reports abort while retaining the committed draft`);
+
       await a.evaluate(() => {
         window.release = undefined;
         void window.store.edit("abandoned", async () => {
@@ -207,11 +354,26 @@ try {
       assert.equal(await b.evaluate(async () => window.store.edit("abandoned", async before => ({ raw: "survivor", result: before === undefined }))), true);
       await b.reload();
       const afterReload = await b.evaluate(async () => {
-        const { BrowserDocumentStore } = await import("/store.js");
-        return new BrowserDocumentStore("transaction-test").read("abandoned");
+        const {
+          BrowserDocumentStore,
+          browserDocumentDraftSlot,
+          compareExchangeDraftStore,
+        } = await import("/store.js");
+        const store = new BrowserDocumentStore("transaction-test");
+        const draft = key => compareExchangeDraftStore(
+          "draft-binding", browserDocumentDraftSlot(store, key),
+        );
+        return {
+          abandoned: await store.read("abandoned"),
+          cleared: await draft("draft").read(),
+          cancelled: await draft("draft-cancelled").read(),
+        };
       });
-      assert.equal(afterReload.raw, "survivor");
+      assert.equal(afterReload.abandoned.raw, "survivor");
+      assert.deepEqual(afterReload.cleared, clearedDraft.cleared);
+      assert.deepEqual(afterReload.cancelled, committedAfterCancel);
       console.log(`${name}: async conflict, tab death and reload recovery pass`);
+      console.log(`${name}: draft adapter reload preserves cleared rows and writes cancelled after dispatch`);
     } finally { clearTimeout(deadline); await browser.close(); }
   }
 } finally { await new Promise(resolve => server.close(resolve)); }

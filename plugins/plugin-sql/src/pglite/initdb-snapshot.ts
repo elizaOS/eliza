@@ -10,7 +10,11 @@
  *
  * The mobile bundle build writes the snapshot next to the bundle as
  * `pglite-initdb.bin` (gzip tar from `dumpDataDir("gzip")`, made by the same
- * PGlite it bundles). `PGLITE_INITDB_SNAPSHOT` may name another absolute path.
+ * PGlite it bundles). It also writes `pglite-migrated.bin`, the same cluster
+ * after the always-loaded plugin schemas are migrated (migrated-snapshot.ts);
+ * when that file is beside the bundle it is preferred, so a boot skips the
+ * migrations as well. `PGLITE_MIGRATED_SNAPSHOT=0` keeps the plain initdb one.
+ * `PGLITE_INITDB_SNAPSHOT` may name another absolute path, which wins over both.
  * Only an empty in-memory database uses it; on-disk databases and callers that
  * already pass `loadDataDir` are left alone. Nothing here writes to disk.
  */
@@ -18,21 +22,26 @@ import { readFileSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PGliteOptions } from "@electric-sql/pglite";
+import { isMemoryDataDir } from "./memory-settings";
 
 export const INITDB_SNAPSHOT_FILE = "pglite-initdb.bin";
+/** The pre-migrated cluster (migrated-snapshot.ts), preferred when present. */
+export const MIGRATED_SNAPSHOT_FILE = "pglite-migrated.bin";
 /** An empty cluster is about 4 MB compressed; anything far larger is not one. */
 export const MAX_INITDB_SNAPSHOT_BYTES = 64 * 1024 * 1024;
-
-const isMemoryDataDir = (dataDir: unknown): boolean =>
-  dataDir === undefined ||
-  dataDir === null ||
-  (typeof dataDir === "string" && dataDir.startsWith("memory://"));
 
 /** The snapshot file to use for these options, or null. */
 export function initdbSnapshotPath(
   options: PGliteOptions,
   env: Record<string, string | undefined> = process.env,
-  bundleUrl: string = import.meta.url
+  bundleUrl: string = import.meta.url,
+  isFile: (path: string) => boolean = (file) => {
+    try {
+      return statSync(file).isFile();
+    } catch {
+      return false;
+    }
+  }
 ): string | null {
   const withData = options as PGliteOptions & {
     dataDir?: unknown;
@@ -43,6 +52,10 @@ export function initdbSnapshotPath(
   const configured = env.PGLITE_INITDB_SNAPSHOT?.trim();
   if (configured) return isAbsolute(configured) ? configured : null;
   try {
+    if (env.PGLITE_MIGRATED_SNAPSHOT?.trim() !== "0") {
+      const migrated = fileURLToPath(new URL(`./${MIGRATED_SNAPSHOT_FILE}`, bundleUrl));
+      if (isFile(migrated)) return migrated;
+    }
     return fileURLToPath(new URL(`./${INITDB_SNAPSHOT_FILE}`, bundleUrl));
   } catch {
     return null;

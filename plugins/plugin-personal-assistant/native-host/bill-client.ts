@@ -584,7 +584,14 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
   /** In-flight checks remain tied to their task across task switches. */
   private readonly background = new Map<string, Promise<unknown>>();
   /** Set while a question is answered: nothing new is sent to the host. */
-  private hold_: { released: Promise<void>; release: () => void } | null = null;
+  private hold_: {
+    released: Promise<void>;
+    release: () => void;
+    /** Commands that waited for this hold. */
+    waiting: number;
+    /** Whether waiting commands are sent when the hold ends. */
+    send: boolean;
+  } | null = null;
   constructor(options: {
     request: BillRequest;
     validators?: Partial<BillClientValidators>;
@@ -619,15 +626,22 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     const released = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.hold_ = { released, release };
+    this.hold_ = { released, release, waiting: 0, send: true };
   }
-  /** Ends a hold: waiting commands are sent and re-checks resume. */
-  release() {
+  /**
+   * Ends a hold: waiting commands are sent and re-checks resume. With
+   * `send: false` (the question was not answered), waiting commands are not
+   * sent and resolve `false`, and no re-check starts: the task goes on only
+   * from the person's next command. Returns whether a command was waiting.
+   */
+  release({ send = true }: { send?: boolean } = {}): boolean {
     const hold = this.hold_;
-    if (!hold) return;
+    if (!hold) return false;
     this.hold_ = null;
+    hold.send = send;
     hold.release();
-    if (!this.state.pending) this.scheduleRecheck();
+    if (send && !this.state.pending) this.scheduleRecheck();
+    return hold.waiting > 0;
   }
   get held(): boolean {
     return this.hold_ !== null;
@@ -758,6 +772,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
     const taskId = this.taskId,
       ticket = this.begin();
     if (ticket === null || taskId === null) return false;
+    let discarded = false;
     this.cancelRecheck();
     this.state.error = null;
     this.publish();
@@ -767,7 +782,13 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
       if (background) await background;
       // While a question is answered, wait; then send under the same ticket.
       while (this.hold_) {
-        await this.hold_.released;
+        const hold = this.hold_;
+        hold.waiting++;
+        await hold.released;
+        if (!hold.send) {
+          discarded = true;
+          return false;
+        }
         if (!this.current(ticket)) return false;
       }
       if (!this.current(ticket)) return false;
@@ -784,7 +805,7 @@ export class BillDecisionClient extends BillSession<BillDecisionState> {
           this.state.decision?.saveStatus === "pending" ? "save" : "load";
       return false;
     } finally {
-      if (this.current(ticket)) this.scheduleRecheck();
+      if (this.current(ticket) && !discarded) this.scheduleRecheck();
       this.finish(ticket);
     }
   }

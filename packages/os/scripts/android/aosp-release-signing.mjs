@@ -457,6 +457,26 @@ export function keyDirectoryProblems(
         : `--keys-dir lacks ${missing.join(", ")} (decrypt the release key bundle first; .enc files are not read)`,
     );
   const apexSigned = inspection && signedApexes(inspection.apexkeys).length > 0;
+  if (apexSigned) {
+    const name = `${APEX_KEYS.payload}.avbpubkey`;
+    const expected = product?.signer?.apexPayloadAvbPublicKeySha256;
+    if (!HEX64.test(expected ?? "")) {
+      problems.push(
+        `${descriptorFile} signer.apexPayloadAvbPublicKeySha256 must be the reviewed public key SHA-256`,
+      );
+    } else {
+      const metadata = path.join(real, name);
+      if (
+        fs.existsSync(metadata) &&
+        fs.lstatSync(metadata).isFile() &&
+        sha256(fs.readFileSync(metadata)) !== expected
+      ) {
+        problems.push(
+          `${name} is not the product's signer.apexPayloadAvbPublicKeySha256`,
+        );
+      }
+    }
+  }
   if (managed) {
     for (const name of fs
       .readdirSync(real)
@@ -825,6 +845,7 @@ export async function signingProblems({
   descriptorFile,
   sourceLockPath,
   applicationSignerFile = null,
+  composition = null,
   targetFiles,
   targetFilesSha256,
   keysDir,
@@ -846,6 +867,7 @@ export async function signingProblems({
       sourceLockPath,
       applicationSignerFile,
       productName,
+      composition,
     }),
     ...avbDescriptorProblems(product, descriptorFile),
   ];
@@ -928,8 +950,10 @@ export async function signingProblems({
 
 /**
  * Sign a brand's release. `root`, `productName`, `descriptorFile`, `sourceLockPath`
- * and `applicationSignerFile` bind the brand's reviewed release inputs; the
- * remaining options are the signing job's runtime inputs.
+ * and `applicationSignerFile` bind the brand's reviewed release inputs. An external
+ * consumer supplies its validated product data as `composition`; omission selects
+ * only Eliza's own product catalog. This does not replace any signing authority.
+ * Remaining options are the signing job's runtime inputs.
  */
 export async function signRelease(options) {
   const root = options.root ?? process.cwd();

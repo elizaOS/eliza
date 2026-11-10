@@ -7,7 +7,14 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  basename,
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+  resolve,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Explicit build entry point: no package-install hook, download, or compilation on import.
@@ -24,6 +31,11 @@ if (
   throw new Error(
     "Usage: node build.mjs OUTPUT NODE_24_15_0_INCLUDE [linux-x64|x86_64-linux-musl|aarch64-linux-musl] /absolute/compiler",
   );
+// An absolute `zig` binary is a complete cross toolchain for the musl targets: the build
+// writes `zig cc -target`, `zig ar` and `zig ranlib` drivers for it.
+const zig = basename(compiler) === "zig";
+if (zig && target === "linux-x64")
+  throw new Error("A zig toolchain builds only the musl targets");
 const output = resolve(outputArg),
   headers = resolve(headersArg);
 const headerVersion = readFileSync(join(headers, "node_version.h"), "utf8");
@@ -39,12 +51,31 @@ for (const [part, expected] of Object.entries({
   )
     throw new Error("Pinned Node headers required");
 mkdirSync(output, { recursive: true });
+let cc = compiler;
+const toolchainEnv = {};
+if (zig) {
+  const tools = join(output, "toolchain");
+  mkdirSync(tools, { recursive: true });
+  const quoted = `'${compiler.replaceAll("'", "'\\''")}'`;
+  const driver = (name, command) => {
+    const file = join(tools, `${target}-${name}`);
+    writeFileSync(file, `#!/bin/sh\nexec ${quoted} ${command} "$@"\n`, {
+      mode: 0o755,
+    });
+    return file;
+  };
+  cc = driver("cc", `cc -target ${target}`);
+  // The host archiver (BSD ar on macOS) writes no symbol index for ELF objects.
+  toolchainEnv.AR = driver("ar", "ar");
+  toolchainEnv.RANLIB = driver("ranlib", "ranlib");
+  toolchainEnv.PATH = `${tools}${delimiter}${process.env.PATH}`;
+}
 const hash = (file) =>
   createHash("sha256").update(readFileSync(file)).digest("hex");
 const run = (command, args, cwd = output, env = {}) => {
   const result = spawnSync(command, args, {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...toolchainEnv, ...env },
     stdio: "inherit",
   });
   if (result.status !== 0) throw new Error(`Build command failed: ${command}`);
@@ -88,7 +119,7 @@ run(
     "-fvisibility=hidden",
   ],
   cryptoSource,
-  { CC: compiler },
+  { CC: cc },
 );
 run("make", ["-j1", "build_libs"], cryptoSource);
 // Headers are generated in-tree; use the exact static archive, never -lcrypto lookup.
@@ -100,7 +131,7 @@ const configure = [
 ];
 if (target !== "linux-x64") configure.push(`--host=${target}`);
 run("sh", ["configure", ...configure], cipherSource, {
-  CC: compiler,
+  CC: cc,
   CFLAGS:
     "-fPIC -DSQLITE_HAS_CODEC -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown",
   CPPFLAGS: `-I${join(cryptoSource, "include")}`,
@@ -136,12 +167,14 @@ const flags = [
   "-ldl",
   "-lm",
   "-Wl,-Bsymbolic",
-  "-Wl,--exclude-libs,ALL",
+  // zig's linker has no --exclude-libs. The version script already keeps every symbol
+  // local except the two N-API ones, and the nm check below enforces that.
+  ...(zig ? [] : ["-Wl,--exclude-libs,ALL"]),
   `-Wl,--version-script=${join(here, "exports.map")}`,
   "-o",
   library,
 ];
-run(compiler, flags);
+run(cc, flags);
 const elf = readFileSync(library);
 if (
   elf.toString("hex", 0, 6) !== "7f454c460201" ||
@@ -190,6 +223,13 @@ writeFileSync(
       sha256: hash(library),
       compiler,
       compilerSha256: hash(compiler),
+      ...(zig
+        ? {
+            zigVersion: spawnSync(compiler, ["version"], {
+              encoding: "utf8",
+            }).stdout.trim(),
+          }
+        : {}),
       flags,
       driverSha256: hash(join(here, "driver.c")),
       writerLeaseSha256: hash(join(here, "writer-lease.h")),

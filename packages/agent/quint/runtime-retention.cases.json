@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/runtime/retention-task.ts"],
+  "bounds": {
+    "domain": "One install, one worker and one active sweep.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_retention",
+      "main": "runtime_retention",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -70,6 +70,25 @@ test("HOME and assistant are required; dialer and SMS are not", () => {
   );
 });
 
+test("a brand without the assistant role needs only HOME", () => {
+  const holders = {
+    "android.app.role.HOME": PKG,
+    "android.app.role.ASSISTANT": "",
+  };
+  assert.equal(assertRoleHolders(holders, PKG, { assistant: false }), holders);
+  assert.throws(() => assertRoleHolders(holders, PKG), /ASSISTANT holder/);
+  assert.throws(
+    () =>
+      assertRoleHolders(
+        { ...holders, "android.app.role.HOME": "com.android.launcher3" },
+        PKG,
+        { assistant: false },
+      ),
+    /HOME holder/,
+  );
+  assert.equal(brand.assistantRole, true, "brands take the role by default");
+});
+
 test("a stock HOME stays installed as the recovery path", () => {
   assert.deepEqual(
     assertRecoveryHome(

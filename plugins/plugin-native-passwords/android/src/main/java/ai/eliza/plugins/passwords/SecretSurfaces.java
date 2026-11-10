@@ -19,33 +19,63 @@ import java.util.UUID;
  * The only native surfaces that display or export a secret. Both run on the main thread, are
  * user-initiated from the vault UI, and never pass the value back to the caller.
  */
-final class SecretSurfaces {
+public final class SecretSurfaces {
   private SecretSurfaces() {}
   static final long REVEAL_MILLIS = 30_000, CLIPBOARD_MILLIS = 45_000;
   private static AlertDialog current;
+  private static PasswordSurfaces.Hold currentSurface;
   private static final NativeDeadlineTimer REVEAL_TIMER = new NativeDeadlineTimer();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
   /** FLAG_SECURE dialog; dismissed after {@link #REVEAL_MILLIS} or when the host stops. */
   static void reveal(Activity activity, String title, String secret) {
-    dismiss();
     TextView value = new TextView(activity);
     value.setText(secret);
     value.setTypeface(Typeface.MONOSPACE);
     value.setTextIsSelectable(false);
+    value.setSaveEnabled(false); value.setSaveFromParentEnabled(false);
     value.setTextSize(20);
     int pad = PasswordSheet.dp(activity, 24);
     value.setPadding(pad, pad / 2, pad, 0);
     AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(title).setView(value)
       .setPositiveButton(R.string.eliza_passwords_hide, (shown, which) -> shown.dismiss()).create();
     dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-    dialog.setOnDismissListener(closed -> { value.setText(""); if (current == closed) { current = null; REVEAL_TIMER.cancel(); } });
-    current = dialog;
+    PasswordSurfaces.Hold surface = PasswordSurfaces.open(); // Before an earlier reveal closes, so the surface stays up.
+    dismiss();
+    dialog.setOnDismissListener(closed -> { value.setText(""); surface.close(); if (current == closed) { current = null; currentSurface = null; REVEAL_TIMER.cancel(); } });
+    current = dialog; currentSurface = surface;
     dialog.show();
     REVEAL_TIMER.after(REVEAL_MILLIS, SecretSurfaces::dismiss);
   }
 
-  static void dismiss() { REVEAL_TIMER.cancel(); AlertDialog dialog = current; current = null; if (dialog != null && dialog.isShowing()) dialog.dismiss(); }
+  /** Native-only reuse for another protected credential; no secret is returned to a renderer.
+   * The caller supplies its current foreground/unlocked owner guard and closes its own handle on
+   * retirement. An old handle cannot close a later secret surface. */
+  public static AutoCloseable revealOwned(Activity activity, String title, String secret,
+      java.util.function.BooleanSupplier ownerCurrent) {
+    if (Looper.myLooper() != Looper.getMainLooper() || !ownerCurrent.getAsBoolean())
+      throw new SecurityException("Credential reveal owner unavailable");
+    reveal(activity, title, secret);
+    AlertDialog owned = current;
+    long started = android.os.SystemClock.elapsedRealtime();
+    REVEAL_TIMER.watch(() -> {
+      long elapsed = android.os.SystemClock.elapsedRealtime() - started;
+      return ownerCurrent.getAsBoolean() && elapsed >= 0 && elapsed < REVEAL_MILLIS
+          ? Math.min(250, REVEAL_MILLIS - elapsed) : 0;
+    }, () -> { if (current == owned) dismiss(); });
+    return () -> {
+      Runnable close = () -> { if (current == owned) dismiss(); };
+      if (Looper.myLooper() == Looper.getMainLooper()) close.run(); else MAIN.post(close);
+    };
+  }
+
+  /** Hide, the timer and every host close end the surface here or in the dismiss listener, whichever is first. */
+  static void dismiss() {
+    REVEAL_TIMER.cancel();
+    AlertDialog dialog = current; PasswordSurfaces.Hold surface = currentSurface; current = null; currentSurface = null;
+    if (dialog != null && dialog.isShowing()) dialog.dismiss();
+    if (surface != null) surface.close();
+  }
 
   private static String clipLabel;
   private static long clipExpiresAt;

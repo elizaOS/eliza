@@ -23,7 +23,9 @@ import java.util.regex.Pattern;
  * <p>One instance owns one loaded model (about 40 MB resident). Synthesis
  * calls are serialized; run them on a worker thread, never on the Android
  * main thread. {@link #cancel} may be called from any thread and makes the
- * running call throw {@link java.util.concurrent.CancellationException}.
+ * running call and every waiting call throw
+ * {@link java.util.concurrent.CancellationException}; a {@link Request} cancels
+ * one non-streaming call and no other.
  */
 public final class ParadeeVoice implements AutoCloseable {
     /** {@link #g2pKind}: the lexicon has no fallback for unknown words. */
@@ -46,6 +48,26 @@ public final class ParadeeVoice implements AutoCloseable {
         public double seconds() {
             return samples.length / (double) sampleRate;
         }
+    }
+
+    /** True once any voice loaded in this process; the native speech thread pool is fixed then. */
+    private static boolean anyLoaded; // Guarded by ParadeeVoice.class.
+
+    /**
+     * Sets how many threads speech synthesis uses in this process. The native
+     * library reads the count once, when the first voice loads, so call this
+     * before that; afterwards it throws {@link IllegalStateException}. Without
+     * it the library uses one thread per core (at most 16). {@code threads}
+     * must be 1 to 64.
+     */
+    public static synchronized void setThreadCount(int threads) {
+        if (threads < 1 || threads > 64) throw new IllegalArgumentException("Expected 1 to 64 speech threads");
+        if (anyLoaded) throw new IllegalStateException("Speech threads are fixed once a voice has loaded");
+        VoiceNative.setSpeechThreads(threads);
+    }
+
+    private static synchronized void loaded() {
+        anyLoaded = true;
     }
 
     /** Guards the context pointer so cancel never signals a freed context. */
@@ -98,6 +120,7 @@ public final class ParadeeVoice implements AutoCloseable {
         voiceId = null;
         language = "en";
         handle = ctx;
+        loaded();
     }
 
     /**
@@ -140,6 +163,7 @@ public final class ParadeeVoice implements AutoCloseable {
         }
         this.voiceId = voiceId;
         handle = ctx;
+        loaded();
     }
 
     /** A scalar field of the native voice-info JSON (a number or a plain string). */
@@ -188,10 +212,14 @@ public final class ParadeeVoice implements AutoCloseable {
      * survives {@link #trimMemory}. Needs libelizainference ABI 21.
      */
     public synchronized void speedRange(float min, float max) {
+        checkSpeedRange(min, max);
+        VoiceNative.nativeParadeeSetVoiceSpeedRange(check(), voiceId == null ? "" : voiceId, min, max);
+    }
+
+    static void checkSpeedRange(float min, float max) {
         if (!(min >= MIN_SPEED && min <= 1f && max >= 1f && max <= MAX_SPEED)) {
             throw new IllegalArgumentException("Expected " + MIN_SPEED + " <= min <= 1 <= max <= " + MAX_SPEED);
         }
-        VoiceNative.nativeParadeeSetVoiceSpeedRange(check(), voiceId == null ? "" : voiceId, min, max);
     }
 
     /** Restores the model's validated speed range (undoes {@link #speedRange}). */
@@ -200,21 +228,111 @@ public final class ParadeeVoice implements AutoCloseable {
     }
 
     /**
+     * Cancels one non-streaming request and no other: pass it to
+     * {@link #synthesize(String, float, Request)} or
+     * {@link #synthesizePhonemes(String, float, Request)}, and call
+     * {@link #cancel} from any thread. A request waiting for the voice ends
+     * cancelled without running; a running one is interrupted in native code
+     * only while it is the voice's running call, so another request on the same
+     * voice is never stopped. A cancelled request stays cancelled: a later call
+     * with it throws {@link CancellationException} at once. Use one request for
+     * one call at a time.
+     */
+    public static final class Request {
+        private volatile boolean cancelled;
+        private volatile ParadeeVoice running;
+
+        public void cancel() {
+            cancelled = true;
+            ParadeeVoice voice = running;
+            if (voice != null) voice.interrupt(this);
+        }
+
+        public boolean isCancelled() {
+            return cancelled;
+        }
+    }
+
+    /** The request in native code now, or null. Guarded by {@link #handleLock}. */
+    private Request runningRequest;
+
+    private void interrupt(Request request) {
+        synchronized (handleLock) {
+            if (runningRequest == request && handle != 0) VoiceNative.nativeCancelTts(handle);
+        }
+    }
+
+    /**
      * Speaks text in this voice's language. {@code speed} 1.0 is the model's own
      * rate; it is clamped to the voice's speed range: the model's validated range
      * (Delibes: 0.85 to 1.15) unless {@link #speedRange} set another.
      */
-    public synchronized Audio synthesize(String text, float speed) {
-        long ctx = check();
-        float[] pcm = voiceId == null ? VoiceNative.nativeParadeeSynthesize(ctx, bytes(text), speed)
-                : VoiceNative.nativeParadeeSynthesizeVoice(ctx, voiceId, bytes(text), speed);
-        return new Audio(pcm, sampleRate);
+    public Audio synthesize(String text, float speed) {
+        return synthesize(text, speed, null);
+    }
+
+    /**
+     * {@link #synthesize(String, float)} that {@code request} (or {@link #cancel})
+     * can cancel; null is no request.
+     */
+    public Audio synthesize(String text, float speed, Request request) {
+        final long admitted = generation.get();
+        synchronized (this) {
+            long ctx = check();
+            byte[] input = bytes(text);
+            return run(admitted, request, () -> voiceId == null ? VoiceNative.nativeParadeeSynthesize(ctx, input, speed)
+                    : VoiceNative.nativeParadeeSynthesizeVoice(ctx, voiceId, input, speed));
+        }
     }
 
     /** Speaks text that is already in misaki phonemes (the default voice only). */
-    public synchronized Audio synthesizePhonemes(String phonemes, float speed) {
+    public Audio synthesizePhonemes(String phonemes, float speed) {
+        return synthesizePhonemes(phonemes, speed, null);
+    }
+
+    /** {@link #synthesizePhonemes(String, float)} that {@code request} can cancel; null is no request. */
+    public Audio synthesizePhonemes(String phonemes, float speed, Request request) {
         if (voiceId != null) throw new IllegalStateException("Phoneme input is available on the default voice only");
-        return new Audio(VoiceNative.nativeParadeeSynthesizePhonemes(check(), bytes(phonemes), speed), sampleRate);
+        final long admitted = generation.get();
+        synchronized (this) {
+            long ctx = check();
+            byte[] input = bytes(phonemes);
+            return run(admitted, request, () -> VoiceNative.nativeParadeeSynthesizePhonemes(ctx, input, speed));
+        }
+    }
+
+    private interface NativeCall {
+        float[] run();
+    }
+
+    /**
+     * Caller holds this voice's lock. Runs a call admitted at {@code admitted}
+     * and marks its request as the running one while it is in native code. The
+     * library clears its cancel flag when a call enters, so a cancel that lands
+     * between admission and that point does not stop the native call; the call
+     * still ends cancelled and its audio is discarded.
+     */
+    private Audio run(long admitted, Request request, NativeCall call) {
+        if (request != null) {
+            // Marked before the cancelled check: a cancel either is seen here or finds the marker.
+            request.running = this;
+            synchronized (handleLock) {
+                runningRequest = request;
+            }
+        }
+        try {
+            if (generation.get() != admitted || request != null && request.cancelled) throw new CancellationException();
+            float[] pcm = call.run();
+            if (generation.get() != admitted || request != null && request.cancelled) throw new CancellationException();
+            return new Audio(pcm, sampleRate);
+        } finally {
+            if (request != null) {
+                synchronized (handleLock) {
+                    runningRequest = null;
+                }
+                request.running = null;
+            }
+        }
     }
 
     /** Receives native model chunks on the synthesis worker. Return false to cancel. */
@@ -267,7 +385,11 @@ public final class ParadeeVoice implements AutoCloseable {
         }
     }
 
-    /** Stops the running synthesis, if any. Safe from any thread. */
+    /**
+     * Stops the running synthesis and every call waiting for it, if any. Safe from any thread.
+     * It is not aimed at one call; to cancel one non-streaming call and no other, give it a
+     * {@link Request}.
+     */
     public void cancel() {
         generation.incrementAndGet();
         synchronized (handleLock) {

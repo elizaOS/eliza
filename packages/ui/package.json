@@ -166,6 +166,18 @@
       "import": "./dist/accessibility/screen-focus.js",
       "default": "./dist/accessibility/screen-focus.js"
     },
+    "./installed-apps-grid-drawer": {
+      "eliza-source": "./src/mobile-shell/InstalledAppsGridDrawer.tsx",
+      "types": "./dist/mobile-shell/InstalledAppsGridDrawer.d.ts",
+      "import": "./dist/mobile-shell/InstalledAppsGridDrawer.js",
+      "default": "./dist/mobile-shell/InstalledAppsGridDrawer.js"
+    },
+    "./photos-view": {
+      "eliza-source": "./src/mobile-shell/photos-view.ts",
+      "types": "./dist/mobile-shell/photos-view.d.ts",
+      "import": "./dist/mobile-shell/photos-view.js",
+      "default": "./dist/mobile-shell/photos-view.js"
+    },
     "./durable-draft": {
       "eliza-source": "./src/state/durable-draft.ts",
       "types": "./dist/state/durable-draft.d.ts",

@@ -5,9 +5,8 @@
  * `ScheduledTaskInput`) via {@link registerDefaultTaskPack}. The boot seeder
  * {@link seedRegisteredTaskPacks} materializes them through the runner exactly
  * once per idempotency key on this device — a default the user later deletes is
- * never resurrected. `@elizaos/plugin-scheduling` ships ZERO packs; the seed
- * mechanism is the generic primitive, the packs are the consumer's domain
- * content.
+ * never resurrected. `@elizaos/plugin-scheduling` selects no product pack; consumer domain
+ * content is registered here, alongside the generic no-host fallback.
  *
  * The seed-once marker is stored in the runtime cache so it survives restarts.
  */

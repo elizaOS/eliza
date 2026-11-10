@@ -74,26 +74,8 @@ export interface TargetSourceRegistry {
 	list(): TargetSource[];
 }
 
-export function createTargetSourceRegistry(): TargetSourceRegistry {
-	const sources = new Map<string, TargetSource>();
-	return {
-		register(source) {
-			sources.set(source.platform, source);
-		},
-		unregister(platform) {
-			sources.delete(platform);
-		},
-		get(platform) {
-			return sources.get(platform);
-		},
-		list() {
-			return Array.from(sources.values());
-		},
-	};
-}
-
 /**
- * Runtime service wrapping a {@link TargetSourceRegistry}. Registered by
+ * Runtime {@link TargetSourceRegistry}, keyed by platform. Registered by
  * basic-capabilities so it exists before connector plugins initialize.
  */
 export class TargetSourceRegistryService
@@ -104,7 +86,7 @@ export class TargetSourceRegistryService
 	override capabilityDescription =
 		"Connector target-source registry: enumerates addressable connector destinations for workflow target selection.";
 
-	private readonly registry = createTargetSourceRegistry();
+	private readonly sources = new Map<string, TargetSource>();
 
 	static override async start(
 		_runtime: IAgentRuntime,
@@ -113,24 +95,22 @@ export class TargetSourceRegistryService
 	}
 
 	override async stop(): Promise<void> {
-		for (const source of this.registry.list()) {
-			this.registry.unregister(source.platform);
-		}
+		this.sources.clear();
 	}
 
 	register(source: TargetSource): void {
-		this.registry.register(source);
+		this.sources.set(source.platform, source);
 	}
 
 	unregister(platform: string): void {
-		this.registry.unregister(platform);
+		this.sources.delete(platform);
 	}
 
 	get(platform: string): TargetSource | undefined {
-		return this.registry.get(platform);
+		return this.sources.get(platform);
 	}
 
 	list(): TargetSource[] {
-		return this.registry.list();
+		return Array.from(this.sources.values());
 	}
 }

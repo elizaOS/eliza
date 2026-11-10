@@ -14,6 +14,7 @@ import {
   CLOUD_CONTAINER_SERVICE_TYPE,
   type CloudCodingContainerService,
   type CloudVfsBundle,
+  isStandardBase64,
   PostWorkbenchVfsCompilePluginRequestSchema,
   PostWorkbenchVfsGitRequestSchema,
   PostWorkbenchVfsLoadPluginRequestSchema,
@@ -424,6 +425,13 @@ async function handleFile(
         parsed.error.issues[0]?.message ?? "Invalid file request",
         400,
       );
+      return;
+    }
+    if (
+      parsed.data.encoding === "base64" &&
+      !isStandardBase64(parsed.data.content)
+    ) {
+      error(res, "content is not valid base64", 400);
       return;
     }
     const data =

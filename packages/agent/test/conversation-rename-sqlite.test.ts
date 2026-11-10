@@ -3,7 +3,7 @@
  * the stored room: after a restart the conversation list is rebuilt from the
  * rooms. The SQLite adapter has updateRooms but no updateRoom, so a direct
  * adapter.updateRoom check skipped the write while the route answered 200.
- * Real AgentRuntime with the SQLite adapter and the real conversation routes.
+ * The same real HTTP and SQLite fixture checks readiness across deletion.
  */
 
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { AgentRuntime, stringToUuid, type UUID } from "@elizaos/core";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { restoreConversationsFromDb } from "../src/api/conversation-restore.ts";
 import type { ConversationRouteState } from "../src/api/conversation-routes.ts";
 import { handleConversationRoutes } from "../src/api/conversation-routes.ts";
@@ -82,7 +82,9 @@ async function call(
   }
 }
 
-it("keeps a conversation rename on SQLite after the list is rebuilt from the database", async () => {
+async function withConversationRuntime(
+  run: (state: ConversationRouteState, runtime: AgentRuntime) => Promise<void>,
+): Promise<void> {
   const agentId = randomUUID() as UUID;
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "conv-rename-sqlite-"));
   const runtime = new AgentRuntime({
@@ -93,6 +95,7 @@ it("keeps a conversation rename on SQLite after the list is rebuilt from the dat
   runtime.registerDatabaseAdapter(
     SQLiteDatabaseAdapter.create(path.join(dataDir, "state.sqlite"), agentId),
   );
+  vi.stubEnv("ELIZA_STATE_DIR", dataDir);
   try {
     await runtime.init();
     const adminId = stringToUuid("rename-admin");
@@ -116,6 +119,16 @@ it("keeps a conversation rename on SQLite after the list is rebuilt from the dat
       tradePermissionMode: "connectors-only",
     } as unknown as ConversationRouteState;
 
+    await run(state, runtime);
+  } finally {
+    vi.unstubAllEnvs();
+    await runtime.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}
+
+it("keeps a conversation rename on SQLite after the list is rebuilt from the database", async () => {
+  await withConversationRuntime(async (state, runtime) => {
     const created = await call(state, "POST", "/api/conversations", {
       title: "New chat",
     });
@@ -137,8 +150,61 @@ it("keeps a conversation rename on SQLite after the list is rebuilt from the dat
     expect(
       [...state.conversations.values()].map((restored) => restored.title),
     ).toEqual(["Taxes"]);
-  } finally {
-    await runtime.close();
-    fs.rmSync(dataDir, { recursive: true, force: true });
-  }
+  });
+}, 60_000);
+
+it("rejects creation when the conversation is deleted during room setup", async () => {
+  await withConversationRuntime(async (state, runtime) => {
+    const syncing = Promise.withResolvers<UUID>();
+    const resume = Promise.withResolvers<void>();
+    const ensureConnection = runtime.ensureConnection.bind(runtime);
+    const getRoom = runtime.getRoom.bind(runtime);
+    vi.spyOn(runtime, "ensureConnection").mockImplementationOnce(
+      async (input) => {
+        await ensureConnection(input);
+        // Pause the first metadata read after the real connection is established.
+        vi.spyOn(runtime, "getRoom").mockImplementationOnce(async (id) => {
+          const room = await getRoom(id);
+          syncing.resolve(id);
+          await resume.promise;
+          return room;
+        });
+      },
+    );
+
+    const creating = call(state, "POST", "/api/conversations", {
+      title: "Deleted during setup",
+    });
+    try {
+      const roomId = await Promise.race([
+        syncing.promise,
+        creating.then((result) => {
+          throw new Error(
+            `Creation completed before metadata sync: ${JSON.stringify(result)}`,
+          );
+        }),
+      ]);
+      const listed = await call(state, "GET", "/api/conversations");
+      expect(listed.status).toBe(200);
+      const { conversations } = listed.payload as {
+        conversations: { id: string; roomId: UUID }[];
+      };
+      const conversation = conversations.find((item) => item.roomId === roomId);
+      if (!conversation) throw new Error("Missing provisional conversation");
+      expect(
+        await call(state, "DELETE", `/api/conversations/${conversation.id}`),
+      ).toEqual({ status: 200, payload: { ok: true } });
+      expect(await runtime.getRoom(roomId)).toBeNull();
+    } finally {
+      resume.resolve();
+      await creating;
+    }
+    expect(await creating).toEqual({
+      status: 500,
+      payload: {
+        error:
+          "Failed to initialize conversation: Conversation connection descriptor was invalidated",
+      },
+    });
+  });
 }, 60_000);

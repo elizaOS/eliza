@@ -39,6 +39,7 @@ import {
   SmsSendBudgetExceededError,
   SmsVerificationError,
 } from "./auth/index";
+import { isDatabaseLockTimeoutError } from "./db/client";
 import { redactedThrownDiagnostics } from "./shared/index";
 import { runtimeEnvironmentValue } from "./shared/runtime-env";
 
@@ -64,6 +65,10 @@ export function createLoginApp(): Hono<{ Variables: AppVariables }> {
         { ok: false, error: "SMS verification is temporarily unavailable" },
         503,
       );
+    }
+    if (isDatabaseLockTimeoutError(error)) {
+      c.header("Retry-After", "1");
+      return c.json({ ok: false, error: "Service busy, try again" }, 503);
     }
     logger.error(
       { ...redactedThrownDiagnostics(error), requestId: c.get("requestId") },

@@ -5,6 +5,7 @@ import {
   assertModelOutputComplete,
   ChannelType,
   createUniqueUuid,
+  ModelType,
   stringToUuid,
 } from "@elizaos/core";
 import { memoryTable, participantTable } from "@elizaos/plugin-sql";
@@ -288,7 +289,9 @@ export class MemoryService {
       logger.info(`[Memory Service] Room ${input.roomId} is allowed, fetching memories`);
 
       if (input.query) {
-        const embedding = new Array(1536).fill(0);
+        const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+          text: input.query,
+        });
         logger.info(`[Memory Service] Calling searchMemories with roomId: ${input.roomId}`);
         memories = await runtime.searchMemories({
           embedding,

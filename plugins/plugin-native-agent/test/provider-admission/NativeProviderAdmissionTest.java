@@ -98,6 +98,17 @@ public final class NativeProviderAdmissionTest {
   check(!NativeProviderAdmission.providerIdentity("{broken").getBoolean("configured")&&!NativeProviderAdmission.providerIdentity(null).getBoolean("configured"),"malformed or absent is unconfigured");
   for(String output:new String[]{identity.toString(),directIdentity.toString(),NativeProviderAdmission.providerStatus(cloudSelection,cloud(ID,null),NOW).toString(),NativeProviderAdmission.providerStatus(directSelection,null,NOW).toString()})
    check(!output.contains(TOKEN)&&!output.contains(KEY)&&!output.contains("token")&&!output.contains("key"),"no credential in "+output);
+  NativeProviderAdmission.requireCloudVoiceSelection(cloudSelection,ID);
+  refused(()->NativeProviderAdmission.requireCloudVoiceSelection(directSelection,ID),"Own mode refuses new paid Cloud speech");
+  refused(()->NativeProviderAdmission.requireCloudVoiceSelection(cloudSelection,OTHER),"Cloud speech is exact-account bound");
+  JSONObject retainedOwn=new JSONObject(directSelection).put("cartesiaKey","synthetic-voice-key");
+  String unboundOwn=NativeProviderAdmission.unbindProvider(retainedOwn.toString());
+  check(new JSONObject(unboundOwn).getString("provider").equals("cerebras")&&new JSONObject(unboundOwn).getString("cartesiaKey").equals("synthetic-voice-key"),"unbind retains selected mode and Voice");
+  check(!NativeProviderAdmission.providerIdentity(unboundOwn).optBoolean("configured"),"unbound saved keys are not active");
+  refused(()->NativeProviderAdmission.applyProviderEnvironment(new JSONObject(unboundOwn),null,inherited(),NOW),"unbound saved keys never route");
+  retainedOwn.remove("key");Map<String,String> voiceOnly=inherited();
+  NativeProviderAdmission.applyProviderEnvironment(retainedOwn,null,voiceOnly,NOW);
+  check(!voiceOnly.containsKey("CEREBRAS_API_KEY")&&!voiceOnly.containsKey("ELIZAOS_CLOUD_API_KEY")&&"synthetic-voice-key".equals(voiceOnly.get("CARTESIA_API_KEY")),"removed Text leaves independent Voice without fallback");
   // Binding: success stores the admission; a failure after admission rolls back to the previous selection.
   Store store=new Store();store.provider=directSelection;store.cloud=cloud(ID,NOW+60_000);
   String bound=NativeProviderAdmission.bindCloudProvider(store,ID,"cerebras/qwen-3.8-27b",()->NOW);
