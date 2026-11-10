@@ -841,8 +841,9 @@ export function preferredOperationNames(
   }
   // An imperative scheduling outcome creates a record. A schedule mentioned
   // as data ("read my schedule") and rescheduling retain their own operations.
-  // Callers join the request and Stage-1 intents with "\n", so these imperative
-  // checks anchor at the start of every line, not only the first.
+  // Callers join the request and Stage-1 intents with "\n", so each line is one
+  // intent. With the m flag, ^ and the bare-phrase $ below both anchor at that
+  // line's start and end, as they would for a query with a single intent.
   if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/imu.test(query))
     wanted.add("create");
   // "Set a reminder" names creation; setting an existing record's fields or
