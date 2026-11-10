@@ -43,6 +43,8 @@ separately owned production service, so it stays off unless the host sets
 with `CALENDAR_MANAGED_DELETE_UNAVAILABLE` before an owner review is queued, and
 the mutation port refuses it again before any host call.
 
+Managed feed refreshes reconcile changed or deleted mapped events into the existing local record before returning the combined feed. Unlinked Google events are not imported by this step.
+
 ## Phone and browser Calendar controllers
 
 Browser-safe, erasable-TypeScript controllers for device and browser hosts:

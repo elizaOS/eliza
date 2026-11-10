@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/service/CalendarService.ts",
+    "plugins/plugin-calendar/test/calendar-managed-default-feed.pglite.test.ts"
+  ],
+  "bounds": "One mapped event, unchanged/changed/deleted provider version, clean/held link and current/retired owner. The sequential read-reconcile-project path reaches projection in two steps without fairness assumptions. Existing reconciler tests cover revision races and uncertain writes; this model does not prove provider availability or the live UI. The local revision is fixed in these cases; concurrent authorized local edits and provider mutations remain covered by the existing shared reconciler tests, not by NoProviderWrites in this model.",
+  "cases": [
+    {
+      "name": "mapped-readback",
+      "main": "ManagedCalendarPull",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 100
+    }
+  ],
+  "conformance": "plugins/plugin-calendar/quint/check-managed-calendar-pull.mjs"
+}
