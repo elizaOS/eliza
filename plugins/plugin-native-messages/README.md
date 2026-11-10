@@ -106,9 +106,11 @@ shipped, and do not share the slot with a `SmsTelephonyConfiguration`. No AOSP
 admission or manifest receiver is needed.
 
 `android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor,
-provider mapping and the host-native reviewed send (`ReviewedSmsSendCoreTest`,
-with a fake radio).
-Real SIMs, carrier delivery reports and role grants need device qualification.
+provider mapping, the host-native reviewed send (`ReviewedSmsSendCoreTest`,
+with a fake radio), the voicemail store against a fake provider and the WAV
+header and resampling of `VoicemailPcm`.
+Real SIMs, carrier delivery reports, role grants, placed calls, carrier
+voicemail and the MediaCodec decode need device qualification.
 
 ## Default SMS app (SMS role)
 
@@ -151,8 +153,33 @@ withheld or undialable entries become `""`, and voicemail transcriptions,
 accounts and locations are not read. `status().permissions.callLog` is present
 only for such hosts, and access is asked for only through
 `requestAccess({access: "callLog"})`. Without the alias the read answers
-unavailable, never an empty list. Dialing stays a handoff (`dial`): the
-person places the call on the dial screen.
+unavailable, never an empty list.
+
+Calls. `dial` is a handoff: the person places the call on the dial screen.
+`placeCall({number})` asks Telecom for the call itself, only while the host
+holds the dialer role and `CALL_PHONE` and is unlocked in front. It answers
+`placed` (Telecom accepted the request; nothing is known about the call),
+`busy` (a call is already ringing or in progress), `unavailable` or `failed`.
+An emergency number, or one Android cannot classify, is never placed from
+here: the dial screen opens with it and the answer is `emergency-handoff`.
+A host that ships `plugin-native-phone` may override `originate` with its
+`TelecomDial.originate`.
+
+Voicemail. While the host is the default dialer, `VoicemailStore` reads
+Android's voicemail provider (`VoicemailContract`) under the same fence:
+`voicemailStatus()`, `listVoicemail({limit})` (at most 50, newest first),
+`fetchVoicemailAudio({id})`, `voicemailAudio({id})` (the stored bytes, at
+most 8 MiB), `voicemailPcm({id})`, `markVoicemailHeard({id})`,
+`deleteVoicemail({id})` and `observeVoicemail({enabled})` with content-free
+`voicemailChanged` notices. The carrier state comes from the sources' status
+rows for the default calling account; with no source it is `unsupported` and
+the list is empty with that state, never an error or a bare empty list.
+Caller names come from the call log and only for hosts with call-log access.
+`VoicemailPcm` decodes stored audio (usually AMR or 3GPP) with MediaExtractor
+and MediaCodec to a 16 kHz mono PCM16 WAV for on-device transcription; audio
+over five minutes is refused. The provider holds only what a visual-voicemail
+source on the phone stored. This library is not such a source: it has no OMTP
+or IMAP client and no `VisualVoicemailService`.
 
 `MmsPdu` encodes M-Send.req, M-NotifyResp.ind and M-Acknowledge.ind. Outgoing
 user MMS (group messages and attachments) is not offered yet. Carrier MMSC

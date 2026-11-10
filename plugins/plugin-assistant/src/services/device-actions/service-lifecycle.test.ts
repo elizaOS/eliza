@@ -352,6 +352,16 @@ it.each([
     ["phone.dial.v1"],
     { type: "phone_dial", target: { kind: "number", number: "+15555550123" } },
   ],
+  [
+    "call",
+    ["phone.call.v1"],
+    { type: "phone_call", target: { kind: "number", number: "+15555550123" } },
+  ],
+  [
+    "contact SMS",
+    ["sms.compose.v1"],
+    { type: "sms_compose", query: "Ada", body: "Running late" },
+  ],
   ["clock", ["clock.handoff.v1"], { type: "clock_handoff", action: "show" }],
   [
     "notes",

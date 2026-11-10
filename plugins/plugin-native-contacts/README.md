@@ -60,6 +60,19 @@ plugin name (declaring the `contacts` permission alias) and answers
 `requestPermissions`, `list({ query, limit, cursor })`, `create()` and
 `edit({ id, lookup, revision })`. Reads run only while the phone is unlocked
 with the host in front and are cancelled on pause, resume, screen-off and
-permission change. Creation and edits open a system app's exported Contacts
-editor, which owns the account choice and the save; nothing is written from the
-plugin and `edit` rechecks the contact's lookup key and revision first.
+permission change. `create` and `edit` open a system app's exported Contacts
+editor, which owns the account choice and the save; `edit` rechecks the
+contact's lookup key and revision first.
+
+A host whose manifest keeps `WRITE_CONTACTS` (and whose `contacts` alias asks
+for it) can also save from its own screen through `ContactsEditor`:
+`get({ id })` returns the name, typed phone numbers and emails and an opaque
+`version`; `save({ id?, version?, displayName, phoneNumbers, emailAddresses })`
+creates a contact in the device-local account or changes only the rows that
+differ; `remove({ id, version })` deletes it. A write names the version that
+was read and asserts it again inside the provider's transaction, so a contact
+that changed is answered `stale` and nothing is written. A contact with more
+than 32 numbers or emails is refused as `incomplete`, never clipped. Without
+the permission these methods reject with `permission-required`.
+`status().writable` reports it. `android/src/test` holds the JVM tests.
+The renderer contract is `@elizaos/contracts/native-address-book`.
