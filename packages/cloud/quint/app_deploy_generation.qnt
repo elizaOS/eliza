@@ -18,6 +18,7 @@ module app_deploy_generation {
     provisionStarted: bool,
     handoff: bool,
     readyChild: bool,
+    currentReadyChild: bool,
     linked: bool,
     quiesced: bool,
     outcome: str,
@@ -27,7 +28,8 @@ module app_deploy_generation {
   action init = s' = {
     generation: 0, phase: "idle", deleted: false, enqueue: "none", inserts: 0,
     job: "none", attempts: 0, claimed: false, ownerHasAppClaim: false,
-    provisionStarted: false, handoff: false, readyChild: false, linked: false,
+    provisionStarted: false, handoff: false, readyChild: false, currentReadyChild: false,
+    linked: false,
     quiesced: false, outcome: "none",
   }
   val originalPersisted = s.generation == 1
@@ -102,10 +104,18 @@ module app_deploy_generation {
     originalPersisted, s.phase == "deploying", s.provisionStarted, not(s.handoff),
     s' = s.with("handoff", true),
   }
-  // The child owns readiness independently of the parent's metadata update.
-  action publishChildReady = all {
+  // The old parent could complete as soon as it saw the child job, before
+  // its metadata link had committed.
+  action legacyParentCompletes = all {
+    s.job == "processing", originalHandingOff, s.handoff, not(s.linked),
+    s' = s.with("job", "completed").with("quiesced", true).with("outcome", "legacyParent"),
+  }
+  // A live exact child now publishes readiness and its own link atomically.
+  // The historical transition represents persisted results from older writers.
+  action publishChildReady(currentWriter) = all {
     originalCurrent, s.phase == "deploying", s.handoff,
-    s' = s.with("phase", "deployed").with("readyChild", true),
+    s' = s.with("phase", "deployed").with("readyChild", true)
+      .with("currentReadyChild", currentWriter).with("linked", s.linked or currentWriter),
   }
   // appsRepository.updateDeploymentGeneration fences the metadata merge.
   action linkHandoff = all {
@@ -151,7 +161,8 @@ module app_deploy_generation {
     admit,
     insert(true, true), insert(true, false), insert(false, true), insert(false, false),
     compensate, dispatch, claimGeneration, publishFailure, recover, resolveKnownFailure,
-    exhaust, beginHandoff, commitHandoff, publishChildReady, linkHandoff, settleHandoff,
+    exhaust, beginHandoff, commitHandoff, legacyParentCompletes,
+    publishChildReady(true), publishChildReady(false), linkHandoff, settleHandoff,
     settleUnconfirmed, exhaustDeploying, exhaustReady,
     replaceGeneration, deleteApp,
     settleObsolete, s' = s,
@@ -171,10 +182,12 @@ module app_deploy_generation {
   val currentHandoffCompletionLinksContainer =
     (originalCurrent and s.outcome == "handedOff") implies s.linked
   val appLinkRequiresHandoff = s.linked implies s.handoff
+  val currentChildReadinessLinksContainer = s.currentReadyChild implies s.linked
   val safety = bounds and jobHasAdmission and confirmedHandoffHasClaim
     and knownFailureNeverCompletes and oldJobCannotSetNewPhase
     and deployingCompletionRequiresHandoff and unconfirmedKeepsOriginalFence
     and currentHandoffCompletionLinksContainer and appLinkRequiresHandoff
+    and currentChildReadinessLinksContainer
 
   temporal KnownFailureSettles = (dispatch.weakFair(s) and resolveKnownFailure.weakFair(s)) implies
     always((originalCurrent and s.phase == "failed" and jobOutstanding) implies
@@ -184,6 +197,10 @@ module app_deploy_generation {
       settleHandoff.weakFair(s) and settleUnconfirmed.weakFair(s)) implies
       always((originalHandingOff and not(s.ownerHasAppClaim) and jobOutstanding)
         implies eventually(s.job == "completed" or s.job == "failed" or not(originalPersisted)))
+  temporal LiveChildLinksTerminalParent =
+    (publishChildReady(true).weakFair(s) and always(s.readyChild implies s.currentReadyChild)) implies
+      always((originalCurrent and s.outcome == "legacyParent" and not(s.readyChild))
+        implies eventually(s.linked or not(originalCurrent)))
 
   run lostEnqueueResponseKeepsOneJobTest = init.then(admit).then(insert(true, false))
     .then(insert(false, true)).expect(s.inserts == 2 and s.job == "pending" and safety)
@@ -209,8 +226,16 @@ module app_deploy_generation {
     .expect(s.job == "completed" and s.quiesced and safety)
   run childReadyBeforeParentLinkTest = init.then(admit).then(insert(true, true))
     .then(dispatch).then(claimGeneration).then(beginHandoff).then(commitHandoff).then(recover)
-    .then(publishChildReady).then(dispatch).then(linkHandoff).then(settleHandoff)
+    .then(publishChildReady(false)).then(dispatch).then(linkHandoff).then(settleHandoff)
     .expect(s.phase == "deployed" and s.linked and safety)
+  run liveChildLinksTerminalParentTest = init.then(admit).then(insert(true, true))
+    .then(dispatch).then(claimGeneration).then(beginHandoff).then(commitHandoff)
+    .then(legacyParentCompletes).then(publishChildReady(true))
+    .expect(s.phase == "deployed" and s.linked and s.outcome == "legacyParent" and safety)
+  run bothHistoricalJobsTerminalKeepMissingLinkTest = init.then(admit).then(insert(true, true))
+    .then(dispatch).then(claimGeneration).then(beginHandoff).then(commitHandoff)
+    .then(legacyParentCompletes).then(publishChildReady(false))
+    .expect(s.phase == "deployed" and not(s.linked) and s.outcome == "legacyParent" and safety)
   run missingEnqueueResponseKeepsFenceTest = init.then(admit).then(insert(true, true))
     .then(dispatch).then(claimGeneration).then(beginHandoff).then(settleUnconfirmed)
     .expect(s.outcome == "unconfirmed" and safety)

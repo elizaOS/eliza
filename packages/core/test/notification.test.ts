@@ -23,7 +23,9 @@ import {
 	type AgentNotification,
 	NATIVE_NOTIFICATION_PAGE_BYTES,
 	NOTIFICATION_STREAM,
+	type NotificationCategory,
 	type NotificationInboxSnapshot,
+	type NotificationPriority,
 } from "../src/types/notification.ts";
 import type { Plugin } from "../src/types/plugin.ts";
 import { ServiceType } from "../src/types/service.ts";
@@ -1357,14 +1359,70 @@ describe("NotificationService", () => {
 	});
 
 	it("lets a producer override the category default priority", async () => {
-		// A system notification the producer deems urgent (e.g. disk full) keeps its
-		// explicit priority; the category default only applies when none is given.
-		const n = await service.notify({
-			title: "Disk full",
-			category: "system",
-			priority: "urgent",
-		});
-		expect(n.priority).toBe("urgent");
+		const defaults = {
+			reminder: "normal",
+			task: "normal",
+			workflow: "normal",
+			agent: "normal",
+			approval: "high",
+			message: "normal",
+			health: "normal",
+			system: "low",
+			general: "normal",
+		} satisfies Record<NotificationCategory, NotificationPriority>;
+		const priorities = [undefined, "low", "normal", "high", "urgent"] as const;
+		const start = Date.now();
+		const clock = vi.spyOn(Date, "now").mockReturnValue(start);
+		try {
+			for (const [category, fallback] of Object.entries(defaults)) {
+				for (const priority of priorities) {
+					for (const expiresAt of [undefined, null, start + 1000]) {
+						clock.mockReturnValue(start);
+						await service.clear();
+						const n = await service.notify({
+							title: "Complete notification policy",
+							category: category as NotificationCategory,
+							priority,
+							expiresAt,
+						});
+						const expectedPriority = priority ?? fallback;
+						const expectedExpiry =
+							expiresAt === undefined && expectedPriority === "low"
+								? start + 24 * 60 * 60 * 1000
+								: expiresAt;
+						expect(n.priority).toBe(expectedPriority);
+						expect(n.expiresAt).toBe(expectedExpiry);
+						expect(service.getUnreadCount()).toBe(
+							expectedPriority === "low" ? 0 : 1,
+						);
+						const stored = await runtime.getCache<NotificationInboxSnapshot>(
+							`notifications:${runtime.agentId}`,
+						);
+						expect(stored?.notifications[0]).toMatchObject({
+							id: n.id,
+							priority: expectedPriority,
+						});
+						expect(stored?.notifications[0].expiresAt).toBe(expectedExpiry);
+						if (expectedExpiry != null) {
+							clock.mockReturnValue(expectedExpiry);
+							expect(service.list()).toEqual([]);
+							expect(service.getUnreadCount()).toBe(0);
+							expect(await service.listDurableIncludingExpired()).toHaveLength(
+								1,
+							);
+							clock.mockReturnValue(start);
+						}
+						expect(service.list()).toHaveLength(1);
+						expect(await service.markRead(n.id)).toBe(true);
+						expect(service.list({ unreadOnly: true })).toEqual([]);
+						expect(service.listIncludingExpired()).toHaveLength(1);
+						expect(service.getUnreadCount()).toBe(0);
+					}
+				}
+			}
+		} finally {
+			clock.mockRestore();
+		}
 	});
 
 	// ── §C.1 Silent-tier default expiry ─────────────────────────────────────
