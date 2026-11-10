@@ -39,7 +39,7 @@
     },
     "./format": {
       "eliza-source": "./src/internal/format.ts",
-      "types": "./src/internal/format.ts",
+      "types": "./dist/internal/format.d.ts",
       "import": "./dist/internal/format.js",
       "default": "./dist/internal/format.js"
     },

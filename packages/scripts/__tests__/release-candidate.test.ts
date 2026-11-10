@@ -57,6 +57,19 @@ function makeFixture() {
     types: "dist/index.d.ts",
     files: ["dist"],
     publishConfig: { access: "public" },
+    exports: {
+      ".": {
+        "eliza-source": "./src/index.ts",
+        default: "./dist/index.js",
+        node: "./dist/node.js",
+      },
+      "./nested": [
+        {
+          "eliza-source": "./src/nested.ts",
+          default: "./dist/index.js",
+        },
+      ],
+    },
   };
   writeJson(path.join(repoRoot, "packages/a/package.json"), {
     name: "@release-fixture/a",
@@ -74,6 +87,7 @@ function makeFixture() {
       'for (const name of ["a", "b"]) {',
       '  fs.mkdirSync("packages/" + name + "/dist", { recursive: true });',
       '  fs.writeFileSync("packages/" + name + "/dist/index.js", "export const name = " + JSON.stringify(name) + ";\\n");',
+      '  fs.writeFileSync("packages/" + name + "/dist/node.js", "export const name = \\"node\\";\\n");',
       '  fs.writeFileSync("packages/" + name + "/dist/index.d.ts", "export declare const name: string;\\n");',
       "}",
       'const count = fs.existsSync("build-count") ? Number(fs.readFileSync("build-count", "utf8")) : 0;',
@@ -112,6 +126,11 @@ function createCandidate(
 describe("immutable release candidate", () => {
   test("builds once, packs real tgz files, records entrypoints and deterministic integrity", () => {
     const fixture = makeFixture();
+    const sourceManifestPath = path.join(
+      fixture.repoRoot,
+      "packages/a/package.json",
+    );
+    const sourceManifestBytes = fs.readFileSync(sourceManifestPath);
     const first = createCandidate(fixture, "candidate-one");
     expect(first.state.phase).toBe("candidate-recorded");
     expect(first.plan.publishOrder).toEqual([
@@ -149,6 +168,43 @@ describe("immutable release candidate", () => {
       ),
     );
     expect(packedManifest.dependencies["@release-fixture/b"]).toBe("1.2.3");
+    expect(packedManifest.exports).toEqual({
+      ".": { default: "./dist/index.js", node: "./dist/node.js" },
+      "./nested": [{ default: "./dist/index.js" }],
+    });
+    expect(packedA.entrypoints.exports).toEqual(packedManifest.exports);
+    expect(Object.keys(packedManifest.exports["."])).toEqual([
+      "default",
+      "node",
+    ]);
+    expect(
+      fs.readFileSync(sourceManifestPath).equals(sourceManifestBytes),
+    ).toBe(true);
+    const consumer = path.join(fixture.base, "consumer");
+    const installedPackage = path.join(
+      consumer,
+      "node_modules/@release-fixture/a",
+    );
+    fs.mkdirSync(installedPackage, { recursive: true });
+    execFileSync("tar", [
+      "-xzf",
+      path.join(fixture.base, "candidate-one", packedA.tarball.path),
+      "--strip-components=1",
+      "-C",
+      installedPackage,
+    ]);
+    expect(
+      execFileSync(
+        "node",
+        [
+          "--conditions=eliza-source",
+          "--input-type=module",
+          "-e",
+          'import { name } from "@release-fixture/a"; import { name as nested } from "@release-fixture/a/nested"; process.stdout.write(name + ":" + nested);',
+        ],
+        { cwd: consumer, encoding: "utf8" },
+      ),
+    ).toBe("a:a");
     expect(
       fs.readFileSync(path.join(fixture.repoRoot, "build-count"), "utf8"),
     ).toBe("1");

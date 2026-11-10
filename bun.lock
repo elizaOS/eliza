@@ -83,7 +83,7 @@
       "name": "@elizaos/agent",
       "version": "2.0.4",
       "bin": {
-        "eliza-autonomous": "./src/bin.ts",
+        "eliza-autonomous": "./dist/bin.js",
       },
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.13",

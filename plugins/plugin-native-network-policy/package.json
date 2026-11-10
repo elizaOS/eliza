@@ -9,8 +9,8 @@
     ".": {
       "eliza-source": "./src/index.ts",
       "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
+      "bun": "./dist/esm/index.js",
+      "development": "./dist/esm/index.js",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },

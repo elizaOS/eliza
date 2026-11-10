@@ -13,7 +13,7 @@
     },
     "./plugin": {
       "eliza-source": "./src/plugin.ts",
-      "bun": "./src/plugin.ts",
+      "bun": "./dist/plugin.js",
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
