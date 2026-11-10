@@ -36,6 +36,10 @@
     .links a:hover { border-color: var(--gold); }
     .risk p + p { margin-top: 8px; }
     button.swap { width: 100%; min-height: 44px; margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; cursor: not-allowed; }
+    .ad-slot { margin-top: 20px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .ad-slot[hidden] { display: none; }
+    .ad-label { margin: 0 0 8px; color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    .ad-slot .adsbygoogle { display: block; width: 100%; max-width: 100%; min-height: 90px; overflow: hidden; }
     footer { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; margin-top: 20px; color: var(--muted); font-size: var(--small); }
     footer a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 10px; background: var(--gold); color: var(--gold-ink); font-weight: 650; text-decoration: none; }
     @media (max-width: 800px) {
@@ -94,11 +98,17 @@
         <p>Not financial advice. Holding the coin is not a promise of profit, yield, or a payout.</p>
       </article>
     </main>
+    <aside id="valos-ad" class="ad-slot" hidden>
+      <p class="ad-label">Advertisement</p>
+      <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-6504655762357230" data-ad-format="auto" data-full-width-responsive="true"></ins>
+    </aside>
     <footer>
       <a href="https://valhalla-app.xyz/">ValhallaOS workspace</a>
       <p>A separate product. Live trading there is off.</p>
     </footer>
   </div>
+  <script src="/site-config.js" defer></script>
+  <script src="/volos/ads.js" defer></script>
   <script>
     document.getElementById('copy-contract').addEventListener('click', function () {
       var text = document.getElementById('official-contract').textContent.trim();

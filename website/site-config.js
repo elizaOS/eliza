@@ -10,6 +10,7 @@ window.VALHALLA_SITE = {
   adsense: false,
   ADSENSE_CLIENT: "ca-pub-6504655762357230",
   adsenseClient: "ca-pub-6504655762357230",
+  ADSENSE_SLOT: "",
   SIGNED_IN_EMAIL: "",
   TRIAL_DAYS: 15,
   PRO_PRICE: "$9.99/mo launch price",
