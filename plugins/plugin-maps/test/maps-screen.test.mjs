@@ -281,6 +281,8 @@ test("search results, place detail, saved place and rename", async () => {
   await settle();
   view = f.screen.view();
   assert.equal(view.mode, "place");
+  assert.equal(view.place?.origin, "provider");
+  assert.equal(view.place?.providerId, "fixture");
   assert.equal(view.place?.address, "1 Destination Street");
   assert.equal(view.place?.hours, "Mo-Fr 09:00-17:00");
   assert.equal(view.place?.website, "https://destination.example/");
