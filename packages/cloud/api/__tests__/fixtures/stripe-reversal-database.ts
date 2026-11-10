@@ -39,7 +39,7 @@ function denyProviderCalls() {
   ];
   const connect = net.Socket.prototype.connect;
   const socket = spyOn(net.Socket.prototype, "connect").mockImplementation(
-    function (...args) {
+    function (this: net.Socket, ...args) {
       const first = Array.isArray(args[0]) ? args[0][0] : args[0];
       const host =
         typeof first === "object" && first !== null && "host" in first

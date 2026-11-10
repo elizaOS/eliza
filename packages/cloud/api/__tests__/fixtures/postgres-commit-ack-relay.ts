@@ -10,10 +10,11 @@ export type CommitFault =
 // https://www.postgresql.org/docs/16/protocol-message-formats.html
 function readFrames(
   pending: Buffer,
-  chunk: Buffer,
+  chunk: Buffer | string,
   dispatch: (kind: string, body: Buffer, frame: Buffer) => void,
 ): Buffer {
-  let remaining = pending.length ? Buffer.concat([pending, chunk]) : chunk;
+  const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+  let remaining = pending.length ? Buffer.concat([pending, bytes]) : bytes;
   while (remaining.length >= 5) {
     const end = 1 + remaining.readUInt32BE(1);
     if (end < 5) throw new Error("Invalid native PostgreSQL test frame");
