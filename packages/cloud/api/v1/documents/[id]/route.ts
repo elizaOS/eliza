@@ -61,8 +61,9 @@ app.delete("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       return c.json({ success: false, error: "Document not found" }, 404);
     }
 
-    await memoriesRepository.deleteDocumentFragments(id);
-    await memoriesRepository.delete(id);
+    if (!(await memoriesRepository.deleteDocument(id, scope))) {
+      return c.json({ success: false, error: "Document not found" }, 404);
+    }
     return c.json({ success: true, message: "Document deleted successfully" });
   } catch (error) {
     return failureResponse(c, error);

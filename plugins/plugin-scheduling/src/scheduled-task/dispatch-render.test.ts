@@ -1,8 +1,8 @@
 /**
  * Covers model-mediated dispatch rendering and the spine's default
  * notification dispatcher: instruction-voice `promptInstructions` must never
- * reach a user-visible surface verbatim, and a render failure is a typed
- * retryable dispatch failure — never a raw-instruction fallback. Deterministic:
+ * reach a user-visible surface verbatim, and a render failure delivers the
+ * authored fallback copy at once — never a raw-instruction fallback. Deterministic:
  * the model is stubbed at the runtime boundary (`useModel`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildScheduledDispatchRenderPrompt,
   buildScheduledDispatchTitlePrompt,
-  RENDER_FAILURE_RETRY_MINUTES,
   renderScheduledDispatchMessage,
   renderScheduledDispatchTitle,
   scheduledDispatchPromptTask,
@@ -85,7 +84,7 @@ function reminderInput() {
 }
 
 describe("renderScheduledDispatchMessage", () => {
-  it("returns deterministic fallback on missing model surface, throws on model failure and blank output", async () => {
+  it("returns deterministic fallback on a missing model surface", async () => {
     // Model-free runtime: deterministic fallback (not an error)
     const fallbackBody = await renderScheduledDispatchMessage(
       makeRuntime({}).runtime,
@@ -106,48 +105,81 @@ describe("renderScheduledDispatchMessage", () => {
     await expect(
       renderScheduledDispatchMessage(callableButUnregistered, record),
     ).resolves.toBe(fallbackBody);
-
-    // Model failure: typed retryable error
-    await expect(
-      renderScheduledDispatchMessage(
-        makeRuntime({
-          model: () => {
-            throw new Error("model backend down");
-          },
-        }).runtime,
-        record,
-      ),
-    ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_RENDER_FAILED" });
-    // Blank output: typed error
-    await expect(
-      renderScheduledDispatchMessage(
-        makeRuntime({ model: () => "   \n" }).runtime,
-        record,
-      ),
-    ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_RENDER_EMPTY" });
   });
 
-  it("rejects a model response that echoes the instruction payload", async () => {
-    await expect(
-      renderScheduledDispatchMessage(
-        makeRuntime({ model: () => `Note: ${INSTRUCTION}` }).runtime,
-        record,
-      ),
-    ).rejects.toMatchObject({
-      code: "SCHEDULED_DISPATCH_RENDER_INSTRUCTION_ECHO",
-    });
+  const authoredRecord: ScheduledTaskDispatchRecord = {
+    ...record,
+    output: {
+      destination: "in_app_card",
+      fallback: { body: "Take your medication.", title: "Medication" },
+    },
+  };
+
+  it.each([
+    [
+      "model failure",
+      (): string => {
+        throw new Error("model backend down");
+      },
+      "SCHEDULED_DISPATCH_RENDER_FAILED",
+    ],
+    ["blank output", (): string => "   \n", "SCHEDULED_DISPATCH_RENDER_EMPTY"],
+    [
+      "instruction echo",
+      (): string => `Note: ${INSTRUCTION}`,
+      "SCHEDULED_DISPATCH_RENDER_INSTRUCTION_ECHO",
+    ],
+  ] as const)(
+    "returns the authored fallback body and reports on %s",
+    async (_label, model, code) => {
+      const { runtime, reported } = makeRuntime({ model });
+      const body = await renderScheduledDispatchMessage(
+        runtime,
+        authoredRecord,
+      );
+      expect(body).toBe("Take your medication.");
+      expect(reported).toHaveLength(1);
+      expect(reported[0]?.scope).toBe(
+        "scheduling:scheduled-task:dispatch-render-fallback",
+      );
+      expect(reported[0]?.error).toMatchObject({ code });
+    },
+  );
+
+  it("never falls back to the instruction when the model echoes it", async () => {
+    const body = await renderScheduledDispatchMessage(
+      makeRuntime({ model: () => INSTRUCTION }).runtime,
+      record,
+    );
+    expect(body).not.toContain("Remind the owner to take");
+    expect(body.length).toBeGreaterThan(0);
   });
 });
 
 describe("renderScheduledDispatchTitle", () => {
-  it("throws on blank title output", async () => {
-    await expect(
-      renderScheduledDispatchTitle(
-        makeRuntime({ model: () => "  \n" }).runtime,
-        record,
-        RENDERED,
-      ),
-    ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_TITLE_RENDER_EMPTY" });
+  it.each([
+    [
+      "model failure",
+      (): string => {
+        throw new Error("model backend down");
+      },
+    ],
+    ["blank output", (): string => "  \n"],
+  ] as const)("returns the fallback title on %s", async (_label, model) => {
+    const { runtime, reported } = makeRuntime({ model });
+    const title = await renderScheduledDispatchTitle(
+      runtime,
+      {
+        ...record,
+        output: {
+          destination: "in_app_card",
+          fallback: { body: "Take your medication.", title: "Medication" },
+        },
+      },
+      RENDERED,
+    );
+    expect(title).toBe("Medication");
+    expect(reported).toHaveLength(1);
   });
 });
 
@@ -219,7 +251,7 @@ describe("default scheduled-task dispatcher (model host)", () => {
     await service.stop();
   });
 
-  it("a render failure is a typed retryable dispatch failure with reportError — nothing is notified", async () => {
+  it("a render failure delivers the authored fallback with reportError", async () => {
     const notified: NotifyCapture[] = [];
     const { runtime, reported } = makeRuntime({
       model: () => {
@@ -229,22 +261,27 @@ describe("default scheduled-task dispatcher (model host)", () => {
     });
     const service = await ScheduledTaskRunnerService.start(runtime);
     const runner = service.getRunner({ agentId: String(runtime.agentId) });
-    const task = await runner.schedule(reminderInput());
+    const task = await runner.schedule({
+      ...reminderInput(),
+      output: {
+        destination: "in_app_card",
+        fallback: { body: "Take your medication.", title: "Medication" },
+      },
+    });
 
     const fired = await runner.fire(task.taskId);
 
-    // Retry-class failure: the runner parks the task for the render backoff
-    // instead of reporting a healthy fire.
-    expect(fired.metadata?.lastDispatchResult).toMatchObject({
-      ok: false,
-      reason: "transport_error",
-      retryAfterMinutes: RENDER_FAILURE_RETRY_MINUTES,
+    expect(fired.state.status).toBe("fired");
+    expect(fired.metadata?.lastDispatchResult).toMatchObject({ ok: true });
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toMatchObject({
+      body: "Take your medication.",
+      title: "Medication",
     });
-    expect(notified).toHaveLength(0);
-    expect(reported).toHaveLength(1);
-    expect(reported[0]?.scope).toBe(
-      "scheduling:scheduled-task:dispatch-render",
-    );
+    expect(reported.map((entry) => entry.scope)).toEqual([
+      "scheduling:scheduled-task:dispatch-render-fallback",
+      "scheduling:scheduled-task:dispatch-render-fallback",
+    ]);
     await service.stop();
   });
 });

@@ -114,7 +114,10 @@ func FinishDiscoveryInterval(directory, token string, lowerMillis, upperMillis i
 func FinishStagingInterval(directory, token string, lowerMillis, upperMillis int64, success bool, retryAfterMillis int64) (*CheckDecision, error) {
 	return finishScheduledWork(directory, token, lowerMillis, upperMillis, success, retryAfterMillis, true)
 }
-func finishScheduledWork(directory, token string, lowerMillis, upperMillis int64, success bool, retryAfterMillis int64, staging bool) (decision *CheckDecision, err error) {
+
+// immediate leaves a success due at once; NotBefore, Retry-After and failure
+// backoff still apply.
+func finishScheduledWork(directory, token string, lowerMillis, upperMillis int64, success bool, retryAfterMillis int64, immediate bool) (decision *CheckDecision, err error) {
 	if !validScheduleTime(lowerMillis) || !validScheduleTime(upperMillis) || upperMillis < lowerMillis || !validHex(token) || retryAfterMillis < 0 || retryAfterMillis > dayMillis {
 		return nil, errors.New("invalid discovery result")
 	}
@@ -130,7 +133,7 @@ func finishScheduledWork(directory, token string, lowerMillis, upperMillis int64
 			seed, _ := hex.DecodeString(s.Seed)
 			offset := int64(binary.BigEndian.Uint32(seed[:4]))
 			s.Next = upperMillis + 6*60*60*1000 + (offset % 1800001) - 900000
-			if staging {
+			if immediate {
 				s.Next = nowMillis
 			}
 		} else {

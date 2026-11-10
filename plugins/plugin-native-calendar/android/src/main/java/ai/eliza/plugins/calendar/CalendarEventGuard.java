@@ -26,10 +26,18 @@ public final class CalendarEventGuard {
   }
   boolean direct(String accountName,String localName){return accountName.equals(calendar.getAsString("account_name"))&&CalendarContract.ACCOUNT_TYPE_LOCAL.equals(calendar.getAsString("account_type"))&&localName.equals(calendar.getAsString("name"))&&number(calendar,"calendar_access_level")>=CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR&&number(event,"allDay")==0&&number(event,"deleted")==0&&number(event,"hasAlarm")==0&&number(event,"hasAttendeeData")==0&&event.get("original_id")==null&&event.get("original_sync_id")==null&&empty(event,"rrule")&&empty(event,"rdate")&&empty(event,"exrule")&&empty(event,"exdate")&&event.get("dtend")!=null;}
   boolean visible(JSONObject expected){return expected!=null&&same(expected.optString("title",""),event,"title")&&same(expected.optString("body",""),event,"description")&&same(expected.optString("location",""),event,"eventLocation")&&expected.optLong("begin",-1)==number(event,"dtstart")&&expected.optLong("end",-1)==number(event,"dtend");}
-  ArrayList<ContentProviderOperation> assertions(){
+  /** The calendar and event rows are unchanged. Attendee and reminder rows are not checked. */
+  ArrayList<ContentProviderOperation> rowAssertions(){
    ArrayList<ContentProviderOperation> operations=new ArrayList<>();
    operations.add(ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId)).withValues(calendar).withExpectedCount(1).build());
    operations.add(ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id)).withValues(event).withExpectedCount(1).build());
+   return operations;
+  }
+  boolean writable(){return number(calendar,"calendar_access_level")>=CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR;}
+  boolean repeating(){return !empty(event,"rrule")||!empty(event,"rdate")||!empty(event,"exrule")||!empty(event,"exdate")||event.get("original_id")!=null||!empty(event,"original_sync_id");}
+  boolean deleted(){return number(event,"deleted")!=0;}
+  ArrayList<ContentProviderOperation> assertions(){
+   ArrayList<ContentProviderOperation> operations=rowAssertions();
    operations.add(ContentProviderOperation.newAssertQuery(CalendarContract.Attendees.CONTENT_URI).withSelection("event_id=?",new String[]{Long.toString(id)}).withExpectedCount(0).build());
    operations.add(ContentProviderOperation.newAssertQuery(CalendarContract.Reminders.CONTENT_URI).withSelection("event_id=?",new String[]{Long.toString(id)}).withExpectedCount(0).build());
    return operations;

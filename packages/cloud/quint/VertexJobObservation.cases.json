@@ -1,0 +1,77 @@
+{
+  "sources": [
+    "packages/cloud/api/__tests__/vertex-job-refresh.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/vertex-model-registry-scope.test.ts",
+    "packages/cloud/shared/src/lib/services/vertex-model-registry.ts",
+    "packages/cloud/shared/src/lib/services/vertex-tuning.ts",
+    "packages/cloud/shared/src/lib/services/vertex-tuning-observation.ts",
+    "packages/cloud/shared/src/types/vertex-tuning.ts",
+    "packages/cloud/shared/src/db/schemas/vertex-tuning-jobs.ts",
+    "packages/cloud/shared/src/db/schemas/vertex-tuned-models.ts",
+    "packages/cloud/shared/src/db/migrations/0562_vertex_observation_authority.sql",
+    "packages/cloud/shared/src/db/migrations/vertex-observation-authority.test.ts",
+    "packages/cloud/api/training/vertex/jobs/route.ts",
+    "packages/cloud/shared/src/lib/storage/object-store.ts",
+    "packages/cloud/quint/check-vertex-job-observation.mjs"
+  ],
+  "conformance": "packages/cloud/quint/check-vertex-job-observation.mjs",
+  "bounds": "One existing job, two refresh attempts, eight representative provider payloads with exact timestamp ranks0..3, at most two newly prepared immutable payload keys, one storage outage or corruption, and one deletion. Running/cancelling/succeeded/failed represent mutable, cancellation-fenced and terminal state classes; all12 provider states are checked in implementation.",
+  "limitations": [
+    "One existing job, two refresh attempts, eight representative provider payloads with exact timestamp ranks0..3, at most two newly prepared immutable payload keys, one storage outage or corruption, and one deletion. Running/partial/cancelling/succeeded/failed represent mutable, cancellation-fenced and terminal state classes; all12 provider states are checked in implementation.",
+    "Provider reads, object preparation, one locked SQL commit, and strict result hydration are separate actions. SQL row locking and atomic job/model publication are assumed here and exercised by PGlite; multi-session PostgreSQL lock scheduling is not proved.",
+    "Nanosecond ranks abstract validated RFC3339 timestamps. Adjacent nanosecond and timezone-equivalent tests check the parser; the model does not prove every timestamp or cryptographic digest.",
+    "Full JSON structure is retained and hashed canonically; byte-for-byte original transport encoding, arbitrary numeric precision, provider truth and cryptographic collision resistance are external obligations.",
+    "Legacy rows establish exact authority only from a valid complete retained payload. Missing, corrupt or contradictory legacy evidence fails closed; it is not backfilled from rounded SQL timestamps.",
+    "Orphaned immutable objects can remain after a SQL rollback or a deleted job. Object garbage collection and backend migration are separate protocols.",
+    "recordSubmittedJob has no discovered live caller; its original identity/replay guard is tested, while remote job creation, assignment activation and deletion of the resulting model are outside this refresh model.",
+    "Provider updateTime orders observations. completed_at records first local terminal acceptance using the primary database clock; completed_provider_time remains null until an actual provider endTime is retained, and keeps its full nanosecond precision. The model completion rank denotes first terminal acceptance, not a fabricated provider completion time.",
+    "Updated service writers own the observation revision protocol. The schema checks receipt shape but does not fence legacy deployed writers; coordinate their rollout before claiming this authority. Normal refresh reuses a pre-read immutable receipt only after the locked revision/version/digest/pointer tuple matches; legacy or changed receipts are reread under the lock.",
+    "Only SUCCEEDED, FAILED, CANCELLED and EXPIRED are absorbing terminal states, following the TuningJob endTime contract. PARTIALLY_SUCCEEDED is retained verbatim and remains non-absorbing; it does not publish a model or establish completion.",
+    "The exact provider-assigned job name and createTime bind observations. project_id is immutable original request provenance, not proof that a project ID and number are equivalent. Resource association comes from the authenticated response to that exact job request (or the trusted submission coordinator); resource syntax and the original job region are checked; assigned resource locations are retained without inventing a same-region requirement, and terminal/published names are retained exactly. Google provider truth and project alias mapping are not proved, no alias rewriting or extra permissions/API calls are added, and early nonterminal resource identities are not assumed immutable."
+  ],
+  "providerContract": [
+    "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/projects.locations.tuningJobs",
+    "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/JobState",
+    "https://google.aip.dev/cloud/2510"
+  ],
+  "cases": [
+    {
+      "name": "owned",
+      "main": "VertexJobObservation_owned",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RequestsSettle"],
+      "temporalChecks": [
+        {
+          "property": "RequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each started provider read, object preparation, SQL decision and hydration eventually returns or fails under weak fairness of Fetch, Prepare, Commit and Hydrate. Request initiation and provider/storage success are not promised."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000
+    },
+    {
+      "name": "model-collision",
+      "main": "VertexJobObservation_collision",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RequestsSettle"],
+      "temporalChecks": [
+        {
+          "property": "RequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Each started provider read, object preparation, SQL decision and hydration eventually returns or fails under weak fairness of Fetch, Prepare, Commit and Hydrate. Request initiation and provider/storage success are not promised."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000
+    }
+  ]
+}

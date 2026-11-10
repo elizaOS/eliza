@@ -156,13 +156,25 @@ public final class ResidentLifecycleTest {
     slot.current = () -> {};
     refused(() -> NativeProviderSlot.bindDirectProvider(slot, KEY, "bad model!"), "malformed model refused");
 
-    // Clearing reads back; a slot that stays present is a failure.
+    // Unbinding reads back the retired selection and preserves separately owned keys.
     JSONObject cleared = NativeProviderSlot.clearProviderSlot(slot, false);
-    check(slot.value == null && !cleared.getBoolean("configured"), "cleared and read back");
+    JSONObject clearedSelection = new JSONObject(slot.value);
+    check(clearedSelection.getBoolean("unbound") && KEY.equals(clearedSelection.getString("key")), "unbound selection retains its owned key");
+    check(!cleared.getBoolean("configured") && !cleared.getBoolean("selected") && !cleared.toString().contains(KEY), "unbound readback admits no provider or key disclosure");
+    String retired = slot.value;
+    check(!NativeProviderSlot.clearProviderSlot(slot, true).getBoolean("configured") && retired.equals(slot.value), "repeated unbind preserves the retired selection");
+    slot.value = null;
     check(!NativeProviderSlot.clearProviderSlot(slot, true).getBoolean("configured"), "clearing an empty slot");
     slot.value = before;
+    slot.conflict = true;
+    refused(() -> NativeProviderSlot.clearProviderSlot(slot, false), "unconfirmed retirement fails");
+    check(before.equals(slot.value), "failed retirement retains the original selection");
+    slot.conflict = false;
+    slot.value = new JSONObject().put("provider", "elizacloud").put("credentialId", ID).put("model", NativeProviderAdmission.CLOUD_PROVIDER_MODEL).toString();
     slot.removeIgnored = true;
-    refused(() -> NativeProviderSlot.clearProviderSlot(slot, false), "unconfirmed removal fails");
+    refused(() -> NativeProviderSlot.clearProviderSlot(slot, false), "unconfirmed keyless legacy removal fails");
+    slot.removeIgnored = false;
+    check(!NativeProviderSlot.clearProviderSlot(slot, false).getBoolean("configured") && slot.value == null, "keyless legacy selection is removed and read back");
 
     // Provider check interpretation never echoes the key or body.
     String listed = "{\"data\":[{\"id\":\"" + MODEL + "\"}]}";

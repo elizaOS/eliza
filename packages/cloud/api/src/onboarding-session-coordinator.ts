@@ -815,11 +815,21 @@ export class OnboardingSessionCoordinator {
         } satisfies StoredSessionAlias);
         for (const key of platformHistoryKeys) await transaction.delete(key);
       }
-      if (
-        replay &&
-        (currentAlarm === null || replay.expiresAt < currentAlarm)
-      ) {
-        await transaction.setAlarm(replay.expiresAt);
+      if (replay) {
+        // A write behind a saved cursor will not appear on later pages. Carry
+        // its deadline so the end of this scan still schedules another alarm.
+        const cleanup = await transaction.get<ReplayCleanupState>(
+          REPLAY_CLEANUP_STATE_KEY,
+        );
+        if (cleanup && replay.expiresAt < (cleanup.nextExpiry ?? Infinity)) {
+          await transaction.put(REPLAY_CLEANUP_STATE_KEY, {
+            ...cleanup,
+            nextExpiry: replay.expiresAt,
+          });
+        }
+        if (currentAlarm === null || replay.expiresAt < currentAlarm) {
+          await transaction.setAlarm(replay.expiresAt);
+        }
       }
     });
     // Commit ordering for the false-success DM hazard: the storage

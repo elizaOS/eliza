@@ -71,7 +71,6 @@ export function trustedLocalMediaUrl(rawUrl: string): URL | null {
 }
 
 /** Resolve the local agent listener used by the content-addressed media store. */
-
 export function getLocalServerUrl(path: string): string {
 	// ELIZA_API_PORT and ELIZA_PORT identify the app listener; SERVER_PORT is the standalone
 	// fallback.

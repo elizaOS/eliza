@@ -7,6 +7,7 @@ compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 workers_dev = false
 preview_urls = false
+keep_vars = true
 
 # Match the canonical staging API build substitutions and Worker adapters.
 [define]
@@ -48,19 +49,16 @@ ENVIRONMENT = "staging"
 CACHE_BACKEND = "auto"
 CACHE_ENABLED = "true"
 NEXT_PUBLIC_APP_URL = "https://cloud-staging.eliza.app"
-INFERENCE_OPTIMISTIC_BILLING = "true"
-SAFE_BALANCE_THRESHOLD = "5.00"
-INFERENCE_BILLING_LEDGER = "db"
-INFERENCE_DEFERRED_ADMISSION = "true"
-INFERENCE_HOT_PATH_CACHES = "true"
-INFERENCE_AUTH_CACHE_ENABLED = "true"
-INFERENCE_STRONG_REVOCATION_ENABLED = "true"
-INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "true"
 INFERENCE_PASSTHROUGH_STREAMING = "true"
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # The canonical gate serves speech revocation subscriptions only while this
 # matches the staging API; the source contract checks every gate-read variable.
 VOICE_SPEECH_RELAY_ENABLED = "true"
+
+# Alpha P-56/P-62: separate organization Maps units, never an inference-money debit.
+# Daily limits are owner-selected; rate buckets use runbook665's v1-aligned option A.
+ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES = '{"selected":true,"plans":{"plus_monthly":{"requests":1000,"windowSeconds":86400},"pro_monthly":{"requests":5000,"windowSeconds":86400}}}'
+ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS = '{"selected":true,"plans":{"default":{"burst":{"capacity":10,"refillPerSecond":1},"sustained":{"capacity":60,"refillPerSecond":1}},"plus_monthly":{"burst":{"capacity":20,"refillPerSecond":2},"sustained":{"capacity":120,"refillPerSecond":2}},"pro_monthly":{"burst":{"capacity":50,"refillPerSecond":5},"sustained":{"capacity":300,"refillPerSecond":5}}}}'
 # Source leaves funded admission unset; target preserves its disabled default.
 # Never enable it or invent a seal while preparing this split.
 

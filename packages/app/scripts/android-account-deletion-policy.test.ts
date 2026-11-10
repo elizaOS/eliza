@@ -101,8 +101,8 @@ describe("Android Play account-deletion contract", () => {
   it("keeps deletion admission fenced until the lifecycle reservation exists", () => {
     const route = read("cloud/api/v1/me/account-deletion/route.ts");
     const lifecycle = read("cloud/shared/src/lib/services/account-deletion.ts");
-    const resourcePurge = read(
-      "cloud/shared/src/lib/services/account-deletion-resource-purge.ts",
+    const providerAdapters = read(
+      "cloud/shared/src/lib/services/account-deletion-provider-adapters.ts",
     );
     const users = read("cloud/shared/src/lib/services/users.ts");
     const appCleanup = read("cloud/shared/src/lib/services/app-cleanup.ts");
@@ -117,12 +117,12 @@ describe("Android Play account-deletion contract", () => {
     expect(lifecycle).toContain("reactivateStewardPlatformUser");
     expect(lifecycle).not.toContain("deleteStewardPlatformUser");
     expect(lifecycle).toContain("recoverStaleProcessing");
-    expect(lifecycle).toContain("purgePersonalOrganizationResources");
+    expect(lifecycle).toContain("processIrreversibleAccountDeletionSaga");
     expect(lifecycle).toContain("markActionRequired");
-    expect(resourcePurge).toContain("deleteBillingCustomer");
-    expect(resourcePurge).toContain("prepareManagedDomains");
-    expect(resourcePurge).toContain('authorization: "account_deletion"');
-    expect(resourcePurge).toContain("purgeOrganizationObjectStorage");
+    expect(providerAdapters).toContain("stripe: {");
+    expect(providerAdapters).toContain("domains: {");
+    expect(providerAdapters).toContain('authorization: "account_deletion"');
+    expect(providerAdapters).toContain("primary_object_storage: {");
     expect(users).toContain("deletePersonalOrganizationAtomically");
     expect(appCleanup).toContain("requireContainerTeardownCompletion");
     expect(publicPage).toContain("30-day recovery");

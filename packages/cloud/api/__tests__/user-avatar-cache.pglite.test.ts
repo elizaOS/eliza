@@ -1,8 +1,10 @@
 /**
  * POST /api/v1/user/avatar must evict the cached user so GET /api/v1/user
- * serves the uploaded avatar. Real primary SQL (PGlite, schema pushed from the
- * drizzle definitions), real usersService cache (MOCK_REDIS in-memory store),
- * real Hono routes. Authentication, quota accounting and R2 are stubbed.
+ * serves the uploaded avatar, and replacing or clearing an avatar must delete
+ * the old object and release its bytes. Real primary SQL (PGlite, schema
+ * pushed from the drizzle definitions), real usersService cache (MOCK_REDIS
+ * in-memory store), real Hono routes. Authentication, quota accounting and R2
+ * are stubbed.
  */
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
@@ -25,6 +27,21 @@ const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
 const OLD_AVATAR = "https://cdn.example.test/avatars/old.png";
 const R2_HOST = "https://r2.example.test";
+
+// In-memory BLOB bucket and quota ledger the stubs below write through.
+const objects = new Map<string, number>();
+const deletedKeys: string[] = [];
+const releases: bigint[] = [];
+const blob = {
+  async head(key: string) {
+    const size = objects.get(key);
+    return size === undefined ? null : { size, etag: key };
+  },
+  async delete(key: string) {
+    deletedKeys.push(key);
+    objects.delete(key);
+  },
+};
 
 const realAuth = { ...(await import("@elizaos/cloud-shared/auth")) };
 const realQuota = {
@@ -49,15 +66,20 @@ mock.module("@elizaos/cloud-shared/db/repositories/org-storage-quota", () => ({
   ...realQuota,
   orgStorageQuotaRepository: {
     tryReserveBytes: async (_org: string, bytes: bigint) => bytes,
-    releaseBytes: async () => undefined,
+    releaseBytes: async (_org: string, bytes: bigint) => {
+      releases.push(bytes);
+    },
   },
 }));
 mock.module("@elizaos/cloud-shared/lib/storage/r2-public-object", () => ({
   ...realR2,
-  putPublicObject: async (_env: unknown, options: { key: string }) => ({
-    key: options.key,
-    url: `${R2_HOST}/${options.key}`,
-  }),
+  putPublicObject: async (
+    _env: unknown,
+    options: { key: string; body: ArrayBuffer },
+  ) => {
+    objects.set(options.key, options.body.byteLength);
+    return { key: options.key, url: `${R2_HOST}/${options.key}` };
+  },
 }));
 
 const { dbWrite, closeDatabaseConnectionsForTests } = await import(
@@ -80,7 +102,8 @@ app.route("/api/v1/user", userRoute);
 const workerEnv = {
   NODE_ENV: "test",
   RATE_LIMIT_DISABLED: "true",
-  R2_PUBLIC_HOST: R2_HOST,
+  R2_PUBLIC_HOST: new URL(R2_HOST).host,
+  BLOB: blob,
 };
 
 // 1x1 transparent PNG.
@@ -163,4 +186,90 @@ test("avatar upload is visible to the cached GET /api/v1/user reader", async () 
     body.avatarUrl,
   );
   expect((await usersService.getById(USER))?.avatar).toBe(body.avatarUrl);
+});
+
+async function uploadAvatar(): Promise<string> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new File([PNG_BYTES], "avatar.png", { type: "image/png" }),
+  );
+  const res = await app.request(
+    "/api/v1/user/avatar",
+    { method: "POST", body: form },
+    workerEnv,
+  );
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { avatarUrl: string }).avatarUrl;
+}
+
+function keyOf(url: string): string {
+  return new URL(url).pathname.slice(1);
+}
+
+test("replacing an avatar deletes the previous object and releases its bytes once", async () => {
+  expect(schemaFailure).toBe("");
+  const first = await uploadAvatar();
+  deletedKeys.length = 0;
+  releases.length = 0;
+
+  const second = await uploadAvatar();
+  expect(second).not.toBe(first);
+  expect(deletedKeys).toEqual([keyOf(first)]);
+  expect(releases).toEqual([BigInt(PNG_BYTES.byteLength)]);
+  expect(objects.has(keyOf(first))).toBe(false);
+  expect(objects.has(keyOf(second))).toBe(true);
+
+  // Pointing the avatar back at the removed object and replacing it again
+  // finds nothing left to release.
+  const patch = await app.request(
+    "/api/v1/user",
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ avatar: first }),
+    },
+    workerEnv,
+  );
+  expect(patch.status).toBe(200);
+  expect(deletedKeys).toEqual([keyOf(first), keyOf(second)]);
+  expect(releases).toHaveLength(2);
+  await uploadAvatar();
+  expect(deletedKeys).toEqual([keyOf(first), keyOf(second)]);
+  expect(releases).toHaveLength(2);
+});
+
+test("clearing the avatar deletes the uploaded object; external URLs are left alone", async () => {
+  expect(schemaFailure).toBe("");
+  const uploaded = await uploadAvatar();
+  deletedKeys.length = 0;
+  releases.length = 0;
+
+  const clear = await app.request(
+    "/api/v1/user",
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ avatar: "" }),
+    },
+    workerEnv,
+  );
+  expect(clear.status).toBe(200);
+  expect(deletedKeys).toEqual([keyOf(uploaded)]);
+  expect(releases).toEqual([BigInt(PNG_BYTES.byteLength)]);
+  expect(await getCurrentAvatar()).toBeNull();
+
+  const external = await app.request(
+    "/api/v1/user",
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ avatar: OLD_AVATAR }),
+    },
+    workerEnv,
+  );
+  expect(external.status).toBe(200);
+  await uploadAvatar();
+  expect(deletedKeys).toEqual([keyOf(uploaded)]);
+  expect(releases).toHaveLength(1);
 });

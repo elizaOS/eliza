@@ -11,7 +11,7 @@ export const DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
  * Returns the literal value so callers never touch the `ContentType` enum object.
  */
 export function contentTypeForMime(mime?: string | null): ContentType {
-	const m = (mime ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+	const m = (mime ?? "").split(";")[0].trim().toLowerCase();
 	if (m.startsWith("image/")) return "image";
 	if (m.startsWith("video/")) return "video";
 	if (m.startsWith("audio/")) return "audio";
@@ -63,7 +63,7 @@ export function toMedia(
 	return media;
 }
 
-/** Bytes + resolved metadata for a connector attachment. */
+/** Bytes plus metadata a connector can upload without touching the original URL. */
 export interface ResolvedAttachmentBytes {
 	buffer: Buffer;
 	contentType: string;

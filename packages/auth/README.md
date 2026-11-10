@@ -69,6 +69,10 @@ A finished sign-in returns `{status: "authenticated", connected: true, created}`
 `created` is Cloud's `accountCreated` from the mobile connect grant: `true` when
 this sign-in made the Cloud account, `false` when it existed. It is kept with the
 pending receipt for `resume`, and it is absent when Cloud did not send it.
+With `answerUnavailableConfig: true`, `config` answers
+`{available: false, pending: false, unavailable}` (the `error8` message) when
+Cloud does not know or confirm the binding: HTTP 400, 401 or 403, or a binding
+that does not match. Other failures still throw, and `start` still refuses.
 
 Google sign-in is API-only and off by default. Configure `googleRedirectUri`
 (an https address, or loopback `http://127.0.0.1|localhost|[::1]` with its exact
@@ -278,6 +282,17 @@ rejects conflicting live counters before publication.
 Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
 refresh, logout, provider callbacks, and database readiness pass in staging.
 Preserve the original service until production acceptance and rollback checks pass.
+
+For a staging tenant that should send sign-in emails through Cloudflare Email
+Sending, set `CLOUDFLARE_EMAIL_TENANT_ID` to the tenant ID resolved by Steward,
+`CLOUDFLARE_EMAIL_ACCOUNT_ID` to the sending account, and
+`CLOUDFLARE_EMAIL_FROM` to a bare sender address on a verified sending domain.
+Supply `CLOUDFLARE_EMAIL_API_TOKEN` as a runtime secret with Email Sending Edit
+for that account. Only the matching tenant switches providers. Incomplete
+configuration refuses to issue a challenge. The provider must report the
+recipient as delivered or queued with a message ID; queue acceptance does
+not prove the code reached the inbox. Remove the tenant selector to restore
+the previous provider, then verify receipt and redemption separately.
 
 For Redis login-state transfer, pipe a JSON snapshot with `capturedAtMs` and
 `entries: [{key, value, expiresAtMs}]` into

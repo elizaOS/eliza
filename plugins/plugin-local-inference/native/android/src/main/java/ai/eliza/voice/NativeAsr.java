@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * On-device English transcription with the ASR head of
@@ -21,6 +23,8 @@ public final class NativeAsr implements AutoCloseable {
 
     private final Object handleLock = new Object();
     private final List<Stream> streams = new ArrayList<>();
+    /** Bumped by {@link #cancel}; a call admitted under an older value ends cancelled. */
+    private final AtomicLong generation = new AtomicLong();
     private long handle;
     private final boolean ownsContext;
 
@@ -47,10 +51,22 @@ public final class NativeAsr implements AutoCloseable {
         handle = ctx;
     }
 
-    /** Transcribes 16 kHz mono PCM in [-1, 1]. */
-    public synchronized String transcribe(float[] pcm16kMono) {
+    /**
+     * Transcribes 16 kHz mono PCM in [-1, 1]. A {@link #cancel} after this call began, while it
+     * waits for the lock or runs, makes it throw: the library clears its cancel flag when a call
+     * enters, so a cancel just before that point does not stop the native call, and its
+     * transcript is discarded.
+     */
+    public String transcribe(float[] pcm16kMono) {
         if (pcm16kMono == null || pcm16kMono.length == 0) throw new IllegalArgumentException("Expected audio");
-        return VoiceNative.nativeAsrTranscribe(check(), pcm16kMono, SAMPLE_RATE);
+        final long admitted = generation.get();
+        synchronized (this) {
+            long ctx = check();
+            if (generation.get() != admitted) throw new CancellationException();
+            String text = VoiceNative.nativeAsrTranscribe(ctx, pcm16kMono, SAMPLE_RATE);
+            if (generation.get() != admitted) throw new CancellationException();
+            return text;
+        }
     }
 
     /** True when the loaded backend streams (Phonon-2); false only for a library built without Parakeet-TDT. */
@@ -73,8 +89,12 @@ public final class NativeAsr implements AutoCloseable {
         return out;
     }
 
-    /** Stops the running transcription, if any. Safe from any thread. */
+    /**
+     * Stops the running transcription and every call waiting for it, if any. Safe from any thread.
+     * It is not aimed at one call: a caller that shares this instance cancels only its own running call.
+     */
     public void cancel() {
+        generation.incrementAndGet();
         synchronized (handleLock) {
             if (handle != 0) VoiceNative.nativeAsrCancel(handle);
         }

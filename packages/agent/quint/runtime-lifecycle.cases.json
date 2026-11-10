@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/boot-pipeline.ts",
+    "packages/agent/src/runtime/deferred-boot-owner.ts",
+    "packages/agent/src/runtime/process-lifecycle.ts"
+  ],
+  "bounds": {
+    "domain": "Eight boot phases and two deferred task identities.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_lifecycle",
+      "main": "runtime_lifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

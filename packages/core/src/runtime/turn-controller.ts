@@ -43,11 +43,11 @@ interface ActiveTurn {
 	reason?: string;
 }
 
-const currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();
-
 export class TurnControllerRegistry {
+	private readonly currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();
 	private active = new Map<string, ActiveTurn[]>();
 	private listeners = new Set<(event: TurnEvent) => void>();
+	private closedReason: string | null = null;
 
 	/**
 	 * Run `fn` inside a turn-scoped AbortController. The signal is passed to
@@ -68,12 +68,16 @@ export class TurnControllerRegistry {
 			controller,
 			startedAt: Date.now(),
 		};
+		if (this.closedReason !== null) {
+			turn.reason = this.closedReason;
+			controller.abort(new TurnAbortedError(this.closedReason));
+		}
 		const turns = this.active.get(roomId) ?? [];
 		turns.push(turn);
 		this.active.set(roomId, turns);
 		this.emit({ type: "started", roomId, startedAt: turn.startedAt });
 		try {
-			const result = await currentTurnStorage.run(turn, () =>
+			const result = await this.currentTurnStorage.run(turn, () =>
 				fn(controller.signal),
 			);
 			this.emit({
@@ -102,14 +106,8 @@ export class TurnControllerRegistry {
 			}
 			throw error;
 		} finally {
-			const remaining = (this.active.get(roomId) ?? []).filter(
-				(t) => t !== turn,
-			);
-			if (remaining.length > 0) {
-				this.active.set(roomId, remaining);
-			} else {
-				this.active.delete(roomId);
-			}
+			turns.splice(turns.indexOf(turn), 1);
+			if (turns.length === 0) this.active.delete(roomId);
 		}
 	}
 
@@ -128,7 +126,7 @@ export class TurnControllerRegistry {
 		// evaluator could only ever find its own controller and self-aborted
 		// (live 2026-08-19: "cancel all ur running coding tasks" → errored
 		// turn, nothing delivered).
-		const self = currentTurnStorage.getStore();
+		const self = this.currentTurnStorage.getStore();
 		let aborted = false;
 		for (const turn of this.active.get(roomId) ?? []) {
 			if (turn === self) continue;
@@ -167,13 +165,23 @@ export class TurnControllerRegistry {
 		return aborted;
 	}
 
+	/**
+	 * Abort every active turn and every turn that starts later. Runtime stop
+	 * uses it: a turn already holding or queued for its room enters runWith
+	 * after the stop and must not run unaborted.
+	 */
+	closeTurns(reason: string): string[] {
+		this.closedReason = reason;
+		return this.abortAllTurns(reason);
+	}
+
 	hasActiveTurn(roomId: string): boolean {
 		return this.active.has(roomId);
 	}
 
 	/** Whether abortTurn could stop work in this room, excluding its caller. */
 	hasAbortableTurn(roomId: string): boolean {
-		const self = currentTurnStorage.getStore();
+		const self = this.currentTurnStorage.getStore();
 		return (this.active.get(roomId) ?? []).some(
 			(turn) => turn !== self && !turn.controller.signal.aborted,
 		);
@@ -195,7 +203,7 @@ export class TurnControllerRegistry {
 	 * newest turn's signal.
 	 */
 	signalFor(roomId: string): AbortSignal | null {
-		const self = currentTurnStorage.getStore();
+		const self = this.currentTurnStorage.getStore();
 		if (self && self.roomId === roomId) return self.controller.signal;
 		const turns = this.active.get(roomId);
 		return turns && turns.length > 0
@@ -235,26 +243,3 @@ export type TurnEvent =
 			reason: string;
 			durationMs: number;
 	  };
-
-/**
- * Minimum runtime surface needed to abort in-flight inference. We keep this
- * structural so non-`AgentRuntime` test doubles can satisfy the contract
- * without dragging in the full interface.
- */
-export interface AbortableInflightRuntime {
-	turnControllers: Pick<
-		TurnControllerRegistry,
-		"abortAllTurns" | "activeRoomIds"
-	>;
-}
-
-/**
- * Aborts active inference turns and returns affected room IDs. Idle or already-aborted turns
- * are skipped; the supplied reason propagates to cancellation errors.
- */
-export function abortInflightInference(
-	runtime: AbortableInflightRuntime,
-	reason = "abort-inflight-inference",
-): string[] {
-	return runtime.turnControllers.abortAllTurns(reason);
-}

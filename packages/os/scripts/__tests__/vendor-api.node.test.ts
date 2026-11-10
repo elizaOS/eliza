@@ -55,19 +55,17 @@ test("the Pixel 10a source profile locks the stock stallion vendor API", () => {
   const { codename, vendorApiLevel } = stallion();
   assert.equal(codename, "stallion");
   assert.match(vendorApiLevel, /^[0-9]{6}$/);
-  // Every brand's Pixel 10a product lunches a release configuration that must
-  // carry this level; the shared hardware target names the same release.
+  // Eliza's product lunches the shared target's release configuration. Other
+  // consumers own their composition and use the same stock-vendor API check.
   const target = read("android/hardware-targets.json").targets.find(
     (entry) => entry.targetId === "pixel10a-stallion",
   );
-  for (const brand of ["eliza", "alpha"]) {
-    const product = read(`android/products/pixel10a-${brand}.json`);
-    assert.equal(product.sourceProfile, "pixel10a");
-    assert.ok(
-      target.lunchTarget.endsWith(`-${product.releaseConfig}-user`),
-      `${brand} release ${product.releaseConfig} matches the hardware target`,
-    );
-  }
+  const product = read("android/products/pixel10a-eliza.json");
+  assert.equal(product.sourceProfile, "pixel10a");
+  assert.ok(
+    target.lunchTarget.endsWith(`-${product.releaseConfig}-user`),
+    `Eliza release ${product.releaseConfig} matches the hardware target`,
+  );
 });
 
 test("a stallion tree whose release and vendor VINTF carry the locked API is admitted", (t) => {

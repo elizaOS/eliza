@@ -49,11 +49,12 @@ function fixture(t, application) {
         "tabs",
         "scripting",
         "webNavigation",
+        "webRequest",
         "storage",
         "nativeMessaging",
         "alarms",
       ],
-      host_permissions: ["http://*/*", "https://*/*"],
+      host_permissions: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"],
       background: { service_worker: "background.mjs", type: "module" },
     }),
   );

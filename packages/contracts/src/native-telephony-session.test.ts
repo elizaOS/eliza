@@ -201,6 +201,23 @@ test("holding the SMS role, an opened conversation is marked read through the ne
     [],
   );
   assert.deepEqual((await run(true, [])).marks, []);
+  // A newer row the host could not read completely was never shown.
+  const unreadable = {
+    id: "sms:10",
+    kind: "sms",
+    threadId: "thread:5",
+    date: 1700000001000,
+    incomplete: true,
+    reason: "body-too-long",
+  };
+  assert.deepEqual(
+    (await run(true, [unreadable, ...rows] as typeof rows)).marks,
+    [["thread:5", 1700000000900]],
+  );
+  assert.deepEqual(
+    (await run(true, [unreadable] as unknown as typeof rows)).marks,
+    [],
+  );
   const failed = await run(true, rows, async () => {
     throw Error("provider refused");
   });

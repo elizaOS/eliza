@@ -16,7 +16,7 @@
  * (no PA-domain coupling) and the source is tagged `default_pack`.
  *
  * Pack contents (both `respectsGlobalPause: true`, `ownerVisible: true`):
- *   - **Good morning** — a `reminder` on a daily cron (08:00 local, UTC), so it
+ *   - **Good morning** — a `reminder` on a daily cron (08:00 owner-local), so it
  *     ships RUNNING and the widget shows it on the running top-line.
  *   - **Weekly review** — a `recap` with a `manual` trigger, so it exists and
  *     is owner-visible but never fires on its own → ships PAUSED. A starter the
@@ -29,6 +29,7 @@
  */
 
 import type { DefaultTaskPack } from "./seed-registry.js";
+import { OWNER_LOCAL_TZ } from "./trigger-tz.js";
 import type { ScheduledTaskInput } from "./types.js";
 
 /** Stable pack id + per-task idempotency keys for the built-in fallback. */
@@ -43,10 +44,9 @@ export const FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS = {
  * Build the built-in fallback pack. `createdBy` is the seeding agent so the
  * rows are attributed; everything else is fixed and generic.
  *
- * A daily 08:00 cron in UTC is intentional: the spine here has no OwnerFactStore
- * (that is PA's), so there is no per-user morning window to read. A fixed
- * generic time keeps the fallback honest — the owner can edit the time, give the
- * weekly review a schedule, or let PA's richer pack supersede this entirely.
+ * The daily 08:00 cron uses the owner's zone. Without a consumer fact store,
+ * the runner uses the configured scheduling zone, then the local host zone.
+ * The owner can edit the time or give the weekly review a schedule.
  */
 export function buildFallbackDefaultPack(opts: {
   agentId: string;
@@ -57,7 +57,7 @@ export function buildFallbackDefaultPack(opts: {
       kind: "reminder",
       promptInstructions:
         "Wish the owner a warm good morning and surface anything pressing for the day.",
-      trigger: { kind: "cron", expression: "0 8 * * *", tz: "UTC" },
+      trigger: { kind: "cron", expression: "0 8 * * *", tz: OWNER_LOCAL_TZ },
       priority: "low",
       respectsGlobalPause: true,
       source: "default_pack",

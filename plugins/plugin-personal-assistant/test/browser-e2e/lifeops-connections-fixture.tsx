@@ -292,6 +292,7 @@ let syncControl: import("@elizaos/contracts").LifeOpsLinkedCalendarControl = {
   pendingDispatch: params.has("pending-sync")
     ? { linkId: "fixture-pending" }
     : null,
+  conflicts: 0,
 };
 const adapter: LifeOpsConnectionsAdapter = {
   async getLinkedCalendarControl() {

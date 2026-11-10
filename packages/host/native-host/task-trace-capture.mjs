@@ -81,9 +81,11 @@ export function createTaskTraceCapture({
         // pages rather than refusing an owner with many tasks. Per-task
         // checkpoints make re-reading an already captured task a no-op.
         // One JSON array per page over `get`: the encrypted task driver has
-        // no `all`, and the task store reads its journal the same way.
+        // no `all`, and the task store reads its journal the same way. A
+        // record this build cannot read is set aside by the task store and
+        // has no events to capture, so it is skipped.
         const taskPage = db.prepare(
-          "SELECT json_group_array(id) AS ids FROM (SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? AND id>? ORDER BY id LIMIT ?)",
+          "SELECT json_group_array(id) AS ids FROM (SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? AND id>? AND id NOT IN (SELECT task_id FROM interactive_task_quarantine_v1) ORDER BY id LIMIT ?)",
         );
         let captured = 0,
           excluded = 0,

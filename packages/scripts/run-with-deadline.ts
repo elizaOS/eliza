@@ -4,6 +4,7 @@
  * when the deadline passes. Exists for test suites that can wedge instead of
  * exiting (leaked handles keep a runner's event loop alive after the last
  * test): a bounded failure with output beats holding a CI job to its cap.
+ * SIGINT and SIGTERM drain the process group and return 130 and 143.
  * Exit codes: the child's own code on normal completion, 124 on deadline,
  * 127 when the command cannot start, and 2 on usage errors. On Windows, 1 can
  * be the child's own status or a supervisor failure, including cleanup that
@@ -45,7 +46,7 @@ const WINDOWS_JOB_SUPERVISOR = fileURLToPath(
  * @param {string} raw
  * @returns {number}
  */
-export function parseDeadlineMs(raw) {
+export function parseDeadlineMs(raw: string) {
   if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
     throw new Error(
       `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
@@ -69,7 +70,7 @@ export function parseDeadlineMs(raw) {
  * @param {string[]} argv process.argv slice after the script path
  * @returns {{ deadlineMs: number, command: string, args: string[] }}
  */
-export function parseArgs(argv) {
+export function parseArgs(argv: string[]) {
   const deadlineRaw = argv[0] ?? "";
   if (argv[1] !== "--" || argv.length < 3) {
     throw new Error(
@@ -81,8 +82,12 @@ export function parseArgs(argv) {
   return { deadlineMs, command, args };
 }
 
-function main(argv) {
-  let options;
+/** Start one owned command group and exit this process with its result. */
+export function runWithDeadline(
+  argv: string[],
+  terminationGraceMs = TERMINATION_GRACE_MS,
+) {
+  let options: ReturnType<typeof parseArgs>;
   try {
     options = parseArgs(argv);
   } catch (error) {
@@ -128,18 +133,18 @@ function main(argv) {
         },
       )
     : spawn(command, args, { stdio: "inherit", detached: true });
-  let timer;
-  let windowsSettleTimer;
-  let windowsForceExitTimer;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let windowsSettleTimer: ReturnType<typeof setTimeout> | undefined;
+  let windowsForceExitTimer: ReturnType<typeof setTimeout> | undefined;
   let windowsWatchdogExpired = false;
   child.once("exit", () => {
     clearTimeout(timer);
     clearTimeout(windowsSettleTimer);
   });
 
-  const killGroup = (signal) => {
+  const killGroup = (signal: NodeJS.Signals) => {
     try {
-      if (isWindows) {
+      if (isWindows || child.pid === undefined) {
         child.kill(signal);
         return;
       }
@@ -156,18 +161,18 @@ function main(argv) {
   };
 
   const processGroupExists = () => {
-    if (isWindows) return false;
+    if (isWindows || child.pid === undefined) return false;
     try {
       process.kill(-child.pid, 0);
       return true;
     } catch (error) {
       // error-policy:J6 process-group liveness probe: ESRCH proves teardown;
       // permission or transient probe errors conservatively mean still alive.
-      return error?.code !== "ESRCH";
+      return (error as NodeJS.ErrnoException)?.code !== "ESRCH";
     }
   };
 
-  const waitForProcessGroupGone = async (timeoutMs) => {
+  const waitForProcessGroupGone = async (timeoutMs: number) => {
     const deadline = Date.now() + timeoutMs;
     while (processGroupExists() && Date.now() < deadline) {
       await new Promise((resolve) =>
@@ -178,11 +183,15 @@ function main(argv) {
   };
 
   let timedOut = false;
+  let interruptedSignal: NodeJS.Signals | null = null;
   let timeoutDone = false;
-  let closeResult = null;
+  let closeResult: {
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  } | null = null;
   const finish = () => {
     if (!closeResult) return;
-    if (timedOut) {
+    if (timedOut || interruptedSignal) {
       // A SIGTERM'd group leader can close before its descendants. If the
       // group is already gone, settle immediately; otherwise keep the wrapper
       // alive for the escalation path below.
@@ -190,9 +199,35 @@ function main(argv) {
         timeoutDone = true;
       }
       if (!timeoutDone) return;
-      process.exit(124);
+      process.exit(
+        interruptedSignal === "SIGINT" ? 130 : interruptedSignal ? 143 : 124,
+      );
     }
     process.exit(closeResult.code ?? (closeResult.signal ? 1 : 0));
+  };
+  const terminateGroup = (signal: NodeJS.Signals) => {
+    killGroup(signal);
+    if (isWindows) return;
+    void (async () => {
+      const gracefullyReaped =
+        await waitForProcessGroupGone(terminationGraceMs);
+      if (!gracefullyReaped) {
+        console.error(
+          `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
+        );
+        killGroup("SIGKILL");
+        const reaped = await waitForProcessGroupGone(
+          PROCESS_GROUP_REAP_TIMEOUT_MS,
+        );
+        if (!reaped) {
+          console.error(
+            `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
+          );
+        }
+      }
+      timeoutDone = true;
+      finish();
+    })();
   };
   if (isWindows) {
     timer = setTimeout(
@@ -222,35 +257,17 @@ function main(argv) {
       console.error(
         `[run-with-deadline] wall-clock deadline of ${deadlineMs}ms exceeded; killing "${command}" process group`,
       );
-      killGroup("SIGTERM");
-      void (async () => {
-        const gracefullyReaped =
-          await waitForProcessGroupGone(TERMINATION_GRACE_MS);
-        if (gracefullyReaped) {
-          timeoutDone = true;
-          finish();
-          return;
-        }
-        console.error(
-          `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
-        );
-        killGroup("SIGKILL");
-        const reaped = await waitForProcessGroupGone(
-          PROCESS_GROUP_REAP_TIMEOUT_MS,
-        );
-        if (!reaped) {
-          console.error(
-            `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
-          );
-        }
-        timeoutDone = true;
-        finish();
-      })();
+      terminateGroup("SIGTERM");
     }, deadlineMs);
   }
 
-  for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.on(signal, () => killGroup(signal));
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      if (timedOut || interruptedSignal) return;
+      interruptedSignal = signal;
+      clearTimeout(timer);
+      terminateGroup(signal);
+    });
   }
 
   child.on("error", (error) => {
@@ -279,5 +296,5 @@ if (
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main(process.argv.slice(2));
+  runWithDeadline(process.argv.slice(2));
 }

@@ -1,0 +1,352 @@
+{
+  "cases": [
+    {
+      "name": "daemonOneshot",
+      "main": "TaskService_daemonOneshot",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneShotAtMostOnce",
+        "OneShotDeletedAfterRun",
+        "BlockingNoOverlap",
+        "ClaimHeld",
+        "NoLostWake",
+        "PausedNotSelected",
+        "DirtyArmed"
+      ],
+      "temporal": ["RunnerFinishes", "WriteSeen", "WakeServed", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskService.daemonOneshot.cfg",
+        "constants": [
+          "Mode = \"daemon\"",
+          "Kind = \"oneshot\"",
+          "Blocking = TRUE",
+          "Tm = Tm",
+          "DueRunners = {d1}",
+          "DaemonRunners = {k1}",
+          "ByIdRunners = {}",
+          "MaxRequests = 0",
+          "MaxPauses = 1",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "OneShotAtMostOnce",
+          "OneShotDeletedAfterRun",
+          "BlockingNoOverlap",
+          "ClaimHeld",
+          "NoLostWake",
+          "PausedNotSelected",
+          "DirtyArmed"
+        ],
+        "properties": ["RunnerFinishes", "WriteSeen", "WakeServed"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "RunnerFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonOneshot: RunnerFinishes = Fairness implies Runners.exclude(Timers).forall(r => s.pc.get(r) != \"idle\" leadsTo s.pc.get(r) == \"done\")",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WriteSeen",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonOneshot: WriteSeen = Fairness implies (Mode == \"local\" implies (s.unseen leadsTo not(s.unseen)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WakeServed",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonOneshot: WakeServed = Fairness implies (Mode == \"local\" and Repeat implies 1.to(MaxRev).forall(k => s.unserved.contains(k) leadsTo (not(s.unserved.contains(k)) or s.row.paused)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonOneshot: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "daemonRepeat",
+      "main": "TaskService_daemonRepeat",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneShotAtMostOnce",
+        "OneShotDeletedAfterRun",
+        "BlockingNoOverlap",
+        "ClaimHeld",
+        "NoLostWake",
+        "PausedNotSelected",
+        "DirtyArmed"
+      ],
+      "temporal": ["RunnerFinishes", "WriteSeen", "WakeServed", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskService.daemonRepeat.cfg",
+        "constants": [
+          "Mode = \"daemon\"",
+          "Kind = \"repeat\"",
+          "Blocking = TRUE",
+          "Tm = Tm",
+          "DueRunners = {d1}",
+          "DaemonRunners = {k1}",
+          "ByIdRunners = {b1}",
+          "MaxRequests = 1",
+          "MaxPauses = 1",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "OneShotAtMostOnce",
+          "OneShotDeletedAfterRun",
+          "BlockingNoOverlap",
+          "ClaimHeld",
+          "NoLostWake",
+          "PausedNotSelected",
+          "DirtyArmed"
+        ],
+        "properties": ["RunnerFinishes", "WriteSeen", "WakeServed"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "RunnerFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonRepeat: RunnerFinishes = Fairness implies Runners.exclude(Timers).forall(r => s.pc.get(r) != \"idle\" leadsTo s.pc.get(r) == \"done\")",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WriteSeen",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonRepeat: WriteSeen = Fairness implies (Mode == \"local\" implies (s.unseen leadsTo not(s.unseen)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WakeServed",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonRepeat: WakeServed = Fairness implies (Mode == \"local\" and Repeat implies 1.to(MaxRev).forall(k => s.unserved.contains(k) leadsTo (not(s.unserved.contains(k)) or s.row.paused)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_daemonRepeat: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "localOneshot",
+      "main": "TaskService_localOneshot",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneShotAtMostOnce",
+        "OneShotDeletedAfterRun",
+        "BlockingNoOverlap",
+        "ClaimHeld",
+        "NoLostWake",
+        "PausedNotSelected",
+        "DirtyArmed"
+      ],
+      "temporal": ["RunnerFinishes", "WriteSeen", "WakeServed", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskService.localOneshot.cfg",
+        "constants": [
+          "Mode = \"local\"",
+          "Kind = \"oneshot\"",
+          "Blocking = TRUE",
+          "Tm = Tm",
+          "DueRunners = {d1}",
+          "DaemonRunners = {}",
+          "ByIdRunners = {b1}",
+          "MaxRequests = 0",
+          "MaxPauses = 2",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "OneShotAtMostOnce",
+          "OneShotDeletedAfterRun",
+          "BlockingNoOverlap",
+          "ClaimHeld",
+          "NoLostWake",
+          "PausedNotSelected",
+          "DirtyArmed"
+        ],
+        "properties": ["RunnerFinishes", "WriteSeen", "WakeServed"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "RunnerFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localOneshot: RunnerFinishes = Fairness implies Runners.exclude(Timers).forall(r => s.pc.get(r) != \"idle\" leadsTo s.pc.get(r) == \"done\")",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WriteSeen",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localOneshot: WriteSeen = Fairness implies (Mode == \"local\" implies (s.unseen leadsTo not(s.unseen)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WakeServed",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localOneshot: WakeServed = Fairness implies (Mode == \"local\" and Repeat implies 1.to(MaxRev).forall(k => s.unserved.contains(k) leadsTo (not(s.unserved.contains(k)) or s.row.paused)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localOneshot: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "localRepeat",
+      "main": "TaskService_localRepeat",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneShotAtMostOnce",
+        "OneShotDeletedAfterRun",
+        "BlockingNoOverlap",
+        "ClaimHeld",
+        "NoLostWake",
+        "PausedNotSelected",
+        "DirtyArmed"
+      ],
+      "temporal": ["RunnerFinishes", "WriteSeen", "WakeServed", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskService.localRepeat.cfg",
+        "constants": [
+          "Mode = \"local\"",
+          "Kind = \"repeat\"",
+          "Blocking = TRUE",
+          "Tm = Tm",
+          "DueRunners = {}",
+          "DaemonRunners = {}",
+          "ByIdRunners = {b1}",
+          "MaxRequests = 1",
+          "MaxPauses = 1",
+          "None = None"
+        ],
+        "specification": ["Spec"],
+        "invariants": [
+          "TypeOK",
+          "OneShotAtMostOnce",
+          "OneShotDeletedAfterRun",
+          "BlockingNoOverlap",
+          "ClaimHeld",
+          "NoLostWake",
+          "PausedNotSelected",
+          "DirtyArmed"
+        ],
+        "properties": ["RunnerFinishes", "WriteSeen", "WakeServed"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "RunnerFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localRepeat: RunnerFinishes = Fairness implies Runners.exclude(Timers).forall(r => s.pc.get(r) != \"idle\" leadsTo s.pc.get(r) == \"done\")",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WriteSeen",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localRepeat: WriteSeen = Fairness implies (Mode == \"local\" implies (s.unseen leadsTo not(s.unseen)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "WakeServed",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localRepeat: WakeServed = Fairness implies (Mode == \"local\" and Repeat implies 1.to(MaxRev).forall(k => s.unserved.contains(k) leadsTo (not(s.unserved.contains(k)) or s.row.paused)))",
+            "Model fairness predicate Fairness = and { Runners.forall(r => RunnerStep(r).weakFair(s)), Timers.union(DaemonRunners).union(ByIdRunners).forall(r => Begin(r).weakFair(s)), DueRunners.forall(r => Begin(r).strongFair(s)), Elapse.weakFair(s), WakeElapse.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskService_localRepeat: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "packages/core/src/services/task.ts",
+    "plugins/plugin-sql/src/stores/task-wake.ts"
+  ]
+}

@@ -2,10 +2,11 @@
  * Proves unified provider settlement and receipt projection against a real
  * PGlite transaction, including rollback and same-key concurrency.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { sqlRows } from "../../../db/execute-helpers";
+import * as outboundFetch from "../../security/safe-fetch";
 
 const ORG_A = "10000000-0000-4000-8000-000000000001";
 const ORG_B = "10000000-0000-4000-8000-000000000002";
@@ -700,3 +701,190 @@ describe("durable payment request settlement", () => {
     ).toHaveLength(0);
   });
 });
+
+test("late callback completion preserves its successor's exact claim", async () => {
+  await insertRequest({ txRef: "pi_a" });
+  await processPaymentProviderEvent(stripeEvent());
+  await dbWrite.execute(
+    sql`UPDATE payment_requests SET callback_url='https://callback.example.test/payment'`,
+  );
+  const enteredFirst = Promise.withResolvers<void>();
+  const enteredSuccessor = Promise.withResolvers<void>();
+  const firstResponse = Promise.withResolvers<Response>();
+  const successorResponse = Promise.withResolvers<Response>();
+  let calls = 0;
+  const fetchSpy = spyOn(outboundFetch, "safeFetch").mockImplementation(async () => {
+    calls++;
+    if (calls === 1) {
+      enteredFirst.resolve();
+      return firstResponse.promise;
+    }
+    enteredSuccessor.resolve();
+    return successorResponse.promise;
+  });
+  let first: ReturnType<typeof dispatchPaymentCallbacks> | undefined;
+  let successor: ReturnType<typeof dispatchPaymentCallbacks> | undefined;
+  try {
+    first = dispatchPaymentCallbacks({ provider: "stripe", providerEventId: "evt_a", limit: 1 });
+    await enteredFirst.promise;
+    // A paused process can resume after another worker acquired its expired claim.
+    await dbWrite.execute(sql`UPDATE payment_request_events
+      SET callback_claimed_until=clock_timestamp()-interval '1 second'
+      WHERE provider='stripe' AND provider_event_id='evt_a'`);
+    successor = dispatchPaymentCallbacks({
+      provider: "stripe",
+      providerEventId: "evt_a",
+      limit: 1,
+    });
+    await enteredSuccessor.promise;
+    const [claimed] = await sqlRows<{ deadline: string }>(
+      dbWrite,
+      sql`SELECT callback_claimed_until::text AS deadline FROM payment_request_events
+          WHERE provider='stripe' AND provider_event_id='evt_a'`,
+    );
+    firstResponse.reject(new Error("old worker resumed after lease takeover"));
+    expect(await first).toEqual({ claimed: 1, dispatched: 0, failed: 0 });
+    const [retained] = await sqlRows<{ callback_state: string; deadline: string }>(
+      dbWrite,
+      sql`SELECT callback_state, callback_claimed_until::text AS deadline FROM payment_request_events
+          WHERE provider='stripe' AND provider_event_id='evt_a'`,
+    );
+    expect(retained).toEqual({ callback_state: "pending", deadline: claimed?.deadline });
+    successorResponse.resolve(new Response(null, { status: 200 }));
+    expect(await successor).toEqual({ claimed: 1, dispatched: 1, failed: 0 });
+  } finally {
+    firstResponse.resolve(new Response(null, { status: 200 }));
+    successorResponse.resolve(new Response(null, { status: 200 }));
+    await Promise.allSettled([first, successor]);
+    fetchSpy.mockRestore();
+  }
+}, 60_000);
+
+test("a callback batch claims each event when ready to send", async () => {
+  await insertRequest({ txRef: "pi_a" });
+  await insertRequest({ id: REQUEST_B, txRef: "pi_b" });
+  await processPaymentProviderEvent(stripeEvent());
+  await processPaymentProviderEvent(
+    stripeEvent({
+      requestId: REQUEST_B,
+      eventId: "evt_b",
+      txRef: "pi_b",
+      digest: "b".repeat(64),
+    }),
+  );
+  await dbWrite.execute(
+    sql`UPDATE payment_requests SET callback_url='https://callback.example.test/payment'`,
+  );
+  await dbWrite.execute(sql`UPDATE payment_request_events
+    SET occurred_at=clock_timestamp()-interval '2 minutes' WHERE provider_event_id='evt_a'`);
+  const enteredFirst = Promise.withResolvers<void>();
+  const enteredSecond = Promise.withResolvers<void>();
+  const firstResponse = Promise.withResolvers<Response>();
+  const secondResponse = Promise.withResolvers<Response>();
+  let secondCalls = 0;
+  const fetchSpy = spyOn(outboundFetch, "safeFetch").mockImplementation(async (_url, init = {}) => {
+    const eventId = new Headers(init.headers).get("X-Eliza-Delivery");
+    if (eventId === "evt_a") {
+      enteredFirst.resolve();
+      return firstResponse.promise;
+    }
+    secondCalls++;
+    enteredSecond.resolve();
+    return secondResponse.promise;
+  });
+  let batch: ReturnType<typeof dispatchPaymentCallbacks> | undefined;
+  let successor: ReturnType<typeof dispatchPaymentCallbacks> | undefined;
+  try {
+    batch = dispatchPaymentCallbacks({ limit: 2 });
+    await enteredFirst.promise;
+    const [queued] = await sqlRows<{ callback_claimed_until: Date | null }>(
+      dbWrite,
+      sql`SELECT callback_claimed_until FROM payment_request_events WHERE provider_event_id='evt_b'`,
+    );
+    expect(queued?.callback_claimed_until).toBeNull();
+    successor = dispatchPaymentCallbacks({
+      provider: "stripe",
+      providerEventId: "evt_b",
+      limit: 1,
+    });
+    await enteredSecond.promise;
+    firstResponse.resolve(new Response(null, { status: 200 }));
+    expect(await batch).toEqual({ claimed: 1, dispatched: 1, failed: 0 });
+    expect(secondCalls).toBe(1);
+    secondResponse.resolve(new Response(null, { status: 200 }));
+    expect(await successor).toEqual({ claimed: 1, dispatched: 1, failed: 0 });
+  } finally {
+    firstResponse.resolve(new Response(null, { status: 200 }));
+    secondResponse.resolve(new Response(null, { status: 200 }));
+    await Promise.allSettled([batch, successor]);
+    fetchSpy.mockRestore();
+  }
+}, 60_000);
+
+test("callback completion compares all PostgreSQL timestamp digits", async () => {
+  await insertRequest({ txRef: "pi_a" });
+  await processPaymentProviderEvent(stripeEvent());
+  await dbWrite.execute(sql`UPDATE payment_request_events
+    SET callback_claimed_until=TIMESTAMPTZ '2040-01-01 00:00:00.123456+00'
+    WHERE provider='stripe' AND provider_event_id='evt_a'`);
+  const { markPaymentCallbackAttempt } = await import("../payment-request-settlement");
+  const [before] = await sqlRows<{ deadline: string }>(
+    dbWrite,
+    sql`SELECT callback_claimed_until::text AS deadline FROM payment_request_events
+        WHERE provider='stripe' AND provider_event_id='evt_a'`,
+  );
+  expect(
+    await markPaymentCallbackAttempt(
+      "stripe",
+      "evt_a",
+      { dispatched: true },
+      "2040-01-01T00:00:00.123Z",
+    ),
+  ).toBe(false);
+  expect(
+    await markPaymentCallbackAttempt("stripe", "evt_a", { dispatched: true }, before!.deadline),
+  ).toBe(true);
+  const [after] = await sqlRows<{ callback_state: string; callback_attempts: number }>(
+    dbWrite,
+    sql`SELECT callback_state, callback_attempts FROM payment_request_events
+        WHERE provider='stripe' AND provider_event_id='evt_a'`,
+  );
+  expect(after).toEqual({ callback_state: "dispatched", callback_attempts: 1 });
+}, 60_000);
+
+test("an in-flight historical failure cannot change a later paid outcome", async () => {
+  await insertRequest({ txRef: "pi_a" });
+  await processPaymentProviderEvent(stripeEvent({ disposition: "failed" }));
+  await dbWrite.execute(
+    sql`UPDATE payment_requests SET callback_url='https://callback.example.test/payment'`,
+  );
+  const entered = Promise.withResolvers<void>();
+  const response = Promise.withResolvers<Response>();
+  let sentBody: unknown;
+  const fetchSpy = spyOn(outboundFetch, "safeFetch").mockImplementation(async (_url, init = {}) => {
+    sentBody = JSON.parse(String(init.body));
+    entered.resolve();
+    return response.promise;
+  });
+  let delivery: ReturnType<typeof dispatchPaymentCallbacks> | undefined;
+  try {
+    delivery = dispatchPaymentCallbacks({ provider: "stripe", providerEventId: "evt_a", limit: 1 });
+    await entered.promise;
+    await processPaymentProviderEvent(stripeEvent({ eventId: "evt_paid", digest: "b".repeat(64) }));
+    response.resolve(new Response(null, { status: 200 }));
+    expect(await delivery).toEqual({ claimed: 1, dispatched: 0, failed: 0 });
+    expect(sentBody).toMatchObject({ name: "PaymentFailed", providerEventId: "evt_a" });
+    const [event] = await sqlRows<{ callback_state: string }>(
+      dbWrite,
+      sql`SELECT callback_state FROM payment_request_events WHERE provider_event_id='evt_a'`,
+    );
+    expect(event?.callback_state).toBe("superseded");
+    const money = await moneyRows();
+    expect(money.request[0]?.status).toBe("settled");
+    expect(money.credits).toHaveLength(1);
+  } finally {
+    response.resolve(new Response(null, { status: 200 }));
+    await Promise.allSettled([delivery]);
+    fetchSpy.mockRestore();
+  }
+}, 60_000);

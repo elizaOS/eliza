@@ -1,6 +1,7 @@
 package example.calendar;
 
 import ai.eliza.plugins.calendar.CalendarCreationStore;
+import ai.eliza.plugins.calendar.CalendarEventEdits;
 import ai.eliza.plugins.calendar.CalendarConfiguration;
 import ai.eliza.plugins.calendar.write.CalendarEventOptions;
 import ai.eliza.plugins.calendar.write.CalendarOptionCreationStore;
@@ -106,6 +107,50 @@ public final class ConsumerCreationRecoveryTest {
    SharedPreferences optionsJournal=context.getSharedPreferences("consumer-calendar-creations-v1-options",Context.MODE_PRIVATE);JSONObject optionsAll=new JSONObject(optionsJournal.getString("operations","{}"));optionsAll.remove(optionsId);assertTrue(optionsJournal.edit().putString("operations",optionsAll.toString()).commit());
   }
  }
+ /** Guarded host edits on real provider rows: stale, repeating, read-only and deleted events are refused. */
+ @Test public void guardedHostEditsRefuseStaleRepeatingAndReadOnlyEvents()throws Exception {
+  org.junit.Assume.assumeTrue("Explicit owned secondary-user Calendar fixture required","1".equals(InstrumentationRegistry.getArguments().getString("calendarHostEdits")));
+  assertTrue("Never run this provider fixture as user 0",Process.myUid()/100000>0);
+  Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+  assertEquals(PackageManager.PERMISSION_GRANTED,context.checkSelfPermission(Manifest.permission.WRITE_CALENDAR));
+  java.util.TimeZone zone=java.util.TimeZone.getDefault();
+  try{java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("GMT"));assertEquals("UTC",CalendarEventOptions.defaultZone());java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Paris"));assertEquals("Europe/Paris",CalendarEventOptions.defaultZone());}finally{java.util.TimeZone.setDefault(zone);}
+  String name="consumer-calendar-edits-"+UUID.randomUUID();
+  Uri calendars=CalendarContract.Calendars.CONTENT_URI.buildUpon().appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER,"true").appendQueryParameter("account_name",name).appendQueryParameter("account_type",CalendarContract.ACCOUNT_TYPE_LOCAL).build();
+  long owned=fixtureCalendar(context,calendars,name,name,CalendarContract.Calendars.CAL_ACCESS_OWNER),readOnly=fixtureCalendar(context,calendars,name,name+"-read",CalendarContract.Calendars.CAL_ACCESS_READ);
+  try{
+   long start=(System.currentTimeMillis()/60000+60)*60000;
+   JSONObject fields=new JSONObject().put("title","Owned edit event").put("body","").put("location","").put("begin",start).put("end",start+3600000).put("allDay",false).put("timeZone","UTC");
+   // A read-only calendar takes events only from its sync adapter.
+   Uri adapterEvents=CalendarContract.Events.CONTENT_URI.buildUpon().appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER,"true").appendQueryParameter("account_name",name).appendQueryParameter("account_type",CalendarContract.ACCOUNT_TYPE_LOCAL).build();
+   long single=insert(context,CalendarContract.Events.CONTENT_URI,CalendarEventOptions.parse(fields).values(owned));
+   long repeating=insert(context,CalendarContract.Events.CONTENT_URI,CalendarEventOptions.parse(new JSONObject(fields.toString()).put("rrule","FREQ=DAILY;COUNT=2")).values(owned));
+   long locked=insert(context,adapterEvents,CalendarEventOptions.parse(fields).values(readOnly));
+   CalendarEventEdits.Event before=CalendarEventEdits.snapshot(context.getContentResolver(),single);
+   assertNotNull(before);assertEquals(owned,before.calendarId);assertTrue(before.writable);assertFalse(before.repeating);
+   CalendarEventOptions changed=CalendarEventOptions.parse(new JSONObject(fields.toString()).put("title","Changed edit event").put("end",start+7200000));
+   refused(CalendarEventEdits.Reason.CHANGED,()->CalendarEventEdits.update(context.getContentResolver(),single,"0".repeat(64),changed));
+   assertEquals(before.revision,CalendarEventEdits.snapshot(context.getContentResolver(),single).revision);
+   CalendarEventEdits.Event after=CalendarEventEdits.update(context.getContentResolver(),single,before.revision,changed);
+   assertNotEquals(before.revision,after.revision);assertEquals(owned,after.calendarId);
+   try(Cursor row=context.getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,single),new String[]{"title","dtend","duration","calendar_id"},null,null,null)){assertNotNull(row);assertTrue(row.moveToFirst());assertEquals("Changed edit event",row.getString(0));assertEquals(start+7200000,row.getLong(1));assertTrue(row.isNull(2));assertEquals(owned,row.getLong(3));}
+   refused(CalendarEventEdits.Reason.CHANGED,()->CalendarEventEdits.delete(context.getContentResolver(),single,before.revision));
+   assertTrue(CalendarEventEdits.snapshot(context.getContentResolver(),repeating).repeating);
+   refused(CalendarEventEdits.Reason.REPEATING,()->CalendarEventEdits.update(context.getContentResolver(),repeating,CalendarEventEdits.snapshot(context.getContentResolver(),repeating).revision,changed));
+   assertFalse(CalendarEventEdits.snapshot(context.getContentResolver(),locked).writable);
+   refused(CalendarEventEdits.Reason.READ_ONLY,()->CalendarEventEdits.delete(context.getContentResolver(),locked,CalendarEventEdits.snapshot(context.getContentResolver(),locked).revision));
+   CalendarEventEdits.delete(context.getContentResolver(),single,after.revision);
+   assertNull(CalendarEventEdits.snapshot(context.getContentResolver(),single));
+   refused(CalendarEventEdits.Reason.GONE,()->CalendarEventEdits.delete(context.getContentResolver(),single,after.revision));
+   assertEquals(1,count(context,owned));assertEquals(1,count(context,readOnly));
+  }finally{
+   for(long calendar:new long[]{owned,readOnly})assertEquals("Delete only the exact fixture calendar",1,context.getContentResolver().delete(ContentUris.withAppendedId(calendars,calendar),null,null));
+  }
+ }
+ private interface Edit {void run()throws Exception;}
+ private static void refused(CalendarEventEdits.Reason reason,Edit edit)throws Exception {try{edit.run();fail("Expected "+reason);}catch(CalendarEventEdits.Refused refused){assertEquals(reason,refused.reason);}}
+ private static long fixtureCalendar(Context context,Uri calendars,String account,String name,int access){ContentValues calendar=new ContentValues();calendar.put("account_name",account);calendar.put("account_type",CalendarContract.ACCOUNT_TYPE_LOCAL);calendar.put("name",name);calendar.put("calendar_displayName",name);calendar.put("calendar_access_level",access);calendar.put("ownerAccount",account);calendar.put("calendar_timezone","UTC");calendar.put("visible",1);calendar.put("sync_events",1);Uri created=context.getContentResolver().insert(calendars,calendar);assertNotNull(created);return ContentUris.parseId(created);}
+ private static long insert(Context context,Uri events,ContentValues values){Uri inserted=context.getContentResolver().insert(events,values);assertNotNull(inserted);return ContentUris.parseId(inserted);}
  private String providerRows(Context context,long calendarId)throws Exception {org.json.JSONArray result=new org.json.JSONArray();try(Cursor rows=context.getContentResolver().query(CalendarContract.Events.CONTENT_URI,new String[]{"_id","calendar_id","title","description","eventLocation","dtstart","dtend","eventTimezone","customAppPackage","customAppUri","deleted"},"calendar_id=?",new String[]{Long.toString(calendarId)},null)){if(rows==null)return "null cursor";while(rows.moveToNext()){JSONObject row=new JSONObject();for(int i=0;i<rows.getColumnCount();i++)row.put(rows.getColumnName(i),rows.isNull(i)?JSONObject.NULL:rows.getString(i));result.put(row);}}return result.toString();}
  private int count(Context context,long calendarId){try(Cursor rows=context.getContentResolver().query(CalendarContract.Events.CONTENT_URI,new String[]{"_id"},"calendar_id=? AND deleted=0",new String[]{Long.toString(calendarId)},null)){assertNotNull(rows);return rows.getCount();}}
 }

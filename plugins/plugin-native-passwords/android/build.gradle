@@ -1,7 +1,7 @@
 apply plugin: 'com.android.library'
-// The vault custody primitives live in plugin-native-secure-store. Hosts include that module
-// under the upstream Capacitor project name, or name another with this property.
-def secureStoreProject = rootProject.findProperty('elizaPasswordsSecureStoreProject') ?: ':elizaos-capacitor-secure-store'
+// The vault custody primitives live in plugin-native-secure-store's native-only module, without
+// its Capacitor bridge. Hosts include it under this name, or name another with this property.
+def secureStoreProject = rootProject.findProperty('elizaPasswordsSecureStoreProject') ?: ':elizaos-capacitor-secure-store-nativeonly'
 android {
  namespace 'ai.eliza.plugins.passwords'
  compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36

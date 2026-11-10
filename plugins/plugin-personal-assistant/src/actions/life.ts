@@ -409,6 +409,20 @@ function isLifeOwnedOperation(
   );
 }
 
+/** Planner operations that act on some other item, so a retraction phrase in
+ * the same message must not delete the recent save. */
+const LIFE_RETRACTION_BLOCKING_OPERATIONS: ReadonlySet<LifeOperation> = new Set(
+  [
+    "update",
+    "complete",
+    "reopen",
+    "skip",
+    "snooze",
+    "policy_set_reminder",
+    "policy_configure_escalation",
+  ],
+);
+
 function normalizeExplicitLifeAction(value: unknown):
   | {
       operation: LifeOperation;
@@ -1200,6 +1214,7 @@ type NamesakeOp = {
 const RETIME_VERB =
   "(?:make|change|move|push|set|switch|bump|shift|reschedule|put)";
 const DEICTIC_REF = String.raw`(?:(?:that|this)(?:\s+one)?|it)`;
+const DEICTIC_TARGET_RE = new RegExp(`^(?:${DEICTIC_REF}|the last one)$`, "i");
 const FOLLOW_UP_LEAD = String.raw`^(?:(?:actually|ok|okay|oh|no|nah|wait|hmm|sorry|so|um|uh|yeah|yes|and|then|hey|oops)[,.!]?\s+)*(?:please\s+)?`;
 const NUMBER_WORDS: Record<string, number> = {
   a: 1,
@@ -1661,6 +1676,52 @@ export async function resolveDefinitionFromIntent(
     }
   }
   return bestScore > 0 && !tied ? best : null;
+}
+
+/**
+ * Strict resolver for owner reminder-policy writes. A named target must be the
+ * definition id, its exact title, or contain the whole title ("my medication
+ * reminder" names "Medication"); one shared word ("make" in "make my
+ * reminders less persistent" vs "Make dinner") never picks a definition to
+ * rewrite. Looser matches come back only as `candidates` for a clarifying
+ * question. No target means the caller writes the global policy.
+ */
+export async function resolveDefinitionForPolicyWrite(
+  service: LifeOpsService,
+  target: string | undefined,
+  domain?: LifeOpsDomain,
+): Promise<{ match: LifeOpsDefinitionRecord | null; candidates: string[] }> {
+  const trimmed = target?.trim();
+  if (!trimmed) return { match: null, candidates: [] };
+  const defs = await listCallerDefinitions(service, domain);
+  const byId = defs.find((entry) => entry.definition.id === trimmed);
+  if (byId) return { match: byId, candidates: [] };
+  const normalizedTarget = normalizeTitle(trimmed);
+  const titled = defs
+    .map((entry) => ({ entry, title: normalizeTitle(entry.definition.title) }))
+    .filter(({ title }) => title.length > 0);
+  for (const inTier of [
+    (title: string) => title === normalizedTarget,
+    (title: string) => containsInvariantPhrase(normalizedTarget, title),
+  ]) {
+    const named = titled.filter(({ title }) => inTier(title));
+    if (named.length === 1) return { match: named[0].entry, candidates: [] };
+    if (named.length > 1) {
+      return {
+        match: null,
+        candidates: named.map(({ entry }) =>
+          definitionDisambiguationLabel(entry),
+        ),
+      };
+    }
+  }
+  const loose = resolveDefinitionInRecords(defs, trimmed);
+  return {
+    match: null,
+    candidates: loose.match
+      ? [definitionDisambiguationLabel(loose.match)]
+      : loose.ambiguousCandidates,
+  };
 }
 
 type OccurrenceResult = {
@@ -4993,7 +5054,7 @@ async function runLifeOperationHandlerInner(
   if (
     !archiveOnlyReminder &&
     deferredDraft === null &&
-    isLifeSaveRetraction(messageText(message))
+    isLifeSaveRetraction(currentText)
   ) {
     const recentSave = await readRecentLifeSaveCache(runtime, message);
     const retractionMessageId =
@@ -5006,13 +5067,37 @@ async function runLifeOperationHandlerInner(
       const retractionService = new LifeOpsService(runtime, {
         ownerEntityId: message.entityId,
       });
-      const retracted = (await retractionService.listDefinitions()).find(
+      const definitions = await retractionService.listDefinitions();
+      const retracted = definitions.find(
         (record) =>
           record.definition.id === recentSave.definitionId &&
           record.definition.status === "active",
       );
-      await clearRecentLifeSaveCache(runtime, message);
-      if (retracted) {
+      // Only undo the recent save when the message is about it: a planner
+      // target must resolve to that definition, and a different mutation
+      // ("never mind the laundry, mark the dishes done") is not a retraction.
+      // A pronoun target ("that one") names the recent save itself.
+      const plannerTarget = [params.target, params.title].find(
+        (candidate) =>
+          typeof candidate === "string" &&
+          candidate.trim().length > 0 &&
+          !DEICTIC_TARGET_RE.test(candidate.trim()),
+      );
+      const plannerOperation =
+        explicitAction !== null && explicitAction !== "phone"
+          ? explicitAction.operation
+          : params.subaction;
+      const targetsRecentSave =
+        plannerTarget === undefined ||
+        resolveDefinitionInRecords(definitions, plannerTarget, true).match
+          ?.definition.id === recentSave.definitionId;
+      const otherMutation =
+        plannerOperation !== undefined &&
+        LIFE_RETRACTION_BLOCKING_OPERATIONS.has(plannerOperation);
+      if (!retracted) {
+        await clearRecentLifeSaveCache(runtime, message);
+      } else if (targetsRecentSave && !otherMutation) {
+        await clearRecentLifeSaveCache(runtime, message);
         await retractionService.deleteDefinition(retracted.definition.id);
         logger.info(
           `[LifeAction] retracted recent un-previewed save "${retracted.definition.title}" (${retracted.definition.id})`,
@@ -7699,7 +7784,7 @@ async function runLifeOperationHandlerInner(
         runtime,
         message,
         intent,
-        resolveDefinition: resolveDefinitionFromIntent,
+        resolveDefinition: resolveDefinitionForPolicyWrite,
         intensity,
         target: targetName,
         details,
@@ -7711,7 +7796,7 @@ async function runLifeOperationHandlerInner(
         runtime,
         message,
         intent,
-        resolveDefinition: resolveDefinitionFromIntent,
+        resolveDefinition: resolveDefinitionForPolicyWrite,
         target: targetName,
         timeoutMinutes: detailNumber(details, "timeoutMinutes"),
         callAfterMinutes: detailNumber(details, "callAfterMinutes"),

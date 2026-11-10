@@ -21,7 +21,7 @@
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> \
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
- *     [--model-cache <dir>] [--python <python with torch>]
+ *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only] [--languages en|en,es]
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --models-only \
  *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
@@ -33,6 +33,10 @@
  * CI matrix stage the product voice stack this way. Files already in place
  * and matching their pins are kept. Desktop speaks English only, so this mode
  * never builds the Spanish voice.
+ *
+ * --ffi-exports-only builds libelizainference with only the eliza_inference_*
+ * FFI exported and unreached code dropped (stage-elizavoice-lib.ts); the JNI
+ * bridge this library ships calls nothing else.
  *
  * --workspace holds downloads and build trees. --out defaults to
  * plugins/plugin-local-inference/native/android/native. --model-cache is
@@ -47,6 +51,10 @@
  * (inputs.json `spanish.release_override`). inputs.json `spanish.enabled` is
  * the one switch: false leaves the voice out entirely (no conversion, no GGUF
  * or notices in the bundle, no `voices` in the manifest).
+ *
+ * --languages en selects the English-only product bundle; en,es selects both.
+ * The default remains the pinned language set. The consumer must declare the
+ * same explicit selection, and build-record.json records productLanguages.
  *
  * The manifest is eliza-paradee-voice-v2: the v1 keys plus, when the Spanish
  * voice is enabled, `voices`, the other speech languages
@@ -70,6 +78,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { voiceProductInputs } from "../../../../plugins/plugin-local-inference/native/android/voice-product-inputs.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
@@ -97,7 +107,7 @@ function fail(message) {
   process.exit(1);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = {
     workspace: "",
     out: path.join(moduleDir, "native"),
@@ -105,6 +115,8 @@ function parseArgs(argv) {
     modelCache: "",
     python: "python3",
     modelsOnly: false,
+    ffiExportsOnly: false,
+    languages: undefined as string[] | undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1];
@@ -112,11 +124,16 @@ function parseArgs(argv) {
       args.modelsOnly = true;
       continue;
     }
+    if (argv[i] === "--ffi-exports-only") {
+      args.ffiExportsOnly = true;
+      continue;
+    }
     if (argv[i] === "--workspace") args.workspace = path.resolve(value);
     else if (argv[i] === "--out") args.out = path.resolve(value);
     else if (argv[i] === "--abi") args.abis.push(value);
     else if (argv[i] === "--model-cache") args.modelCache = path.resolve(value);
     else if (argv[i] === "--python") args.python = value;
+    else if (argv[i] === "--languages") args.languages = value.split(",");
     else fail(`unknown argument ${argv[i]}`);
     i++;
   }
@@ -406,21 +423,25 @@ export async function buildModels(args, pins, bundle, withSpanish = false) {
   }
 }
 
+/** stage-elizavoice-lib.ts arguments for one ABI. */
+export function stageLibArgs(args, abi, espeakDir) {
+  return [
+    path.join(repoRoot, "packages/app/scripts/stage-elizavoice-lib.ts"),
+    "--abi",
+    abi,
+    "--out",
+    path.join(args.out, "jniLibs", abi),
+    "--espeak-dir",
+    espeakDir,
+    ...(args.ffiExportsOnly ? ["--ffi-exports-only"] : []),
+  ];
+}
+
 function buildInference(args, espeakDir) {
   for (const abi of args.abis) {
-    run(
-      "node",
-      [
-        path.join(repoRoot, "packages/app/scripts/stage-elizavoice-lib.ts"),
-        "--abi",
-        abi,
-        "--out",
-        path.join(args.out, "jniLibs", abi),
-        "--espeak-dir",
-        espeakDir,
-      ],
-      { env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION } },
-    );
+    run("node", stageLibArgs(args, abi, espeakDir), {
+      env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION },
+    });
     // The library's own CMake build packages libc++_shared.so from the same
     // NDK; a second copy in jniLibs would collide during APK merge.
     rmSync(path.join(args.out, "jniLibs", abi, "libc++_shared.so"), {
@@ -453,6 +474,12 @@ function listFiles(dir) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const product = voiceProductInputs(
+    inputs,
+    args.modelsOnly ? (args.languages ?? ["en"]) : args.languages,
+  );
+  if (args.modelsOnly && product.spanish)
+    fail("--models-only prepares English models only");
   if (args.modelsOnly) {
     mkdirSync(args.workspace, { recursive: true });
     mkdirSync(args.out, { recursive: true });
@@ -465,7 +492,7 @@ async function main() {
   if (!existsSync(path.join(sdk, "ndk", NDK_VERSION)))
     fail(`NDK ${NDK_VERSION} not installed under ${path.join(sdk, "ndk")}`);
   mkdirSync(args.workspace, { recursive: true });
-  const withSpanish = spanishEnabled();
+  const withSpanish = product.spanish;
   const pins = forkPins(withSpanish);
   const sourceCommit = execFileSync(
     "git",
@@ -486,11 +513,15 @@ async function main() {
   await buildModels(args, pins, bundle, withSpanish);
 
   const paradeeDir = path.dirname(path.join(bundle, inputs.paradee.path));
-  copyTree(
-    path.join(espeakDir, "data", "espeak-ng-data"),
-    path.join(paradeeDir, "espeak-ng-data"),
-  );
-  const missingEspeak = inputs.espeak.data.filter(
+  for (const relative of product.espeakData) {
+    const target = path.join(paradeeDir, "espeak-ng-data", relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    copyFileSync(
+      path.join(espeakDir, "data", "espeak-ng-data", relative),
+      target,
+    );
+  }
+  const missingEspeak = product.espeakData.filter(
     (relative) =>
       !existsSync(path.join(paradeeDir, "espeak-ng-data", relative)),
   );
@@ -540,7 +571,7 @@ async function main() {
   }
   writeFileSync(
     path.join(args.out, "build-record.json"),
-    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
+    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, productLanguages: product.languages, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
   );
   log(`wrote ${record.length} files under ${args.out}`);
 }

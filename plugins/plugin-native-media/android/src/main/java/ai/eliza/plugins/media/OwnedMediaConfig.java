@@ -20,6 +20,11 @@ public final class OwnedMediaConfig {
   public final String editNamePrefix;
   public final String captureRelativePath;
   public final String captureNamePrefix;
+  /**
+   * Earlier capture folders of this host, newest first. A keep reserved under one of them before
+   * the host moved its capture folder is still found there, never published a second time.
+   */
+  public final java.util.List<String> legacyCaptureRelativePaths;
   /** MediaStore placement of video edit copies, or null when the host does not edit videos. */
   public final String videoEditRelativePath;
   public final String videoEditNamePrefix;
@@ -30,6 +35,8 @@ public final class OwnedMediaConfig {
     editNamePrefix = builder.editNamePrefix;
     captureRelativePath = builder.captureRelativePath;
     captureNamePrefix = builder.captureNamePrefix;
+    legacyCaptureRelativePaths =
+        java.util.Collections.unmodifiableList(new java.util.ArrayList<>(builder.legacyCaptureRelativePaths));
     videoEditRelativePath = builder.videoEditRelativePath;
     videoEditNamePrefix = builder.videoEditNamePrefix;
   }
@@ -100,6 +107,7 @@ public final class OwnedMediaConfig {
     private final String namespace;
     private String editRelativePath, editNamePrefix, captureRelativePath, captureNamePrefix;
     private String videoEditRelativePath, videoEditNamePrefix;
+    private final java.util.List<String> legacyCaptureRelativePaths = new java.util.ArrayList<>();
 
     private Builder(String namespace) {
       if (namespace == null || !NAMESPACE.matcher(namespace).matches())
@@ -118,6 +126,16 @@ public final class OwnedMediaConfig {
       captureNamePrefix = prefix(namePrefix);
       return this;
     }
+    /**
+     * An earlier RELATIVE_PATH of kept captures (same display-name prefix). Lookups of a reserved
+     * keep also search it; new keeps are always published under {@link #captures}.
+     */
+    public Builder legacyCaptures(String relativePath) {
+      String path = relativePath(relativePath);
+      if (!legacyCaptureRelativePaths.contains(path))
+        legacyCaptureRelativePaths.add(path);
+      return this;
+    }
     /** Optional MediaStore RELATIVE_PATH (under Movies/ or DCIM/) and prefix for video copies. */
     public Builder videoEdits(String relativePath, String namePrefix) {
       videoEditRelativePath = relativePath(relativePath, "Movies", "DCIM");
@@ -127,6 +145,7 @@ public final class OwnedMediaConfig {
     public OwnedMediaConfig build() {
       if (editRelativePath == null || captureRelativePath == null)
         throw new IllegalStateException("Configure edits and captures");
+      legacyCaptureRelativePaths.remove(captureRelativePath);
       return new OwnedMediaConfig(this);
     }
     private static String prefix(String value) {

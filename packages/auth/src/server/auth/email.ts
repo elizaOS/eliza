@@ -42,7 +42,8 @@ export interface EmailAuthConfig {
    * Pluggable email provider.
    * Defaults to ConsoleProvider so nothing breaks without API credentials.
    */
-  provider?: EmailProvider;
+  /** Null explicitly disables delivery; undefined allows the development fallback. */
+  provider?: EmailProvider | null;
   /** Token TTL in milliseconds. Default: 10 minutes. */
   tokenTtlMs?: number;
   /** Maximum time to wait for a provider acceptance receipt. Default: 30 seconds. */
@@ -91,6 +92,7 @@ export interface TenantInvitationEmailContext {
 // ---------------------------------------------------------------------------
 
 const TOKEN_BYTES = 32;
+const MAGIC_LINK_TOKEN_PATTERN = new RegExp(`^[0-9a-f]{${TOKEN_BYTES * 2}}$`);
 const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 min
 const DEFAULT_CALLBACK = "/auth/callback/email";
 const OTP_DIGITS = 6;
@@ -359,16 +361,6 @@ function parseStatusRecord(
   return null;
 }
 
-function decodeMagicLinkPayload(value: string): MagicLinkPayload {
-  try {
-    const parsed = JSON.parse(value) as MagicLinkPayload;
-    if (typeof parsed.email === "string") return parsed;
-  } catch {
-    // Backward-compatible legacy tokens stored the email as the raw value.
-  }
-  return { email: value };
-}
-
 function decodeLegacyOtpPayload(value: string): MagicLinkPayload | null {
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
@@ -534,8 +526,9 @@ export class EmailAuth {
     // Console delivery is forbidden in production. Reject before storing a
     // challenge so the API cannot report success for an undeliverable login.
     this.deliveryNotConfigured =
-      process.env.NODE_ENV === "production" &&
-      this.provider instanceof ConsoleProvider;
+      config.provider === null ||
+      (process.env.NODE_ENV === "production" &&
+        this.provider instanceof ConsoleProvider);
     this.tokenStore = config.tokenStore ?? new TokenStore();
     this.replyTo = config.replyTo;
     this.templateId = config.templateId;
@@ -1254,22 +1247,17 @@ export class EmailAuth {
     email?: string,
     tenantId?: string,
   ): Promise<EmailLoginVerifyResult> {
+    // Only generateToken output is a link token. Any other string could be the
+    // preimage of another record's store key (an email OTP key is the hash of
+    // `email-otp:<tenant>:<email>:<code>`), so it is refused before lookup.
+    if (!MAGIC_LINK_TOKEN_PATTERN.test(token)) {
+      return { email: "", valid: false };
+    }
     const tokenHash = hashToken(token);
     const challengeId = await this.tokenStore.verify(
       emailLoginLinkAliasKey(tokenHash),
     );
-
-    if (!challengeId) {
-      const legacy = await this.tokenStore.consume(tokenHash);
-      if (!legacy) return { email: "", valid: false };
-      const payload = decodeMagicLinkPayload(legacy);
-      return {
-        email: payload.email,
-        tenantId: payload.tenantId,
-        valid: true,
-        challengeId: "",
-      };
-    }
+    if (!challengeId) return { email: "", valid: false };
     const payload = parseEmailLoginChallenge(
       await this.tokenStore.verify(emailLoginChallengeKey(challengeId)),
     );

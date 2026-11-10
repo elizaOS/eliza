@@ -172,17 +172,25 @@ test("product composition requires bound native evidence and rechecks copied nat
   assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
 });
 
-for (const brand of ["alpha", "eliza"]) {
+for (const brand of ["example", "eliza"]) {
   test(`${brand} composes native payloads and converts to Soong without changing admitted bytes`, (t) => {
     const product = JSON.parse(
       fs.readFileSync(
-        new URL(
-          `../../android/products/pixel10a-${brand}.json`,
-          import.meta.url,
-        ),
+        new URL("../../android/products/pixel10a-eliza.json", import.meta.url),
         "utf8",
       ),
     );
+    if (brand === "example") {
+      product.vendorDirectory = "example_phone";
+      product.productName = "example_stallion_phone";
+      product.model = "Example Pixel 10a";
+      product.brand = "Example";
+      product.launcher = {
+        moduleName: "ExamplePhone",
+        packageName: "org.example.phone",
+      };
+      delete product.pixelConfig;
+    }
     const f = stagedFixture(t, {
       brand,
       ...product.launcher,
@@ -237,7 +245,9 @@ for (const brand of ["alpha", "eliza"]) {
     assert.ok(
       fs
         .readFileSync(path.join(f.output, "product.mk"), "utf8")
-        .includes("config.fs"),
+        .includes(
+          `TARGET_FS_CONFIG_GEN += vendor/${product.vendorDirectory}/config.fs`,
+        ),
     );
   });
 }

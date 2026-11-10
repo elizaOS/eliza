@@ -1,6 +1,8 @@
 package ai.eliza.host;
 
 import ai.eliza.plugins.agent.runtime.*;
+import ai.eliza.plugins.securestore.nativeonly.TaskDataKeyStore;
+import ai.eliza.plugins.securestore.nativeonly.VerifiedAccountCredentialStore;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.*;
 import java.net.*;
@@ -24,6 +26,7 @@ public final class VerifiedTaskCustodyInstrumentedTest {
   private static final class Fixture implements AutoCloseable {
     final String id=UUID.randomUUID().toString(), accountAlias="synthetic-account-"+id,keyAlias="synthetic-task-"+id;
     final Path dir;
+    final TaskDataKeyStore keys;
     final CompletableFuture<VerifiedTaskCustody> ready=new CompletableFuture<>();
     final NativeRuntimeSession session;
     final VerifiedTaskCustody custody;
@@ -31,12 +34,18 @@ public final class VerifiedTaskCustodyInstrumentedTest {
       dir=InstrumentationRegistry.getInstrumentation().getTargetContext().getNoBackupFilesDir().getCanonicalFile().toPath().resolve(id);
       Files.createDirectory(dir); android.system.Os.chmod(dir.toString(),0700);
       Path db=Files.createDirectory(dir.resolve("db")); android.system.Os.chmod(db.toString(),0700);
-      session=new NativeRuntimeSession(scope->{try{scope.startReady("synthetic-child",new ProcessBuilder("/system/bin/sleep","120"),new NativeProcessLog(dir.resolve("child.log"),4096,256),Collections.emptyList(),()->true,3000,20);ready.complete(new VerifiedTaskCustody(scope,dir.resolve("account").toFile(),accountAlias,dir.resolve("keys").toFile(),keyAlias,db.toFile()));}catch(Throwable e){ready.completeExceptionally(e);throw e;}},100,100,0);
+      keys=TaskDataKeyStore.perSlot(dir.resolve("keys").toFile(),keyAlias,true);
+      session=new NativeRuntimeSession(scope->{try{scope.startReady("synthetic-child",new ProcessBuilder("/system/bin/sleep","120"),new NativeProcessLog(dir.resolve("child.log"),4096,256),Collections.emptyList(),()->true,3000,20);ready.complete(new VerifiedTaskCustody(scope,dir.resolve("account").toFile(),accountAlias,keys,db.toFile()));}catch(Throwable e){ready.completeExceptionally(e);throw e;}},100,100,0);
       session.start(); custody=ready.get(10,TimeUnit.SECONDS);
+    }
+    List<String> keyAliases() throws Exception {
+      KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);List<String> result=new ArrayList<>();
+      for(String alias:Collections.list(store.aliases()))if(alias.startsWith(keyAlias))result.add(alias);
+      return result;
     }
     public void close() throws Exception {
       session.close(); KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
-      store.deleteEntry(accountAlias);store.deleteEntry(keyAlias);
+      store.deleteEntry(accountAlias);for(String alias:keyAliases())store.deleteEntry(alias);
       try(java.util.stream.Stream<Path> paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toArray(Path[]::new))Files.delete(p);}
     }
   }
@@ -72,10 +81,10 @@ public final class VerifiedTaskCustodyInstrumentedTest {
     try(Fixture f=new Fixture()) {
       assertTrue(f.custody.accountPort().compareExchange(null,record("owner","synthetic-credential-one")));
       int n=0;for(String suffix:new String[]{"","-wal","-shm","-journal"}) {
-        VerifiedTaskCustody.Database db=f.custody.bindDatabase("tasks"+n++);Path existing=Path.of(db.path+suffix);Files.createFile(existing);
+        VerifiedTaskCustody.Database db=f.custody.bindDatabase("tasks"+n++);Path existing=db.path.resolveSibling(db.path.getFileName()+suffix);Files.createFile(existing);
         refused(db::read);refused(db::createForNewDatabase);Files.delete(existing);assertNull(db.read());
       }
-      VerifiedTaskCustody.Database db=f.custody.bindDatabase("symlink");Files.createSymbolicLink(db.path,Path.of("missing"));refused(db::read);refused(db::createForNewDatabase);
+      VerifiedTaskCustody.Database db=f.custody.bindDatabase("symlink");Files.createSymbolicLink(db.path,Paths.get("missing"));refused(db::read);refused(db::createForNewDatabase);
     }
   }
   @Test public void removalRequiresAbsentDatabaseAndExactGeneration() throws Exception {
@@ -84,6 +93,34 @@ public final class VerifiedTaskCustodyInstrumentedTest {
       VerifiedTaskCustody.Database db=f.custody.bindDatabase("tasks");String id=new JSONObject(db.createForNewDatabase()).getString("id");
       assertFalse(db.remove(UUID.randomUUID().toString()));Files.createFile(db.path);refused(()->db.remove(id));Files.delete(db.path);
       assertTrue(db.remove(id));assertNull(db.read());
+    }
+  }
+  @Test public void eachAccountKeyHasItsOwnKeystoreEntryErasedWithIt() throws Exception {
+    try(Fixture f=new Fixture()) {
+      String a=record("owner-a","synthetic-credential-one");assertTrue(f.custody.accountPort().compareExchange(null,a));
+      VerifiedTaskCustody.Database first=f.custody.bindDatabase("tasks");String id=new JSONObject(first.createForNewDatabase()).getString("id");
+      assertEquals(1,f.keyAliases().size());
+      String b=record("owner-b","synthetic-credential-two");assertTrue(f.custody.accountPort().compareExchange(a,b));
+      VerifiedTaskCustody.Database second=f.custody.bindDatabase("tasks");second.createForNewDatabase();
+      List<String> both=f.keyAliases();assertEquals(2,both.size());
+      assertTrue(f.custody.accountPort().compareExchange(b,a));first=f.custody.bindDatabase("tasks");
+      assertTrue(first.remove(id));
+      // Removal deletes the account's own Keystore entry, so a wrapped copy left in flash cannot be decrypted.
+      List<String> left=f.keyAliases();assertEquals(1,left.size());assertTrue(both.containsAll(left));
+      assertNull(first.read());
+    }
+  }
+  @Test public void sharedKeyStoreIsRefusedAndRemovalFinishesWithoutTheRecord() throws Exception {
+    try(Fixture f=new Fixture()) {
+      TaskDataKeyStore shared=new TaskDataKeyStore(f.dir.resolve("shared").toFile(),f.keyAlias+"shared");
+      try{new VerifiedTaskCustody(null,f.dir.resolve("account").toFile(),f.accountAlias,shared,f.dir.resolve("db").toFile());fail("Shared key store accepted");}
+      catch(IllegalArgumentException expected){}
+      String a=record("owner","synthetic-credential-one");assertTrue(f.custody.accountPort().compareExchange(null,a));
+      VerifiedTaskCustody.Database db=f.custody.bindDatabase("tasks");db.createForNewDatabase();Files.createFile(db.path);
+      // A revocation clears the record; the next launch deletes the files, then erases the key.
+      assertTrue(f.custody.accountPort().compareExchange(a,null));
+      Files.delete(db.path);assertTrue(f.keys.destroy(db.ownerIdentity,"tasks"));assertTrue(f.keyAliases().isEmpty());
+      assertEquals(db.ownerIdentity,VerifiedAccountCredentialStore.ownerIdentity(a));
     }
   }
   @Test public void queuedOwnerChangeAndLifecycleRetireAccess() throws Exception {

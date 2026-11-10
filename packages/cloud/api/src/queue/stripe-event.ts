@@ -3,24 +3,24 @@ import {
   projectStripeCheckoutReceipt,
 } from "@elizaos/cloud-shared/lib/services/stripe-checkout-receipt";
 /**
- * Redis queue consumer for Stripe events.
+ * Outbox consumer for Stripe events.
  *
  * Runs the heavy fan-out that used to live inline in /api/stripe/webhook
  * before the queue refactor — org credits, revenue splits,
  * redeemable earnings, cache invalidation, Discord notifications, and
  * invoice rows. The webhook route now just verifies the signature,
- * dedupes by event ID via webhook_events, enqueues, and returns 200.
+ * records the event in its webhook_events dedupe row, and returns 200.
  *
  * Idempotency strategy:
  *   - The webhook route uses webhook_events.tryCreate(event.id) so
  *     Stripe's at-least-once retries are caught BEFORE this consumer
  *     ever runs.
- *   - For queue retries (transient downstream failures, e.g. DB blip),
+ *   - For outbox retries and repeat runs after a lost lease (transient downstream failures, e.g. DB blip),
  *     this consumer additionally re-checks each downstream write:
  *       * creditsService.getTransactionByStripePaymentIntent
  *       * redeemableEarningsService.addEarnings({ dedupeBySourceId: true })
  *       * invoicesService.getByStripeInvoiceId
- *   - These guards make a queue retry safe to apply even if a previous
+ *   - These guards make a repeat run safe to apply even if a previous
  *     attempt got partway through.
  *
  * Organization subscription deliveries route on the live Stripe status to
@@ -40,9 +40,8 @@ import {
  *     retries.
  *   - Transient failures (DB error, downstream timeout, etc.) return
  *     `retry` with backoff across cron ticks. After the retry budget is
- *     exhausted, the Redis queue helper promotes the message to
- *     stripe-events:dlq and the cron releases its webhook_events dedupe
- *     marker so a Stripe resend can re-enter.
+ *     exhausted, the outbox dead-letters the row; a Stripe resend of the
+ *     event makes it due again.
  */
 
 import { createHmac } from "node:crypto";

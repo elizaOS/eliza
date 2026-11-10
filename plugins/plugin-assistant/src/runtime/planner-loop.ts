@@ -625,6 +625,43 @@ function enforcePlannerFinishClaimGrounding(
   };
 }
 
+/** A confirmed single Notes write can still need a conversational reply. */
+function canRecoverSettledNoteReply(trajectory: PlannerTrajectory): boolean {
+  if (
+    trajectory.outcomeIntents?.length !== 1 ||
+    trajectory.plannedQueue.length > 0 ||
+    trajectory.archivedSteps.length > 0
+  )
+    return false;
+  const operations = trajectory.steps.filter(
+    (step) => step.toolCall !== undefined || step.result !== undefined,
+  );
+  const step = operations.length === 1 ? operations[0] : undefined;
+  const result = step?.result;
+  if (
+    step?.toolCall?.name !== "NOTES_CREATE" ||
+    !isSettledInternalSuccess(result) ||
+    result.modelReplyRequired !== true ||
+    result.replyFailure ||
+    result.error != null
+  )
+    return false;
+  const proof = readNotesMutationCompletion(
+    result,
+    trajectoryRequestIssuer(trajectory),
+  );
+  if (proof?.status !== "current" || proof.requested !== true || proof.rejected)
+    return false;
+  const receipts = result.effectReceipts ?? [];
+  const receipt = receipts.length === 1 ? receipts[0] : undefined;
+  return (
+    receipt?.operation === "notes.note.create" &&
+    receipt.outcome === "applied" &&
+    receipt.commit.kind === "durable" &&
+    activeCommittedEffectReceipts(receipts).length === 1
+  );
+}
+
 export async function runPlannerLoop(
   params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
@@ -825,6 +862,23 @@ export async function runPlannerLoop(
         finalMessage: message,
         modelUsage: usage,
       });
+    }
+    if (
+      params.deferInternalReplyRecoveryToCaller === true &&
+      params.codingMode !== true &&
+      liveTrajectory &&
+      error instanceof TrajectoryLimitExceeded &&
+      error.kind === "terminal_only_continuations" &&
+      canRecoverSettledNoteReply(liveTrajectory)
+    ) {
+      // The message host already owns a no-tools, receipt-checked reply path.
+      // Keep evaluator coverage unverified and never rerun the settled write.
+      return {
+        status: "finished",
+        trajectory: liveTrajectory,
+        replyRecoveryRequired: true,
+        modelUsage: usage,
+      };
     }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;

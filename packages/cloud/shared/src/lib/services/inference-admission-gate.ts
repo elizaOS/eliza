@@ -96,6 +96,14 @@ export interface InferenceAdmissionBalanceObservation {
   balanceView?: "funding";
 }
 
+/** Exact live zero-release evidence; an absent/ambiguous lease is not this proof. */
+export interface InferenceAdmissionZeroReleaseReceipt {
+  version: 1;
+  organizationId: string;
+  requestId: string;
+  state: "not_reserved" | "released_zero";
+}
+
 export interface InferenceAdmissionLease {
   organizationId: string;
   requestId: string;
@@ -134,30 +142,13 @@ export class InferenceAdmissionGateUnavailableError extends Error {
  * must use zero settlement rather than assuming the lease stayed untouched.
  */
 export class InferenceAdmissionDispatchMarkError extends InferenceAdmissionGateUnavailableError {
-  readonly reason: "uninitialized" | "ambiguous";
+  readonly reason: "ambiguous";
 
-  constructor(
-    message: string,
-    options?: { cause?: unknown; reason?: "uninitialized" | "ambiguous" },
-  ) {
+  constructor(message: string, options?: { cause?: unknown; reason?: "ambiguous" }) {
     super(message, options);
     this.name = "InferenceAdmissionDispatchMarkError";
     this.reason = options?.reason ?? "ambiguous";
   }
-}
-
-/** Recognize a proven cold-gate rejection through billing error wrappers. */
-export function isInferenceAdmissionGateWarmingError(error: unknown): boolean {
-  const seen = new Set<Error>();
-  let current = error;
-  while (current instanceof Error && !seen.has(current)) {
-    seen.add(current);
-    if (current instanceof InferenceAdmissionDispatchMarkError) {
-      return current.reason === "uninitialized";
-    }
-    current = current.cause;
-  }
-  return false;
 }
 
 /** Recognize a dispatch-mark failure through context-adding error wrappers. */
@@ -891,22 +882,46 @@ export async function acquireInferenceAdmissionLease(params: {
       },
     };
   }
-  let response: Response | undefined;
-  for (let attempt = 1; attempt <= LEASE_GATE_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      response = await gateFetch(
-        params.organizationId,
-        path,
-        body,
-        stub,
-        AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
-      );
-    } catch (error) {
-      if (attempt < LEASE_GATE_MAX_ATTEMPTS) continue;
-      throw error;
+  const requestLease = async (): Promise<Response | undefined> => {
+    let response: Response | undefined;
+    for (let attempt = 1; attempt <= LEASE_GATE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        response = await gateFetch(
+          params.organizationId,
+          path,
+          body,
+          stub,
+          AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+        );
+      } catch (error) {
+        if (attempt < LEASE_GATE_MAX_ATTEMPTS) continue;
+        throw error;
+      }
+      if (response.status >= 500 && attempt < LEASE_GATE_MAX_ATTEMPTS) continue;
+      break;
     }
-    if (response.status >= 500 && attempt < LEASE_GATE_MAX_ATTEMPTS) continue;
-    break;
+    return response;
+  };
+  let response = await requestLease();
+  if (
+    response?.status === 503 &&
+    (await readGateErrorCode(response.clone())) === "inference_admission_gate_uninitialized"
+  ) {
+    // A gate that has never served this organization refuses before any
+    // lease mutation. Hydrate it from the primary once, inline, and lease again.
+    await response.body?.cancel();
+    try {
+      await hydrateInferenceAdmissionGate(params.organizationId, stub);
+    } catch (error) {
+      // error-policy:J2 no lease was recorded; report the primary failure.
+      throw new InferenceAdmissionGateUnavailableError(
+        "Inference admission gate hydration failed",
+        {
+          cause: error,
+        },
+      );
+    }
+    response = await requestLease();
   }
   if (!response) {
     throw new InferenceAdmissionGateUnavailableError(
@@ -924,10 +939,7 @@ export async function acquireInferenceAdmissionLease(params: {
     throw new InferenceCredentialRevokedError(reason);
   }
   if (response.status === 503) {
-    const code = await readGateErrorCode(response);
-    if (code === "inference_admission_gate_uninitialized" && params.executionCtx) {
-      scheduleGateHydration(params.organizationId, stub, params.executionCtx);
-    }
+    await response.body?.cancel();
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate lease failed with status ${response.status}`,
     );
@@ -1066,6 +1078,7 @@ export async function markInferenceAdmissionLeaseDispatched(
   // enter its handler. Fast transport failures still retry the same capability.
   const deadline = performance.now() + DISPATCH_GATE_TOTAL_BUDGET_MS;
   let attempts = 0;
+  let gateHydrated = false;
   for (let attempt = 1; attempt <= DISPATCH_GATE_MAX_ATTEMPTS; attempt += 1) {
     const remainingMs = Math.ceil(deadline - performance.now());
     if (remainingMs <= 0) break;
@@ -1104,16 +1117,21 @@ export async function markInferenceAdmissionLeaseDispatched(
     }
     if (prepared && response.status === 503) {
       const code = await readGateErrorCode(response);
-      if (code === "inference_admission_gate_uninitialized" && !mayHaveCommitted) {
-        // The authoritative cold response precedes any lease mutation. A prior
-        // lost acknowledgement would still require conservative cancellation.
-        prepared.state = "rejected";
-        if (prepared.executionCtx) {
-          scheduleGateHydration(lease.organizationId, lease.gate, prepared.executionCtx);
+      if (code === "inference_admission_gate_uninitialized" && !mayHaveCommitted && !gateHydrated) {
+        // The authoritative cold response precedes any lease mutation: hydrate
+        // the gate from the primary once, inline, and dispatch again.
+        gateHydrated = true;
+        try {
+          await hydrateInferenceAdmissionGate(lease.organizationId, lease.gate);
+        } catch (error) {
+          // error-policy:J2 the gate refused before recording the dispatch.
+          prepared.state = "rejected";
+          throw new InferenceAdmissionDispatchMarkError(
+            "Inference admission gate hydration failed",
+            { cause: error },
+          );
         }
-        throw new InferenceAdmissionDispatchMarkError("Inference admission gate is warming", {
-          reason: "uninitialized",
-        });
+        continue;
       }
       if (
         (attempt === DISPATCH_GATE_MAX_ATTEMPTS || performance.now() >= deadline) &&
@@ -1261,7 +1279,9 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
 /** Release a lease only when no provider dispatch was attempted. */
 export async function releaseInferenceAdmissionLease(
   lease: InferenceAdmissionLease,
+  onTerminalZero?: (receipt: Readonly<InferenceAdmissionZeroReleaseReceipt>) => void,
 ): Promise<void> {
+  const { organizationId, requestId } = lease;
   if (lease.providerDispatched) {
     throw new InferenceAdmissionGateUnavailableError(
       "Dispatched inference work cannot be released without accounting",
@@ -1273,13 +1293,14 @@ export async function releaseInferenceAdmissionLease(
   ) {
     lease.preProviderCancellationToken = undefined;
     lease.preparedDispatch = undefined;
+    onTerminalZero?.({ version: 1, organizationId, requestId, state: "not_reserved" });
     return;
   }
   const response = await gateFetch(
-    lease.organizationId,
+    organizationId,
     "/release",
     {
-      requestId: lease.requestId,
+      requestId,
       ...(lease.preProviderCancellationToken && {
         preProviderCancellationToken: lease.preProviderCancellationToken,
       }),
@@ -1306,6 +1327,7 @@ export async function releaseInferenceAdmissionLease(
   }
   await parseLeaseTransitionResponse(response, "released");
   lease.preProviderCancellationToken = undefined;
+  onTerminalZero?.({ version: 1, organizationId, requestId, state: "released_zero" });
 }
 
 /**
@@ -1322,6 +1344,7 @@ export async function settleInferenceAdmissionLease(
    * Supplying it avoids a separate balance readback after the debit.
    */
   observedBalance?: InferenceAdmissionBalanceObservation,
+  onTerminalZero?: (receipt: Readonly<InferenceAdmissionZeroReleaseReceipt>) => void,
 ): Promise<void> {
   const balanceBackedUsd = finiteNonNegative(balanceBackedCostUsd, "balanceBackedCostUsd");
   const gateConsumedUsd = finiteNonNegative(gateConsumedCostUsd, "gateConsumedCostUsd");
@@ -1332,7 +1355,7 @@ export async function settleInferenceAdmissionLease(
   }
   if (!lease.providerDispatched) {
     if (balanceBackedUsd === 0 && gateConsumedUsd === 0) {
-      await releaseInferenceAdmissionLease(lease);
+      await releaseInferenceAdmissionLease(lease, onTerminalZero);
       return;
     }
     await markInferenceAdmissionLeaseDispatched(lease);
@@ -1366,11 +1389,10 @@ export async function settleInferenceAdmissionLease(
 
 /** Maps has a distinct nonmonetary counter in the organization gate. Never retry an ambiguous admission. */
 export async function callMapsRequestAllowance(
+  namespace: RuntimeDurableObjectNamespace,
   request: import("./maps-request-policy").MapsAllowanceRequest,
   outcome?: import("./maps-request-policy").MapsUsageOutcome,
 ): Promise<Response> {
-  if (!getCloudBinding("INFERENCE_ADMISSION_GATES"))
-    return Response.json({ error: { code: "maps_allowance_unconfigured" } }, { status: 503 });
   return gateFetch(
     request.organizationId,
     outcome ? "/maps/usage" : "/maps/admit",
@@ -1378,7 +1400,7 @@ export async function callMapsRequestAllowance(
       ...request,
       ...(outcome && { outcome }),
     },
-    gateStub(request.organizationId),
+    namespace.getByName(request.organizationId),
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
 }
