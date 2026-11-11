@@ -277,7 +277,8 @@ export async function ensureConnections(
 			id: worldId,
 			name: c.worldName || worldMap.get(worldId)?.name || undefined,
 			agentId,
-			messageServerId: c.messageServerId,
+			messageServerId:
+				c.messageServerId ?? worldMap.get(worldId)?.messageServerId,
 			metadata: {
 				...(worldMap.get(worldId)?.metadata ?? {}),
 				...(c.metadata ?? {}),
@@ -304,16 +305,19 @@ export async function ensureConnections(
 		if (roomType !== ChannelType.DM || c.type === ChannelType.DM) {
 			roomExplicitTypes.set(c.roomId, roomType as ChannelType);
 		}
-		// `name` and `channelId` stay unset here when the connection omits them;
-		// they are filled from the stored room (or a default) before the write.
+		// `name`, `channelId` and the server binding stay unset here when the
+		// connection omits them; they are filled from the batched room (a
+		// name/binding an earlier connection in this batch gave the same
+		// room), the stored room, or a default before the write.
+		const batchedRoom = roomMap.get(c.roomId);
 		const room: Room = {
 			id: c.roomId,
-			name: c.roomName || undefined,
+			name: c.roomName || batchedRoom?.name || undefined,
 			source,
 			type: roomType,
-			channelId: c.channelId,
-			serverId: c.serverId,
-			messageServerId: c.messageServerId,
+			channelId: c.channelId ?? batchedRoom?.channelId,
+			serverId: c.serverId ?? batchedRoom?.serverId,
+			messageServerId: c.messageServerId ?? batchedRoom?.messageServerId,
 			worldId,
 		};
 		roomMap.set(c.roomId, room);
