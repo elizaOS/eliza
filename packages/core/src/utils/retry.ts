@@ -78,9 +78,28 @@ export type BackoffPolicy = {
  * @returns Delay in milliseconds
  */
 export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
-	const base = policy.initialMs * policy.factor ** Math.max(attempt - 1, 0);
-	const jitter = base * policy.jitter * Math.random();
-	return Math.min(policy.maxMs, Math.round(base + jitter));
+	// Clamp every field, as resolveRetryConfig does for the same values:
+	// an unclamped negative jitter or cap, or a NaN field, would return a
+	// negative or NaN delay, and a caller that sleeps that long waits
+	// nothing — the backoff would not back off.
+	const initialMs =
+		Number.isFinite(policy.initialMs) && policy.initialMs > 0
+			? policy.initialMs
+			: 0;
+	const maxMs =
+		Number.isFinite(policy.maxMs) && policy.maxMs > 0 ? policy.maxMs : 0;
+	const factor =
+		Number.isFinite(policy.factor) && policy.factor >= 0 ? policy.factor : 1;
+	const jitter =
+		Number.isFinite(policy.jitter) && policy.jitter > 0
+			? Math.min(policy.jitter, 1)
+			: 0;
+	const safeAttempt = Number.isFinite(attempt)
+		? Math.max(Math.floor(attempt), 1)
+		: 1;
+	const base = initialMs * factor ** (safeAttempt - 1);
+	const jitterAmount = base * jitter * Math.random();
+	return Math.min(maxMs, Math.round(base + jitterAmount));
 }
 
 // Retry Configuration
