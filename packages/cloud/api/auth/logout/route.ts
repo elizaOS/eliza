@@ -31,7 +31,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { getAuditDispatcher } from "../../src/services/audit-dispatcher-singleton";
 
 const app = new Hono<AppEnv>();
 

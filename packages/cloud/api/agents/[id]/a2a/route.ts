@@ -68,7 +68,7 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 
 const A2A_BILLING_OUTPUT_ESTIMATE_TOKENS = 500;
 

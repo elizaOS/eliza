@@ -44,7 +44,7 @@ import {
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { requirePaidRouteStanding } from "../../../../../src/lib/paid-route-standing";
 import {
   cancelBestEffort,
   parseTrustworthyDecimalInteger,
