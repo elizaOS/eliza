@@ -252,7 +252,10 @@ function sanitizeJsonValue(
 		typeof value === "number" ||
 		typeof value === "boolean"
 	) {
-		return Number.isNaN(value) ? null : value;
+		// JSON has no Infinity: a non-finite number must become null here, the
+		// same as NaN, or the in-memory export disagrees with JSON.stringify,
+		// which silently turns Infinity into null on the wire.
+		return typeof value === "number" && !Number.isFinite(value) ? null : value;
 	}
 	if (typeof value === "bigint") {
 		return value.toString();
