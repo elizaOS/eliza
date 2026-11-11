@@ -83,7 +83,7 @@
     "@types/linkify-it": "5.0.0",
     "bun-types": "1.4.2",
     "jsdom": "^31.0.0",
-    "puppeteer-core": "^24.37.5",
+    "puppeteer-core": "^25.16.0",
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
