@@ -71,6 +71,15 @@ function describeRelativeTime(
 	if (days === 1) {
 		return future ? "Tomorrow" : "Yesterday";
 	}
+	// Gate the Tomorrow label on the floored day count as well: the
+	// direction-rounded `days` ceils future magnitudes, so a future
+	// timestamp 24-48h out would otherwise skip "Tomorrow" and read
+	// "in 2d" while the same magnitude in the past reads "Yesterday".
+	// The 24-48h window stays approximate on both sides, matching the
+	// existing "Yesterday" behaviour.
+	if (future && Math.floor(absDiff / 86400000) === 1) {
+		return "Tomorrow";
+	}
 	// Gate the week fallback on the raw magnitude, not the direction-rounded
 	// `days`: a future 6d + 1ms ceils to 7 and would otherwise jump to an
 	// absolute date a full day early. Matches the packages/ui WEEK_MS gate.
