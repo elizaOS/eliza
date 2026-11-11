@@ -305,6 +305,11 @@ export class BionicStreamingTranscriber extends BaseStreamingTranscriber {
 		this.resetSegment();
 		if (failure) {
 			if (stream) void stream.close();
+			// Audio that arrived while the failed feed was pending belongs to
+			// the failed segment. resetSegment() cleared the failure, so drop
+			// it here; otherwise the next drain opens a stream and feeds it.
+			this.queue = [];
+			this.queuedSamples = 0;
 			throw failure;
 		}
 		if (stream) {

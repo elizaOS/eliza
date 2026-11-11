@@ -165,6 +165,53 @@ describe("BionicStreamingTranscriber", () => {
 		t.dispose();
 	});
 
+	it("does not feed a failed segment's tail to the next segment", async () => {
+		// The host refuses the feed that flush is waiting on, while the
+		// microphone keeps delivering frames for the same utterance.
+		let refuse: (err: Error) => void = () => {};
+		const gate = new Promise<void>((_resolve, reject) => {
+			refuse = reject;
+		});
+		const streams: FakeStream[] = [];
+		const host: BionicAsrHost = {
+			openAsrStream: async () => {
+				const s = new FakeStream(["set", "a", "timer"]);
+				streams.push(s);
+				return s;
+			},
+			transcribe: async () => "",
+		};
+		const t = new BionicStreamingTranscriber({ host, partialIntervalMs: 320 });
+		t.feed(frame(320));
+		await new Promise((r) => setImmediate(r));
+		const first = streams[0];
+		if (!first) throw new Error("expected a stream");
+		const feed = first.feed.bind(first);
+		let held = false;
+		first.feed = async (pcm: Float32Array) => {
+			if (!held) {
+				held = true;
+				await gate;
+			}
+			return feed(pcm);
+		};
+		t.feed(frame(3200));
+		await new Promise((r) => setImmediate(r));
+		const flushed = t.flush();
+		await new Promise((r) => setImmediate(r));
+		t.feed(frame(1600));
+		refuse(new Error("socket error: EPIPE"));
+		await expect(flushed).rejects.toThrow("EPIPE");
+		await new Promise((r) => setImmediate(r));
+		await new Promise((r) => setImmediate(r));
+		// The failed utterance must not reach a new host stream.
+		expect(streams).toHaveLength(1);
+		await feedSeconds(t, 1);
+		expect((await t.flush()).partial).toBe("set a timer");
+		expect(streams[1]?.fed).toBe(16000);
+		t.dispose();
+	});
+
 	it("bounds the audio waiting for a slow host", async () => {
 		let release: () => void = () => {};
 		const gate = new Promise<void>((r) => {
