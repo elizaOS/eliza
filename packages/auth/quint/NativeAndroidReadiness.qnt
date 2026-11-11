@@ -6,7 +6,8 @@
 // resume, where a resume measures only for a recent sign-in screen or an
 // attempt in progress. Only an explicit retry of an incomplete answer, or the
 // lack of a fresh answer, makes a caller wait. A measurement that got no result
-// keeps a fresh answer. A browser return link Android has not verified yet is
+// keeps a fresh answer, and one in which only a method's own request got no
+// usable answer keeps that method as the fresh answer had it. A browser return link Android has not verified yet is
 // watched with bounded local checks, and readiness is measured once it is
 // verified. Callers join one probe.
 module NativeAndroidReadiness {
@@ -24,7 +25,8 @@ module NativeAndroidReadiness {
     // Android's verification of the return link, and the bounded watch.
     linkVerified: bool, watching: bool, watchRound: int, watchProbes: int,
     announcements: int, changes: int,
-    servedDueWithoutMeasuring: bool, waitedOnFreshAnswer: bool, lostFreshAnswer: bool
+    servedDueWithoutMeasuring: bool, waitedOnFreshAnswer: bool, lostFreshAnswer: bool,
+    turnedOnUnmeasured: bool
   }
   var s: State
 
@@ -33,7 +35,8 @@ module NativeAndroidReadiness {
     surface: false, resumes: 0, resumeProbes: 0, unaskedResumeProbes: 0,
     linkVerified: false, watching: false, watchRound: 0, watchProbes: 0,
     announcements: 0, changes: 0,
-    servedDueWithoutMeasuring: false, waitedOnFreshAnswer: false, lostFreshAnswer: false
+    servedDueWithoutMeasuring: false, waitedOnFreshAnswer: false, lostFreshAnswer: false,
+    turnedOnUnmeasured: false
   }
 
   pure def fresh(x: State): bool = x.cache != "none" and not(x.expired)
@@ -87,6 +90,24 @@ module NativeAndroidReadiness {
       watchRound: if (not(s.watching) and not(failed) and result == "partial") 0 else s.watchRound }
   }
 
+  // The probe answered, but the browser Google reads (authorize, the statement
+  // list) got no usable answer: a timeout, a gateway error, a rate limit. Email
+  // and SMS were measured. Google keeps what a fresh answer that knew the
+  // methods said, with that answer's lifetime; otherwise it is not ready.
+  // Those reads are sent only over a verified link.
+  action measuredWithoutGoogle = all {
+    s.probing, s.linkVerified,
+    val kept = fresh(s) and s.cache != "unavailable"
+    val result = if (kept) s.cache else "partial"
+    val changed = s.cache != "none" and s.cache != result
+    s' = { ...s, probing: false, waiters: 0, cache: result, recheckDue: false, passiveDue: false,
+      expired: if (kept) s.expired else false,
+      changes: s.changes + (if (changed) 1 else 0),
+      announcements: s.announcements + (if (changed) 1 else 0),
+      lostFreshAnswer: s.lostFreshAnswer or (kept and result != s.cache),
+      turnedOnUnmeasured: s.turnedOnUnmeasured or (result == "ready" and s.cache != "ready") }
+  }
+
   // One local check of the link. No request is sent until Android verified it;
   // then readiness is measured once and the watch ends.
   action watchTick = all {
@@ -114,6 +135,7 @@ module NativeAndroidReadiness {
     resume(first and s.resumes == 0),
     nondet failed = Set(true, false).oneOf()
     measured(failed),
+    measuredWithoutGoogle,
     watchTick, linkVerifies, shortTtlEnds, passiveWaitEnds, longTtlEnds, surfaceGoesQuiet, idle
   }
 
@@ -123,6 +145,8 @@ module NativeAndroidReadiness {
   val FreshAnswerServedAtOnce = not(s.waitedOnFreshAnswer)
   // A measurement that got no result never replaces a fresh answer.
   val FailedProbeKeepsFreshAnswer = not(s.lostFreshAnswer)
+  // A method whose request got no usable answer is never turned on by that measurement.
+  val UnansweredMethodNeverTurnsOn = not(s.turnedOnUnmeasured)
   // Resume sends nothing unless a sign-in screen asked recently or an attempt is in progress.
   val ResumeProbesOnlyWhenAsked = s.unaskedResumeProbes == 0
   // Callers wait only for a running probe: one probe per deployment.
@@ -154,6 +178,16 @@ module NativeAndroidReadiness {
   run failedRecheckKeepsReadyMethodsTest = init.then(status(false)).then(measured(false))
     .then(shortTtlEnds).then(status(false)).then(measured(true))
     .expect(s.cache == "partial" and s.announcements == 0 and not(s.recheckDue))
+
+  run unansweredGoogleWithoutFreshAnswerIsNotReadyTest = init.then(linkVerifies).then(status(false)).then(measured(false))
+    .expect(s.cache == "ready")
+    .then(longTtlEnds).then(status(false)).then(measuredWithoutGoogle)
+    .expect(s.cache == "partial" and s.announcements == 1)
+    .then(shortTtlEnds).then(status(false)).then(measured(false)).expect(s.cache == "ready")
+
+  run unansweredGoogleOverPartialAnswerAnnouncesNothingTest = init.then(status(false)).then(measured(false))
+    .then(linkVerifies).then(shortTtlEnds).then(status(false)).then(measuredWithoutGoogle)
+    .expect(s.cache == "partial" and s.announcements == 0 and not(s.recheckDue) and not(s.turnedOnUnmeasured))
 
   run failedProbeWithoutFreshAnswerIsUnavailableTest = init.then(status(false)).then(measured(true))
     .expect(s.cache == "unavailable" and s.announcements == 0)

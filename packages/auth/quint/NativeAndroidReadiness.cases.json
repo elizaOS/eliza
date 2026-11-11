@@ -6,9 +6,9 @@
     "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInReadinessTest.java.txt"
   ],
   "bounds": {
-    "domain": "One Android deployment in browser Google mode. Cloud offers every method, so Google's readiness depends only on Android's verification of the return link, which can complete once at any time. At most five probes, each of which can answer or fail, two waiting callers, six resumes (the first can be the load-time warm-up), six local link checks, and the short (method), growing (passive) and long (answer) cache lifetimes each ending at any time. A sign-in screen's recent lookup can go quiet at any time.",
+    "domain": "One Android deployment in browser Google mode. Cloud offers every method, so Google's readiness depends only on Android's verification of the return link, which can complete once at any time. At most five probes, each of which can answer, fail, or answer while the browser Google reads get no usable answer, two waiting callers, six resumes (the first can be the load-time warm-up), six local link checks, and the short (method), growing (passive) and long (answer) cache lifetimes each ending at any time. A sign-in screen's recent lookup can go quiet at any time.",
     "assumptions": "A probe measures the link's verification at the moment it answers. Email and SMS are ready throughout, so the cached answer is none, unavailable (a measurement with no fresh answer failed), partial (Google not ready) or ready. The 30-second method TTL, the growing passive wait (30 seconds, 2 minutes, 10 minutes, hourly), the ten-minute sign-in screen window, the six-hour answer TTL and the watch delays are projected to events; the passive wait never ends before the short one.",
-    "limitations": "Cloud-side changes of a method, the exact lengths of the growing wait, an attempt in progress as a separate reason to measure on resume, the stored cache across processes, native Google mode, several deployments, the pause/resume end of a browser attempt in the host's own task and the renderer's handling of the unretained change event are outside this model. The JVM fixture runs the exact measure, status, probe, pause, resume and link-watch methods with a closed clock and queued ports, including a failed recheck over a ready cache and a day of resumes."
+    "limitations": "Cloud-side changes of a method, the exact lengths of the growing wait, an attempt in progress as a separate reason to measure on resume, the stored cache across processes, native Google mode, several deployments, the pause/resume end of a browser attempt in the host's own task and the renderer's handling of the unretained change event are outside this model. The JVM fixture runs the exact measure, status, probe, pause, resume and link-watch methods with a closed clock and queued ports, including rechecks over a ready cache in which each probe request gets no usable answer, and a day of resumes."
   },
   "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
   "cases": [
@@ -27,6 +27,7 @@
         "WatchSendsNothingUnverified",
         "ReadyNeedsVerifiedLink",
         "AnnouncedOnlyChanges",
+        "UnansweredMethodNeverTurnsOn",
         "ProbeBudget"
       ],
       "temporal": [],

@@ -3,6 +3,13 @@
 // The saved key asks Cloud for a new one. The new key is confirmed before it is
 // saved, and the old key is revoked only after that save. A sign-in attempt or
 // a newer credential action ends the renewal without touching the saved key.
+//
+// Both keys belong to one sign-in, and Cloud ends a whole sign-in when a key
+// revokes itself without naming its confirmed successor, or asks for renewal
+// after its successor was confirmed. So the old key's revocation names the new
+// one, a new key that was not saved is revoked only once the saved key is no
+// longer the one the renewal presented, and a saved key that may have a
+// confirmed successor is never presented for renewal again.
 module NativeAndroidKeyRenewal {
   pure val Old = 1
   pure val New = 2
@@ -15,17 +22,27 @@ module NativeAndroidKeyRenewal {
     supersededSaved: int, installed: bool,
     // Cloud's view of the new key: none, minted (unconfirmed) or active.
     server: str,
+    // Cloud's view of the sign-in: it still accepts the old key; it confirmed a
+    // successor of the old key at some point; the old key asked for renewal
+    // after that.
+    oldAccepted: bool, successorConfirmed: bool, renewedTwice: bool,
     // The renewal itself.
     phase: str, rounds: int, deadlinePassed: bool, requests: int, askedToday: bool,
-    oldRevokeSent: bool, newRevokeSent: bool, announced: bool, outcome: str
+    oldRevokeSent: bool, newRevokeSent: bool, announced: bool, outcome: str,
+    // The plain renewal record of the saved key: none, retry, refused,
+    // rejected (Cloud answered 401) or confirming (a confirmation request may
+    // have reached Cloud and Cloud has not refused it).
+    record: str, keyRefused: bool
   }
   var s: State
 
   pure val start: State = {
     saved: Old, intentCurrent: true, attemptActive: false, live: true,
     supersededSaved: -1, installed: false, server: "none",
+    oldAccepted: true, successorConfirmed: false, renewedTwice: false,
     phase: "idle", rounds: 0, deadlinePassed: false, requests: 0, askedToday: false,
-    oldRevokeSent: false, newRevokeSent: false, announced: false, outcome: "none"
+    oldRevokeSent: false, newRevokeSent: false, announced: false, outcome: "none",
+    record: "none", keyRefused: false
   }
   action init = s' = start
 
@@ -33,22 +50,33 @@ module NativeAndroidKeyRenewal {
   pure def finish(x: State, outcome: str): State = { ...x, phase: "finished", outcome: outcome }
 
   // The check on load, resume or an explicit call. The daily request is recorded
-  // before it is sent.
+  // before it is sent. A key recorded as confirming is never asked for again.
   action check(due: bool, supported: bool): bool = all {
     s.phase.in(Set("idle", "finished")), s.live,
     s' = if (s.saved != Old) finish(s, "signed-out")
       else if (not(due)) finish(s, "current")
       else if (not(supported)) finish(s, "unavailable")
-      else if (s.attemptActive or s.askedToday) finish(s, "deferred")
-      else { ...s, phase: "asked", askedToday: true, requests: s.requests + 1,
+      else if (s.attemptActive) finish(s, "deferred")
+      else if (s.record == "confirming") finish(s, "sign-in-required")
+      else if (s.askedToday)
+        finish(s, if (s.record.in(Set("refused", "rejected"))) "sign-in-required" else "deferred")
+      else { ...s, phase: "asked", askedToday: true, requests: s.requests + 1, record: "retry",
         server: "none", rounds: 0, newRevokeSent: false, outcome: "none" }
   }
 
-  // 200 with a code, a refusal (401, 403, 409) or no usable answer.
+  // 200 with a code, a refusal of the renewal (403, 409), a refusal of the key
+  // itself (401) or no usable answer. Cloud answers 401 whatever else it would
+  // have said once it no longer accepts the old key, and it ends the sign-in
+  // when the old key asks after its successor was confirmed.
   action renewReply(kind: str): bool = all {
     s.phase == "asked",
-    s' = if (kind == "code") { ...s, phase: "token" }
-      else if (kind == "refused") finish(s, "sign-in-required")
+    val twice = s.oldAccepted and s.successorConfirmed
+    val rejected = kind == "key-refused" or not(s.oldAccepted) or twice
+    s' = if (rejected)
+        finish({ ...s, record: "rejected", keyRefused: true, renewedTwice: s.renewedTwice or twice,
+          oldAccepted: s.oldAccepted and not(twice) }, "sign-in-required")
+      else if (kind == "code") { ...s, phase: "token" }
+      else if (kind == "refused") finish({ ...s, record: "refused" }, "sign-in-required")
       else finish(s, "deferred")
   }
 
@@ -58,22 +86,27 @@ module NativeAndroidKeyRenewal {
     s.phase == "token",
     s' = if (not(minted)) finish(s, "deferred")
       else if (not(outlives) or not(owns(s))) finish({ ...s, server: "minted" }, "deferred")
-      else { ...s, server: "minted", phase: "ack", rounds: 0 }
+      // Recorded before the first acknowledgement request.
+      else { ...s, server: "minted", phase: "ack", rounds: 0, record: "confirming" }
   }
 
   // One acknowledgement request. "lost" reaches Cloud but its answer does not
   // reach the phone. A round that no longer owns the renewal sends nothing.
-  action ackReply(kind: str): bool = all {
+  // Cloud refuses only a key it has not confirmed: after a lost confirmation it
+  // answers "already complete". Only a refusal clears the confirming record.
+  action ackReply(asked: str): bool = all {
     s.phase == "ack",
+    val kind = if (asked == "refused" and s.server == "active") "already-complete" else asked
     s' = if (not(owns(s))) { ...s, phase: "drop" }
       else if (kind.in(Set("acknowledged", "already-complete")))
-        { ...s, server: "active", rounds: s.rounds + 1, phase: "save" }
-      else if (kind == "refused") { ...s, rounds: s.rounds + 1, phase: "drop" }
+        { ...s, server: "active", successorConfirmed: true, rounds: s.rounds + 1, phase: "save" }
+      else if (kind == "refused") { ...s, rounds: s.rounds + 1, phase: "drop", record: "retry" }
       else {
         val reached = if (kind == "lost") "active" else s.server
+        val confirmed = s.successorConfirmed or kind == "lost"
         if (s.deadlinePassed or s.rounds + 1 >= AckRounds)
-          { ...s, server: reached, rounds: s.rounds + 1, phase: "drop" }
-        else { ...s, server: reached, rounds: s.rounds + 1 }
+          { ...s, server: reached, successorConfirmed: confirmed, rounds: s.rounds + 1, phase: "drop" }
+        else { ...s, server: reached, successorConfirmed: confirmed, rounds: s.rounds + 1 }
       }
   }
 
@@ -86,15 +119,20 @@ module NativeAndroidKeyRenewal {
       else { ...s, phase: "drop" }
   }
 
-  // An unsaved new key is revoked best effort and the saved key stays.
+  // An unsaved new key. While the key the renewal presented is still the saved
+  // one, nothing is sent: the new key revoking itself would be a sign-out that
+  // ends the saved key. Once the saved key was removed or replaced, the new key
+  // is revoked, which ends the sign-in the owner already left.
   action drop = all {
     s.phase == "drop",
-    s' = finish({ ...s, newRevokeSent: s.live }, "deferred")
+    val sent = s.live and s.saved != Old
+    s' = finish({ ...s, newRevokeSent: sent, oldAccepted: s.oldAccepted and not(sent) }, "deferred")
   }
 
+  // The old key revokes itself and names the new one: Cloud ends the old key alone.
   action revokeOld = all {
     s.phase == "revoke-old",
-    s' = finish({ ...s, oldRevokeSent: true, announced: true }, "renewed")
+    s' = finish({ ...s, oldRevokeSent: true, oldAccepted: false, announced: true, record: "none" }, "renewed")
   }
 
   // The environment: a sign-in attempt starts, a newer credential action
@@ -115,7 +153,7 @@ module NativeAndroidKeyRenewal {
     nondet due = Set(true, false).oneOf()
     nondet supported = Set(true, false).oneOf()
     check(due, supported),
-    nondet renewal = Set("code", "refused", "retry").oneOf()
+    nondet renewal = Set("code", "refused", "key-refused", "retry").oneOf()
     renewReply(renewal),
     nondet minted = Set(true, false).oneOf()
     nondet outlives = Set(true, false).oneOf()
@@ -140,9 +178,16 @@ module NativeAndroidKeyRenewal {
   val NewerActionWins = (s.supersededSaved != -1).implies(s.saved == s.supersededSaved)
   // The saved new key is never the one a renewal revokes.
   val SavedKeyNotRevoked = (s.installed and s.supersededSaved == -1).implies(not(s.newRevokeSent))
-  // A confirmed key that was not saved is sent a revocation while the plugin is open.
-  val UnsavedConfirmedKeyRevoked =
-    (s.phase == "finished" and s.server == "active" and not(s.installed) and s.live).implies(s.newRevokeSent)
+  // An unsaved new key is revoked only once the saved key is no longer the one the renewal presented.
+  val UnsavedKeyRevokedOnlyAfterSavedKeyLeft = s.newRevokeSent.implies(s.saved != Old)
+  // While the old key is the saved one, Cloud still accepts it, or the renewal said that Cloud refused it.
+  val SavedKeyAcceptedOrReportedRefused =
+    (s.saved == Old and s.supersededSaved == -1 and not(s.keyRefused)).implies(s.oldAccepted)
+  // The old key never asks for renewal after Cloud confirmed its successor.
+  val NeverRenewsAfterConfirmedSuccessor = not(s.renewedTwice)
+  // A saved key that may have a confirmed successor is recorded as such until a renewal is saved.
+  val ConfirmedSuccessorIsRecorded =
+    (s.successorConfirmed and s.saved == Old and s.supersededSaved == -1).implies(s.record == "confirming")
   val AnnouncedOnlyWhenRenewed = s.announced.implies(s.installed)
   val RequestBudget = s.requests.in(0.to(2)) and s.rounds.in(0.to(AckRounds))
 
@@ -154,8 +199,11 @@ module NativeAndroidKeyRenewal {
     .expect(s.outcome == "current" and s.requests == 0 and s.saved == Old)
 
   run refusalKeepsWorkingKeyTest = init.then(check(true, true)).then(renewReply("refused"))
-    .expect(s.outcome == "sign-in-required" and s.saved == Old and not(s.oldRevokeSent))
-    .then(check(true, true)).expect(s.outcome == "deferred" and s.requests == 1)
+    .expect(s.outcome == "sign-in-required" and s.saved == Old and not(s.oldRevokeSent) and not(s.keyRefused))
+    .then(check(true, true)).expect(s.outcome == "sign-in-required" and s.requests == 1 and s.oldAccepted)
+
+  run refusedKeyIsReportedTest = init.then(check(true, true)).then(renewReply("key-refused"))
+    .expect(s.outcome == "sign-in-required" and s.keyRefused and s.saved == Old and s.record == "rejected")
 
   run lostAckIsRecoveredTest = init.then(check(true, true)).then(renewReply("code"))
     .then(tokenReply(true, true)).then(ackReply("lost")).expect(s.saved == Old and s.phase == "ack")
@@ -164,7 +212,20 @@ module NativeAndroidKeyRenewal {
 
   run unconfirmedKeyIsNeverSavedTest = init.then(check(true, true)).then(renewReply("code"))
     .then(tokenReply(true, true)).then(ackReply("refused")).then(drop)
-    .expect(s.saved == Old and not(s.oldRevokeSent) and s.newRevokeSent and s.outcome == "deferred")
+    .expect(s.saved == Old and not(s.oldRevokeSent) and not(s.newRevokeSent) and s.oldAccepted
+      and s.record == "retry" and s.outcome == "deferred")
+    .then(nextDay).then(check(true, true)).expect(s.phase == "asked" and s.requests == 2)
+
+  run confirmedButUnsavedKeyIsNeverRenewedAgainTest = init.then(check(true, true)).then(renewReply("code"))
+    .then(tokenReply(true, true)).then(ackReply("acknowledged")).then(save(false)).then(drop)
+    .expect(s.saved == Old and not(s.newRevokeSent) and s.oldAccepted and s.record == "confirming")
+    .then(nextDay).then(check(true, true))
+    .expect(s.outcome == "sign-in-required" and s.requests == 1 and s.oldAccepted and not(s.renewedTwice))
+
+  run lostConfirmationIsNeverRenewedAgainTest = init.then(check(true, true)).then(renewReply("code"))
+    .then(tokenReply(true, true)).then(ackReply("lost")).then(deadline).then(ackReply("retry")).then(drop)
+    .expect(s.saved == Old and s.successorConfirmed and s.oldAccepted and s.record == "confirming")
+    .then(nextDay).then(check(true, true)).expect(s.outcome == "sign-in-required" and s.requests == 1)
 
   run signInEndsRenewalTest = init.then(check(true, true)).then(renewReply("code"))
     .then(tokenReply(true, true)).then(ackReply("retry")).then(signInStarts).then(ackReply("acknowledged"))
@@ -172,5 +233,5 @@ module NativeAndroidKeyRenewal {
 
   run newerActionWinsTest = init.then(check(true, true)).then(renewReply("code"))
     .then(tokenReply(true, true)).then(ackReply("acknowledged")).then(credentialAction(0)).then(save(true))
-    .then(drop).expect(s.saved == 0 and s.newRevokeSent and not(s.oldRevokeSent))
+    .then(drop).expect(s.saved == 0 and s.newRevokeSent and not(s.oldRevokeSent) and not(s.oldAccepted))
 }
