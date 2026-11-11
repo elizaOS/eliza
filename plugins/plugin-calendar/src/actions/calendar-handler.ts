@@ -21,6 +21,7 @@ import {
 } from "../internal/request-time.js";
 import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
 import {
+  type CalendarUserSource,
   calendarCreateAuthorityProperties,
   calendarCreateUserSources,
   validateCalendarCreateAuthority,
@@ -4219,7 +4220,9 @@ async function inferCreateEventDetails(
       prompt,
       actionType: "lifeops.calendar.extract_create_event",
       temperature: 0,
-      responseSchema: createExtractionSchema,
+      responseSchema: createExtractionSchema(
+        userSources[userSources.length - 1],
+      ),
       // Schema-bound extraction on the reply's critical path; default provider
       // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
       thinking: "off",
@@ -4274,7 +4277,6 @@ const nullableExtractionText: CalendarExtractionSchema = {
   type: ["string", "null"],
 };
 const createExtractionProperties = {
-  ...calendarCreateAuthorityProperties,
   requiresInput: {
     type: "boolean",
     description:
@@ -4294,12 +4296,20 @@ const createExtractionProperties = {
   durationMinutes: { type: ["number", "null"] },
   isShortPreparation: { type: "boolean" },
 } satisfies Record<string, CalendarExtractionSchema>;
-const createExtractionSchema: CalendarExtractionSchema = {
-  type: "object",
-  properties: createExtractionProperties,
-  required: Object.keys(createExtractionProperties),
-  additionalProperties: false,
-};
+function createExtractionSchema(
+  current: CalendarUserSource,
+): CalendarExtractionSchema {
+  const properties = {
+    ...createExtractionProperties,
+    ...calendarCreateAuthorityProperties(current),
+  };
+  return {
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  };
+}
 
 const updateExtractionProperties = {
   requiresInput: { type: "boolean" },
