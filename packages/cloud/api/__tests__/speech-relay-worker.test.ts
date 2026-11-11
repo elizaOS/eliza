@@ -185,6 +185,38 @@ function next(
     socket.addEventListener("message", receive);
   });
 }
+test("prepared speech and its expiry persist together in real SQLite storage", async () => {
+  const session = crypto.randomUUID(),
+    expiresAt = Date.now() + 60000;
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body ? "POST" : "GET",
+      headers: {
+        "x-test-session": session,
+        "Content-Type": "application/json",
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  const input = {
+    sessionId: session,
+    tokenDigest: "a".repeat(64),
+    expiresAt,
+    caller: { user: account },
+    proofVersion: 1,
+  };
+  expect((await request("/prepare", input)).status).toBe(200);
+  expect(await (await request("/test-bootstrap-state")).json()).toEqual({
+    phase: "prepared",
+    expiresAt,
+    alarmAt: expiresAt,
+  });
+  expect((await request("/prepare", input)).status).toBe(200);
+  expect(await (await request("/test-bootstrap-state")).json()).toEqual({
+    phase: "prepared",
+    expiresAt,
+    alarmAt: expiresAt,
+  });
+});
 test("ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation", async () => {
   const token = "private-test-capability";
   const digest = new Bun.CryptoHasher("sha256").update(token).digest("hex");
