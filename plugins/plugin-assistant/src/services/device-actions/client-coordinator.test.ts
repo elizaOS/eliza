@@ -2363,3 +2363,86 @@ describe("photos view operations", () => {
     ).toBe("Unlock the phone to review this action.");
   });
 });
+
+describe("opt-in current telephony request policy", () => {
+  for (const [type, capability, view] of [
+    ["messages_read_selected", "messages.read.v1", "messages"],
+    ["sms_reply_selected", "sms.compose.v1", "messages"],
+    ["voicemail_read_selected", "voicemail.read.v1", "phone"],
+    ["voicemail_delete_selected", "voicemail.delete.v1", "phone"],
+  ] as const) {
+    it(`keeps ${type} bound to the first reviewed selection and screen revision`, async () => {
+      const f = fixtureServer({
+        type,
+        ...(type === "sms_reply_selected" ? { body: "On my way" } : {}),
+      });
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await f.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      let effects = 0;
+      const { entries, journal } = memoryJournal();
+      const actions = new DeviceActionCoordinator(
+        {
+          session,
+          credential: { ...credential, capabilities: [capability] },
+          scope,
+          request,
+          journal,
+          execute: async () => {
+            effects++;
+            return { status: "unknown", summary: "Unconfirmed" };
+          },
+          profile,
+        },
+        { currentRequestTelephonyPolicy: true },
+      );
+      const selected: DeviceContextEnvelope = {
+        view,
+        revision: 4,
+        sensitive: false,
+        selectedObject: { kind: "telephony-item", id: "selected-a" },
+      };
+      const proof: CurrentDeviceActionRequest = {
+        messageId: "message",
+        text: "Use this open item",
+        current() {},
+      };
+      // Queue restoration alone cannot bind a fresh owner-selected item.
+      expect(await actions.pendingReview(selected, signal())).toMatchObject([
+        { proposal: null, notice: expect.stringContaining("Ask again") },
+      ]);
+      expect(
+        await actions.pendingReview(selected, signal(), proof),
+      ).toMatchObject([{ proposal: { id: "proposal" } }]);
+      await expect(
+        actions.approve(
+          "proposal",
+          { ...selected, revision: selected.revision + 1 },
+          signal(),
+        ),
+      ).rejects.toThrow("Review this action again from the current screen");
+      const replacement = {
+        ...selected,
+        selectedObject: { kind: "telephony-item", id: "selected-b" },
+      };
+      // Re-polling the same request cannot attach it to a replacement item.
+      expect(
+        await actions.pendingReview(replacement, signal(), proof),
+      ).toMatchObject([
+        { proposal: null, notice: expect.stringContaining("Ask again") },
+      ]);
+      await expect(
+        actions.approve("proposal", replacement, signal()),
+      ).rejects.toThrow("Review this action again from the current screen");
+      expect(effects).toBe(0);
+      expect(f.server.claims).toBe(0);
+      expect(f.server.receipts).toEqual([]);
+      expect(f.server.state).toBe("pending");
+      expect(entries.size).toBe(0);
+    });
+  }
+});
