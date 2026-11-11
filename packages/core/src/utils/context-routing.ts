@@ -288,10 +288,10 @@ export function shouldIncludeByContext(
 	}
 
 	const normalizedActive = new Set(
-		activeContexts.map((context) => `${context}`.toLowerCase()),
+		normalizeRoutingContexts(activeContexts),
 	);
-	return declaredContexts.some((context) =>
-		normalizedActive.has(`${context}`.toLowerCase()),
+	return normalizeRoutingContexts(declaredContexts).some((context) =>
+		normalizedActive.has(context),
 	);
 }
 
