@@ -156,10 +156,11 @@ public abstract class TelecomCallService extends InCallService {
         }
         // A network that sends the number as the caller's name has named nobody.
         if (name != null && name.equals(number)) name = null;
-        if (name == null && number != null && callId != null && PhoneAccount.SCHEME_TEL.equals(handle.getScheme())) {
+        if (name == null && number != null && callId != null && PhoneAccount.SCHEME_TEL.equals(handle.getScheme())
+                && checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             String key = callId + '\n' + number;
             if (names.containsKey(key)) name = TelecomCallActivity.clean(names.get(key));
-            else if (checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED) lookUp(key, callId, number);
+            else lookUp(key, callId, number);
         }
         return name != null ? name : number != null ? number : "Unknown caller";
     }
@@ -175,7 +176,8 @@ public abstract class TelecomCallService extends InCallService {
             main.post(() -> {
                 // A removed call or a destroyed service has dropped the key; it posts nothing.
                 Call call = ACTIVE_CALLS.get(callId);
-                if (activeService != this || call == null || !names.containsKey(key)) return;
+                if (activeService != this || call == null || !names.containsKey(key)
+                        || checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
                 names.put(key, found);
                 openCallSurface("named", callId, call);
             });
