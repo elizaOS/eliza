@@ -21,6 +21,7 @@
  * journal store, executors and recovery readers, and a small profile with the
  * owner-facing product name, record copy and view admission policy.
  */
+import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   browserDestinationMatches,
   directBrowserDestination,
@@ -864,9 +865,11 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     !notesOrganizeContextAllowed(context, operation)
   )
     throw new ContextNotice(
-      operation.type === "notes_record"
-        ? "Open Notes to record a voice note."
-        : "Open Home or Notes to review this Notes action.",
+      operation.type === "notes_list_filter"
+        ? "Open the Notes list to filter it."
+        : operation.type === "notes_record"
+          ? "Open Notes to record a voice note."
+          : "Open Home or Notes to review this Notes action.",
     );
   if (isFilesOperation(operation) && !filesContextAllowed(operation, context))
     throw new ContextNotice(
@@ -1370,7 +1373,11 @@ export class DeviceActionCoordinator<
       throw Error("Files access was not negotiated with this agent");
     if (
       isNotesOrganizeOperation(op) &&
-      !this.capability(NOTES_ORGANIZE_CAPABILITY)
+      !this.capability(
+        op.type === "notes_list_filter"
+          ? NOTES_LIST_FILTER_CAPABILITY
+          : NOTES_ORGANIZE_CAPABILITY,
+      )
     )
       throw Error("Notes folders were not negotiated with this agent");
     if (
