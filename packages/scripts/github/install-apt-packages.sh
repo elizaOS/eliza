@@ -21,6 +21,8 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
+bash "$(dirname "${BASH_SOURCE[0]}")/configure-hosted-apt.sh"
+
 if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
   echo "::error::passwordless sudo unavailable; cannot install apt packages: $*"
   exit 1
