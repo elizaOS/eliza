@@ -27,9 +27,10 @@
   "conformance": "packages/agent/quint/check-security-escape-retirement.mjs",
   "bounds": {
     "domain": "Three finite synchronous policy projections: production/development, missing/historical/explicit salt, two process identities and one retained ciphertext; valid/invalid HTTP configuration, stdio/non-stdio, configured/absent terminal token, matching/other/absent header and body credentials; API-token present/absent and pre-auth HTML. Each retired flag is independently true/false and can toggle without changing authority.",
-    "ordering": "The salt environment is constant within each modeled process. Cache clearing keeps the same process key; restart retains only the configured private salt. MCP validation and outer API authorization precede the modeled extra terminal gate. The guard and HTML injection decisions are synchronous, so no asynchronous progress, scheduler fairness, provider completion, or cancellation-drain obligation is claimed.",
+    "ordering": "The salt environment is constant within each modeled process. Cache clearing keeps the same process key; restart retains only the configured private salt. Distinct symbolic process keys abstract fresh randomness without proving entropy or collision probability. MCP validation and outer API authorization precede the modeled extra terminal gate. The dashboard projection assumes a valid closing head tag and configured public base/VAPID fields.",
     "conformance": "The mandatory hook starts each complete named Vitest file in a separate Node process: 19 actual runtime/SQLite cases and 3 production HTTP-server cases, zero skips. The HTTP fixture exercises both maintained configuration surfaces, unchanged disk after refusal, header precedence, authorized persistence, private-URL rejection, pre-auth HTML script execution and retained bearer API checks. It starts no child process and makes no provider request.",
-    "limitations": "Finite source-linked policy and scenario conformance, not whole-implementation refinement. Symbolic keys do not prove cryptography, entropy, ciphertext tenant binding, legacy migration, or new-process ephemeral decryption behavior. No live environment rotation, real dashboard rendering/pairing, MCP child execution, network-DNS races, external deployment configuration, concurrent file-write failure, WebSocket authentication, or physical device claim. Existing outer tenant/auth/SSRF/cancellation/receipt boundaries remain outside these changed synchronous guards."
+    "limitations": "Finite source-linked policy and scenario conformance, not whole-implementation refinement. Symbolic keys do not prove cryptography, entropy, ciphertext tenant binding, legacy migration, or new-process ephemeral decryption behavior. No live environment rotation, real dashboard rendering/pairing, MCP child execution, network-DNS races, external deployment configuration, concurrent file-write failure, WebSocket authentication, or physical device claim. Existing outer tenant/auth/SSRF/cancellation/receipt boundaries remain outside these changed synchronous guards.",
+    "progress": "Each case checks conditional settlement under weak fairness of invoking its synchronous resolve/decide/render action, and requires a TLC loop counterexample without that fairness. This is a modeled caller-execution obligation, not a timer, storage, network, provider, cancellation-drain or OS scheduling guarantee."
   },
   "cases": [
     {
@@ -42,9 +43,25 @@
         "NoHistoricalKey",
         "CompleteReadNeedsSameKey"
       ],
-      "temporal": [],
+      "temporal": ["FairPolicySettlement", "PolicySettles"],
       "maxSteps": 30,
-      "samples": 300
+      "samples": 300,
+      "temporalChecks": [
+        {
+          "property": "FairPolicySettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of resolve models eventual invocation of the synchronous policy decision. It assumes no provider or storage success and no wall-clock bound."
+          ]
+        },
+        {
+          "property": "PolicySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The caller may leave resolve uninvoked while idle or retired-flag changes continue. Require a real TLC temporal loop counterexample."
+          ]
+        }
+      ]
     },
     {
       "name": "stdio-policy",
@@ -52,9 +69,25 @@
       "init": "init",
       "step": "step",
       "invariants": ["AdmissionNeedsCurrentCredential", "RefusalCannotGrant"],
-      "temporal": [],
+      "temporal": ["FairPolicySettlement", "PolicySettles"],
       "maxSteps": 30,
-      "samples": 300
+      "samples": 300,
+      "temporalChecks": [
+        {
+          "property": "FairPolicySettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of decide models eventual invocation of the synchronous policy decision. It assumes no provider or storage success and no wall-clock bound."
+          ]
+        },
+        {
+          "property": "PolicySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The caller may leave decide uninvoked while idle or retired-flag changes continue. Require a real TLC temporal loop counterexample."
+          ]
+        }
+      ]
     },
     {
       "name": "dashboard-policy",
@@ -62,9 +95,25 @@
       "init": "init",
       "step": "step",
       "invariants": ["NoNewApiCapability", "PublicBootstrapRemains"],
-      "temporal": [],
+      "temporal": ["FairPolicySettlement", "PolicySettles"],
       "maxSteps": 30,
-      "samples": 300
+      "samples": 300,
+      "temporalChecks": [
+        {
+          "property": "FairPolicySettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of render models eventual invocation of the synchronous policy decision. It assumes no provider or storage success and no wall-clock bound."
+          ]
+        },
+        {
+          "property": "PolicySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The caller may leave render uninvoked while idle or retired-flag changes continue. Require a real TLC temporal loop counterexample."
+          ]
+        }
+      ]
     }
   ]
 }

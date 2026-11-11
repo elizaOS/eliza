@@ -1,6 +1,6 @@
-// Three finite policy projections. These synchronous decisions introduce no
-// scheduler or provider progress assumption. Actual runtime/SQLite/HTTP bridges
-// are mandatory in check-security-escape-retirement.mjs.
+// Three finite policy projections. Progress assumes only fair invocation of
+// the synchronous decision; it does not assume provider or storage success.
+// Actual runtime/SQLite/HTTP bridges are mandatory in the conformance hook.
 module SettingsSaltPolicy {
   var s: { production: bool, salt: str, retiredFlag: bool, process: int,
     phase: str, key: str, storedKey: str, readResult: str }
@@ -44,6 +44,8 @@ module SettingsSaltPolicy {
   val ProductionNeedsConfiguredKey = s.production and s.phase == "resolved" implies s.key == "configured"
   val NoHistoricalKey = s.key != "historical" and s.storedKey != "historical"
   val CompleteReadNeedsSameKey = s.readResult == "complete" implies s.key == s.storedKey
+  temporal PolicySettles = (s.phase == "unresolved").leadsTo(s.phase != "unresolved")
+  temporal FairPolicySettlement = resolve.weakFair(s) implies PolicySettles
   run missingProductionRefused = initial(true, "missing", true).then(resolve).expect(s.phase == "refused")
   run historicalProductionRefused = initial(true, "historical", true).then(resolve).expect(s.phase == "refused")
   run configuredRestartReadable = initial(true, "explicit", true).then(resolve).then(persist).then(restart).then(resolve).then(read).expect(s.readResult == "complete")
@@ -82,6 +84,8 @@ module McpStdioPolicy {
   action step = any { decide, toggleRetiredFlag, idle }
   val AdmissionNeedsCurrentCredential = s.result == "allowed" implies permitted
   val RefusalCannotGrant = s.phase == "settled" and not(permitted) implies s.result != "allowed"
+  temporal PolicySettles = (s.phase == "received").leadsTo(s.phase == "settled")
+  temporal FairPolicySettlement = decide.weakFair(s) implies PolicySettles
   run retiredOverrideCannotConfigureStdio = initial(true, true, false, "absent", "absent", true).then(decide).expect(s.result == "forbidden")
   run matchingBodyCanConfigure = initial(true, true, true, "absent", "matching", true).then(decide).expect(s.result == "allowed")
   run wrongHeaderOverridesMatchingBody = initial(true, true, true, "other", "matching", true).then(decide).expect(s.result == "unauthorized")
@@ -111,6 +115,8 @@ module DashboardBootstrapPolicy {
   action step = any { render, toggleRetiredFlag, idle }
   val NoNewApiCapability = not(s.introducedApiToken) and not(s.localStorageWrite)
   val PublicBootstrapRemains = s.phase == "served" implies s.publicFields
+  temporal PolicySettles = (s.phase == "requested").leadsTo(s.phase == "served")
+  temporal FairPolicySettlement = render.weakFair(s) implies PolicySettles
   run retiredOverrideDoesNotPublishApiToken = initial(true, true).then(render).expect(NoNewApiCapability and PublicBootstrapRemains)
   run ordinaryBootstrapRetained = initial(false, false).then(render).expect(PublicBootstrapRemains)
 }
