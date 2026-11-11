@@ -302,7 +302,8 @@ export async function drainCutoverHolds(
           redis,
           { ...held, attempts: held.attempts + 1 },
           outcome.signal,
-          now,
+          // The retry delay starts after this attempt reports it.
+          options.now ?? Date.now(),
           { key: leaseKey, token: leaseToken },
         );
         if (stored) stats.rescheduled += 1;
