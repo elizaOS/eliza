@@ -5,7 +5,9 @@ import {
   CALENDAR_NAMED_READ_CAPABILITY,
   NAMED_TARGET_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
+  PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL,
   PHONE_WORKFLOW_DEVICE_PROTOCOL,
+  resolvePhoneCalendarRange,
   validatePhoneCalendarRange,
   workflowCalendarReadMatches,
   workflowReminderDayIsCurrent,
@@ -2509,7 +2511,11 @@ export class DeviceActionService {
       throw new DeviceActionError(
         "Workflow is no longer accepting device decisions",
       );
-    if (calendarProtocol !== undefined && calendarProtocol < 4) {
+    const relativeProtocol =
+      execution.calendarAnchorAt === undefined
+        ? 4
+        : PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL;
+    if (calendarProtocol !== undefined && calendarProtocol < relativeProtocol) {
       // A peer can downgrade after queueing or approval. Recheck its ability
       // to review the pinned relative spec before decision and claim.
       const versions = await executeRawSqlTx(
@@ -2554,7 +2560,15 @@ export class DeviceActionService {
     dispatch: WorkflowDeviceDispatch,
   ): Promise<ApprovalRequest> {
     const binding = validateWorkflowBinding(dispatch.binding);
-    const operation = validateDeviceOperation(dispatch.operation);
+    const { type, ...scope } = object(dispatch.operation);
+    const relative =
+      type === "read_calendar_range" && "days" in scope
+        ? validatePhoneCalendarRange(scope)
+        : undefined;
+    const absolute = relative
+      ? undefined
+      : validateDeviceOperation(dispatch.operation);
+    const operationType = absolute?.type ?? "read_calendar_range";
     return this.database().transaction(async (tx) => {
       const rows = await executeRawSqlTx(
         tx,
@@ -2564,7 +2578,7 @@ export class DeviceActionService {
         rows.length !== 1 ||
         rows[0]?.revoked !== false ||
         Number(rows[0]?.workflow_protocol) <
-          workflowOperationProtocol(operation.type) ||
+          workflowOperationProtocol(operationType) ||
         rows[0]?.enrollment_id !== dispatch.target.enrollmentId
       )
         throw new DeviceActionError("Workflow device enrollment unavailable");
@@ -2613,6 +2627,76 @@ export class DeviceActionService {
       const step = object(
         steps.find((raw) => object(raw).id === binding.stepId),
       );
+      // Workflow ownership stays canonical. The proposal belongs to the authenticated device subject.
+      const deviceSubjectUserId = text(rows[0].subject_user_id, 256);
+      const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
+        agentId: this.runtime.agentId,
+      });
+      const idempotencyKey = `workflow-device:${digest([subjectUserId, binding.runId, binding.stepId])}`;
+      const existing = await queue.byIdempotencyKey(
+        idempotencyKey,
+        deviceSubjectUserId,
+      );
+      let operation = absolute;
+      if (operationType === "read_calendar_range") {
+        if (step.kind !== "Read" || step.operation !== "calendar_range")
+          throw new DeviceActionError("Workflow Calendar scope changed");
+        const range = validatePhoneCalendarRange(step.range);
+        if (relative && stableStringify(relative) !== stableStringify(range))
+          throw new DeviceActionError("Workflow Calendar scope changed");
+        if ("days" in range) {
+          const anchor = execution.calendarAnchorAt;
+          const required =
+            anchor === undefined ? 4 : PHONE_WORKFLOW_CALENDAR_ANCHOR_PROTOCOL;
+          if (Number(rows[0]?.workflow_protocol) < required)
+            throw new DeviceActionError("Workflow device protocol unavailable");
+          if (anchor === undefined) {
+            // Before the run clock was stored, a queued proposal was the only
+            // durable record of the date the owner was shown.
+            if (!existing)
+              throw new DeviceActionError(
+                "Workflow Calendar run time unavailable",
+              );
+            const retained = validateDevicePayload(existing.payload).operation;
+            if (
+              retained.type !== "read_calendar_range" ||
+              !workflowCalendarReadMatches(
+                range,
+                retained,
+                Date.parse(retained.start),
+                0,
+              ) ||
+              (absolute &&
+                stableStringify(absolute) !== stableStringify(retained))
+            )
+              throw new DeviceActionError("Workflow Calendar scope changed");
+            operation = retained;
+          } else {
+            const instant =
+              typeof anchor === "string" ? Date.parse(anchor) : NaN;
+            if (
+              !Number.isFinite(instant) ||
+              new Date(instant).toISOString() !== anchor
+            )
+              throw new DeviceActionError(
+                "Workflow Calendar run time unavailable",
+              );
+            const read = validateDeviceOperation({
+              type: "read_calendar_range",
+              ...resolvePhoneCalendarRange(range, instant),
+            });
+            if (absolute && stableStringify(absolute) !== stableStringify(read))
+              throw new DeviceActionError("Workflow Calendar scope changed");
+            operation = read;
+          }
+        } else if (
+          operation?.type !== "read_calendar_range" ||
+          !workflowCalendarReadMatches(range, operation)
+        )
+          throw new DeviceActionError("Workflow Calendar scope changed");
+      }
+      if (!operation)
+        throw new DeviceActionError("Invalid workflow device operation");
       if (operation.type === "create_note") {
         if (
           step.kind !== "Write" ||
@@ -2639,16 +2723,6 @@ export class DeviceActionService {
           throw new DeviceActionError(
             "Workflow reminder read names a day other than today",
           );
-      } else if (operation.type === "read_calendar_range") {
-        // A relative step range must name the run's current local days.
-        if (step.kind !== "Read" || step.operation !== "calendar_range")
-          throw new DeviceActionError("Workflow Calendar scope changed");
-        const range = validatePhoneCalendarRange(step.range);
-        if (
-          ("days" in range && Number(rows[0]?.workflow_protocol) < 4) ||
-          !workflowCalendarReadMatches(range, operation)
-        )
-          throw new DeviceActionError("Workflow Calendar scope changed");
       } else if (operation.type === "post_notification") {
         if (
           step.kind !== "Notify" ||
@@ -2659,18 +2733,8 @@ export class DeviceActionService {
       } else if (operation.type === "speak_text") {
         if (step.kind !== "Speak" || step.operation !== "read_aloud")
           throw new DeviceActionError("Workflow speech scope changed");
-      } else
+      } else if (operation.type !== "read_calendar_range")
         throw new DeviceActionError("Unsupported workflow device operation");
-      // Workflow ownership stays canonical; phone approvals retain the authenticated device subject.
-      const deviceSubjectUserId = text(rows[0].subject_user_id, 256);
-      const queue = new PgApprovalQueue(transactionRuntime(this.runtime, tx), {
-        agentId: this.runtime.agentId,
-      });
-      const idempotencyKey = `workflow-device:${digest([subjectUserId, binding.runId, binding.stepId])}`;
-      const existing = await queue.byIdempotencyKey(
-        idempotencyKey,
-        deviceSubjectUserId,
-      );
       return (
         await queue.enqueueTransactional(
           {
