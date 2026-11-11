@@ -1,5 +1,6 @@
 /** Preserves persisted deterministic UUID bytes independently of the host hashing implementation. */
 import type { UUID } from "../types/primitives.js";
+import { toWellFormedUnicode } from "./unicode.js";
 
 export function validateUuid(value: unknown): UUID | null {
 	return typeof value === "string" &&
@@ -26,7 +27,11 @@ export function uuidFromString(
 	const maybeUuid = validateUuid(target);
 	if (maybeUuid) return maybeUuid;
 
-	const escapedStr = encodeURIComponent(target);
+	// encodeURIComponent throws `URIError: URI malformed` on a lone
+	// surrogate, so normalize first: model and user text can carry a
+	// broken emoji. Well-formed input is unchanged (toWellFormedUnicode
+	// returns it as-is), so no persisted deterministic id changes.
+	const escapedStr = encodeURIComponent(toWellFormedUnicode(target));
 
 	// Deterministic UUID derived from SHA-1(escapedStr)
 	// Keep the historical escaping and version bits: persisted IDs cannot change.
