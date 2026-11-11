@@ -95,7 +95,7 @@ async function invoke(
     expect(result.userFacingText).toBeUndefined();
     expect(callback).not.toHaveBeenCalled();
   } else {
-    expect(callback).toHaveBeenCalledOnce();
+    expect(callback, JSON.stringify(result)).toHaveBeenCalledOnce();
     expect(callback.mock.calls[0]?.[0]).toEqual({ text: result.text });
   }
   return { callback, result };
@@ -466,6 +466,25 @@ describe("owner life action effect receipts — real PGlite", () => {
 });
 
 it("anchors an explicit one-shot reminder at its requested due time", async () => {
+  const createPlan = {
+    mode: "create",
+    requestKind: "reminder",
+    nativeProjection: "in_app_only",
+    notificationMode: "default",
+    timeOfDay: null,
+    timeZone: null,
+    title: "Two-minute notification",
+    cadenceKind: "once",
+    description: null,
+    dueDate: null,
+    dueInDays: null,
+    dueWeekday: null,
+    dueInMinutes: 2,
+    multiStep: false,
+  };
+  vi.spyOn(taskCreate, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+    extractionPlan(createPlan),
+  );
   const created = await invoke(
     {
       action: "create",
@@ -473,22 +492,7 @@ it("anchors an explicit one-shot reminder at its requested due time", async () =
       confirmed: true,
       intent:
         "Remind me in 2 minutes to check the notification with an alert, in-app only",
-      createPlan: {
-        mode: "create",
-        requestKind: "reminder",
-        nativeProjection: "in_app_only",
-        notificationMode: "default",
-        timeOfDay: null,
-        timeZone: null,
-        title: "Two-minute notification",
-        cadenceKind: "once",
-        description: null,
-        dueDate: null,
-        dueInDays: null,
-        dueWeekday: null,
-        dueInMinutes: 2,
-        multiStep: false,
-      },
+      createPlan,
     },
     "Remind me in 2 minutes to check the notification with an alert, in-app only",
   );
@@ -574,11 +578,11 @@ it.each([
         : ownerSurface === "OWNER_REMINDERS"
           ? "Add check the notification as a task due in 2 minutes and notify me then"
           : "Add check the notification as a task due in 2 minutes";
-    if (ownerSurface === "OWNER_REMINDERS") {
+    if (ownerSurface === "OWNER_REMINDERS" || requestKind === "alarm") {
       vi.spyOn(taskCreate, "extractTaskCreatePlanWithLlm").mockResolvedValue(
         extractionPlan({
           mode: "create",
-          requestKind: "reminder",
+          requestKind: requestKind === "alarm" ? "alarm" : "reminder",
           notificationMode: "default",
           nativeProjection: "in_app_only",
           title: `${ownerSurface} two-minute ${requestKind}`,
@@ -666,6 +670,25 @@ it.each([
 );
 
 it("persists an explicit in-app-only reminder without native projection", async () => {
+  const createPlan = {
+    mode: "create",
+    requestKind: "reminder",
+    nativeProjection: "in_app_only",
+    notificationMode: "default",
+    timeOfDay: null,
+    timeZone: null,
+    title: "In-app only QA",
+    cadenceKind: "once",
+    description: null,
+    dueDate: null,
+    dueInDays: null,
+    dueWeekday: null,
+    dueInMinutes: 2,
+    multiStep: false,
+  };
+  vi.spyOn(taskCreate, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+    extractionPlan(createPlan),
+  );
   const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
   try {
     const created = await invoke(
@@ -683,22 +706,7 @@ it("persists an explicit in-app-only reminder without native projection", async 
           },
         },
         intent: "Remind me in 2 minutes with an alert, in-app only",
-        createPlan: {
-          mode: "create",
-          requestKind: "reminder",
-          nativeProjection: "in_app_only",
-          notificationMode: "default",
-          timeOfDay: null,
-          timeZone: null,
-          title: "In-app only QA",
-          cadenceKind: "once",
-          description: null,
-          dueDate: null,
-          dueInDays: null,
-          dueWeekday: null,
-          dueInMinutes: 2,
-          multiStep: false,
-        },
+        createPlan,
       },
       "Remind me in 2 minutes with an alert, in-app only",
     );
@@ -895,7 +903,7 @@ it.each([undefined, "apple_reminders"])(
       });
       expect(definition?.metadata?.nativeProjection).toBe(nativeProjection);
       expect(native).toHaveBeenCalledOnce();
-      expect(extraction).toHaveBeenCalledTimes(nativeProjection ? 0 : 1);
+      expect(extraction).toHaveBeenCalledOnce();
       if (!nativeProjection)
         expect(extraction.mock.calls[0]?.[0].intent).toBe(intent);
     } finally {
@@ -977,68 +985,73 @@ it("keeps an unresolved reminder alert choice effect-free instead of treating a 
   }
 }, 120000);
 
-it("rejects a planner-supplied reminder for a Calendar-only owner request", async () => {
-  const service = new LifeOpsService(runtime, {
-    ownerEntityId: runtime.agentId,
-  });
-  const before = (await service.listDefinitions())
-    .map((record) => record.definition.id)
-    .sort();
-  const ownerText =
-    'Create "Calendar only" tomorrow from 5:43 PM to 5:48 PM in my Calendar. No guests or reminders.';
-  const extraction = vi
-    .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
-    .mockResolvedValue(
-      extractionPlan({
-        mode: "respond",
-        requestKind: null,
-        response: "Use Calendar for this event.",
-        multiStep: false,
-      }),
-    );
-  try {
-    const rejected = await invoke(
-      {
-        action: "create",
-        ownerSurface: "OWNER_REMINDERS",
-        kind: "definition",
-        confirmed: true,
-        title: "Calendar only",
-        intent: "Remind me about Calendar only",
-        createPlan: {
-          mode: "create",
-          requestKind: "reminder",
-          nativeProjection: "in_app_only",
-          notificationMode: "default",
-          title: "Calendar only",
-          cadenceKind: "once",
-          dueInMinutes: 2,
-          multiStep: false,
-        },
-      },
-      ownerText,
-    );
-    expect(extraction).toHaveBeenCalledOnce();
-    expect(extraction.mock.calls[0]?.[0].intent).toBe(ownerText);
-    expect(rejected.result.success).toBe(false);
-    expect(rejected.result.data).toMatchObject({
-      error: "OWNER_REMINDER_INTENT_MISMATCH",
-      coachingFailure: true,
+it.each(["OWNER_REMINDERS", "OWNER_TODOS"])(
+  "rejects a planner-supplied reminder for a Calendar-only owner request on %s",
+  async (ownerSurface) => {
+    const service = new LifeOpsService(runtime, {
+      ownerEntityId: runtime.agentId,
     });
-    expect(
-      (await service.listDefinitions())
-        .map((record) => record.definition.id)
-        .sort(),
-    ).toEqual(before);
-    expect(
-      rejected.result.effectReceipts?.some(
-        (value) => value.outcome === "applied",
-      ),
-    ).not.toBe(true);
-  } finally {
-    extraction.mockRestore();
-  }
-}, 120000);
+    const before = (await service.listDefinitions())
+      .map((record) => record.definition.id)
+      .sort();
+    const ownerText =
+      'Create "Calendar only" tomorrow from 5:43 PM to 5:48 PM in my Calendar. No guests or reminders.';
+    const extraction = vi
+      .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
+      .mockResolvedValue(
+        extractionPlan({
+          mode: "respond",
+          requestKind: null,
+          response: "Use Calendar for this event.",
+          multiStep: false,
+        }),
+      );
+    try {
+      const rejected = await invoke(
+        {
+          action: "create",
+          ownerSurface,
+          kind: "definition",
+          confirmed: true,
+          title: "Calendar only",
+          intent: "Remind me about Calendar only",
+          createPlan: {
+            mode: "create",
+            requestKind: "reminder",
+            nativeProjection: "in_app_only",
+            notificationMode: "default",
+            title: "Calendar only",
+            description: null,
+            cadenceKind: "once",
+            dueInMinutes: 2,
+            multiStep: false,
+          },
+        },
+        ownerText,
+      );
+      expect(extraction).toHaveBeenCalledOnce();
+      expect(extraction.mock.calls[0]?.[0].intent).toBe(ownerText);
+      expect(rejected.result.success).toBe(false);
+      expect(rejected.result.data).toMatchObject({
+        error: "OWNER_REMINDER_INTENT_MISMATCH",
+        coachingFailure: true,
+      });
+      expect(
+        (await service.listDefinitions())
+          .map((record) => record.definition.id)
+          .sort(),
+      ).toEqual(before);
+      expect(
+        rejected.result.effectReceipts?.some(
+          (value) => value.outcome === "applied",
+        ),
+      ).not.toBe(true);
+    } finally {
+      extraction.mockRestore();
+    }
+  },
+  120000,
+);
 
 it.each([
   "Remind me in 2 minutes to check the notification in this app with an alert",

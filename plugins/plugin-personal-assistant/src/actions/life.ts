@@ -5419,8 +5419,10 @@ async function runLifeOperationHandlerInner(
           : params.createPlan;
       const nativeCreatePlan = parseNativeTaskCreatePlan(suppliedCreatePlan);
       const verifyReminderIntent =
-        ownerSurfaceActionName === "OWNER_REMINDERS" &&
-        !deferredDefinitionDraft;
+        !deferredDefinitionDraft &&
+        (ownerSurfaceActionName === "OWNER_REMINDERS" ||
+          nativeCreatePlan?.requestKind === "reminder" ||
+          nativeCreatePlan?.requestKind === "alarm");
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
