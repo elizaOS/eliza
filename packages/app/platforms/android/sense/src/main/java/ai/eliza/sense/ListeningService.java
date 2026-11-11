@@ -188,7 +188,11 @@ public class ListeningService extends Service {
   if(!ListenerPolicy.foreground(state)){
    stopCapture();
    // Android stops the process if a foreground start does not get startForeground, also when the service must stop.
-   if(owed)startForeground(ListenerNotifications.ACTIVE_ID,ListenerNotifications.active(this,state),ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+   if(owed)try{
+    startForeground(ListenerNotifications.ACTIVE_ID,ListenerNotifications.active(this,state),ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+   }catch(RuntimeException refused){
+    Log.w(TAG,"Foreground microphone service refused while stopping: "+refused.getClass().getSimpleName());
+   }
    stopForeground(STOP_FOREGROUND_REMOVE);
    // This call has no effect while a newer start is not delivered. That start stops the service.
    stopSelf(lastStart);
@@ -200,7 +204,7 @@ public class ListeningService extends Service {
   }catch(RuntimeException refused){
    // Android refused the microphone service (no while-in-use exemption or permission). Never capture without it.
    Log.w(TAG,"Foreground microphone service refused: "+refused.getClass().getSimpleName());
-   stopCapture();stopSelf();return;
+   stopCapture();stopSelf(lastStart);return;
   }
   ListenerNotifications.showStatus(this,state);
   analyse=ListenerPolicy.processesAudio(state);
