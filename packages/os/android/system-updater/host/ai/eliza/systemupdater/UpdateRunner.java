@@ -110,7 +110,8 @@ final class UpdateRunner {
                     || !current.packageSha256.equals(candidate.sha256)) {
                 finish(run, "The offered update changed; the earlier candidate remains held"); return;
             }
-            Path scratch = current.isUnapplied()
+            boolean unapplied = current.isUnapplied();
+            Path scratch = unapplied
                     ? PackageVerifier.reclaimExtractionScratch(directory.toPath()) : null;
             File ota = new File(directory, candidate.sha256 + ".zip");
             if (!ota.exists()) {
@@ -121,7 +122,7 @@ final class UpdateRunner {
                 ota = channel.download(candidate, directory);
             }
             status(context, "Verifying system update");
-            run.verifying = true;
+            run.verifying = unapplied;
             VerifiedPayload payload = PackageVerifier.verify(ota, directory,
                     candidate.sha256, candidate.bytes, candidate.fingerprint, candidate.timestamp,
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device),

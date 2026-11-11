@@ -35,8 +35,7 @@ public final class ScratchReplay {
             throw new AssertionError("Unrecognized scratch accepted");
         }
         if (mode.equals("refuse-final")) {
-            Path scratch = PackageVerifier.reclaimExtractionScratch(root);
-            try { PackageVerifier.hasRetainedPayload(root.resolve("candidate.payload").toFile(), scratch); }
+            try { PackageVerifier.hasRetainedPayload(root.resolve("candidate.payload").toFile()); }
             catch (IOException refused) { System.out.println("refused final"); return; }
             throw new AssertionError("Unrecognized final pathname accepted");
         }
