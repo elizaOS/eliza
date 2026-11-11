@@ -224,7 +224,7 @@ module NotesTrashCommitLifecycle {
   temporal CallSettles = pendingCall.leadsTo(not(pendingCall))
   temporal FairCallSettlement = advance.weakFair(s) implies CallSettles
   run cancelledQueuedEraseTest = initial("erase", true, true).then(cancel)
-    .then(dispatchErase.fail()).expect(not(s.changed) and safety)
+    .expect(not(s.changed) and safety).then(dispatchErase.fail())
   run changedReviewRefusedTest = initial("erase", true, true).then(replaceReview)
     .then(dispatchErase).expect(s.outcome == "conflict" and not(s.changed))
   run cancellationAfterDispatchRetainsReceiptTest = initial("erase", true, true)
