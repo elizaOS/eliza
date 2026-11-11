@@ -164,7 +164,12 @@ test("a read-only filter retains its results during Files activation", async (t)
         storageTrashList: async () => ({ status: "ready", items: [] }),
         storageWatch: async () => watched.resolve(),
         storageQuery() {
-          if (++queries > 1) return Promise.resolve({ status: "ready" });
+          if (++queries > 1)
+            return Promise.resolve({
+              status: "ready",
+              entries: [],
+              truncated: false,
+            });
           queryStarted.resolve();
           return query.promise;
         },
@@ -198,6 +203,7 @@ test("a read-only filter retains its results during Files activation", async (t)
 
   query.resolve({
     status: "ready",
+    truncated: false,
     entries: [
       {
         name: "bank statement.pdf",
