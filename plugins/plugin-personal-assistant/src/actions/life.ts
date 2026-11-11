@@ -5539,14 +5539,21 @@ async function runLifeOperationHandlerInner(
             throw error;
           }
         }
-        // Verification may reject the action, but it must not reinterpret a
-        // complete plan's already resolved time, destination, or alert choice.
+        // Verification may reject the action. Preserve native timing and known
+        // delivery choices while recovering an unresolved destination or alert.
         if (
           verifyReminderIntent &&
           nativeCreatePlan &&
           llmPlan?.mode === "create"
         ) {
-          llmPlan = { ...nativeCreatePlan, requestKind: llmPlan.requestKind };
+          llmPlan = {
+            ...nativeCreatePlan,
+            requestKind: llmPlan.requestKind,
+            nativeProjection:
+              nativeCreatePlan.nativeProjection ?? llmPlan.nativeProjection,
+            notificationMode:
+              nativeCreatePlan.notificationMode ?? llmPlan.notificationMode,
+          };
         }
         const plannerResponse =
           llmPlan?.mode === "respond" ? llmPlan.response : undefined;
