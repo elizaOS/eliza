@@ -41,7 +41,8 @@ const required = [
   "keeps unresolved destinations effect-free and preserves explicit Apple preference undefined",
   "keeps unresolved destinations effect-free and preserves explicit Apple preference apple_reminders",
   "keeps an unresolved reminder alert choice effect-free instead of treating a due time as an alert",
-  "rejects a planner-supplied reminder for a Calendar-only owner request",
+  "rejects a planner-supplied reminder for a Calendar-only owner request on OWNER_REMINDERS",
+  "rejects a planner-supplied reminder for a Calendar-only owner request on OWNER_TODOS",
   "keeps an explicit reminder actionable after checking its owner request: Remind me in 2 minutes to check the notification in this app with an alert",
   "keeps an explicit reminder actionable after checking its owner request: Recuérdame revisar la notificación en esta app dentro de 2 minutos",
 ];
