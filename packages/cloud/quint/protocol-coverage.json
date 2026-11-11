@@ -1333,6 +1333,26 @@
     ]
   },
   {
+    "id": "cloud-flow-mcp-hosted-discovery-stop",
+    "model": "packages/cloud/quint/mcp_hosted_discovery.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.ts",
+      "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.lifecycle.integration.test.ts",
+      "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.reconnect.test.ts"
+    ],
+    "invariants": [
+      "StopWithdrawsTools",
+      "AcknowledgedStopRetiresTransport",
+      "LazyToolsRequireTemporaryClose"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One hosted HTTP MCP server and one shutdown. The stopped owner withdraws connected and lazy tools, retires its tracked transport and rejects late discovery publication.",
+      "Real loopback SDK tests cover lazy retirement, shutdown during a held resource reply, shutdown before lazy publication, and preservation of a same-name runtime action with different identity. A post-start lazy connection and the existing retry tests provide supplemental checks.",
+      "Live tool execution, per-entity connections, schema caching, physical close failure, independent reconnects and platform proxy sessions remain outside this projection."
+    ]
+  },
+  {
     "id": "cloud-flow-mcp-and-agent-rpc",
     "model": null,
     "sources": [
@@ -1345,7 +1365,7 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite MCP session model yet.",
+      "Hosted MCP client discovery and shutdown have a separate bounded model. Configured upstream proxy sessions and agent RPC remain open here.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Session ownership is retained across requests | Cancellation and close stop later effects | Streaming errors remain explicit",
       "Abstract states: initialized, active, requesting, streaming, canceled, closed, failed"
