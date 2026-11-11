@@ -151,7 +151,10 @@ export function providerRateLimitRetryAt(
 				? explicit
 				: providerRetryAfterMs(node, now);
 		const deadline = delay === undefined ? Number.NaN : now + delay;
-		if (Number.isFinite(deadline) && deadline > now) return deadline;
+		// A zero delay (Retry-After: 0, or a reset date already past) means
+		// retry now, so the deadline equal to now is a real deadline. The
+		// strict comparison dropped it and reported no rate limit at all.
+		if (Number.isFinite(deadline) && deadline >= now) return deadline;
 	}
 	return undefined;
 }
