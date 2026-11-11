@@ -1963,6 +1963,58 @@ describe("shared phone and reminder-read parity", () => {
     expect(server.providerReceipt).toMatchObject({ outcome: "unknown" });
     expect(effects).toBe(1);
   });
+  it("retains uncertain contact writes across receipt recovery without repeating or guessing", async () => {
+    for (const operation of [
+      telephonyCases[1][0],
+      telephonyCases[2][0],
+      telephonyCases[3][0],
+    ]) {
+      const { server, request } = fixtureServer(operation);
+      const { journal, entries } = memoryJournal();
+      let effects = 0;
+      const telephonyResult = {
+        kind: "contact-write",
+        status: "unknown",
+      } as const;
+      const execute: DeviceExecutor = async () => {
+        effects++;
+        return { status: "unknown", summary: "Unconfirmed", telephonyResult };
+      };
+      const actions = make(request, journal, execute, ["contacts.write.v1"]);
+      await actions.pending(home, signal());
+      server.receiptOutage = true;
+      expect((await actions.approve("proposal", home, signal())).status).toBe(
+        "unknown",
+      );
+      expect(entries.get("proposal")).toMatchObject({
+        phase: "terminal",
+        status: "unknown",
+        result: { telephonyResult },
+      });
+      expect(server.state).toBe("executing");
+      server.receiptOutage = false;
+      const restarted = make(request, journal, execute, ["contacts.write.v1"]);
+      await restarted.syncReceipts(signal());
+      expect(server.providerReceipt).toMatchObject({
+        outcome: "unknown",
+        result: telephonyResult,
+      });
+      expect(server.state).toBe("reconciliation_required");
+      expect(await restarted.pending(home, signal())).toEqual([]);
+      expect((await restarted.history(signal()))[0].resolutions).toEqual([
+        "unresolved",
+      ]);
+      for (const outcome of ["applied", "not_applied"] as const)
+        await expect(
+          restarted.reconcile("proposal", outcome, signal()),
+        ).rejects.toThrow(/exact saved evidence/);
+      await restarted.reconcile("proposal", "unresolved", signal());
+      expect(server.providerReceipt).toMatchObject({ outcome: "unknown" });
+      await restarted.syncReceipts(signal());
+      expect(effects).toBe(1);
+      expect(server.claims).toBe(1);
+    }
+  });
   it("does not reconcile a lost call result from the owner's guess", async () => {
     const { server, request } = fixtureServer(call);
     let effects = 0;
