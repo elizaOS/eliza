@@ -24,6 +24,7 @@ import {
   type MessagePayload,
 } from "@elizaos/core";
 import {
+  createApprovalQueue,
   type RecordedPendingPrompt,
   resolvePendingPromptsStore,
 } from "@elizaos/plugin-assistant";
@@ -580,11 +581,81 @@ export async function processDueScheduledTasks(
   const completedTaskIds = new Set<string>();
   const timeoutTaskIds = new Set<string>();
   const recoveredTaskIds = new Set<string>();
+  const heldApprovalTaskIds = new Set<string>();
+
+  // Approval tasks are derived from the owner-scoped approval row. Reconcile
+  // both waiting and already-fired rows before any delivery or escalation.
+  // This also retires tasks created before the approval was resolved.
+  const approvalQueue = createApprovalQueue(request.runtime, {
+    agentId: request.agentId,
+  });
+  const approvalTasks = new Map(
+    [...liveCandidates, ...timeoutCandidates].map((task) => [
+      task.taskId,
+      task,
+    ]),
+  );
+  for (const task of approvalTasks.values()) {
+    const requestId = task.metadata?.approvalRequestId;
+    if (task.kind !== "approval" || typeof requestId !== "string") continue;
+    heldApprovalTaskIds.add(task.taskId);
+    try {
+      if (
+        task.subject?.kind !== "self" ||
+        task.createdBy !== request.agentId ||
+        task.idempotencyKey !== `approval:${requestId}`
+      ) {
+        throw new Error("Approval task owner binding is invalid");
+      }
+      const approval = await approvalQueue.byId(requestId, task.subject.id);
+      if (!approval)
+        throw new Error("Approval task has no matching owner request");
+      if (approval.state === "pending") {
+        heldApprovalTaskIds.delete(task.taskId);
+        continue;
+      }
+      // Approval can return to pending after a failed execution preflight.
+      // Hold delivery during execution, then retire only a terminal request.
+      if (
+        !(["done", "rejected", "expired"] as const).some(
+          (state) => state === approval.state,
+        )
+      )
+        continue;
+      await resolvePendingPromptsStore(request.runtime).forgetTask(task.taskId);
+      const completed = await runner.apply(
+        task.taskId,
+        "complete",
+        { reason: `approval ${approval.state}` },
+        { expectedTask: task },
+      );
+      completedTaskIds.add(task.taskId);
+      result.completions.push(completionResult(completed));
+      await recordTaskStateEntry(
+        request.runtime,
+        completed,
+        "completed",
+        request.now,
+      );
+    } catch (error) {
+      const message = errorMessage(error);
+      request.runtime.reportError("ApprovalTask.reconcile", error, {
+        taskId: task.taskId,
+        requestId,
+      });
+      result.errors.push({
+        taskId: task.taskId,
+        phase: "completion_check",
+        message,
+      });
+    }
+  }
 
   // Restart reconciliation runs before completion-timeout handling. Otherwise
   // a claimed-but-undelivered reminder could age into its no-reply policy even
   // though the owner never received the original prompt.
   for (const task of liveCandidates) {
+    if (heldApprovalTaskIds.has(task.taskId)) continue;
     if (result.fires.length >= limit) break;
     if (!isRecoverableBoundDispatch(task, request.now)) continue;
     try {
@@ -618,6 +689,7 @@ export async function processDueScheduledTasks(
   }
 
   for (const task of timeoutCandidates) {
+    if (heldApprovalTaskIds.has(task.taskId)) continue;
     if (recoveredTaskIds.has(task.taskId)) continue;
     if (result.completions.length >= limit) {
       break;
@@ -655,6 +727,7 @@ export async function processDueScheduledTasks(
   // cheap indexed DB ops in a pathological burst and guarantee the due-fire
   // pass always gets its full `limit`.
   for (const task of timeoutCandidates) {
+    if (heldApprovalTaskIds.has(task.taskId)) continue;
     if (recoveredTaskIds.has(task.taskId)) continue;
     if (completedTaskIds.has(task.taskId)) continue;
     if (result.completionTimeouts.length >= limit) {
@@ -704,6 +777,7 @@ export async function processDueScheduledTasks(
   }
 
   for (const task of dueCandidates) {
+    if (heldApprovalTaskIds.has(task.taskId)) continue;
     if (recoveredTaskIds.has(task.taskId)) continue;
     if (completedTaskIds.has(task.taskId)) continue;
     if (timeoutTaskIds.has(task.taskId)) continue;
