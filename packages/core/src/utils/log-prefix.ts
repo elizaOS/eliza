@@ -16,6 +16,17 @@ function getRuntimeProcess(): RuntimeProcess | undefined {
 	return candidate && typeof candidate === "object" ? candidate : undefined;
 }
 
+/**
+ * A log prefix is one bracketed token on one line. The name comes from the
+ * environment or argv, so strip the characters that would break that shape:
+ * newlines and line/paragraph separators (which would split one log call
+ * across lines), brackets (which would forge a second tag), and control
+ * characters (which would ride an escape sequence into the logs).
+ */
+function sanitizePrefixName(name: string): string {
+	return name.replace(/[\p{Cc}\u2028\u2029[\]]/gu, "");
+}
+
 function prefixFromPackageName(name: string): string {
 	let packageName = name;
 	if (packageName.startsWith("@"))
@@ -33,13 +44,17 @@ export function getLogPrefix(): string {
 
 	const runtimeProcess = getRuntimeProcess();
 
-	const appCliName = runtimeProcess?.env?.APP_CLI_NAME?.trim();
+	const appCliName = sanitizePrefixName(
+		runtimeProcess?.env?.APP_CLI_NAME?.trim() ?? "",
+	);
 	if (appCliName) {
 		cachedPrefix = `[${appCliName}]`;
 		return cachedPrefix;
 	}
 
-	const packageName = runtimeProcess?.env?.npm_package_name?.trim();
+	const packageName = sanitizePrefixName(
+		runtimeProcess?.env?.npm_package_name?.trim() ?? "",
+	);
 	if (packageName) {
 		cachedPrefix = prefixFromPackageName(packageName);
 		return cachedPrefix;
@@ -49,7 +64,9 @@ export function getLogPrefix(): string {
 		a.startsWith("--name="),
 	);
 	if (nameArgMatch) {
-		const name = nameArgMatch.slice("--name=".length).trim();
+		const name = sanitizePrefixName(
+			nameArgMatch.slice("--name=".length).trim(),
+		);
 		if (name) {
 			cachedPrefix = `[${name}]`;
 			return cachedPrefix;
