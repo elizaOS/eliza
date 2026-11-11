@@ -79,6 +79,9 @@ export async function handleTranscription(
 
   let blob: Blob;
   let extraParams: OpenAITranscriptionParams | null = null;
+  // The runtime puts the caller's and the turn's abort signal into object
+  // params; the STT request observes it like the TTS request does.
+  let signal: AbortSignal | undefined;
 
   if (input instanceof Blob || input instanceof File) {
     blob = input as Blob;
@@ -127,6 +130,7 @@ export async function handleTranscription(
       );
     }
     extraParams = params;
+    signal = params.signal;
   } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
     // No in-process bytes accompanied the URL: only a remote fetch can serve
     // the transcript. An empty audioUrl is a caller-shape error, not a
@@ -137,7 +141,8 @@ export async function handleTranscription(
         "TRANSCRIPTION requires audio bytes or a non-empty audioUrl; received an empty audioUrl with no audio."
       );
     }
-    blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
+    signal = input.signal;
+    blob = await fetchAudioFromUrl(input.audioUrl, signal);
   } else {
     throw new Error(
       "TRANSCRIPTION expects a Blob/File/Buffer/Uint8Array/ArrayBuffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer/Uint8Array/ArrayBuffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature? }"
@@ -173,6 +178,7 @@ export async function handleTranscription(
     for (;;) {
       response = await createElizaCloudClient(runtime).routes.postApiV1VoiceSttRaw({
         body: formData,
+        signal,
         timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_STT_TIMEOUT_MS", 60_000),
       });
       if (warmingRetries < 2) {

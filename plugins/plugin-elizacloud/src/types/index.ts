@@ -7,6 +7,7 @@ export interface OpenAITranscriptionParams {
   temperature?: number;
   timestampGranularities?: string[];
   mimeType?: string;
+  signal?: AbortSignal;
 }
 
 export interface OpenAITextToSpeechParams {
