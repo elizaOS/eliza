@@ -43,6 +43,21 @@ It retains expired entries when owned content cannot be erased and removes stale
 Trash rows without erasing a restored note. These helpers do not change Cloud deletion
 or start a background service.
 
+An installed local host opts into canonical three-day Trash by setting
+`ELIZA_NOTES_TRASH_RETENTION_DAYS` to `3` on its Notes agent runtime. Other hosts
+keep their existing policy.
+The service checks expiry at startup and on an authenticated owner state read.
+Restore checks the deadline in the same transaction that would restore the note.
+
+`POST /api/notes/trash/erase` takes the reviewed collection revision and either
+`scope: "all"` or `scope: "entry"` with the exact `id` and `deletedAt`.
+The commit removes the note and records any owned recording cleanup together.
+An authenticated owner reads pending work at `GET /api/notes/trash/recordings`.
+The host supplies `verifyRecordingCleanup` to prove the matching native erase
+before `POST /api/notes/trash/recordings/complete` retires the receipt.
+Hosts enable the policy after connecting their recording store and cleanup
+scheduler. Notes content and recording transcripts stay out of cleanup receipts.
+
 Capacity limits apply when adding to Trash. Existing documents remain readable and
 can be restored or purged after a host lowers its limits. A full Trash refuses new
 additions with `NotesTrashFull` (`isNotesTrashFull` also recognizes a host store's
