@@ -85,7 +85,7 @@ it("serves pre-auth dashboard HTML without introducing the full API token despit
   vi.stubEnv("ELIZA_EXTERNAL_BASE_URL", "https://api.example.test");
   vi.stubEnv("ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY", "public-vapid-fixture");
   const base = await start(apiToken, undefined);
-  const response = await fetch(base + "/");
+  const response = await fetch(`${base}/`);
   expect(response.status).toBe(200);
   const html = await response.text();
   expect(html).not.toContain(apiToken);
@@ -107,10 +107,10 @@ it("serves pre-auth dashboard HTML without introducing the full API token despit
   expect(window.__ELIZAOS_APP_BOOT_CONFIG__).not.toHaveProperty("apiToken");
   expect(window).not.toHaveProperty("__ELIZA_API_TOKEN__");
   expect(writes).toEqual([]);
-  expect((await fetch(base + "/api/status")).status).toBe(401);
+  expect((await fetch(`${base}/api/status`)).status).toBe(401);
   expect(
     (
-      await fetch(base + "/api/status", {
+      await fetch(`${base}/api/status`, {
         headers: { authorization: `Bearer ${apiToken}` },
       })
     ).status,
@@ -152,7 +152,11 @@ it("refuses both tokenless loopback stdio configuration surfaces despite the ret
 it("retains explicit terminal-token authorization and never persists the request credential", async () => {
   const base = await start(undefined, terminalToken);
   const before = await readFile(configPath, "utf8");
-  for (const headers of [{}, { "x-eliza-terminal-token": "invalid" }]) {
+  const deniedHeaders: Record<string, string>[] = [
+    {},
+    { "x-eliza-terminal-token": "invalid" },
+  ];
+  for (const headers of deniedHeaders) {
     const denied = await send(
       base,
       "/api/mcp/config/server",
