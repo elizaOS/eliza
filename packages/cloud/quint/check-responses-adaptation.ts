@@ -28,7 +28,7 @@ const sources = [
   "packages/cloud/quint/check-responses-adaptation.ts",
 ];
 const tests = [
-  { file: "v1/responses/route.test.ts", count: 48 },
+  { file: "v1/responses/route.test.ts", count: 51 },
   { file: "v1/responses/arguments.test.ts", count: 14 },
   { file: "v1/responses/provider-contract.test.ts", count: 10 },
 ];

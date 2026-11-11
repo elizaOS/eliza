@@ -30,10 +30,7 @@ import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { calculateCost, getProviderFromModel, normalizeModelName } from "../../pricing";
 import { logger } from "../../utils/logger";
-import {
-  warmInferenceAdmissionGate,
-  warmInferenceRateLimitGate,
-} from "../inference-admission-gate";
+import { warmInferenceAdmissionGate } from "../inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "../inference-admission-snapshot";
 import {
   coordinateSharedConversationPrewarm,
@@ -111,10 +108,6 @@ export async function prewarmSharedAgentTurnCaches(
     leg: "admission-gate",
     run: warmInferenceAdmissionGate(agent.organization_id),
   });
-  legs.push({
-    leg: "rate-limit-gate",
-    run: warmInferenceRateLimitGate(agent.organization_id),
-  });
 
   // 1. Combined admission snapshot: org balance + rate-limit tier. The
   //    projection behind "Billing authorization is warming", "Inference
@@ -180,22 +173,17 @@ export async function prewarmSharedAgentTurnCaches(
 }
 
 /**
- * Warm the authorities a Personal Shared turn needs. Platform-funded turns use
- * only the rate-limit window, so this deliberately avoids balance-ledger
- * hydration. Established accounts can skip the conversation leg while still
- * keeping inference admission off the first model request.
+ * Warm the conversation object a Personal Shared turn needs. Platform-funded
+ * turns are rate limited in the isolate and consult no organization gate, so
+ * there is no admission authority to warm and no balance-ledger hydration.
+ * Established accounts skip the new-conversation leg.
  */
 export async function prewarmPersonalSharedAgentTurnCaches(
   agent: Pick<SharedRuntimeAgent, "id" | "organization_id">,
   namespace: RuntimeDurableObjectNamespace,
   options: { warmConversation?: boolean; conversationId?: string } = {},
 ): Promise<void> {
-  const legs: PrewarmLeg[] = [
-    {
-      leg: "rate-limit-gate",
-      run: warmInferenceRateLimitGate(agent.organization_id),
-    },
-  ];
+  const legs: PrewarmLeg[] = [];
   if (options.warmConversation !== false) {
     legs.push({
       leg: "conversation-object",
@@ -239,46 +227,31 @@ export async function prewarmPersonalSharedAgentTurnCaches(
  * Keep-warm legs for a rowless Personal Shared room. The cron only knows the
  * namespaced agent id and room from mirrored history, and that id is a one-way
  * hash of the account, so it is never sent to a UUID repository. The room's
- * conversation object (with its turn-ingress modules) is warmed first; it
- * reports the verified owning organization recorded by an earlier turn, which
- * then selects the organization-scoped rate-limit gate to warm. Rooms without
- * a recorded owner keep the session-start warm (see
- * {@link prewarmResolvedSharedAgentSession}). Personal rooms start empty
- * exactly as their turns do, so this never migrates or rewrites history.
- *
- * `warmedOrganizations` lets one sweep warm each organization's gate once.
+ * conversation object (with its turn-ingress modules) is the only authority a
+ * Personal Shared turn waits on: its rate limit is counted in the isolate, so
+ * no organization gate is warmed. Personal rooms start empty exactly as their
+ * turns do, so this never migrates or rewrites history.
  */
 export async function prewarmPersonalSharedRoom(
   agentId: string,
   roomId: string,
   namespace: RuntimeDurableObjectNamespace,
-  warmedOrganizations: Set<string> = new Set(),
 ): Promise<void> {
-  const conversation = coordinateSharedConversationPrewarm(agentId, roomId, {
-    namespace,
-    startEmpty: true,
-  });
-  const rateLimitGate = conversation.then(
-    async ({ organizationId }) => {
-      if (!organizationId || warmedOrganizations.has(organizationId)) return;
-      warmedOrganizations.add(organizationId);
-      await warmInferenceRateLimitGate(organizationId);
-    },
-    // The conversation leg reports its own failure; without an owner there is
-    // no organization gate to warm.
-    () => undefined,
-  );
   await settlePrewarmLegs({ id: agentId, organization_id: "" }, [
-    { leg: "conversation-object", run: conversation },
-    { leg: "rate-limit-gate", run: rateLimitGate },
+    {
+      leg: "conversation-object",
+      run: coordinateSharedConversationPrewarm(agentId, roomId, {
+        namespace,
+        startEmpty: true,
+      }),
+    },
   ]);
 }
 
 /**
  * Session-start prewarm: when the app opens a Shared conversation (before a
  * human can type), hydrate the same caches the cache-only first turn consults.
- * Personal Shared identities warm their rate-limit gate and conversation
- * object; sandbox-backed shared agents run the full provision-time legs with
+ * Personal Shared identities warm their conversation object; sandbox-backed shared agents run the full provision-time legs with
  * the opening request's credential. Best-effort and off the response path.
  */
 export function prewarmResolvedSharedAgentSession(

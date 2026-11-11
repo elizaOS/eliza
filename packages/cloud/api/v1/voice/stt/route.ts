@@ -58,7 +58,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
@@ -530,21 +530,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     request = sizeCheckedRequest;
 
     const authStartedAt = performance.now();
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: true,
+        cachedDecisionIsFinal: true,
       }).finally(() => {
         timings.push({
           name: "auth",
           durationMs: performance.now() - authStartedAt,
         });
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -699,14 +696,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
+          refreshAuthEntry,
           atomicProviderBoundary: true,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return Response.json(
             {
-              error: "Insufficient credits for speech-to-text",
+              // Clients parse `error.code` and `error.resetsAt`.
+              error: inferenceFundingRefusal(error, {
+                insufficientCreditsMessage:
+                  "Insufficient credits for speech-to-text",
+              }),
               required: error.required,
             },
             { status: 402 },
@@ -1296,7 +1297,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
     if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
-      await credentialGuard[Symbol.asyncDispose]();
       const started = performance.now();
       const payload = await transcribeCloudflareAudio(
         env.AI,

@@ -33,7 +33,6 @@ import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
 import { affiliatesService } from "@elizaos/cloud-shared/lib/services/affiliates";
 import { containersService } from "@elizaos/cloud-shared/lib/services/containers";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { assertInferenceCredentialActive } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import {
   RETIRED_MCP_LISTING_PRICE_POINTS,
@@ -304,10 +303,6 @@ app.post("/", async (c) => {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
   try {
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     const user = caller.user;
 
     const mcp = await userMcpsService.getById(mcpId);
@@ -557,7 +552,7 @@ app.post("/", async (c) => {
         if (chargeReceipt.totalAmountUsd <= 0) {
           // Nothing to reserve. Run the deferred strong credential check now,
           // before the upstream call, instead of at disposal.
-          const credential = credentialGuard.credentialForAdmission();
+          const credential = caller.credential;
           if (credential) {
             await assertInferenceCredentialActive(
               user.organization_id,
@@ -604,7 +599,7 @@ app.post("/", async (c) => {
             },
             apiKeyId: caller.apiKeyId,
             admissionSnapshot: caller.admissionSnapshot,
-            credential: credentialGuard.credentialForAdmission(),
+            refreshAuthEntry: caller.refreshAuthEntry,
             atomicProviderBoundary: true,
             cost: {
               baseTotalCost: chargeReceipt.baseAmountUsd,
