@@ -351,29 +351,68 @@ describe("Pages native callback deployment", () => {
         tenant: "elizacloud-staging",
       },
     };
-    const { config } = prepareConfig(canonical, directory, "staging", JSON.stringify([callback]), {});
-    const request = (url: URL) => onRequest({
-      request: new Request(url),
-      env: config.vars as Record<string, string>,
-      next: async () => new Response("Unexpected SPA"),
-    });
+    const { config } = prepareConfig(
+      canonical,
+      directory,
+      "staging",
+      JSON.stringify([callback]),
+      {},
+    );
+    const request = (url: URL) =>
+      onRequest({
+        request: new Request(url),
+        env: config.vars as Record<string, string>,
+        next: async () => new Response("Unexpected SPA"),
+      });
     expect(await verifyCallbacks(config, "staging", request)).toBe(1);
     const mutations: Array<(body: string, headers: Headers) => string> = [
       (body) => body.replace("sessionStorage.getItem", "sessionStorage.clear"),
-      (body, headers) => { headers.set("content-security-policy", headers.get("content-security-policy") + "; script-src 'unsafe-inline'"); return body; },
+      (body, headers) => {
+        headers.set(
+          "content-security-policy",
+          headers.get("content-security-policy") +
+            "; script-src 'unsafe-inline'",
+        );
+        return body;
+      },
       (body) => body.replace(/ nonce="[^"]*"/, ""),
-      (body, headers) => { headers.set("content-security-policy", headers.get("content-security-policy")!.replace(/ 'nonce-[^']*'/, "")); return body; },
+      (body, headers) => {
+        headers.set(
+          "content-security-policy",
+          headers.get("content-security-policy")!.replace(/ 'nonce-[^']*'/, ""),
+        );
+        return body;
+      },
       (body) => body.replace(/(<script nonce="[^"]*">)/, "$1</script>$1"),
-      (body, headers) => { const csp = headers.get("content-security-policy")!; headers.set("content-security-policy", csp.replace(/('nonce-[^']*')/, "$1 $1")); return body; },
+      (body, headers) => {
+        const csp = headers.get("content-security-policy")!;
+        headers.set(
+          "content-security-policy",
+          csp.replace(/('nonce-[^']*')/, "$1 $1"),
+        );
+        return body;
+      },
       (body) => body.replace(/nonce="[^"]*"/, `nonce="${crypto.randomUUID()}"`),
-      (body, headers) => { const nonce = /nonce="([^"]*)"/.exec(body)![1]; headers.set("content-security-policy", headers.get("content-security-policy")!.replace(nonce, "invalid")); return body.replace(nonce, "invalid"); },
+      (body, headers) => {
+        const nonce = /nonce="([^"]*)"/.exec(body)![1];
+        headers.set(
+          "content-security-policy",
+          headers.get("content-security-policy")!.replace(nonce, "invalid"),
+        );
+        return body.replace(nonce, "invalid");
+      },
     ];
     for (const mutate of mutations) {
-      await expect(verifyCallbacks(config, "staging", async (url) => {
-        const response = await request(url);
-        const headers = new Headers(response.headers);
-        return new Response(mutate(await response.text(), headers), { status: response.status, headers });
-      })).rejects.toThrow();
+      await expect(
+        verifyCallbacks(config, "staging", async (url) => {
+          const response = await request(url);
+          const headers = new Headers(response.headers);
+          return new Response(mutate(await response.text(), headers), {
+            status: response.status,
+            headers,
+          });
+        }),
+      ).rejects.toThrow();
     }
   });
 

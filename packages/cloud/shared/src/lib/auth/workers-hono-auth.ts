@@ -403,9 +403,14 @@ export function classifyStewardSyncFailure(error: unknown): "conflict" | "unavai
 export function stewardAccountSyncFailureError(c: AppContext): ApiError | null {
   const failure = c.get("stewardAccountSyncFailure");
   if (failure === "unavailable") {
-    return new ApiError(503, "account_not_ready", "Your account could not be prepared. Try again.", {
-      retryAfterSeconds: 5,
-    });
+    return new ApiError(
+      503,
+      "account_not_ready",
+      "Your account could not be prepared. Try again.",
+      {
+        retryAfterSeconds: 5,
+      },
+    );
   }
   if (failure === "conflict") {
     return new ApiError(

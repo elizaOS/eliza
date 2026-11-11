@@ -79,9 +79,7 @@
       "packages/cloud/shared/src/lib/utils/credit-reservation.ts",
       "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One organization and reservation, integer money units, balance 5, hold 1..3, actual cost 0..8.",
@@ -97,9 +95,7 @@
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/services/__tests__/credits-reconcile.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Four rows in a total timestamp/ID order, two initially fail, and the run budget can visit all four.",
@@ -120,9 +116,7 @@
       "packages/cloud/shared/src/db/schemas/approval-requests.ts",
       "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
@@ -142,9 +136,7 @@
       "packages/cloud/services/agent-server/src/agent-lifecycle.test.ts",
       "packages/cloud/services/agent-server/src/routes.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One agent projection; initialize, stop and publication acknowledge independently.",
@@ -165,9 +157,7 @@
       "packages/cloud/services/operator/capabilities/__tests__/routing-state.integration.test.ts",
       "packages/cloud/services/operator/capabilities/index.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two server owners and one agent; compare-and-delete is atomic.",
@@ -184,9 +174,7 @@
       "packages/cloud/api/src/inference-admission-budget.ts",
       "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two installed grants of two units, two immutable request IDs, maximum reservation 1..3, costs 0..3, clock 0..4.",
@@ -205,9 +193,7 @@
       "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
       "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
@@ -226,9 +212,7 @@
       "packages/cloud/services/_common/src/redis-ownership.ts",
       "packages/cloud/services/agent-server/src/agent-routing.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One manager serializes snapshots, local retirement and close. Redis writes and ownership-checked cleanup acknowledge separately.",
@@ -248,9 +232,7 @@
       "packages/cloud/services/agent-server/src/agent-shutdown.test.ts",
       "packages/cloud/services/agent-server/src/agent-lifecycle.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One absolute deadline and three ordered shutdown phases; each operation may acknowledge, reject or stall.",
@@ -266,9 +248,7 @@
       "packages/cloud/shared/src/lib/services/credits.ts",
       "packages/cloud/shared/src/lib/utils/credit-reservation.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -281,12 +261,8 @@
   {
     "id": "cloud-flow-reservation-recovery-sweep",
     "model": "packages/cloud/quint/billing_sweep.qnt",
-    "sources": [
-      "packages/cloud/shared/src/lib/services/credits.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/cloud/shared/src/lib/services/credits.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -304,9 +280,7 @@
       "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
       "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -329,9 +303,7 @@
       "packages/cloud/shared/src/lib/services/subscription-checkout-contract.ts",
       "packages/cloud/quint/check-platform-subscription-command.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes. Three return classes: the web, embedded or shared-payer return, the native billing return of the caller's registered client, and any other native return.",
@@ -351,9 +323,7 @@
       "packages/cloud/shared/src/lib/services/payment-requests.ts",
       "packages/cloud/shared/src/db/repositories/payment-requests.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -371,9 +341,7 @@
       "packages/cloud/shared/src/lib/services/payment-request-settlement.ts",
       "packages/cloud/shared/src/db/schemas/payment-requests.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -392,9 +360,7 @@
       "packages/cloud/shared/src/db/repositories/auto-top-up-attempts.ts",
       "packages/cloud/shared/src/db/schemas/auto-top-up-attempts.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -471,9 +437,7 @@
       "packages/cloud/shared/src/db/migrations/0484_agent_billing_funding_reservations.sql",
       "packages/cloud/shared/src/lib/services/subscription-allowance-lifecycle.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Positive createPrerequisite protocol projected onto one organization/logical-operation key, two transaction callers, two scope/merchant pairs, one owned allowance-period identity, opaque digests/keys 0..1 and integer currency inputs 0..2. References 0/1 belong to the projected owner; reference 2 is foreign. The model uses one field for requested_amount/reserved_amount, whose equality is enforced by the writer and schema.",
@@ -495,9 +459,7 @@
       "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
       "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
@@ -554,9 +516,7 @@
       "packages/cloud/shared/src/db/schemas/oauth-intents.ts",
       "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
@@ -578,9 +538,7 @@
       "packages/cloud/shared/src/db/schemas/approval-requests.ts",
       "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
@@ -628,9 +586,7 @@
       "packages/cloud/shared/src/db/schemas/api-keys.ts",
       "packages/cloud/shared/src/lib/services/auth-credential-policy.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One issuance request, one grant, two candidate credential identities with at most one persisted credential, two exchange attempts, two acknowledgement attempts, clock 0..3 measured from issuance, code deadline 1 and credential deadline 3. Attempts do not reuse slots.",
@@ -658,9 +614,7 @@
       "packages/cloud/api/v1/remote/sessions/[id]/activate/route.ts",
       "packages/cloud/api/v1/remote/pair/route.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One enrolled host, one owner, two distinct target challenges, two possible controller identities, and one outstanding target confirmation read. Issue at time 0 through 2, advance to time 5, and give each challenge a pairing deadline two ticks after issue and a grant deadline three ticks after issue.",
@@ -704,9 +658,7 @@
       "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
       "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One task, two optimistic writers, two organizations and fresh bounded versions.",
@@ -727,9 +679,7 @@
       "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts",
       "packages/cloud/shared/src/db/repositories/inference-funding-budgets.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two already-installed grants of two integer units and two immutable request IDs.",
@@ -751,9 +701,7 @@
       "packages/cloud/shared/src/lib/services/inference-admission-gate.ts",
       "packages/cloud/shared/src/lib/services/inference-admission-recovery.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "One standard organization request has a fixed recovery identity, one exact pre-provider cancellation capability and one initial policy generation. Ordinary and combined dispatch are both explored. Delegated grants, multiple organizations, credential parsing and cross-key revocation are separate.",
@@ -777,9 +725,7 @@
       "packages/cloud/api/test/fixtures/inference-admission-gate-worker.ts",
       "packages/cloud/quint/check-inference-credential-cache.mjs"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "Standalone API-key authorization for a cache-qualified Worker with execution context and primary-only hosts. A matching cache allow still needs an affirmative exact gate reply. A cached expiry denies locally. Malformed or foreign-hash entries reach the primary without supplying candidate identity.",
@@ -796,9 +742,7 @@
       "packages/cloud/api/v1/chat/completions/route.ts",
       "packages/cloud/api/__tests__/anthropic-web-search-abort.pglite.test.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "One admitted SDK chat stream and two terminal callback sources. The first callback retains its promise through success or failure. The model covers callback ownership and settlement selection, without modeling lower-level accounting retries inside the winning callback.",
@@ -832,9 +776,7 @@
   {
     "id": "cloud-flow-speech-relay-admission",
     "model": null,
-    "sources": [
-      "packages/cloud/api/src/speech-relay-admission.ts"
-    ],
+    "sources": ["packages/cloud/api/src/speech-relay-admission.ts"],
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
@@ -849,9 +791,7 @@
       "packages/cloud/api/src/voice-usage-state.ts",
       "packages/cloud/shared/src/lib/services/voice-usage-meter.ts"
     ],
-    "invariants": [
-      "invariant"
-    ],
+    "invariants": ["invariant"],
     "status": "partial",
     "limitations": [
       "The model assumes the private namespace routes to the correct organization/day owner. The operator must supply a complete, genuinely quiesced snapshot. The object validates the asserted flag, key shape, and values.",
@@ -868,9 +808,7 @@
       "packages/cloud/services/agent-server/src/agent-routing.ts",
       "packages/cloud/services/agent-server/src/agent-shutdown.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One runtime projection; initialization, stop and status publication can complete independently.",
@@ -889,9 +827,7 @@
       "packages/cloud/services/operator/capabilities/reconciler.ts",
       "packages/cloud/services/operator/capabilities/deployment-status.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owners and one agent, with atomic compare-and-delete.",
@@ -984,9 +920,7 @@
       "packages/cloud/shared/src/db/migrations/0567_job_utc_clock_defaults.sql",
       "packages/cloud/shared/src/db/repositories/job-execution-authority.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
@@ -1225,9 +1159,7 @@
       "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
       "plugins/plugin-sql/src/schema/memory.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
@@ -1247,9 +1179,7 @@
       "packages/cloud/api/cron/reconcile-domain-purchases/route.ts",
       "packages/cloud/api/v1/apps/[id]/domains/buy/route.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "One already created nonlegacy attempt retains a fixed organization, app, domain, request digest and registration term. Quote values and exact receipt bindings are projected. The SQL suite checks the real tenant, term and amount constraints.",
@@ -1300,9 +1230,7 @@
       "packages/cloud/api/test/fixtures/anonymous-chat-gate-worker.ts",
       "packages/cloud/api/auth/migrate-anonymous/route.ts"
     ],
-    "invariants": [
-      "QuotaConserved"
-    ],
+    "invariants": ["QuotaConserved"],
     "status": "partial",
     "limitations": [
       "The anonymous quota gate covers two requests within one session, live dispatch authority, terminal settlement, durable alarm recovery and a strictly monotonic SQL mirror.",
@@ -1319,9 +1247,7 @@
       "packages/cloud/shared/src/db/repositories/personal-shared-groups.ts",
       "packages/cloud/shared/src/db/repositories/users.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "One already active all-adults binding requires its eligible owner and one eligible linked participant. Exact authority scope represents binding, owner, agent, platform, project, connector and provider chat. Policy, membership, other quorum sizes, and multi-binding transactions remain outside this projection.",
@@ -1339,9 +1265,7 @@
       "packages/cloud/api/src/authentication-state.ts",
       "packages/cloud/shared/src/lib/auth/authentication-state.ts"
     ],
-    "invariants": [
-      "SingleBoundAuthority"
-    ],
+    "invariants": ["SingleBoundAuthority"],
     "status": "partial",
     "limitations": [
       "Checks one stable redirect and one trusted platform session with two candidate claim lineages and account pairs. Workerd checks exact re-entry, denial and cleanup against stored platform and account scope records.",
@@ -1450,9 +1374,7 @@
       "packages/cloud/shared/src/db/schemas/org-storage-mutations.ts",
       "packages/cloud/shared/src/lib/services/storage/native-storage-put.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "One immutable tenant and operation identity, one positive-priced PUT and its exact provider generation. Quota and credit amounts are projected into ownership states. Cross-tenant authorization, digest validation, funding arithmetic, other writers, deletion, and GC remain separate.",
@@ -1762,9 +1684,7 @@
       "packages/cloud/shared/src/db/schemas/payment-requests.ts",
       "packages/cloud/shared/src/lib/services/__tests__/payment-request-settlement.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One payment, two provider events, two workers, eight clock ticks, bounded attempts.",
@@ -1780,9 +1700,7 @@
       "packages/cloud/shared/src/db/repositories/app-subscription-finalizer.ts",
       "packages/cloud/shared/src/lib/services/generic-billing-runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One immutable command and scope, two workers, three lease generations, nine clock ticks, two subscription revisions.",
@@ -1799,9 +1717,7 @@
       "packages/cloud/shared/src/db/repositories/test-support/auto-top-up-test-schema.ts",
       "packages/cloud/shared/src/db/repositories/auto-top-up-cutover.pglite.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two transactions contend for one organization and one attempt in a consistent row-lock order.",
@@ -1819,9 +1735,7 @@
       "packages/cloud/shared/src/db/schemas/api-keys.ts",
       "packages/cloud/shared/src/lib/services/auth-credential-policy.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two grants, three credential identities, one absent-credential sentinel, two sweeps, two batches per sweep, batch sizes 1 and 2, and clock 0..3. Fifteen initial classes include shared/foreign/missing references, malformed lifecycle data, and valid/invalid tombstones.",
@@ -1846,9 +1760,7 @@
       "packages/cloud/shared/src/db/repositories/remote-command-envelopes.pglite.test.ts",
       "packages/cloud/shared/src/db/repositories/remote-host-revocation.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One host, two sessions and two commands. Session1 begins pending, claimed, activating or active. Session2 is active and owns both commands. Each command begins pending, claimed or started.",
@@ -1867,9 +1779,7 @@
       "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
       "packages/cloud/services/agent-server/src/index.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Imports the unchanged finite shutdown_sequence transition system: three phases and a logical deadline of two ticks.",
@@ -1887,9 +1797,7 @@
       "packages/cloud/shared/src/lib/services/account-deletion-crypto-sweeps.ts",
       "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One original wallet/network, two durable outboxes, chain nonces zero through two, one unrelated pending transaction and one configured-wallet rotation. Signed bytes and transaction identity remain immutable; activity from the replacement wallet is outside this model.",
@@ -1907,9 +1815,7 @@
       "packages/cloud/shared/src/lib/services/evm-sweep-deletion.postgres.integration.test.ts",
       "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two PostgreSQL transactions, one payment and one sweep outbox. Receipt publication and deletion take the payment lock before its child outbox lock.",
@@ -1932,9 +1838,7 @@
       "packages/cloud/scripts/speech-host-cutover-admission.test.ts",
       "packages/cloud/api/__tests__/speech-relay-worker.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two namespaces and one old session plus one already-admitted preparation. The real binding switch retains the old namespace but does not route old session IDs to it.",
@@ -1955,9 +1859,7 @@
       "packages/host/native-host/gateway-bootstrap.test.mjs",
       "packages/cloud/quint/check-native-access.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
@@ -1978,9 +1880,7 @@
       "packages/host/native-host/gateway-bootstrap.test.mjs",
       "packages/cloud/quint/check-native-access.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One request, two owner identities, epochs 0..2; inference and owner reads acknowledge independently.",
@@ -2006,9 +1906,7 @@
       "plugins/plugin-openai/build.ts",
       "plugins/plugin-wallet/build.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
@@ -2030,9 +1928,7 @@
       "packages/cloud/quint/check-job-time.ts",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One durable job, two execution generations, two retries, database clock0..6, application and database timezone offsets -2/0/2, and a two-tick delay/lease.",
@@ -2053,9 +1949,7 @@
       "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql",
       "packages/cloud/shared/src/lib/services/evm-sweep-deletion.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two outboxes, one wallet/network, chain nonces zero through two.",
@@ -2079,9 +1973,7 @@
       "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql",
       "packages/cloud/shared/src/lib/services/evm-sweep-deletion.postgres.integration.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two outboxes, one wallet/network, chain nonces zero through two.",
@@ -2107,9 +1999,7 @@
       "packages/host/native-host/gateway-bootstrap.test.mjs",
       "packages/cloud/quint/check-native-access.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
@@ -2134,9 +2024,7 @@
       "packages/host/native-host/gateway-bootstrap.test.mjs",
       "packages/cloud/quint/check-native-access.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
@@ -2160,9 +2048,7 @@
       "packages/cloud/quint/check-tokenizer-cache.ts",
       "packages/scripts/vitest/source-aliases.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
@@ -2188,9 +2074,7 @@
       "packages/cloud/shared/src/lib/services/model-catalog-cache.ts",
       "packages/cloud/quint/check-cache-swr.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One stale key and at most three sequential background loaders; delivery expiry, loader completion, cache publication and ownership release are separate events.",
@@ -2212,9 +2096,7 @@
       "packages/cloud/shared/src/lib/services/entity-settings/cache.ts",
       "packages/cloud/quint/check-in-memory-lru.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Five keys and capacity four. Inserting a new key at capacity evicts the oldest key to the existing 75 percent target before insertion.",
@@ -2232,9 +2114,7 @@
       "packages/cloud/shared/src/lib/cache/client-swr.test.ts",
       "packages/cloud/quint/check-cache-swr.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Finite model of one stale key and three sequential refreshes. Cold-only loads remain non-coalesced.",
@@ -2256,9 +2136,7 @@
       "packages/cloud/shared/src/lib/services/shared-runtime/resolve-shared-agent.ts",
       "packages/cloud/shared/src/lib/services/entity-settings/cache.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Five keys and capacity four; all entries remain live for the trace.",
@@ -2279,9 +2157,7 @@
       "packages/cloud/shared/src/lib/services/stripe-terminal-lifecycle.ts",
       "packages/cloud/api/src/queue/stripe-event.ts"
     ],
-    "invariants": [
-      "Safety"
-    ],
+    "invariants": ["Safety"],
     "status": "partial",
     "limitations": [
       "One platform Stripe cancellation event, one organization and one original subscription. Exact event, receipt and provider observation identities are abstracted as equality guards. Invoice renewal, dunning, merchant scope and nonterminal policy remain separate.",
@@ -2299,10 +2175,7 @@
       "packages/cloud/shared/src/lib/services/shared-runtime/bounded-hydration.ts",
       "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts"
     ],
-    "invariants": [
-      "OneWaitingRequest",
-      "ReadyRetainsHistory"
-    ],
+    "invariants": ["OneWaitingRequest", "ReadyRetainsHistory"],
     "status": "partial",
     "limitations": [
       "One legacy room, three serialized requests, two background lookups and an exact ordered history pair. A caller warming deadline retains the existing lookup. A read failure before publication permits a fresh lookup.",
@@ -2385,9 +2258,7 @@
       "packages/scripts/lib/test-output.ts",
       "packages/scripts/run-with-deadline.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One existing campaign with allocation5, initial spent2, two delete callers and at most two attempts each. Money is integral in this instance. The parent organization and source ownership remain present.",
@@ -2414,9 +2285,7 @@
       "packages/cloud/shared/src/db/schemas/apps.ts",
       "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/activate/route.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One immutable deployment with a complete abstract object set and one pre-existing active deployment; one upload, publication request, retirement request and deletion. Both known and transport-ambiguous SQL outcomes are represented.",
@@ -2440,9 +2309,7 @@
       "packages/cloud/quint/check-trajectory-object-retention.mjs",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One private trajectory payload and one SQL row. SQL insertion may commit even when the caller receives an error. Error-only cleanup is not authorized by that observation.",
@@ -2471,9 +2338,7 @@
       "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.postgres.integration.test.ts",
       "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One app, two immutable published deployment identities, reversible app deactivation/reactivation and one final deletion request with rollback, acknowledged commit or lost acknowledgement.",
@@ -2501,9 +2366,7 @@
       "packages/cloud/shared/src/lib/storage/object-store.ts",
       "packages/cloud/quint/check-vertex-job-observation.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One existing job, two refresh attempts, eight representative provider payloads with exact timestamp ranks0..3, at most two newly prepared immutable payload keys, one storage outage or corruption, and one deletion. Running/partial/cancelling/succeeded/failed represent mutable, cancellation-fenced and terminal state classes; all12 provider states are checked in implementation.",
@@ -2528,9 +2391,7 @@
       "packages/cloud/quint/check-plan-request-buckets.mjs",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two pre-existing identity buckets, wall time0..8 initially4, integer quarter-token units and two configurations exchanging the burst/sustained bottleneck. Each request needs four units from both buckets.",
@@ -2560,9 +2421,7 @@
       "packages/cloud/quint/reviewed-cloud-checks.json",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One immutable platform terminal-event receipt, two invocation tokens and at most two claims; primary clock0..5 and source/projection revisions1..3.",
@@ -2600,9 +2459,7 @@
       "packages/cloud/quint/check-object-field-hydration.mjs",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One already authorized immutable row snapshot and one field: valid inline, valid object/key, missing object key, unknown storage kind or conflicting inline/key. Text and JSON, full and explicit preview reads are distinct finite modes.",
@@ -2626,9 +2483,7 @@
       "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
       "plugins/plugin-sql/src/schema/memory.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One server-generated immutable document ID, complete content with two fragments, two already resolved request scopes, and one primary write transaction at a time. UUID reuse and document replacement are outside this model.",
@@ -2651,9 +2506,7 @@
       "packages/cloud/quint/check-video-settlement-projection.mjs",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two pending rows, one coordinator, two database marker commits, and a stable total order. Unrelated prompt/result availability is independent of the complete inline settlement metadata projection.",
@@ -2674,9 +2527,7 @@
       "packages/cloud/quint/check-generation-object-versions.mjs",
       "packages/scripts/lib/junit-summary.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two server-owned preparation versions, two fields per batch, one initial committed version, and atomic SQL pointer publication. UUID uniqueness and provider create-only semantics are assumed; generic SQL/TypeScript refinement is not proved.",
@@ -2709,9 +2560,7 @@
       "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.postgres.integration.test.ts",
       "packages/cloud/quint/check-stripe-legacy-adoption.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two concurrent adoption calls, three initial retained entries (two valid and one malformed), one valid old-writer append, original marker cleanup racing adoption, a two-entry batch and digest ranks rather than cryptographic strings. The conflict case uses an unmatched receipt to represent provider, event, payload or historical digest conflicts.",
@@ -2774,9 +2623,7 @@
       "packages/cloud/shared/src/db/migrations/0567_job_utc_clock_defaults.sql",
       "packages/cloud/shared/src/db/repositories/app-deletion-quiescence.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One irreversible app deletion, one original database, one original container, one fixed provider identity per resource, two organizations/credential identities in a separate admission projection, and one GitHub deletion. Capacity starts at two with one other tenant preserved.",
@@ -2824,9 +2671,7 @@
       "packages/ui/src/cloud/lib/use-session-auth.ts",
       "packages/ui/src/cloud/organization/data/use-organization.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two immutable original object keys, one deletion root and two lease generations. Successful idempotent delete, lost replies, takeover and cursor acknowledgement are separate transitions.",
@@ -2848,9 +2693,7 @@
       "packages/cloud/api/__tests__/maps-request-allowance.miniflare.test.ts",
       "packages/cloud/api/test/fixtures/maps-request-allowance-worker.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "No proof of JavaScript floating-point rounding or arbitrary numeric limits.",
@@ -2940,61 +2783,55 @@
       "packages/cloud/shared/src/lib/services/oauth/provider-registry.ts",
       "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One request and bounded revision changes. Google provider atomicity and production migration require separate deployment proof."
     ]
   },
-    {
-      "id": "cloud-flow-mobile-key-renewal",
-      "model": "packages/cloud/quint/MobileAppKeyRenewal.qnt",
-      "sources": [
-        "packages/cloud/api/v1/app-auth/mobile/renew/route.ts",
-        "packages/cloud/api/v1/app-auth/mobile/_rate-limit.ts",
-        "packages/cloud/api/v1/api-keys/current/route.ts",
-        "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
-        "packages/cloud/shared/src/lib/services/api-keys.ts",
-        "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
-        "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
-        "packages/cloud/shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
-        "packages/cloud/shared/src/db/migrations/0573_mobile_app_auth_renewal_lineage.sql"
-      ],
-      "invariants": [
-        "safety"
-      ],
-      "status": "partial",
-      "limitations": [
-        "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 4, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance, so a revocation that ends the sign-in is every credential of the instance.",
-        "Exchange and acknowledgement of a renewal code are one atomic redemption, so the inactive credential of an exchanged code and its tombstone are not modeled. MobileAppCredential models the two steps for one code. Composition is not mechanically established.",
-        "Owner eligibility groups the inactive user, changed organization and closed or deletion-fenced organization into one flag, and client availability groups the registry entry and the app row. Both only ever turn off.",
-        "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes, credential headers and secret hashes are not modeled.",
-        "A grant issued before the session_started_at and session_id columns counts from created_at and is its own session. The model starts every lineage at the sign-in time with one session.",
-        "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised. A self-revocation ends only its credential when it names the acknowledged successor, or names nothing within the grace period (one tick) after the acknowledgement; otherwise it ends the sign-in. So a copy that renewed first ends when the phone signs out with the older key after the grace period, renews, or the owner revokes the device, and otherwise at the cap. A copy survives while the phone only uses the older key or lets it expire, and a sign-out inside the grace period does not end it.",
-        "Session retirement is one atomic step. The inference revocation boundary, auth-cache eviction and the audit record around it are outside the model."
-      ]
-    },
-    {
-      "id": "cloud-flow-subscription-checkout-read-back",
-      "model": "packages/cloud/quint/SubscriptionCheckoutReadBack.qnt",
-      "sources": [
-        "packages/cloud/shared/src/lib/services/subscription-checkout.ts",
-        "packages/cloud/shared/src/db/repositories/subscription-checkout-recovery.ts",
-        "packages/cloud/api/cron/process-stripe-queue/route.ts"
-      ],
-      "invariants": [
-        "safety"
-      ],
-      "status": "partial",
-      "limitations": [
-        "One dispatched organization checkout, one provider session, clock 0..12 in ticks of the first read-back age, backoff cap 4, provider retry horizon 10 and a one-tick create-settle margin. The production values are 2 minutes, 30 minutes, 23 hours and 5 minutes.",
-        "Each sweep step is one atomic observation and settlement. Command compare-and-swap, revision history and entitlement publication are refined by PlatformSubscriptionCommand and SubscriptionTerminalReceipt. Composition is not mechanically established.",
-        "Lane budgets, ordering among several checkouts and the provider account read (one successful read serves a whole sweep, settlement included; a failed read is not remembered) are outside this single-checkout instance. The repository tests cover them.",
-        "The provider is trusted to report open, complete, expired or missing truthfully for the command's own customer and session. A session that expires on its own before the horizon is observed, never forced.",
-        "An unavailable read of the checkout's own session rotates the checkout like an open one and is counted as a read-back. A failed provider account read is not a read-back: the checkout is not rotated and stays due, which the repository tests cover. A prepared command that never dispatched is outside the read-back lane and this instance.",
-        "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised."
-      ]
-    }
+  {
+    "id": "cloud-flow-mobile-key-renewal",
+    "model": "packages/cloud/quint/MobileAppKeyRenewal.qnt",
+    "sources": [
+      "packages/cloud/api/v1/app-auth/mobile/renew/route.ts",
+      "packages/cloud/api/v1/app-auth/mobile/_rate-limit.ts",
+      "packages/cloud/api/v1/api-keys/current/route.ts",
+      "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+      "packages/cloud/shared/src/lib/services/api-keys.ts",
+      "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
+      "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
+      "packages/cloud/shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
+      "packages/cloud/shared/src/db/migrations/0573_mobile_app_auth_renewal_lineage.sql"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 4, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance, so a revocation that ends the sign-in is every credential of the instance.",
+      "Exchange and acknowledgement of a renewal code are one atomic redemption, so the inactive credential of an exchanged code and its tombstone are not modeled. MobileAppCredential models the two steps for one code. Composition is not mechanically established.",
+      "Owner eligibility groups the inactive user, changed organization and closed or deletion-fenced organization into one flag, and client availability groups the registry entry and the app row. Both only ever turn off.",
+      "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes, credential headers and secret hashes are not modeled.",
+      "A grant issued before the session_started_at and session_id columns counts from created_at and is its own session. The model starts every lineage at the sign-in time with one session.",
+      "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised. A self-revocation ends only its credential when it names the acknowledged successor, or names nothing within the grace period (one tick) after the acknowledgement; otherwise it ends the sign-in. So a copy that renewed first ends when the phone signs out with the older key after the grace period, renews, or the owner revokes the device, and otherwise at the cap. A copy survives while the phone only uses the older key or lets it expire, and a sign-out inside the grace period does not end it.",
+      "Session retirement is one atomic step. The inference revocation boundary, auth-cache eviction and the audit record around it are outside the model."
+    ]
+  },
+  {
+    "id": "cloud-flow-subscription-checkout-read-back",
+    "model": "packages/cloud/quint/SubscriptionCheckoutReadBack.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/subscription-checkout.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-checkout-recovery.ts",
+      "packages/cloud/api/cron/process-stripe-queue/route.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One dispatched organization checkout, one provider session, clock 0..12 in ticks of the first read-back age, backoff cap 4, provider retry horizon 10 and a one-tick create-settle margin. The production values are 2 minutes, 30 minutes, 23 hours and 5 minutes.",
+      "Each sweep step is one atomic observation and settlement. Command compare-and-swap, revision history and entitlement publication are refined by PlatformSubscriptionCommand and SubscriptionTerminalReceipt. Composition is not mechanically established.",
+      "Lane budgets, ordering among several checkouts and the provider account read (one successful read serves a whole sweep, settlement included; a failed read is not remembered) are outside this single-checkout instance. The repository tests cover them.",
+      "The provider is trusted to report open, complete, expired or missing truthfully for the command's own customer and session. A session that expires on its own before the horizon is observed, never forced.",
+      "An unavailable read of the checkout's own session rotates the checkout like an open one and is counted as a read-back. A failed provider account read is not a read-back: the checkout is not rotated and stays due, which the repository tests cover. A prepared command that never dispatched is outside the read-back lane and this instance.",
+      "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised."
+    ]
+  }
 ]
