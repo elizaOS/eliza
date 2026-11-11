@@ -63,8 +63,6 @@ const OPERATION_KINDS: readonly string[] = [
   "untrash",
   "mark-read",
   "mark-unread",
-  "star",
-  "unstar",
 ];
 const RECEIPT_STATES: readonly string[] = [
   "prepared",
@@ -217,9 +215,6 @@ export class ManagedGmailMailboxClient {
       snippet: data.snippet,
       receivedAt: this.string(data.receivedAt),
       unread: data.isUnread,
-      ...(Array.isArray(data.labels)
-        ? { starred: data.labels.includes("STARRED") }
-        : {}),
       ...(data.hasAttachments === undefined
         ? {}
         : { hasAttachments: data.hasAttachments }),
@@ -412,7 +407,6 @@ export class ManagedGmailMailboxClient {
       throw this.invalid();
     for (const key of [
       "readState",
-      "stars",
       "draftsList",
       "forwardAttachments",
       "opaqueAttachments",
@@ -450,7 +444,6 @@ export class ManagedGmailMailboxClient {
       providerExactlyOnce: false,
       atomicDraftReplacement: false,
       readState: data.readState === true,
-      stars: data.stars === true,
       draftsList: data.draftsList === true,
       forwardAttachments: data.forwardAttachments === true,
       opaqueAttachments: data.opaqueAttachments === true,

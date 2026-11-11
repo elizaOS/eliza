@@ -84,50 +84,17 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 90
-    services:
-      quint-postgres:
-        image: ${{ !inputs.source_checks_in_canonical_ci && 'postgres:16-alpine' || '' }}
-        env:
-          POSTGRES_USER: qa_quint
-          POSTGRES_DB: quint_protocol
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - "127.0.0.1:5432:5432"
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 25
     env:
       # Match canonical source checks: one compiler fits the hosted runner,
       # including the cloud API's larger declaration graph.
       NODE_OPTIONS: --max-old-space-size=8192
       RUN_TURBO_CONCURRENCY: "1"
-      INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
-      - name: Setup Java for Quint verification
-        if: ${{ !inputs.source_checks_in_canonical_ci }}
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
-        with:
-          distribution: temurin
-          java-version: "21"
-      - name: Install local Redis for protocol conformance
-        if: ${{ !inputs.source_checks_in_canonical_ci }}
-        run: |
-          if ! command -v redis-server >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends redis-server
-          fi
-          redis-server --version
       - name: Lint and typecheck cloud workspaces
         if: ${{ !inputs.source_checks_in_canonical_ci }}
-        env:
-          # Embedded suites use PGlite; lock checks use the separate qa_* fixture.
-          DATABASE_URL: pglite://memory
-          TEST_DATABASE_URL: pglite://memory
         run: bun run verify:cloud
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
