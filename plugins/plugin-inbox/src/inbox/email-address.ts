@@ -75,6 +75,9 @@ function extractAsciiEmailToken(value: string): string | null {
     let end = at + 1;
     while (end < value.length && isAsciiDomainCharacter(value[end] ?? ""))
       end += 1;
+    // A trailing dot ends the sentence, not the domain: "bob@example.com."
+    // is the address "bob@example.com", not a domain with an empty label.
+    while (end > at + 1 && value[end - 1] === ".") end -= 1;
     const domain = value.slice(at + 1, end);
     const dot = domain.lastIndexOf(".");
     if (
@@ -116,6 +119,8 @@ function extractLooseEmailToken(value: string): string | null {
     let end = at + 1;
     while (end < value.length && isLooseAddressCharacter(value[end] ?? ""))
       end += 1;
+    // A trailing dot ends the sentence, not the domain.
+    while (end > at + 1 && value[end - 1] === ".") end -= 1;
     const candidate = value.slice(start, end);
     const domain = candidate.slice(candidate.indexOf("@") + 1);
     if (

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractAsciiEmailAddress } from "./email-address.ts";
+import {
+  extractAsciiEmailAddress,
+  extractLooseEmailAddress,
+} from "./email-address.ts";
 import { curateEmailCandidates } from "./email-curation.ts";
 
 describe("sender address local part", () => {
@@ -42,5 +45,20 @@ describe("sender address local part", () => {
     });
     expect(out.decisions[0]?.identity.kind).toBe("unknown");
     expect(out.decisions[0]?.blockedActions).toEqual([]);
+  });
+
+  it("keeps an address followed by a sentence-final period", () => {
+    expect(extractAsciiEmailAddress("Contact bob@example.com.")).toBe(
+      "bob@example.com",
+    );
+    expect(extractAsciiEmailAddress("bob@example.com..")).toBe(
+      "bob@example.com",
+    );
+    expect(extractLooseEmailAddress("Contact bob@example.com.")).toBe(
+      "bob@example.com",
+    );
+    // A trailing dot is not a top-level domain.
+    expect(extractAsciiEmailAddress("bob@example.")).toBeNull();
+    expect(extractAsciiEmailAddress("bob@.example.com")).toBeNull();
   });
 });
