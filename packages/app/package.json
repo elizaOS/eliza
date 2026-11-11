@@ -350,7 +350,7 @@
     "playwright": "^1.65.0",
     "playwright-core": "^1.58.2",
     "postcss": "^8.5.32",
-    "puppeteer-core": "^24.43.1",
+    "puppeteer-core": "^25.16.0",
     "react-test-renderer": "19.3.1",
     "rollup-plugin-visualizer": "^7.1.2",
     "sharp": "^0.35.3",
