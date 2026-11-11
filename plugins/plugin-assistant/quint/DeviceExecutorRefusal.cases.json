@@ -13,10 +13,10 @@
   ],
   "conformance": "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
   "bounds": {
-    "domain": "One reserved and claimed reviewed proposal, one trusted host executor, one native invocation, one effect, one retirement and a terminal receipt retry.",
-    "projection": "Only the local typed DeviceActionNotStarted refusal promises no effect. Other thrown failures retain unknown status. Retirement after an accepted effect does not discard the result. History synchronization repeats the saved receipt and never the effect.",
-    "conformance": "All named coordinator cases execute the actual shared coordinator and controlled journal/transport/executor ports. A separate actual PGlite workflow-owner integration claims a real proposal, durably settles DEVICE_NOT_DISPATCHED, admits an identical receipt, and refuses another claim or conflicting outcome. These are two component checks, not a joined native/server test.",
-    "limits": "The no-effect assertion is a trusted executor premise. Error names or external strings do not establish it. No physical native/provider effect, durable host journal, arbitrary restart, unbounded concurrent coordinator or HTTP transport proof is claimed. An uncertain server claim can remain unknown even before host invocation."
+    "domain": "One reserved and claimed proposal, one trusted host executor, one invocation/effect/retirement and one terminal receipt retry. Three dispatch-marker classes, three display-copy classes, current records and two trusted legacy record classes. One proposal expiry can occur while the binding hash waits or after host acceptance.",
+    "projection": "Coordinator-owned known pre-dispatch absence or a trusted typed DeviceActionNotStarted refusal records dispatch=not_started. Every ordinary failed return records dispatch=attempted, regardless of executor text or extra fields. Receipt synchronization preserves the saved no-effect code. The exact unmarked legacy no-call summary stays compatible; an unmarked reason prefix has no authority. Retirement never erases an accepted effect. The existing expiry check runs after the awaited binding hash, immediately before dispatch; an effect accepted before expiry retains its result afterward.",
+    "conformance": "The complete named coordinator suite executes actual coordinator paths with controlled journal/transport/executor ports. Its maintained refusal case reproduces receipt-outage retries for ordinary exact/prefix lookalikes, an attempted executor marker injection, an unmarked prefix and typed refusal. The existing never-dispatched case covers both marked and legacy unmarked fixed receipts. Separate actual PGlite owner integration durably settles DEVICE_NOT_DISPATCHED and refuses a changed receipt or another claim; these are component checks, not a joined native/server test. The maintained never-dispatched case holds real WebCrypto bindingHash work, advances the proposal clock past expiry and confirms no executor call; another held accepted executor still journals its later result.",
+    "limits": "The no-effect assertion trusts the local executor and coordinator-owned no-call state. The existing journal host must preserve dispatch control metadata through finish/get/list; custom host redaction is not qualified here. Exact unmarked legacy fixed-summary entries are assumed to be authentic prior coordinator no-call records; this compatibility fallback does not prove provenance from arbitrary text. No physical native/provider effect, durable external host journal, arbitrary restart, unbounded concurrent coordinator, HTTP transport or universal refinement proof is claimed. An uncertain server claim may stay unknown before invocation. Expiry is one abstract flag; no wall-clock scheduling bound or fairness of external clocks is proved."
   },
   "cases": [
     {
@@ -28,7 +28,8 @@
         "TypeOK",
         "NoFalseNoEffectReceipt",
         "EffectHadInvocation",
-        "SuccessHasEffect"
+        "SuccessHasEffect",
+        "TerminalReceiptStable"
       ],
       "temporal": ["TerminalNeverReplays", "FairSettlement", "Settles"],
       "temporalChecks": [

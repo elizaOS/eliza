@@ -2311,13 +2311,13 @@ export class DeviceActionCoordinator<
       let notDispatched = false;
       try {
         signal.throwIfAborted();
-        if (p.expiresAt <= Date.now())
-          throw new DeviceActionNotStarted("This action expired.");
         const bindingHash = await this.bindingHash(
           this.session.sessionId,
           p,
           operationId,
         );
+        if (p.expiresAt <= Date.now())
+          throw new DeviceActionNotStarted("This action expired.");
         execution.markDispatched(reserved.entry);
         const journalIdentity = { scope: this.scope, proposalId: p.id };
         if (isForegroundReviewOperation(p.operation)) {
@@ -2378,7 +2378,13 @@ export class DeviceActionCoordinator<
         proposalId,
         status: result.status,
         summary: result.summary,
-        result: { operationId, ...definedResults(typed) },
+        result: {
+          operationId,
+          ...definedResults(typed),
+          ...(result.status === "failed"
+            ? { dispatch: notDispatched ? "not_started" : "attempted" }
+            : {}),
+        },
       });
       if (execution.dispatched) execution.settle(reserved.entry);
       // A completed device effect is journaled even if the UI epoch was cancelled.
@@ -3028,7 +3034,7 @@ export class DeviceActionCoordinator<
         ...identity,
         status: "failed",
         summary: NOT_DISPATCHED_SUMMARY,
-        result: { operationId: entry.operationId },
+        result: { operationId: entry.operationId, dispatch: "not_started" },
       });
     } else {
       if (entry.attemptId !== p.attemptId) return entry;
@@ -3049,6 +3055,7 @@ export class DeviceActionCoordinator<
         result: {
           operationId: entry.operationId,
           ...(smsResult ? { smsResult } : {}),
+          ...(status === "failed" ? { dispatch: "attempted" } : {}),
         },
       });
     }
@@ -3686,12 +3693,23 @@ const NOT_DISPATCHED_SUMMARY = "Not started. Nothing was sent.";
 const NOT_DISPATCHED_CODE = "DEVICE_NOT_DISPATCHED";
 /** A journal entry this device finished with no effect: failed, with no typed result. */
 function notDispatchedEntry(entry: DeviceJournalEntry): boolean {
+  const result = entry.result;
+  if (
+    entry.phase !== "terminal" ||
+    entry.status !== "failed" ||
+    result?.operationId !== entry.operationId
+  )
+    return false;
+  if (result.dispatch === "not_started")
+    return Object.keys(result).every(
+      (key) => key === "operationId" || key === "dispatch",
+    );
+  // Old coordinator records used one fixed no-call summary. New failures
+  // always carry a marker; executor display copy cannot acquire this authority.
   return (
-    entry.phase === "terminal" &&
-    entry.status === "failed" &&
-    (entry.summary === NOT_DISPATCHED_SUMMARY ||
-      entry.summary?.startsWith(`${NOT_DISPATCHED_SUMMARY} `) === true) &&
-    Object.keys(entry.result ?? {}).every((key) => key === "operationId")
+    result.dispatch === undefined &&
+    entry.summary === NOT_DISPATCHED_SUMMARY &&
+    Object.keys(result).every((key) => key === "operationId")
   );
 }
 function receiptOutcome(
