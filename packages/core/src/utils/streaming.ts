@@ -1320,11 +1320,19 @@ function findJsonValueEnd(raw: string): number | null {
 		const end = findBalancedJsonEnd(value);
 		return end === null ? null : leadingWhitespace + end;
 	}
+	// A literal matches only when the buffer starts with the whole word.
+	// The old check compared the buffer against a prefix of the literal,
+	// so `true` followed by anything else (`, "replyText"...`) never
+	// matched: the drain stalled on the boolean span and the final flush
+	// discarded the rest of the buffer, including the reply. A buffer that
+	// is only a prefix of the literal is still incomplete input, so it
+	// keeps waiting for the next push instead of consuming the prefix.
 	for (const literal of ["true", "false", "null"]) {
-		if (value === literal.slice(0, value.length)) {
-			return value.length === literal.length
-				? leadingWhitespace + literal.length
-				: null;
+		if (value.startsWith(literal)) {
+			return leadingWhitespace + literal.length;
+		}
+		if (literal.startsWith(value)) {
+			return null;
 		}
 	}
 	const numberMatch = value.match(
