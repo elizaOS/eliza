@@ -58,3 +58,37 @@ module NativeCallRegistry {
   run destructionClearsBothCallsTest = init.then(add(1)).then(add(2)).then(destroy)
     .expect(DestroyedOwnerHasNoPublishedCalls)
 }
+
+// Contact I/O and its posted result retain the service, call and current grant admission.
+module NativeCallContactLookup {
+  var s: { live: bool, call: bool, grant: bool, phase: str, cache: bool,
+    published: bool, admitted: bool }
+  action init = s' = { live: true, call: true, grant: true, phase: "idle", cache: false,
+    published: false, admitted: false }
+  action lookup = all { s.live, s.call, s.grant, s.phase == "idle", s' = { ...s, phase: "io" } }
+  action ioReturns = all { s.phase == "io", s' = { ...s, phase: "main" } }
+  action publish = all { s.phase == "main", s' = { ...s, phase: "done",
+    cache: s.live and s.call and s.grant,
+    published: s.live and s.call and s.grant,
+    admitted: s.live and s.call and s.grant } }
+  action cachedRefresh = all { s.phase == "done", s.live, s.call,
+    s' = { ...s, published: s.cache and s.grant, admitted: s.grant } }
+  action withdraw = all { s.grant, s' = { ...s, grant: false } }
+  action remove = all { s.call, s' = { ...s, call: false, cache: false, published: false } }
+  action destroy = all { s.live, s' = { ...s, live: false, call: false, cache: false, published: false } }
+  action step = any { lookup, ioReturns, publish, cachedRefresh, withdraw, remove, destroy, s' = s }
+  val TypeOK = Set("idle", "io", "main", "done").contains(s.phase)
+  val PublicationHasCurrentAdmission = s.published implies s.admitted
+  val RetiredOwnerDoesNotPublish = (not(s.live) or not(s.call)) implies not(s.published)
+  temporal LookupSettles = (s.phase == "io" or s.phase == "main").leadsTo(s.phase == "done")
+  temporal FairLookupSettles = (ioReturns.weakFair(s) and publish.weakFair(s)) implies LookupSettles
+  run withdrawnGrantBeforeMainDoesNotPublishTest = init.then(lookup).then(ioReturns).then(withdraw)
+    .then(publish).expect(not(s.published) and not(s.cache))
+  run removedCallBeforeMainDoesNotPublishTest = init.then(lookup).then(ioReturns).then(remove)
+    .then(publish).expect(not(s.published))
+  run destroyedServiceBeforeMainDoesNotPublishTest = init.then(lookup).then(ioReturns).then(destroy)
+    .then(publish).expect(not(s.published))
+  run currentLookupCanPublishTest = init.then(lookup).then(ioReturns).then(publish).expect(s.published)
+  run cachedRefreshRechecksGrantTest = init.then(lookup).then(ioReturns).then(publish).then(withdraw)
+    .then(cachedRefresh).expect(not(s.published))
+}
