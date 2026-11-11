@@ -309,9 +309,9 @@ export function workflowReminderDayIsCurrent(
 }
 
 /**
- * True when a Calendar read is exactly the reviewed step range at `now`. A
- * relative range also matches the day before for `graceMs`, so a request
- * raised just before local midnight can still be reviewed.
+ * True when a Calendar read is exactly the reviewed step range at `now`.
+ * Anchored reviews pass the persisted run time and zero grace. Legacy reviews
+ * can also match the previous local day during `graceMs` after midnight.
  */
 export function workflowCalendarReadMatches(
   range: PhoneCalendarRange | PhoneRelativeCalendarRange,
@@ -329,7 +329,9 @@ export function workflowCalendarReadMatches(
     ]);
   const matches = (at: number) =>
     values(resolvePhoneCalendarRange(range, at)) === values(read);
-  return matches(now) || ("days" in range && matches(now - graceMs));
+  return (
+    matches(now) || ("days" in range && graceMs !== 0 && matches(now - graceMs))
+  );
 }
 
 /** Revision input of one reminder row; both hosts hash exactly these values. */
@@ -506,6 +508,8 @@ export interface WorkflowPhoneReview {
   status: string;
   finished: boolean;
   cancellationRequestedAt: string | null;
+  /** Canonical UTC run time for relative Calendar steps. Older runs lack it. */
+  calendarAnchorAt?: string;
 }
 export interface WorkflowPhoneReviewOptions {
   /** Host spec normalizer (defaults to the shared validator). */
@@ -553,6 +557,9 @@ export async function parseWorkflowPhoneReview(
     status: text(p.status, 100),
     finished: p.finished as boolean,
     cancellationRequestedAt: p.cancellationRequestedAt as string | null,
+    ...(p.calendarAnchorAt !== undefined
+      ? { calendarAnchorAt: utc(p.calendarAnchorAt) }
+      : {}),
   };
 }
 
@@ -606,7 +613,14 @@ export function assertWorkflowOperation(
         read.type !== "read_calendar_range" ||
         step.kind !== "Read" ||
         step.operation !== "calendar_range" ||
-        !workflowCalendarReadMatches(step.range, read, now)
+        !(review.calendarAnchorAt === undefined
+          ? workflowCalendarReadMatches(step.range, read, now)
+          : workflowCalendarReadMatches(
+              step.range,
+              read,
+              Date.parse(review.calendarAnchorAt),
+              0,
+            ))
       )
         fail();
       return;
