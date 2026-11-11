@@ -241,11 +241,27 @@ class NativeAuthCallbackConfigurationError extends Error {
   }
 }
 
+const NATIVE_AUTH_CALLBACK_SUFFIX = "/auth/callback";
+const NATIVE_BILLING_RETURN_SUFFIX = "/billing/return";
+
+/**
+ * The checkout return of a configured native app: its sign-in callback path
+ * with `/auth/callback` replaced by `/billing/return`. Cloud derives the same
+ * address for a mobile checkout (`mobileBillingReturnUrl`); a callback with
+ * another shape has no billing return.
+ */
+export function nativeBillingReturnPath(redirectUri: string): string | null {
+  const pathname = new URL(redirectUri).pathname;
+  return pathname.endsWith(NATIVE_AUTH_CALLBACK_SUFFIX)
+    ? `${pathname.slice(0, -NATIVE_AUTH_CALLBACK_SUFFIX.length)}${NATIVE_BILLING_RETURN_SUFFIX}`
+    : null;
+}
+
 /** Request data selects a configured callback; it cannot define a destination. */
 export function selectNativeAuthCallback(
   raw: unknown,
   url: URL,
-  kind: "callback" | "browser-start" = "callback",
+  kind: "callback" | "browser-start" | "billing-return" = "callback",
 ): NativeAuthCallback | null {
   if (raw === undefined || raw === "") return null;
   let entries: unknown;
@@ -360,13 +376,23 @@ export function selectNativeAuthCallback(
       routes.add(start);
       storageKeys.add(storageKey);
     }
+    const billingReturnPath = nativeBillingReturnPath(entry.redirectUri);
+    if (billingReturnPath !== null) {
+      // The derived return is a served route too; it may not shadow a configured one.
+      const billingReturn = callback.origin + billingReturnPath;
+      if (routes.has(billingReturn))
+        throw new NativeAuthCallbackConfigurationError();
+      routes.add(billingReturn);
+    }
     if (
       url.protocol === "https:" &&
       url.origin === callback.origin &&
       url.pathname ===
         (kind === "callback"
           ? callback.pathname
-          : entry.browserSignIn?.startPath)
+          : kind === "billing-return"
+            ? billingReturnPath
+            : entry.browserSignIn?.startPath)
     )
       selected = entry;
   }
@@ -453,6 +479,72 @@ ${browserSignIn ? `<script nonce="${nonce}">${browserReturnScript(callback.redir
   });
 }
 
+const CHECKOUT_SESSION_ID = /^cs_(test|live)_[A-Za-z0-9]{1,200}$/;
+
+/**
+ * Fallback for a native app's checkout return when Android did not hand the
+ * App Link to the app. The page offers one server-rendered `intent://` link
+ * back to the configured package. It forwards only a well-formed Stripe
+ * session id and the fixed result word: both are identifiers, not payment
+ * evidence, and the app must still confirm with its own credential. The page
+ * runs no script, reads nothing else from the request, and says the same thing
+ * for every result: an unauthenticated address cannot say a payment was made.
+ */
+export function nativeBillingReturnFallback(
+  url: URL,
+  callback: NativeAuthCallback,
+): Response {
+  const path = nativeBillingReturnPath(callback.redirectUri);
+  const result = url.searchParams.get("result");
+  const sessionId = url.searchParams.get("session_id");
+  const query = new URLSearchParams();
+  if (sessionId !== null && CHECKOUT_SESSION_ID.test(sessionId))
+    query.set("session_id", sessionId);
+  if (result === "success" || result === "cancel") query.set("result", result);
+  const search = query.size > 0 ? `?${query}` : "";
+  const href = escapeHtml(
+    `intent://${url.host}${path}${search}#Intent;scheme=https;package=${callback.androidPackage};end`,
+  );
+  const appName = escapeHtml(callback.appName);
+  const body = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Return to ${appName}</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+main { max-width: 420px; text-align: center; line-height: 1.5; }
+a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 10px; background: #111; color: #fff; font-weight: 600; text-decoration: none; }
+@media (prefers-color-scheme: dark) { a { background: #f4f4f4; color: #111; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Return to ${appName}</h1>
+<p>Return to ${appName} to finish.</p>
+<a id="open" href="${href}">Return to ${appName}</a>
+</main>
+</body>
+</html>`;
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "Content-Type": "text/html; charset=utf-8",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+}
+
 const isEmbedPath = (pathname: string): boolean =>
   pathname === "/embed" || pathname.startsWith("/embed/");
 export const onRequest = async (
@@ -471,6 +563,7 @@ export const onRequest = async (
   }
   let callback: NativeAuthCallback | null;
   let browserStart: NativeAuthCallback | null;
+  let billingReturn: NativeAuthCallback | null;
   try {
     callback = selectNativeAuthCallback(
       context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
@@ -480,6 +573,11 @@ export const onRequest = async (
       context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
       url,
       "browser-start",
+    );
+    billingReturn = selectNativeAuthCallback(
+      context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+      url,
+      "billing-return",
     );
   } catch (error) {
     if (!(error instanceof NativeAuthCallbackConfigurationError)) throw error;
@@ -497,6 +595,7 @@ export const onRequest = async (
     );
   }
   if (callback) return nativeSignInCallbackFallback(url, callback);
+  if (billingReturn) return nativeBillingReturnFallback(url, billingReturn);
   // A single lookup decides both that this is a crawl asset and what type it
   // must be served as, so the two can never drift apart.
   const crawlAssetContentType = CRAWL_ASSET_CONTENT_TYPES.get(url.pathname);

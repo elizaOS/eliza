@@ -2,6 +2,8 @@
 // enqueueCommand, markCommandOutcomeUnknown, resolveCommandOutcome,
 // supersedePreparedCommand and applyCheckoutResult. Each action is one committed
 // organization -> subscription authority -> command transaction; rollback stutters.
+// A checkout intent includes its presentation's return; a mobile checkout
+// returns only to the caller's registered native client.
 // This is NOT the app worker lease or dedicated cancel/resume dispatch protocol.
 module PlatformSubscriptionCommand {
   const Kind: str
@@ -9,31 +11,47 @@ module PlatformSubscriptionCommand {
     phase: str, revision: int, generation: int, attempts: int, started: bool,
     providerKey: int, requestDigest: int, responseDigest: int, error: int,
     history: Set[int], currentPlan: int, applied: int, result: int,
-    acceptedScope: int, staleWrite: bool, unsafeApplication: bool
+    acceptedScope: int, staleWrite: bool, unsafeApplication: bool,
+    returnClient: int, firstReturnClient: int
   }
   var s: State
   pure val scopes = Set(1, 2, 3) // own platform, foreign tenant, app scope
   pure val revisions = Set(0, 1, 2, 3, 4)
   pure val generations = Set(0, 1, 2)
   pure val digests = Set(1, 2)
+  // Where a checkout returns. 0 is the web, embedded or shared-payer return of
+  // hosted, embedded and shared presentations. 1 is the billing return of the
+  // registered native client that owns the caller's mobile credential. 2 is
+  // any other native return, including another registered client's.
+  pure val returnClients = Set(0, 1, 2)
 
   action init = s' = {
     phase: "ABSENT", revision: 0, generation: 0, attempts: 0, started: false,
     providerKey: 0, requestDigest: 0, responseDigest: 0, error: 0,
     history: Set(), currentPlan: 1, applied: 0, result: 0,
-    acceptedScope: 1, staleWrite: false, unsafeApplication: false
+    acceptedScope: 1, staleWrite: false, unsafeApplication: false,
+    returnClient: 0, firstReturnClient: 0
   }
 
-  // One original intent; request bytes, actor and checkout contract comparison
-  // collapse to matchesIntent. A different key/command is outside this instance.
-  action Enqueue(scope: int, matchesIntent: bool): bool = all {
-    scope == 1, matchesIntent,
+  // The route derives a mobile return from the credential's registration, so a
+  // new command only ever carries return 0 or 1, and only a checkout may carry
+  // 1. The return is part of the request digest and the stored contract: a
+  // replay must name the same one.
+  def returnAllowed(client: int): bool =
+    if (s.phase == "ABSENT") client == 0 or (client == 1 and Kind == "checkout")
+    else client == s.returnClient
+  // One original intent; request bytes, actor and the rest of the checkout
+  // contract comparison collapse to matchesIntent. A different key/command is
+  // outside this instance.
+  action Enqueue(scope: int, matchesIntent: bool, client: int): bool = all {
+    scope == 1, matchesIntent, returnAllowed(client),
     s' = if (s.phase == "ABSENT") {
-      ...s, phase: "PREPARED", revision: 1, providerKey: 1, requestDigest: 1
+      ...s, phase: "PREPARED", revision: 1, providerKey: 1, requestDigest: 1,
+      returnClient: client, firstReturnClient: client
     } else s
   }
-  action RefuseEnqueue(scope: int, matchesIntent: bool): bool = all {
-    scope != 1 or not(matchesIntent), s' = s
+  action RefuseEnqueue(scope: int, matchesIntent: bool, client: int): bool = all {
+    scope != 1 or not(matchesIntent) or not(returnAllowed(client)), s' = s
   }
 
   def genericKind = not(Set("cancel", "resume").contains(Kind))
@@ -141,11 +159,12 @@ module PlatformSubscriptionCommand {
     nondet generation = generations.oneOf()
     nondet digest = digests.oneOf()
     nondet matchesIntent = Set(false, true).oneOf()
+    nondet client = returnClients.oneOf()
     nondet outcome = Set("SUCCEEDED", "FAILED").oneOf()
     val response = if (outcome == "SUCCEEDED") digest else 0
     val error = if (outcome == "FAILED") digest else 0
     any {
-      Enqueue(scope, matchesIntent), RefuseEnqueue(scope, matchesIntent),
+      Enqueue(scope, matchesIntent, client), RefuseEnqueue(scope, matchesIntent, client),
       Dispatch(scope, revision, generation), ReplayDispatch(scope, revision, generation),
       RefuseDispatch(scope, revision, generation),
       Resolve(scope, revision, generation, outcome, response, error),
@@ -161,6 +180,10 @@ module PlatformSubscriptionCommand {
 
   val ExactAuthority = s.acceptedScope == 1 and not(s.staleWrite)
   val ImmutableIntent = s.phase == "ABSENT" or (s.providerKey == 1 and s.requestDigest == 1)
+  // A native return is pinned at enqueue, belongs to the caller's own client
+  // and exists only on a checkout.
+  val NativeReturnPinned = s.returnClient == s.firstReturnClient and
+    Set(0, 1).contains(s.returnClient) and (s.returnClient == 0 or Kind == "checkout")
   val OneDispatchFence = s.attempts <= 1 and s.generation == s.attempts
   val SafeSupersession = s.phase != "SUPERSEDED" or (not(s.started) and s.generation == 0)
   val OriginalCheckoutOnly = not(s.unsafeApplication) and s.applied <= 1 and
@@ -174,7 +197,7 @@ module PlatformSubscriptionCommand {
     s.phase != "SUPERSEDED" or (s.revision == 2 and s.error > 0),
     s.phase != "APPLIED" or (s.revision == 4 and s.started and s.applied == 1)
   }
-  val safety = ExactAuthority and ImmutableIntent and OneDispatchFence and
+  val safety = ExactAuthority and ImmutableIntent and NativeReturnPinned and OneDispatchFence and
     SafeSupersession and OriginalCheckoutOnly and OutcomeShape
   val Ready = Kind == "checkout" and s.phase == "SUCCEEDED" and s.history.contains(s.responseDigest)
   // This assumes only fair local Apply after a proven result. No provider
@@ -194,46 +217,60 @@ module PlatformSubscriptionCommand {
   action UnsafeApplyWithoutHistory = s' = {...s, phase: "APPLIED", revision: 4,
     applied: s.applied + 1, result: 1, unsafeApplication: not(s.history.contains(s.responseDigest))}
   action UnsafeRewriteIntent = s' = {...s, providerKey: 2}
+  action UnsafeRepointReturn = s' = {...s, returnClient: 2}
 }
 
 module PlatformSubscriptionCommand_checkout {
   import PlatformSubscriptionCommand(Kind = "checkout").*
-  run exactRetryKeepsOriginalFenceTest = init.then(Enqueue(1, true)).then(Dispatch(1, 1, 0))
+  run exactRetryKeepsOriginalFenceTest = init.then(Enqueue(1, true, 0)).then(Dispatch(1, 1, 0))
     .then(ReplayDispatch(1, 1, 0)).then(RefuseDispatch(1, 2, 1))
     .expect(safety and s.attempts == 1 and s.revision == 2)
-  run historicalCheckoutSurvivesNewCurrentPlanTest = init.then(Enqueue(1, true))
+  run historicalCheckoutSurvivesNewCurrentPlanTest = init.then(Enqueue(1, true, 0))
     .then(Dispatch(1, 1, 0)).then(Resolve(1, 2, 1, "SUCCEEDED", 2, 0))
     .then(RetainRevision(3)).then(RefuseApply(1, 3, 1))
     .then(RetainRevision(2)).then(ChangeCurrentPlan).then(Apply(1, 3, 1))
     .then(ReplayApply(1, 3, 1)).then(RefuseApply(1, 3, 2))
     .expect(safety and s.applied == 1 and s.currentPlan == 2)
-  run staleAndForeignWritesRefusedTest = init.then(Enqueue(1, true))
-    .then(RefuseEnqueue(1, false)).then(RefuseDispatch(2, 1, 0)).then(RefuseDispatch(3, 1, 0))
+  run staleAndForeignWritesRefusedTest = init.then(Enqueue(1, true, 0))
+    .then(RefuseEnqueue(1, false, 0)).then(RefuseDispatch(2, 1, 0)).then(RefuseDispatch(3, 1, 0))
     .then(Dispatch(1, 1, 0)).then(RefuseResolution(1, 2, 0, "SUCCEEDED", 1, 0))
     .then(RefuseResolution(1, 1, 1, "SUCCEEDED", 1, 0))
     .then(Resolve(1, 2, 1, "SUCCEEDED", 1, 0))
     .then(ReplayResolution(1, 2, 1, "SUCCEEDED", 1, 0))
     .then(RefuseResolution(1, 2, 1, "SUCCEEDED", 2, 0)).expect(safety and s.responseDigest == 1)
-  run failureHasExactReplayTest = init.then(Enqueue(1, true)).then(Dispatch(1, 1, 0))
+  run failureHasExactReplayTest = init.then(Enqueue(1, true, 0)).then(Dispatch(1, 1, 0))
     .then(Resolve(1, 2, 1, "FAILED", 0, 1)).then(ReplayResolution(1, 2, 1, "FAILED", 0, 1))
     .then(RefuseResolution(1, 2, 1, "FAILED", 0, 2)).then(RefuseApply(1, 3, 1))
     .expect(safety and s.phase == "FAILED")
-  run onlyUnstartedCommandsSupersedeTest = init.then(Enqueue(1, true)).then(Supersede(1, 1, 1))
+  run onlyUnstartedCommandsSupersedeTest = init.then(Enqueue(1, true, 0)).then(Supersede(1, 1, 1))
     .then(ReplaySupersede(1, 1, 1)).then(RefuseSupersede(1, 1, 2))
     .then(RefuseDispatch(1, 1, 0)).expect(safety and not(s.started))
-  run generationGuardNegativeWitnessTest = init.then(Enqueue(1, true)).then(Dispatch(1, 1, 0))
+  run generationGuardNegativeWitnessTest = init.then(Enqueue(1, true, 0)).then(Dispatch(1, 1, 0))
     .then(UnsafeResolveGeneration(0)).expect(not(safety))
-  run supersedeGuardNegativeWitnessTest = init.then(Enqueue(1, true)).then(Dispatch(1, 1, 0))
+  run supersedeGuardNegativeWitnessTest = init.then(Enqueue(1, true, 0)).then(Dispatch(1, 1, 0))
     .then(UnsafeSupersedeStarted).expect(not(safety))
-  run historyGuardNegativeWitnessTest = init.then(Enqueue(1, true)).then(Dispatch(1, 1, 0))
+  run historyGuardNegativeWitnessTest = init.then(Enqueue(1, true, 0)).then(Dispatch(1, 1, 0))
     .then(Resolve(1, 2, 1, "SUCCEEDED", 1, 0)).then(UnsafeApplyWithoutHistory).expect(not(safety))
-  run intentGuardNegativeWitnessTest = init.then(Enqueue(1, true)).then(UnsafeRewriteIntent).expect(not(safety))
+  run intentGuardNegativeWitnessTest = init.then(Enqueue(1, true, 0)).then(UnsafeRewriteIntent).expect(not(safety))
+  run mobileReturnIsPinnedToItsClientTest = init.then(Enqueue(1, true, 1))
+    .then(Enqueue(1, true, 1)).then(RefuseEnqueue(1, true, 2)).then(RefuseEnqueue(1, true, 0))
+    .then(Dispatch(1, 1, 0)).then(RefuseEnqueue(1, true, 2))
+    .expect(safety and s.returnClient == 1 and s.attempts == 1)
+  run webCheckoutNeverGainsNativeReturnTest = init.then(Enqueue(1, true, 0))
+    .then(RefuseEnqueue(1, true, 1)).then(RefuseEnqueue(1, true, 2))
+    .expect(safety and s.returnClient == 0 and s.phase == "PREPARED")
+  run foreignReturnStartsNoCheckoutTest = init.then(RefuseEnqueue(1, true, 2))
+    .expect(safety and s.phase == "ABSENT")
+  run returnGuardNegativeWitnessTest = init.then(Enqueue(1, true, 1)).then(UnsafeRepointReturn)
+    .expect(not(safety))
 }
 module PlatformSubscriptionCommand_upgrade { import PlatformSubscriptionCommand(Kind = "upgrade").* }
 module PlatformSubscriptionCommand_cancel {
   import PlatformSubscriptionCommand(Kind = "cancel").*
-  run dedicatedDispatcherRequiredTest = init.then(Enqueue(1, true))
+  run dedicatedDispatcherRequiredTest = init.then(Enqueue(1, true, 0))
     .then(RefuseDispatch(1, 1, 0)).then(RefuseResolution(1, 1, 0, "SUCCEEDED", 1, 0))
     .then(Supersede(1, 1, 1)).expect(safety and not(s.started))
+  run nativeReturnOnlyOnCheckoutTest = init.then(RefuseEnqueue(1, true, 1))
+    .expect(safety and s.phase == "ABSENT")
 }
 module PlatformSubscriptionCommand_resume { import PlatformSubscriptionCommand(Kind = "resume").* }
