@@ -200,7 +200,7 @@
       "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
       "History is set-valued in this model; ordering, multiplicity, and byte fidelity are not proved.",
       "Foreign-owner requests are rejected before closing the owned import phase. Ten real workerd/SQLite tests check version conflicts, recreation, expiry, tenant isolation, ordered complete content with duplicate retention, import conflict atomicity and process restart.",
-      "The hook checks selected implementation scenarios. General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this model. No temporal or fairness claim."
+      "General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this storage projection. The platform terminal-cancellation case has its own bounds and progress checks."
     ]
   },
   {
@@ -623,21 +623,25 @@
   },
   {
     "id": "cloud-flow-a2a-task-lifecycle",
-    "model": null,
+    "model": "packages/cloud/quint/a2a_task_store.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/types/a2a.ts",
-      "packages/cloud/shared/src/lib/api/a2a/handlers.ts",
-      "packages/cloud/api/a2a/route.ts"
+      "packages/cloud/shared/src/lib/api/a2a/platform-cloud.ts",
+      "packages/cloud/api/a2a/route.ts",
+      "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+      "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
+      "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+      "packages/cloud/shared/src/lib/api/a2a/handlers.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "CancellationAcknowledgesStoredVersion",
+      "CompletedOutputRetained"
+    ],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "The task-store model does not establish semantic A2A task transitions.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Task status policy must define terminal transitions | Task owner and full history remain associated | Cancellation and execution outcomes have explicit ordering",
-      "Abstract states: submitted, working, input-required, completed, canceled, failed, unknown"
+      "One platform task, two admitted cancellations and one possible completion publication before the task settles. Each cancel rechecks terminal eligibility on the current storage version, and at most one successful cancellation acknowledges that version.",
+      "Two real Hono/Workerd tests hold an actual SQLite read receipt while another platform request publishes a terminal task. The later cancellation preserves the stored status, complete history and artifacts. Workerd uses a local authenticated-principal fixture and no provider calls.",
+      "Arbitrary later task-ID reuse, cancellation spanning expiry and recreation, failed or rejected legacy skill execution, provider cancellation, Redis lock expiry and ambiguous write receipts remain outside this case."
     ]
   },
   {
@@ -660,7 +664,7 @@
       "Required flow invariants: Stale optimistic writes cannot erase acknowledged appends | Import fingerprints are immutable and import closes after serving | Expired or deleted records are not revived by old versions",
       "Abstract states: absent, present, expired, deleted, importing, serving",
       "Foreign-owner requests are rejected before closing the owned import phase. Ten real workerd/SQLite tests check version conflicts, recreation, expiry, tenant isolation, ordered complete content with duplicate retention, import conflict atomicity and process restart.",
-      "The hook checks selected implementation scenarios. General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this model. No temporal or fairness claim."
+      "General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this storage projection. The platform terminal-cancellation case has its own bounds and progress checks."
     ]
   },
   {
@@ -1428,7 +1432,8 @@
     "status": "unmodeled",
     "limitations": [
       "Reviewed source families: api/src/a2a-task-state, shared/src/lib/services/a2a-task, shared/src/lib/services/cloudflare-a2a",
-      "Unmodeled obligations: terminal states, concurrent artifact append, cancellation, TTL and ownership"
+      "The task-store and platform terminal-cancellation cases cover bounded version conflicts, expiry, import, ownership and two competing cancel interleavings.",
+      "Remaining obligations include semantic cancellation across expiry and replacement, arbitrary task replacements, concurrent artifact semantics, Redis lock expiry and execution outcomes."
     ]
   },
   {
