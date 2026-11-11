@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
+    "packages/ui/src/state/durable-draft.ts"
+  ],
+  "conformance": "packages/ui/quint/check-draft-controller.mjs",
+  "bounds": "Two binding instances, one queued edit each, both write-completion orders, shared or separate stores, one flush, one mutation before either readback, and failures at either write/read. Includes a newer successful same-key write superseding a failed retired write.",
+  "cases": [
+    {
+      "name": "queued-flush",
+      "main": "DraftQueuedHandoff",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 9,
+      "samples": 1000
+    }
+  ]
+}

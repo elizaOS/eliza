@@ -99,7 +99,13 @@ start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`
 `liveCaptureTranscript` events, `localSpeechStatus`/`releaseLocalSpeech`, `nativeVoiceTiming`,
 `markVoiceTurn` and `clearNativeVoiceTiming`. A live capture start with `reopen` (the voice
 assistant's automatic reopen after a busy hold) never prompts: without microphone permission it
-rejects with `permission`. Ports a product overrides:
+rejects with `permission`. For a spoken conversation it also provides: `startLiveCapture` with
+`startMs`/`endHangoverMs` (the VAD start run and end hangover, whole 32 ms windows) and `bargeIn`
+(a `liveCaptureBargeIn` event when speech is sustained while the streamed reply is audible; the
+bridge stops nothing itself); `synthesizeLocal` with `append` (the next sentence joins the
+utterance being spoken, in the same output, and reports `playbackSegmentStarted`);
+`localSpeechStatus` with `ttsOnly`; and `holdSpeechEngine`/`releaseSpeechEngineHold` (the idle
+timer keeps the engine loaded in the foreground). Ports a product overrides:
 
 - `residentRoute(ownerId)` / `residentTransport()`: the owner-bound transport that carries VAD
   segments to the resident agent of the owner who started a capture (`nativeAsr`). The default
@@ -309,8 +315,13 @@ directly. The installer hashes the bytes in the APK once per bundle manifest.
 After an app update with the same manifest it only rewrites the region files for
 the new APK path, since the package manager has checked the APK's signature. The
 agent's ASR check (`asr-provenance.ts`) reads the GGUF header through a region
-file too. It still copies compressed or unaligned entries, the VAD model and the
-eSpeak NG data. A region bundle needs a libelizainference built from a fork
+file too. The installer still copies compressed or unaligned entries, the VAD
+model and the eSpeak NG data. A host that reads a model itself, for example to
+warm the page cache, calls `VoiceBundleAssets.modelRegion(File)` for the file
+and span to read: it returns a `Region` (`file`, `offset`, `length`), where
+`file` is the APK for an in-place model and the model file itself for a copied
+one. A missing model throws `FileNotFoundException`; an invalid region file, or
+one whose containing file is missing or too short, throws `IOException`. A region bundle needs a libelizainference built from a fork
 commit with region-file support.
 
 ## Licenses

@@ -18,8 +18,10 @@ import { registerHttpPluginRoutes } from '@elizaos/host/protocol';
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
 import { workflowRoutePlugin } from '../../src/plugin-routes';
 import { workflowRoutes } from '../../src/routes/index';
+import { handleWorkflowRoutes } from '../../src/routes/workflow-routes';
 import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../../src/services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
+import { WorkflowApiError, type WorkflowRunEvent } from '../../src/types/index';
 
 const servers: http.Server[] = [];
 
@@ -122,10 +124,16 @@ function makeWorkflowService(state: FakeServiceState) {
 }
 
 function makeRuntime(
-  options: { withService?: boolean; state?: FakeServiceState; embedded?: unknown } = {}
+  options: {
+    withService?: boolean;
+    state?: FakeServiceState;
+    embedded?: unknown;
+    service?: Record<string, unknown>;
+    tasks?: Map<string, Record<string, unknown>>;
+  } = {}
 ): AgentRuntime {
-  const { withService = true, state = { calls: [] }, embedded = null } = options;
-  const service = makeWorkflowService(state);
+  const { withService = true, state = { calls: [] }, embedded = null, tasks = new Map() } = options;
+  const service = { ...makeWorkflowService(state), ...options.service };
   const runtime = {
     agentId: 'agent-route-test',
     character: { name: 'Route Test Agent', settings: {} },
@@ -133,6 +141,11 @@ function makeRuntime(
     getService: (key: string) => {
       if (key === EMBEDDED_WORKFLOW_SERVICE_TYPE) return embedded;
       return withService && key === WORKFLOW_SERVICE_TYPE ? service : null;
+    },
+    getTask: async (id: string) => tasks.get(id) ?? null,
+    updateTask: async (id: string, update: { metadata?: Record<string, unknown> }) => {
+      const task = tasks.get(id);
+      if (task) tasks.set(id, { ...task, ...update });
     },
   } as unknown as AgentRuntime;
   registerHttpPluginRoutes(runtime, {
@@ -195,6 +208,267 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
       platform: 'runtime',
       executionLocation: 'agent-runtime',
       engine: 'smthrs',
+    });
+  });
+
+  test('/status reports a missing execution service without advertising protocols', async () => {
+    const base = await startServer(makeRuntime());
+
+    const res = await fetch(`${base}/api/workflow/status`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ mode: 'disabled', status: 'error' });
+    expect(body.hostedDigestProtocol).toBeUndefined();
+    expect(body.typedScheduleProtocol).toBeUndefined();
+  });
+
+  test('/status answers a status document when WorkflowService is missing', async () => {
+    const base = await startServer(
+      makeRuntime({ withService: false, embedded: makeWorkflowService({ calls: [] }) })
+    );
+
+    const res = await fetch(`${base}/api/workflow/status`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ mode: 'disabled', status: 'error' });
+    expect(body.manualSubmissionProtocol).toBeUndefined();
+  });
+
+  test('/status advertises protocols only when both services are ready', async () => {
+    const base = await startServer(makeRuntime({ embedded: makeWorkflowService({ calls: [] }) }));
+
+    const body = (await (await fetch(`${base}/api/workflow/status`)).json()) as Record<
+      string,
+      unknown
+    >;
+
+    expect(body).toMatchObject({ status: 'ready', hostedDigestProtocol: 1 });
+  });
+
+  test.each([
+    '/api/workflow/phone/validate',
+    '/api/workflow/phone/workflows',
+    '/api/workflow/workflows/wf-001/phone-spec',
+  ])('%s refuses a 900 KB body before any service runs', async (path) => {
+    let serviceCalls = 0;
+    const record = () => {
+      serviceCalls++;
+      return Promise.resolve({});
+    };
+    const base = await startServer(
+      makeRuntime({ service: { validatePhoneDraft: record, savePhoneDraft: record } })
+    );
+
+    const status = await postJson(base, path, { spec: 'x'.repeat(900_000) }).then(
+      (res) => res.status,
+      () => 'connection closed'
+    );
+
+    expect(status === 'connection closed' || status >= 400).toBe(true);
+    expect(serviceCalls).toBe(0);
+  });
+
+  test('an attached body over the handler cap answers 413', async () => {
+    let serviceCalls = 0;
+    const runtime = makeRuntime({
+      service: {
+        validatePhoneDraft: () => {
+          serviceCalls++;
+          return Promise.resolve({});
+        },
+      },
+    });
+    const rawBody = JSON.stringify({ spec: 'x'.repeat(80_000) });
+    const responses: Array<{ body: unknown; status?: number }> = [];
+
+    await handleWorkflowRoutes({
+      req: { body: JSON.parse(rawBody), rawBody } as unknown as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method: 'POST',
+      pathname: '/api/workflow/phone/validate',
+      runtime,
+      principalId: 'owner-1',
+      json: (_res, body, status) => responses.push({ body, status }),
+    });
+
+    expect(responses).toEqual([{ body: { error: 'Request body is too large' }, status: 413 }]);
+    expect(serviceCalls).toBe(0);
+  });
+
+  test('GET /executions/:id/events answers 404 for an unknown run', async () => {
+    const listeners = new Set<unknown>();
+    const embedded = {
+      subscribe: (_runId: string, listener: unknown) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const base = await startServer(
+      makeRuntime({
+        embedded,
+        service: {
+          getExecutionDetail: () =>
+            Promise.reject(new WorkflowApiError('Workflow execution not found', 404)),
+        },
+      })
+    );
+
+    const res = await fetch(`${base}/api/workflow/executions/missing/events`);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Workflow execution not found' });
+    expect(listeners.size).toBe(0);
+  });
+
+  test.each([true, false])(
+    'the event stream ends after a snapshot that ends the run (finished: %s)',
+    async (finished) => {
+      const listeners = new Set<unknown>();
+      const embedded = {
+        subscribe: (_runId: string, listener: unknown) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      };
+      const event = { id: 'exec-001:1', sequence: 1, runId: 'exec-001', type: 'RunFinished' };
+      const base = await startServer(
+        makeRuntime({
+          embedded,
+          service: {
+            getExecutionDetail: async () => ({ id: 'exec-001', finished, events: [event] }),
+          },
+        })
+      );
+
+      const res = await fetch(`${base}/api/workflow/executions/exec-001/events`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      const text = await res.text();
+      expect(text).toBe(`id: 1\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
+      expect(listeners.size).toBe(0);
+    }
+  );
+
+  test('a live stream sends events after the snapshot once and ends on the terminal event', async () => {
+    const listeners = new Set<(event: WorkflowRunEvent) => void>();
+    const embedded = {
+      subscribe: (_runId: string, listener: (event: WorkflowRunEvent) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    const event = (sequence: number, type: string) =>
+      ({ id: `exec-001:${sequence}`, sequence, runId: 'exec-001', type }) as WorkflowRunEvent;
+    const emit = (value: WorkflowRunEvent) => {
+      for (const listener of listeners) listener(value);
+    };
+    const base = await startServer(
+      makeRuntime({
+        embedded,
+        service: {
+          getExecutionDetail: async () => {
+            // Lands between subscribe and the snapshot: the snapshot already holds it.
+            emit(event(1, 'NodeStarted'));
+            return { id: 'exec-001', finished: false, events: [event(1, 'NodeStarted')] };
+          },
+        },
+      })
+    );
+
+    const res = await fetch(`${base}/api/workflow/executions/exec-001/events`);
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (!text.includes('"sequence":1')) text += decoder.decode((await reader.read()).value);
+    emit(event(1, 'NodeStarted'));
+    emit(event(2, 'NodeFinished'));
+    emit(event(3, 'RunFinished'));
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      text += decoder.decode(chunk.value);
+    }
+
+    expect(text.match(/^id: \d+$/gm)).toEqual(['id: 1', 'id: 2', 'id: 3']);
+    expect(listeners.size).toBe(0);
+  });
+
+  test('a client that leaves during the snapshot read leaves no listener', async () => {
+    const listeners = new Set<unknown>();
+    const embedded = {
+      subscribe: (_runId: string, listener: unknown) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    let release = () => {};
+    let reading = () => {};
+    const readStarted = new Promise<void>((resolve) => {
+      reading = resolve;
+    });
+    const base = await startServer(
+      makeRuntime({
+        embedded,
+        service: {
+          getExecutionDetail: () => {
+            reading();
+            return new Promise((resolve) => {
+              release = () => resolve({ id: 'exec-001', finished: false, events: [] });
+            });
+          },
+        },
+      })
+    );
+    const controller = new AbortController();
+
+    const request = fetch(`${base}/api/workflow/executions/exec-001/events`, {
+      signal: controller.signal,
+    }).catch(() => null);
+    await readStarted;
+    controller.abort();
+    await request;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(listeners.size).toBe(0);
+  });
+
+  test('POST /api/workbench/todos/:id/complete with no body completes the todo', async () => {
+    const id = '00000000-0000-4000-8000-000000000101';
+    const tasks = new Map<string, Record<string, unknown>>([
+      [
+        id,
+        {
+          id,
+          name: 'Buy milk',
+          tags: ['workbench-todo'],
+          metadata: { workbenchTodo: { isCompleted: false } },
+        },
+      ],
+    ]);
+    const base = await startServer(makeRuntime({ tasks }));
+
+    const completed = await fetch(`${base}/api/workbench/todos/${id}/complete`, {
+      method: 'POST',
+    });
+    expect(completed.status).toBe(200);
+    expect(tasks.get(id)?.metadata).toMatchObject({
+      isCompleted: true,
+      workbenchTodo: { isCompleted: true },
+    });
+
+    const reopened = await postJson(base, `/api/workbench/todos/${id}/complete`, {
+      isCompleted: false,
+    });
+    expect(reopened.status).toBe(200);
+    expect(tasks.get(id)?.metadata).toMatchObject({
+      isCompleted: false,
+      workbenchTodo: { isCompleted: false },
     });
   });
 

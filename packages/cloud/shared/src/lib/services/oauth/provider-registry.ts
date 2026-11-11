@@ -230,9 +230,17 @@ export interface OAuthProviderConfig {
   useGenericRoutes?: boolean;
 }
 
-/**
- * Registry of all supported OAuth providers.
- */
+const GOOGLE_DEFAULT_SCOPES = [
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/contacts.readonly",
+];
+
+/** Registry of all supported OAuth providers. */
 export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
   google: {
     id: "google",
@@ -247,14 +255,11 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       userInfo: "https://www.googleapis.com/oauth2/v2/userinfo",
       revoke: "https://oauth2.googleapis.com/revoke",
     },
-    defaultScopes: [
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-      "https://www.googleapis.com/auth/gmail.send",
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/calendar.events",
-      "https://www.googleapis.com/auth/calendar.readonly",
-      "https://www.googleapis.com/auth/contacts.readonly",
+    defaultScopes: GOOGLE_DEFAULT_SCOPES,
+    allowedScopes: [
+      ...GOOGLE_DEFAULT_SCOPES,
+      "https://www.googleapis.com/auth/gmail.compose",
+      "https://www.googleapis.com/auth/gmail.modify",
     ],
     userInfoMapping: {
       id: "id",

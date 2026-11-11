@@ -61,6 +61,7 @@ import {
   withAccountStorageMutation,
 } from "../auth/account-storage.js";
 import {
+  getAccessTokenCredentialReceipt,
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
 } from "../auth/credentials.js";
@@ -86,12 +87,24 @@ export interface AccountPoolDeps {
   /** Read the current `LinkedAccountsConfig` (live). */
   readAccounts: () => Record<string, LinkedAccountConfig>;
   /** Persist a single account's mutated fields. */
-  writeAccount: (account: LinkedAccountConfig) => Promise<void>;
+  writeAccount: (
+    account: LinkedAccountConfig,
+    options?: AccountPoolWriteOptions,
+  ) => Promise<void> | Promise<boolean>;
   /** Remove the metadata overlay for an account. */
   deleteAccount?: (
     providerId: PoolProviderId,
     accountId: string,
   ) => Promise<void>;
+}
+interface RefreshUsageOptions extends AccountMutationOptions {
+  codexAccountId?: string;
+  fetch?: typeof fetch;
+}
+interface AccountPoolWriteOptions {
+  usageBaseline?: LinkedAccountConfig;
+  usageEmail?: string;
+  patch?: (current: LinkedAccountConfig) => Partial<PoolMetaFields> | undefined;
 }
 export interface SelectInput {
   providerId: PoolProviderId;
@@ -109,6 +122,28 @@ export interface SelectInput {
 interface AffinityEntry {
   accountId: string;
   attempts: number;
+}
+// Enumerable symbols survive internal object spreads and stay out of JSON.
+// Only verified credential records mint this default-adapter provenance.
+const POOL_CREDENTIAL_GENERATION = Symbol("pool-credential-generation");
+type StoredPoolAccount = LinkedAccountConfig & {
+  [POOL_CREDENTIAL_GENERATION]?: string;
+};
+interface AccountMutationOptions {
+  providerId?: PoolProviderId;
+  expectedCredentialGeneration?: string;
+  expectedHealth?: Pick<LinkedAccountConfig, "health" | "healthDetail">;
+}
+export function accountGeneration(
+  account: LinkedAccountConfig,
+): string | undefined {
+  return (account as StoredPoolAccount)[POOL_CREDENTIAL_GENERATION];
+}
+function matchesExpectedGeneration(
+  account: LinkedAccountConfig,
+  expected: string | undefined,
+): boolean {
+  return expected === undefined || accountGeneration(account) === expected;
 }
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60000;
 const QUOTA_AWARE_SKIP_PCT = 85;
@@ -389,15 +424,24 @@ export class AccountPool {
       ) {
         continue;
       }
+      const persisted = await this.deps.writeAccount(
+        {
+          ...account,
+          health: "expired",
+          healthDetail: { lastChecked: now },
+        },
+        {
+          patch: (current) =>
+            isAccountExpired(current)
+              ? { health: "expired", healthDetail: { lastChecked: Date.now() } }
+              : undefined,
+        },
+      );
+      if (persisted === false) continue;
       changed += 1;
       logger.warn(
         `[AccountPool] account expired providerId=${account.providerId} accountId=${account.id} subscriptionEndsAt=${account.subscriptionEndsAt}`,
       );
-      await this.deps.writeAccount({
-        ...account,
-        health: "expired",
-        healthDetail: { lastChecked: now },
-      });
     }
     return changed;
   }
@@ -568,9 +612,7 @@ export class AccountPool {
       errorCode?: string;
       model?: string;
     },
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
@@ -579,32 +621,48 @@ export class AccountPool {
     );
     if (!account) return;
     recordUsageEntry(account.providerId, account.id, result);
+    if (!matchesExpectedGeneration(account, opts?.expectedCredentialGeneration))
+      return;
     const next: LinkedAccountConfig = {
       ...account,
       lastUsedAt: Date.now(),
     };
-    await this.deps.writeAccount(next);
+    await this.deps.writeAccount(next, {
+      patch: () => ({ lastUsedAt: next.lastUsedAt }),
+    });
   }
+  refreshUsage(
+    accountId: string,
+    accessToken: string,
+    opts: RefreshUsageOptions & { outcome: true },
+  ): Promise<boolean>;
+  refreshUsage(
+    accountId: string,
+    accessToken: string,
+    opts?: RefreshUsageOptions,
+  ): Promise<void>;
   async refreshUsage(
     accountId: string,
     accessToken: string,
-    opts?: {
-      codexAccountId?: string;
-      fetch?: typeof fetch;
-      providerId?: PoolProviderId;
-    },
-  ): Promise<void> {
+    opts?: RefreshUsageOptions & { outcome?: true },
+    // biome-ignore lint/suspicious/noConfusingVoidType: the legacy Promise<void> overload remains part of the public contract.
+  ): Promise<void | boolean> {
+    const finish = (updated: boolean): boolean | undefined =>
+      opts?.outcome === true ? updated : undefined;
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
+    if (!account) return finish(false);
+    if (!matchesExpectedGeneration(account, opts?.expectedCredentialGeneration))
+      return finish(false);
+    const capturedGeneration = accountGeneration(account);
     if (isAccountExpired(account)) {
       await this.markExpiredAccounts(account.providerId, {
         [poolRecordKey(account.providerId, account.id)]: account,
       });
-      return;
+      return finish(false);
     }
     let usage: LinkedAccountUsage;
     // Anthropic's OAuth token is opaque (no OIDC claims), so accounts linked
@@ -640,7 +698,7 @@ export class AccountPool {
       usage = await pollCodexUsage(accessToken, codexAccountId, opts?.fetch);
     } else {
       // No probe defined for direct API providers.
-      return;
+      return finish(false);
     }
     // The usage probe above is a real suspension point: a concurrent health
     // transition (markRateLimited's 429 cooldown, markNeedsReauth, markInvalid)
@@ -650,49 +708,65 @@ export class AccountPool {
     // a rate-limited/revoked account and defeating the backoff clock. Re-read
     // the account now and merge: `readAccounts` is synchronous and the write's
     // persist body runs to completion before this frame yields, so the
-    // read-merge-write is atomic on the event loop against every other mutator
-    // (which are all likewise read-then-write with no await between).
+    // read-merge-write preserves same-process mutations. The default adapter
+    // repeats the health comparison under its storage lock so another process
+    // cannot change health between this read and metadata publication.
     const baseline = healthSignature(account);
+    const writeOptions: AccountPoolWriteOptions = {
+      usageBaseline: account,
+      ...(email ? { usageEmail: email } : {}),
+    };
     const fresh = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!fresh) return;
+    if (!fresh) return finish(false);
+    if (!matchesExpectedGeneration(fresh, capturedGeneration))
+      return finish(false);
     if (healthSignature(fresh) !== baseline) {
       // A newer, authoritative health verdict landed during the probe. Keep it
       // verbatim; only layer on the freshly fetched usage/email.
-      await this.deps.writeAccount({
-        ...fresh,
-        usage,
-        ...(email ? { email } : {}),
-      });
-      return;
+      const persisted = await this.deps.writeAccount(
+        {
+          ...fresh,
+          usage,
+          ...(email && !fresh.email ? { email } : {}),
+        },
+        writeOptions,
+      );
+      return finish(persisted !== false);
     }
     // No concurrent transition: a successful usage read proves the account
     // works, so (re-)admit it as OK and drop any now-stale health detail.
-    await this.deps.writeAccount({
-      ...fresh,
-      health: "ok",
-      healthDetail: undefined,
-      usage,
-      ...(email ? { email } : {}),
-    });
+    const persisted = await this.deps.writeAccount(
+      {
+        ...fresh,
+        health: "ok",
+        healthDetail: undefined,
+        usage,
+        ...(email && !fresh.email ? { email } : {}),
+      },
+      writeOptions,
+    );
+    return finish(persisted !== false);
   }
   async markRateLimited(
     accountId: string,
     untilMs: number,
     detail?: string,
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
+    if (
+      !account ||
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration)
+    )
+      return;
     // Provider-authoritative cooldown, per provider semantics of
     // `usage.resetsAt` (see LinkedAccountUsage contract):
     //  - Codex persists its PRIMARY FIVE-HOUR window reset there, which is
@@ -720,48 +794,71 @@ export class AccountPool {
       lastChecked: Date.now(),
       ...(detail ? { lastError: detail } : {}),
     };
-    await this.deps.writeAccount({
-      ...account,
-      health: "rate-limited",
-      healthDetail,
-    });
+    await this.deps.writeAccount(
+      {
+        ...account,
+        health: "rate-limited",
+        healthDetail,
+      },
+      {
+        patch: (current) => ({
+          health: "rate-limited",
+          healthDetail: {
+            ...healthDetail,
+            until:
+              current.providerId === "openai-codex" &&
+              typeof current.usage?.resetsAt === "number" &&
+              current.usage.resetsAt > Date.now()
+                ? current.usage.resetsAt
+                : heuristicUntil,
+          },
+        }),
+      },
+    );
   }
   async markRateLimitedUnknown(
     accountId: string,
     detail?: string,
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
+    if (
+      !account ||
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration)
+    )
+      return;
     const healthDetail: LinkedAccountHealthDetail = {
       lastChecked: Date.now(),
       ...(detail ? { lastError: detail } : {}),
     };
-    await this.deps.writeAccount({
-      ...account,
-      health: "rate-limited",
-      healthDetail,
-    });
+    await this.deps.writeAccount(
+      {
+        ...account,
+        health: "rate-limited",
+        healthDetail,
+      },
+      { patch: () => ({ health: "rate-limited", healthDetail }) },
+    );
   }
   async markNeedsReauth(
     accountId: string,
     detail?: string,
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
+    if (
+      !account ||
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration)
+    )
+      return;
     if (isAccountExpired(account)) {
       await this.markExpiredAccounts(account.providerId, {
         [poolRecordKey(account.providerId, account.id)]: account,
@@ -775,55 +872,72 @@ export class AccountPool {
         `[account-pool] ${account.providerId} account "${account.label ?? account.id}" (${account.id}) → needs-reauth: ${detail ?? "no detail provided"}`,
       );
     }
-    await this.deps.writeAccount({
-      ...account,
-      health: "needs-reauth",
-      healthDetail: {
-        lastChecked: Date.now(),
-        ...(detail ? { lastError: detail } : {}),
+    const healthDetail = {
+      lastChecked: Date.now(),
+      ...(detail ? { lastError: detail } : {}),
+    };
+    await this.deps.writeAccount(
+      {
+        ...account,
+        health: "needs-reauth",
+        healthDetail,
       },
-    });
+      {
+        patch: (current) =>
+          healthVerdict(current, "needs-reauth", healthDetail),
+      },
+    );
   }
   async markInvalid(
     accountId: string,
     detail?: string,
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
+    if (
+      !account ||
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration)
+    )
+      return;
     if (isAccountExpired(account)) {
       await this.markExpiredAccounts(account.providerId, {
         [poolRecordKey(account.providerId, account.id)]: account,
       });
       return;
     }
-    await this.deps.writeAccount({
-      ...account,
-      health: "invalid",
-      healthDetail: {
-        lastChecked: Date.now(),
-        ...(detail ? { lastError: detail } : {}),
+    const healthDetail = {
+      lastChecked: Date.now(),
+      ...(detail ? { lastError: detail } : {}),
+    };
+    await this.deps.writeAccount(
+      {
+        ...account,
+        health: "invalid",
+        healthDetail,
       },
-    });
+      { patch: (current) => healthVerdict(current, "invalid", healthDetail) },
+    );
   }
   async markHealthy(
     accountId: string,
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
+    if (
+      !account ||
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration) ||
+      (opts?.expectedHealth !== undefined &&
+        healthSignature(account) !== healthSignature(opts.expectedHealth))
+    )
+      return;
     if (isAccountExpired(account)) {
       await this.markExpiredAccounts(account.providerId, {
         [poolRecordKey(account.providerId, account.id)]: account,
@@ -831,29 +945,43 @@ export class AccountPool {
       return;
     }
     if (account.health === "ok") return;
-    await this.deps.writeAccount({
-      ...account,
-      health: "ok",
-      ...(account.healthDetail ? { healthDetail: undefined } : {}),
-    });
+    await this.deps.writeAccount(
+      {
+        ...account,
+        health: "ok",
+        ...(account.healthDetail ? { healthDetail: undefined } : {}),
+      },
+      {
+        patch: (current) =>
+          opts?.expectedHealth !== undefined &&
+          healthSignature(current) !== healthSignature(opts.expectedHealth)
+            ? undefined
+            : healthVerdict(current, "ok"),
+      },
+    );
   }
   async markUsagePrimed(
     accountId: string,
     lastPrimedAt: number = Date.now(),
-    opts?: {
-      providerId?: PoolProviderId;
-    },
+    opts?: AccountMutationOptions,
   ): Promise<void> {
     const account = findAccountById(
       this.deps.readAccounts(),
       accountId,
       opts?.providerId,
     );
-    if (!account) return;
-    await this.deps.writeAccount({
-      ...account,
-      lastPrimedAt,
-    });
+    if (
+      !account ||
+      !matchesExpectedGeneration(account, opts?.expectedCredentialGeneration)
+    )
+      return;
+    await this.deps.writeAccount(
+      {
+        ...account,
+        lastPrimedAt,
+      },
+      { patch: () => ({ lastPrimedAt }) },
+    );
   }
   /**
    * Re-probe accounts whose `health` is non-OK and whose `healthDetail.until`
@@ -887,11 +1015,22 @@ function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
  * re-probed `lastChecked` — is detected and its verdict is preserved instead of
  * being overwritten by the probe's stale "ok" assumption.
  */
-function healthSignature(account: LinkedAccountConfig): string {
+function healthSignature(
+  account: Pick<LinkedAccountConfig, "health" | "healthDetail">,
+): string {
   return JSON.stringify({
     health: account.health,
     healthDetail: account.healthDetail ?? null,
   });
+}
+function healthVerdict(
+  current: LinkedAccountConfig,
+  health: LinkedAccountHealth,
+  healthDetail?: LinkedAccountHealthDetail,
+): Partial<PoolMetaFields> {
+  return isAccountExpired(current)
+    ? { health: "expired", healthDetail: { lastChecked: Date.now() } }
+    : { health, healthDetail };
 }
 function findAccountById(
   all: Record<string, LinkedAccountConfig>,
@@ -1080,7 +1219,8 @@ function recordToLinked(
   providerId: PoolProviderId,
   defaultPriority: number,
 ): LinkedAccountConfig {
-  return {
+  const linked: StoredPoolAccount = {
+    [POOL_CREDENTIAL_GENERATION]: record.credentialGeneration,
     id: record.id,
     providerId,
     label: meta?.label ?? record.label,
@@ -1125,6 +1265,7 @@ function recordToLinked(
       return email ? { email } : {};
     })(),
   };
+  return linked;
 }
 /** The OIDC `email` claim from a JWT id_token, or undefined. */
 function emailFromIdToken(idToken: string | undefined): string | undefined {
@@ -1175,36 +1316,79 @@ function loadAllAccounts(
 async function persistAccount(
   account: LinkedAccountConfig,
   storagePolicy: AccountStoragePolicy,
-): Promise<void> {
-  if (!isLinkedAccountProviderId(account.providerId)) return;
-  withAccountStorageMutation(
+  options?: AccountPoolWriteOptions,
+): Promise<boolean> {
+  if (!isLinkedAccountProviderId(account.providerId)) return false;
+  return withAccountStorageMutation(
     storagePolicy,
     "persist-account-pool-metadata",
-    () => {
+    (scope) => {
+      const generation = accountGeneration(account);
+      const currentRecord =
+        generation !== undefined || options?.usageBaseline || options?.patch
+          ? scope.loadAccount(account.providerId, account.id)
+          : undefined;
+      if (
+        generation !== undefined &&
+        currentRecord?.credentialGeneration !== generation
+      ) {
+        return false;
+      }
+      if ((options?.patch || options?.usageBaseline) && !currentRecord)
+        return false;
       const store = readMetaStore(storagePolicy);
       if (!store[account.providerId]) {
         store[account.providerId] = {};
       }
+      let nextAccount = account;
+      if ((options?.usageBaseline || options?.patch) && currentRecord) {
+        const current = recordToLinked(
+          currentRecord,
+          store[account.providerId][account.id],
+          account.providerId,
+          account.priority,
+        );
+        if (options.patch) {
+          const patch = options.patch(current);
+          if (!patch) return false;
+          nextAccount = { ...current, ...patch };
+        } else if (options.usageBaseline) {
+          nextAccount = {
+            ...current,
+            usage: account.usage,
+            ...(options.usageEmail && !current.email
+              ? { email: options.usageEmail }
+              : {}),
+            ...(healthSignature(current) ===
+            healthSignature(options.usageBaseline)
+              ? { health: "ok", healthDetail: undefined }
+              : {}),
+          };
+        }
+      }
       store[account.providerId][account.id] = {
-        label: account.label,
-        enabled: account.enabled,
-        priority: account.priority,
-        prioritySource: account.prioritySource ?? "generated",
-        health: account.health,
-        ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
-        ...(account.usage ? { usage: account.usage } : {}),
-        ...(typeof account.subscriptionEndsAt === "number"
-          ? { subscriptionEndsAt: account.subscriptionEndsAt }
+        label: nextAccount.label,
+        enabled: nextAccount.enabled,
+        priority: nextAccount.priority,
+        prioritySource: nextAccount.prioritySource ?? "generated",
+        health: nextAccount.health,
+        ...(nextAccount.healthDetail
+          ? { healthDetail: nextAccount.healthDetail }
           : {}),
-        ...(account.lastUsedAt !== undefined
-          ? { lastUsedAt: account.lastUsedAt }
+        ...(nextAccount.usage ? { usage: nextAccount.usage } : {}),
+        ...(typeof nextAccount.subscriptionEndsAt === "number"
+          ? { subscriptionEndsAt: nextAccount.subscriptionEndsAt }
           : {}),
-        ...(account.lastPrimedAt !== undefined
-          ? { lastPrimedAt: account.lastPrimedAt }
+        ...(nextAccount.lastUsedAt !== undefined
+          ? { lastUsedAt: nextAccount.lastUsedAt }
           : {}),
-        ...(account.email ? { email: account.email } : {}),
+        ...(nextAccount.lastPrimedAt !== undefined
+          ? { lastPrimedAt: nextAccount.lastPrimedAt }
+          : {}),
+        ...(nextAccount.email ? { email: nextAccount.email } : {}),
       };
       writeMetaStore(store, storagePolicy);
+      return true;
     },
   );
 }
@@ -1253,7 +1437,8 @@ export function getDefaultAccountPool(): AccountPool {
     const storagePolicy = defaultRuntimeStoragePolicy();
     cachedDefaultPool = new AccountPool({
       readAccounts: () => loadAllAccounts(storagePolicy),
-      writeAccount: (account) => persistAccount(account, storagePolicy),
+      writeAccount: (account, options) =>
+        persistAccount(account, storagePolicy, options),
       deleteAccount: (providerId, accountId) =>
         deleteAccountMeta(providerId, accountId, storagePolicy),
     });
@@ -1575,12 +1760,14 @@ async function primeAnthropicUsageThenRefresh(
   pool: AccountPool,
   record: AccountCredentialRecord,
   token: string,
+  credentialGeneration: string,
   deps: Required<AccountPoolKeepAliveDeps>,
-): Promise<void> {
+): Promise<boolean> {
   // Persist the attempt before probing so a soft provider failure cannot cause
   // a probe storm on every keep-alive sweep.
   await pool.markUsagePrimed(record.id, deps.now(), {
     providerId: "anthropic-subscription",
+    expectedCredentialGeneration: credentialGeneration,
   });
   try {
     await probeAnthropicUsagePriming(token, deps.fetch);
@@ -1593,20 +1780,25 @@ async function primeAnthropicUsageThenRefresh(
       `[AccountPool] Anthropic usage priming failed for account ${record.id}; usage refresh will continue.`,
     );
   }
-  await pool.refreshUsage(record.id, token, {
+  const updated = await pool.refreshUsage(record.id, token, {
     providerId: "anthropic-subscription",
+    expectedCredentialGeneration: credentialGeneration,
+    outcome: true,
     fetch: deps.fetch,
   });
   const refreshedReset = pool.get(record.id, "anthropic-subscription")?.usage
     ?.resetsAt;
   if (refreshedReset !== undefined && refreshedReset > deps.now()) {
-    return;
+    return updated;
   }
   await deps.sleep(deps.usagePrimingRetryDelayMs);
-  await pool.refreshUsage(record.id, token, {
+  const retried = await pool.refreshUsage(record.id, token, {
     providerId: "anthropic-subscription",
+    expectedCredentialGeneration: credentialGeneration,
+    outcome: true,
     fetch: deps.fetch,
   });
+  return updated || retried;
 }
 function resolveKeepAliveDeps(
   deps: AccountPoolKeepAliveDeps = {},
@@ -1677,18 +1869,30 @@ export async function sweepAccountPoolKeepAlive(
         storagePolicy: defaultRuntimeStoragePolicy(),
         outcome: true,
       });
+      const receipt = getAccessTokenCredentialReceipt(outcome);
       if (!outcome.ok) {
         result.failed += 1;
         // Only a proven credential failure parks the account. Transport and
         // provider outages keep the current health — one network blip must
         // not mass-flag a healthy fleet as needs-reauth — and the next sweep
         // simply retries.
-        if (outcome.kind === "auth") {
+        if (outcome.kind === "auth" && receipt) {
           await pool.markNeedsReauth(record.id, outcome.message, {
             providerId,
+            expectedCredentialGeneration: receipt.credentialGeneration,
           });
         }
         continue;
+      }
+      if (!receipt) {
+        throw new ElizaError(
+          "Token resolution omitted its credential receipt",
+          {
+            code: "ACCOUNT_POOL_CREDENTIAL_RECEIPT_MISSING",
+            severity: "fatal",
+            context: { providerId, accountId: record.id },
+          },
+        );
       }
       const token = outcome.accessToken;
       if (!isSubscriptionProvider(providerId)) {
@@ -1698,6 +1902,7 @@ export async function sweepAccountPoolKeepAlive(
         continue;
       }
       try {
+        let updated: boolean;
         if (
           providerId === "anthropic-subscription" &&
           accountPoolUsagePrimingEnabled() &&
@@ -1706,33 +1911,42 @@ export async function sweepAccountPoolKeepAlive(
             keepAliveDeps.now(),
           )
         ) {
-          await primeAnthropicUsageThenRefresh(
+          updated = await primeAnthropicUsageThenRefresh(
             pool,
             record,
             token,
+            receipt.credentialGeneration,
             keepAliveDeps,
           );
         } else {
-          await pool.refreshUsage(record.id, token, {
+          updated = await pool.refreshUsage(record.id, token, {
             providerId,
+            expectedCredentialGeneration: receipt.credentialGeneration,
+            outcome: true,
             fetch: keepAliveDeps.fetch,
-            ...(record.organizationId
-              ? { codexAccountId: record.organizationId }
+            ...(receipt.organizationId
+              ? { codexAccountId: receipt.organizationId }
               : {}),
           });
         }
-        result.refreshed += 1;
+        if (updated) result.refreshed += 1;
       } catch (err) {
         result.failed += 1;
         const message = err instanceof Error ? err.message : String(err);
         if (/\b(?:HTTP\s*)?(?:401|403)\b|unauthoriz/i.test(message)) {
-          await pool.markNeedsReauth(record.id, message, { providerId });
+          await pool.markNeedsReauth(record.id, message, {
+            providerId,
+            expectedCredentialGeneration: receipt.credentialGeneration,
+          });
         } else if (/\b(?:HTTP\s*)?429\b|rate.?limit/i.test(message)) {
           await pool.markRateLimited(
             record.id,
             Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
             message,
-            { providerId },
+            {
+              providerId,
+              expectedCredentialGeneration: receipt.credentialGeneration,
+            },
           );
         } else {
           logger.warn(

@@ -15,7 +15,9 @@ export type InboxEffectKind =
   | "trash"
   | "untrash"
   | "mark-read"
-  | "mark-unread";
+  | "mark-unread"
+  | "star"
+  | "unstar";
 export type InboxReceiptState =
   | "prepared"
   | "dispatched"
@@ -34,10 +36,20 @@ export interface InboxReceipt {
   finishedAt: string | null;
 }
 export type InboxDatabase = (query: SQL) => Promise<{ rows: Record<string, unknown>[] }>;
+/**
+ * Machine-readable reason in an inbox-v1 error body. Clients classify by it
+ * before the HTTP status, which stays as older clients expect.
+ */
+export type InboxErrorCode =
+  | "reauth_required"
+  | "not_found"
+  | "stale_revision"
+  | "reply_subject_mismatch";
 export class InboxContractError extends Error {
   constructor(
     public readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 502,
     message: string,
+    public readonly code?: InboxErrorCode,
   ) {
     super(message);
   }
@@ -117,6 +129,35 @@ export class DefiniteProviderRejection extends Error {
     super("Provider rejected the operation");
   }
 }
+/** The status and JSON body every inbox-v1 route answers a known failure with; null for others. */
+export function inboxErrorResponse(error: unknown): {
+  status: InboxContractError["status"];
+  body: { error: string; code?: InboxErrorCode };
+} | null {
+  if (error instanceof DefiniteProviderRejection) {
+    // Google 401/403 keep status 409 for older clients, which read it as authorization needed.
+    const code: InboxErrorCode | undefined =
+      error.code === "404"
+        ? "not_found"
+        : error.code === "401" || error.code === "403"
+          ? "reauth_required"
+          : undefined;
+    return {
+      status: error.code === "404" ? 404 : 409,
+      body: {
+        error:
+          "The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
+        ...(code ? { code } : {}),
+      },
+    };
+  }
+  if (error instanceof InboxContractError)
+    return {
+      status: error.status,
+      body: { error: error.message, ...(error.code ? { code: error.code } : {}) },
+    };
+  return null;
+}
 /** Authorization and canonical review construction happen before entering this function.
  * Persisted dispatch wins once; neither an ambiguous result nor a repeated request retries Gmail. */
 export async function dispatchInboxEffect(input: {
@@ -129,7 +170,7 @@ export async function dispatchInboxEffect(input: {
   const { receipts, owner, requestId, reviewDigest } = input,
     current = await receipts.get(owner, requestId);
   if (current.reviewDigest !== reviewDigest)
-    throw new InboxContractError(409, "Reviewed content changed");
+    throw new InboxContractError(409, "Reviewed content changed", "stale_revision");
   if (current.state !== "prepared" || !(await receipts.claim(owner, requestId, reviewDigest)))
     return receipts.get(owner, requestId);
   let result: Record<string, unknown>;

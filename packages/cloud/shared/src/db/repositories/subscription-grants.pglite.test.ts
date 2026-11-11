@@ -5,6 +5,7 @@
  * alongside a paid subscription.
  */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { createBillingSnapshotFixture } from "./account-billing-snapshot-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -126,6 +127,28 @@ afterAll(async () => {
 });
 
 describe("subscription grant redemption", () => {
+  test("explicit-family migration preserves existing codes and rejects omitted campaigns", async () => {
+    await newCode("AAAA-BBBB-CCCC-0901", { family: "alpha_phone" });
+    await exec(
+      await readFile(
+        new URL("../migrations/0570_subscription_grant_explicit_family.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    const [existing] = await rows<{ family: string }>(
+      "SELECT family FROM subscription_grant_codes ORDER BY created_at LIMIT 1",
+    );
+    expect(existing?.family).toBe("alpha_phone");
+    await expect(
+      exec(
+        `INSERT INTO subscription_grant_codes(code_hash, max_redemptions) VALUES ('${"f".repeat(64)}', 1)`,
+      ),
+    ).rejects.toThrow(/family/);
+    await newCode("AAAA-BBBB-CCCC-0902", { family: "independent_campaign" });
+    const { grant } = await redeem(await newOrg(), "AAAA-BBBB-CCCC-0902");
+    expect(grant.family).toBe("independent_campaign");
+  });
+
   test("a redeemed code serves the organization as an active Plus subscriber", async () => {
     const org = await newOrg();
     await newCode("AAAA-BBBB-CCCC-0001");

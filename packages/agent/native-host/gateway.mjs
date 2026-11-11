@@ -184,9 +184,13 @@ export function createLocalAgentGateway({
     typeof isAllowedOrigin === "function"
       ? isAllowedOrigin
       : Set.prototype.has.bind(new Set(origins));
-  const inferenceAvailable = async () => {
+  // `inferenceConfigured` may receive `{ credentialGate }`: this request's
+  // account check, run at most once, which a host can use in place of its own.
+  // It is passed only when this gateway has a credential gate, so a host whose
+  // gateway has none still runs its own check.
+  const inferenceAvailable = async (context) => {
     try {
-      return (await inferenceConfigured()) === true;
+      return (await inferenceConfigured(context)) === true;
     } catch {
       return false;
     }
@@ -269,13 +273,24 @@ export function createLocalAgentGateway({
   // Message admission, shared by the buffered and the streamed routes.
   const admitMessage = async (conversationId, input) => {
     const { body, chatTask } = hostPolicy.prepareMessage(input);
-    if (!(await inferenceAvailable()))
+    // One account check serves the inference check and the owner below.
+    const checkEpoch = epoch;
+    let ownerCheck;
+    const checkOwner = () => (ownerCheck ??= currentOwner());
+    const sharedCheck =
+      typeof credentialGate === "function"
+        ? { credentialGate: checkOwner }
+        : undefined;
+    if (!(await inferenceAvailable(sharedCheck)))
       throw refusal(503, {
         code: "INFERENCE_UNAVAILABLE",
         error: message("error15"),
       });
-    const requestEpoch = epoch;
-    const owner = await currentOwner();
+    // Admission belongs to the account generation that began this message.
+    // Reset retires its input; it cannot be adopted by a later account.
+    const requestEpoch = checkEpoch;
+    if (requestEpoch !== epoch) throw ownershipError();
+    const owner = await checkOwner();
     if (requestEpoch !== epoch) throw ownershipError();
     const record = rooms.get(conversationId);
     if (!record || record.owner !== owner) throw ownershipError();
@@ -760,8 +775,16 @@ export function createLocalAgentGateway({
           ? `/conversations/${streamRoute[1]}/messages`
           : url.pathname,
       );
-      if (paidAction && cloudHandler?.requirePaidAccess)
+      if (paidAction && cloudHandler?.requirePaidAccess) {
         await cloudHandler.requirePaidAccess();
+        // The check may have been answered from the Cloud routes' cache. A
+        // paid route that Cloud then refuses (401 or 402) drops that answer.
+        if (typeof cloudHandler.paidAccessRefused === "function")
+          res.once("finish", () => {
+            if (res.statusCode === 401 || res.statusCode === 402)
+              cloudHandler.paidAccessRefused();
+          });
+      }
       if (url.pathname === "/tasks" || url.pathname.startsWith("/tasks/")) {
         if (!taskGateway)
           return json(res, 503, { code: "TASK_HELPER_UNAVAILABLE" });

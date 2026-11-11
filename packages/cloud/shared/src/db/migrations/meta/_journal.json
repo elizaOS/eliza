@@ -3697,6 +3697,90 @@
       "when": 1796083200175,
       "tag": "0557_stripe_delivery_lease_check_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1796083200178,
+      "tag": "0558_container_placement_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 529,
+      "version": "7",
+      "when": 1796083200176,
+      "tag": "0559_stripe_checkout_provider_started_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1796083200179,
+      "tag": "0561_evm_sweep_nonce_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1796083200180,
+      "tag": "0562_vertex_observation_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1796083200182,
+      "tag": "0564_stripe_legacy_adoption_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1796083200183,
+      "tag": "0565_stripe_legacy_retention_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 534,
+      "version": "7",
+      "when": 1796083200184,
+      "tag": "0566_app_deletion_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 535,
+      "version": "7",
+      "when": 1796083200185,
+      "tag": "0567_job_utc_clock_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 536,
+      "version": "7",
+      "when": 1796083200186,
+      "tag": "0568_app_cleanup_manifest",
+      "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1796083200187,
+      "tag": "0569_cli_auth_session_verifier",
+      "breakpoints": true
+    },
+    {
+      "idx": 538,
+      "version": "7",
+      "when": 1796083200188,
+      "tag": "0570_subscription_grant_explicit_family",
+      "breakpoints": true
+    },
+    {
+      "idx": 539,
+      "version": "7",
+      "when": 1796083200189,
+      "tag": "0571_managed_gmail_star_operations",
+      "breakpoints": true
     }
   ]
 }

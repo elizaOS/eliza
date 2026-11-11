@@ -114,11 +114,11 @@ matching `cancel-read-completion` route retires the completion. Deploy the addit
 ## Development
 
 Run `bun run --cwd packages/agent test:formal` with Java 21 available to check
-the Quint models in `formal/`. It runs scenarios, seeded simulation, exhaustive
-finite-state safety checks and negative controls. Results and raw logs go to
-`test-results/agent-quint/`. Model comments state the source mapping and
-assumptions; these checks complement the real host tests and do not prove
-equivalence with the implementation or external systems.
+the source-linked Quint models in `quint/` through the shared repository runner.
+It runs scenarios, seeded simulation and exhaustive finite-state safety checks.
+Results and raw logs go to `test-results/quint/`. The coverage manifest lists
+reduced domains and remaining obligations. These checks complement the real
+host tests and do not establish implementation equivalence.
 
 Install dependencies with `bun install` at the repository root. Run from that root:
 
@@ -300,7 +300,10 @@ no task authority, task store, browser profile or Chromium-extension identity.
 Source-bundle consumers must include the gateway, channel, and task-id source modules.
 
 `native-host/account-state.mjs` preserves private credential-derived namespaces
-and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+and configuration migration. Run credential scrubbing while no other process
+or task writes those files. Each file is replaced separately. A failed call
+keeps earlier rewrites. Resolve the error before retrying.
+`native-host/runtime-supervisor.mjs` serializes
 identity transitions and stops only the child returned by the host launcher.
 These are source entrypoints for explicit payload composition, not additional
 browser SDK or published dist exports. Production consumers must preserve their

@@ -7,10 +7,10 @@ import {
   selectedCalendarTarget,
 } from "./calendar-read-selected.js";
 
-function fixture() {
+function fixture(provider: "eliza" | "google" = "eliza") {
   const agent = "11111111-1111-4111-8111-111111111111";
   const source = {
-    provider: "eliza",
+    provider,
     side: "owner",
     grantId: "eliza-calendar",
     connectorAccountId: "local-owner",
@@ -67,7 +67,10 @@ function fixture() {
   };
   const service = {
     getCalendarEventById: vi.fn(async () => event),
-    getCalendarFeedSnapshot: vi.fn(async () => snapshot),
+    getCalendarFeedSnapshot: vi.fn(
+      async (_url: unknown, _options: { timeMin: string; timeMax: string }) =>
+        snapshot,
+    ),
   };
   const runtime = {
     agentId: agent,
@@ -95,9 +98,27 @@ const run = (f: ReturnType<typeof fixture>) => {
 };
 
 describe("current selected canonical Calendar read", () => {
-  it("reads a fresh exact selected record through the authorized source and emits its versioned receipt", async () => {
-    const f = fixture(),
-      result = await run(f);
+  it("reads a selected Google event through second-precision filters and emits its versioned receipt", async () => {
+    const f = fixture("google");
+    // Google ignores fractional seconds and excludes events starting at timeMax.
+    f.service.getCalendarFeedSnapshot.mockImplementation(
+      async (_url, query) => {
+        const timeMin = Math.floor(Date.parse(query.timeMin) / 1000) * 1000;
+        const timeMax = Math.floor(Date.parse(query.timeMax) / 1000) * 1000;
+        return {
+          ...f.snapshot,
+          feed: {
+            ...f.snapshot.feed,
+            events:
+              Date.parse(f.event.startAt) < timeMax &&
+              Date.parse(f.event.endAt) > timeMin
+                ? [f.event]
+                : [],
+          },
+        };
+      },
+    );
+    const result = await run(f);
     expect(result).toMatchObject({
       success: true,
       data: {
@@ -120,9 +141,27 @@ describe("current selected canonical Calendar read", () => {
       grantId: f.source.grantId,
       calendarId: f.source.calendarId,
       forceSync: true,
-      timeMin: "2026-11-02T22:59:59.999Z",
-      timeMax: "2026-11-02T23:00:00.001Z",
+      timeMin: "2026-11-02T22:59:59.000Z",
+      timeMax: "2026-11-02T23:00:01.000Z",
     });
+  });
+  it("supplies the computed weekday for an all-day selected event", async () => {
+    const f = fixture("google");
+    Object.assign(f.event, {
+      startAt: "2026-11-11T00:00:00Z",
+      endAt: "2026-11-12T00:00:00Z",
+      isAllDay: true,
+      timezone: "UTC",
+    });
+    Object.assign(f.context, { timeZone: "America/Los_Angeles" });
+    const result = await run(f);
+    expect(result.promptData?.event).toMatchObject({
+      displayDate: "Wednesday, November 11, 2026",
+      displayTime: "all day",
+      startAt: f.event.startAt,
+      endAt: f.event.endAt,
+    });
+    expect(result.promptData?.event).not.toHaveProperty("accountEmail");
   });
   it.each([
     "wrong-owner",

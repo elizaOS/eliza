@@ -195,11 +195,12 @@ export class TaskService extends Service {
 	private localTimer = false;
 	private maxTickMs = DEFAULT_MAX_TICK_MS;
 	private activeTick: Promise<void> | null = null;
+	private schedulerDrain: Promise<void> | undefined;
 	private readonly clock: TaskServiceTimeoutClock;
-	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
-	private executingTasks: Set<string> = new Set();
-	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
-	private executingTaskPromises = new Set<Promise<void>>();
+	/** Count overlapping invocations so exclusivity sees every active owner. */
+	private executingTasks = new Map<string, number>();
+	/** Admitted execution operations include preflight, storage reads and worker settlement. */
+	private pendingOperations = new Set<Promise<void>>();
 	/** Tracks tasks quarantined for missing workers, preventing repeated diagnostics while pause/delete operations settle. */
 	private quarantinedOrphans = new Set<string>();
 	/**
@@ -255,6 +256,7 @@ export class TaskService extends Service {
 	 * The local timer sleeps until the earliest due task (at most TASK_TICK_MAX_MS) and markDirty() wakes it.
 	 */
 	startTimer() {
+		if (this.stopped) return;
 		if (this.runtime.serverless === true) {
 			return;
 		}
@@ -716,6 +718,10 @@ export class TaskService extends Service {
 	 */
 	async runTick(tasks: Task[]): Promise<void> {
 		if (this.stopped) return;
+		return this.withExecutionAdmission(() => this.runTickInternal(tasks));
+	}
+
+	private async runTickInternal(tasks: Task[]): Promise<void> {
 		const validation = await this.validateTasks(tasks);
 		if (this.stopped) return;
 		const failures: ElizaError[] = [...validation.errors];
@@ -829,6 +835,38 @@ export class TaskService extends Service {
 		}
 	}
 
+	private assertAcceptingExecution(): void {
+		if (this.stopped) {
+			throw new ElizaError("Task service has stopped accepting execution", {
+				code: "TASK_SERVICE_STOPPED",
+				severity: "ephemeral",
+			});
+		}
+	}
+
+	private releaseExecution(taskId: string): void {
+		const remaining = (this.executingTasks.get(taskId) ?? 1) - 1;
+		if (remaining > 0) this.executingTasks.set(taskId, remaining);
+		else this.executingTasks.delete(taskId);
+	}
+
+	private async withExecutionAdmission<T>(
+		operation: () => Promise<T>,
+	): Promise<T> {
+		this.assertAcceptingExecution();
+		let settle!: () => void;
+		const completion = new Promise<void>((resolve) => {
+			settle = resolve;
+		});
+		this.pendingOperations.add(completion);
+		try {
+			return await operation();
+		} finally {
+			this.pendingOperations.delete(completion);
+			settle();
+		}
+	}
+
 	/**
 	 * Executes a given task asynchronously.
 	 * Tracks execution state to prevent overlapping runs of the same task.
@@ -840,16 +878,7 @@ export class TaskService extends Service {
 	 * @param {Task} task - The task to be executed.
 	 */
 	private async executeTask(task: Task) {
-		const execution = this.executeTaskInternal(task);
-		this.executingTaskPromises.add(execution);
-		try {
-			await execution;
-		} finally {
-			this.executingTaskPromises.delete(execution);
-		}
-	}
-
-	private async executeTaskInternal(task: Task) {
+		this.assertAcceptingExecution();
 		if (!task.id) {
 			this.runtime.logger.debug(
 				{
@@ -883,7 +912,10 @@ export class TaskService extends Service {
 		) {
 			return;
 		}
-		this.executingTasks.add(task.id);
+		this.executingTasks.set(
+			task.id,
+			(this.executingTasks.get(task.id) ?? 0) + 1,
+		);
 		if (!isRepeat) {
 			// A one-shot from a stale snapshot may already have run and been
 			// deleted. The read sits outside the failure path below, so a failed
@@ -892,11 +924,11 @@ export class TaskService extends Service {
 			try {
 				current = await this.runtime.getTask(task.id);
 			} catch (error) {
-				this.executingTasks.delete(task.id);
+				this.releaseExecution(task.id);
 				throw error;
 			}
-			if (!current) {
-				this.executingTasks.delete(task.id);
+			if (!current || this.stopped) {
+				this.releaseExecution(task.id);
 				return;
 			}
 		}
@@ -1111,7 +1143,7 @@ export class TaskService extends Service {
 			);
 			throw failure;
 		} finally {
-			this.executingTasks.delete(task.id);
+			this.releaseExecution(task.id);
 			const durationMs = this.clock.now() - startTime;
 			this.runtime.logger.debug(
 				{
@@ -1146,9 +1178,11 @@ export class TaskService extends Service {
 	 * WHY separate from timer: serverless has no long-lived process; host drives execution explicitly.
 	 */
 	async runDueTasks(): Promise<void> {
+		if (this.stopped) return;
 		while (this.activeTick) {
 			await this.activeTick;
 		}
+		if (this.stopped) return;
 		const run = (async () => {
 			const allTasks = await this.runtime.getTasks({
 				tags: ["queue"],
@@ -1177,11 +1211,13 @@ export class TaskService extends Service {
 	 * @param taskId - UUID of the task.
 	 */
 	async executeTaskById(taskId: UUID): Promise<void> {
-		const task = await this.runtime.getTask(taskId);
-		if (!task) {
-			throw new Error(`Task ${taskId} not found`);
-		}
-		await this.executeTask(task);
+		return this.withExecutionAdmission(async () => {
+			const task = await this.runtime.getTask(taskId);
+			if (!task) {
+				throw new Error(`Task ${taskId} not found`);
+			}
+			await this.executeTask(task);
+		});
 	}
 
 	/**
@@ -1237,17 +1273,19 @@ export class TaskService extends Service {
 	 * Unpauses before executing so a failed run does not leave the task paused.
 	 */
 	async resumeTask(taskId: UUID, runImmediately?: boolean): Promise<void> {
-		const task = await this.runtime.getTask(taskId);
-		if (!task) {
-			throw new Error(`Task ${taskId} not found`);
-		}
-		await this.persistTaskMetadata(taskId, task.metadata, { paused: false });
-		if (runImmediately) {
-			const updated = await this.runtime.getTask(taskId);
-			if (updated) {
-				await this.executeTask(updated);
+		return this.withExecutionAdmission(async () => {
+			const task = await this.runtime.getTask(taskId);
+			if (!task) {
+				throw new Error(`Task ${taskId} not found`);
 			}
-		}
+			await this.persistTaskMetadata(taskId, task.metadata, { paused: false });
+			if (runImmediately) {
+				const updated = await this.runtime.getTask(taskId);
+				if (updated) {
+					await this.executeTask(updated);
+				}
+			}
+		});
 	}
 
 	/**
@@ -1292,21 +1330,25 @@ export class TaskService extends Service {
 	/** Stop new ticks before the runtime closes room admissions. */
 	prepareStop() {
 		this.stopped = true;
-		unregisterTaskSchedulerRuntime(this.runtime.agentId, this);
+		this.schedulerDrain = unregisterTaskSchedulerRuntime(
+			this.runtime.agentId,
+			this,
+		);
 		this.localTimer = false;
 		this.clearTimer();
 	}
 
 	async stop() {
 		this.prepareStop();
+		await this.schedulerDrain;
 		if (this.activeTick) {
 			await this.activeTick;
 		}
-		const inFlight = Array.from(this.executingTaskPromises);
+		const inFlight = Array.from(this.pendingOperations);
 		if (inFlight.length > 0) {
 			await Promise.allSettled(inFlight);
 		}
-		// Clear executing tasks set on stop
+		// Every admitted execution has settled.
 		this.executingTasks.clear();
 	}
 }

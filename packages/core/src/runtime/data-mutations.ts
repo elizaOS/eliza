@@ -547,7 +547,7 @@ export class RuntimeDataMutations {
 		// incoming occurrence (higher confidence, an explicit kind, a fresher
 		// validity timestamp) upgrades the kept row instead of being dropped.
 		// The check and its update or insert run one at a time per room, so
-		// concurrent identical writes cannot both miss (tla/FactWriteDedupe.tla).
+		// concurrent identical writes cannot both miss (quint/FactWriteDedupe.qnt).
 		const insert = () =>
 			this.runtime.adapter.createMemories([{ memory, tableName, unique }]);
 		let ids: UUID[];

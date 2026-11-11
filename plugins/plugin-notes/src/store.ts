@@ -98,11 +98,11 @@ function cloneDocument(document: NotesDocument): NotesDocument {
   return structuredClone(document);
 }
 function snapshotFromDocument(document: NotesDocument): NotesSnapshot {
-  return structuredClone({
+  return {
     revision: document.revision,
     notes: document.notes,
     trash: document.trash ?? [],
-  });
+  };
 }
 
 function isNodeErrorWithCode(
@@ -251,8 +251,10 @@ export class NotesStore {
     }
   }
 
-  snapshot(): NotesSnapshot {
-    return snapshotFromDocument(this.requireReadyDocument());
+  snapshot(
+    project: (document: NotesDocument) => NotesSnapshot = snapshotFromDocument,
+  ): NotesSnapshot {
+    return project(cloneDocument(this.requireReadyDocument()));
   }
 
   /** Reads persisted bytes after queued writes without refreshing or mutating Notes. */
@@ -275,23 +277,45 @@ export class NotesStore {
 
   async transact<T>(
     mutate: (draft: NotesDocument) => T,
+    project: (document: NotesDocument) => NotesSnapshot = snapshotFromDocument,
   ): Promise<{ value: T; snapshot: NotesSnapshot }> {
     await this.initialize();
     return this.serialize(async () => {
       const current = this.requireReadyDocument();
       const draft = cloneDocument(current);
       const value = mutate(draft);
+      // Retire metadata only for records this mutation permanently removed.
+      // Unknown new metadata still reaches validation and is rejected.
+      const previousRevisions = current.noteRevisions;
+      if (
+        draft.noteRevisions !== undefined &&
+        previousRevisions !== undefined
+      ) {
+        const remaining = new Set([
+          ...draft.notes.map((note) => note.id),
+          ...(draft.trash ?? []).map((entry) => entry.note.id),
+        ]);
+        draft.noteRevisions = Object.fromEntries(
+          Object.entries(draft.noteRevisions).filter(
+            ([id]) =>
+              remaining.has(id) || !Object.hasOwn(previousRevisions, id),
+          ),
+        );
+      }
       // Compare inside the write barrier: a replay must neither rewrite the
       // file nor invalidate a confirmation bound to unchanged Notes state.
       if (isDeepStrictEqual(draft, current)) {
-        return { value, snapshot: snapshotFromDocument(current) };
+        return { value, snapshot: project(cloneDocument(current)) };
       }
       draft.revision = current.revision + 1;
       draft.persistedAt = this.now().toISOString();
       const next = parseNotesDocument(draft);
+      // Projection runs on a detached value before persistence. A throwing or
+      // mutating projector cannot change the committed document or its cache.
+      const snapshot = project(cloneDocument(next));
       await this.writeAtomic(next);
       this.shared.document = next;
-      return { value, snapshot: snapshotFromDocument(next) };
+      return { value, snapshot };
     });
   }
 

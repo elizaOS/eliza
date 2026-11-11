@@ -1,7 +1,17 @@
 /** Persists verified webhook deduplication and recoverable app billing lookup triggers. */
 
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import type { AppBillingWebhookTrigger } from "../../types/app-billing-webhook";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 
@@ -48,6 +58,9 @@ export const webhookEvents = pgTable(
     delivery_lease_expires_at: timestamp("delivery_lease_expires_at", { withTimezone: true }),
     delivery_completed_at: timestamp("delivery_completed_at", { withTimezone: true }),
     delivery_dead_lettered_at: timestamp("delivery_dead_lettered_at", { withTimezone: true }),
+    // Exact handoff receipt for a legacy raw that may still exist outside SQL.
+    // No automatic release: raw deletion and old-writer quiescence are separate proofs.
+    delivery_legacy_retained: boolean("delivery_legacy_retained").notNull().default(false),
   },
   (table) => ({
     app_billing_due_idx: index("webhook_events_app_billing_due_idx")
@@ -66,6 +79,9 @@ export const webhookEvents = pgTable(
     ),
     provider_idx: index("webhook_events_provider_idx").on(table.provider),
     processed_at_idx: index("webhook_events_processed_at_idx").on(table.processed_at),
+    unretained_processed_idx: index("webhook_events_unretained_processed_idx")
+      .on(table.processed_at)
+      .where(sql`${table.delivery_legacy_retained} = false`),
     // Composite index for webhook retention queries
     provider_processed_idx: index("webhook_events_provider_processed_idx").on(
       table.provider,

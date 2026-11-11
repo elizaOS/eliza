@@ -43,6 +43,11 @@ export interface InboxOperationRecord {
      * an earlier version of the sent email.
      */
     savedRevision?: string;
+    /**
+     * The Gmail draft that local draft was opened from, as it was when opened.
+     * The send leaves it in Gmail; deleting it is a separate reviewed step.
+     */
+    providerDraft?: { draftId: string; providerDigest: string };
   };
   /**
    * The composer email a send or draft review was made from. Local only. The
@@ -176,6 +181,15 @@ const sameSend = (saved: GmailInboxReceipt, receipt: GmailInboxReceipt) =>
 
 const PHASES = ["preparing", "review", "dispatching", "observed"];
 
+const providerDraftReference = (
+  value: unknown,
+): value is { draftId: string; providerDigest: string } =>
+  !!value &&
+  typeof (value as Bag).draftId === "string" &&
+  !!(value as Bag).draftId &&
+  typeof (value as Bag).providerDigest === "string" &&
+  !!(value as Bag).providerDigest;
+
 /** Storage key of the journal for one owner and grant. */
 export async function inboxOperationKey(
   owner: string,
@@ -205,7 +219,9 @@ function validRecord(
       typeof source.draftId !== "string" ||
       !source.draftId ||
       (source.savedRevision !== undefined &&
-        (typeof source.savedRevision !== "string" || !source.savedRevision))
+        (typeof source.savedRevision !== "string" || !source.savedRevision)) ||
+      (source.providerDraft !== undefined &&
+        !providerDraftReference(source.providerDraft))
     )
       return false;
   }
@@ -345,7 +361,11 @@ export class InboxOperation {
 
   async prepare(
     proposal: Bag,
-    source?: { draftId: string; savedRevision?: string },
+    source?: {
+      draftId: string;
+      savedRevision?: string;
+      providerDraft?: { draftId: string; providerDigest: string };
+    },
   ): Promise<InboxOperationRecord | null> {
     return this.exclusive(async () => {
       if (this.record)
@@ -376,6 +396,14 @@ export class InboxOperation {
                 ...(typeof source?.savedRevision === "string" &&
                 source.savedRevision
                   ? { savedRevision: source.savedRevision }
+                  : {}),
+                ...(providerDraftReference(source?.providerDraft)
+                  ? {
+                      providerDraft: {
+                        draftId: source.providerDraft.draftId,
+                        providerDigest: source.providerDraft.providerDigest,
+                      },
+                    }
                   : {}),
               },
             }
@@ -562,17 +590,21 @@ export class InboxOperation {
       throw new Error(
         "Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.",
       );
-    // A prepared response after an attempted dispatch remains uncertain locally; never re-enable Send.
+    // A stale prepared receipt cannot replace an attempted dispatch or a
+    // receipt we already observed. The original request is never rearmed.
+    if (
+      receipt.state === "prepared" &&
+      (record.phase === "dispatching" || record.phase === "observed")
+    )
+      return;
     await this.save({
       ...record,
       receipt: copy(receipt),
       phase:
         receipt.state === "prepared"
-          ? record.phase === "dispatching"
-            ? "dispatching"
-            : record.review
-              ? "review"
-              : "preparing"
+          ? record.review
+            ? "review"
+            : "preparing"
           : "observed",
     });
   }

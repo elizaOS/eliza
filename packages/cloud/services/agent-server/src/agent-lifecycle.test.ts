@@ -112,9 +112,9 @@ describe("hosted agent lifecycle ownership", () => {
 
   test("a stuck mutation cannot extend the shutdown deadline", async () => {
     const gate = Promise.withResolvers<void>();
-    expect(await settleBeforeDeadline(gate.promise, Date.now() - 1)).toBe(
-      false,
-    );
+    expect(
+      await settleBeforeDeadline(gate.promise, performance.now() - 1),
+    ).toBe(false);
     // The timed-out work remains observed even if its eventual result is a failure.
     gate.reject(new Error("late failure"));
     await Promise.resolve();

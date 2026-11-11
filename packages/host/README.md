@@ -188,3 +188,11 @@ carrier-NAT, documentation and transition addresses at connect time, so a DNS
 rebinding answer cannot reach a local service. It never follows redirects,
 sends no cookies and reads at most 8 MB. `resolvesPublic` and `privateAddress`
 let a caller check a name or address before handing it to another fetch.
+
+`createProviderKeySession` keeps optional Text and Voice keys only in host RAM.
+Selection (`cloud` or `own`) is separate from key lifetime. Edits preserve omitted
+fields; removal is explicit. Status returns only key-presence flags and an opaque
+revision. Hosts must gate edit, removal and explicit reveal to their owner surface,
+check `expectedRevision` again after asynchronous validation/retirement, and call
+`invalidate()` when owner authority changes. `launchKeys()` is trusted host-only;
+never include it in status, logs, model context or storage. Close drops the keys.

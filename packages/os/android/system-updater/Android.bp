@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+package {
+    default_applicable_licenses: ["eliza_system_updater_license"],
+}
+license {
+    name: "eliza_system_updater_license",
+    visibility: [":__subpackages__"],
+    license_kinds: ["SPDX-license-identifier-MIT"],
+    license_text: ["LICENSE"],
+}
+java_library {
+    name: "eliza-system-update-journal",
+    srcs: ["src/ai/eliza/systemupdater/*.java"],
+    sdk_version: "system_current",
+}
+
+android_app {
+    name: "ElizaSystemUpdater",
+    manifest: "AndroidManifest.xml",
+    srcs: ["host/**/*.java"],
+    resource_dirs: ["res"],
+    static_libs: ["eliza-system-update-journal"],
+    platform_apis: true,
+    privileged: true,
+    certificate: "platform",
+}
+prebuilt_etc {
+    name: "privapp-permissions-eliza-system-updater",
+    src: "permissions/privapp-permissions-eliza-system-updater.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+}
+prebuilt_etc {
+    name: "default-permissions-eliza-system-updater",
+    src: "permissions/default-permissions-eliza-system-updater.xml",
+    sub_dir: "default-permissions",
+    filename_from_src: true,
+}

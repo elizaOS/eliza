@@ -6,6 +6,8 @@
 # exceptions, alongside path-scoped SDK owning suites and a native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded. A path-scoped Core/assistant/Notes owning-regression subset also
 # qualifies changes to that flow through the unchanged package test configs.
+# Source and formal-model changes also run the source-linked Quint cases and
+# implementation conformance checks before merge.
 name: PR Validation
 
 on:
@@ -50,6 +52,7 @@ jobs:
       # the separately capped 2 GiB lint process on the 16 GiB runner.
       NODE_OPTIONS: "--max-old-space-size=8192"
       RUN_TURBO_CONCURRENCY: "1"
+      CLOUD_FORMAL_POSTGRES_IMAGE: postgres:16-alpine
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -164,29 +167,6 @@ jobs:
           bun packages/scripts/patch-punycode-deprecation.ts
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
-
-      - name: Setup Java for cloud protocol models
-        if: steps.affected.outputs.cloud == 'true'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Verify cloud protocol models
-        if: steps.affected.outputs.cloud == 'true'
-        timeout-minutes: 15
-        run: |
-          bun run test:cloud:formal
-          bun run verify:cloud:formal
-
-      - name: Upload cloud protocol verification
-        if: always() && steps.affected.outputs.cloud == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: cloud-protocol-verification
-          path: test-results/cloud-formal
-          retention-days: 14
-          if-no-files-found: warn
 
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
@@ -348,6 +328,8 @@ jobs:
             packages/app/src/runtime/native-runtime-profile.test.ts \
             packages/app/src/runtime/native-managed-google-host.ts \
             packages/app/src/runtime/native-managed-google-host.test.ts \
+            packages/app/src/runtime/managed-google-agent \
+            packages/app/test/native-host/managed-google-agent.test.mjs \
             packages/app/src/runtime/native-direct-routing.test.ts \
             packages/agent/src/runtime/runtime-settings.ts \
             packages/agent/src/config/blocked-env-keys.ts \
@@ -377,6 +359,7 @@ jobs:
               src/runtime/native-direct-routing.test.ts \
               --maxWorkers=1 --no-file-parallelism \
               --execArgv=--max-old-space-size=2048
+            node --test test/native-host/managed-google-agent.test.mjs
           )
           (
             cd packages/agent
@@ -879,6 +862,211 @@ jobs:
           wait "$lint_pid" || status=$?
           wait "$types_pid" || status=$?
           exit "$status"
+
+  quint-models:
+    name: Quint shard (${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [1, 2, 3, 4]
+    outputs:
+      run: ${{ steps.changes.outputs.run }}
+    services:
+      quint-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa_quint
+          POSTGRES_DB: quint_protocol
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RUN_TURBO_CONCURRENCY: "1"
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Select source and model changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          status=0
+          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
+            packages plugins package.json bun.lock \
+            .github/workflows/pr-validation.yml .github/workflows/ci.yml \
+            ':(icase,glob)**/*.qnt' ':(icase,glob)**/*.tla' ':(icase,glob)**/*.pcal' || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Quint change selection failed with exit $status."
+            exit "$status"
+          fi
+      - if: steps.changes.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Apply dependency compatibility patches
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+      - name: Setup Java
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Setup Go
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: packages/os/native/ota-trust/go.mod
+          cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - name: Setup Android platform for native capture conformance
+        if: steps.changes.outputs.run == 'true'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platforms;android-36
+      - name: Fetch pinned JSON library for native capture conformance
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/json-20250517.jar"
+          curl -fsSL --retry 3 -o "$jar" https://repo1.maven.org/maven2/org/json/json/20250517/json-20250517.jar
+          echo "3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  $jar" | sha256sum -c -
+          echo "ELIZA_JSON_JAR=$jar" >> "$GITHUB_ENV"
+      - name: Build core conformance dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: bun run build:core
+      - name: Install local Redis for protocol conformance
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          if ! command -v redis-server >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
+      - name: Install Chromium for browser conformance
+        if: steps.changes.outputs.run == 'true'
+        env:
+          PLAYWRIGHT_INSTALL_CWD: packages/ui
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
+      - name: Verify Quint models and real transitions
+        if: steps.changes.outputs.run == 'true'
+        env:
+          INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
+        run: bun run test:quint --shard=${{ matrix.shard }}/4
+      - name: Upload Quint evidence
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-verification-pr-shard-${{ matrix.shard }}
+          overwrite: true
+          path: |
+            test-results/quint/
+            test-results/quint-*/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload required Quint shard manifest
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-manifest-pr-${{ matrix.shard }}
+          overwrite: true
+          path: test-results/quint/shard-${{ matrix.shard }}-of-4/verification.json
+          if-no-files-found: error
+          retention-days: 7
+
+  quint:
+    name: Quint state and implementation checks
+    if: ${{ always() && !cancelled() }}
+    needs: [quint-models]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Require successful Quint shards
+        env:
+          RESULT: ${{ needs.quint-models.result }}
+          SHOULD_RUN: ${{ needs.quint-models.outputs.run }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::Quint shards finished with $RESULT"
+            exit 1
+          fi
+          case "$SHOULD_RUN" in
+            true|false) ;;
+            *) echo "::error::Quint selection result is missing or invalid"; exit 1 ;;
+          esac
+      - name: Checkout verified source
+        if: needs.quint-models.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Install evidence validator dependencies
+        if: needs.quint-models.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Download every shard manifest
+        if: needs.quint-models.outputs.run == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: quint-manifest-pr-*
+          path: test-results/quint-manifests
+      - name: Verify complete disjoint model coverage
+        if: needs.quint-models.outputs.run == 'true'
+        run: node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4
+      - name: Upload complete Quint evidence summary
+        if: always() && needs.quint-models.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-verification-complete-pr
+          overwrite: true
+          path: test-results/quint/shards-summary.json
+          if-no-files-found: warn
+          retention-days: 7
 
   sdk-owning:
     name: SDK owning (${{ matrix.lane }})
@@ -1385,7 +1573,7 @@ jobs:
 
   required:
     name: All Tests Passed
-    if: always()
+    if: ${{ always() && !cancelled() }}
     needs:
       - secret-scan
       - source-checks
@@ -1393,6 +1581,7 @@ jobs:
       - billing-payment-replay-e2e
       - subscription-authority-postgres
       - paradee-stream-contract
+      - quint
     runs-on: ubuntu-24.04
     steps:
       - name: Require every admission lane
@@ -1404,6 +1593,7 @@ jobs:
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
             paradee-stream-contract=${{ needs.paradee-stream-contract.result }}
+            quint=${{ needs.quint.result }}
         run: |
           set -euo pipefail
           for pair in $RESULTS; do

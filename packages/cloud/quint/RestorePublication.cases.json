@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "RestorePublication",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": [
+    "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
+  ],
+  "bounds": "One operation and previous/candidate runtime, all explicit coordinator phases, abstract atomic publication and rollback."
+}

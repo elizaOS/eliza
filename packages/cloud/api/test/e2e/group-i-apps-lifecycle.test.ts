@@ -140,6 +140,60 @@ async function getApp(id: string): Promise<AppDto | undefined> {
   return ((await res.json()) as GetAppResponse).app;
 }
 
+async function awaitAppDeletion(
+  response: Response,
+  appId: string,
+): Promise<void> {
+  expect([200, 202]).toContain(response.status);
+  const admission = (await response.json()) as {
+    state?: string;
+    success?: boolean;
+    jobId?: string;
+    appId?: string;
+  };
+  expect(admission.appId).toBe(appId);
+  expect(typeof admission.jobId).toBe("string");
+  if (response.status === 200) {
+    expect(admission.state).toBe("completed");
+    expect(admission.success).toBe(true);
+    return;
+  }
+  expect(admission.state).toBe("pending");
+  expect(admission.success).toBe(false);
+  // A job from an older worker can retain its 120-second transport backoff.
+  // Allow that backoff plus its polling cycle; still require the exact final receipt.
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    const poll = await api.get(`/api/v1/jobs/${admission.jobId}`, {
+      headers: bearerHeaders(),
+    });
+    expect(poll.status).toBe(200);
+    const { data } = (await poll.json()) as {
+      data: {
+        status: string;
+        result?: {
+          appDeleted?: boolean;
+          appId?: string;
+          deletionJobId?: string;
+        };
+      };
+    };
+    if (data.status === "completed") {
+      expect(data.result).toMatchObject({
+        appDeleted: true,
+        appId,
+        deletionJobId: admission.jobId,
+      });
+      return;
+    }
+    expect(["pending", "in_progress"]).toContain(data.status);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(
+    "Original app deletion did not complete within the live test deadline",
+  );
+}
+
 const createdCharacterIds: string[] = [];
 
 /**
@@ -636,19 +690,13 @@ describeE2E("DELETE /api/v1/apps/:id", () => {
       `/api/v1/apps/${appId}?deleteGitHubRepo=false`,
       { headers: bearerHeaders() },
     );
-    expect(delRes.status).toBe(200);
-    const delBody = (await delRes.json()) as {
-      success?: boolean;
-      message?: string;
-    };
-    expect(delBody.success).toBe(true);
-    expect(typeof delBody.message).toBe("string");
+    await awaitAppDeletion(delRes, appId);
 
     const getRes = await api.get(`/api/v1/apps/${appId}`, {
       headers: bearerHeaders(),
     });
     expect(getRes.status).toBe(404);
-  });
+  }, 210_000);
 });
 
 // -------- POST /api/v1/apps/check-name -------------------------------------
@@ -736,13 +784,12 @@ describeE2E("Apps lifecycle round-trip", () => {
       `/api/v1/apps/${appId}?deleteGitHubRepo=false`,
       { headers: bearerHeaders() },
     );
-    expect(delRes.status).toBe(200);
-    expect(((await delRes.json()) as { success?: boolean }).success).toBe(true);
+    await awaitAppDeletion(delRes, appId);
 
     // GET → 404
     const goneRes = await api.get(`/api/v1/apps/${appId}`, {
       headers: bearerHeaders(),
     });
     expect(goneRes.status).toBe(404);
-  });
+  }, 210_000);
 });

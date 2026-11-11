@@ -165,7 +165,15 @@ export type Route = Readonly<{
 export interface MapsProvider {
   readonly providerId: string;
   readonly connectionId: string;
-  search(query: string, signal: AbortSignal): Promise<readonly Place[]>;
+  /**
+   * `near` ranks results around a point the map already shows (an explicit
+   * position or the visible map's centre). Passing it never reads location.
+   */
+  search(
+    query: string,
+    signal: AbortSignal,
+    options?: Readonly<{ near?: Coordinate }>,
+  ): Promise<readonly Place[]>;
   detail(id: string, signal: AbortSignal): Promise<Place | null>;
   route(
     from: Coordinate,
@@ -297,6 +305,30 @@ export function configuredProvider(
       "The configured Maps connection is unavailable.",
     );
   return provider;
+}
+/** What `createCloudMaps(...).cloudMapsDiagnostics()` reports. */
+export type MapsDiagnostics = Readonly<{
+  configured: boolean;
+  error: string;
+  message?: string;
+}>;
+/**
+ * Why Maps cannot search or route. A Cloud Maps start that failed keeps its own
+ * message (sign in, plan, offline, not deployed); only a host without any Maps
+ * provider is told to connect one, or gets the host's `unconfiguredText`.
+ */
+export function mapsUnavailableMessage(
+  diagnostics?: MapsDiagnostics,
+  unconfiguredText?: string,
+): string {
+  if (!diagnostics?.configured)
+    return (
+      unconfiguredText ||
+      "Connect a Maps provider to search places and plan routes."
+    );
+  if (diagnostics.error)
+    return diagnostics.message || "Cloud Maps could not start.";
+  return "Maps is not ready yet.";
 }
 export function failure(error: unknown): MapsFailure {
   return error instanceof MapsFailure

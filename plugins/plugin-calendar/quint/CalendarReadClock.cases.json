@@ -1,0 +1,37 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/actions/calendar-handler.ts",
+    "plugins/plugin-calendar/src/actions/calendar-read-selected.ts",
+    "plugins/plugin-calendar/src/actions/calendar-read-selected.test.ts",
+    "plugins/plugin-calendar/src/internal/format.ts",
+    "plugins/plugin-calendar/src/calendar-read-result.ts",
+    "plugins/plugin-calendar/src/actions/calendar-weekday-window.test.ts",
+    "plugins/plugin-calendar/src/internal/next-event-time-reference.test.ts",
+    "plugins/plugin-calendar/test/calendar-read-projection.test.ts",
+    "plugins/plugin-personal-assistant/test/calendar-action-effect-receipts.pglite.test.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts"
+  ],
+  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. Selected-read conformance also checks Google's whole-second time filters; the discrete clock model does not emulate provider filtering. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption. The full personal-assistant composition uses the shared producer projection; its database-backed check requires that the local display time survives the canonical executor. Scheduled briefing conformance reads connected events through the canonical feed and retains the occurrence clock through dispatch.",
+  "cases": [
+    {
+      "name": "local-display",
+      "main": "CalendarReadClock",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "CanonicalInstantUnchanged",
+        "RequestClockSelected",
+        "DisplayOffsetMatchesDate",
+        "WinterPacificIsEleven"
+      ],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 200
+    }
+  ],
+  "conformance": "plugins/plugin-calendar/quint/check-calendar-read-clock.mjs"
+}

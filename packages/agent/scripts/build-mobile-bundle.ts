@@ -34,11 +34,16 @@ import {
   mergeMobileStubPlugins,
   parseMobileStubPlugins,
 } from "./mobile-stub-plugins.ts";
+import {
+  createMobileUuidExportsPlugin,
+  type MobileUuidTransform,
+} from "./mobile-uuid-exports.ts";
 import { mobileWalletConnectorStubPlugin } from "./mobile-wallet-connectors.ts";
 import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
 } from "./mobile-workspace-entry.ts";
+import { describeSpawnFailure } from "./spawn-failure.ts";
 
 // Pure data module (no imports) — safe to load in the build script. The
 // manifest's plugin lists are derived from it so they cannot drift from what
@@ -1409,6 +1414,7 @@ const localInferenceDedupePlugin = {
 console.log("[build-mobile] starting Bun.build...");
 // Bun metadata paths are relative to the caller, including direct script runs.
 const buildWorkingDirectory = process.cwd();
+const uuidNodeExports: MobileUuidTransform[] = [];
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
@@ -1461,6 +1467,9 @@ const buildResult = await Bun.build({
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
     viemCjsResolverPlugin,
+    ...(TARGET === "android"
+      ? [createMobileUuidExportsPlugin(repoRoot, uuidNodeExports)]
+      : []),
     stubCssPlugin,
     // Before the generic resolvers: no wallet-connector closure reaches a mobile bundle.
     mobileWalletConnectorStubPlugin(path.join(stubsDir, "null-plugin.ts")),
@@ -1662,13 +1671,55 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   });
   if (made.status !== 0 || !existsSync(snapshotPath)) {
     console.error(
-      "[build-mobile] FATAL: could not make the PGlite initdb snapshot",
+      "[build-mobile] FATAL: could not make the PGlite initdb snapshot: " +
+        (describeSpawnFailure(process.execPath, made) ??
+          `${snapshotPath} was not written`),
     );
     process.exit(1);
   }
   const sz = (await stat(snapshotPath)).size;
   console.log(
     `[build-mobile] wrote pglite-initdb.bin (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+  // The same cluster with the schemas every boot migrates before readiness
+  // already migrated (make-pglite-migrated-snapshot.ts). An in-memory boot
+  // starts from it and the migrator finds each schema hash recorded, which
+  // skips about 270 DDL statements per boot. Made from the initdb snapshot
+  // above, so it comes from the PGlite this bundle carries.
+  const migratedPath = path.join(outDir, "pglite-migrated.bin");
+  const migrated = spawnSync(
+    process.execPath,
+    [
+      "--conditions=eliza-source",
+      path.join(here, "make-pglite-migrated-snapshot.ts"),
+      migratedPath,
+    ],
+    {
+      stdio: "inherit",
+      timeout: 300_000,
+      env: {
+        ...process.env,
+        PGLITE_INITDB_SNAPSHOT: snapshotPath,
+        LOG_LEVEL: "warn",
+        // The shipped cluster must not depend on the build machine's shell:
+        // extensions loaded, and no RLS baked in (a boot with
+        // ENABLE_DATA_ISOLATION=true applies it after the migrations).
+        ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
+        ENABLE_DATA_ISOLATION: "false",
+      },
+    },
+  );
+  if (migrated.status !== 0 || !existsSync(migratedPath)) {
+    console.error(
+      "[build-mobile] FATAL: could not make the PGlite migrated snapshot: " +
+        (describeSpawnFailure(process.execPath, migrated) ??
+          `${migratedPath} was not written`),
+    );
+    process.exit(1);
+  }
+  const migratedSize = (await stat(migratedPath)).size;
+  console.log(
+    `[build-mobile] wrote pglite-migrated.bin (${(migratedSize / 1024 / 1024).toFixed(2)} MB)`,
   );
 }
 // Copy contrib extension tarballs. They live one dir above the bundle on
@@ -1718,6 +1769,7 @@ const manifest = {
     "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
   ...(bundleDependencies ? { bundleDependencies } : {}),
+  ...(TARGET === "android" ? { uuidNodeExports } : {}),
   bunTarget: bunBuildTarget,
   platform: TARGET,
   pglite: {
@@ -1725,6 +1777,7 @@ const manifest = {
     initdb: "initdb.wasm",
     data: "pglite.data",
     initdbSnapshot: "pglite-initdb.bin",
+    migratedSnapshot: "pglite-migrated.bin",
     extensions: {
       pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },
@@ -1840,7 +1893,8 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
     console.error(smokeOutput.slice(-6000));
     console.error(
       "[build-mobile] FATAL: agent-bundle.js failed the module-load smoke " +
-        `(exit ${smoke.status}). A load-time eval error in the bundle bricks ` +
+        `(${describeSpawnFailure("bun", smoke) ?? "BUNDLE_LOAD_SMOKE_OK was not printed"}). ` +
+        "A load-time eval error in the bundle bricks " +
         "the on-device agent before /api/health can bind.",
     );
     process.exit(1);

@@ -1,4 +1,4 @@
-/** Uses one deadline for drain, routing cleanup and transport shutdown. */
+/** Uses one monotonic deadline for drain, routing cleanup and transport shutdown. */
 import { settleBeforeDeadline } from "./agent-lifecycle";
 
 export type AgentShutdownPhase = "drain" | "cleanup" | "quit" | "disconnect";
@@ -22,7 +22,7 @@ export async function shutdownBeforeDeadline(
   let failed = false;
   let quitCompleted = false;
   for (const phase of ["drain", "cleanup", "quit"] as const) {
-    if (Date.now() >= deadline) {
+    if (performance.now() >= deadline) {
       failed = true;
       operations.onFailure(phase, new AgentShutdownTimeoutError(phase));
       break;

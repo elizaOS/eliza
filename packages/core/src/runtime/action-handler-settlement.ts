@@ -347,7 +347,7 @@ export async function settleActionHandler(
 	const deliverWithoutModelStream = (buffered: BufferedActionCallback) =>
 		runWithSuppressedModelStream(() => deliverSafely(buffered));
 	// Every settled delivery runs on one chain, so a callback emitted while the
-	// buffered ones drain queues behind them (ActionSettlement.tla
+	// buffered ones drain queues behind them (ActionSettlement.qnt
 	// DeliveredInEmissionOrder). deliverSafely never rejects.
 	let deliveryTail: Promise<unknown> = Promise.resolve();
 	const deliverInOrder = (

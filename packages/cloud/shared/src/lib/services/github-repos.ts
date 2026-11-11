@@ -268,6 +268,50 @@ export async function deleteAppRepo(repoName: string): Promise<void> {
   }, `deleteAppRepo(${repoName})`);
 }
 
+/** Pin the provider identity before deletion; never substitute a configured owner for a full name. */
+export async function observeAppRepoForDeletion(
+  storedName: string,
+): Promise<{ owner: string; name: string; id: number }> {
+  const parts = storedName.split("/");
+  const owner = parts[0];
+  const name = parts[1];
+  if (
+    parts.length !== 2 ||
+    !owner ||
+    !name ||
+    !/^[A-Za-z0-9_.-]+$/.test(owner) ||
+    !/^[A-Za-z0-9_.-]+$/.test(name)
+  )
+    throw new Error("Original GitHub repository name is invalid");
+  const { data } = await getOctokit().repos.get({
+    owner,
+    repo: name,
+    request: { timeout: 30_000 },
+  });
+  if (
+    !Number.isSafeInteger(data.id) ||
+    data.full_name.toLowerCase() !== `${owner}/${name}`.toLowerCase()
+  )
+    throw new Error("Original GitHub repository identity changed");
+  return { owner, name, id: data.id };
+}
+
+/** Exactly one local dispatch. An ambiguous error is never automatically replayed. */
+export async function deleteObservedAppRepo(
+  identity: { owner: string; name: string; id: number },
+  assertDispatchCurrent: () => Promise<void>,
+): Promise<void> {
+  const current = await observeAppRepoForDeletion(`${identity.owner}/${identity.name}`);
+  if (current.id !== identity.id) throw new Error("Original GitHub repository was replaced");
+  await assertDispatchCurrent();
+  const response = await getOctokit().repos.delete({
+    owner: identity.owner,
+    repo: identity.name,
+    request: { timeout: 30_000 },
+  });
+  if (response.status !== 204) throw new Error("GitHub repository deletion was not acknowledged");
+}
+
 /**
  * List commits for a repository
  */
@@ -373,6 +417,8 @@ export const githubReposService = {
   createAppRepo,
   getRepoInfo,
   deleteAppRepo,
+  observeAppRepoForDeletion,
+  deleteObservedAppRepo,
   listCommits,
   getAuthenticatedCloneUrl,
   getGitCredentials,

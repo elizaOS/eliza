@@ -8,16 +8,19 @@
  * reaches `onPartial` as a delta (the runtime's `onStreamChunk` pipe, as on
  * the in-process engine path). When the host reports no streaming backend
  * (a host library built without the Parakeet-TDT backend) the batch op="asr"
- * runs instead. Any other failure propagates.
+ * runs instead. A clip the stream would truncate fails with ASR_CLIP_TOO_LONG
+ * rather than returning partial text. Any other failure propagates.
  */
 
+import { ElizaError } from "@elizaos/core";
+import { BIONIC_ASR_STREAM_MAX_SECONDS } from "../bionic-asr-stream";
 import type { PcmFrame, StreamingTranscriber } from "./types";
 
 export interface BionicTranscriptionHost {
 	asrStreamSupported(): Promise<boolean>;
 	createStreamingTranscriber(opts: {
 		maxQueuedSeconds?: number;
-	}): StreamingTranscriber;
+	}): StreamingTranscriber & { readonly droppedSamplesLastSegment?: number };
 	transcribe(args: {
 		pcmBase64: string;
 		sampleRate: number;
@@ -32,6 +35,20 @@ export interface BionicTranscriptionArgs {
 	onPartial?: (delta: string) => void;
 	/** Encodes PCM for the batch op; injected so this module stays Buffer-free in tests. */
 	toBase64: (pcm: Float32Array) => string;
+}
+
+function clipTooLong(seconds: number, droppedSamples?: number): ElizaError {
+	return new ElizaError(
+		`Audio is longer than the ${BIONIC_ASR_STREAM_MAX_SECONDS} s streaming ASR limit; send shorter clips`,
+		{
+			code: "ASR_CLIP_TOO_LONG",
+			context: {
+				seconds,
+				maxSeconds: BIONIC_ASR_STREAM_MAX_SECONDS,
+				...(droppedSamples !== undefined ? { droppedSamples } : {}),
+			},
+		},
+	);
 }
 
 function abortError(signal: AbortSignal): Error {
@@ -56,6 +73,9 @@ export async function transcribeViaBionicHost(
 	}
 	if (signal?.aborted) throw abortError(signal);
 	const seconds = args.pcm.length / Math.max(1, args.sampleRate);
+	// One stream segment holds at most BIONIC_ASR_STREAM_MAX_SECONDS; the rest
+	// would be dropped and the transcript returned as if complete.
+	if (seconds > BIONIC_ASR_STREAM_MAX_SECONDS) throw clipTooLong(seconds);
 	// The whole clip is queued at once; size the queue so nothing is dropped.
 	const transcriber = host.createStreamingTranscriber({
 		maxQueuedSeconds: Math.ceil(seconds) + 1,
@@ -84,6 +104,8 @@ export async function transcribeViaBionicHost(
 		}
 		const final = await transcriber.flush();
 		if (signal?.aborted) throw abortError(signal);
+		const dropped = transcriber.droppedSamplesLastSegment ?? 0;
+		if (dropped > 0) throw clipTooLong(seconds, dropped);
 		forward(final.partial);
 		return { text: final.partial, mode: "stream" };
 	} catch (err) {

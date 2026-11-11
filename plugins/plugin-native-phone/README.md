@@ -54,5 +54,7 @@ call-style notifications, answer/decline/end, hold, mute, audio route and DTMF),
 `TelecomCallActivity` (the call screen, shown over the lock screen) and
 `TelecomDialPadActivity` (a native dial pad for hosts without one). The host
 declares thin subclasses with its own component names, channel and title.
+Removed calls and a destroyed service reject callbacks that Android already
+posted, so a retired call cannot recreate its notification.
 `TelecomDial.originate` places calls through Telecom, which owns emergency
 routing; the system emergency dialer does not depend on the host.

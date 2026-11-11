@@ -19,6 +19,7 @@ import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestr
 import { AppDeployEnqueueAmbiguousError, appDeploymentsService } from "./app-deployments";
 import type { ContainerJobsWriter } from "./container-job-service";
 import { containerJobsWriter } from "./container-jobs-writer";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import { JOB_TYPES } from "./provisioning-job-types";
 
 // ── runtime-injected executor (daemon side) ─────────────────────────────────
@@ -57,9 +58,12 @@ export function readAppDeployJobData(job: { data: unknown }): {
 }
 
 /** Daemon: run the full deploy for a claimed APP_DEPLOY job via the injected runner. */
-export async function dispatchAppDeployJob(job: { data: unknown }): Promise<void> {
+export async function dispatchAppDeployJob(
+  job: { data: unknown },
+  executionAuthority: JobExecutionAuthority,
+): Promise<void> {
   const { appId, deploymentGeneration, options } = readAppDeployJobData(job);
-  await getAppDeployRunner().run(appId, deploymentGeneration, options);
+  await getAppDeployRunner().run(appId, deploymentGeneration, options, executionAuthority);
 }
 
 // ── enqueue (Worker / request side) ─────────────────────────────────────────

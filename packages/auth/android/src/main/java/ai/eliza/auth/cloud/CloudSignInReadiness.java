@@ -1,6 +1,9 @@
 package ai.eliza.auth.cloud;
 
 import java.util.List;
+import java.util.Set;
+import java.util.Locale;
+import java.security.MessageDigest;
 
 /**
  * Pure policy for the native sign-in readiness probe (no Android classes, so it runs on a plain JVM).
@@ -30,6 +33,47 @@ public final class CloudSignInReadiness {
  }
  /** The email code route exists: a bodiless request is refused as invalid, not as unknown. */
  public static boolean emailRoutePresent(int status) { return status >= 400 && status < 500 && status != 404 && status != 405; }
+
+ /** A probe must redirect directly to Google's HTTPS account origin; no redirect is followed. */
+ public static boolean redirectAllowed(int status, String location) {
+  if ((status != 302 && status != 303 && status != 307) || location == null) return false;
+  try {
+   java.net.URI uri = new java.net.URI(location);
+   return "https".equals(uri.getScheme()) && "accounts.google.com".equals(uri.getHost())
+    && uri.getRawUserInfo() == null && (uri.getPort() == -1 || uri.getPort() == 443);
+  } catch (java.net.URISyntaxException invalid) { return false; }
+ }
+ public static final class Statement {
+  final List<String> relations; final String namespace, packageName; final List<String> fingerprints;
+  public Statement(List<String> relations, String namespace, String packageName, List<String> fingerprints) {
+   this.relations = relations; this.namespace = namespace; this.packageName = packageName; this.fingerprints = fingerprints;
+  }
+ }
+ public static String certificateFingerprint(byte[] certificate) {
+  try {
+   byte[] digest = MessageDigest.getInstance("SHA-256").digest(certificate);
+   StringBuilder hex = new StringBuilder();
+   for (byte value : digest) hex.append(String.format(Locale.ROOT, "%02X", value & 0xff));
+   return fingerprint(hex.toString());
+  } catch (Exception unavailable) { return null; }
+ }
+ private static String fingerprint(String value) {
+  if (value == null) return null;
+  String hex = value.replace(":", "").toUpperCase(Locale.ROOT);
+  if (!hex.matches("[0-9A-F]{64}")) return null;
+  StringBuilder out = new StringBuilder();
+  for (int i = 0; i < 64; i += 2) { if (i > 0) out.append(':'); out.append(hex, i, i + 2); }
+  return out.toString();
+ }
+ public static boolean assetLinksGrant(List<Statement> statements, String packageName, Set<String> signers) {
+  if (statements == null || packageName == null || signers == null || signers.isEmpty()) return false;
+  for (Statement statement : statements) {
+   if (statement == null || statement.relations == null || !statement.relations.contains("delegate_permission/common.handle_all_urls")
+       || !"android_app".equals(statement.namespace) || !packageName.equals(statement.packageName) || statement.fingerprints == null) continue;
+   for (String listed : statement.fingerprints) { String normalized = fingerprint(listed); if (normalized != null && signers.contains(normalized)) return true; }
+  }
+  return false;
+ }
 
  /** The probe's answer. */
  public static final class Result {

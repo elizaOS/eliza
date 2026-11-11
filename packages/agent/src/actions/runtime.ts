@@ -16,9 +16,13 @@ import {
 import { isSelfEditEnabled } from "@elizaos/host";
 import {
   createSelfApiRequestHeaders,
+  hasRestartHandler,
   requireRestartHandler,
-  resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
+import {
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "../api/self-api-endpoint.ts";
 
 const RUNTIME_OPS = [
   "status",
@@ -89,10 +93,6 @@ function isAwarenessRegistry(value: unknown): value is AwarenessRegistry {
     "getDetail" in value &&
     typeof (value as { getDetail?: unknown }).getDetail === "function"
   );
-}
-
-function getApiBase(): string {
-  return resolveSelfApiBaseUrl(process.env);
 }
 
 function isExplicitRestartRequest(message: Memory | undefined): boolean {
@@ -270,8 +270,10 @@ async function reloadConfigOp(): Promise<ActionResult> {
   // The route handler owns ConfigRouteContext (state.config, isBlockedEnvKey)
   // and the diff/apply helpers are file-private. Until those are extracted to
   // a service, this op stays HTTP-backed.
+  const base = resolveSelfApiTcpBaseUrl(process.env);
+  if (base === null) return fail("reload_config", SELF_API_UNREACHABLE_TEXT);
   try {
-    const resp = await fetch(`${getApiBase()}/api/config/reload`, {
+    const resp = await fetch(`${base}/api/config/reload`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -310,7 +312,11 @@ async function reloadConfigOp(): Promise<ActionResult> {
     ];
     if (requiresRestart.length) {
       lines.push(
-        `Restart required for: ${requiresRestart.join(", ")} (run RUNTIME action=restart).`,
+        `Restart required for: ${requiresRestart.join(", ")}${
+          hasRestartHandler()
+            ? " (run RUNTIME action=restart)."
+            : ". Restart the app to apply them."
+        }`,
       );
     }
     return {
@@ -358,6 +364,21 @@ async function restartOp(
         reason,
         source,
         refused: "self-edit-not-enabled",
+      },
+    };
+  }
+
+  if (!hasRestartHandler()) {
+    return {
+      success: false,
+      text: "This host cannot restart the agent from chat.",
+      values: { error: "RESTART_HANDLER_NOT_INSTALLED" },
+      data: {
+        actionName: "RUNTIME",
+        op: "restart",
+        reason,
+        source,
+        refused: "no-restart-handler",
       },
     };
   }

@@ -1,0 +1,57 @@
+{
+  "sources": [
+    "packages/agent/src/api/server-state.ts",
+    "packages/agent/src/api/chat-routes.ts",
+    "packages/agent/test/api-log-buffer-retention-http.test.ts",
+    "packages/agent/quint/check-api-log-retention.ts"
+  ],
+  "bounds": {
+    "domain": "Five ordered entries, two newest retained entries, a three-entry batch threshold, two symbolic log classes, three monotone clock epochs and one fallback response.",
+    "assumptions": [
+      "The clock abstracts a warning within or outside the existing 60-second lookback. Entry classification, appending and eviction are synchronous. The real HTTP/logging hook checks the production warning classifier and actual chat fallback.",
+      "ReplySettles assumes weak fairness of reply once a request exists. ReplyWithoutFairness intentionally has a stuttering counterexample. This does not prove HTTP scheduling, elapsed-time accuracy, disk-log retention or implementation refinement."
+    ]
+  },
+  "limitations": [
+    "Five ordered entries, two newest retained entries, a three-entry batch threshold, two symbolic log classes, three monotone clock epochs and one fallback response.",
+    "The clock abstracts a warning within or outside the existing 60-second lookback. Entry classification, appending and eviction are synchronous. The real HTTP/logging hook checks the production warning classifier and actual chat fallback.",
+    "ReplySettles assumes weak fairness of reply once a request exists. ReplyWithoutFairness intentionally has a stuttering counterexample. This does not prove HTTP scheduling, elapsed-time accuracy, disk-log retention or implementation refinement."
+  ],
+  "cases": [
+    {
+      "name": "ApiLogRetention",
+      "main": "ApiLogRetention",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "Bounded",
+        "NewestRetained",
+        "RecentCreditRetained",
+        "FallbackPreserved"
+      ],
+      "temporal": ["ReplySettles", "ReplyWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "ReplySettles",
+          "expect": "holds",
+          "assumptions": [
+            "The clock abstracts a warning within or outside the existing 60-second lookback. Entry classification, appending and eviction are synchronous. The real HTTP/logging hook checks the production warning classifier and actual chat fallback.",
+            "ReplySettles assumes weak fairness of reply once a request exists. ReplyWithoutFairness intentionally has a stuttering counterexample. This does not prove HTTP scheduling, elapsed-time accuracy, disk-log retention or implementation refinement."
+          ]
+        },
+        {
+          "property": "ReplyWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. An enabled response, storage settlement, drain or polling action may stutter forever; a temporal loop counterexample is required."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/agent/quint/check-api-log-retention.ts"
+}

@@ -8,10 +8,12 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { Transaction, Wallet } from "ethers";
 import { afterEach, expect, it } from "vitest";
 import {
+  type AuditEntry,
   createRuntimeLogAuditSink,
   queryAuditFeed,
   SANDBOX_AUDIT_LOG_TYPE,
   SandboxAuditLog,
+  subscribeAuditFeed,
 } from "../src/security/audit-log.ts";
 import {
   RemoteSigningService,
@@ -357,4 +359,69 @@ it("rejects admission overtaken by a policy change while its durable audit is wa
   expect(
     (await service.submitSigningRequest(request)).policyDecision.matchedRule,
   ).toBe("contract_denylist");
+});
+
+it("retains recorded audit facts when callers and observers mutate snapshots", async () => {
+  const { file, agentId } = await storage();
+  const runtime = await openRuntime(file, agentId);
+  cleanups.push(() => runtime.close());
+  const marker = randomUUID();
+  function mutate(entry: AuditEntry | undefined) {
+    if (!entry?.metadata || entry.metadata.marker !== marker) return;
+    entry.summary = "Changed by an observer";
+    entry.metadata.decision = "allow";
+    entry.metadata.reason = "Changed by an observer";
+  }
+  const unsubscribe = subscribeAuditFeed(mutate);
+  cleanups.push(async () => unsubscribe());
+  const audit = new SandboxAuditLog({
+    console: false,
+    requireDurableSink: true,
+    sinks: [
+      {
+        name: "mutating-observer",
+        durable: false,
+        required: false,
+        append: async (entry) => mutate(entry),
+      },
+    ],
+  });
+  const original = {
+    type: "policy_decision" as const,
+    severity: "warn" as const,
+    summary: "Denied because review is required",
+    metadata: { marker, decision: "deny", reason: "review-required" },
+  };
+  const recorded = audit.record(original);
+  original.metadata.decision = "allow";
+  original.metadata.reason = "Changed by the caller";
+  mutate(audit.getRecent()[0]);
+  mutate(audit.getByType("policy_decision")[0]);
+  const feedEntry = queryAuditFeed({ type: "policy_decision" }).find(
+    (entry) => entry.metadata?.marker === marker,
+  );
+  expect(feedEntry).toBeDefined();
+  mutate(feedEntry);
+
+  await audit.addSink(await createRuntimeLogAuditSink(runtime));
+  await recorded;
+  const rows = await runtime.getLogs({ type: SANDBOX_AUDIT_LOG_TYPE });
+  expect(rows.map((row) => row.body.metadata)).toContainEqual(
+    expect.objectContaining({
+      summary: "Denied because review is required",
+      fields: { marker, decision: "deny", reason: "review-required" },
+    }),
+  );
+  expect(audit.getRecent()[0]).toMatchObject({
+    summary: "Denied because review is required",
+    metadata: { marker, decision: "deny", reason: "review-required" },
+  });
+  expect(
+    queryAuditFeed({ type: "policy_decision" }).find(
+      (entry) => entry.metadata?.marker === marker,
+    ),
+  ).toMatchObject({
+    summary: "Denied because review is required",
+    metadata: { marker, decision: "deny", reason: "review-required" },
+  });
 });

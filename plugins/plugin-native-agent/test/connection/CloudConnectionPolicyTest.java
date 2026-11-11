@@ -26,6 +26,8 @@ public final class CloudConnectionPolicyTest {
   for(String path:new String[]{"/api/v1/subscription/redeem","/api/v1/maps/capabilities","/api/v1/maps/routes/","//api/v1/maps/routes",null})check(!CloudConnectionPolicy.mapsRequestIdentity("idempotency-key","request_1",path,"POST"),"identity route refused "+path);
   for(String value:new String[]{"","bad id","query=location","line\r\nbreak",null,"x".repeat(129)})check(!CloudConnectionPolicy.mapsRequestIdentity("idempotency-key",value,"/api/v1/maps/routes","POST"),"invalid Maps identity");
   check(!CloudConnectionPolicy.mapsRequestIdentity("idempotency-key","request_1","/api/v1/maps/routes","GET"),"read does not carry request identity");
+  check(CloudConnectionPolicy.mapsRequestIdentity("idempotency-key","request_1","/api/v1/maps/tiles/2/1/3","GET"),"tile allowance identity allowed");
+  check(!CloudConnectionPolicy.mapsRequestIdentity("idempotency-key","request_1","/api/v1/maps/tiles/2/4/0","GET"),"out of grid tile identity refused");
   check(!CloudConnectionPolicy.mapsRequestIdentity("authorization","request_1","/api/v1/maps/routes","POST"),"identity rule cannot admit credentials");
   check(revoke("https","api.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,false),"production self-revocation");
   check(revoke("https","api.eliza.app",443,"/api/v1/api-keys/current",null,"DELETE",false,false),"explicit default port");
@@ -141,6 +143,11 @@ public final class CloudConnectionPolicyTest {
   check(ROUTES.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
   // Eliza Cloud Maps: exact routes; location only in a POST body, capabilities a bare GET.
   check(ROUTES.managedService("/api/v1/maps/capabilities",null,"GET",false,false),"Maps capabilities read allowed");
+  check(ROUTES.managedService("/api/v1/maps/tiles/2/1/3",null,"GET",false,false),"Maps tile read allowed");
+  check(ROUTES.managedService("/api/v1/maps/tiles/viewport",null,"POST",true,false),"Maps viewport read allowed");
+  for(String path:new String[]{"/api/v1/maps/tiles/23/0/0","/api/v1/maps/tiles/2/4/0","/api/v1/maps/tiles/02/1/1","/api/v1/maps/tiles/2/1/3/"})check(!ROUTES.managedService(path,null,"GET",false,false),"invalid tile refused "+path);
+  check(!ROUTES.managedService("/api/v1/maps/tiles/2/1/3","key=x","GET",false,false),"tile query refused");
+  check(!ROUTES.managedService("/api/v1/maps/tiles/2/1/3",null,"POST",true,false),"tile mutation refused");
   for(String route:new String[]{"geocode","reverse","places/search","places/details","routes"}){
    String path="/api/v1/maps/"+route;
    check(ROUTES.managedService(path,null,"POST",true,false),"Maps "+route+" allowed");

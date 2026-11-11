@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/remote-hosts.ts",
+    "packages/cloud/shared/src/db/repositories/remote-sessions-store.ts",
+    "packages/cloud/shared/src/db/repositories/remote-command-envelopes.ts",
+    "packages/cloud/shared/src/db/schemas/remote-hosts.ts",
+    "packages/cloud/shared/src/db/schemas/remote-sessions.ts",
+    "packages/cloud/shared/src/db/schemas/remote-command-envelopes.ts",
+    "packages/cloud/shared/src/db/repositories/primary-database-clock.ts",
+    "packages/cloud/shared/src/db/repositories/remote-command-envelopes.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/remote-host-revocation.postgres.integration.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-remote-host-revocation.mjs",
+  "bounds": "One host, two sessions and two commands. Session1 begins pending, claimed, activating or active. Session2 is active and owns both commands. Each command begins pending, claimed or started. Source page limits remain 100 sessions and 500 commands. The bounded records fit within one unlocked page. SKIP LOCKED continuation is modeled with one independently held session and command lock.",
+  "limitations": [
+    "One host, two sessions and two commands. Session1 begins pending, claimed, activating or active. Session2 is active and owns both commands. Each command begins pending, claimed or started.",
+    "Source page limits remain 100 sessions and 500 commands. The bounded records fit within one unlocked page. SKIP LOCKED continuation is modeled with one independently held session and command lock.",
+    "The model covers host revocation and cleanup receipts. Pairing verification, host enrollment, key rotation, local grant installation, normal command execution and provider effects remain separate protocols.",
+    "All rows belong to the same current host owner. Foreign callers are denied. Arbitrary corrupted tenant rows and unbounded new insertions are outside this instance.",
+    "Fair repeated revocation calls and eventual row-lock release drain the bounded backlog. Call scheduling and lock recovery are assumptions, not implementation proofs.",
+    "The PGlite suite exercises canonical migrations and repository transitions. The PostgreSQL test validates a skipped claimed-row lock and the repeated cleanup call."
+  ],
+  "cases": [
+    {
+      "name": "bounded-revocation",
+      "main": "RemoteHostRevocation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CleanupCompletes"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CleanupCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in RemoteHostRevocation: CleanupCompletes = and { Revoke(true).weakFair(s), Sessions.forall(id => UnlockSession(id).weakFair(s)), Commands.forall(id => UnlockCommand(id).weakFair(s)) } implies eventually(s.hostRevoked and Drained)",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}

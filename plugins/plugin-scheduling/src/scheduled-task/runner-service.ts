@@ -22,6 +22,8 @@
  * (serviceType `"lifeops_scheduled_task_runner"`, runtime first-wins dedup) and
  * exactly one set of injected deps per runtime.
  */
+
+import { resolveDefaultTimeZone } from "@elizaos/contracts";
 import {
   agentProcessStartedAtMs,
   ElizaError,
@@ -61,7 +63,6 @@ import {
   registerFallbackAnchors,
 } from "./consolidation-policy.js";
 import {
-  renderFailureDispatchResult,
   renderScheduledDispatchMessage,
   renderScheduledDispatchTitle,
 } from "./dispatch-render.js";
@@ -281,14 +282,13 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
  */
 function createDefaultScheduledTaskDispatcher(
   runtime: IAgentRuntime,
-  store: ScheduledTaskStore,
 ): ScheduledTaskDispatcher {
   return {
     async dispatch(record): Promise<DispatchResult> {
       // `promptInstructions` is a model prompt, never user-facing copy: the
       // notification body must be the model's rendering of it. A model-free
-      // runtime receives a neutral deterministic fallback; a present-but-failed
-      // model call is a typed, retryable dispatch failure.
+      // runtime, or a model call that fails, receives the authored fallback
+      // copy at once so a time-sensitive reminder is never held for the model.
       const connectorTarget = resolveConnectorDispatchTarget(record);
       if (isConnectorDispatchIntent(record) && !connectorTarget) {
         return {
@@ -311,48 +311,26 @@ function createDefaultScheduledTaskDispatcher(
           message: `Channel "${connectorTarget.source}" has no registered message connector.`,
         };
       }
-      let body: string;
-      try {
-        const preparedMessage = connectorTarget
-          ? (await store.get(record.taskId))?.metadata?.dispatchPreparedMessage
-          : undefined;
-        body =
-          typeof preparedMessage === "string" &&
-          preparedMessage.trim().length > 0
-            ? preparedMessage
-            : await renderScheduledDispatchMessage(runtime, record);
-      } catch (error) {
-        // error-policy:J1 boundary translation — dispatch outcomes are the
-        // runner's typed contract; the failure also reaches RECENT_ERRORS and
-        // owner escalation via reportError.
-        runtime.reportError(
-          "scheduling:scheduled-task:dispatch-render",
-          error,
-          {
-            taskId: record.taskId,
-            channelKey: record.channelKey,
-          },
-        );
-        return renderFailureDispatchResult(error);
-      }
+      // A connector retry re-sends the payload already committed for this
+      // fire so the idempotency key and the text stay paired.
+      const preparedMessage = connectorTarget
+        ? record.metadata?.dispatchPreparedMessage
+        : undefined;
+      const body =
+        typeof preparedMessage === "string" && preparedMessage.trim().length > 0
+          ? preparedMessage
+          : await renderScheduledDispatchMessage(runtime, record);
       if (connectorTarget) {
-        const current = await store.get(record.taskId);
-        if (!current) {
-          return {
-            ok: false,
-            reason: "transport_error",
-            acceptance: "not_accepted",
-            userActionable: false,
-            message: "Scheduled task disappeared before connector dispatch.",
-          };
-        }
-        const existingKey = current.metadata?.dispatchIdempotencyKey;
+        const existingKey = record.metadata?.dispatchIdempotencyKey;
         const dispatchIdempotencyKey =
           typeof existingKey === "string" && existingKey.trim().length > 0
             ? existingKey.trim()
             : `${record.taskId}:${record.firedAtIso}`;
-        current.metadata = {
-          ...(current.metadata ?? {}),
+        // Commits through the fire's guarded snapshot; throws when a user verb
+        // settled the task meanwhile, which the runner records as a failure.
+        await record.persistPreparedDelivery?.(body, dispatchIdempotencyKey);
+        record.metadata = {
+          ...(record.metadata ?? {}),
           dispatchPreparedMessage: body,
           dispatchIdempotencyKey,
           dispatchAttempt: {
@@ -361,12 +339,7 @@ function createDefaultScheduledTaskDispatcher(
             firedAtIso: record.firedAtIso,
           },
         };
-        await store.upsert(current);
-        if (record.metadata) {
-          Object.assign(record.metadata, current.metadata);
-        } else {
-          record.metadata = current.metadata;
-        }
+        await record.assertStillFired?.();
       }
       // Channel-destination dispatch through a live message connector (e.g.
       // `output: { destination: "channel", target: "discord:user:<id>" }` on
@@ -378,17 +351,8 @@ function createDefaultScheduledTaskDispatcher(
         body,
       );
       if (connectorResult) return connectorResult;
-      let title: string;
-      try {
-        title = await renderScheduledDispatchTitle(runtime, record, body);
-      } catch (error) {
-        runtime.reportError(
-          "scheduling:scheduled-task:dispatch-render",
-          error,
-          { taskId: record.taskId, channelKey: record.channelKey },
-        );
-        return renderFailureDispatchResult(error);
-      }
+      // Model failures fall back to the deterministic title inside the renderer.
+      const title = await renderScheduledDispatchTitle(runtime, record, body);
       const isUrgent = record.intensity === "urgent";
       const notifier = getNotifier(runtime);
       if (!notifier) {
@@ -400,6 +364,7 @@ function createDefaultScheduledTaskDispatcher(
           message: "No notification service is registered for in-app delivery.",
         };
       }
+      await record.assertStillFired?.();
       try {
         await notifier.notify({
           title,
@@ -479,7 +444,7 @@ const ALWAYS_ALLOW_GLOBAL_PAUSE: GlobalPauseView = {
  * The default (no-PA) deps provider. Uses scheduling-owned SQL persistence
  * when the runtime DB is present, then falls back to in-memory for isolated
  * tests/hosts without `@elizaos/plugin-sql`; the rest of the bundle is built-in
- * registries, warn-once activity/subject ports, permissive global-pause, empty
+ * registries, warn-once activity/subject ports, permissive global-pause, host-zone
  * owner-facts, notification-only dispatch, and platform capability probing.
  */
 function defaultRunnerDeps(
@@ -503,13 +468,12 @@ function defaultRunnerDeps(
       (hasRuntimeDb
         ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
         : createInMemoryScheduledTaskLogStore()),
-    dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
-    // Without an owner fact store, the owner zone is the one saved in the
-    // plugin settings (owner_local triggers otherwise run in UTC).
-    ownerFacts: () => {
-      const timezone = configuredDefaultTimeZone(runtime);
-      return (timezone ? { timezone } : {}) as OwnerFactsView;
-    },
+    dispatcher: createDefaultScheduledTaskDispatcher(runtime),
+    // Without an owner fact store, use the saved scheduling zone or the local
+    // host zone (the native host passes the device zone to its process).
+    ownerFacts: () => ({
+      timezone: configuredDefaultTimeZone(runtime) ?? resolveDefaultTimeZone(),
+    }),
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
     activity: makeMissingActivityBusView(runtime),
     subjectStore: makeMissingSubjectStoreView(runtime),
@@ -620,6 +584,7 @@ function buildRunner(
 }
 const SYSTEM_CLOCK = (): Date => new Date();
 interface RunnerCacheEntry {
+  provider: ScheduledTaskRunnerDepsProvider | null;
   runner: ScheduledTaskRunnerHandle;
   /** Mutable clock the cached runner reads through on every `now()` call. */
   clock: {
@@ -627,8 +592,8 @@ interface RunnerCacheEntry {
   };
 }
 /**
- * Long-lived runner host. Builds the runner ONCE per `agentId` from the
- * injected deps provider and caches it. The runner construction work
+ * Long-lived runner host. Caches the runner per `agentId` and deps provider.
+ * A deferred consumer can replace the initial fallback binding. The construction work
  * (registry wiring, dispatcher binding) is stable across ticks, so the tick
  * reads the cached runner instead of rebuilding it every minute.
  *
@@ -692,14 +657,19 @@ export class ScheduledTaskRunnerService extends Service {
     return service;
   }
   getRunner(opts: GetScheduledTaskRunnerOptions): ScheduledTaskRunnerHandle {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error(
+        "ScheduledTaskRunnerService: runtime is not bound; was the service started?",
+      );
+    }
+    const provider = getScheduledTaskRunnerDeps(runtime);
     let entry = this.runners.get(opts.agentId);
-    if (!entry) {
-      const runtime = this.runtime;
-      if (!runtime) {
-        throw new Error(
-          "ScheduledTaskRunnerService: runtime is not bound; was the service started?",
-        );
-      }
+    // Optional consumers can load after the fallback has seeded its tasks.
+    // Subsequent operations use the consumer's dispatcher over the same durable
+    // store. In-flight operations retain their captured dispatcher and the
+    // store's existing claim and effect guards.
+    if (!entry || entry.provider !== provider) {
       const clock = { now: SYSTEM_CLOCK };
       // The runner captures the REF, not the caller's closure — rebinding
       // `clock.now` below retargets the cached runner's clock per call.
@@ -707,7 +677,7 @@ export class ScheduledTaskRunnerService extends Service {
         agentId: opts.agentId,
         now: () => clock.now(),
       });
-      entry = { runner, clock };
+      entry = { runner, clock, provider };
       this.runners.set(opts.agentId, entry);
     }
     entry.clock.now = opts.now ?? SYSTEM_CLOCK;

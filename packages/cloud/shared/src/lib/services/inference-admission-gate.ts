@@ -1051,6 +1051,30 @@ export function inferenceSettlementAmounts(
   return { balanceBackedUsd, gateConsumedUsd };
 }
 
+/**
+ * Re-prepare a deferred lease after the gate refused its commit for a
+ * superseded policy generation. The gate records nothing for that refusal, so
+ * the same request identity and cancellation capability are sent again with
+ * the policy generation and balance of a refilled projection. Returns false
+ * unless the refusal was unambiguous: a lease that may already be committed
+ * keeps its body.
+ */
+export function rebaseStaleInferenceAdmissionLease(
+  lease: InferenceAdmissionLease,
+  observation: { balanceUsd: number; balanceRevision: string; policyGeneration: string },
+): boolean {
+  const prepared = lease.preparedDispatch;
+  if (lease.providerDispatched || prepared?.state !== "rejected") return false;
+  prepared.body = {
+    ...prepared.body,
+    balanceUsd: finiteNonNegative(observation.balanceUsd, "balanceUsd"),
+    balanceRevision: observation.balanceRevision,
+    policyGeneration: observation.policyGeneration,
+  };
+  prepared.state = "prepared";
+  return true;
+}
+
 /** Commit a prepared lease or persist legacy dispatch intent immediately before provider work. */
 export async function markInferenceAdmissionLeaseDispatched(
   lease: InferenceAdmissionLease,
@@ -1389,11 +1413,10 @@ export async function settleInferenceAdmissionLease(
 
 /** Maps has a distinct nonmonetary counter in the organization gate. Never retry an ambiguous admission. */
 export async function callMapsRequestAllowance(
+  namespace: RuntimeDurableObjectNamespace,
   request: import("./maps-request-policy").MapsAllowanceRequest,
   outcome?: import("./maps-request-policy").MapsUsageOutcome,
 ): Promise<Response> {
-  if (!getCloudBinding("INFERENCE_ADMISSION_GATES"))
-    return Response.json({ error: { code: "maps_allowance_unconfigured" } }, { status: 503 });
   return gateFetch(
     request.organizationId,
     outcome ? "/maps/usage" : "/maps/admit",
@@ -1401,7 +1424,7 @@ export async function callMapsRequestAllowance(
       ...request,
       ...(outcome && { outcome }),
     },
-    gateStub(request.organizationId),
+    namespace.getByName(request.organizationId),
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
 }

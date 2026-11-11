@@ -44,4 +44,10 @@ def pushDir = providers.exec {
 }.standardOutput.asText.get().trim()
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File(pushDir, 'android')
+def appPluginDir = providers.exec {
+    workingDir repoRoot
+    commandLine 'node', '--print', "require('node:path').dirname(require.resolve('@capacitor/app/package.json', { paths: ['./packages/app'] }))"
+}.standardOutput.asText.get().trim()
+include ':capacitor-app'
+project(':capacitor-app').projectDir = new File(appPluginDir, 'android')
 include ':native-reminder-push-tests'

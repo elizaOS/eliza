@@ -249,6 +249,35 @@ function buildAbortSignal(params: {
 }
 
 /**
+ * Settles with `promise` unless `signal` aborts first, so a DNS lookup that
+ * never answers cannot outlive the deadline. The orphaned lookup finishes in
+ * the background and its result is ignored.
+ */
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+	if (!signal) {
+		return promise;
+	}
+	if (signal.aborted) {
+		promise.catch(() => {});
+		return Promise.reject(signal.reason);
+	}
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(
+			(value) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(value);
+			},
+			(error: unknown) => {
+				signal.removeEventListener("abort", onAbort);
+				reject(error);
+			},
+		);
+	});
+}
+
+/**
  * Fetch with SSRF protection.
  *
  * - Validates URL protocol (http/https only)
@@ -343,10 +372,13 @@ export async function fetchWithSsrfGuard(
 			if (lookupFn) {
 				// A DNS lookup is available → pin the resolved address(es). This is
 				// the strongest mode: it also defends against DNS rebinding.
-				pinned = await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-					lookupFn,
-					policy: params.policy,
-				});
+				pinned = await raceAbort(
+					resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+						lookupFn,
+						policy: params.policy,
+					}),
+					signal,
+				);
 			} else if (
 				!allowPrivateNetwork &&
 				!allowedHostnames.has(normalizeHostLike(parsedUrl.hostname))

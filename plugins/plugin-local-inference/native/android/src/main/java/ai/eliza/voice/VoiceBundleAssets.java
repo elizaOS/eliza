@@ -160,10 +160,13 @@ public final class VoiceBundleAssets {
         boolean verified = stamp.isFile() && Arrays.equals(read(new FileInputStream(stamp), 1 << 20), manifestBytes);
         try {
             JSONArray files = manifest.getJSONArray("files");
+            java.util.Set<File> kept = new java.util.HashSet<>();
+            kept.add(stamp);
             for (int i = 0; i < files.length(); i++) {
                 JSONObject entry = files.getJSONObject(i);
                 String relative = entry.getString("path");
                 File target = resolve(root, relative);
+                kept.add(target);
                 long bytes = entry.getLong("bytes");
                 String sha = entry.getString("sha256");
                 Region region = inPlace && inPlaceEligible(relative) ? region(context, relative, bytes) : null;
@@ -184,12 +187,18 @@ public final class VoiceBundleAssets {
             for (java.util.Map.Entry<String, String> voice : voices(manifest).entrySet()) {
                 voices.put(voice.getKey(), resolve(root, voice.getValue()));
             }
-            return new Installation(
+            Installation installation = new Installation(
                     root,
                     resolve(root, manifest.getString("model")),
                     resolve(root, manifest.getString("lexicon")),
                     espeak.isEmpty() ? null : resolve(root, espeak),
                     voices);
+            kept.add(installation.model);
+            kept.add(installation.lexicon);
+            kept.addAll(voices.values());
+            // Only after the stamp names this manifest: an interrupted update never deletes files still in use.
+            sweep(root, root, kept);
+            return installation;
         } catch (org.json.JSONException error) {
             throw new IOException("Invalid voice bundle manifest", error);
         }
@@ -212,22 +221,73 @@ public final class VoiceBundleAssets {
                 && (relative.endsWith(".gguf") || relative.endsWith(".lex"));
     }
 
-    /** Where an uncompressed asset's bytes are in the APK. */
-    private static final class Region {
-        final File apk;
-        final long offset, length;
+    /**
+     * Where a model's bytes are: {@code length} bytes of {@code file} from
+     * {@code offset}. For an in-place model, {@code file} is the APK.
+     */
+    public static final class Region {
+        public final File file;
+        public final long offset, length;
 
-        Region(File apk, long offset, long length) {
-            this.apk = apk;
+        Region(File file, long offset, long length) {
+            this.file = file;
             this.offset = offset;
             this.length = length;
         }
 
         /** The libelizainference region file (tools/file-region/eliza-file-region.h). */
         byte[] text() {
-            return (REGION_MAGIC + "\noffset=" + offset + "\nlength=" + length + "\npath=" + apk.getPath() + "\n")
+            return (REGION_MAGIC + "\noffset=" + offset + "\nlength=" + length + "\npath=" + file.getPath() + "\n")
                     .getBytes(StandardCharsets.UTF_8);
         }
+    }
+
+    /** A region file is a few hundred bytes; anything larger is a model. */
+    private static final int MAX_REGION_FILE = 4096;
+
+    /**
+     * The bytes an installed model path stands for, by the rules of the native
+     * loaders and {@code file-region.ts}: a region file gives its span of the
+     * containing file, checked against that file's size; any other file gives
+     * the whole file. A host that reads the model itself (for example to warm
+     * the page cache) calls this instead of parsing region files. An invalid
+     * region file, or one whose containing file is missing or too short, is an
+     * IOException.
+     */
+    public static Region modelRegion(File installed) throws IOException {
+        if (!installed.isFile()) throw new java.io.FileNotFoundException("Voice model missing: " + installed);
+        long size = installed.length();
+        if (size <= REGION_MAGIC.length() || size > MAX_REGION_FILE) return new Region(installed, 0, size);
+        byte[] head = read(new FileInputStream(installed), MAX_REGION_FILE);
+        String text = new String(head, StandardCharsets.UTF_8);
+        if (!text.startsWith(REGION_MAGIC + "\n")) return new Region(installed, 0, size);
+        Long offset = null, length = null;
+        String path = null;
+        for (String line : text.substring(REGION_MAGIC.length() + 1).split("\n", -1)) {
+            if (line.isEmpty()) continue;
+            int eq = line.indexOf('=');
+            String key = eq < 0 ? line : line.substring(0, eq), value = eq < 0 ? "" : line.substring(eq + 1);
+            if (eq >= 0 && "offset".equals(key) && offset == null && (offset = count(value)) != null) continue;
+            if (eq >= 0 && "length".equals(key) && length == null && (length = count(value)) != null) continue;
+            if (eq >= 0 && "path".equals(key) && path == null && value.startsWith("/")) {
+                path = value;
+                continue;
+            }
+            throw new IOException("Invalid voice region file: " + installed);
+        }
+        if (offset == null || length == null || path == null || length == 0 || offset % REGION_ALIGNMENT != 0) {
+            throw new IOException("Invalid voice region file: " + installed);
+        }
+        File container = new File(path);
+        if (!container.isFile() || offset > container.length() || length > container.length() - offset) {
+            throw new IOException("Voice region outside its file: " + installed);
+        }
+        return new Region(container, offset, length);
+    }
+
+    /** A decimal byte count that fits a Java long, or null. */
+    private static Long count(String value) {
+        return value.matches("[0-9]{1,18}") ? Long.valueOf(value) : null;
     }
 
     /** The asset's place in the APK, or null when it is compressed or unaligned (it is then copied). */
@@ -266,7 +326,7 @@ public final class VoiceBundleAssets {
                 && Arrays.equals(read(new FileInputStream(target), text.length), text)) {
             return;
         }
-        if (!verified && !sha.equals(sha256(region.apk, region.offset, region.length))) {
+        if (!verified && !sha.equals(sha256(region.file, region.offset, region.length))) {
             throw new IOException("Voice asset checksum mismatch: " + relative);
         }
         File parent = target.getParentFile();
@@ -277,6 +337,26 @@ public final class VoiceBundleAssets {
         }
         // Replaces a previous copy of the model, which frees its storage.
         if (!partial.renameTo(target)) throw new IOException("Voice asset install failed: " + relative);
+    }
+
+    /** Deletes regular files under root that the installed manifest no longer lists, and stale partial copies. */
+    private static void sweep(File root, File directory, java.util.Set<File> kept) throws IOException {
+        File[] children = directory.listFiles();
+        if (children == null) return;
+        String base = root.getCanonicalPath() + File.separator;
+        for (File child : children) {
+            if (java.nio.file.Files.isSymbolicLink(child.toPath())) continue;
+            String path = child.getCanonicalPath();
+            if (!path.startsWith(base)) continue;
+            File file;
+            try {
+                file = resolve(root, path.substring(base.length()).replace(File.separatorChar, '/'));
+            } catch (IOException outside) {
+                continue;
+            }
+            if (file.isDirectory()) sweep(root, file, kept);
+            else if (file.isFile() && !kept.contains(file)) file.delete();
+        }
     }
 
     private static void copy(Context context, String relative, File target, long bytes, String sha)
@@ -293,6 +373,9 @@ public final class VoiceBundleAssets {
                 if (total > bytes) throw new IOException("Voice asset larger than manifest: " + relative);
                 out.write(block, 0, n);
             }
+        } catch (IOException | RuntimeException error) {
+            partial.delete();
+            throw error;
         }
         if (total != bytes || !sha.equals(sha256(partial))) {
             partial.delete();

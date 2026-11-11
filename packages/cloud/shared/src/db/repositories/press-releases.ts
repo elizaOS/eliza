@@ -1,4 +1,5 @@
 // Persists press releases records for cloud services through the shared DB boundary.
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import {
@@ -32,6 +33,10 @@ export type {
   PressReleaseDistribution,
   PressReleaseTargetAudience,
 };
+
+type RecordSubmissionResult =
+  | { ok: true; release: PressRelease; distribution: PressReleaseDistribution }
+  | { ok: false; error: string };
 
 export class PressReleasesRepository {
   findReleaseById(id: string): Promise<PressRelease | undefined> {
@@ -88,8 +93,9 @@ export class PressReleasesRepository {
     from: PressReleaseStatus,
     to: PressReleaseStatus,
     extra: Partial<NewPressRelease> = {},
+    database: Pick<typeof dbWrite, "update"> = dbWrite,
   ): Promise<PressRelease | undefined> {
-    const [row] = await dbWrite
+    const [row] = await database
       .update(pressReleases)
       .set({ ...extra, status: to, updated_at: new Date() })
       .where(
@@ -109,12 +115,6 @@ export class PressReleasesRepository {
     });
   }
 
-  findDistributionByIdempotencyKey(key: string): Promise<PressReleaseDistribution | undefined> {
-    return dbRead.query.pressReleaseDistributions.findFirst({
-      where: eq(pressReleaseDistributions.idempotency_key, key),
-    });
-  }
-
   listDistributionsForRelease(
     pressReleaseId: string,
     organizationId: string,
@@ -128,9 +128,74 @@ export class PressReleasesRepository {
     });
   }
 
-  async createDistribution(data: NewPressReleaseDistribution): Promise<PressReleaseDistribution> {
-    const [row] = await dbWrite.insert(pressReleaseDistributions).values(data).returning();
-    return row;
+  async recordSubmission(
+    data: Omit<NewPressReleaseDistribution, "status" | "submitted_at">,
+  ): Promise<RecordSubmissionResult> {
+    return dbWrite.transaction(async (tx) => {
+      // Cancellation updates the same row. Use the locked primary state for
+      // both admission and the receipt, including retries after a lost reply.
+      const [release] = await tx
+        .select()
+        .from(pressReleases)
+        .where(
+          and(
+            eq(pressReleases.id, data.press_release_id),
+            eq(pressReleases.organization_id, data.organization_id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!release) return { ok: false, error: "Press release not found" };
+
+      const maySubmit = release.status === "ready" || release.status === "submitted";
+      const submittedAt = new Date();
+      const [distribution] = maySubmit
+        ? await tx
+            .insert(pressReleaseDistributions)
+            .values({ ...data, status: "submitted", submitted_at: submittedAt })
+            .onConflictDoNothing({ target: pressReleaseDistributions.idempotency_key })
+            .returning()
+        : [];
+      if (!distribution) {
+        const key = data.idempotency_key ?? undefined;
+        const mayReplay = ["submitted", "distributed", "failed"].includes(release.status);
+        const existing =
+          mayReplay && key !== undefined
+            ? await tx.query.pressReleaseDistributions.findFirst({
+                where: and(
+                  eq(pressReleaseDistributions.idempotency_key, key),
+                  eq(pressReleaseDistributions.press_release_id, release.id),
+                  eq(pressReleaseDistributions.organization_id, release.organization_id),
+                  eq(pressReleaseDistributions.provider, data.provider),
+                ),
+              })
+            : undefined;
+        if (existing) return { ok: true, release, distribution: existing };
+        return {
+          ok: false,
+          error: maySubmit
+            ? "Idempotency key already used"
+            : "Press release is not ready for submission",
+        };
+      }
+
+      if (release.status === "submitted") return { ok: true, release, distribution };
+      const submitted = await this.transitionRelease(
+        release.id,
+        release.organization_id,
+        "ready",
+        "submitted",
+        { submitted_at: submittedAt },
+        tx,
+      );
+      if (!submitted) {
+        throw new ElizaError("Submission could not be finalized", {
+          code: "PRESS_RELEASE_SUBMISSION_UNAPPLIED",
+          severity: "fatal",
+        });
+      }
+      return { ok: true, release: submitted, distribution };
+    });
   }
 
   async transitionDistribution(

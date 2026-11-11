@@ -18,9 +18,10 @@ import { NativeHostError } from "./errors.mjs";
 
 // dlopen retains code for the process lifetime; keep descriptor names unique too.
 const loadedLibraries = new Map();
-const unavailable = () =>
+const unavailable = (cause) =>
   new NativeHostError("Encrypted task database driver unavailable", {
     code: "TASK_STORAGE_UNAVAILABLE",
+    cause,
   });
 /** Explicit host-only addon admission. No environment discovery or SQLite fallback. */
 export function loadTaskSqlCipher({
@@ -172,7 +173,14 @@ export function createSqlCipherTaskProvider({
   if (typeof resolveKey !== "function" || typeof checkOwner !== "function")
     throw unavailable();
   const guard = () => {
-    if (checkOwner() !== undefined) throw unavailable();
+    let result;
+    try {
+      result = checkOwner();
+    } catch (cause) {
+      // Keep host diagnostics as a cause behind the storage refusal.
+      throw unavailable(cause);
+    }
+    if (result !== undefined) throw unavailable();
   };
   const native = loadTaskSqlCipher({
     libraryPath,

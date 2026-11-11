@@ -1,4 +1,4 @@
-/** Regression tests for counterexamples found by tla/RuntimeLifecycle.tla. */
+/** Regression tests for counterexamples found by quint/RuntimeLifecycle.qnt. */
 import { expect, it } from "vitest";
 import { AgentRuntime } from "../src/runtime";
 import type { Plugin } from "../src/types/plugin";
@@ -8,7 +8,7 @@ import { createInitializedRuntime } from "./initialized-runtime";
 
 const ROOM = "00000000-0000-4000-8000-000000000001";
 
-// TLA+ NoStartOnFailedInit: a failed initialize() must not release eager starts.
+// Quint NoStartOnFailedInit: a failed initialize() must not release eager starts.
 it("does not start a plugin service when initialize() fails", async () => {
 	const started: string[] = [];
 	class EagerService extends Service {
@@ -42,7 +42,7 @@ it("does not start a plugin service when initialize() fails", async () => {
 	}
 });
 
-// TLA+ TurnsAbortedAfterStop: a turn that enters runWith after stop() is aborted.
+// Quint TurnsAbortedAfterStop: a turn that enters runWith after stop() is aborted.
 it("aborts a turn that was queued behind the room owner when stop() began", async () => {
 	const runtime = await createInitializedRuntime({
 		character: { name: "QueuedTurn", bio: [] },
@@ -68,7 +68,7 @@ it("aborts a turn that was queued behind the room owner when stop() began", asyn
 	await stopping;
 });
 
-// TLA+ StoppedNotReachable: after stop() no stopped instance is published.
+// Quint StoppedNotReachable: after stop() no stopped instance is published.
 it("does not return a stopped service from getService after stop()", async () => {
 	const runtime = await createInitializedRuntime({
 		character: { name: "StoppedService", bio: [] },

@@ -22,6 +22,7 @@ describe("Maps shared allowance", () => {
       ],
       target: "browser",
       format: "esm",
+      conditions: ["eliza-source"],
       plugins: [
         {
           name: "explicit-env-only",
@@ -51,6 +52,8 @@ describe("Maps shared allowance", () => {
             maps_test: { requests: 3, windowSeconds: 3600 },
             burst_test: { requests: 100, windowSeconds: 3600 },
             sustained_test: { requests: 100, windowSeconds: 3600 },
+            clock_burst: { requests: 100, windowSeconds: 3600 },
+            clock_sustained: { requests: 100, windowSeconds: 3600 },
           },
         }),
         ELIZA_CLOUD_PLAN_RATE_LIMITS: JSON.stringify({
@@ -68,11 +71,20 @@ describe("Maps shared allowance", () => {
               burst: { capacity: 100, refillPerSecond: 1 },
               sustained: { capacity: 1, refillPerSecond: 0.001 },
             },
+            clock_burst: {
+              burst: { capacity: 2, refillPerSecond: 1 },
+              sustained: { capacity: 10, refillPerSecond: 1 },
+            },
+            clock_sustained: {
+              burst: { capacity: 10, refillPerSecond: 1 },
+              sustained: { capacity: 2, refillPerSecond: 1 },
+            },
           },
         }),
       },
     };
     mf = new Miniflare(config);
+    await mf.ready;
   });
   afterAll(async () => {
     await mf?.dispose();
@@ -82,10 +94,15 @@ describe("Maps shared allowance", () => {
     path: string,
     body: Record<string, unknown>,
     gate: string,
+    now?: number,
   ) {
     return mf.dispatchFetch(`https://maps.test${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-test-gate": gate },
+      headers: {
+        "content-type": "application/json",
+        "x-test-gate": gate,
+        ...(now === undefined ? {} : { "x-test-clock-ms": String(now) }),
+      },
       body: JSON.stringify(body),
     });
   }
@@ -109,6 +126,85 @@ describe("Maps shared allowance", () => {
       },
     };
   }
+  test("Maps retains both refill boundaries through a clock rollback", async () => {
+    const now = Date.parse("2027-01-01T00:02:00Z");
+    for (const plan of ["clock_burst", "clock_sustained"]) {
+      const gate = `rollback-${plan}`;
+      expect(
+        (await post("/maps/admit", mapsRequest("first", plan), gate, now))
+          .status,
+      ).toBe(200);
+      expect(
+        (
+          await post(
+            "/maps/admit",
+            mapsRequest("backward", plan),
+            gate,
+            now - 5000,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (await post("/maps/admit", mapsRequest("same-time", plan), gate, now))
+          .status,
+      ).toBe(429);
+      expect(
+        (
+          await post(
+            "/maps/admit",
+            mapsRequest("new-time", plan),
+            gate,
+            now + 1000,
+          )
+        ).status,
+      ).toBe(200);
+    }
+  });
+  test("Maps retry delay includes the retained future refill boundary", async () => {
+    const now = Date.parse("2027-01-01T00:02:00Z");
+    for (const plan of ["clock_burst", "clock_sustained"]) {
+      const gate = `retry-${plan}`;
+      expect(
+        (await post("/maps/admit", mapsRequest("first", plan), gate, now))
+          .status,
+      ).toBe(200);
+      expect(
+        (await post("/maps/admit", mapsRequest("second", plan), gate, now))
+          .status,
+      ).toBe(200);
+      const refused = await post(
+        "/maps/admit",
+        mapsRequest("backward", plan),
+        gate,
+        now - 5000,
+      );
+      expect(refused.status).toBe(429);
+      expect(
+        ((await refused.json()) as { error: { retryAfterSeconds: number } })
+          .error.retryAfterSeconds,
+      ).toBe(6);
+      expect(
+        (
+          await post(
+            "/maps/admit",
+            mapsRequest("too-early", plan),
+            gate,
+            now + 999,
+          )
+        ).status,
+      ).toBe(429);
+      expect(
+        (
+          await post(
+            "/maps/admit",
+            mapsRequest("ready", plan),
+            gate,
+            now + 1000,
+          )
+        ).status,
+      ).toBe(200);
+    }
+  });
   test("Maps durable allowance is shared, atomic, separately counted, and never replays admission", async () => {
     const gate = "maps-atomic";
     const replies = await Promise.all(
@@ -169,6 +265,70 @@ describe("Maps shared allowance", () => {
     expect(JSON.parse(await missing.text()).error.code).toBe(
       "maps_allowance_unconfigured",
     );
+  });
+  test("Maps retains original receipts and first outcomes across allowance windows", async () => {
+    const gate = "maps-window-receipts";
+    const now = Date.parse("2027-01-01T00:02:00Z");
+    const later = now + 3_600_000;
+    const original = mapsRequest("original");
+    original.policy.effectiveUntil = new Date(now + 1000).toISOString();
+    expect((await post("/maps/admit", original, gate, now)).status).toBe(200);
+    expect(
+      (await post("/maps/admit", mapsRequest("new-window"), gate, later))
+        .status,
+    ).toBe(200);
+    expect(
+      (await post("/maps/admit", mapsRequest("original"), gate, later)).status,
+    ).toBe(409);
+    // Usage belongs to the original admission even after its policy expired.
+    expect(
+      (
+        await post(
+          "/maps/usage",
+          { ...original, outcome: "cancelled" },
+          gate,
+          later,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/maps/usage",
+          { ...original, outcome: "succeeded" },
+          gate,
+          later,
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      await (
+        await post(
+          "/test/read",
+          { key: "maps:usage:key:maps-key:original" },
+          gate,
+        )
+      ).json(),
+    ).toEqual({
+      operation: "search",
+      userId: "maps-user",
+      admittedAt: now,
+      windowStart: Math.floor(now / 3_600_000) * 3_600_000,
+      outcome: "cancelled",
+    });
+    const otherCredential = mapsRequest("original");
+    otherCredential.credential.credentialId = "maps-other-key";
+    expect(
+      (await post("/maps/admit", otherCredential, gate, later)).status,
+    ).toBe(200);
+    expect(
+      await (
+        await post("/test/read", { key: "maps:allowance:window" }, gate)
+      ).json(),
+    ).toMatchObject({
+      start: Math.floor(later / 3_600_000) * 3_600_000,
+      used: 2,
+    });
   });
   test("Maps refuses malformed policy, expired windows, and credential revocation before admission", async () => {
     const gate = "maps-revocation",
@@ -277,6 +437,31 @@ describe("Maps shared allowance", () => {
       (await post("/maps/admit", mapsRequest("corrupt"), "maps-corrupt"))
         .status,
     ).toBe(503);
+  });
+  test("Maps has its own limits when shared plan limits are off", async () => {
+    const gate = "maps-only-rate-policy";
+    await post(
+      "/test/config",
+      {
+        ELIZA_CLOUD_PLAN_RATE_LIMITS: "",
+        ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS: JSON.stringify({
+          selected: true,
+          plans: {
+            default: {
+              burst: { capacity: 1, refillPerSecond: 0.001 },
+              sustained: { capacity: 10, refillPerSecond: 1 },
+            },
+          },
+        }),
+      },
+      gate,
+    );
+    expect((await post("/maps/admit", mapsRequest("first"), gate)).status).toBe(
+      200,
+    );
+    expect(
+      (await post("/maps/admit", mapsRequest("second"), gate)).status,
+    ).toBe(429);
   });
   test("Maps requires selected burst and sustained configuration as well as an allowance", async () => {
     const absentOrUnselected = [

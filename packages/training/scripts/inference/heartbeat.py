@@ -44,6 +44,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from threading import Event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -265,7 +266,7 @@ def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None, *, stop_event: Event | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__.split("\n\n", 1)[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -281,7 +282,7 @@ def main() -> int:
                     help="Free-text label written into every emitted record.")
     ap.add_argument("--max-iterations", type=int, default=0,
                     help="Stop after N intervals (0 = run forever). Used by tests.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     out_path = Path(os.path.expanduser(args.out)).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -293,7 +294,7 @@ def main() -> int:
     log.info("heartbeat starting: url=%s out=%s interval=%.1fs label=%s",
              args.vllm_metrics_url, out_path, args.interval_seconds, args.label or "(none)")
 
-    while True:
+    while stop_event is None or not stop_event.is_set():
         loop_start = time.monotonic()
         ts = _now_iso()
         try:
@@ -348,7 +349,12 @@ def main() -> int:
             return 0
         elapsed = time.monotonic() - loop_start
         sleep_s = max(0.0, args.interval_seconds - elapsed)
-        time.sleep(sleep_s)
+        if stop_event is None:
+            time.sleep(sleep_s)
+        else:
+            stop_event.wait(sleep_s)
+
+    return 0
 
 
 if __name__ == "__main__":

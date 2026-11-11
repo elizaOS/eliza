@@ -4,9 +4,9 @@ import test from "node:test";
 test("guidance presents the next maneuver, the following step and the remaining trip", async () => {
   const { guidanceView, guidanceDistance, maneuverIcon, MANEUVER_ICONS } =
     await import("../src/client/guidance.ts");
-  assert.equal(guidanceDistance(42), "40 m");
-  assert.equal(guidanceDistance(437), "440 m");
-  assert.equal(guidanceDistance(1830), "1.8 km");
+  assert.equal(guidanceDistance(42, "en-GB"), "40 m");
+  assert.equal(guidanceDistance(437, "en-GB"), "440 m");
+  assert.equal(guidanceDistance(1830, "en-GB"), "1.8 km");
   assert.equal(maneuverIcon(undefined), MANEUVER_ICONS.continue);
   const step = (instruction, maneuver) => ({
     instruction,
@@ -30,6 +30,8 @@ test("guidance presents the next maneuver, the following step and the remaining 
       then: { index: 2, step: step("Turn right", "right") },
     },
     new Date(2026, 9, 8, 12, 0),
+    "none",
+    "en-GB",
   );
   assert.equal(view.icon, MANEUVER_ICONS.left);
   assert.equal(view.distance, "120 m");
@@ -38,7 +40,7 @@ test("guidance presents the next maneuver, the following step and the remaining 
   assert.equal(view.thenIcon, MANEUVER_ICONS.right);
   assert.equal(view.remainingTime, "3 min");
   assert.match(view.remaining, /^900 m · arrive .+ · no live traffic$/);
-  assert.equal(view.spoken, "Turn left onto Rue A");
+  assert.equal(view.spoken, "In 120 m, Turn left onto Rue A");
   const near = guidanceView({
     offRouteMeters: 1,
     alongMeters: 0,
@@ -299,4 +301,21 @@ test("an instruction that changes while native navigation is starting is sent on
     [["update", "Turn left"]],
   );
   await session.stop();
+});
+
+test("guidance respects the distance locale and does not deny live traffic", async () => {
+  const { guidanceDistance, guidanceView } = await import(
+    "../src/client/guidance.ts"
+  );
+  assert.equal(guidanceDistance(1609.344, "en-US"), "1.0 mi");
+  assert.equal(guidanceDistance(30.48, "en-US"), "100 ft");
+  assert.equal(guidanceDistance(1609.344, "fr-FR"), "1.6 km");
+  const result = guidanceView(
+    { remainingMeters: 1609.344, remainingSeconds: 60 },
+    new Date(),
+    "live",
+    "en-US",
+  );
+  assert.match(result.remaining, /^1.0 mi/);
+  assert.doesNotMatch(result.remaining, /no live traffic/);
 });

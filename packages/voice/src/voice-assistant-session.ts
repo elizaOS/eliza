@@ -37,12 +37,33 @@
  * The tentative and ignored segment paths below (`bargeInConfirmMs`, `fullDuplex`) only act on a
  * capture that is open while a reply is pending or playing, which the hold never leaves.
  *
+ * Open microphone (`openMic` option, used only over a capture that reports `fullDuplex`): there
+ * is no busy hold. The capture stays open through the request and the reply, so:
+ *
+ *  - Speculative turns. The host sets short gaps and a turn is sent at the first pause. Speech
+ *    that resumes before any reply audio is audible (held for `bargeInConfirmMs`, or a segment
+ *    whose transcript passes the gate) aborts that request and carries its text into the
+ *    utterance in progress: the next submission sends the joined text and names the aborted turn
+ *    in `supersedes`. Nothing from the aborted request is spoken.
+ *  - Barge-in. Speech during playback interrupts once its transcript passes the gate, or earlier
+ *    when it is held for `playbackBargeInMs` (0 leaves the transcript gate alone). The reply is
+ *    aborted, what was heard is reported, and the speech already captured becomes the next turn.
+ *
+ * A capture without `fullDuplex` keeps the busy hold even when `openMic` is set.
+ *
  * Heard content: interrupting aborts the reply (the request and playback are cancelled through the
  * port's AbortSignal). Replies are played one sentence at a time; only sentences whose playback
  * completed count as heard. The sentence playing when the user interrupted is reported as
  * unheard: playback reports completion per utterance, not a position, so a partial sentence is
  * never claimed as spoken. `onHeard` reports the heard/unheard split for the host to keep in
  * conversation state.
+ *
+ * Streamed replies: a transport may pass the reply text as it streams (`send`'s `onText`). A
+ * sentence is spoken before the reply is confirmed only when its frame is confirmed model text (not
+ * provisional) and the transport has proven the reply is a plain direct reply (`direct`: no
+ * proposal or owner-input pause can follow). Anything else holds early speech: a provisional or
+ * rewritten frame ends it for the turn. The confirmed reply then plays from the first sentence that
+ * was not already spoken identically, so a confirmed sentence is never dropped.
  *
  * Side effects: an automatic voice submission is never approval. A reply that carries action
  * proposals ends the voice session (the host shows the review); an owner-input pause waits for
@@ -125,12 +146,30 @@ export interface EndpointRecord {
   /** The end-of-turn stage whose answer this records, when the port named one. */
   path?: "local" | "clef";
 }
+/** Wire metadata for one streamed text frame (`send`'s `onText`). */
+export interface AssistantTextFrame {
+  /** Where the text came from; only `"model"` text (or no origin) extends the final reply. */
+  origin?: "model" | "model_draft" | "action_callback";
+  /** The wire marks this text provisional (a draft or action status the final reply may replace). */
+  provisional?: boolean;
+  /**
+   * The transport has established that this turn's reply is a plain direct reply: no action
+   * proposal, owner-input pause or action outcome can follow. Without it streamed text is held
+   * until the reply is confirmed.
+   */
+  direct?: boolean;
+}
 export interface AssistantHeard {
+  /** The turn's id, which is also the reply's `requestId`. */
   turnId: string;
+  /**
+   * The confirmed assistant message, or '' when the user interrupted streamed speech before the
+   * reply was confirmed: the host then finds the reply by `turnId` (its request id).
+   */
   replyId: string;
-  /** Sentences whose playback completed, in order. */
+  /** The contiguous prefix whose playback completed, in order. */
   heard: string;
-  /** Everything not played to the end, including the sentence that was interrupted. */
+  /** The remainder of the plan after the confirmed prefix. */
   unheard: string;
   interrupted: boolean;
   /**
@@ -138,6 +177,8 @@ export interface AssistantHeard {
    * interrupt it. A reporter must not empty the stored reply for a failure.
    */
   playbackFailed?: boolean;
+  /** The reply stream failed after early speech began; playback itself did not fail. */
+  replyFailed?: boolean;
 }
 export interface AssistantCapture {
   /**
@@ -183,15 +224,26 @@ export interface AssistantPorts {
       recentAgentReply: string;
       replyAgeMs: number;
       agentSpeaking: boolean;
+      /** Segment speech start minus the last reply's playback end; omitted when either is unknown. */
+      turnStartedAfterReplyEndMs?: number;
+      echoCancelled: boolean;
     },
   ): boolean;
   /** Turn signal metadata for the agent (upstream buildVoiceTurnSignal). */
   turnSignal?(text: string): unknown;
+  /**
+   * `onText`, when the transport streams, receives the reply text accumulated so far with that
+   * frame's wire metadata. Sentences it completes are spoken at once only from confirmed frames of
+   * a reply proven direct (see AssistantTextFrame); the confirmed reply then supplies the rest.
+   */
   send(input: {
     turnId: string;
     text: string;
     voiceTurnSignal: unknown;
     signal: AbortSignal;
+    onText?: (text: string, frame?: AssistantTextFrame) => void;
+    /** The turn this one replaces: sent at a pause, then aborted unheard when speech resumed. */
+    supersedes?: string;
   }): Promise<AssistantReply>;
   /** Text the speaker can say ('' to stay silent). */
   speakable?(text: string): string;
@@ -209,7 +261,7 @@ export interface AssistantPorts {
   onLevel?(peak: number): void;
   /** Diagnostics hooks: numbers, enums and ids only. `submitted` carries how the turn was endpointed. */
   onTurn?(
-    event: "submitted" | "first-audio" | "finished" | "interrupted",
+    event: "submitted" | "first-audio" | "finished" | "interrupted" | "resumed",
     turnId: string,
     detail?: { endpoint: EndpointRecord },
   ): void;
@@ -220,6 +272,11 @@ export interface AssistantTiming {
   endpointDeadlineMs: number;
   /** Speech held this long while a request is pending (before playback) interrupts it before its transcript. */
   bargeInConfirmMs: number;
+  /**
+   * Open microphone only: speech held this long while the reply plays interrupts it before its
+   * transcript. 0 (the default) leaves playback interruption to the transcript gate.
+   */
+  playbackBargeInMs: number;
 }
 /**
  * Engineering defaults, not accepted measurements or product-set constants. Gaps follow the VAD
@@ -234,6 +291,7 @@ export const ASSISTANT_TIMING_DEFAULTS: AssistantTiming = Object.freeze({
   longGapMs: 1200,
   endpointDeadlineMs: 600,
   bargeInConfirmMs: 700,
+  playbackBargeInMs: 0,
 });
 export interface AssistantClock {
   now(): number;
@@ -258,6 +316,16 @@ export class VoiceAssistantError extends Error {
   }
 }
 const stopped = () => new DOMException("Voice assistant stopped", "AbortError");
+/** A controller that also aborts (with the same reason) when `parent` aborts. */
+const linkedController = (parent: AbortSignal) => {
+  const controller = new AbortController();
+  if (parent.aborted) controller.abort(parent.reason);
+  else
+    parent.addEventListener("abort", () => controller.abort(parent.reason), {
+      once: true,
+    });
+  return controller;
+};
 const unconfirmedClose = () =>
   new VoiceAssistantError(
     "capture",
@@ -299,6 +367,8 @@ type Segment = {
   closed: boolean;
   done: boolean;
   text: string;
+  /** When the segment's speech started, on the session clock. */
+  startedAt?: number;
   /** Started while a reply was pending or playing: interrupts only once confirmed. */
   tentative?: Response;
   /** Started during playback over a capture without echo cancellation: never a turn. */
@@ -306,6 +376,12 @@ type Segment = {
 };
 type Response = {
   turnId: string;
+  /** The utterance this turn was sent with. */
+  text: string;
+  /** The taken-back turn this one replaces. */
+  supersedes?: string;
+  /** `send` was called for this turn. */
+  sent?: boolean;
   controller: AbortController;
   replyId?: string;
   sentences: string[];
@@ -351,13 +427,30 @@ export class VoiceAssistantSession {
   private state: AssistantState = { phase: "idle" };
   private mutedValue = false;
   private hold?: Hold;
+  private readonly openMic: boolean;
+  private readonly pipelineSpeech: boolean;
+  /** The aborted speculative turn whose text the utterance in progress carries. */
+  private superseded?: string;
 
   private readonly ports: AssistantPorts;
   constructor(
     ports: AssistantPorts,
-    options: { timing?: Partial<AssistantTiming>; clock?: AssistantClock } = {},
+    options: {
+      timing?: Partial<AssistantTiming>;
+      clock?: AssistantClock;
+      /** Keep the capture open through the reply (speculative turns and barge-in); needs `fullDuplex`. */
+      openMic?: boolean;
+      /**
+       * Hand the next sentence to `speak` as soon as the current one is audible, so the host can
+       * synthesize it during playback. The host must then play sentences in the order given and
+       * settle each call when that sentence's playback ended.
+       */
+      pipelineSpeech?: boolean;
+    } = {},
   ) {
     this.ports = ports;
+    this.openMic = options.openMic === true;
+    this.pipelineSpeech = options.pipelineSpeech === true;
     const timing = { ...ASSISTANT_TIMING_DEFAULTS, ...options.timing };
     for (const value of Object.values(timing))
       if (!Number.isFinite(value) || value < 0)
@@ -466,6 +559,7 @@ export class VoiceAssistantSession {
     }
     this.awaiting = undefined;
     this.segments = [];
+    this.superseded = undefined;
     const capture = this.capture,
       opening = this.opening;
     this.capture = undefined;
@@ -642,8 +736,11 @@ export class VoiceAssistantSession {
       .then(
         (capture) => {
           if (this.opening !== pending || !this.current(session)) {
-            void Promise.resolve(capture.cancel()).catch(() => {});
-            return undefined;
+            // Stop joins this opening receipt, including retirement of a late capture.
+            return Promise.resolve(capture.cancel()).then(
+              () => undefined,
+              () => undefined,
+            );
           }
           this.opening = undefined;
           // Muted or held while the microphone was opening: it never stays on.
@@ -703,7 +800,7 @@ export class VoiceAssistantSession {
     this.shortTimer = this.longTimer = undefined;
   }
 
-  private speechStarted(_at: number) {
+  private speechStarted(at: number) {
     // Speech always wins over a racing timer or endpoint decision.
     ++this.utteranceEpoch;
     this.clearTimers();
@@ -736,33 +833,61 @@ export class VoiceAssistantSession {
       closed: false,
       done: false,
       text: "",
+      ...(Number.isFinite(at)
+        ? { startedAt: Math.min(at, this.clock.now()) }
+        : {}),
       ...(response ? { tentative: response } : {}),
     };
     this.segments.push(segment);
-    if (response && !response.started) {
+    if (response) {
       const session = this.session;
       // Held speech interrupts a pending request before its transcript; a blip closes first and waits
-      // for the gate. While the reply plays only the transcript gate confirms: residual echo of a
-      // sentence can hold the VAD open longer than any fixed hold.
-      this.clock.setTimer(() => {
-        if (
-          this.current(session) &&
-          !segment.closed &&
-          segment.tentative === response &&
-          !response.started
-        )
-          this.confirmBargeIn(segment);
-      }, this.timing.bargeInConfirmMs);
+      // for the gate. While the reply plays the transcript gate confirms (residual echo of a sentence
+      // can hold the VAD open), unless the host set a hold for an echo-cancelled open microphone.
+      // Speech that began before the first audio and is still held once the reply plays starts the
+      // playback hold then, so it interrupts like speech that began during playback.
+      const arm = () => {
+        const playing = response.started;
+        const hold = playing
+          ? this.timing.playbackBargeInMs
+          : this.timing.bargeInConfirmMs;
+        if (playing && hold <= 0) return;
+        this.clock.setTimer(() => {
+          if (
+            !this.current(session) ||
+            segment.closed ||
+            segment.tentative !== response
+          )
+            return;
+          if (response.started === playing) this.confirmBargeIn(segment);
+          else arm();
+        }, hold);
+      };
+      arm();
       return;
     }
-    if (response) return;
     this.publish(this.listeningState());
   }
 
   private confirmBargeIn(segment: Segment) {
     const response = segment.tentative;
     delete segment.tentative;
-    if (response && this.response === response) this.interrupt();
+    if (response && this.response === response) {
+      // A speculative turn nobody heard: its text rejoins the utterance the user is still speaking.
+      const resumed = this.openMic && !response.started;
+      this.interrupt();
+      if (resumed) {
+        this.segments.unshift({
+          closed: true,
+          done: true,
+          text: response.text,
+        });
+        // Only a turn the host received can be replaced: one taken back while it still waited for
+        // the request before it passes on the turn that one replaced.
+        this.superseded = response.sent ? response.turnId : response.supersedes;
+        this.ports.onTurn?.("resumed", response.turnId);
+      }
+    }
     this.publish(this.listeningState());
   }
 
@@ -786,12 +911,22 @@ export class VoiceAssistantSession {
       !segment.ignored && typeof text === "string" ? text.trim() : "";
     if (value) {
       const playing = this.response?.started ? this.response : undefined;
+      const startedAfterReply =
+        !playing &&
+        segment.startedAt !== undefined &&
+        Number.isFinite(this.lastSpoken.at)
+          ? segment.startedAt - this.lastSpoken.at
+          : undefined;
       const context = {
         recentAgentReply: playing ? audible(playing) : this.lastSpoken.text,
         replyAgeMs: playing
           ? 0
           : Math.max(0, this.clock.now() - this.lastSpoken.at),
         agentSpeaking: !!playing,
+        ...(startedAfterReply !== undefined
+          ? { turnStartedAfterReplyEndMs: startedAfterReply }
+          : {}),
+        echoCancelled: this.capture?.fullDuplex === true,
       };
       if (!this.ports.shouldRespond || this.ports.shouldRespond(value, context))
         segment.text = value;
@@ -927,16 +1062,55 @@ export class VoiceAssistantSession {
     this.endpointOutcome = undefined;
     this.segments = [];
     ++this.utteranceEpoch;
+    const supersedes = this.superseded;
+    this.superseded = undefined;
     if (!text) return;
     const turn = ++this.turn;
     const response: Response = {
       turnId: randomId(),
+      text,
+      ...(supersedes ? { supersedes } : {}),
       controller: new AbortController(),
       sentences: [],
       played: 0,
       started: false,
     };
     this.response = response;
+    if (this.openMic && this.capture?.fullDuplex === true) {
+      // Open microphone: no hold. The capture keeps listening for resumed speech and barge-in.
+      this.publish({ phase: "thinking", transcript: text });
+      this.ports.onTurn?.("submitted", response.turnId, { endpoint });
+      const run = this.respond(
+        session,
+        turn,
+        response,
+        text,
+        this.inflight,
+        Promise.resolve(),
+        supersedes,
+      );
+      this.inflight = run.catch(() => {});
+      return;
+    }
+    const closed = this.holdInput(response);
+    closed.catch(() => {});
+    this.publish({ phase: "thinking", transcript: text });
+    this.ports.onTurn?.("submitted", response.turnId, { endpoint });
+    const previous = this.inflight;
+    const run = this.respond(
+      session,
+      turn,
+      response,
+      text,
+      previous,
+      closed,
+      supersedes,
+    );
+    this.inflight = run.catch(() => {});
+  }
+
+  /** Holds input closed through a response or an owner-input pause. */
+  private holdInput(response: Response): Promise<void> {
     // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
     // still in flight; a capture still opening is closed by open() as it arrives.
     const capture = this.capture,
@@ -949,22 +1123,49 @@ export class VoiceAssistantSession {
     this.hold = hold;
     this.capture = undefined;
     if (capture) hold.closes.push(this.closeCapture(capture));
-    this.publish({ phase: "thinking", transcript: text });
-    // The input-close barrier `respond` waits on before sending: a close that rejects or never
-    // settles keeps `inputHeld` off, and nothing is sent, acknowledged or played.
+    // Only confirmed closure publishes inputHeld; a failed close ends the conversation.
     const closed = (async () => {
       await opening?.catch(() => {});
-      await Promise.all(hold.closes);
+      await Promise.all(hold.closes).catch(() => {
+        throw unconfirmedClose();
+      });
       if (this.hold === hold) {
         hold.closed = true;
         this.republish();
       }
     })();
-    closed.catch(() => {});
-    this.ports.onTurn?.("submitted", response.turnId, { endpoint });
-    const previous = this.inflight;
-    const run = this.respond(session, turn, response, text, previous, closed);
-    this.inflight = run.catch(() => {});
+    return closed;
+  }
+
+  /** Extends the heard prefix only when the next sentence completes. */
+  private async playSentence(
+    session: number,
+    turn: number,
+    response: Response,
+    index: number,
+    signal: AbortSignal,
+    guard: () => void,
+    audible?: () => void,
+  ) {
+    guard();
+    const playback = this.ports.speak({
+      turnId: response.turnId,
+      replyId: response.replyId ?? "",
+      text: response.sentences[index] as string,
+      signal,
+      onStarted: () => {
+        audible?.();
+        if (!this.owned(session, turn, response) || response.started) return;
+        response.started = true;
+        this.ports.onTurn?.("first-audio", response.turnId);
+        this.publish({ phase: "speaking", replyId: response.replyId ?? "" });
+      },
+    });
+    this.speech.add(playback);
+    void playback.catch(() => {}).finally(() => this.speech.delete(playback));
+    await playback;
+    guard();
+    if (index === response.played) response.played++;
   }
 
   private owned(session: number, turn: number, response: Response) {
@@ -983,11 +1184,19 @@ export class VoiceAssistantSession {
     text: string,
     previous: Promise<unknown>,
     closed: Promise<void>,
+    supersedes?: string,
   ) {
     const guard = () => {
       if (!this.owned(session, turn, response)) throw stopped();
-      this.ports.assertCurrent();
+      try {
+        this.ports.assertCurrent();
+      } catch (error) {
+        // A changed binding stops quietly, as recheck() does; it is not a failed turn.
+        void this.stop();
+        throw error;
+      }
     };
+    let playbackFailed = false;
     try {
       // One request at a time: an interrupted request settles before the next turn is sent.
       await previous;
@@ -1003,11 +1212,146 @@ export class VoiceAssistantSession {
         closed.then(resolve, () => reject(unconfirmedClose()));
       });
       guard();
+      const speakable = (value: string) =>
+        this.ports.speakable ? this.ports.speakable(value) : value;
+      // The plan supplies the heard/unheard accounting. `begun` is the prefix already handed to
+      // the speaker, including any queued sentence. Only the rest may be withdrawn here.
+      const plan: string[] = [];
+      response.sentences = plan;
+      let begun = 0;
+      let failure: { error: unknown } | undefined;
+      let pumping: Promise<void> = Promise.resolve();
+      let running = false;
+      // Playback of this reply's sentences; aborted with the response, or alone when a pause
+      // withdraws streamed speech.
+      let voice = linkedController(response.controller.signal);
+      // Wakes a pump that is only waiting for playback: more sentences were planned meanwhile.
+      let more: (() => void) | undefined;
+      const pump = () => {
+        if (running) {
+          more?.();
+          return;
+        }
+        if (failure) return;
+        running = true;
+        const signal = voice.signal;
+        pumping = (async () => {
+          try {
+            // Pipelined: the sentence after the audible one is already with the speaker. Its
+            // playback cannot start before the previous one ended, so two are in flight at most.
+            const pending: Promise<void>[] = [];
+            let pipelineFailure: { error: unknown } | undefined;
+            let wakeFailure!: () => void;
+            const failureWake = this.pipelineSpeech
+              ? new Promise<void>((resolve) => {
+                  wakeFailure = resolve;
+                })
+              : undefined;
+            for (;;) {
+              while (!pipelineFailure && begun < plan.length) {
+                const index = begun++;
+                let audible!: () => void;
+                const started = new Promise<void>((resolve) => {
+                  audible = resolve;
+                });
+                const playback = this.playSentence(
+                  session,
+                  turn,
+                  response,
+                  index,
+                  signal,
+                  guard,
+                  audible,
+                );
+                if (!failureWake) {
+                  await playback;
+                  continue;
+                }
+                pending.push(playback);
+                void playback.catch((error: unknown) => {
+                  // An earlier sentence can fail while its successor waits to start. Intentional
+                  // cancellation still lets the current playback settle through its normal port.
+                  if (signal.aborted) return;
+                  pipelineFailure ??= { error };
+                  wakeFailure();
+                });
+                await Promise.race([started, playback, failureWake]);
+              }
+              if (pipelineFailure) throw pipelineFailure.error;
+              if (!pending.length) {
+                // One sentence at a time: nothing is in flight once the loop above is done.
+                await Promise.all(pending);
+                if (begun >= plan.length) break;
+                continue;
+              }
+              // Sentences planned while the handed-over ones play (a later stream frame, or the
+              // confirmed reply) are handed over at once, not dropped with the settled pump.
+              const planned = new Promise<"more">((resolve) => {
+                more = () => resolve("more");
+              });
+              const settled = await Promise.race([
+                Promise.all(pending).then(() => "played" as const),
+                planned,
+              ]);
+              more = undefined;
+              if (settled === "played" && begun >= plan.length) break;
+            }
+          } catch (error) {
+            playbackFailed = true;
+            failure ??= { error };
+          } finally {
+            running = false;
+          }
+        })();
+      };
+      // Early speech: while the stream is confirmed text of a reply proven direct, each sentence it
+      // completes is spoken at once, one at a time, so the first plays while the rest is generated.
+      let early = true;
+      const endEarly = () => {
+        early = false;
+        plan.length = begun; // The confirmed reply supplies the unhanded suffix.
+      };
+      const onText = (partial: string, frame?: AssistantTextFrame) => {
+        if (
+          !early ||
+          !this.owned(session, turn, response) ||
+          typeof partial !== "string"
+        )
+          return;
+        // Provisional text (a Stage-1 draft or an action status) is never spoken, and after it the
+        // stream is no longer trusted for this turn: the confirmed reply decides.
+        if (
+          frame?.provisional === true ||
+          (frame?.origin !== undefined && frame.origin !== "model")
+        ) {
+          endEarly();
+          return;
+        }
+        // Not yet proven a plain direct reply (it may still pause or carry a proposal): hold.
+        if (frame?.direct !== true) return;
+        const parts = splitSpokenSentences(speakable(partial));
+        // The last piece may still be growing; only the ones before it are complete.
+        const complete = parts.length - 1;
+        // A rewrite of what was already planned ends early speech.
+        if (
+          plan.length > Math.max(complete, 0) ||
+          !plan.every((part, index) => part === parts[index])
+        ) {
+          endEarly();
+          return;
+        }
+        if (plan.length >= complete) return;
+        plan.push(...parts.slice(plan.length, complete));
+        pump();
+      };
+      response.sent = true;
       let reply = await this.ports.send({
         turnId: response.turnId,
         text,
         voiceTurnSignal: this.ports.turnSignal?.(text),
         signal: response.controller.signal,
+        onText,
+        ...(supersedes ? { supersedes } : {}),
       });
       guard();
       if (
@@ -1047,6 +1391,29 @@ export class VoiceAssistantSession {
           userMessageId: reply.userMessageId,
           assistantMessageId: pausedReply,
         };
+        // A paused reply is never spoken: stop streamed speech now. The resumed reply is another
+        // message, so it is spoken in full and accounted on its own.
+        endEarly();
+        if (begun) {
+          const prior = failure;
+          voice.abort(stopped());
+          await pumping;
+          if (prior) throw prior.error;
+          guard();
+          voice = linkedController(response.controller.signal);
+          failure = undefined;
+          playbackFailed = false;
+          plan.length = begun = response.played = 0;
+          response.started = false;
+        }
+        // Open-microphone replies enter the same hold before owner review. Final segments from
+        // its closing capture wait for the resumed reply instead of superseding the paused turn.
+        if (!this.hold) {
+          for (const segment of this.segments)
+            if (segment.tentative === response) delete segment.tentative;
+          await this.holdInput(response);
+          guard();
+        }
         // The busy hold keeps input closed while the owner reviews and until the resumed reply played.
         reply = await new Promise<AssistantReply>((resolve, reject) => {
           this.awaiting = { pause, resolve, resolved: false };
@@ -1072,39 +1439,20 @@ export class VoiceAssistantSession {
           "The voice reply was not confirmed for this turn.",
         );
       response.replyId = reply.assistantMessageId;
-      const spoken = this.ports.speakable
-        ? this.ports.speakable(reply.text)
-        : reply.text;
-      response.sentences = splitSpokenSentences(spoken);
+      endEarly();
+      const final = splitSpokenSentences(speakable(reply.text));
+      // Streamed sentences already handed to the speaker are skipped only while they match the confirmed
+      // reply sentence for sentence; from the first one that does not, the confirmed reply plays.
+      let same = 0;
+      while (same < begun && plan[same] === final[same]) same++;
+      plan.push(...final.slice(same));
+      pump();
+      await pumping;
+      if (failure) throw failure.error;
+      guard();
       if (!response.sentences.length) {
         this.finishResponse(response);
         return;
-      }
-      for (const sentence of response.sentences) {
-        guard();
-        const playback = this.ports.speak({
-          turnId: response.turnId,
-          replyId: reply.assistantMessageId,
-          text: sentence,
-          signal: response.controller.signal,
-          onStarted: () => {
-            if (!this.owned(session, turn, response) || response.started)
-              return;
-            response.started = true;
-            this.ports.onTurn?.("first-audio", response.turnId);
-            this.publish({
-              phase: "speaking",
-              replyId: reply.assistantMessageId,
-            });
-          },
-        });
-        this.speech.add(playback);
-        void playback
-          .catch(() => {})
-          .finally(() => this.speech.delete(playback));
-        await playback;
-        guard();
-        response.played++;
       }
       this.lastSpoken = {
         text: response.sentences.join(" "),
@@ -1120,9 +1468,13 @@ export class VoiceAssistantSession {
       this.finishResponse(response);
     } catch (error) {
       if (!this.owned(session, turn, response)) return; // Interrupted or stopped: already accounted.
-      if ((error as { name?: unknown })?.name === "AbortError") return;
-      if (response.replyId) this.reportInterrupted(response, true);
+      // A reply that failed after streamed speech started still reports what
+      // was heard; before confirmation the host finds it by turnId.
+      if (response.replyId || response.started)
+        this.reportInterrupted(response, playbackFailed ? "playback" : "reply");
       this.response = undefined;
+      // Streamed speech may still be playing: the failed turn stops it now.
+      response.controller.abort(stopped());
       await this.fail(session, error);
     }
   }
@@ -1181,17 +1533,22 @@ export class VoiceAssistantSession {
       );
   }
 
-  private reportInterrupted(response: Response, playbackFailed = false) {
-    if (!response.replyId) return;
+  private reportInterrupted(
+    response: Response,
+    failure?: "playback" | "reply",
+  ) {
+    // Before confirmation only streamed speech can have played: it is reported once it started.
+    if (!response.replyId && !response.started) return;
     const heard = response.sentences.slice(0, response.played).join(" ");
     const unheard = response.sentences.slice(response.played).join(" ");
     this.ports.onHeard?.({
       turnId: response.turnId,
-      replyId: response.replyId,
+      replyId: response.replyId ?? "",
       heard,
       unheard,
       interrupted: true,
-      ...(playbackFailed ? { playbackFailed: true } : {}),
+      ...(failure === "playback" ? { playbackFailed: true } : {}),
+      ...(failure === "reply" ? { replyFailed: true } : {}),
     });
   }
 

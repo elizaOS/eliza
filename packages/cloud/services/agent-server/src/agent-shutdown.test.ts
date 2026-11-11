@@ -25,7 +25,7 @@ describe("agent-server shutdown deadline", () => {
           calls.push("failed");
         },
       },
-      Date.now() + 1000,
+      performance.now() + 1000,
     );
     expect(failed).toBe(false);
     expect(calls).toEqual(["drain", "cleanup", "quit"]);
@@ -52,7 +52,7 @@ describe("agent-server shutdown deadline", () => {
             failures.push(error);
           },
         },
-        Date.now() + 20,
+        performance.now() + 20,
       );
       expect(failed).toBe(true);
       expect(calls.at(-1)).toBe("disconnect");
@@ -88,7 +88,7 @@ describe("agent-server shutdown deadline", () => {
         },
         onFailure: () => {},
       },
-      Date.now() - 1,
+      performance.now() - 1,
     );
     expect(failed).toBe(true);
     expect(calls).toEqual(["disconnect"]);
@@ -96,7 +96,7 @@ describe("agent-server shutdown deadline", () => {
 
   test("time consumed by drain is not granted again to cleanup", async () => {
     let clock = 1000;
-    const now = spyOn(Date, "now").mockImplementation(() => clock);
+    const now = spyOn(performance, "now").mockImplementation(() => clock);
     const calls: string[] = [];
     try {
       const failed = await shutdownBeforeDeadline(
@@ -147,7 +147,7 @@ describe("agent-server shutdown deadline", () => {
           calls.push(`failed:${phase}`);
         },
       },
-      Date.now() + 1000,
+      performance.now() + 1000,
     );
     expect(failed).toBe(true);
     expect(calls).toEqual([
@@ -158,5 +158,48 @@ describe("agent-server shutdown deadline", () => {
       "failed:quit",
       "disconnect",
     ]);
+  });
+
+  test("a wall-clock rollback cannot extend the elapsed shutdown deadline", async () => {
+    let wallClock = 1000;
+    let elapsed = 1000;
+    const wallNow = spyOn(Date, "now").mockImplementation(() => wallClock);
+    const elapsedNow = spyOn(performance, "now").mockImplementation(
+      () => elapsed,
+    );
+    const calls: string[] = [];
+    const failures: unknown[] = [];
+    try {
+      const failed = await shutdownBeforeDeadline(
+        {
+          drain: async () => {
+            calls.push("drain");
+            wallClock = -10_000;
+            elapsed = 2000;
+          },
+          cleanup: async () => {
+            calls.push("cleanup");
+          },
+          quit: async () => {
+            calls.push("quit");
+          },
+          disconnect: () => {
+            calls.push("disconnect");
+          },
+          onFailure: (_phase, error) => {
+            failures.push(error);
+          },
+        },
+        2000,
+      );
+      expect(failed).toBe(true);
+      expect(calls).toEqual(["drain", "disconnect"]);
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toBeInstanceOf(AgentShutdownTimeoutError);
+      expect((failures[0] as AgentShutdownTimeoutError).phase).toBe("cleanup");
+    } finally {
+      elapsedNow.mockRestore();
+      wallNow.mockRestore();
+    }
   });
 });

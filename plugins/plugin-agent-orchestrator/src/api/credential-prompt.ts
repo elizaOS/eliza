@@ -11,7 +11,10 @@
  *
  * Kept decoupled from the route layer: it only needs the runtime's optional
  * `sendMessageToTarget` and the origin keys the orchestrator stamps on
- * `session.metadata` at spawn time (`roomId`, `source`).
+ * `session.metadata` at spawn time. `metadata.roomId` is the minted task room,
+ * which no connector channel maps to, so the user's room comes from
+ * `resolveOriginRoomId` (`originRoomId` first, raw `roomId` for sessions
+ * without task rooms).
  */
 
 import type {
@@ -25,6 +28,7 @@ import {
   MESSAGE_SOURCE_SUB_AGENT,
   requireConfirmedSendHandlerDelivery,
 } from "@elizaos/core";
+import { resolveOriginRoomId } from "../services/session-room-binding.js";
 
 type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
@@ -43,15 +47,62 @@ const DEFAULT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 function readOrigin(
   metadata: Record<string, unknown> | undefined,
 ): CredentialPromptOrigin | null {
-  if (!metadata) return null;
-  const roomId =
-    typeof metadata.roomId === "string" ? (metadata.roomId as UUID) : undefined;
-  if (!roomId) return null;
+  const roomId = resolveOriginRoomId(metadata);
+  if (!metadata || !roomId) return null;
   const source =
     typeof metadata.source === "string" && metadata.source
       ? metadata.source
       : DEFAULT_SOURCE;
   return { roomId, source };
+}
+
+function readTrimmed(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Origin handed to the credential tunnel (`requestCredentials.origin`). The
+ * room is the user's origin room, not the minted task room. `channelId` is a
+ * platform chat id for DM adapters, so it is the origin room's own channel —
+ * `metadata.channelId` only when the session has no separate task room — and
+ * stays unset rather than falling back to a room UUID.
+ */
+export async function resolveCredentialOrigin(
+  runtime: IAgentRuntime,
+  metadata: Record<string, unknown> | undefined,
+): Promise<
+  | {
+      roomId?: string;
+      channelId?: string;
+      source?: string;
+      ownerEntityId?: string;
+    }
+  | undefined
+> {
+  if (!metadata) return undefined;
+  const roomId = resolveOriginRoomId(metadata);
+  let channelId: string | undefined;
+  if (roomId) {
+    try {
+      channelId = readTrimmed((await runtime.getRoom(roomId))?.channelId);
+    } catch (error) {
+      // error-policy:J4 room lookup unavailable → no channelId; the tunnel
+      // still routes by roomId/source/owner.
+      logger.warn(
+        `[credential-prompt] origin room lookup failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    if (!channelId && roomId === readTrimmed(metadata.roomId)) {
+      channelId = readTrimmed(metadata.channelId);
+    }
+  }
+  const source = readTrimmed(metadata.source);
+  const ownerEntityId =
+    readTrimmed(metadata.userId) ?? readTrimmed(metadata.ownerEntityId);
+  if (!roomId && !channelId && !source && !ownerEntityId) return undefined;
+  return { roomId, channelId, source, ownerEntityId };
 }
 
 /** Build the dashboard credentials link when an app base URL is configured. */

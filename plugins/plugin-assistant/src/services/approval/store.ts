@@ -1176,6 +1176,20 @@ export class PgApprovalQueue implements ApprovalQueue {
     if (filter.excludeAction != null) {
       where.push(`action <> ${sqlText(filter.excludeAction)}`);
     }
+    if (filter.states) {
+      where.push(
+        filter.states.length
+          ? `state IN (${filter.states.map(sqlText).join(", ")})`
+          : "FALSE",
+      );
+    }
+    if (filter.operationTypes) {
+      where.push(
+        filter.operationTypes.length
+          ? `payload->'operation'->>'type' IN (${filter.operationTypes.map(sqlText).join(", ")})`
+          : "FALSE",
+      );
+    }
     const limitClause =
       typeof filter.limit === "number"
         ? `LIMIT ${sqlInteger(filter.limit)}`
@@ -1185,7 +1199,16 @@ export class PgApprovalQueue implements ApprovalQueue {
       ORDER BY created_at DESC, id DESC
       ${limitClause}`;
     const rows = await executeRawSql(this.runtime, sql);
-    return rows.map(rowToRequest);
+    const { onInvalidRow } = filter;
+    if (!onInvalidRow) return rows.map(rowToRequest);
+    return rows.flatMap((row) => {
+      try {
+        return [rowToRequest(row)];
+      } catch (error) {
+        onInvalidRow(toText(row.id), error);
+        return [];
+      }
+    });
   }
 
   async byId(
@@ -1246,6 +1269,33 @@ export class PgApprovalQueue implements ApprovalQueue {
     return this.transitionWithoutResolution(id, subjectUserId, "expired");
   }
 
+  async revertApprovedToPending(
+    id: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest> {
+    const now = new Date();
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE approval_requests
+       SET state = ${sqlText("pending")},
+           resolved_at = NULL,
+           resolved_by = NULL,
+           resolution_reason = NULL,
+           updated_at = ${timestampLiteral(now)}
+       WHERE id = ${sqlText(id)}
+         AND agent_id = ${sqlText(this.agentId)}
+         AND subject_user_id = ${sqlText(subjectUserId)}
+         AND state = ${sqlText("approved")}
+         AND execution_attempt_id IS NULL
+       RETURNING ${SELECT_COLUMNS}`,
+    );
+    if (rows.length === 0) {
+      return this.throwLostRace(id, subjectUserId, "pending");
+    }
+    logger.info(`[ApprovalQueue] approved -> pending (${id}) after preflight`);
+    return rowToRequest(rows[0]);
+  }
+
   async removePending(id: string, subjectUserId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
@@ -1263,6 +1313,20 @@ export class PgApprovalQueue implements ApprovalQueue {
     const current = await this.fetchById(claim.requestId, claim.subjectUserId);
     if (!current) throw new ApprovalNotFoundError(claim.requestId);
     assertTransition(claim.requestId, current.state, "executing");
+    // An approved or retryable row keeps its expiry: a replay long after the
+    // window must not dispatch the old payload.
+    if (current.expiresAt.getTime() <= Date.now()) {
+      await this.transitionWithoutResolution(
+        claim.requestId,
+        claim.subjectUserId,
+        "expired",
+      );
+      throw new ApprovalStateTransitionError(
+        claim.requestId,
+        "expired",
+        "executing",
+      );
+    }
     const attemptId = randomUUID();
     const now = new Date();
     const sql = `${approvalDispatchAdmissionCte(this.agentId, claim.subjectUserId, claim.requestId)}
@@ -1347,6 +1411,10 @@ export class PgApprovalQueue implements ApprovalQueue {
     return rowToRequest(rows[0]);
   }
 
+  /**
+   * A receipt for the same attempt also settles a row that a concurrent
+   * recovery already flagged for reconciliation: the provider accepted it.
+   */
   async markDone(
     completion: ApprovalExecutionCompletion,
   ): Promise<ApprovalRequest> {
@@ -1361,7 +1429,7 @@ export class PgApprovalQueue implements ApprovalQueue {
        WHERE id = ${sqlText(completion.requestId)}
          AND agent_id = ${sqlText(this.agentId)}
          AND subject_user_id = ${sqlText(completion.subjectUserId)}
-         AND state = ${sqlText("executing")}
+         AND state IN (${sqlText("executing")}, ${sqlText("reconciliation_required")})
          AND execution_attempt_id = ${sqlText(completion.attemptId)}
          AND dispatch_started_at IS NOT NULL
        RETURNING ${SELECT_COLUMNS}`,
@@ -1445,11 +1513,13 @@ export class PgApprovalQueue implements ApprovalQueue {
     return rowToRequest(rows[0]);
   }
 
+  /** Expires lapsed pending rows and approvals whose execution was never claimed. */
   async purgeExpired(now: Date): Promise<ReadonlyArray<string>> {
     const sql = `UPDATE approval_requests
       SET state = ${sqlText("expired")}, updated_at = ${timestampLiteral(now)}
       WHERE agent_id = ${sqlText(this.agentId)}
-        AND state = ${sqlText("pending")}
+        AND (state = ${sqlText("pending")}
+          OR (state = ${sqlText("approved")} AND execution_attempt_id IS NULL))
         AND expires_at <= ${timestampLiteral(now)}
       RETURNING id`;
     const rows = await executeRawSql(this.runtime, sql);
