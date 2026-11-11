@@ -1981,7 +1981,7 @@ test("revoke joins a claimed opening across deferred imports before confirming n
       speechFenceCounts: Record<string, number>;
     }
   ).speechFenceCounts;
-  // The post-import owner check stops before acquiring even the internal fence.
+  // The resumed opening stops before it can create a revocation subscription.
   expect(fenceCounts[f.owner.organization_id] ?? 0).toBe(0);
 });
 
