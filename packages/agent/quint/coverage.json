@@ -31,9 +31,7 @@
       "packages/agent/src/api/runtime-mode/runtime-mode.ts",
       "packages/agent/src/api/config-routes.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Owner/other, private/public room and one config commit.",
@@ -49,9 +47,7 @@
       "packages/agent/src/api/request-storm-cap.ts",
       "packages/agent/src/api/world-metadata-retry.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two tokens and three CAS attempts.",
@@ -67,9 +63,7 @@
       "packages/agent/src/api/conversation-routes.ts",
       "packages/agent/src/api/character-routes.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One room lifecycle and runtime, two proof identities with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
@@ -84,9 +78,7 @@
       "packages/agent/src/api/maps-navigation-relay.ts",
       "packages/agent/src/api/device-action-routes.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One offer, one device scope and one delivery.",
@@ -107,9 +99,7 @@
       "packages/agent/src/config/feature-flags.ts",
       "packages/agent/test/agent-lifecycle-stop-start.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One initial boot/restart owner, two admitted turns and one persisted wallet-primary update while Start is held. The replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
@@ -126,9 +116,7 @@
       "packages/agent/src/api/audio-redaction-store.ts",
       "packages/agent/src/api/audio-redaction-verify.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two chunks, one original and one redacted variant.",
@@ -139,12 +127,8 @@
   {
     "id": "AgentApiNativeEvidence",
     "model": "packages/agent/quint/api-native-evidence.qnt",
-    "sources": [
-      "packages/agent/native-host/task-evidence-store.mjs"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/native-host/task-evidence-store.mjs"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two evidence records, one owner and bounded epoch.",
@@ -155,12 +139,8 @@
   {
     "id": "AgentApiNativeGateway",
     "model": "packages/agent/quint/api-native-gateway.qnt",
-    "sources": [
-      "packages/agent/native-host/gateway.mjs"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/native-host/gateway.mjs"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owners, bounded epoch and three output frames.",
@@ -171,9 +151,7 @@
   {
     "id": "AgentNativeAccountMigration",
     "model": "packages/agent/quint/NativeAccountMigration.qnt",
-    "sources": [
-      "packages/agent/native-host/account-state.mjs"
-    ],
+    "sources": ["packages/agent/native-host/account-state.mjs"],
     "invariants": [
       "TypeOK",
       "CompletedPrefixIsClean",
@@ -195,9 +173,7 @@
       "packages/agent/native-host/private-runtime-launch.mjs",
       "packages/agent/native-host/gateway.e2e.test.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owner identities and one child. Repeated arbitrary rotations, stop failures and hung host callbacks require separate state refinements.",
@@ -212,9 +188,7 @@
       "packages/agent/native-host/surface-channel.mjs",
       "packages/agent/native-host/surface-client.mjs"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One session, one pending command and one delivery.",
@@ -229,9 +203,7 @@
       "packages/agent/src/api/native-view-renderer.ts",
       "packages/agent/src/api/native-inference-timing.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two hosts/revisions and two overlapping turns.",
@@ -242,12 +214,8 @@
   {
     "id": "AgentApiProposals",
     "model": "packages/agent/quint/api-proposals.qnt",
-    "sources": [
-      "packages/agent/src/api/runtime-management-proposal-store.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/api/runtime-management-proposal-store.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One proposal and two consumers.",
@@ -258,12 +226,8 @@
   {
     "id": "AgentApiResources",
     "model": "packages/agent/quint/api-resources.qnt",
-    "sources": [
-      "packages/agent/src/api/server-resources.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/api/server-resources.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One resource with one synchronous reentrant close.",
@@ -278,9 +242,7 @@
       "packages/agent/src/api/conversation-restore.ts",
       "packages/agent/src/api/connector-health.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One room with two versions and one probe generation.",
@@ -296,9 +258,7 @@
       "packages/agent/src/api/chat-stream-writer.ts",
       "packages/agent/src/api/ws-event-replay.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two data frames, one terminal frame and bounded event cursor.",
@@ -313,9 +273,7 @@
       "packages/agent/src/api/pending-request-map.ts",
       "packages/agent/src/api/pty-ws-bridge.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two request generations and one reconnect timer.",
@@ -331,9 +289,7 @@
       "packages/agent/src/api/native-view-renderer.ts",
       "packages/agent/src/api/view-interaction-host.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two installation generations and one renderer claim.",
@@ -348,9 +304,7 @@
       "packages/agent/src/api/wallet-key-store.ts",
       "packages/agent/src/api/wallet-keygen.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two opaque key values and one serialized vault write.",
@@ -369,9 +323,7 @@
       "packages/agent/src/runtime/tool-call-cache/redact.ts",
       "packages/agent/src/runtime/tool-call-cache/registry.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two descriptor versions, two executions and TTL classes.",
@@ -388,9 +340,7 @@
       "packages/agent/src/config/env-vars.ts",
       "packages/agent/src/config/dev-cloud-env-authority.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two complete documents and include depth two.",
@@ -408,9 +358,7 @@
       "packages/agent/src/hooks/eligibility.ts",
       "packages/agent/src/runtime/memory-watchdog.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two hooks and two high-memory observations.",
@@ -443,9 +391,7 @@
       "packages/agent/src/api/server.ts",
       "packages/agent/src/api/runtime-replacement-ownership.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none, and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests. Shared-query handoff has four initialization modes, three handles for one physical connection, one unrelated handle, two queries, at most two handoffs, and one final close. Shared callback retirement has one outgoing admitted write, one or two published replacements, and strict or fast final stop.",
@@ -462,9 +408,7 @@
       "packages/agent/test/fixtures/process-lifecycle-child.ts",
       "packages/agent/test/process-lifecycle-exit.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One installed process adapter, two graceful signal deliveries, four ordered cleanup callbacks and one error report. Real Bun and Node child processes record callback entry to disk and expose exit status to their parent.",
@@ -479,9 +423,7 @@
       "packages/agent/src/runtime/operations/repository.ts",
       "packages/agent/src/runtime/operations/types.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One record with current/previous/dead/remote/legacy owner classes.",
@@ -496,9 +438,7 @@
       "packages/agent/src/runtime/operations/manager.ts",
       "packages/agent/src/runtime/operations/classifier.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Hot/warm/cold tiers and all subsets of three strategies.",
@@ -517,9 +457,7 @@
       "packages/agent/src/runtime/operations/cold-strategy.ts",
       "packages/agent/src/runtime/operations/reload-hot.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One operation lane and two request keys.",
@@ -538,9 +476,7 @@
       "packages/agent/src/runtime/load-plugin-from-vfs.ts",
       "packages/agent/src/runtime/view-scoped-actions.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One plugin lane and one migration.",
@@ -551,12 +487,8 @@
   {
     "id": "AgentRuntimeRegistry",
     "model": "packages/agent/quint/runtime-registry.qnt",
-    "sources": [
-      "packages/agent/src/sandbox-registry.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/sandbox-registry.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two container generations and one Redis routing identity.",
@@ -567,12 +499,8 @@
   {
     "id": "AgentRuntimeRetention",
     "model": "packages/agent/quint/runtime-retention.qnt",
-    "sources": [
-      "packages/agent/src/runtime/retention-task.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/runtime/retention-task.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One install, one worker and one active sweep.",
@@ -583,12 +511,8 @@
   {
     "id": "AgentRuntimeRoleBootstrap",
     "model": "packages/agent/quint/runtime-role-bootstrap.qnt",
-    "sources": [
-      "packages/agent/src/runtime/roles.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/runtime/roles.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One owner, one connector and three attempts.",
@@ -607,9 +531,7 @@
       "packages/agent/src/runtime/dev-trajectory-recovery.ts",
       "packages/agent/src/runtime/dev-trajectory-recovery-protocol.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two captures and two execution identities.",
@@ -624,9 +546,7 @@
       "packages/agent/src/services/agent-backup-authority.ts",
       "packages/agent/src/services/agent-backup.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two frames and generations 0..2.",
@@ -642,9 +562,7 @@
       "packages/agent/src/services/media-generation.ts",
       "packages/agent/src/services/audio-redaction-service.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One validated dispatch and one result/persistence cycle.",
@@ -655,12 +573,8 @@
   {
     "id": "AgentServicesEscalation",
     "model": "packages/agent/quint/services-escalation.qnt",
-    "sources": [
-      "packages/agent/src/services/escalation.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/escalation.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One agent with two escalation steps.",
@@ -674,9 +588,7 @@
     "sources": [
       "packages/agent/src/services/agent-backup-restore-v3-candidate-fs-control.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One lease and two active use identities.",
@@ -687,12 +599,8 @@
   {
     "id": "AgentServicesIdempotency",
     "model": "packages/agent/quint/services-idempotency.qnt",
-    "sources": [
-      "packages/agent/src/services/chat-idempotency-service.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/chat-idempotency-service.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One scoped key, two owners/fingerprints/waiters and generations 0..2.",
@@ -708,9 +616,7 @@
       "packages/agent/src/services/message-interaction-session-store.ts",
       "packages/agent/src/services/sqlite-message-interaction-session-store.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One interaction, two lock owners and one external effect.",
@@ -726,9 +632,7 @@
       "packages/agent/src/services/interactive-task-store.ts",
       "packages/agent/src/services/interactive-task-http.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One task, epochs 0..2 and revisions 0..8.",
@@ -739,12 +643,8 @@
   {
     "id": "AgentServicesOwnerPairing",
     "model": "packages/agent/quint/services-owner-pairing.qnt",
-    "sources": [
-      "packages/agent/src/services/owner-binding.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/owner-binding.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One connector code, two owners and two attempts.",
@@ -755,12 +655,8 @@
   {
     "id": "AgentServicesPermissions",
     "model": "packages/agent/quint/services-permissions.qnt",
-    "sources": [
-      "packages/agent/src/services/permissions-registry.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/permissions-registry.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One permission, one queued probe and revisions 0..2.",
@@ -776,9 +672,7 @@
       "packages/agent/src/services/remote-plugin-adapter.ts",
       "packages/agent/src/services/self-updater.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One install and two approved/resolved identities.",
@@ -789,12 +683,8 @@
   {
     "id": "AgentServicesProactive",
     "model": "packages/agent/quint/services-proactive.qnt",
-    "sources": [
-      "packages/agent/src/services/proactive-interaction-gate.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/proactive-interaction-gate.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two surfaces, two daily emissions and abstract timer classes.",
@@ -809,9 +699,7 @@
       "packages/agent/src/services/push/notification-push-service.ts",
       "packages/agent/src/services/push/push-token-registry.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two attachments, epochs 0..2, one token and two delivery attempts.",
@@ -822,12 +710,8 @@
   {
     "id": "AgentServicesRemoteRunner",
     "model": "packages/agent/quint/services-remote-runner.qnt",
-    "sources": [
-      "packages/agent/src/services/remote-coding-runner.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/remote-coding-runner.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One runner, two users and two effects.",
@@ -845,9 +729,7 @@
       "packages/agent/src/services/agent-backup-restore-v3-serving-controller.ts",
       "packages/agent/src/services/agent-backup-restore-v3-restored-runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One generation publication and one boot grant.",
@@ -862,9 +744,7 @@
       "packages/agent/src/services/sandbox-manager.ts",
       "packages/agent/src/services/sandbox-engine.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One main and one browser container in serialized standard/max mode.",
@@ -880,9 +760,7 @@
       "packages/agent/src/services/remote-signing-service.ts",
       "packages/agent/test/sandbox-audit-durability.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One in-flight request, two payload values, one policy epoch change and a bounded approval clock. Models submission audit, policy invalidation, detached input/listing snapshots, signer failure and final evidence.",
@@ -900,9 +778,7 @@
       "packages/agent/src/services/tee-confidential-inference.ts",
       "packages/agent/src/services/tee-sealed-volume.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One attestation/policy/key lifecycle.",
@@ -913,12 +789,8 @@
   {
     "id": "AgentServicesVfs",
     "model": "packages/agent/quint/services-vfs.qnt",
-    "sources": [
-      "packages/agent/src/services/virtual-filesystem.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/src/services/virtual-filesystem.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two tree versions and one rollback journal.",
@@ -929,12 +801,8 @@
   {
     "id": "AgentToolingBatches",
     "model": "packages/agent/quint/tooling-batches.qnt",
-    "sources": [
-      "packages/agent/scripts/run-vitest-batches.ts"
-    ],
-    "invariants": [
-      "safety"
-    ],
+    "sources": ["packages/agent/scripts/run-vitest-batches.ts"],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two batches and two subprocess slots.",
@@ -949,9 +817,7 @@
       "packages/agent/scripts/build-mobile-bundle.ts",
       "packages/agent/scripts/mobile-bundle-dependencies.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One build, one manifest and a boolean smoke gate.",
@@ -967,9 +833,7 @@
       "packages/agent/src/api/hono-adapter.ts",
       "packages/agent/src/api/hono-adapter.test.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One bounded request is projected through accumulated byte increments. Arbitrary byte/chunk boundaries, dynamic route caps and multi-request sequencing are outside this instance.",
@@ -1033,9 +897,7 @@
       "plugins/plugin-workflow/src/trigger-routes.ts",
       "packages/agent/src/triggers/runtime.ts"
     ],
-    "invariants": [
-      "safety"
-    ],
+    "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "Two owner conversations, one selection/persistence attempt and one host replacement. Explicit missing or non-owner selection never falls back; a host change after the room read rejects persistence.",
