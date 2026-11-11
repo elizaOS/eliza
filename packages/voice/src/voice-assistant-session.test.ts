@@ -98,6 +98,8 @@ function harness(
     manualSpeech?: boolean;
     openMic?: boolean;
     pipelineSpeech?: boolean;
+    /** A cancelled request settles only when the test settles it (a transport slow to reject). */
+    manualSend?: boolean;
     timing?: Partial<typeof ASSISTANT_TIMING_DEFAULTS>;
   } = {},
 ) {
@@ -150,11 +152,12 @@ function harness(
       });
       const reply = deferred<AssistantReply>();
       replies.push({ input, reply });
-      input.signal.addEventListener(
-        "abort",
-        () => reply.reject(new DOMException("cancelled", "AbortError")),
-        { once: true },
-      );
+      if (!options.manualSend)
+        input.signal.addEventListener(
+          "abort",
+          () => reply.reject(new DOMException("cancelled", "AbortError")),
+          { once: true },
+        );
       return reply.promise;
     },
     speak: (input) => {
@@ -2117,6 +2120,122 @@ describe("VoiceAssistantSession pipelined speech", () => {
       heard: "Once upon a time there was a fox.",
       unheard: "It lived in a quiet wood. It was a happy fox.",
       interrupted: true,
+    });
+  });
+});
+
+describe("VoiceAssistantSession pipelined stream and held speech", () => {
+  it("speaks sentences planned while the first one plays, from the stream and from the confirmed reply", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    const { input } = at(h.replies, 0);
+    input.onText?.("Once upon a time there was a fox. It lived", {
+      origin: "model",
+      direct: true,
+    });
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    await flush();
+    expect(h.speeches).toHaveLength(1);
+    input.onText?.(
+      "Once upon a time there was a fox. It lived in a quiet wood. It was",
+      { origin: "model", direct: true },
+    );
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Once upon a time there was a fox.",
+      "It lived in a quiet wood.",
+    ]);
+    h.answer(
+      0,
+      "Once upon a time there was a fox. It lived in a quiet wood. It was a happy fox.",
+    );
+    await flush();
+    // The third sentence waits until the second is audible: two in flight at most.
+    expect(h.speeches).toHaveLength(2);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    at(h.speeches, 1).input.onStarted();
+    await flush();
+    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
+      "Once upon a time there was a fox.",
+      "It lived in a quiet wood.",
+      "It was a happy fox.",
+    ]);
+    expect(h.phase()).toBe("speaking");
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.phase()).toBe("speaking");
+    at(h.speeches, 2).done.resolve();
+    await flush();
+    expect(h.phase()).toBe("listening");
+    expect(at(h.log.heard, 0)).toMatchObject({
+      heard:
+        "Once upon a time there was a fox. It lived in a quiet wood. It was a happy fox.",
+      unheard: "",
+      interrupted: false,
+    });
+  });
+
+  it("speech that began before the first audio and is still held interrupts the playing reply", async () => {
+    const h = harness({
+      openMic: true,
+      timing: {
+        shortGapMs: 0,
+        longGapMs: 0,
+        bargeInConfirmMs: 400,
+        playbackBargeInMs: 400,
+      },
+    });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(0);
+    h.answer(0, "Once upon a time there was a fox.");
+    await flush();
+    h.mic().onSpeechStart(h.clock.now());
+    await h.clock.advance(100);
+    at(h.speeches, 0).input.onStarted();
+    await h.clock.advance(300);
+    expect(h.phase()).toBe("speaking");
+    await h.clock.advance(399);
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(false);
+    await h.clock.advance(1);
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(true);
+    expect(h.phase()).toBe("listening");
+    // It interrupted a reply that was playing: a new turn, not a joined one.
+    expect(h.session.getSnapshot().pendingText).toBeUndefined();
+  });
+
+  it("a turn taken back before it was sent passes on the turn it replaced", async () => {
+    const h = harness({
+      openMic: true,
+      manualSend: true,
+      timing: {
+        shortGapMs: 0,
+        longGapMs: 0,
+        bargeInConfirmMs: 400,
+        playbackBargeInMs: 400,
+      },
+    });
+    await h.session.start();
+    await h.say("call");
+    await h.clock.advance(0);
+    const first = at(h.replies, 0);
+    await h.say("Sam", 500);
+    expect(first.input.signal.aborted).toBe(true);
+    await h.clock.advance(0);
+    // The first request has not settled: the second turn is still waiting, unsent.
+    expect(h.log.sends).toHaveLength(1);
+    await h.say("tomorrow", 500);
+    first.reply.reject(new DOMException("cancelled", "AbortError"));
+    await flush();
+    await h.clock.advance(0);
+    expect(h.log.sends).toHaveLength(2);
+    expect(at(h.log.sends, 1)).toMatchObject({
+      text: "call Sam tomorrow",
+      supersedes: first.input.turnId,
     });
   });
 });
