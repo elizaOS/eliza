@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   actionScope,
   type CurrentDeviceActionRequest,
   type DeviceActionClientProfile,
   DeviceActionCoordinator,
   type DeviceActionJournal,
+  DeviceActionNotStarted,
   type DeviceContextEnvelope,
   type DeviceExecutionResult,
   type DeviceExecutor,
@@ -332,6 +333,81 @@ describe("DeviceActionCoordinator", () => {
     expect(effects).toBe(1);
   });
 
+  it("closes an executor refusal before any effect as failed with its reason", async () => {
+    // Display copy never upgrades an ordinary failed result into a no-effect receipt.
+    for (const [summary, omitMarker] of [
+      ["Not started. Nothing was sent. Ordinary executor display text.", false],
+      ["Not started. Nothing was sent.", false],
+      ["Not started. Nothing was sent. Unmarked display text.", true],
+    ] as const) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      const attempts: unknown[] = [];
+      const transport = async (path: string, body: unknown, s: AbortSignal) => {
+        if (path.endsWith("/receipt"))
+          attempts.push(
+            structuredClone((body as { receipt: unknown }).receipt),
+          );
+        return request(path, body, s);
+      };
+      let executions = 0;
+      const actions = coordinator(transport, journal, async () => {
+        executions++;
+        return { status: "failed", summary, dispatch: "not_started" };
+      });
+      await actions.pending(notesContext, signal());
+      server.receiptOutage = true;
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("failed");
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]).toEqual({
+        outcome: "failed",
+        operationId: entries.get("proposal")?.operationId,
+      });
+      expect(entries.get("proposal")?.result?.dispatch).toBe("attempted");
+      if (omitMarker) delete entries.get("proposal")?.result?.dispatch;
+      server.receiptOutage = false;
+      await actions.syncReceipts(signal());
+      expect(attempts).toHaveLength(2);
+      expect(attempts[1]).toEqual(attempts[0]);
+      await actions.syncReceipts(signal());
+      expect(executions).toBe(1);
+      expect(server.claims).toBe(1);
+    }
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    const actions = coordinator(request, journal, async () => {
+      throw new DeviceActionNotStarted("The screen changed.");
+    });
+    await actions.pending(notesContext, signal());
+    server.receiptOutage = true;
+    const receipt = await actions.approve("proposal", notesContext, signal());
+    expect(receipt).toMatchObject({
+      status: "failed",
+      summary:
+        "Not started. Nothing was sent. The screen changed. Not synced yet; open action history to retry.",
+    });
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "failed",
+      summary: "Not started. Nothing was sent. The screen changed.",
+      result: {
+        operationId: entries.get("proposal")?.operationId,
+        dispatch: "not_started",
+      },
+    });
+    // The journaled refusal still settles the server claim after the outage.
+    server.receiptOutage = false;
+    await actions.syncReceipts(signal());
+    expect(server.receipts.at(-1)?.receipt).toEqual({
+      outcome: "failed",
+      operationId: entries.get("proposal")?.operationId,
+      code: "DEVICE_NOT_DISPATCHED",
+    });
+    expect(server.state).toBe("done");
+  });
+
   it("recovers a journaled result after a receipt outage without re-executing", async () => {
     const { server, request } = fixtureServer(note);
     const { entries, journal } = memoryJournal();
@@ -501,52 +577,130 @@ describe("DeviceActionCoordinator", () => {
   });
 
   it("closes an attempt that never dispatched as failed with nothing sent", async () => {
-    const { server, request } = fixtureServer(note);
-    const { entries, journal } = memoryJournal();
-    const controller = new AbortController();
-    let effects = 0;
-    // Cancelled after the claim and before dispatch.
-    const actions = coordinator(
-      request,
-      {
-        ...journal,
-        async markApplying(input) {
-          await journal.markApplying(input);
-          controller.abort();
+    for (const legacy of [false, true]) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      const controller = new AbortController();
+      let effects = 0;
+      // Cancelled after the claim and before dispatch.
+      const actions = coordinator(
+        request,
+        {
+          ...journal,
+          async markApplying(input) {
+            await journal.markApplying(input);
+            controller.abort();
+          },
         },
-      },
-      async () => {
-        effects++;
-        return { status: "succeeded", summary: "Saved" };
-      },
-    );
-    await actions.pending(notesContext, signal());
-    const receipt = await actions.approve(
-      "proposal",
-      notesContext,
-      controller.signal,
-    );
-    expect(receipt).toMatchObject({
-      status: "failed",
-      summary:
-        "Not started. Nothing was sent. Not synced yet; open action history to retry.",
-    });
-    expect(effects).toBe(0);
-    expect(entries.get("proposal")).toMatchObject({
-      phase: "terminal",
-      status: "failed",
-      summary: "Not started. Nothing was sent.",
-      result: { operationId: entries.get("proposal")?.operationId },
-    });
-    expect(server.state).toBe("executing");
-    await actions.syncReceipts(signal());
-    expect(server.receipts.at(-1)?.receipt).toEqual({
-      outcome: "failed",
-      operationId: entries.get("proposal")?.operationId,
-      code: "DEVICE_NOT_DISPATCHED",
-    });
-    expect(server.state).toBe("done");
-    expect(effects).toBe(0);
+        async () => {
+          effects++;
+          return { status: "succeeded", summary: "Saved" };
+        },
+      );
+      await actions.pending(notesContext, signal());
+      const receipt = await actions.approve(
+        "proposal",
+        notesContext,
+        controller.signal,
+      );
+      expect(receipt).toMatchObject({
+        status: "failed",
+        summary:
+          "Not started. Nothing was sent. Not synced yet; open action history to retry.",
+      });
+      expect(effects).toBe(0);
+      expect(entries.get("proposal")).toMatchObject({
+        phase: "terminal",
+        status: "failed",
+        summary: "Not started. Nothing was sent.",
+        result: {
+          operationId: entries.get("proposal")?.operationId,
+          dispatch: "not_started",
+        },
+      });
+      expect(server.state).toBe("executing");
+      // Prior coordinator versions stored this exact no-call receipt without a marker.
+      if (legacy) delete entries.get("proposal")?.result?.dispatch;
+      await actions.syncReceipts(signal());
+      expect(server.receipts.at(-1)?.receipt).toEqual({
+        outcome: "failed",
+        operationId: entries.get("proposal")?.operationId,
+        code: "DEVICE_NOT_DISPATCHED",
+      });
+      expect(server.state).toBe("done");
+      expect(effects).toBe(0);
+    }
+    // Resuming after an asynchronous binding hash must recheck the stored expiry.
+    {
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const digest = crypto.subtle.digest.bind(crypto.subtle);
+      const hash = vi
+        .spyOn(crypto.subtle, "digest")
+        .mockImplementation(async (algorithm, data) => {
+          if (new TextDecoder().decode(data).startsWith(`["${scope}",`)) {
+            entered.resolve();
+            await release.promise;
+          }
+          return digest(algorithm, data);
+        });
+      try {
+        const { server, request } = fixtureServer(note);
+        const { entries, journal } = memoryJournal();
+        let effects = 0;
+        const actions = coordinator(request, journal, async () => {
+          effects++;
+          return { status: "succeeded", summary: "Saved" };
+        });
+        await actions.pending(notesContext, signal());
+        const approval = actions.approve("proposal", notesContext, signal());
+        await entered.promise;
+        clock.mockReturnValue(now + 600_001);
+        release.resolve();
+        const receipt = await approval;
+        expect(effects).toBe(0);
+        expect(receipt.status).toBe("failed");
+        expect(entries.get("proposal")?.result?.dispatch).toBe("not_started");
+        expect(server.receipts.at(-1)?.receipt.code).toBe(
+          "DEVICE_NOT_DISPATCHED",
+        );
+      } finally {
+        release.resolve();
+        hash.mockRestore();
+        clock.mockRestore();
+      }
+    }
+    // An accepted effect still owns its result when the clock later passes expiry.
+    {
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<DeviceExecutionResult>();
+      try {
+        const { server, request } = fixtureServer(note);
+        const { entries, journal } = memoryJournal();
+        let effects = 0;
+        const actions = coordinator(request, journal, async () => {
+          effects++;
+          entered.resolve();
+          return release.promise;
+        });
+        await actions.pending(notesContext, signal());
+        const approval = actions.approve("proposal", notesContext, signal());
+        await entered.promise;
+        clock.mockReturnValue(now + 600_001);
+        release.resolve({ status: "succeeded", summary: "Saved" });
+        expect((await approval).status).toBe("succeeded");
+        expect(effects).toBe(1);
+        expect(entries.get("proposal")?.status).toBe("succeeded");
+        expect(server.receipts.at(-1)?.receipt.outcome).toBe("applied");
+      } finally {
+        release.resolve({ status: "unknown", summary: "Test cleanup" });
+        clock.mockRestore();
+      }
+    }
   });
 
   it("closes a claimed reservation left by a restart as not dispatched", async () => {
@@ -579,6 +733,7 @@ describe("DeviceActionCoordinator", () => {
       phase: "terminal",
       status: "failed",
       attemptId: "attempt",
+      result: { dispatch: "not_started" },
     });
     expect(server.receipts.at(-1)?.receipt).toMatchObject({
       outcome: "failed",
