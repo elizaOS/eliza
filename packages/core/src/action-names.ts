@@ -22,7 +22,10 @@ export const NON_EXECUTABLE_RESPONSE_ACTION_NAMES = [
  * (`isTerminalPlannerToolName`) — not a side-effecting result.
  */
 export function isReservedNonToolActionName(name: string): boolean {
-	const normalized = name.toUpperCase().replace(/_/g, "");
+	// Model output carries surrounding whitespace (trailing newlines,
+	// padded names); trim it before matching, or " REPLY " is treated as
+	// an executable action instead of the non-executable envelope.
+	const normalized = name.trim().toUpperCase().replace(/_/g, "");
 	if (
 		(NON_EXECUTABLE_RESPONSE_ACTION_NAMES as readonly string[]).some(
 			(entry) => entry.toUpperCase().replace(/_/g, "") === normalized,
