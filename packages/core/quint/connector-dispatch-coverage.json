@@ -14,13 +14,17 @@
 			"UsesAdmittedHandler",
 			"WaitsForVoice",
 			"MissingNeverInvokes",
-			"ResultRequiresSettlement"
+			"ResultRequiresSettlement",
+			"WaitsForSnapshot",
+			"UnsupportedNeverInvokes",
+			"DescriptorOwnsHook"
 		],
 		"status": "partial",
 		"limitations": [
-			"One source, source-only and one named account route, two transport identities, descriptor presence and one admitted send. Separate cases request the source-only or named route. Repeated registration and removal may interleave with dispatch.",
-			"The leaf projection distinguishes internal, legacy and metadata-only registrations, exact and source-wide removal, fallback routing and the handler captured before the voice await. Plugin teardown ownership remains in PluginLifecycle. Post connectors, descriptor payload copying and non-send hooks are outside this projection.",
-			"Valid content follows the existing voice, sanitation and envelope pipeline. Cosmetic model failure and successful rewrite both resume the gate. Content-validation rejection is outside this projection. Fair progress requires the gate and selected handler to settle; a handler may reject. Unregister removes future lookup and does not cancel an admitted send. Runtime stop, transport disposal, provider delivery and persistence are outside this bound."
+			"One normalized source, source-only and one named route, two callback identities and one admitted call or retained post snapshot. Separate instances project send transport, one message hook and one post hook. The real suite exercises all six Core message hook wrappers and all three published post hooks; the model does not cross-product their payloads.",
+			"Send transport registration retains an existing handler when metadata alone replaces a descriptor. Message and post hooks belong to their descriptor, so metadata replacement removes the hook. Message hook dispatch selects the exact descriptor before testing its hook, and only falls back when that descriptor is absent. Hook resolution and invocation are one synchronous segment.",
+			"Core publishes cloned post descriptors and does not select a post destination. The post case captures one exact enumerated route and later invokes its copied hook locally. Replacement and unregister affect later enumeration; captured callbacks are not disposed or cancelled. Exact and source-wide removal share the same registry actions. Plugin teardown ownership remains in PluginLifecycle.",
+			"Fair progress assumes the voice or retained-snapshot continuation runs and the selected callback settles, possibly with rejection. Valid send content follows the existing voice, sanitation and envelope pipeline. Payload copying, invalid registration/content validation, arbitrary callback noncooperation, runtime stop, transport disposal, provider delivery/persistence and host or action authorization remain outside this projection."
 		],
 		"implementationTests": [
 			"packages/core/test/connector-registry.integration.test.ts"

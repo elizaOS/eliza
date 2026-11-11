@@ -2,8 +2,19 @@
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { expect, test } from "vitest";
 import { AgentRuntime } from "../src/runtime";
-import { SEND_HANDLER_NOT_FOUND } from "../src/types/messaging";
+import type { Memory } from "../src/types/memory";
+import {
+	SEND_HANDLER_NOT_FOUND,
+	type TargetInfo,
+} from "../src/types/messaging";
 import { ModelType } from "../src/types/model";
+import type { Content, UUID } from "../src/types/primitives";
+import type {
+	IAgentRuntime,
+	MessageConnectorRegistration,
+	PostConnector,
+	ThreadHandle,
+} from "../src/types/runtime";
 
 function newRuntime() {
 	const runtime = new AgentRuntime({
@@ -242,3 +253,289 @@ test("propagates admitted failure without retrying the current fallback", async 
 		await runtime.close();
 	}
 });
+
+const localMemory: Memory = {
+	id: "11111111-1111-4111-8111-111111111111" as UUID,
+	entityId: "22222222-2222-4222-8222-222222222222" as UUID,
+	roomId: "33333333-3333-4333-8333-333333333333" as UUID,
+	content: { text: "Local hook receipt" },
+};
+const hookContent: Content = { text: "Local hook content" };
+const localThread: ThreadHandle = {
+	threadId: "local-thread",
+	parentChannelId: "local-channel",
+};
+const localIdentity = { name: "Local author" };
+const hookCases: Array<{
+	name: string;
+	field: keyof MessageConnectorRegistration;
+	invoke: (runtime: AgentRuntime, target: TargetInfo) => Promise<unknown>;
+	params: (target: TargetInfo) => object;
+	result: Memory | ThreadHandle | undefined;
+}> = [
+	{
+		name: "edit",
+		field: "editHandler",
+		invoke: (runtime, target) =>
+			runtime.editMessageOnTarget(target, "local-message", hookContent),
+		params: (target) => ({
+			target,
+			messageId: "local-message",
+			content: hookContent,
+		}),
+		result: localMemory,
+	},
+	{
+		name: "typing",
+		field: "typingHandler",
+		invoke: (runtime, target) => runtime.sendTypingOnTarget(target),
+		params: (target) => ({ target }),
+		result: undefined,
+	},
+	{
+		name: "stop typing",
+		field: "stopTypingHandler",
+		invoke: (runtime, target) => runtime.stopTypingOnTarget(target),
+		params: (target) => ({ target }),
+		result: undefined,
+	},
+	{
+		name: "create thread",
+		field: "createThreadHandler",
+		invoke: (runtime, target) =>
+			runtime.createThreadOnTarget(target, {
+				parentMessageId: "local-message",
+				name: "Local thread",
+			}),
+		params: (target) => ({
+			target,
+			parentMessageId: "local-message",
+			name: "Local thread",
+		}),
+		result: localThread,
+	},
+	{
+		name: "post to thread",
+		field: "postToThreadHandler",
+		invoke: (runtime, target) =>
+			runtime.postToThreadOnTarget(
+				target,
+				localThread,
+				hookContent,
+				localIdentity,
+			),
+		params: (target) => ({
+			target,
+			thread: localThread,
+			content: hookContent,
+			identity: localIdentity,
+		}),
+		result: localMemory,
+	},
+	{
+		name: "reaction",
+		field: "reactHandler",
+		invoke: (runtime, target) =>
+			runtime.addReactionOnTarget(target, "local-message", "local-reaction"),
+		params: (target) => ({
+			target,
+			messageId: "local-message",
+			emoji: "local-reaction",
+		}),
+		result: undefined,
+	},
+];
+
+for (const hook of hookCases) {
+	test(`keeps ${hook.name} bound to its descriptor across replacement and removal`, async () => {
+		const runtime = newRuntime();
+		const target = { source: "local-hook", accountId: "work" };
+		const started = deferred();
+		const release = deferred();
+		const calls: string[] = [];
+		const failure = new Error(`Local ${hook.name} failure`);
+		runtime.registerMessageConnector({
+			source: target.source,
+			[hook.field]: async () => {
+				calls.push("default");
+				return hook.result;
+			},
+		});
+		runtime.registerMessageConnector({
+			...target,
+			[hook.field]: async (owner: IAgentRuntime, params: object) => {
+				expect(owner).toBe(runtime);
+				expect(params).toEqual(hook.params(target));
+				calls.push("admitted");
+				started.resolve();
+				await release.promise;
+				return hook.result;
+			},
+		});
+		const admitted = hook.invoke(runtime, target);
+		try {
+			await started.promise;
+			runtime.registerMessageConnector({
+				...target,
+				label: "Metadata replacement",
+			});
+			release.resolve();
+			expect(await admitted).toBe(hook.result);
+			await expect(hook.invoke(runtime, target)).rejects.toThrow(
+				"Connector does not support",
+			);
+			expect(calls).toEqual(["admitted"]);
+			expect(
+				runtime.unregisterMessageConnector(target.source, target.accountId),
+			).toBe(true);
+			expect(await hook.invoke(runtime, target)).toBe(hook.result);
+			runtime.registerMessageConnector({
+				...target,
+				[hook.field]: async () => {
+					calls.push("failed");
+					throw failure;
+				},
+			});
+			await expect(hook.invoke(runtime, target)).rejects.toBe(failure);
+			expect(calls).toEqual(["admitted", "default", "failed"]);
+			expect(runtime.unregisterMessageConnector(target.source)).toBe(true);
+			await expect(hook.invoke(runtime, target)).rejects.toThrow(
+				"No message connector registered",
+			);
+		} finally {
+			release.resolve();
+			await admitted;
+			await runtime.stop();
+			await runtime.close();
+		}
+	});
+}
+
+const postContext = { source: "local-post", accountId: "work" };
+const postCases: Array<{
+	field: "postHandler" | "fetchFeed" | "searchPosts";
+	invoke: (connector: PostConnector, runtime: AgentRuntime) => unknown;
+	args: (runtime: AgentRuntime) => unknown[];
+	result: Memory | Memory[];
+}> = [
+	{
+		field: "postHandler",
+		invoke: (connector, runtime) =>
+			connector.postHandler?.(runtime, hookContent, {
+				runtime,
+				...postContext,
+			}),
+		args: (runtime) => [runtime, hookContent, { runtime, ...postContext }],
+		result: localMemory,
+	},
+	{
+		field: "fetchFeed",
+		invoke: (connector, runtime) =>
+			connector.fetchFeed?.(
+				{ runtime, ...postContext },
+				{ feed: "local-feed", cursor: "local-cursor" },
+			),
+		args: (runtime) => [
+			{ runtime, ...postContext },
+			{ feed: "local-feed", cursor: "local-cursor" },
+		],
+		result: [localMemory],
+	},
+	{
+		field: "searchPosts",
+		invoke: (connector, runtime) =>
+			connector.searchPosts?.(
+				{ runtime, ...postContext },
+				{ query: "local-query", cursor: "local-cursor" },
+			),
+		args: (runtime) => [
+			{ runtime, ...postContext },
+			{ query: "local-query", cursor: "local-cursor" },
+		],
+		result: [localMemory],
+	},
+];
+
+for (const hook of postCases) {
+	test(`retains an enumerated ${hook.field} while post registrations change`, async () => {
+		const runtime = newRuntime();
+		const started = deferred();
+		const release = deferred();
+		const calls: string[] = [];
+		const failure = new Error(`Local ${hook.field} failure`);
+		runtime.registerSendHandler(postContext.source, async () => {
+			calls.push("message");
+		});
+		runtime.registerPostConnector({
+			source: postContext.source,
+			[hook.field]: async () => hook.result,
+		});
+		runtime.registerPostConnector({
+			...postContext,
+			[hook.field]: async (...args: unknown[]) => {
+				expect(args).toEqual(hook.args(runtime));
+				calls.push("admitted");
+				started.resolve();
+				await release.promise;
+				return hook.result;
+			},
+		});
+		const captured = runtime
+			.getPostConnectors()
+			.find((connector) => connector.accountId === postContext.accountId);
+		expect(captured?.[hook.field]).toBeTypeOf("function");
+		if (!captured) throw new Error("Missing local post descriptor");
+		runtime.registerPostConnector({
+			...postContext,
+			label: "Metadata replacement",
+		});
+		expect(
+			runtime
+				.getPostConnectors()
+				.find((connector) => connector.accountId === postContext.accountId)?.[
+				hook.field
+			],
+		).toBeUndefined();
+		expect(
+			runtime.unregisterPostConnector(postContext.source, undefined, {
+				exactAccount: true,
+			}),
+		).toBe(true);
+		expect(
+			runtime.getPostConnectors().map((connector) => connector.accountId),
+		).toEqual(["work"]);
+		const admitted = hook.invoke(captured, runtime);
+		try {
+			await started.promise;
+			expect(runtime.unregisterPostConnector(postContext.source)).toBe(true);
+			expect(runtime.unregisterPostConnector(postContext.source)).toBe(false);
+			expect(runtime.getPostConnectors()).toEqual([]);
+			await runtime.sendMessageToTarget(
+				{ source: postContext.source },
+				{ text: "Separate local message", agentVoiced: true },
+			);
+			runtime.registerPostConnector({
+				...postContext,
+				[hook.field]: async () => {
+					calls.push("failed");
+					throw failure;
+				},
+			});
+			expect(runtime.unregisterMessageConnector(postContext.source)).toBe(true);
+			expect(
+				runtime.getPostConnectors().map((connector) => connector.accountId),
+			).toEqual(["work"]);
+			const replacement = runtime.getPostConnectors()[0];
+			if (!replacement) throw new Error("Missing replacement post descriptor");
+			await expect(hook.invoke(replacement, runtime)).rejects.toBe(failure);
+			release.resolve();
+			expect(await admitted).toBe(hook.result);
+			expect(calls).toEqual(["admitted", "message", "failed"]);
+		} finally {
+			release.resolve();
+			await admitted;
+			await runtime.stop();
+			await runtime.close();
+		}
+	});
+}

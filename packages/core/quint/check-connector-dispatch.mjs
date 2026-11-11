@@ -46,6 +46,15 @@ const checks = requireVitestConformance(
 		"retains the admitted handler across voice-gate replacement",
 		"retains the admitted handler across voice-gate unregister",
 		"propagates admitted failure without retrying the current fallback",
+		"keeps edit bound to its descriptor across replacement and removal",
+		"keeps typing bound to its descriptor across replacement and removal",
+		"keeps stop typing bound to its descriptor across replacement and removal",
+		"keeps create thread bound to its descriptor across replacement and removal",
+		"keeps post to thread bound to its descriptor across replacement and removal",
+		"keeps reaction bound to its descriptor across replacement and removal",
+		"retains an enumerated postHandler while post registrations change",
+		"retains an enumerated fetchFeed while post registrations change",
+		"retains an enumerated searchPosts while post registrations change",
 	],
 );
 console.log(`Passed ${checks.length} local connector tests. Report ${report}`);
