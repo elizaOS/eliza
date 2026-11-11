@@ -605,6 +605,13 @@ function* generateOccurrences(args: {
   rangeStart?: Date;
   rangeEnd: Date;
   nonexistentLocalTime?: NonexistentLocalTimePolicy;
+  /**
+   * DTSTART is always the first occurrence of the RRULE set, so it is
+   * yielded unconditionally. An exclusion rule (EXRULE) names only the
+   * occurrences its pattern matches: pass false so the date loop, not the
+   * unconditional yield, decides whether DTSTART matches the pattern.
+   */
+  includeStartAt?: boolean;
 }): Generator<Date> {
   const { rule, startAt, timeZone, rangeStart, rangeEnd } = args;
   const skipNonexistent = args.nonexistentLocalTime === "skip";
@@ -838,12 +845,18 @@ function* generateOccurrences(args: {
     );
   };
 
-  // DTSTART is always the first occurrence.
-  if (pastUntil(startMs, anchorDate)) return;
-  if (startMs >= rangeEndMs) return;
-  yield new Date(startMs);
-  emitted += 1;
-  if (emitted >= emitBudget) return;
+  const includeStartAt = args.includeStartAt !== false;
+
+  // DTSTART is always the first occurrence of the RRULE set. With
+  // `includeStartAt: false` (EXRULE expansion) the date loop below is the
+  // only judge of whether DTSTART matches the pattern, so skip this yield.
+  if (includeStartAt) {
+    if (pastUntil(startMs, anchorDate)) return;
+    if (startMs >= rangeEndMs) return;
+    yield new Date(startMs);
+    emitted += 1;
+    if (emitted >= emitBudget) return;
+  }
 
   for (const date of localDates()) {
     const daysAfterAnchor = daysBetweenLocalDates(anchorDate, date);
@@ -868,7 +881,11 @@ function* generateOccurrences(args: {
     // RFC 5545 §3.3.10: a nonexistent local time is ignored, not counted.
     if (instant === null) continue;
     if (instant.getTime() >= rangeEndMs) return;
-    if (instant.getTime() <= startMs) continue;
+    if (instant.getTime() < startMs) continue;
+    // The unconditional DTSTART yield above already emitted DTSTART; the
+    // date loop must not repeat it. Without that yield, the loop is the
+    // only judge of whether DTSTART matches the rule, so let it through.
+    if (includeStartAt && instant.getTime() === startMs) continue;
     if (pastUntil(instant.getTime(), date)) return;
     yield instant;
     emitted += 1;
@@ -883,6 +900,8 @@ function* generateOccurrences(args: {
  * DST-correct: occurrences keep the DTSTART wall-clock time in `timeZone`
  * across transitions. `nonexistentLocalTime` decides whether an occurrence in
  * a spring-forward gap shifts past it or is skipped without counting.
+ * `includeStartAt: false` expands an exclusion rule (EXRULE): DTSTART is
+ * yielded only when the rule pattern matches it, instead of unconditionally.
  */
 export function expandRecurrenceOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
@@ -892,6 +911,7 @@ export function expandRecurrenceOccurrences(args: {
   rangeEnd: Date;
   maxOccurrences?: number;
   nonexistentLocalTime: NonexistentLocalTimePolicy;
+  includeStartAt?: boolean;
 }): Date[] {
   const cap = Math.min(
     args.maxOccurrences ?? MAX_EXPANDED_RECURRENCE_OCCURRENCES,

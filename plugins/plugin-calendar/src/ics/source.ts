@@ -15,6 +15,8 @@ import {
   expandRecurrenceOccurrences,
   firstRecurrenceRule,
   MAX_EXPANDED_RECURRENCE_OCCURRENCES,
+  type ParsedCalendarRecurrenceRule,
+  parseRecurrenceRule,
 } from "../internal/recurrence.js";
 import { getZonedDateParts } from "../internal/time.js";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
@@ -161,10 +163,10 @@ export function lifeOpsCalendarEventFromIcs(args: {
 
 /**
  * A subscribed feed stores each recurring VEVENT once, at DTSTART. Expand
- * every series into its occurrences inside [timeMin, timeMax), minus EXDATEs
- * and instances replaced by a RECURRENCE-ID override. An all-day event is a
- * civil date that the caller places on local days, so its window is the wider
- * [allDayTimeMin, allDayTimeMax). A series this module
+ * every series into its occurrences inside [timeMin, timeMax), minus EXDATEs,
+ * EXRULE occurrences, and instances replaced by a RECURRENCE-ID override.
+ * An all-day event is a civil date that the caller places on local days, so
+ * its window is the wider [allDayTimeMin, allDayTimeMax). A series this module
  * cannot expand exactly (RDATE, rule parts outside the local subset, the
  * generator cap) keeps its stored event and makes the result incomplete.
  */
@@ -253,6 +255,69 @@ export function expandIcsCalendarEvents(args: {
       diagnostics.add("CALENDAR_ICS_EXDATE_INVALID");
     }
     const seriesTimeZone = event.isAllDay ? "UTC" : (event.timezone ?? "UTC");
+    const rangeStart = new Date(
+      minMs - durationMs + (durationMs === 0 ? 0 : 1),
+    );
+    // RFC 2445 EXRULE names occurrences to exclude from the series. Expand
+    // each EXRULE from DTSTART over the same window and drop the occurrences
+    // it names, like EXDATE instants. An EXRULE this module cannot expand
+    // exactly leaves the series unexpanded, like RDATE.
+    const exruleExcluded = new Set<number>();
+    let exruleUnsupported = false;
+    for (const line of recurrence) {
+      if (!/^EXRULE[:;]/i.test(line.trim())) continue;
+      let exrule: ParsedCalendarRecurrenceRule;
+      try {
+        exrule = parseRecurrenceRule(line.trim().replace(/^EXRULE/i, "RRULE"), {
+          localUntil: true,
+          monthlyByDay: true,
+          yearlyByMonth: true,
+          bySetPos: true,
+        });
+      } catch {
+        exruleUnsupported = true;
+        break;
+      }
+      if (exrule.beyondExpansionSubset) {
+        exruleUnsupported = true;
+        break;
+      }
+      try {
+        const excludedStarts = expandRecurrenceOccurrences({
+          rule: exrule,
+          startAt: new Date(startMs),
+          timeZone: seriesTimeZone,
+          rangeStart,
+          rangeEnd: new Date(maxMs),
+          // An exclusion rule names only the occurrences its pattern
+          // matches; DTSTART itself is excluded only when it matches.
+          includeStartAt: false,
+          nonexistentLocalTime: "skip",
+        });
+        if (excludedStarts.length >= MAX_EXPANDED_RECURRENCE_OCCURRENCES) {
+          complete = false;
+        }
+        for (const start of excludedStarts) {
+          exruleExcluded.add(start.getTime());
+        }
+      } catch (error) {
+        if (
+          error instanceof CalendarServiceError &&
+          error.code === "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
+        ) {
+          complete = false;
+          diagnostics.add("CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE");
+          exruleUnsupported = true;
+          break;
+        }
+        throw error;
+      }
+    }
+    if (exruleUnsupported) {
+      complete = false;
+      if (overlaps(startMs, endMs)) expanded.push(event);
+      continue;
+    }
     let starts: Date[];
     try {
       starts = expandRecurrenceOccurrences({
@@ -304,6 +369,7 @@ export function expandIcsCalendarEvents(args: {
       const occurrenceEndMs = Date.parse(occurrenceEndAt);
       if (!overlaps(occurrenceMs, occurrenceEndMs)) continue;
       if (excluded.instants.has(occurrenceMs)) continue;
+      if (exruleExcluded.has(occurrenceMs)) continue;
       // A DATE EXDATE names a day. It excludes the occurrence that starts on
       // that day in the series time zone (UTC for an all-day series).
       if (excluded.dates.size > 0) {

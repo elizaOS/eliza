@@ -765,7 +765,7 @@ function parseRevisionAt(component: IcsComponent): string | null {
 
 function recurrenceLines(component: IcsComponent): string[] {
   const lines: string[] = [];
-  for (const name of ["RRULE", "RDATE", "EXDATE"] as const) {
+  for (const name of ["RRULE", "RDATE", "EXDATE", "EXRULE"] as const) {
     for (const property of component.properties.get(name) ?? []) {
       lines.push(`${property.serializedName}:${property.value}`);
     }
