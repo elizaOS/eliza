@@ -39,11 +39,7 @@ import {
 } from "../platform-sync.ts";
 import { resolveAndroidSdkRoot, resolveJavaHome } from "../toolchain.ts";
 import { buildWeb, ensureRendererDistMatchesLane } from "../web-build.ts";
-import {
-  enforceAndroidLp3ColorPolicyBuildPolicy,
-  enforceAndroidLp3RemoteFallbackBuildPolicy,
-  resolveAndroidLp3ColorPolicyBuildEnv,
-} from "./cloud-policy.ts";
+import { enforceAndroidVpsSidecarBuildPolicy } from "./cloud-policy.ts";
 import { patchAndroidGradle } from "./gradle.ts";
 import {
   overlayAndroid,
@@ -119,8 +115,7 @@ export const ANDROID_ARTIFACT_AUDITS = Object.freeze({
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
   smsGateway: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
-  system: ({ androidSdkRoot, javaHome }) =>
-    auditAndroidSystemArtifact({ androidSdkRoot, javaHome }),
+  system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
 });
 
 export const ANDROID_POST_BUILDS = Object.freeze({
@@ -210,16 +205,10 @@ export async function runAndroidBuild(
   targetName,
   { debug = false, env = process.env } = {},
 ) {
-  const resolvedEnv = resolveAndroidLp3ColorPolicyBuildEnv(env);
+  const resolvedEnv = { ...env };
   const target = resolveAndroidBuildTarget(targetName, { debug });
   const targetEnv = { ...resolvedEnv, ...target.env };
-  enforceAndroidLp3ColorPolicyBuildPolicy({
-    targetName: target.target,
-    debug,
-    env: resolvedEnv,
-    appId: APP.appId,
-  });
-  enforceAndroidLp3RemoteFallbackBuildPolicy({
+  enforceAndroidVpsSidecarBuildPolicy({
     targetName: target.target,
     debug,
     env: resolvedEnv,

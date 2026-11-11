@@ -152,10 +152,7 @@
       "ElizaVoiceInteractionService",
       "ElizaVoiceInteractionSessionService",
       "ElizaRecognitionService",
-      "ElizaVoiceInputMethodService",
-      "Lp3ColorPolicyInitializer",
-      "Lp3ColorPolicyService",
-      "Lp3ColorPolicyBootReceiver"
+      "ElizaVoiceInputMethodService"
     ],
     "mustStripPermissions": [
       "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",

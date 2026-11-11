@@ -43,12 +43,6 @@ export {
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-  ANDROID_LP3_COLOR_POLICY_ACTIONS,
-  ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS,
-  ANDROID_LP3_COLOR_POLICY_COMPONENTS,
-  ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
-  ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
-  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   ANDROID_NATIVE_SIGN_IN_COMPONENTS,
   ANDROID_NATIVE_SIGN_IN_METADATA_NAMES,
   ANDROID_PLAY_ALLOWED_ACTIONS,
@@ -68,21 +62,15 @@ export {
   ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidCloudSplashTheme,
   applyAndroidPlayManifestHardening,
-  assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidCloudNativeLibraryAllowlist,
   createAndroidPlayManifestPolicy,
-  enforceAndroidLp3ColorPolicyBuildPolicy,
-  enforceAndroidLp3RemoteFallbackBuildPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
-  isAndroidLp3ColorPolicyEnabled,
-  isAndroidLp3RemoteFallbackRequired,
   isAndroidVpsSidecarBuild,
   resolveAndroidCloudAllowedNativeLibraries,
   resolveAndroidCloudAllowedNativePluginPackages,
   resolveAndroidCloudStripPolicy,
-  resolveAndroidLp3ColorPolicyBuildEnv,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./mobile/android/cloud-policy.ts";
 export { removeInactiveAndroidJavaSourceRoots } from "./mobile/android/strip.ts";
@@ -109,7 +97,6 @@ export {
 import { auditAndroidCloudArtifact } from "./mobile/artifact-inspection/android-audit.ts";
 
 export {
-  auditAndroidArtifactDexLp3Policy,
   auditAndroidCloudArtifact,
   findAndroidBionicInferenceOffenders,
   findAndroidCloudAab,

@@ -9,12 +9,13 @@ import appPackage from "./package.json" with { type: "json" };
 
 export function resolveAndroidCapacitorPlugins(
   dependencies: Record<string, string>,
-  lp3RemoteFallback = false,
+  withoutPushNotifications = false,
 ): string[] {
   return Object.keys(dependencies)
     .filter(
       (name) =>
-        (!lp3RemoteFallback || name !== "@capacitor/push-notifications") &&
+        (!withoutPushNotifications ||
+          name !== "@capacitor/push-notifications") &&
         (name.startsWith("@elizaos/capacitor-") ||
           name.startsWith("@elizaos/plugin-native-") ||
           name.startsWith("@capacitor-community/") ||
@@ -282,15 +283,14 @@ const config: CapacitorConfig = {
     // Android owns the fused app runtime. Keep iOS's llama-cpp-capacitor
     // dependency out of raw Android sync while discovering every declared
     // Capacitor plugin, including the embedded Bun host, from package metadata.
-    // The dedicated LP3/VPS fallback has no distributor Firebase project.
+    // The dedicated VPS sidecar has no distributor Firebase project.
     // Keeping the FCM plugin in that build makes PushNotifications.register()
     // terminate the Android process when FirebaseApp is absent, before the JS
     // promise boundary can handle the error. Exclude only that native plugin;
-    // in-app/local notifications and the LP3 display-guard notification remain.
+    // in-app/local notifications remain.
     includePlugins: resolveAndroidCapacitorPlugins(
       appPackage.dependencies,
-      isFlagEnabled(process.env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED) ||
-        isFlagEnabled(process.env.ELIZA_ANDROID_VPS_SIDECAR),
+      isFlagEnabled(process.env.ELIZA_ANDROID_VPS_SIDECAR),
     ),
     backgroundColor: "#000000",
     allowMixedContent: false,

@@ -1,6 +1,7 @@
 {
   "description": "Files a downstream product imports from this repository by path, relative to this package. Each must keep existing.",
   "files": [
+    "scripts/android/aosp-clock-handlers.mjs",
     "scripts/android/aosp-ota-update.mjs",
     "scripts/android/aosp-release-record.mjs",
     "scripts/android/aosp-release-signing.mjs",
@@ -19,12 +20,14 @@
     "scripts/android/secure-camera.mjs",
     "scripts/android/sense-listener.mjs",
     "scripts/android/sense-systemui.mjs",
+    "scripts/android/sense.test.mjs",
     "scripts/android/sign-pixel10a-release.mjs",
     "scripts/android/smoke-cuttlefish.ts",
     "scripts/android/soong-app-native.mjs",
     "scripts/android/stage-android-native.py",
     "scripts/android/stage-launcher-overlay.ts",
     "scripts/android/stage-pixel10a-product.ts",
+    "scripts/android/system-updater-staging.mjs",
     "scripts/android/vendor-api.mjs",
     "scripts/android/verify-device-source.mjs",
     "scripts/android/verify-launcher-image.mjs",

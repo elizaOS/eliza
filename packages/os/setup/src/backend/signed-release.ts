@@ -23,7 +23,7 @@ export interface SignedReleaseDescription {
       id: string;
       codename: string;
       kind: "physical" | "virtual";
-      architecture: "arm64" | "x86_64" | "riscv64";
+      architecture: "arm64" | "x86_64";
     };
     files: ReleaseFile[];
     startingStates: Array<{ recovery: { archive: ReleaseFile } }>;

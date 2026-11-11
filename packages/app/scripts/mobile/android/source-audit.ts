@@ -24,15 +24,11 @@ import {
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
-  ANDROID_LP3_COLOR_POLICY_COMPONENTS,
-  ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
-  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
   ANDROID_SMS_GATEWAY_COMPONENTS,
   ANDROID_SMS_GATEWAY_PERMISSIONS,
   ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
   ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-  isAndroidLp3ColorPolicyEnabled,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudAllowedNativePluginPackages,
@@ -42,7 +38,6 @@ import {
 
 export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   const failures = [];
-  const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const manifestPath = path.join(
     androidDir,
@@ -105,50 +100,6 @@ export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     }
     if (!xml.includes('android:name="android.app.shortcuts"')) {
       failures.push("AndroidManifest.xml does not register @xml/shortcuts");
-    }
-  }
-
-  const lp3DebugRoot = path.join(
-    platformsDir,
-    "android",
-    "lp3-color-policy",
-    "src",
-    "debug",
-  );
-  if (lp3ColorPolicyEnabled) {
-    const lp3ManifestPath = path.join(lp3DebugRoot, "AndroidManifest.xml");
-    if (!fs.existsSync(lp3ManifestPath)) {
-      failures.push("LP3 direct-debug manifest overlay is missing");
-    } else {
-      const lp3Manifest = stripXmlComments(
-        fs.readFileSync(lp3ManifestPath, "utf8"),
-      );
-      for (const component of ANDROID_LP3_COLOR_POLICY_COMPONENTS) {
-        if (!lp3Manifest.includes(component)) {
-          failures.push(
-            `LP3 direct-debug manifest is missing component ${component}`,
-          );
-        }
-      }
-      for (const permission of ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS) {
-        const full = `android.permission.${permission}`;
-        if (!hasAndroidPermissionRequest(lp3Manifest, full)) {
-          failures.push(
-            `LP3 direct-debug manifest is missing permission ${full}`,
-          );
-        }
-      }
-      if (!lp3Manifest.includes('android:screenOrientation="portrait"')) {
-        failures.push(
-          "LP3 direct-debug manifest does not lock MainActivity to portrait",
-        );
-      }
-    }
-    const lp3JavaRoot = path.join(lp3DebugRoot, "java", "ai", "elizaos", "app");
-    for (const file of ANDROID_LP3_COLOR_POLICY_JAVA_FILES) {
-      if (!fs.existsSync(path.join(lp3JavaRoot, file))) {
-        failures.push(`LP3 direct-debug Java source is missing: ${file}`);
-      }
     }
   }
 

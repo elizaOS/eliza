@@ -5,29 +5,20 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
-  ANDROID_LP3_POLICY_CLASSES,
-  ANDROID_LP3_POLICY_MARKERS,
-  ANDROID_LP3_PRIVATE_ACTIONS,
   assertAndroidPlayManifestPolicyEvidence,
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
 } from "../../lib/android-cloud-artifact-audit.ts";
 import {
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
-  ANDROID_LP3_COLOR_POLICY_COMPONENTS,
-  ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
-  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
-  assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidCloudNativeLibraryAllowlist,
-  assertAndroidLp3ColorPolicyManifest,
   assertAndroidSmsGatewayArtifactManifest,
   assertAndroidSmsGatewayBadging,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
-  isAndroidFirebaseIndependentRemoteBuild,
-  isAndroidLp3ColorPolicyEnabled,
+  isAndroidVpsSidecarBuild,
   resolveAndroidCloudStripPolicy,
 } from "../android/cloud-policy.ts";
 import { mobileBuildError } from "../build-error.ts";
@@ -163,7 +154,7 @@ export function auditAndroidHostE2eArtifact({ javaHome } = {}) {
   return artifact;
 }
 
-export function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
+export function auditAndroidSystemArtifact({ javaHome } = {}) {
   // The AOSP/system target gets the web-payload mirror like the other three
   // sync targets, but the privileged release APK still needs the same positive
   // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
@@ -182,29 +173,6 @@ export function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
     javaHome,
     { label: "android-system" },
   );
-  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
-  if (!aapt) {
-    throw mobileBuildError(
-      "[mobile-build] Could not find aapt under Android SDK build-tools for android-system artifact audit.",
-    );
-  }
-  // RECEIVE_BOOT_COMPLETED and FOREGROUND_SERVICE_SPECIAL_USE are also used by
-  // non-LP3 AOSP services. WRITE_SECURE_SETTINGS is the LP3-only manifest
-  // delta; the remaining private boundary is enforced by component/action/DEX
-  // markers below.
-  assertAndroidArtifactOmitsLp3ManifestMarkers(
-    dumpAndroidArtifactManifest(aapt, artifact),
-    {
-      appId: APP.appId,
-      label: "ordinary AOSP",
-      permissions: ["WRITE_SECURE_SETTINGS"],
-    },
-  );
-  auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
-    debug: false,
-    expectedPresent: false,
-    label: "ordinary AOSP",
-  });
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
     requireAgent: true,
     label: "android-system",
@@ -242,63 +210,6 @@ export function findAndroidCloudDebugApk() {
   ]);
 }
 
-export function auditAndroidArtifactDexLp3Policy(
-  artifact,
-  entries,
-  javaHome,
-  { debug, expectedPresent, label = "normal Cloud" },
-  { readEntryBuffers = readAndroidArtifactEntryBuffers } = {},
-) {
-  const dexEntries = entries.filter((entry) =>
-    /(^|\/)classes\d*\.dex$/.test(entry),
-  );
-  if (dexEntries.length === 0) {
-    throw mobileBuildError(
-      `[mobile-build] Android artifact has no classes*.dex entries: ${artifact}`,
-    );
-  }
-
-  const dexBuffers = readEntryBuffers(artifact, dexEntries, javaHome, {
-    label: "LP3 policy DEX audit",
-  });
-  const packagePath = APP.appId.replaceAll(".", "/");
-  const classNames =
-    expectedPresent && !debug
-      ? ANDROID_LP3_COLOR_POLICY_COMPONENTS
-      : ANDROID_LP3_COLOR_POLICY_JAVA_FILES.map((file) =>
-          file.replace(/\.java$/, ""),
-        );
-  const findings = classNames.filter((className) => {
-    const marker = Buffer.from(`${packagePath}/${className}`, "utf8");
-    return dexBuffers.some((dex) => dex.includes(marker));
-  });
-  if (expectedPresent && findings.length !== classNames.length) {
-    const missing = classNames.filter((name) => !findings.includes(name));
-    throw mobileBuildError(
-      "[mobile-build] opted-in LP3 artifact DEX is missing policy classes:\n" +
-        missing.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
-    );
-  }
-  if (!expectedPresent) {
-    const forbiddenMarkers = [
-      ...ANDROID_LP3_POLICY_CLASSES.map(
-        (className) => `${packagePath}/${className}`,
-      ),
-      ...ANDROID_LP3_PRIVATE_ACTIONS,
-      ...ANDROID_LP3_POLICY_MARKERS,
-    ];
-    const markerFindings = forbiddenMarkers.filter((marker) => {
-      const bytes = Buffer.from(marker, "utf8");
-      return dexBuffers.some((dex) => dex.includes(bytes));
-    });
-    if (markerFindings.length === 0) return;
-    throw mobileBuildError(
-      `[mobile-build] ${label} artifact DEX still contains LP3 policy markers:\n` +
-        markerFindings.map((marker) => `  - ${marker}`).join("\n"),
-    );
-  }
-}
-
 export function auditAndroidCloudArtifact(
   {
     artifact: requestedArtifact,
@@ -311,7 +222,6 @@ export function auditAndroidCloudArtifact(
     log = console.log,
   } = {},
 ) {
-  const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const artifact =
     typeof requestedArtifact === "string" && requestedArtifact.trim() !== ""
@@ -366,45 +276,40 @@ export function auditAndroidCloudArtifact(
       },
     );
   }
-  if (!lp3ColorPolicyEnabled) {
-    assertAndroidCloudNativeLibraryAllowlist({ artifact, entries, env });
-    const textAssetEntries = entries.filter(
-      (entry) =>
-        /(?:^|\/)assets\//.test(entry) &&
-        /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
-    );
-    const textAssetBuffers = readAndroidArtifactEntryBuffers(
-      artifact,
-      textAssetEntries,
-      javaHome,
+  assertAndroidCloudNativeLibraryAllowlist({ artifact, entries, env });
+  const textAssetEntries = entries.filter(
+    (entry) =>
+      /(?:^|\/)assets\//.test(entry) &&
+      /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
+  );
+  const textAssetBuffers = readAndroidArtifactEntryBuffers(
+    artifact,
+    textAssetEntries,
+    javaHome,
+    {
+      artifactBytes: initialSnapshot.bytes,
+      label: "android-cloud Play text asset audit",
+    },
+  );
+  const textAssetFindings = findAndroidPlayTextAssetFindings(
+    textAssetEntries,
+    textAssetBuffers,
+  );
+  const indexHtmlFindings = findAndroidPlayIndexHtmlFindings(
+    textAssetEntries,
+    textAssetBuffers,
+  );
+  const playTextFindings = [...textAssetFindings, ...indexHtmlFindings].sort();
+  if (playTextFindings.length > 0) {
+    throw mobileBuildError(
+      `[mobile-build] android-cloud text asset policy failed:\n${playTextFindings
+        .map((finding) => `  - ${finding}`)
+        .join("\n")}`,
       {
-        artifactBytes: initialSnapshot.bytes,
-        label: "android-cloud Play text asset audit",
+        code: "ANDROID_PLAY_TEXT_ASSET_POLICY_FAILED",
+        context: { artifact, findings: playTextFindings },
       },
     );
-    const textAssetFindings = findAndroidPlayTextAssetFindings(
-      textAssetEntries,
-      textAssetBuffers,
-    );
-    const indexHtmlFindings = findAndroidPlayIndexHtmlFindings(
-      textAssetEntries,
-      textAssetBuffers,
-    );
-    const playTextFindings = [
-      ...textAssetFindings,
-      ...indexHtmlFindings,
-    ].sort();
-    if (playTextFindings.length > 0) {
-      throw mobileBuildError(
-        `[mobile-build] android-cloud text asset policy failed:\n${playTextFindings
-          .map((finding) => `  - ${finding}`)
-          .join("\n")}`,
-        {
-          code: "ANDROID_PLAY_TEXT_ASSET_POLICY_FAILED",
-          context: { artifact, findings: playTextFindings },
-        },
-      );
-    }
   }
   const integrityEntries = entries.filter((entry) =>
     artifactKind === "aab"
@@ -474,61 +379,12 @@ export function auditAndroidCloudArtifact(
           );
         }
       }
-      if (lp3ColorPolicyEnabled) {
-        const missingPermissions =
-          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS.filter(
-            (permission) =>
-              !badging.includes(
-                `uses-permission: name='android.permission.${permission}'`,
-              ),
-          );
-        if (missingPermissions.length > 0) {
-          throw mobileBuildError(
-            "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
-              missingPermissions
-                .map((permission) => `  - android.permission.${permission}`)
-                .join("\n"),
-          );
-        }
-        assertAndroidLp3ColorPolicyManifest(manifestText);
-      } else {
-        assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
-          appId: APP.appId,
-          label: "normal Cloud",
-        });
-        assertAndroidPlayManifestPolicyEvidence(
-          androidPlayManifestEvidenceFromAapt(manifestText),
-          createAndroidPlayManifestPolicy({
-            debug: true,
-            firebaseIndependent: isAndroidFirebaseIndependentRemoteBuild(env),
-          }),
-        );
-      }
-      auditAndroidArtifactDexLp3Policy(
-        inspectedArtifact,
-        entries,
-        javaHome,
-        {
-          debug,
-          expectedPresent: lp3ColorPolicyEnabled,
-        },
-        {
-          readEntryBuffers: (
-            selectedArtifact,
-            selectedEntries,
-            selectedJavaHome,
-            options,
-          ) =>
-            readAndroidArtifactEntryBuffers(
-              selectedArtifact,
-              selectedEntries,
-              selectedJavaHome,
-              {
-                ...options,
-                artifactBytes: initialSnapshot.bytes,
-              },
-            ),
-        },
+      assertAndroidPlayManifestPolicyEvidence(
+        androidPlayManifestEvidenceFromAapt(manifestText),
+        createAndroidPlayManifestPolicy({
+          debug: true,
+          firebaseIndependent: isAndroidVpsSidecarBuild(env),
+        }),
       );
     } else {
       evidence = inspectAndroidAppBundleImpl({
@@ -585,9 +441,7 @@ export function auditAndroidCloudArtifact(
       })}`,
     );
   }
-  log(
-    `[mobile-build] android-cloud${lp3ColorPolicyEnabled ? " LP3 direct" : ""} artifact audit passed: ${artifact}`,
-  );
+  log(`[mobile-build] android-cloud artifact audit passed: ${artifact}`);
   return artifact;
 }
 

@@ -53,9 +53,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveElizaSourceRoot } from "../eliza-source.ts";
 import { loadAospLock } from "./bootstrap-aosp.ts";
 import { DEFAULT_BRAND_CONFIG, loadBrandConfig } from "./brand-config.ts";
-import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const osRepoRoot = path.resolve(here, "../..");

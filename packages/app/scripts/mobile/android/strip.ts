@@ -29,7 +29,7 @@ import {
   ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidPlayManifestHardening,
-  isAndroidFirebaseIndependentRemoteBuild,
+  isAndroidVpsSidecarBuild,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudStripPolicy,
@@ -323,7 +323,7 @@ export function stripAndroidNativePlugins(strippedPlugins, label) {
 }
 
 export function stripAndroidCloudNativePlugins(env = process.env) {
-  const strippedPlugins = isAndroidFirebaseIndependentRemoteBuild(env)
+  const strippedPlugins = isAndroidVpsSidecarBuild(env)
     ? [
         ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
         ["@capacitor/push-notifications", "capacitor-push-notifications"],

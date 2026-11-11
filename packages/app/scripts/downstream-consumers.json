@@ -3,6 +3,7 @@
   "files": [
     "scripts/mobile/android/build-consumer.mjs",
     "scripts/mobile/android/consumer-host.mjs",
+    "scripts/mobile/android/consumer-host/app.gradle",
     "scripts/mobile/android/consumer-host/toolchain.json",
     "scripts/mobile/android/resident-host-sources.mjs",
     "scripts/mobile/android/hosted-fixture/ci-emulator-diagnostics.mjs",
@@ -41,6 +42,7 @@
     "scripts/paradee-voice/build-native.ts",
     "scripts/stage-elizavoice-lib.ts",
     "scripts/stage-desktop-fused-lib.ts",
+    "test/android/sense.test.mjs",
     "../agent/scripts/build-mobile-bundle.ts",
     "../agent/scripts/mobile-bundle-dependencies.ts",
     "../agent/scripts/mobile-wallet-connectors.ts",

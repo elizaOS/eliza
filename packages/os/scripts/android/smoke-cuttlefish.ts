@@ -331,11 +331,9 @@ export async function runSmoke({
     serial,
   });
   const abi = abiOut.stdout.trim() || "unknown";
-  // When --expected-abi is set, fail closed on a wrong-arch device so a
-  // riscv64 caller can't silently pass against an x86_64/arm64 cvd. The
-  // abilist must also list the expected abi, mirroring the riscv64 boot
-  // gate's abi/abilist assertions. Omitted by default — the abi stays a
-  // report-only detail for the x86_64/arm64 callers.
+  // When --expected-abi is set, fail closed on a wrong-arch device. The
+  // abilist must also list the expected abi. Omitted by default — the abi
+  // stays a report-only detail.
   if (expectedAbi) {
     const abilistOut = adbImpl(["shell", "getprop", "ro.product.cpu.abilist"], {
       serial,
