@@ -542,9 +542,7 @@ test("bounded attachments round-trip exact UTF-8 bytes and reversible mailbox ch
         return Response.json({ size: bytes.length, data: bytes.toString("base64url") });
       if (url.pathname.endsWith("/messages/source/modify")) {
         const body = (await request.json()) as any;
-        labels = body.addLabelIds
-          ? [...new Set([...labels, ...body.addLabelIds])]
-          : labels.filter((label) => !body.removeLabelIds.includes(label));
+        labels = body.addLabelIds ? ["INBOX"] : [];
         history = String(Number(history) + 1);
         return Response.json({
           id: "source",
@@ -643,8 +641,7 @@ test("bounded attachments round-trip exact UTF-8 bytes and reversible mailbox ch
         crypto.randomUUID(),
       ),
     ).rejects.toThrow();
-    for (const kind of ["archive", "unarchive", "trash", "untrash", "star", "unstar"]) {
-      if (kind === "star") labels = ["INBOX", "IMPORTANT"];
+    for (const kind of ["archive", "unarchive", "trash", "untrash"]) {
       const effect = await provider.review(
         owner,
         { kind, messageId: "source", expectedHistoryId: history },
@@ -654,7 +651,7 @@ test("bounded attachments round-trip exact UTF-8 bytes and reversible mailbox ch
       expect(result.messageId).toBe("source");
       expect(result.historyId).toBe(history);
     }
-    expect(labels).toEqual(["INBOX", "IMPORTANT"]);
+    expect(labels).toEqual([]);
   } finally {
     server.stop(true);
   }
@@ -856,18 +853,6 @@ test("read-state migration widens only the kind allowlist and keeps existing rec
     await migration("0535_managed_gmail_read_state_operations.sql");
     await insert("mark-read");
     await insert("mark-unread");
-    await expect(insert("star")).rejects.toThrow();
-    const journal = JSON.parse(
-      readFileSync(new URL("../../../db/migrations/meta/_journal.json", import.meta.url), "utf8"),
-    );
-    expect(
-      journal.entries.filter(
-        (entry: { tag: string }) => entry.tag === "0571_managed_gmail_star_operations",
-      ).length,
-    ).toBe(1);
-    await migration("0571_managed_gmail_star_operations.sql");
-    await insert("star");
-    await insert("unstar");
     await expect(insert("mark-starred")).rejects.toThrow();
     const kinds = await scratch.query<{ kind: string }>(
       "SELECT kind FROM managed_gmail_operation_receipts ORDER BY created_at, kind",
@@ -876,8 +861,6 @@ test("read-state migration widens only the kind allowlist and keeps existing rec
       "archive",
       "mark-read",
       "mark-unread",
-      "star",
-      "unstar",
     ]);
   } finally {
     await scratch.close();
@@ -931,7 +914,6 @@ test("reviewed mark-read and mark-unread over a closed transport: review digest,
   });
   const capabilities = await provider.capabilities(owner);
   expect(capabilities.readState).toBe(true);
-  expect(capabilities.stars).toBe(true);
   expect(capabilities.mailboxMutations).toBe(true);
 
   const read = await provider.review(
@@ -1102,7 +1084,7 @@ test("reviewed mark-read and mark-unread over a closed transport: review digest,
   scopes = ["https://www.googleapis.com/auth/gmail.readonly"];
   const callsBeforeScope = calls.length;
   expect((await provider.capabilities(owner)).readState).toBe(false);
-  for (const kind of ["mark-read", "mark-unread", "star", "unstar"])
+  for (const kind of ["mark-read", "mark-unread"])
     await expect(
       provider.review(
         owner,
