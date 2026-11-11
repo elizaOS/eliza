@@ -3,7 +3,6 @@
 import { randomBytes } from "node:crypto";
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
-  CONSENT_NONCE_TTL_SECONDS,
   consumeConsentNonce,
   issueConsentNonce,
 } from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
@@ -19,7 +18,6 @@ import {
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
 import {
-  preparedSpeechSessionIdForConsent,
   speechRelayMaxWindows,
   speechSessionIdForConsent,
   speechTokenDigest,
@@ -91,26 +89,13 @@ app.post("/consent", async (c) => {
   const caller = await timer.time("speech_identity_rate", () =>
     requireGenerativeRouteCaller(c, { rateLimitEndpoint: "standard" }),
   );
-  const recovering = c.req.header(SPEECH_RECOVERY_HEADER) === "1";
-  // Prepared sessions already hold an atomic, expiring consent record. Their
-  // deterministic name also fences legacy mint routes against a second use.
-  const consent = recovering
-    ? {
-        nonce: crypto.randomUUID(),
-        expiresAt: new Date(
-          Date.now() + CONSENT_NONCE_TTL_SECONDS * 1000,
-        ).toISOString(),
-      }
-    : await timer.time("speech_consent_write", () =>
-        issueConsentNonce(caller.user.id),
-      );
+  const consent = await timer.time("speech_consent_write", () =>
+    issueConsentNonce(caller.user.id),
+  );
   if (!consent) return c.json({ error: "speech_consent_unavailable" }, 503);
   let recoverySessionId: string | undefined;
-  if (recovering) {
-    recoverySessionId = preparedSpeechSessionIdForConsent(
-      caller.user.id,
-      consent.nonce,
-    );
+  if (c.req.header(SPEECH_RECOVERY_HEADER) === "1") {
+    recoverySessionId = crypto.randomUUID();
     const sessionId = recoverySessionId;
     const prepared = await timer.time("speech_recovery_prepare", () =>
       c.env
@@ -204,17 +189,9 @@ app.post("/session", async (c) => {
         ? caller.credential.expiresAt
         : Number.POSITIVE_INFINITY,
     );
-  const preparedConsent =
-    recovering &&
-    recoveryId ===
-      preparedSpeechSessionIdForConsent(caller.user.id, consentNonce);
-  // Old random recovery IDs keep their Redis precondition. A new deterministic
-  // ID can mint only by consuming its exact prepared Durable Object record.
-  const consuming = preparedConsent
-    ? Promise.resolve(true)
-    : timer.time("speech_consent_consume", () =>
-        consumeConsentNonce(caller.user.id, consentNonce),
-      );
+  const consuming = timer.time("speech_consent_consume", () =>
+    consumeConsentNonce(caller.user.id, consentNonce),
+  );
   const initialize = () =>
     timer.time("speech_directory_write", () =>
       c.env

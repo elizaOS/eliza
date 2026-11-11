@@ -19,7 +19,6 @@ import {
   parseSpeechRelayJson,
   readConfirmedSpeechRetirement,
 } from "@elizaos/host/voice/speech-relay-wire";
-import { v5 as uuidv5 } from "uuid";
 import {
   createWorkerCartesiaFactory,
   createWorkerCartesiaInkFactory,
@@ -104,16 +103,6 @@ export function speechSessionIdForConsent(
   // RFC 9562 version 8 (custom) with the RFC variant bits.
   const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
-/** Stable recovery identity with a UUID version supported by existing speech clients. */
-export function preparedSpeechSessionIdForConsent(
-  userId: string,
-  consentNonce: string,
-): string {
-  return uuidv5(
-    `https://api.eliza.app/voice/consent/${userId}/${consentNonce}`,
-    uuidv5.URL,
-  );
 }
 const response = (status: number, code: string) =>
   Response.json({ error: code }, { status });
