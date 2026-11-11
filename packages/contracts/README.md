@@ -28,6 +28,9 @@ local-time triggers are data, never execution authority: a local-time schedule
 is armed per reviewed version on the agent's durable scheduler, an occurrence
 that passes while the agent is not running is recorded once as missed and never
 run later, and every phone read or effect still needs its own device approval.
+Relative Calendar ranges require workflow device protocol 4. They resolve once
+per run to exact owner-day bounds before review. Older phones retain absolute
+Calendar reads and are refused relative runs before a proposal is queued.
 
 `@elizaos/contracts/notice-routes` is the renderer side of the native notice
 routes: the owner privacy fence coordinator, tap resolution through

@@ -6,6 +6,8 @@ import {
   NAMED_TARGET_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   PHONE_WORKFLOW_DEVICE_PROTOCOL,
+  validatePhoneCalendarRange,
+  workflowCalendarReadMatches,
   workflowReminderDayIsCurrent,
 } from "@elizaos/contracts";
 import type { NativeNotesDeferredRead } from "@elizaos/contracts/native-notes-query";
@@ -1882,7 +1884,7 @@ export class DeviceActionService {
   async register(
     c: DeviceCredential,
     label: string,
-    workflowProtocol: 0 | 1 | 2 = 0,
+    workflowProtocol: number = 0,
     workflowOwnerId: string = c.subjectUserId,
   ): Promise<{
     installationId: string;
@@ -2488,6 +2490,7 @@ export class DeviceActionService {
   private async requireActiveWorkflow(
     tx: TransactionalDb,
     binding: WorkflowDeviceBinding,
+    calendarProtocol?: number,
   ): Promise<void> {
     const rows = await executeRawSqlTx(
       tx,
@@ -2506,6 +2509,25 @@ export class DeviceActionService {
       throw new DeviceActionError(
         "Workflow is no longer accepting device decisions",
       );
+    if (calendarProtocol !== undefined && calendarProtocol < 4) {
+      // A peer can downgrade after queueing or approval. Recheck its ability
+      // to review the pinned relative spec before decision and claim.
+      const versions = await executeRawSqlTx(
+        tx,
+        `SELECT workflow FROM workflow.embedded_workflows WHERE agent_id = ${sqlText(this.runtime.agentId)} AND id = ${sqlText(binding.workflowId)} AND version_id = ${sqlText(binding.versionId)} UNION ALL SELECT workflow FROM workflow.workflow_revisions WHERE agent_id = ${sqlText(this.runtime.agentId)} AND workflow_id = ${sqlText(binding.workflowId)} AND version_id = ${sqlText(binding.versionId)}`,
+      );
+      const metadata = object(object(versions[0]?.workflow).metadata);
+      if (typeof metadata.elizaPhoneWorkflowSpec !== "string")
+        throw new DeviceActionError("Workflow specification unavailable");
+      const spec = object(JSON.parse(metadata.elizaPhoneWorkflowSpec));
+      const step = object(
+        (Array.isArray(spec.steps) ? spec.steps : []).find(
+          (raw) => object(raw).id === binding.stepId,
+        ),
+      );
+      if ("days" in validatePhoneCalendarRange(step.range))
+        throw new DeviceActionError("Workflow device protocol unavailable");
+    }
   }
   async validateWorkflowTarget(
     subjectUserId: string,
@@ -2618,11 +2640,13 @@ export class DeviceActionService {
             "Workflow reminder read names a day other than today",
           );
       } else if (operation.type === "read_calendar_range") {
-        const { type: _type, ...range } = operation;
+        // A relative step range must name the run's current local days.
+        if (step.kind !== "Read" || step.operation !== "calendar_range")
+          throw new DeviceActionError("Workflow Calendar scope changed");
+        const range = validatePhoneCalendarRange(step.range);
         if (
-          step.kind !== "Read" ||
-          step.operation !== "calendar_range" ||
-          stableStringify(step.range) !== stableStringify(range)
+          ("days" in range && Number(rows[0]?.workflow_protocol) < 4) ||
+          !workflowCalendarReadMatches(range, operation)
         )
           throw new DeviceActionError("Workflow Calendar scope changed");
       } else if (operation.type === "post_notification") {
@@ -2868,7 +2892,13 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow device protocol unavailable");
     if (activeWorkflowTx && payload.workflow)
-      await this.requireActiveWorkflow(activeWorkflowTx, payload.workflow);
+      await this.requireActiveWorkflow(
+        activeWorkflowTx,
+        payload.workflow,
+        payload.operation.type === "read_calendar_range"
+          ? Number(row.workflow_protocol)
+          : undefined,
+      );
     return request;
   }
   async decide(
