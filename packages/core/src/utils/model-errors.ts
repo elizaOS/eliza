@@ -319,15 +319,18 @@ export function modelProviderErrorDetail(
 	let url: string | undefined;
 	for (const node of modelErrorChain(error)) {
 		status ??= readHttpStatus(node);
-		if (responseBodyExcerpt === undefined) {
-			const body = (node as { responseBody?: unknown }).responseBody;
-			if (typeof body === "string" && body.trim().length > 0) {
-				responseBodyExcerpt = body
-					.replace(/\s+/g, " ")
-					.trim()
-					.slice(0, RESPONSE_BODY_EXCERPT_MAX_CHARS);
-				providerMessage = providerMessageFromBody(body);
-			}
+		const body = (node as { responseBody?: unknown }).responseBody;
+		if (typeof body === "string" && body.trim().length > 0) {
+			// The excerpt comes from the first body found, but the message
+			// may live deeper: a wrapper body is often plain text ("Bad
+			// Request") while the wrapped cause carries the structured
+			// provider body. Keep scanning bodies for a parseable message
+			// instead of giving up after the first one.
+			responseBodyExcerpt ??= body
+				.replace(/\s+/g, " ")
+				.trim()
+				.slice(0, RESPONSE_BODY_EXCERPT_MAX_CHARS);
+			providerMessage ??= providerMessageFromBody(body);
 		}
 		if (url === undefined) {
 			const rawUrl = (node as { url?: unknown }).url;
