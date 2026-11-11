@@ -75,7 +75,7 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "linkify-it": "5.0.2",
+    "linkify-it": "6.1.0",
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
