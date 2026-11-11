@@ -371,8 +371,10 @@ export function isModelProviderError(error: unknown): boolean {
 
 /** A rejected output/tool schema cannot be repaired by generating an apology. */
 export function isProviderSchemaRejection(error: unknown): boolean {
-	const status = modelProviderErrorStatus(error);
-	if (status !== undefined && status !== 400 && status !== 422) return false;
+	// No early return on the first status in the chain: a wrapper node can
+	// carry a 500 (or no status) while the wrapped provider error carries the
+	// 400/422 schema rejection. Each node is judged on its own status and
+	// evidence below.
 	for (const node of modelErrorChain(error)) {
 		const status = readHttpStatus(node);
 		const code = (node as { code?: unknown }).code;
