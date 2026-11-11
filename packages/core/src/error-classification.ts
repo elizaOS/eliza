@@ -22,6 +22,24 @@ function hasInsufficientCreditsSignal(input: string): boolean {
 }
 
 /**
+ * Reads a provider HTTP status off an error node. Accepts `statusCode` and
+ * `status`, as a number or a numeric string: the sibling classifier in
+ * `utils/model-errors.ts` already reads both shapes, and providers and
+ * gateways do not all spell a 402 the same way.
+ */
+function readProviderStatusCode(value: unknown): number | undefined {
+	const raw =
+		readDiagnosticProperty(value, "statusCode") ??
+		readDiagnosticProperty(value, "status");
+	if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+	if (typeof raw === "string") {
+		const parsed = Number(raw);
+		if (Number.isFinite(parsed) && parsed > 0) return parsed;
+	}
+	return undefined;
+}
+
+/**
  * Returns `true` when the rejection looks like an AI provider credit-exhaustion
  * error — these are noisy but not fatal, so callers should warn instead of crash.
  */
@@ -44,8 +62,7 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
 		if (isProviderError) {
 			if (hasInsufficientCreditsSignal(formatted)) return true;
 
-			const statusCode = readDiagnosticProperty(current, "statusCode");
-			if (statusCode === 402) return true;
+			if (readProviderStatusCode(current) === 402) return true;
 
 			const responseBody = readDiagnosticProperty(current, "responseBody");
 			if (
@@ -62,6 +79,12 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
 		if (Array.isArray(errors)) {
 			pending.push(...errors);
 		}
+
+		// The AI SDK `RetryError` envelope carries the terminal failure on
+		// `lastError` (with no `cause` pointing at it); the sibling
+		// `modelErrorChain` in `utils/model-errors.ts` walks the same
+		// `.cause` / `.lastError` / `.errors[]` graph.
+		pending.push(readDiagnosticProperty(current, "lastError"));
 
 		pending.push(readDiagnosticProperty(current, "cause"));
 	}
