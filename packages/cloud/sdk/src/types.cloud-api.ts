@@ -408,8 +408,11 @@ export interface MobileCredentialRenewalRequest {
  * An authorization code of the same shape the sign-in approval returns. Exchange
  * it on `/api/v1/app-auth/mobile/token`, acknowledge the new key on
  * `/api/v1/app-auth/mobile/ack`, then revoke the old key with
- * `DELETE /api/v1/api-keys/current`. After the acknowledgement use only the new
- * key: renewing again with the old one ends the whole sign-in.
+ * `DELETE /api/v1/api-keys/current`, sending the new key's `credentialId` in
+ * `X-Renewed-Credential-Id`. Without that header the request is a sign-out
+ * that also ends the new key, unless it arrives within two minutes of the
+ * acknowledgement. After the acknowledgement use only the new key: renewing
+ * again with the old one ends the whole sign-in.
  */
 export interface MobileCredentialRenewalResponse {
   success: true;

@@ -63,9 +63,8 @@ const {
   resolveMobileAppAuthRegistration,
   sha256Hex,
 } = await import("@elizaos/cloud-shared/lib/services/mobile-app-auth");
-const { mobileAppAuthGrantsRepository } = await import(
-  "../../shared/src/db/repositories/mobile-app-auth-grants"
-);
+const { mobileAppAuthGrantsRepository, MOBILE_RENEWAL_RETIREMENT_GRACE_MS } =
+  await import("../../shared/src/db/repositories/mobile-app-auth-grants");
 const { buildMobileAppAuthCredentialProvenance } = await import(
   "../../shared/src/db/mobile-app-auth-credential-policy"
 );
@@ -305,6 +304,24 @@ async function revokeCurrent(headers: Record<string, string>) {
     status: response.status,
     body: (await response.json()) as Record<string, unknown>,
   };
+}
+
+/** The header with which a renewal's last step names the new key. */
+const renewedInto = (successor: Held) => ({
+  "x-renewed-credential-id": successor.credentialId,
+});
+
+/**
+ * Moves a key's acknowledgement to `ms` before the wall clock. The
+ * self-revocation route decides at the wall clock, while this suite drives
+ * sign-in and renewal with its own clock.
+ */
+async function acknowledgedAgo(held: Held, ms: number): Promise<void> {
+  const moved = await pg.query(
+    "UPDATE mobile_app_auth_grants SET acknowledged_at=$1 WHERE credential_id=$2 AND status='acknowledged'",
+    [new Date(Date.now() - ms), held.credentialId],
+  );
+  expect(moved.affectedRows).toBe(1);
 }
 
 /** A renewal from request to acknowledged successor. */
@@ -569,7 +586,10 @@ test("both credential headers are accepted only when they carry the same key, on
   });
   expect(answer.status).toBe(200);
   const successor = await redeem(String(answer.body.code), attempt);
-  const revoked = await revokeCurrent(both(first));
+  const revoked = await revokeCurrent({
+    ...both(first),
+    ...renewedInto(successor),
+  });
   expect(revoked.status).toBe(200);
   expect(revoked.body).toMatchObject({
     success: true,
@@ -578,10 +598,13 @@ test("both credential headers are accepted only when they carry the same key, on
   });
   expect(await live(first, successor)).toEqual([false, true]);
   // A lost reply is retried with the same headers and gets the same receipt.
-  expect((await revokeCurrent(both(first))).body).toMatchObject({
+  expect(
+    (await revokeCurrent({ ...both(first), ...renewedInto(successor) })).body,
+  ).toMatchObject({
     credentialId: first.credentialId,
     status: "revoked",
   });
+  expect(await live(successor)).toEqual([true]);
 
   // Either header alone works on both routes too.
   const next = pkce();
@@ -590,9 +613,14 @@ test("both credential headers are accepted only when they carry the same key, on
   });
   expect(viaHeader.status).toBe(200);
   const third = await redeem(String(viaHeader.body.code), next);
-  expect((await revokeCurrent({ "x-api-key": successor.secret })).status).toBe(
-    200,
-  );
+  expect(
+    (
+      await revokeCurrent({
+        "x-api-key": successor.secret,
+        ...renewedInto(third),
+      })
+    ).status,
+  ).toBe(200);
   expect(await live(successor, third)).toEqual([false, true]);
 });
 
@@ -943,6 +971,7 @@ test("a repeated renewal supersedes the code still in flight, and a revoked pred
   // renewal is now a 401, and acknowledging the successor again still works.
   const revoked = await revokeCurrent({
     authorization: `Bearer ${first.secret}`,
+    ...renewedInto(successor),
   });
   expect(revoked.status).toBe(200);
   expect(revoked.body).toMatchObject({
@@ -1072,19 +1101,21 @@ test("a key that renews after its successor was acknowledged ends the whole sign
 });
 
 test("revoking a device ends its sign-in, while a renewal's last step ends only the old key", async () => {
-  // Renewal's last step: the old key revokes itself and the successor stays.
+  // Renewal's last step: the old key revokes itself, names the key it was
+  // renewed into, and the successor stays. The acknowledgement is long past.
   const first = await signIn();
   clock = new Date(T0.getTime() + 21 * DAY);
   const second = await renewInto(first);
-  expect(
-    (await revokeCurrent({ authorization: `Bearer ${first.secret}` })).status,
-  ).toBe(200);
+  await acknowledgedAgo(second, 30 * DAY);
+  const lastStep = {
+    authorization: `Bearer ${first.secret}`,
+    ...renewedInto(second),
+  };
+  expect((await revokeCurrent(lastStep)).status).toBe(200);
   expect(await live(first, second)).toEqual([false, true]);
   // The same request again (a lost reply) returns the same receipt and still
   // leaves the successor alone.
-  expect(
-    (await revokeCurrent({ authorization: `Bearer ${first.secret}` })).status,
-  ).toBe(200);
+  expect((await revokeCurrent(lastStep)).status).toBe(200);
   expect(await live(second)).toEqual([true]);
 
   // The old key was never revoked (its DELETE was lost), and the phone signs
@@ -1131,6 +1162,121 @@ test("revoking a device ends its sign-in, while a renewal's last step ends only 
     ),
   ).toMatchObject({ revokedNow: false });
   expect(await live(otherDevice)).toEqual([true]);
+});
+
+test("a sign-out with a key that somebody else renewed ends the keys renewed from it", async () => {
+  // A copy of the phone's key renews and keeps renewing. The phone holds only
+  // the first key and never renews.
+  const phone = await signIn();
+  clock = new Date(T0.getTime() + 5 * DAY);
+  const copy = await renewInto(phone);
+  clock = new Date(T0.getTime() + 10 * DAY);
+  const copyNext = await renewInto(copy);
+  const otherDevice = await signIn();
+  await acknowledgedAgo(copy, MOBILE_RENEWAL_RETIREMENT_GRACE_MS + 1_000);
+  expect(await live(phone, copy, copyNext, otherDevice)).toEqual([
+    true,
+    true,
+    true,
+    true,
+  ]);
+  // The phone signs out. It cannot name a successor, so this is not the last
+  // step of a renewal and the whole sign-in ends, the copy's chain included.
+  const signOut = await revokeCurrent({
+    authorization: `Bearer ${phone.secret}`,
+  });
+  expect(signOut.status).toBe(200);
+  expect(signOut.body).toMatchObject({
+    credentialId: phone.credentialId,
+    status: "revoked",
+  });
+  expect(await live(phone, copy, copyNext, otherDevice)).toEqual([
+    false,
+    false,
+    false,
+    true,
+  ]);
+  for (const dead of [phone, copy, copyNext]) {
+    expect((await renew(dead.secret, pkce().binding)).status).toBe(401);
+  }
+
+  // The copy finished its renewal properly and revoked the phone's key. The
+  // phone's later sign-out with that dead key still ends the copy's key.
+  clock = T0;
+  const taken = await signIn();
+  const thief = await renewInto(taken);
+  expect(
+    (
+      await revokeCurrent({
+        authorization: `Bearer ${taken.secret}`,
+        ...renewedInto(thief),
+      })
+    ).status,
+  ).toBe(200);
+  await acknowledgedAgo(thief, 2 * MOBILE_RENEWAL_RETIREMENT_GRACE_MS);
+  expect(await live(taken, thief)).toEqual([false, true]);
+  expect(
+    (await revokeCurrent({ authorization: `Bearer ${taken.secret}` })).status,
+  ).toBe(200);
+  expect(await live(taken, thief, otherDevice)).toEqual([false, false, true]);
+
+  // Naming a key that is not the acknowledged successor is a sign-out too,
+  // even right after the acknowledgement.
+  const held = await signIn();
+  const renewed = await renewInto(held);
+  await acknowledgedAgo(renewed, 0);
+  expect(
+    (
+      await revokeCurrent({
+        authorization: `Bearer ${held.secret}`,
+        ...renewedInto(otherDevice),
+      })
+    ).status,
+  ).toBe(200);
+  expect(await live(held, renewed, otherDevice)).toEqual([false, false, true]);
+});
+
+test("a last step that names no successor counts only right after the acknowledgement", async () => {
+  const first = await signIn();
+  clock = new Date(T0.getTime() + 21 * DAY);
+  const second = await renewInto(first);
+  // Inside the grace period the unnamed revocation ends only the old key.
+  await acknowledgedAgo(second, MOBILE_RENEWAL_RETIREMENT_GRACE_MS - 30_000);
+  expect(
+    (await revokeCurrent({ authorization: `Bearer ${first.secret}` })).status,
+  ).toBe(200);
+  expect(await live(first, second)).toEqual([false, true]);
+  // After it, the same request is a sign-out, a retry of it included.
+  await acknowledgedAgo(second, MOBILE_RENEWAL_RETIREMENT_GRACE_MS + 1_000);
+  expect(
+    (await revokeCurrent({ authorization: `Bearer ${first.secret}` })).status,
+  ).toBe(200);
+  expect(await live(first, second)).toEqual([false, false]);
+
+  // A value that is not a credential id is refused and revokes nothing.
+  clock = T0;
+  const key = await signIn();
+  const next = await renewInto(key);
+  const malformed = await revokeCurrent({
+    authorization: `Bearer ${key.secret}`,
+    "x-renewed-credential-id": "not-a-credential",
+  });
+  expect(malformed.status).toBe(400);
+  expect(malformed.body).toMatchObject({
+    success: false,
+    code: "validation_error",
+  });
+  expect(await live(key, next)).toEqual([true, true]);
+  // A key that was never renewed signs out whatever it names.
+  expect(
+    (
+      await revokeCurrent({
+        authorization: `Bearer ${next.secret}`,
+        ...renewedInto(key),
+      })
+    ).status,
+  ).toBe(200);
+  expect(await live(key, next)).toEqual([false, false]);
 });
 
 test("a key revoked or a client deactivated after authorization issues no code", async () => {

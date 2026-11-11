@@ -28,7 +28,7 @@ assert.equal(result.status, 0);
 const xml = readFileSync(report, "utf8");
 const summary = parseJunitSummary(xml);
 assert.equal(summary.failures + summary.errors, 0);
-assert.equal(summary.executedTests, 17);
+assert.equal(summary.executedTests, 19);
 for (const name of [
   "an acknowledged key renews into a successor that keeps the sign-in time",
   "both credential headers are accepted only when they carry the same key, on renewal and on self-revocation",
@@ -39,6 +39,8 @@ for (const name of [
   "a code issued before its key was revoked mints and activates nothing",
   "a key that renews after its successor was acknowledged ends the whole sign-in",
   "revoking a device ends its sign-in, while a renewal&apos;s last step ends only the old key",
+  "a sign-out with a key that somebody else renewed ends the keys renewed from it",
+  "a last step that names no successor counts only right after the acknowledgement",
   "a key revoked or a client deactivated after authorization issues no code",
 ]) {
   assert(xml.includes(`name="${name}"`), `Missing renewal check: ${name}`);

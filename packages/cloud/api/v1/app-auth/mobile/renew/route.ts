@@ -7,7 +7,8 @@
  * key, and a fresh PKCE binding for its own client. The answer is an authorization code of the
  * same shape the sign-in approval returns; the phone then exchanges and
  * acknowledges it on the existing token and ack routes and revokes the old
- * key with DELETE /api/v1/api-keys/current.
+ * key with DELETE /api/v1/api-keys/current, naming the new key's credential
+ * id in X-Renewed-Credential-Id so the request is not taken for a sign-out.
  *
  * Refusals use the canonical Cloud API error shape:
  *   401 authentication_required  key invalid or expired, two different keys sent,

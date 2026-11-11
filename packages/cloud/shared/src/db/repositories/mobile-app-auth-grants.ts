@@ -9,8 +9,11 @@
  * session id, and a renewal grant names the credential that asked for it. A
  * predecessor has at most one live successor, a successor is exchanged and
  * activated only while its predecessor is still active, and revoking a
- * credential retires the rest of its session. Writers that decide on a whole
- * session take that session's advisory lock before any credential row.
+ * credential retires the rest of its session. The one exception is the last
+ * step of a renewal, where the old credential revokes itself and names the
+ * successor it was renewed into (see `MobileSessionRetirementCause`). Writers
+ * that decide on a whole session take that session's advisory lock before any
+ * credential row.
  */
 import { ElizaError } from "@elizaos/core";
 import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
@@ -75,14 +78,33 @@ export interface MobileAppAuthRenewalAuthority {
 /**
  * Why a credential is being retired, which decides what goes with it:
  *  - `owner`: the account owner revoked the device, so the whole sign-in ends;
- *  - `self`: the credential revoked itself. When it already has an
- *    acknowledged successor this is the last step of a renewal and only the
- *    credential itself ends; otherwise it is a sign-out and the sign-in ends;
+ *  - `self`: the credential revoked itself. This is the last step of a
+ *    renewal, and only the credential itself ends, when the request names the
+ *    credential's acknowledged successor (`MobileSelfRevocation`), or names
+ *    nothing and arrives within `MOBILE_RENEWAL_RETIREMENT_GRACE_MS` of that
+ *    successor's acknowledgement. Every other self-revocation is a sign-out
+ *    and the sign-in ends, successors included: a holder that cannot name the
+ *    successor does not hold it, so somebody else renewed this credential;
  *  - `reuse`: a credential that already has an acknowledged successor asked to
  *    renew again, so two holders exist and the whole sign-in ends, the
  *    presenting credential included.
  */
 export type MobileSessionRetirementCause = "owner" | "self" | "reuse";
+
+/**
+ * How long after a successor's acknowledgement a self-revocation that names
+ * no successor still counts as the last step of that renewal. It covers a
+ * client that revokes the old key right after the acknowledgement without
+ * naming the new one; a later request must name it.
+ */
+export const MOBILE_RENEWAL_RETIREMENT_GRACE_MS = 120_000;
+
+/** What a self-revocation request carried, and when it is decided. */
+export interface MobileSelfRevocation {
+  /** The credential the caller says it was renewed into, or null. */
+  successorCredentialId: string | null;
+  now: Date;
+}
 
 export type MobileAppAuthRenewalClaim =
   | { kind: "created"; grant: MobileAppAuthGrant }
@@ -181,12 +203,22 @@ async function findGrantOfCredential(
   return grant ?? null;
 }
 
-async function hasAcknowledgedSuccessor(
+/**
+ * True when this self-revocation is the last step of a renewal: the
+ * credential has an acknowledged successor, and the request either names that
+ * successor or names nothing within the grace period after its
+ * acknowledgement. A request that names any other credential is a sign-out.
+ */
+async function isRenewalLastStep(
   reader: SessionReader,
   credentialId: string,
+  request: MobileSelfRevocation,
 ): Promise<boolean> {
   const [successor] = await reader
-    .select({ id: mobileAppAuthGrants.id })
+    .select({
+      credentialId: mobileAppAuthGrants.credential_id,
+      acknowledgedAt: mobileAppAuthGrants.acknowledged_at,
+    })
     .from(mobileAppAuthGrants)
     .where(
       and(
@@ -195,7 +227,15 @@ async function hasAcknowledgedSuccessor(
       ),
     )
     .limit(1);
-  return Boolean(successor);
+  if (!successor?.credentialId) return false;
+  if (request.successorCredentialId !== null) {
+    return request.successorCredentialId === successor.credentialId;
+  }
+  return (
+    successor.acknowledgedAt !== null &&
+    request.now.getTime() <
+      successor.acknowledgedAt.getTime() + MOBILE_RENEWAL_RETIREMENT_GRACE_MS
+  );
 }
 
 /**
@@ -207,11 +247,12 @@ async function sessionRetirementCandidates(
   reader: SessionReader,
   credentialId: string,
   cause: MobileSessionRetirementCause,
+  selfRevocation: MobileSelfRevocation,
 ): Promise<{ sessionId: string; credentials: ApiKey[] } | null> {
   const grant = await findGrantOfCredential(reader, credentialId);
   if (!grant) return null;
   const sessionId = sessionIdOf(grant);
-  if (cause === "self" && (await hasAcknowledgedSuccessor(reader, credentialId))) {
+  if (cause === "self" && (await isRenewalLastStep(reader, credentialId, selfRevocation))) {
     return { sessionId, credentials: [] };
   }
   const rows = await reader
@@ -404,26 +445,33 @@ export class MobileAppAuthGrantsRepository {
   async planSessionRetirement(
     credentialId: string,
     cause: MobileSessionRetirementCause,
+    selfRevocation: MobileSelfRevocation,
   ): Promise<ApiKey[]> {
-    return (await sessionRetirementCandidates(dbWrite, credentialId, cause))?.credentials ?? [];
+    return (
+      (await sessionRetirementCandidates(dbWrite, credentialId, cause, selfRevocation))
+        ?.credentials ?? []
+    );
   }
 
   /**
    * Tombstones the credentials that retiring this one takes with it and
    * returns them. Call it before the credential's own tombstone, so the
    * session lock is taken ahead of any credential row. A credential with no
-   * grant, or a renewal's last step, retires nothing here.
+   * grant, or a renewal's last step, retires nothing here. `selfRevocation`
+   * carries the time of the decision for every cause; its successor is read
+   * only for `self`.
    */
   async retireSessionInTransaction(
     tx: DbTransaction,
     credentialId: string,
     cause: MobileSessionRetirementCause,
-    now: Date,
+    selfRevocation: MobileSelfRevocation,
   ): Promise<ApiKey[]> {
+    const now = selfRevocation.now;
     const origin = await findGrantOfCredential(tx, credentialId);
     if (!origin) return [];
     await lockSession(tx, sessionIdOf(origin));
-    const plan = await sessionRetirementCandidates(tx, credentialId, cause);
+    const plan = await sessionRetirementCandidates(tx, credentialId, cause, selfRevocation);
     if (!plan || plan.credentials.length === 0) return [];
     return await tx
       .update(apiKeys)

@@ -829,13 +829,20 @@ export class ApiKeysService {
    * `settle` runs after the commit: it fences any credential that joined the
    * session after the plan was read and evicts every retired secret.
    * `retireAlone` repairs the session on a retry whose credential is already
-   * tombstoned.
+   * tombstoned. `successorCredentialId` is what a self-revocation named as the
+   * credential it was renewed into; the repository decides with it whether
+   * the request is a renewal's last step or a sign-out.
    */
   private async planMobileSessionRetirement(
     credential: Pick<ApiKey, "id" | "organization_id">,
     cause: MobileSessionRetirementCause,
+    successorCredentialId: string | null = null,
   ) {
-    const planned = await mobileAppAuthGrantsRepository.planSessionRetirement(credential.id, cause);
+    const planned = await mobileAppAuthGrantsRepository.planSessionRetirement(
+      credential.id,
+      cause,
+      { successorCredentialId, now: new Date() },
+    );
     for (const member of planned) await revokeInferenceApiKey(member.organization_id, member.id);
     const fenced = new Set(planned.map((member) => member.id));
     const retired = new Map<string, ApiKey>();
@@ -850,7 +857,7 @@ export class ApiKeysService {
         tx,
         credential.id,
         cause,
-        new Date(),
+        { successorCredentialId, now: new Date() },
       );
       for (const row of rows) retired.set(row.id, row);
     };
@@ -971,17 +978,28 @@ export class ApiKeysService {
    * Revokes a mobile row proven by its secret, including expired/inactive retries.
    * Fence the immutable identity before the primary tombstone, then confirm
    * auth-cache eviction before reporting success. Retries repair both fences.
+   *
+   * `successorCredentialId` is the credential the caller says this one was
+   * renewed into. Only then (or right after that renewal's acknowledgement)
+   * is the revocation a renewal's last step that leaves the successor alone;
+   * otherwise it is a sign-out that ends every credential of the sign-in.
    */
   async revokePresentedMobileCredential(
     secret: string,
     audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+    successorCredentialId: string | null = null,
   ): Promise<MobileApiKeySelfRevocationResult | null> {
+    if (successorCredentialId !== null && !isUuid(successorCredentialId)) return null;
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
     const existing = await apiKeysRepository.findByHashConsistent(keyHash);
     if (!existing || !isUuid(existing.source_app_id)) return null;
     await revokeInferenceApiKey(existing.organization_id, existing.id);
-    const session = await this.planMobileSessionRetirement(existing, "self");
+    const session = await this.planMobileSessionRetirement(
+      existing,
+      "self",
+      successorCredentialId,
+    );
     const existingResult = mobileSelfRevocationResult(existing, false);
     if (existingResult) {
       await session.retireAlone();
@@ -1090,12 +1108,18 @@ export class ApiKeysService {
     return result;
   }
 
-  /** Revokes only the exact active mobile row proven at the request boundary. */
+  /**
+   * Revokes the exact active mobile row proven at the request boundary, and
+   * with it the rest of its sign-in unless this is a renewal's last step (see
+   * `revokePresentedMobileCredential`).
+   */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,
     audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+    successorCredentialId: string | null = null,
   ): Promise<MobileApiKeySelfRevocationResult> {
     if (
+      (successorCredentialId !== null && !isUuid(successorCredentialId)) ||
       !isUuid(credential.id) ||
       !/^[0-9a-f]{64}$/i.test(credential.key_hash) ||
       !isUuid(credential.source_app_id)
@@ -1120,6 +1144,7 @@ export class ApiKeysService {
           await this.planMobileSessionRetirement(
             { id: credential.id, organization_id: result.organizationId },
             "self",
+            successorCredentialId,
           )
         ).retireAlone();
         await this.invalidateCache(credential.key_hash);
@@ -1133,7 +1158,7 @@ export class ApiKeysService {
     }
 
     await revokeInferenceApiKey(exact.organization_id, exact.id);
-    const session = await this.planMobileSessionRetirement(exact, "self");
+    const session = await this.planMobileSessionRetirement(exact, "self", successorCredentialId);
     const tombstone = await withMutationAudit(
       async (tx) => {
         await session.retire(tx);

@@ -5,18 +5,24 @@
 // is issued after the absolute cap and no credential expires after it. A
 // predecessor has one live successor, a successor is minted only while its
 // predecessor is still usable, and a revocation ends the whole sign-in unless
-// it is the last step of a renewal. Exchange and acknowledgement of a code are
-// refined by MobileAppCredential and are one atomic redemption here.
+// it is the last step of a renewal: the old credential names its acknowledged
+// successor, or names nothing within the grace period after the
+// acknowledgement. A holder of the old credential that cannot name the
+// successor is signing out, which also ends a successor someone else obtained.
+// Exchange and acknowledgement of a code are refined by MobileAppCredential
+// and are one atomic redemption here.
 module MobileAppKeyRenewal {
   pure val Cap = 4
   pure val Ttl = 3
   pure val CodeTtl = 1
+  // How long an unnamed self-revocation still counts as a renewal's last step.
+  pure val Grace = 1
   pure val Horizon = 6
   pure val Keys = Set(1, 2, 3)
   pure val Requests = Set(1, 2)
   type Key = { status: str, expires: int, start: int }
   // `from` is the credential that asked for the code.
-  type Grant = { status: str, issuedAt: int, start: int, from: int }
+  type Grant = { status: str, issuedAt: int, start: int, from: int, redeemedAt: int }
   type State = {
     clock: int,
     keys: int -> Key,
@@ -33,7 +39,9 @@ module MobileAppKeyRenewal {
   }
   var s: State
   pure val NoKey: Key = { status: "none", expires: 0, start: 0 }
-  pure val NoGrant: Grant = { status: "none", issuedAt: 0, start: 0, from: 1 }
+  pure val NoGrant: Grant = { status: "none", issuedAt: 0, start: 0, from: 1, redeemedAt: 0 }
+  // A self-revocation that names no successor.
+  pure val Unnamed = 0
   pure def Earlier(a: int, b: int): int = if (a < b) a else b
 
   // Key 1 is the credential of the browser sign-in at clock 0.
@@ -74,12 +82,19 @@ module MobileAppKeyRenewal {
     s.keys.get(k).status == "active",
     s' = { ...s, keys: SessionRevoked, ended: true }
   }
-  // The credential revokes itself. After its successor was acknowledged this
-  // is the last step of a renewal and ends only that credential; otherwise it
-  // is a sign-out and ends the sign-in.
-  action SelfRevoke(k: int): bool = all {
-    s.keys.get(k).status == "active",
-    s' = if (Renewed(k)) { ...s, keys: s.keys.set(k, { ...s.keys.get(k), status: "revoked" }) }
+  // Request r's code was acknowledged into key r + 1. A self-revocation by k
+  // is the last step of that renewal when it names key r + 1, or names nothing
+  // within the grace period after the acknowledgement.
+  def LastStep(k: int, names: int): bool = Requests.exists(r => and {
+    s.grants.get(r).from == k, s.grants.get(r).status == "redeemed",
+    names == r + 1 or (names == Unnamed and s.clock < s.grants.get(r).redeemedAt + Grace)
+  })
+  // The credential revokes itself, which a revoked or expired one may repeat.
+  // The last step of a renewal ends only that credential. Anything else is a
+  // sign-out and ends the sign-in, the successors of k included.
+  action SelfRevoke(k: int, names: int): bool = all {
+    s.keys.get(k).status != "none",
+    s' = if (LastStep(k, names)) { ...s, keys: s.keys.set(k, { ...s.keys.get(k), status: "revoked" }) }
       else { ...s, keys: SessionRevoked, ended: true }
   }
 
@@ -106,7 +121,7 @@ module MobileAppKeyRenewal {
       else End({
         ...s,
         grants: Requests.mapBy(q =>
-          if (q == r) { status: "pending", issuedAt: s.reqTime.get(r), start: s.reqStart.get(r), from: k }
+          if (q == r) { status: "pending", issuedAt: s.reqTime.get(r), start: s.reqStart.get(r), from: k, redeemedAt: 0 }
           else if (s.grants.get(q).from == k and s.grants.get(q).status == "pending")
             { ...s.grants.get(q), status: "void" }
           else s.grants.get(q)),
@@ -127,7 +142,7 @@ module MobileAppKeyRenewal {
     Usable(s.grants.get(r).from, s.clock),
     s' = {
       ...s,
-      grants: s.grants.set(r, { ...s.grants.get(r), status: "redeemed" }),
+      grants: s.grants.set(r, { ...s.grants.get(r), status: "redeemed", redeemedAt: s.clock }),
       keys: s.keys.set(r + 1, {
         status: "active",
         expires: Earlier(s.clock + Ttl, s.grants.get(r).start + Cap),
@@ -139,7 +154,7 @@ module MobileAppKeyRenewal {
   action step = any {
     Tick, OwnerLeaves, ClientStops,
     { nondet k = Keys.oneOf(); OwnerRevoke(k) },
-    { nondet k = Keys.oneOf(); SelfRevoke(k) },
+    { nondet k = Keys.oneOf(); nondet names = Keys.union(Set(Unnamed)).oneOf(); SelfRevoke(k, names) },
     { nondet r = Requests.oneOf(); nondet k = Keys.oneOf(); BeginRenew(r, k) },
     { nondet r = Requests.oneOf(); CommitRenew(r) },
     { nondet r = Requests.oneOf(); RenewFails(r) },
@@ -179,8 +194,8 @@ module MobileAppKeyRenewal {
 
   // Two renewals in a row; the second successor is cut at the cap.
   run renewalChainKeepsSignInTimeTest = init
-    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(SelfRevoke(1))
-    .then(Tick).then(Tick).then(BeginRenew(2, 2)).then(CommitRenew(2)).then(Redeem(2))
+    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(Tick).then(SelfRevoke(1, 2))
+    .then(Tick).then(BeginRenew(2, 2)).then(CommitRenew(2)).then(Redeem(2))
     .expect(s.keys.get(3).status == "active" and s.keys.get(3).start == 0 and
       s.keys.get(3).expires == Cap and s.keys.get(2).status == "active" and
       s.keys.get(1).status == "revoked" and not(s.ended))
@@ -213,8 +228,29 @@ module MobileAppKeyRenewal {
       Keys.forall(k => s.keys.get(k).status != "active"))
   // Signing out with the newest key ends a predecessor that was never revoked.
   run signOutEndsSignInTest = init
-    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(SelfRevoke(2))
+    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(SelfRevoke(2, Unnamed))
     .expect(s.ended and s.keys.get(1).status == "revoked" and s.keys.get(2).status == "revoked")
+  // A copy of key 1 renewed into key 2. The phone holds only key 1 and signs
+  // out after the grace period: it names nothing, so key 2 ends with it.
+  run signOutWithRenewedKeyEndsCopyTest = init
+    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(Tick)
+    .then(SelfRevoke(1, Unnamed))
+    .expect(s.ended and Keys.forall(k => s.keys.get(k).status != "active"))
+  // The copy finished its renewal and revoked key 1. The phone's sign-out with
+  // the dead key 1 still ends key 2.
+  run signOutWithDeadRenewedKeyEndsCopyTest = init
+    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(SelfRevoke(1, 2))
+    .expect(s.keys.get(2).status == "active" and not(s.ended))
+    .then(Tick).then(SelfRevoke(1, Unnamed))
+    .expect(s.ended and s.keys.get(2).status == "revoked")
+  // Naming a credential that is not the successor is a sign-out at once.
+  run wrongSuccessorIsSignOutTest = init
+    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(SelfRevoke(1, 3))
+    .expect(s.ended and s.keys.get(2).status == "revoked")
+  // Right after the acknowledgement an unnamed revocation is still the last step.
+  run unnamedLastStepInsideGraceTest = init
+    .then(BeginRenew(1, 1)).then(CommitRenew(1)).then(Redeem(1)).then(SelfRevoke(1, Unnamed))
+    .expect(not(s.ended) and s.keys.get(1).status == "revoked" and s.keys.get(2).status == "active")
   run departedOwnerIsRefusedTest = init.then(Tick).then(OwnerLeaves).then(BeginRenew(1, 1))
     .expect(s.phase.get(1) == "done" and s.grants.get(1).status == "none")
   run disabledClientIsRefusedTest = init.then(Tick).then(BeginRenew(1, 1)).then(ClientStops)

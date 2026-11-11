@@ -296,8 +296,10 @@ A phone replaces its own key before it expires, without a browser:
    exchange and activate the new key exactly as after a sign-in. Both require
    the old key to still be active: a key revoked after step 1 gets no
    successor.
-3. `DELETE /api/v1/api-keys/current` with the old key revokes it. Until then
-   both keys are valid.
+3. `DELETE /api/v1/api-keys/current` with the old key and the header
+   `X-Renewed-Credential-Id: <credentialId of the new key>` (the id the token
+   exchange returned) revokes the old key only. Until then both keys are
+   valid.
 
 The new grant copies the sign-in time (`mobile_app_auth_grants.session_started_at`;
 a grant without it counts from `created_at`) and the sign-in's `session_id`,
@@ -326,12 +328,21 @@ A key has one live successor, and a sign-in is revoked as a whole:
   new key and never renew with the old one.
 - Revoking a device from the account (`DELETE
   /api/v1/app-auth/mobile/credentials/:id`) revokes every key of that sign-in.
-- `DELETE /api/v1/api-keys/current` by a key that has an acknowledged successor
-  is step 3 above and revokes only that key. By a key without one it is a
-  sign-out and revokes every key of the sign-in. A copied key that renewed
-  before the phone did is therefore not ended by the phone signing out with
-  the older key; it ends when the phone next renews, when the owner revokes the
-  device, or at the sign-in's cap.
+- `DELETE /api/v1/api-keys/current` is a sign-out and revokes every key of the
+  sign-in, keys renewed from the presented one included. It is step 3 above,
+  and revokes only the presented key, when `X-Renewed-Credential-Id` names
+  that key's acknowledged successor. A request without the header is also
+  taken as step 3 during the two minutes after the successor's
+  acknowledgement, for a client that revokes the old key at once without
+  naming the new one; later, or naming any other credential, it is a sign-out.
+  A header that is not a credential id is a 400 `validation_error`.
+- So a copied key that renewed before the phone did ends when the phone signs
+  out with the older key (the phone cannot name the copy's successor), when
+  the phone next renews, when the owner revokes the device, or at the
+  sign-in's cap. A client that retries step 3 later than two minutes after
+  the acknowledgement must send the header, or it ends its own sign-in.
+  Nothing ends the copy's key while the phone only uses the older key or lets
+  it expire.
 
 This needs no new setting beyond those above: `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` on the API Worker and, on Steward,

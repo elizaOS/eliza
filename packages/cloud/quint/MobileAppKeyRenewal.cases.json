@@ -20,7 +20,7 @@
     "Owner eligibility groups the inactive user, changed organization and closed or deletion-fenced organization into one flag, and client availability groups the registry entry and the app row. Both only ever turn off.",
     "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes, credential headers and secret hashes are not modeled.",
     "A grant issued before the session_started_at and session_id columns counts from created_at and is its own session. The model starts every lineage at the sign-in time with one session.",
-    "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised. A self-revocation by a credential whose successor was acknowledged ends only that credential, so a copy that renewed first survives the phone signing out with the older key until the phone renews, the owner revokes the device, or the cap.",
+    "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised. A self-revocation ends only its credential when it names the acknowledged successor, or names nothing within the grace period (one tick) after the acknowledgement; otherwise it ends the sign-in. So a copy that renewed first ends when the phone signs out with the older key after the grace period, renews, or the owner revokes the device, and otherwise at the cap. A copy survives while the phone only uses the older key or lets it expire, and a sign-out inside the grace period does not end it.",
     "Session retirement is one atomic step. The inference revocation boundary, auth-cache eviction and the audit record around it are outside the model."
   ],
   "cases": [
