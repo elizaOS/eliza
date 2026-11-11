@@ -198,5 +198,7 @@ export type FilesAgentRunner = {
   run(
     op: FilesAgentOperation,
     signal: AbortSignal,
+    /** For direct actions only. Resolves after the host commits and renders Files. */
+    openFiles?: () => Promise<boolean>,
   ): Promise<{ status: "succeeded" | "failed"; summary: string }>;
 };
