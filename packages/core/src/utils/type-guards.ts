@@ -23,8 +23,16 @@ export function isPlainObject(
 	// Plain records have exactly the intrinsic Object prototype or no prototype.
 	// Reading an arbitrary prototype's `constructor` can execute a getter and is
 	// spoofable with `{ constructor: Object }`.
+	// A plain object from another realm (a `vm` context, an iframe) carries
+	// that realm's own Object.prototype, so it is not `=== Object.prototype`.
+	// That prototype's own prototype is still null, while a class or built-in
+	// instance's prototype chain continues to Object.prototype — so a
+	// null-prototype prototype identifies a plain record in any realm.
 	const proto = Object.getPrototypeOf(value);
-	return proto === null || proto === Object.prototype;
+	if (proto === null || proto === Object.prototype) {
+		return true;
+	}
+	return Object.getPrototypeOf(proto) === null;
 }
 
 export function isObjectRecord(
