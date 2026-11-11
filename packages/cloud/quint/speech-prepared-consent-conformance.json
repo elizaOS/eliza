@@ -54,6 +54,14 @@
       "required": [
         {
           "classname": "",
+          "name": "failed bootstrap alarm rolls back the prepared session"
+        },
+        {
+          "classname": "",
+          "name": "bootstrap session and expiry use one storage transaction"
+        },
+        {
+          "classname": "",
           "name": "a prepared session can retire after restart and reject a delayed mint"
         },
         {
@@ -214,6 +222,10 @@
     {
       "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
       "required": [
+        {
+          "classname": "",
+          "name": "prepared speech and its expiry persist together in real SQLite storage"
+        },
         {
           "classname": "",
           "name": "ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation"

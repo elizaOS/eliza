@@ -148,11 +148,18 @@ export class SpeechRelayCoordinator {
   }
   private async update(
     change: (record: Ledger | undefined) => Ledger,
+    bootstrapExpiry?: number,
   ): Promise<Ledger> {
     const ledger = await this.state.storage.transaction(async (storage) => {
       const current = await storage.get<Ledger>("session");
       const next = change(current);
-      if (next !== current) await storage.put("session", next);
+      if (next !== current) {
+        await storage.put("session", next);
+        // SQLite storage includes this alarm in the same transaction. A
+        // prepared session and its expiry must become durable together.
+        if (bootstrapExpiry !== undefined)
+          await this.state.storage.setAlarm(bootstrapExpiry);
+      }
       return next;
     });
     this.ledger = ledger;
@@ -391,7 +398,6 @@ export class SpeechRelayCoordinator {
               !/^[0-9a-f]{64}$/.test(input.consentDigest))
           )
             return response(400, "invalid_preparation");
-          let alarmAt: number | undefined;
           try {
             await this.update((record) => {
               if (input.consentDigest !== undefined) {
@@ -406,7 +412,6 @@ export class SpeechRelayCoordinator {
                     input.caller.user.organization_id
                 )
                   throw Error("Speech preparation is absent or retired");
-                alarmAt = input.expiresAt;
                 return {
                   ...record,
                   phase: "minted",
@@ -417,7 +422,6 @@ export class SpeechRelayCoordinator {
               }
               if (record?.phase === "prepared" && !preparing)
                 throw Error("Prepared speech requires its original consent");
-              if (!record) alarmAt = input.expiresAt;
               return initializeSpeechRecord(
                 record,
                 {
@@ -432,11 +436,10 @@ export class SpeechRelayCoordinator {
                 },
                 Date.now(),
               );
-            });
+            }, input.expiresAt);
           } catch {
             return response(409, "session_exists");
           }
-          if (alarmAt !== undefined) await this.state.storage.setAlarm(alarmAt);
           return Response.json({ initialized: true });
         }
         const ledger = await this.load();

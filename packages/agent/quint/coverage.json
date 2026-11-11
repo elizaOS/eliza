@@ -904,5 +904,26 @@
       "Four terminal prompt outcomes with or without prior reply delivery. HTTP/SQL tests cover cancelled, denied and failed turns, retained delivered replies and completed turns without chat text.",
       "Room reads are atomic snapshots. Concurrent deletion after the read, in-flight database commits, real model/provider output, native packaging and unbounded concurrency remain outside this scope. No liveness claim."
     ]
+  },
+  {
+    "id": "TriggerRecovery",
+    "model": "packages/agent/quint/TriggerRecovery.qnt",
+    "sources": [
+      "packages/agent/src/triggers/activity.ts",
+      "packages/agent/src/triggers/runtime.ts",
+      "packages/agent/src/api/server.ts",
+      "plugins/plugin-workflow/src/trigger-routes.ts",
+      "plugins/plugin-workflow/src/lib/automations-builder.ts",
+      "plugins/plugin-workflow/src/lib/automations-types.ts",
+      "packages/agent/test/automations-owner-principal-http.test.ts"
+    ],
+    "invariants": [
+      "Safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "No cross-process writer fence is proved. Task runtime ownership remains a host responsibility. Legacy direct database mutation and permanent DELETE are outside this recovery API model.",
+      "HTTP scenario conformance checks ownership, stale snapshots, real stored task preservation and refusing removal during execution. Recovery returns an inactive task."
+    ]
   }
 ]

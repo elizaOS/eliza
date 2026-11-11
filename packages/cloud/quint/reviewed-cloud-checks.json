@@ -426,7 +426,8 @@
         "prepared UUIDv5 consent refuses wrong nonce before provider admission",
         "prepared UUIDv5 consent refuses expired before provider admission",
         "prepared UUIDv5 consent revocation rejects a delayed mint and replays the same retirement",
-        "prepared UUIDv5 consent has one atomic mint winner and no replay"
+        "prepared UUIDv5 consent has one atomic mint winner and no replay",
+        "prepared speech and its expiry persist together in real SQLite storage"
       ]
     }
   ],
