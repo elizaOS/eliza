@@ -347,3 +347,39 @@ describe("InboxOperation", () => {
     expect(loaded?.source).toBeUndefined();
   });
 });
+
+it("retains an attempted operation when its owner retires during the discard receipt read", async () => {
+  const f = provider({ outcome: "prepared" });
+  let active = true;
+  const operation = journal(f, () => active);
+  await operation.prepare(send(), { draftId: "draft-1" });
+  await operation.confirm({ draftId: "draft-1", proposal: send() });
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const read = f.client.gmailOperation;
+  f.client.gmailOperation = async (grant, requestId) => {
+    entered.resolve();
+    await release.promise;
+    return read(grant, requestId);
+  };
+  const abandoning = operation.abandon();
+  const outcome = abandoning.catch((error: unknown) => error);
+  await entered.promise;
+  active = false;
+  release.resolve();
+  await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
+  expect(f.store.slots.size).toBe(1);
+  expect(f.calls.dispatch).toBe(1);
+});
+
+it("retains an attempted operation when its discard write conflicts", async () => {
+  const f = provider({ outcome: "prepared" });
+  const operation = journal(f);
+  await operation.prepare(send(), { draftId: "draft-1" });
+  await operation.confirm({ draftId: "draft-1", proposal: send() });
+  f.store.compareExchange = async () => ({ status: "conflict" });
+  await expect(operation.abandon()).rejects.toThrow("Inbox operation changed");
+  expect(operation.snapshot()?.phase).toBe("dispatching");
+  expect(f.store.slots.size).toBe(1);
+  expect(f.calls.dispatch).toBe(1);
+});

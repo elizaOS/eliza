@@ -1559,29 +1559,6 @@ export function createMailDraftsController(
         proposal.mode || (proposal.replyMessageId ? "reply" : "compose");
       if (draft && !sentContent(draft, { ...proposal, mode }, true))
         return false;
-      if (!draft && saved) {
-        // The saved local copy of this same Gmail draft has the newer text: open it.
-        if (
-          saved.provider?.draftId === reference.draftId &&
-          saved.provider.providerDigest === reference.providerDigest
-        ) {
-          draft = fromSaved();
-          baseRevision = saved.revision;
-          staleBase = false;
-          open = true;
-          confirm = false;
-          toQ = "";
-          // An earlier version of a sent email keeps its duplicate-send warning.
-          status = earlierVersion()
-            ? "Earlier version of a sent email. Sending it creates another message; nothing has been sent."
-            : "Editing the copy of this Gmail draft saved on this device.";
-          publish();
-          return true;
-        }
-        // Any other saved draft moves to the shelf instead of being replaced.
-        const token = epoch;
-        if (!(await setAside()) || token !== epoch) return false;
-      }
       let forward: ForwardSource | undefined;
       if (proposal.forwardAttachments) {
         const source = proposal.forwardAttachments;

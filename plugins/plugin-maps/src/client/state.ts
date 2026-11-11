@@ -318,12 +318,13 @@ export class MapsController {
   }
   /** Stop the location watch. A fix from an earlier request is ignored. */
   private retireLocate() {
-    ++this.locationGeneration;
-    void this.nativeLocation.stop().catch((error) =>
-      this.update({
-        position: { phase: "error", value: null, error: failure(error) },
-      }),
-    );
+    const generation = ++this.locationGeneration;
+    void this.nativeLocation.stop().catch((error) => {
+      if (this.active && generation === this.locationGeneration)
+        this.update({
+          position: { phase: "error", value: null, error: failure(error) },
+        });
+    });
   }
   /** Cancel a pending location request. The origin and the route do not change. */
   cancelLocate() {

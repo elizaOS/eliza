@@ -615,8 +615,7 @@ export class InboxOperation {
       throw new Error(
         "Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.",
       );
-    // A stale prepared receipt cannot replace an attempted dispatch or a
-    // receipt we already observed. The original request is never rearmed.
+    // A stale prepared response cannot replace the durable dispatch or observed receipt.
     if (
       receipt.state === "prepared" &&
       (record.phase === "dispatching" || record.phase === "observed")
@@ -627,9 +626,11 @@ export class InboxOperation {
       receipt: copy(receipt),
       phase:
         receipt.state === "prepared"
-          ? record.review
-            ? "review"
-            : "preparing"
+          ? record.phase === "dispatching"
+            ? "dispatching"
+            : record.review
+              ? "review"
+              : "preparing"
           : "observed",
     });
   }
