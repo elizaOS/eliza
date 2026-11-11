@@ -1,16 +1,17 @@
 // One run, one delivery-dependent task and two terminal event subscribers.
 module RunTerminalOwner {
+  // Inner emitEvent outcome. The task tracker reports rejection and resolves its request.
   type State = {
     delivery: str, work: str, outcome: str, knownReceipt: bool,
     capturedReceipt: bool, lateRefused: bool, handlers: int -> str,
-    firstFailure: int, returned: str
+    firstFailure: int, emitResult: str
   }
   pure val ids = Set(1, 2)
   var s: State
   action init = s' = {
     delivery: "held", work: "new", outcome: "none", knownReceipt: false,
     capturedReceipt: false, lateRefused: false, handlers: ids.mapBy(_ => "new"),
-    firstFailure: 0, returned: "none"
+    firstFailure: 0, emitResult: "none"
   }
 
   action observeReceipt = all { not(s.knownReceipt), s' = { ...s, knownReceipt: true } }
@@ -43,8 +44,8 @@ module RunTerminalOwner {
     }
   }
   action returnTerminal = all {
-    s.returned == "none", ids.forall(id => Set("fulfilled", "rejected").contains(s.handlers.get(id))),
-    s' = { ...s, returned: if (s.firstFailure == 0) "completed" else "failed" }
+    s.emitResult == "none", ids.forall(id => Set("fulfilled", "rejected").contains(s.handlers.get(id))),
+    s' = { ...s, emitResult: if (s.firstFailure == 0) "completed" else "failed" }
   }
   action settleDelivery = any { finishDelivery(true), finishDelivery(false) }
   action settleHandler(id: int): bool = any { settle(id, true), settle(id, false) }
@@ -56,11 +57,11 @@ module RunTerminalOwner {
 
   val WaitsForOwnedWork = s.handlers.get(1) != "new" implies s.work != "waiting"
   val FailedDeliveryDoesNotRun = s.delivery == "failed" implies s.work != "ran"
-  val JoinsEverySubscriber = s.returned != "none" implies
+  val JoinsEverySubscriber = s.emitResult != "none" implies
     ids.forall(id => Set("fulfilled", "rejected").contains(s.handlers.get(id)))
   val ReportsFirstFailure = and {
     s.firstFailure != 0 implies s.handlers.get(s.firstFailure) == "rejected",
-    (s.returned == "failed") == (s.returned != "none" and s.firstFailure != 0)
+    (s.emitResult == "failed") == (s.emitResult != "none" and s.firstFailure != 0)
   }
   temporal FirstRequestAndFailureStay = always(and {
     s.outcome != "none" implies and {
@@ -69,7 +70,7 @@ module RunTerminalOwner {
     },
     s.firstFailure != 0 implies next(s.firstFailure) == s.firstFailure
   }.orKeep(s))
-  temporal TerminalReturns = (s.outcome != "none").leadsTo(s.returned != "none")
+  temporal TerminalReturns = (s.outcome != "none").leadsTo(s.emitResult != "none")
   temporal Fairness = and {
     settleDelivery.weakFair(s), finishWork.weakFair(s), emit.weakFair(s),
     settleHandler(1).weakFair(s), settleHandler(2).weakFair(s), returnTerminal.weakFair(s)
@@ -77,9 +78,12 @@ module RunTerminalOwner {
   temporal FairTerminalReturns = Fairness implies TerminalReturns
 
   run rejectingSiblingWaits = init.then(request("completed")).then(emit)
-    .then(settle(1, false)).expect(s.returned == "none")
+    .then(settle(1, false)).expect(s.emitResult == "none")
     .then(settle(2, true)).then(returnTerminal)
-    .expect(s.firstFailure == 1 and s.returned == "failed")
+    .expect(s.firstFailure == 1 and s.emitResult == "failed")
+  run firstObservedFailureStays = init.then(request("completed")).then(emit)
+    .then(settle(2, false)).then(settle(1, false)).then(returnTerminal)
+    .expect(s.firstFailure == 2 and s.emitResult == "failed")
   run failedDeliveryRetainsReceipt = init.then(observeReceipt).then(admitWork)
     .then(request("failed")).then(refuseLate).then(finishDelivery(false)).then(finishWork)
     .then(emit).then(settle(1, true)).then(settle(2, true)).then(returnTerminal)

@@ -43,6 +43,7 @@ const checks = requireVitestConformance(
 	[
 		"joins an admitted terminal subscriber after a sibling rejects",
 		"keeps the first terminal outcome and skips work after failed delivery",
+		"preserves the first observed event rejection and skips later event names",
 	],
 );
 console.log(`Passed ${checks.length} run terminal tests. Report ${report}`);

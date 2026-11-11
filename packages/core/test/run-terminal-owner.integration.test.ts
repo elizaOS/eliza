@@ -151,3 +151,52 @@ test("keeps the first terminal outcome and skips work after failed delivery", as
 		await runtime.stop();
 	}
 });
+
+test("preserves the first observed event rejection and skips later event names", async () => {
+	const runtime = new AgentRuntime({
+		character: { name: "Event failure join" },
+		enableBasicCapabilities: false,
+		logLevel: "fatal",
+	});
+	const started = deferred();
+	const release = deferred();
+	const firstRegistered = new Error("first registered, last rejected");
+	const firstObserved = new Error("second registered, first rejected");
+	let laterEventCalls = 0;
+	runtime.registerEvent("fixture:first", async () => {
+		started.resolve();
+		await release.promise;
+		throw firstRegistered;
+	});
+	runtime.registerEvent("fixture:first", async () => {
+		throw firstObserved;
+	});
+	runtime.registerEvent("fixture:later", async () => {
+		laterEventCalls += 1;
+	});
+	let returned = false;
+	const observed = runtime
+		.emitEvent(["fixture:first", "fixture:later"], {})
+		.then(
+			() => {
+				returned = true;
+				return undefined;
+			},
+			(error: unknown) => {
+				returned = true;
+				return error;
+			},
+		);
+	try {
+		await started.promise;
+		await setImmediate();
+		expect(returned).toBe(false);
+		release.resolve();
+		expect(await observed).toBe(firstObserved);
+		expect(laterEventCalls).toBe(0);
+	} finally {
+		release.resolve();
+		await observed;
+		await runtime.stop();
+	}
+});
