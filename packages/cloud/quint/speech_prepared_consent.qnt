@@ -4,22 +4,20 @@ module speech_prepared_consent {
   var phase: str
   var live: bool
   var admissions: int
-  var rejected: int
-  action init = all { phase' = "absent", live' = true, admissions' = 0, rejected' = 0 }
+  action init = all { phase' = "absent", live' = true, admissions' = 0 }
   action prepare = all { phase == "absent", live,
-    phase' = "prepared", live' = live, admissions' = admissions, rejected' = rejected }
-  action expire = all { live, live' = false, phase' = phase, admissions' = admissions, rejected' = rejected }
-  action retire = all { phase != "retired", phase' = "retired", live' = live, admissions' = admissions, rejected' = rejected }
+    phase' = "prepared", live' = live, admissions' = admissions }
+  action expire = all { live, live' = false, phase' = phase, admissions' = admissions }
+  action retire = all { phase != "retired", phase' = "retired", live' = live, admissions' = admissions }
   action mint(ownerMatches: bool, nonceMatches: bool): bool = {
     val accepted = phase == "prepared" and live and ownerMatches and nonceMatches
     all { phase' = if (accepted) "minted" else phase,
       admissions' = if (accepted) admissions + 1 else admissions,
-      rejected' = if (accepted) rejected else rejected + 1,
       live' = live }
   }
   // New prepared nonces have no Redis entry, so the legacy route cannot mint them.
-  action legacyAttempt = all { rejected' = rejected + 1, admissions' = admissions, phase' = phase, live' = live }
-  action restart = all { phase' = phase, live' = live, admissions' = admissions, rejected' = rejected }
+  action legacyAttempt = all { admissions' = admissions, phase' = phase, live' = live }
+  action restart = all { phase' = phase, live' = live, admissions' = admissions }
   action step = any { prepare, expire, retire, legacyAttempt, restart,
     { nondet ownerMatches = Bool.oneOf(); nondet nonceMatches = Bool.oneOf(); mint(ownerMatches, nonceMatches) } }
   val SingleUse = admissions <= 1
