@@ -998,3 +998,81 @@ it("admits larger managed feeds while keeping feed and source response bounds", 
     ),
   ).toMatchObject({ operation: "sources", code: "BODY_LIMIT" });
 });
+
+it("keeps a managed feed event in the canonical store for selected-event reads", async () => {
+  const grantId = `alpha-google:${"c".repeat(64)}`;
+  const calendarId = "selected-read-fixture";
+  const source = {
+    ...managedCalendarPlaceholder(),
+    grantId,
+    connectorAccountId: grantId,
+    calendarId,
+    accessRole: "reader",
+    includeInFeed: true,
+  };
+  const event = {
+    id: `${grantId}:selected-read-event`,
+    agentId: String(testRuntime.runtime.agentId),
+    provider: "google",
+    side: "owner",
+    grantId,
+    connectorAccountId: grantId,
+    calendarId,
+    externalId: "selected-read-event",
+    title: "Managed selected event",
+    description: "",
+    location: "",
+    status: "confirmed",
+    startAt: "2026-10-31T20:00:00.000Z",
+    endAt: "2026-10-31T21:00:00.000Z",
+    isAllDay: false,
+    timezone: "America/Los_Angeles",
+    htmlLink: null,
+    conferenceLink: null,
+    organizer: null,
+    attendees: [],
+    metadata: { etag: '"managed-event-v1"' },
+    syncedAt: "2026-10-31T19:00:00.000Z",
+    updatedAt: "2026-10-31T19:00:00.000Z",
+  };
+  vi.stubEnv("ELIZA_MANAGED_CALENDAR_READ_BROKER", ENDPOINT);
+  vi.stubEnv("ELIZA_API_TOKEN", TEST_AUTH);
+  vi.stubGlobal(
+    "fetch",
+    async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const { calendar } = JSON.parse(String(init?.body));
+      if (calendar.operation === "sources")
+        return Response.json({ calendars: [source] });
+      return Response.json({
+        feed: {
+          calendarId,
+          state: "complete",
+          source: "synced",
+          timeMin: calendar.timeMin,
+          timeMax: calendar.timeMax,
+          events: [event],
+          sources: [
+            {
+              key: { provider: "google", side: "owner", grantId, calendarId },
+              status: "fresh",
+            },
+          ],
+          syncedAt: event.syncedAt,
+        },
+      });
+    },
+  );
+  const service = new CalendarService(testRuntime.runtime);
+  const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    ...WINDOW,
+    grantId,
+    calendarId,
+    includeHiddenCalendars: true,
+  });
+  expect(feed.state).toBe("complete");
+  expect(feed.events).toHaveLength(1);
+  expect(await service.getCalendarEventById(event.id)).toMatchObject({
+    id: event.id,
+    metadata: event.metadata,
+  });
+});
