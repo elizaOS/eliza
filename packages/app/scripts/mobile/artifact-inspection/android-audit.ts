@@ -19,7 +19,6 @@ import {
   ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidCloudNativeLibraryAllowlist,
-  assertAndroidLauncherManifest,
   assertAndroidLp3ColorPolicyManifest,
   assertAndroidSmsGatewayArtifactManifest,
   assertAndroidSmsGatewayBadging,
@@ -588,74 +587,6 @@ export function auditAndroidCloudArtifact(
   }
   log(
     `[mobile-build] android-cloud${lp3ColorPolicyEnabled ? " LP3 direct" : ""} artifact audit passed: ${artifact}`,
-  );
-  return artifact;
-}
-
-export function auditAndroidLauncherArtifact({
-  androidSdkRoot,
-  env = process.env,
-  javaHome,
-} = {}) {
-  const artifact = auditAndroidCloudArtifact({
-    debug: true,
-    env,
-    javaHome,
-  });
-  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
-  if (!aapt) {
-    throw mobileBuildError(
-      "[mobile-build] Could not find aapt under Android SDK build-tools for android-launcher artifact audit.",
-    );
-  }
-  assertAndroidLauncherManifest(dumpAndroidArtifactManifest(aapt, artifact));
-  const [runtimeConfigBytes] = readAndroidArtifactEntryBuffers(
-    artifact,
-    ["assets/capacitor.config.json"],
-    javaHome,
-    { label: "android-launcher Capacitor runtime config" },
-  );
-  let runtimeConfig;
-  try {
-    runtimeConfig = JSON.parse(runtimeConfigBytes.toString("utf8"));
-  } catch (cause) {
-    throw mobileBuildError(
-      `[mobile-build] android-launcher capacitor.config.json is invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
-      {
-        cause,
-        code: "ANDROID_LAUNCHER_RUNTIME_CONFIG_INVALID",
-        context: { artifact },
-      },
-    );
-  }
-  if (runtimeConfig.loggingBehavior !== "none") {
-    throw mobileBuildError(
-      "[mobile-build] android-launcher must package Capacitor loggingBehavior=none so native bridge results never reach logcat.",
-      {
-        code: "ANDROID_LAUNCHER_RUNTIME_LOGGING_ENABLED",
-        context: {
-          artifact,
-          loggingBehavior: runtimeConfig.loggingBehavior ?? null,
-        },
-      },
-    );
-  }
-  // Sign-in is native, so the launcher WebView never navigates to a hosted
-  // page: any packaged navigation allowance is a regression.
-  if (runtimeConfig.server?.allowNavigation !== undefined) {
-    throw mobileBuildError(
-      "[mobile-build] android-launcher must not allow WebView navigation away from the bundled renderer; Cloud sign-in is native.",
-      {
-        code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
-        context: {
-          allowNavigation: runtimeConfig.server?.allowNavigation ?? null,
-          artifact,
-        },
-      },
-    );
-  }
-  console.log(
-    `[mobile-build] android-launcher HOME-role artifact audit passed: ${artifact}`,
   );
   return artifact;
 }

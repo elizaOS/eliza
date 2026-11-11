@@ -32,21 +32,15 @@ import {
   ANDROID_SMS_GATEWAY_PERMISSIONS,
   ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
   ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-  assertAndroidLauncherManifest,
   isAndroidLp3ColorPolicyEnabled,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudAllowedNativePluginPackages,
-  resolveAndroidCloudCapacitorConfigPolicy,
   resolveAndroidCloudStripPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./cloud-policy.ts";
-import { packageNameToPath } from "./shared-tree.ts";
 
-export function auditAndroidCloudSource(
-  phase,
-  { allowHomeRole = false, env = process.env } = {},
-) {
+export function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   const failures = [];
   const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
@@ -100,7 +94,7 @@ export function auditAndroidCloudSource(
       );
     }
     for (const forbidden of [
-      ...(allowHomeRole ? [] : ["android.intent.category.HOME"]),
+      "android.intent.category.HOME",
       "com.google.android.apps.healthdata",
       "android.hardware.telephony",
       "android.hardware.bluetooth_le",
@@ -365,10 +359,7 @@ export function auditAndroidCloudSource(
   } else {
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
-      const expected = sanitizeAndroidCloudCapacitorConfig(
-        config,
-        resolveAndroidCloudCapacitorConfigPolicy(env),
-      );
+      const expected = sanitizeAndroidCloudCapacitorConfig(config);
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
           "capacitor.config.json differs from the restricted Play runtime contract",
@@ -390,48 +381,6 @@ export function auditAndroidCloudSource(
     );
   }
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
-}
-
-export function auditAndroidLauncherSource(phase, options = {}) {
-  auditAndroidCloudSource(phase, { ...options, allowHomeRole: true });
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  const manifest = fs.existsSync(manifestPath)
-    ? fs.readFileSync(manifestPath, "utf8")
-    : "";
-  assertAndroidLauncherManifest(manifest, {
-    label: `android-launcher ${phase} source`,
-  });
-  const mainActivityPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "java",
-    packageNameToPath(APP.appId),
-    "MainActivity.java",
-  );
-  const mainActivity = fs.existsSync(mainActivityPath)
-    ? fs.readFileSync(mainActivityPath, "utf8")
-    : "";
-  // Cloud sign-in is native: the launcher registers the shared sign-in host
-  // and never navigates its WebView to a hosted login page or reloads it on
-  // an auth callback.
-  if (
-    !mainActivity.includes("registerPlugin(ElizaCloudSignInPlugin.class);") ||
-    mainActivity.includes("isCloudAuthCallback(") ||
-    mainActivity.includes("webView.loadUrl(")
-  ) {
-    throw new Error(
-      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must register the native Cloud sign-in host and must not reload the WebView on an auth callback.`,
-    );
-  }
-  console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
 }
 
 export function auditAndroidSmsGatewaySource(phase) {

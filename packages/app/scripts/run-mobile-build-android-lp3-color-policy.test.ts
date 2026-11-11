@@ -76,13 +76,15 @@ describe("LP3 direct Cloud build flag", () => {
     };
     expect(() =>
       enforceAndroidLp3RemoteFallbackBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: base,
       }),
     ).toThrow("requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE");
     expect(() =>
       enforceAndroidLp3RemoteFallbackBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: {
           ...base,
           VITE_ELIZA_REMOTE_FALLBACK_API_BASE: "https://agent.example.test/",
@@ -99,7 +101,8 @@ describe("LP3 direct Cloud build flag", () => {
     expect(isAndroidVpsSidecarBuild(sidecarEnv)).toBe(true);
     expect(() =>
       enforceAndroidLp3RemoteFallbackBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: sidecarEnv,
       }),
     ).not.toThrow();
@@ -108,10 +111,11 @@ describe("LP3 direct Cloud build flag", () => {
         targetName: "android-cloud",
         env: sidecarEnv,
       }),
-    ).toThrow("restricted to android-cloud-debug");
+    ).toThrow("restricted to android-cloud --debug");
     expect(() =>
       enforceAndroidLp3RemoteFallbackBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: {
           ...sidecarEnv,
           ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
@@ -128,7 +132,8 @@ describe("LP3 direct Cloud build flag", () => {
   ])("rejects a widened VPS fallback origin: %s", (value) => {
     expect(() =>
       enforceAndroidLp3RemoteFallbackBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: {
           ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
           ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "1",
@@ -152,7 +157,7 @@ describe("LP3 direct Cloud build flag", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
     expect(`${result.stdout}\n${result.stderr}`).toContain(
-      "restricted to the canonical android-cloud-debug",
+      "restricted to the canonical android-cloud --debug",
     );
   });
 
@@ -300,53 +305,47 @@ describe("LP3 direct Cloud build flag", () => {
         targetName: "android-cloud",
         env: enabled,
       }),
-    ).toThrow("restricted to the canonical android-cloud-debug");
+    ).toThrow("restricted to the canonical android-cloud --debug");
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
         targetName: "android-sms-gateway",
         env: enabled,
       }),
-    ).toThrow("restricted to the canonical android-cloud-debug");
+    ).toThrow("restricted to the canonical android-cloud --debug");
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
         targetName: "android",
         env: enabled,
       }),
-    ).toThrow("restricted to the canonical android-cloud-debug");
+    ).toThrow("restricted to the canonical android-cloud --debug");
   });
 
-  it("rejects Play signals even on the debug target", () => {
+  it("rejects the store variant even in debug mode", () => {
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
-        targetName: "android-cloud-debug",
-        env: {
-          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
-          ELIZA_PLAY_STORE_BUILD: "1",
-        },
-      }),
-    ).toThrow("restricted to the canonical android-cloud-debug");
-    expect(() =>
-      enforceAndroidLp3ColorPolicyBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: {
           ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
           ELIZA_BUILD_VARIANT: "STORE",
         },
       }),
-    ).toThrow("restricted to the canonical android-cloud-debug");
+    ).toThrow("restricted to the canonical android-cloud --debug");
   });
 
   it("rejects app-dir and whitelabel variants", () => {
     const enabled = { ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1" };
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: { ...enabled, ELIZA_ANDROID_USE_APP_DIR: "1" },
       }),
     ).toThrow("app-dir");
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: enabled,
         appId: "com.example.whitelabel",
       }),
@@ -356,7 +355,8 @@ describe("LP3 direct Cloud build flag", () => {
   it("allows only the explicit direct debug target and keeps disabled builds unchanged", () => {
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
-        targetName: "android-cloud-debug",
+        targetName: "android-cloud",
+        debug: true,
         env: { ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "yes" },
       }),
     ).not.toThrow();

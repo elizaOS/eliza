@@ -979,7 +979,9 @@ describe("pinned bundletool provisioning", () => {
     expect(ANDROID_APP_GRADLE).toContain(
       "auditOutput.standardError.asText.get()",
     );
-    expect(ANDROID_APP_GRADLE).toContain("'android-cloud-audit'");
+    expect(ANDROID_APP_GRADLE).toContain(
+      "'android-cloud',\n                '--audit',",
+    );
     // npm-packages / white-label layouts resolve the audit CLI through the
     // orchestrator-provided override; the repo-root walk stays as the
     // source-checkout fallback. Both paths hard-fail on a missing script.

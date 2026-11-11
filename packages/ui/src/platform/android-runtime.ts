@@ -66,20 +66,6 @@ export function isAndroidCloudBuild(): boolean {
   return resolveAndroidRuntimeMode(env) === "cloud";
 }
 
-/** True only for the direct-install HOME/launcher Cloud artifact. */
-export function resolveAndroidLauncherBuild(env: RuntimeEnv): boolean {
-  return readString(env, ["VITE_ELIZA_ANDROID_LAUNCHER_BUILD"]) === "1";
-}
-
-export function isAndroidLauncherBuild(): boolean {
-  const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as { env?: RuntimeEnv }).env
-      ? ((import.meta as { env: RuntimeEnv }).env as RuntimeEnv)
-      : {};
-  return resolveAndroidLauncherBuild(env);
-}
-
 /**
  * True only for the dedicated LP3 VPS fallback renderer. Its Android 14
  * system WebView can keep page code in an out-of-app renderer but predates

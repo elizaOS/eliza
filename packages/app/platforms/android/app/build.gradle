@@ -554,7 +554,8 @@ def auditCloudReleaseAab = tasks.register('auditCloudReleaseAab') {
             commandLine(
                 System.getenv('NODE_BINARY') ?: 'node',
                 auditScript.absolutePath,
-                'android-cloud-audit',
+                'android-cloud',
+                '--audit',
                 bundleArtifact.absolutePath
             )
         }

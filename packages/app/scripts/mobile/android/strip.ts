@@ -32,7 +32,6 @@ import {
   isAndroidFirebaseIndependentRemoteBuild,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
-  resolveAndroidCloudCapacitorConfigPolicy,
   resolveAndroidCloudStripPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./cloud-policy.ts";
@@ -45,7 +44,7 @@ import { cloudSafePlayVoicePluginJava } from "./templates/play-voice.ts";
 import { cloudSafeSecureCredentialsPluginJava } from "./templates/secure-credentials.ts";
 import { cloudSafeTasksWorkerJava } from "./templates/tasks-worker.ts";
 
-export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
+export function sanitizeAndroidCloudPackagedConfig() {
   const configPath = path.join(
     androidDir,
     "app",
@@ -69,10 +68,7 @@ export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(
-    parsed,
-    resolveAndroidCloudCapacitorConfigPolicy(env),
-  );
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -82,11 +78,7 @@ export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
 export function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  {
-    launcherKiosk = false,
-    immersiveNavigation = false,
-    safePushNotifications = true,
-  } = {},
+  { safePushNotifications = true } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -95,11 +87,7 @@ export function rewriteCloudJavaSources(
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage, {
-          launcherKiosk,
-          immersiveNavigation,
-          safePushNotifications,
-        }),
+        cloudSafeMainActivityJava(androidPackage, { safePushNotifications }),
         "utf8",
       );
       touched += 1;
@@ -512,8 +500,6 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
     );
   }
   rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
-    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
-    immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     safePushNotifications: stripPolicy.safePushNotifications,
   });
 
@@ -585,7 +571,7 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins(env);
-  sanitizeAndroidCloudPackagedConfig(env);
+  sanitizeAndroidCloudPackagedConfig();
 }
 
 export function stripAndroidForSmsGateway() {

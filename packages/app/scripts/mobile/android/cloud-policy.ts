@@ -365,6 +365,7 @@ export function isAndroidVpsSidecarBuild(env = process.env) {
 
 export function enforceAndroidLp3RemoteFallbackBuildPolicy({
   targetName,
+  debug = false,
   env = process.env,
 }) {
   const lp3Required = isAndroidLp3RemoteFallbackRequired(env);
@@ -375,14 +376,14 @@ export function enforceAndroidLp3RemoteFallbackBuildPolicy({
       "[mobile-build] LP3 and VPS sidecar remote profiles are mutually exclusive.",
     );
   }
-  if (targetName !== "android-cloud-debug") {
+  if (targetName !== "android-cloud" || !debug) {
     throw new Error(
-      "[mobile-build] remote fallback profiles are restricted to android-cloud-debug.",
+      "[mobile-build] remote fallback profiles are restricted to android-cloud --debug.",
     );
   }
   if (lp3Required && !isAndroidLp3ColorPolicyEnabled(env)) {
     throw new Error(
-      "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
+      "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud --debug direct profile.",
     );
   }
   if (sidecarRequired && isAndroidLp3ColorPolicyEnabled(env)) {
@@ -428,23 +429,24 @@ export const ANDROID_LP3_CANONICAL_APP_ID = "ai.elizaos.app";
 
 export function enforceAndroidLp3ColorPolicyBuildPolicy({
   targetName,
+  debug = false,
   env = process.env,
   appId = ANDROID_LP3_CANONICAL_APP_ID,
 }) {
   if (!isAndroidLp3ColorPolicyEnabled(env)) return;
   const playSignaled =
-    env.ELIZA_PLAY_STORE_BUILD === "1" ||
     String(env.ELIZA_BUILD_VARIANT ?? "").toLowerCase() === "store";
   const nonCanonicalTree =
     env.ELIZA_ANDROID_USE_APP_DIR === "1" || appId !== "ai.elizaos.app";
   if (
-    targetName !== "android-cloud-debug" ||
+    targetName !== "android-cloud" ||
+    !debug ||
     playSignaled ||
     nonCanonicalTree
   ) {
     throw new Error(
       "[mobile-build] ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED is restricted to " +
-        "the canonical android-cloud-debug direct-distribution lane; it is " +
+        "the canonical android-cloud --debug direct-distribution lane; it is " +
         "forbidden for release, Play, SMS gateway, sideload, AOSP, app-dir, " +
         "and whitelabel targets.",
     );
@@ -653,29 +655,12 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "SplashScreen",
 ]);
 
-/**
- * Sign-in is native (ElizaCloudSignInPlugin: email code, SMS code, native
- * Google), so no build navigates its WebView to a hosted login page: neither
- * variant packages a `server.allowNavigation` entry.
- */
-/** Resolves the one sanitizer policy shared by write-time and source audits. */
-export function resolveAndroidCloudCapacitorConfigPolicy(env = process.env) {
-  const launcherKiosk = env.ELIZA_ANDROID_LAUNCHER_BUILD === "1";
-  return {
-    launcherKiosk,
-    webViewDebugging: launcherKiosk && env.ELIZA_WEBVIEW_DEBUG === "1",
-  };
-}
-
 export function isJsonRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
-export function sanitizeAndroidCloudCapacitorConfig(
-  value,
-  { launcherKiosk = false, webViewDebugging = false } = {},
-) {
+export function sanitizeAndroidCloudCapacitorConfig(value) {
   if (!isJsonRecord(value)) {
     throw new Error(
       "android-cloud capacitor.config.json must contain an object",
@@ -704,7 +689,7 @@ export function sanitizeAndroidCloudCapacitorConfig(
           : "#000000",
       allowMixedContent: false,
       captureInput: sourceAndroid.captureInput === true,
-      webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
+      webContentsDebuggingEnabled: false,
     },
   };
 }
@@ -1276,56 +1261,6 @@ export function assertAndroidArtifactOmitsLp3ManifestMarkers(
         findings.map((marker) => `  - ${marker}`).join("\n"),
     );
   }
-}
-
-export function assertAndroidLauncherManifest(
-  manifestText,
-  { label = "android-launcher artifact" } = {},
-) {
-  const requiredMarkers = [
-    "android.intent.action.MAIN",
-    "android.intent.category.HOME",
-    "android.intent.category.DEFAULT",
-  ];
-  const sourceFilters = [
-    ...manifestText.matchAll(
-      /<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g,
-    ),
-  ].map((match) => match[1]);
-  const aaptLines = manifestText.split(/\r?\n/);
-  const aaptFilters = [];
-  for (let index = 0; index < aaptLines.length; index += 1) {
-    const match = aaptLines[index].match(/^(\s*)E: intent-filter\b/);
-    if (!match) continue;
-    const indent = match[1].length;
-    const block = [aaptLines[index]];
-    for (let next = index + 1; next < aaptLines.length; next += 1) {
-      const nextLine = aaptLines[next];
-      const nextElement = nextLine.match(/^(\s*)E: /);
-      if (nextElement && nextElement[1].length <= indent) break;
-      block.push(nextLine);
-    }
-    aaptFilters.push(block.join("\n"));
-  }
-  const intentFilters = sourceFilters.length > 0 ? sourceFilters : aaptFilters;
-  if (
-    intentFilters.some((filter) =>
-      requiredMarkers.every((marker) => filter.includes(marker)),
-    )
-  ) {
-    return;
-  }
-
-  const missingMarkers = requiredMarkers.filter(
-    (marker) => !manifestText.includes(marker),
-  );
-  const detail =
-    missingMarkers.length > 0
-      ? `missing ${missingMarkers.join(", ")}`
-      : "MAIN, HOME, and DEFAULT are not declared together in one intent-filter";
-  throw mobileBuildError(
-    `[mobile-build] ${label} does not qualify for ROLE_HOME: ${detail}`,
-  );
 }
 
 export function assertAndroidSmsGatewayBadging(badging) {

@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.ts";
 import {
   ANDROID_BUILD_TARGETS,
-  assertAndroidLauncherManifest,
   resolveAndroidBuildTarget,
   resolveAndroidGradleCommands,
   resolveMobileBuildPolicy,
@@ -19,71 +18,17 @@ const mobileBuildScript = fileURLToPath(
 );
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const appPackageJsonPath = path.resolve(scriptsDir, "../../app/package.json");
-const adbInstallerSource = fs.readFileSync(
-  path.resolve(scriptsDir, "../../app/scripts/android-adb-install.ts"),
-  "utf8",
-);
 const runMobileBuildSource = fs.readFileSync(
   path.resolve(scriptsDir, "run-mobile-build.ts"),
   "utf8",
 );
 
 describe("Android mobile build target table", () => {
-  it("exposes a one-command launcher install and verifies Android HOME ownership", () => {
-    const appScripts = JSON.parse(
-      fs.readFileSync(appPackageJsonPath, "utf8"),
-    ).scripts;
-    expect(appScripts["install:android:launcher"]).toContain(
-      "build:android:launcher",
-    );
-    expect(appScripts["install:android:launcher"]).toContain("--launcher");
-    expect(adbInstallerSource).toContain("android.settings.HOME_SETTINGS");
-    expect(adbInstallerSource).toContain("android.app.role.HOME");
-    expect(adbInstallerSource).toContain("android.intent.category.HOME");
-    expect(adbInstallerSource).toContain("resolve-activity");
-  });
-
-  it("requires the packaged HOME-role manifest contract", () => {
-    expect(() =>
-      assertAndroidLauncherManifest(
-        "android.intent.action.MAIN android.intent.category.DEFAULT",
-      ),
-    ).toThrow("missing android.intent.category.HOME");
-    expect(() =>
-      assertAndroidLauncherManifest(
-        "android.intent.action.MAIN android.intent.category.HOME android.intent.category.DEFAULT",
-      ),
-    ).toThrow("not declared together in one intent-filter");
-    expect(() =>
-      assertAndroidLauncherManifest(`
-        <intent-filter>
-          <action android:name="android.intent.action.MAIN" />
-          <category android:name="android.intent.category.HOME" />
-          <category android:name="android.intent.category.DEFAULT" />
-        </intent-filter>`),
-    ).not.toThrow();
-    expect(() =>
-      assertAndroidLauncherManifest(`
-        E: activity (line=1)
-          E: intent-filter (line=2)
-            E: action (line=3)
-              A: android:name="android.intent.action.MAIN"
-            E: category (line=4)
-              A: android:name="android.intent.category.HOME"
-            E: category (line=5)
-              A: android:name="android.intent.category.DEFAULT"
-          E: intent-filter (line=6)`),
-    ).not.toThrow();
-  });
-
   it("keeps one descriptor per public Android target", () => {
     expect(Object.keys(ANDROID_BUILD_TARGETS).sort()).toEqual([
       "android",
       "android-cloud",
-      "android-cloud-debug",
-      "android-cloud-hybrid",
       "android-host-e2e",
-      "android-launcher",
       "android-sms-gateway",
       "android-system",
     ]);
@@ -98,10 +43,7 @@ describe("Android mobile build target table", () => {
     expect(ANDROID_BUILD_TARGETS["android-host-e2e"]).toMatchObject({
       target: "android-host-e2e",
       webTarget: "android",
-      env: {
-        ELIZA_ANDROID_HOST_E2E_BUILD: "1",
-        ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1",
-      },
+      env: { ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1" },
       cleartextPolicy: { allowCleartext: true, label: "host-e2e" },
       gradle: {
         flags: ["-PelizaStripAgentAssets=true"],
@@ -122,38 +64,6 @@ describe("Android mobile build target table", () => {
       env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
       cleartextPolicy: { allowCleartext: false, label: "cloud" },
     });
-    expect(ANDROID_BUILD_TARGETS["android-launcher"]).toMatchObject({
-      target: "android-launcher",
-      webTarget: "android-launcher",
-      env: {
-        ELIZA_ANDROID_CLOUD_BUILD: "1",
-        ELIZA_ANDROID_LAUNCHER_BUILD: "1",
-      },
-      overlayOptions: {
-        includeAospRoleLaunchers: false,
-        includeHomeRole: true,
-      },
-      cleartextPolicy: { allowCleartext: false, label: "launcher" },
-      artifactAuditKey: "launcher",
-    });
-    expect(ANDROID_BUILD_TARGETS["android-cloud-hybrid"]).toMatchObject({
-      target: "android-cloud-hybrid",
-      webTarget: "android-cloud-hybrid",
-      env: { ELIZA_ANDROID_CLOUD_HYBRID_BUILD: "1" },
-      buildMobileAgentBundle: true,
-      cleartextPolicy: { allowCleartext: true, label: "cloud-hybrid" },
-      agentRuntime: { bunChannel: "stable" },
-      gradle: {
-        metadataVariant: "debug",
-        finalTask: ":app:assembleDebug",
-      },
-      artifactAuditKey: "sideload",
-    });
-    expect(ANDROID_BUILD_TARGETS["android-cloud-debug"]).toMatchObject({
-      target: "android-cloud-debug",
-      webTarget: "android-cloud-debug",
-      cleartextPolicy: { allowCleartext: false, label: "cloud-debug" },
-    });
     expect(ANDROID_BUILD_TARGETS["android-sms-gateway"]).toMatchObject({
       target: "android-sms-gateway",
       webTarget: "android-cloud-debug",
@@ -165,17 +75,31 @@ describe("Android mobile build target table", () => {
       webTarget: "android-system",
       buildMobileAgentBundle: true,
       cleartextPolicy: { allowCleartext: true, label: "AOSP" },
-      agentRuntime: { bunChannel: "stable", objective: true },
+      agentRuntime: { bunChannel: "stable" },
     });
   });
 
-  it("maps android-cloud debug opts to the debug descriptor", () => {
-    expect(resolveAndroidBuildTarget("android-cloud").target).toBe(
-      "android-cloud",
+  it("builds android-cloud as a debug APK in its debug mode", () => {
+    expect(resolveAndroidBuildTarget("android-cloud")).toMatchObject({
+      target: "android-cloud",
+      webTarget: "android-cloud",
+      artifactAuditKey: "cloud",
+      postBuildKey: "logCloudRelease",
+    });
+    const debug = resolveAndroidBuildTarget("android-cloud", { debug: true });
+    expect(debug).toMatchObject({
+      target: "android-cloud",
+      webTarget: "android-cloud-debug",
+      env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
+      stripSourceKey: "cloud",
+      auditSourceKey: "cloud",
+      cleartextPolicy: { allowCleartext: false, label: "cloud-debug" },
+      artifactAuditKey: "cloudDebug",
+    });
+    expect(debug.postBuildKey).toBe(undefined);
+    expect(resolveAndroidBuildTarget("android-system", { debug: true })).toBe(
+      ANDROID_BUILD_TARGETS["android-system"],
     );
-    expect(
-      resolveAndroidBuildTarget("android-cloud", { debug: true }).target,
-    ).toBe("android-cloud-debug");
   });
 
   it("runs the exact mobile CLI through a pre-mutation Android guard", () => {
@@ -186,13 +110,13 @@ describe("Android mobile build target table", () => {
       encoding: "utf8",
       env: {
         ...process.env,
-        ELIZA_PLAY_STORE_BUILD: "1",
+        ELIZA_BUILD_VARIANT: "store",
       },
     });
 
     expect(result.status).toBe(2);
     expect(`${result.stdout}\n${result.stderr}`).toContain(
-      "Refusing target `android` under ELIZA_PLAY_STORE_BUILD",
+      "Refusing target `android` under ELIZA_BUILD_VARIANT=store",
     );
   });
 
@@ -211,14 +135,7 @@ describe("Android mobile build target table", () => {
       runtimeExecutionMode: "cloud",
       releaseAuthority: "google-play",
     });
-    expect(resolveMobileBuildPolicy("android-cloud-hybrid")).toMatchObject({
-      capacitorTarget: "android",
-      buildVariant: "direct",
-      androidRuntimeMode: "cloud-hybrid",
-      runtimeExecutionMode: "local-yolo",
-      releaseAuthority: "github-release-android-package-installer",
-    });
-    expect(resolveMobileBuildPolicy("android-launcher")).toMatchObject({
+    expect(resolveMobileBuildPolicy("android-cloud-debug")).toMatchObject({
       capacitorTarget: "android",
       buildVariant: "direct",
       androidRuntimeMode: "cloud",
@@ -227,31 +144,37 @@ describe("Android mobile build target table", () => {
     });
   });
 
-  it("exposes and dispatches the stock-device Android launcher target", () => {
+  it("dispatches the cloud debug and audit modes through the android-cloud target", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
-    expect(packageJson.scripts["build:android:launcher"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-launcher",
+    expect(packageJson.scripts["build:android:cloud:debug"]).toBe(
+      "node ../../packages/app/scripts/run-mobile-build.ts android-cloud --debug",
     );
-    expect(runMobileBuildSource).toContain('target !== "android-launcher"');
     expect(runMobileBuildSource).toContain(
-      'await runAndroidBuild("android-launcher")',
+      'buildAndroidCloud({ debug: options.includes("--debug") })',
     );
+    expect(runMobileBuildSource).toContain(
+      'target === "android-cloud" && options[0] === "--audit"',
+    );
+    for (const removed of [
+      "android-launcher",
+      "android-cloud-hybrid",
+      "android-cloud-debug",
+      "android-cloud-audit",
+    ]) {
+      const result = spawnSync("node", [mobileBuildScript, removed], {
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "Usage: node scripts/run-mobile-build.ts",
+      );
+    }
   });
 
-  it("exposes and dispatches a first-class Android cloud-hybrid target", () => {
-    const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
-
-    expect(packageJson.scripts["build:android:cloud-hybrid"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-cloud-hybrid",
-    );
-    expect(runMobileBuildSource).toContain('target !== "android-cloud-hybrid"');
-    expect(runMobileBuildSource).toContain(
-      'await runAndroidBuild("android-cloud-hybrid")',
-    );
-
+  it("refuses a leaked runtime-mode env before the web build", () => {
     const fixtureRoot = fs.mkdtempSync(
-      path.join(os.tmpdir(), "eliza-android-cloud-hybrid-cli-"),
+      path.join(os.tmpdir(), "eliza-android-runtime-mode-cli-"),
     );
     const sdkRoot = path.join(fixtureRoot, "android-sdk");
     const javaHome = path.join(fixtureRoot, "jdk-21");
@@ -262,7 +185,7 @@ describe("Android mobile build target table", () => {
     try {
       const result = spawnSync(
         process.execPath,
-        [path.join(scriptsDir, "run-mobile-build.ts"), "android-cloud-hybrid"],
+        [path.join(scriptsDir, "run-mobile-build.ts"), "android"],
         {
           cwd: scriptsDir,
           encoding: "utf8",
@@ -278,7 +201,7 @@ describe("Android mobile build target table", () => {
 
       expect(result.status).toBe(1);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        "Refusing leaked Android runtime-mode env for target 'android-cloud-hybrid'",
+        "Refusing leaked Android runtime-mode env for target 'android'",
       );
     } finally {
       fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -346,44 +269,6 @@ describe("Android Gradle command table", () => {
     expect(
       resolveAndroidGradleCommands("android-cloud", {
         debug: true,
-        env: {},
-        settingsGradle: websiteBlockerSettings,
-      }),
-    ).toEqual({
-      metadataArgs: [
-        "-PelizaCloudBuild=true",
-        "-PelizaStripAgentAssets=true",
-        ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-      ],
-      buildArgs: [
-        "-PelizaCloudBuild=true",
-        "-PelizaStripAgentAssets=true",
-        ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
-        ":app:assembleDebug",
-      ],
-    });
-  });
-
-  it("generates Android cloud-hybrid commands as a direct local-agent APK lane", () => {
-    expect(
-      resolveAndroidGradleCommands("android-cloud-hybrid", {
-        env: {},
-        settingsGradle: websiteBlockerSettings,
-      }),
-    ).toEqual({
-      metadataArgs: [
-        ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
-      ],
-      buildArgs: [
-        ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
-        ":app:assembleDebug",
-      ],
-    });
-  });
-
-  it("generates the launcher APK with cloud-safe debug Gradle flags", () => {
-    expect(
-      resolveAndroidGradleCommands("android-launcher", {
         env: {},
         settingsGradle: websiteBlockerSettings,
       }),
