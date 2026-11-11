@@ -9,7 +9,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,6 +121,71 @@ describe("installMobileFsShim alias acceptance (real shim, Bun subprocess)", () 
         before: expectedRegistry,
         writeBlocked: true,
         after: expectedRegistry,
+      });
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts the real spelling of roots that were passed through a symlink", () => {
+    // iOS: the Swift host passes appSupport.resolvingSymlinksInPath(), which
+    // strips /private (/var/mobile/...), while realpath(3) returns
+    // /private/var/mobile/... . saveElizaConfig (packages/agent) realpaths an
+    // existing eliza.json and writes through that spelling.
+    const fixtureRoot = mkdtempSync(nodePath.join(tmpdir(), "eliza-fs-shim-"));
+    const realVar = nodePath.join(fixtureRoot, "private", "var");
+    const realWorkspace = nodePath.join(realVar, "app-support");
+    const realPublic = nodePath.join(realVar, "App.app", "public");
+    mkdirSync(realWorkspace, { recursive: true });
+    mkdirSync(realPublic, { recursive: true });
+    mkdirSync(nodePath.join(realVar, "app-support-escape"));
+    // fixtureRoot/var -> fixtureRoot/private/var, like iOS /var -> /private/var.
+    symlinkSync(realVar, nodePath.join(fixtureRoot, "var"));
+    const workspaceRoot = nodePath.join(fixtureRoot, "var", "app-support");
+    const publicRoot = nodePath.join(fixtureRoot, "var", "App.app", "public");
+    const configPath = nodePath.join(workspaceRoot, "eliza.json");
+    const registryPath = nodePath.join(publicRoot, "generated-registry.json");
+    writeFileSync(configPath, '{"saved":1}\n');
+    writeFileSync(registryPath, '{"registry":{}}\n');
+    const realConfigPath = realpathSync(configPath);
+    const realRegistryPath = realpathSync(registryPath);
+    const realVarReal = realpathSync(realVar);
+
+    try {
+      const script = [
+        `(async () => {`,
+        `const { installMobileFsShim } = await import(${JSON.stringify(SHIM_PATH)});`,
+        `installMobileFsShim(${JSON.stringify(workspaceRoot)}, { readOnlyRoots: [${JSON.stringify(publicRoot)}] });`,
+        `const fs = require("node:fs");`,
+        `const path = require("node:path");`,
+        `const attempt = (fn) => { try { fn(); return "ok"; } catch (error) { return String(error?.code); } };`,
+        `const out = {};`,
+        `const realConfigPath = fs.realpathSync(${JSON.stringify(configPath)});`,
+        `out.realConfigPath = realConfigPath;`,
+        `out.save = attempt(() => { fs.writeFileSync(realConfigPath + ".tmp", '{"saved":2}\\n'); fs.renameSync(realConfigPath + ".tmp", realConfigPath); });`,
+        `out.config = fs.readFileSync(${JSON.stringify(configPath)}, "utf8");`,
+        `out.mkdirReal = attempt(() => fs.mkdirSync(path.join(path.dirname(realConfigPath), "auth"), { recursive: true }));`,
+        `out.readPublicReal = attempt(() => fs.readFileSync(${JSON.stringify(realRegistryPath)}, "utf8"));`,
+        `out.writePublicReal = attempt(() => fs.writeFileSync(${JSON.stringify(realRegistryPath)}, "changed"));`,
+        `out.writeOutside = attempt(() => fs.writeFileSync(${JSON.stringify(nodePath.join(realVarReal, "outside.txt"))}, "x"));`,
+        `out.writeSibling = attempt(() => fs.writeFileSync(${JSON.stringify(nodePath.join(realVarReal, "app-support-escape", "x.txt"))}, "x"));`,
+        `console.log(JSON.stringify(out));`,
+        `})().catch((error) => { console.error(error); process.exitCode = 1; });`,
+      ].join("\n");
+      const stdout = execFileSync(process.execPath, ["-e", script], {
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+      const lastLine = stdout.trim().split("\n").at(-1) ?? "";
+      expect(JSON.parse(lastLine)).toEqual({
+        realConfigPath,
+        save: "ok",
+        config: '{"saved":2}\n',
+        mkdirReal: "ok",
+        readPublicReal: "ok",
+        writePublicReal: "EACCES",
+        writeOutside: "EACCES",
+        writeSibling: "EACCES",
       });
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });

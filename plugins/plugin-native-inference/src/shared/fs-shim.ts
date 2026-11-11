@@ -288,18 +288,19 @@ function resolveSandboxed(
   // ancestor.  Handles Android /data/user/0 ↔ /data/data aliasing where
   // Java-set env vars (HOME, ELIZA_STATE_DIR) use the symlink prefix but the
   // Bun bundle's import.meta.url resolves via the real /data/data prefix.
+  // The check also runs when the path is already in its real spelling
+  // (realResolved === resolved): on iOS the host passes the root as
+  // /var/mobile/... while realpath() returns /private/var/mobile/... .
   if (_workspaceRootReal) {
     const realResolved = resolveViaAncestor(resolved);
-    if (realResolved !== resolved) {
-      if (isInsideRoot(realResolved, _workspaceRootReal)) {
-        return resolved;
-      }
-      if (
-        mode === "read" &&
-        _readOnlyRootReals.some((root) => isInsideRoot(realResolved, root))
-      ) {
-        return resolved;
-      }
+    if (isInsideRoot(realResolved, _workspaceRootReal)) {
+      return resolved;
+    }
+    if (
+      mode === "read" &&
+      _readOnlyRootReals.some((root) => isInsideRoot(realResolved, root))
+    ) {
+      return resolved;
     }
   }
 
