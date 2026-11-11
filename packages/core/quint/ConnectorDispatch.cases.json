@@ -1,0 +1,124 @@
+{
+	"sources": [
+		"packages/core/src/runtime/connector-registry.ts",
+		"packages/core/src/runtime/connector-registration.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/src/security/voice-gate.ts",
+		"packages/core/test/connector-registry.integration.test.ts",
+		"packages/core/quint/check-connector-dispatch.mjs",
+		"packages/scripts/lib/vitest-conformance.ts",
+		"packages/scripts/lib/test-output.ts",
+		"packages/scripts/run-vitest.ts",
+		"packages/scripts/run-with-deadline.ts"
+	],
+	"bounds": [
+		"One source, source-only and one named account route, two transport identities, descriptor presence and one admitted send. Separate cases request the source-only or named route. Repeated registration and removal may interleave with dispatch.",
+		"The leaf projection distinguishes internal, legacy and metadata-only registrations, exact and source-wide removal, fallback routing and the handler captured before the voice await. Plugin teardown ownership remains in PluginLifecycle. Post connectors, descriptor payload copying and non-send hooks are outside this projection.",
+		"Valid content follows the existing voice, sanitation and envelope pipeline. Cosmetic model failure and successful rewrite both resume the gate. Content-validation rejection is outside this projection. Fair progress requires the gate and selected handler to settle; a handler may reject. Unregister removes future lookup and does not cancel an admitted send. Runtime stop, transport disposal, provider delivery and persistence are outside this bound."
+	],
+	"conformance": "packages/core/quint/check-connector-dispatch.mjs",
+	"cases": [
+		{
+			"name": "source-only-dispatch",
+			"main": "ConnectorDefaultDispatch",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"RegistryShape",
+				"UsesAdmittedHandler",
+				"WaitsForVoice",
+				"MissingNeverInvokes",
+				"ResultRequiresSettlement"
+			],
+			"temporal": [
+				"AdmissionSelectsRoute",
+				"AdmittedOwnerStays",
+				"FairDispatchFinishes",
+				"DispatchFinishes"
+			],
+			"temporalChecks": [
+				{
+					"property": "AdmissionSelectsRoute",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Admission selects the current exact handler, otherwise the source-only fallback, independently of descriptor presence."
+					]
+				},
+				{
+					"property": "AdmittedOwnerStays",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Registry mutation does not change the handler or route captured by this send."
+					]
+				},
+				{
+					"property": "FairDispatchFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of the voice continuation and selected handler settlement. Settlement can succeed or reject; registry churn need not stop."
+					]
+				},
+				{
+					"property": "DispatchFinishes",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. The gate or selected handler can remain unsettled indefinitely."
+					]
+				}
+			],
+			"maxSteps": 30,
+			"samples": 1000
+		},
+		{
+			"name": "named-account-dispatch",
+			"main": "ConnectorAccountDispatch",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"RegistryShape",
+				"UsesAdmittedHandler",
+				"WaitsForVoice",
+				"MissingNeverInvokes",
+				"ResultRequiresSettlement"
+			],
+			"temporal": [
+				"AdmissionSelectsRoute",
+				"AdmittedOwnerStays",
+				"FairDispatchFinishes",
+				"DispatchFinishes"
+			],
+			"temporalChecks": [
+				{
+					"property": "AdmissionSelectsRoute",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Admission selects the current exact handler, otherwise the source-only fallback, independently of descriptor presence."
+					]
+				},
+				{
+					"property": "AdmittedOwnerStays",
+					"expect": "holds",
+					"assumptions": [
+						"No fairness. Registry mutation does not change the handler or route captured by this send."
+					]
+				},
+				{
+					"property": "FairDispatchFinishes",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of the voice continuation and selected handler settlement. Settlement can succeed or reject; registry churn need not stop."
+					]
+				},
+				{
+					"property": "DispatchFinishes",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. The gate or selected handler can remain unsettled indefinitely."
+					]
+				}
+			],
+			"maxSteps": 30,
+			"samples": 1000
+		}
+	]
+}

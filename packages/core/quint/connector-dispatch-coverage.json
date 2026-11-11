@@ -1,0 +1,29 @@
+[
+	{
+		"id": "core-ConnectorDispatch",
+		"model": "packages/core/quint/ConnectorDispatch.qnt",
+		"sources": [
+			"packages/core/src/runtime/connector-registry.ts",
+			"packages/core/src/runtime/connector-registration.ts",
+			"packages/core/src/runtime.ts",
+			"packages/core/src/security/voice-gate.ts",
+			"packages/core/test/connector-registry.integration.test.ts"
+		],
+		"invariants": [
+			"RegistryShape",
+			"UsesAdmittedHandler",
+			"WaitsForVoice",
+			"MissingNeverInvokes",
+			"ResultRequiresSettlement"
+		],
+		"status": "partial",
+		"limitations": [
+			"One source, source-only and one named account route, two transport identities, descriptor presence and one admitted send. Separate cases request the source-only or named route. Repeated registration and removal may interleave with dispatch.",
+			"The leaf projection distinguishes internal, legacy and metadata-only registrations, exact and source-wide removal, fallback routing and the handler captured before the voice await. Plugin teardown ownership remains in PluginLifecycle. Post connectors, descriptor payload copying and non-send hooks are outside this projection.",
+			"Valid content follows the existing voice, sanitation and envelope pipeline. Cosmetic model failure and successful rewrite both resume the gate. Content-validation rejection is outside this projection. Fair progress requires the gate and selected handler to settle; a handler may reject. Unregister removes future lookup and does not cancel an admitted send. Runtime stop, transport disposal, provider delivery and persistence are outside this bound."
+		],
+		"implementationTests": [
+			"packages/core/test/connector-registry.integration.test.ts"
+		]
+	}
+]
