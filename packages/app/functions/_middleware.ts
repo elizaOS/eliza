@@ -487,7 +487,8 @@ const CHECKOUT_SESSION_ID = /^cs_(test|live)_[A-Za-z0-9]{1,200}$/;
  * back to the configured package. It forwards only a well-formed Stripe
  * session id and the fixed result word: both are identifiers, not payment
  * evidence, and the app must still confirm with its own credential. The page
- * runs no script and reads nothing else from the request.
+ * runs no script, reads nothing else from the request, and says the same thing
+ * for every result: an unauthenticated address cannot say a payment was made.
  */
 export function nativeBillingReturnFallback(
   url: URL,
@@ -505,7 +506,6 @@ export function nativeBillingReturnFallback(
     `intent://${url.host}${path}${search}#Intent;scheme=https;package=${callback.androidPackage};end`,
   );
   const appName = escapeHtml(callback.appName);
-  const paid = result === "success";
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -524,8 +524,8 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
 </head>
 <body>
 <main>
-<h1>${paid ? "Payment received" : "Return to the app"}</h1>
-<p>${paid ? `Return to ${appName} to finish. Your plan is confirmed there.` : `Return to ${appName} to continue.`}</p>
+<h1>Return to ${appName}</h1>
+<p>Return to ${appName} to finish.</p>
 <a id="open" href="${href}">Return to ${appName}</a>
 </main>
 </body>

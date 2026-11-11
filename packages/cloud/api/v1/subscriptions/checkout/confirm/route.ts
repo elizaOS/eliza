@@ -4,7 +4,8 @@
  *
  * Auth: an owner/admin browser session, or that owner/admin's acknowledged first-party mobile
  * credential (`Authorization: Bearer eliza_mobile_…`), so a native app can settle its own
- * purchase when it returns from the hosted page. The session must belong to the caller's
+ * purchase when it returns from the hosted page, while that credential's native client is still
+ * registered and enabled. The session must belong to the caller's
  * organization. The answer carries the organization's entitlement as Cloud now serves it.
  */
 
@@ -13,6 +14,7 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { resolveMobileCredentialRegistration } from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
 import { reconcileSubscriptionCheckout } from "@elizaos/cloud-shared/lib/services/subscription-checkout";
 import {
   type EntitlementPlanSummary,
@@ -31,12 +33,14 @@ const schema = z
 
 export interface SubscriptionCheckoutConfirmRouteDependencies {
   authorize: typeof requireCurrentBillingManager;
+  resolveRegistration: typeof resolveMobileCredentialRegistration;
   reconcile: typeof reconcileSubscriptionCheckout;
   summary(organizationId: string): Promise<EntitlementPlanSummary>;
 }
 
 const defaultDependencies: SubscriptionCheckoutConfirmRouteDependencies = {
   authorize: requireCurrentBillingManager,
+  resolveRegistration: resolveMobileCredentialRegistration,
   reconcile: reconcileSubscriptionCheckout,
   summary: (organizationId) =>
     readOrganizationEntitlementSummary(organizationId),
@@ -49,7 +53,11 @@ export function createSubscriptionCheckoutConfirmRoute(
   app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
     c.header("Cache-Control", "no-store");
     try {
-      const { user } = await dependencies.authorize(c);
+      const { user, mobileCredential } = await dependencies.authorize(c);
+      // A mobile credential acts only while its native client is still the
+      // registered, enabled client it was issued under.
+      if (mobileCredential)
+        await dependencies.resolveRegistration(c.env, mobileCredential);
       const decoded = await decodeRequestJson(c.req);
       if (!decoded.ok)
         return c.json(

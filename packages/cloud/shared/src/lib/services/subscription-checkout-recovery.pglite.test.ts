@@ -998,7 +998,7 @@ test("a stored mobile contract returns only to one billing return with the fixed
 });
 
 /** Backdates a checkout's dispatch (when it was dispatched) and its last inspection. */
-async function ageDispatch(commandId: string, minutes: number) {
+async function ageDispatch(commandId: string, minutes: number, inspectedMinutesAgo = minutes) {
   const execute = (sql: string) => client.getPgliteClientForTests().exec(sql);
   await execute("ALTER TABLE billing_subscription_commands DISABLE TRIGGER ALL");
   try {
@@ -1006,14 +1006,87 @@ async function ageDispatch(commandId: string, minutes: number) {
       `UPDATE billing_subscription_commands
          SET provider_started_at = CASE WHEN provider_started_at IS NULL THEN NULL
                                         ELSE now() - make_interval(mins => $2::int) END,
-             updated_at = now() - make_interval(mins => $2::int)
+             updated_at = now() - make_interval(mins => $3::int)
        WHERE id=$1`,
-      [commandId, minutes],
+      [commandId, minutes, inspectedMinutesAgo],
     );
   } finally {
     await execute("ALTER TABLE billing_subscription_commands ENABLE TRIGGER ALL");
   }
 }
+
+const customerListed = (org: Org) =>
+  requests.some(
+    (request) =>
+      request.path === "/v1/checkout/sessions" && request.query.get("customer") === org.customerId,
+  );
+
+async function dueOpenCheckout(minutes = 3, inspectedMinutesAgo = minutes) {
+  const org = await seedOrganization();
+  const pending = await seedCheckout(org, "plus_monthly", { dispatched: true });
+  const sessionId = openSession(org, pending.command.id, "open");
+  await ageDispatch(pending.command.id, minutes, inspectedMinutesAgo);
+  return { org, pending, sessionId };
+}
+
+test("a still-open checkout is read back with a doubling, capped backoff", async () => {
+  // [minutes since dispatch, minutes since the last inspection, due?]
+  const cases = [
+    [1, 1, false], // younger than the first read-back
+    [3, 3, true], // never inspected, past two minutes
+    [20, 5, false], // inspected at 15 minutes: waits 15
+    [20, 16, true], // inspected at 4 minutes: waits 4
+    [200, 29, false], // the wait is capped at 30 minutes
+    [200, 31, true],
+  ] as const;
+  const seeded = [];
+  for (const [minutes, inspected] of cases) seeded.push(await dueOpenCheckout(minutes, inspected));
+  // Closure and expiry left over from other tests are not this test's subject.
+  await checkout.recoverStaleSubscriptionCheckouts(50, 0);
+  requests.length = 0;
+  await checkout.recoverStaleSubscriptionCheckouts(50);
+  expect(seeded.map(({ org }) => customerListed(org))).toEqual(cases.map(([, , due]) => due));
+  // One provider account read serves every checkout of the sweep.
+  expect(requests.filter((request) => request.path === "/v1/account")).toHaveLength(1);
+  expect(providerWrites()).toEqual([]);
+  for (const { sessionId } of seeded) expect(sessions.get(sessionId)?.status).toBe("open");
+});
+
+test("abandoned open checkouts cannot crowd out fenced or provider-expired ones, or each other's lane", async () => {
+  const abandoned = [];
+  for (let index = 0; index < 6; index += 1) abandoned.push(await dueOpenCheckout());
+  const fenced = await seedOrganization();
+  const fencedCheckout = await seedCheckout(fenced, "pro_monthly", { dispatched: true });
+  const fencedSession = openSession(fenced, fencedCheckout.command.id, "open");
+  await query("UPDATE organizations SET paid_work_fenced_at=now() WHERE id=$1", [
+    fenced.organizationId,
+  ]);
+  const expired = await seedOrganization();
+  const expiredCheckout = await seedCheckout(expired, "plus_monthly", {
+    createdAt: new Date(Date.now() - (23 * HOUR + 30 * 60 * 1000)),
+    dispatched: true,
+  });
+  openSession(expired, expiredCheckout.command.id, "expired");
+
+  requests.length = 0;
+  // Six abandoned checkouts are due, but read-backs have their own two slots: closure and
+  // expiry are served in full whatever is waiting in the other lane.
+  const result = await checkout.recoverStaleSubscriptionCheckouts(50, 2);
+  expect(result.inspected).toBeGreaterThanOrEqual(4);
+  expect(sessions.get(fencedSession)?.status).toBe("expired");
+  expect((await commandRow(fencedCheckout.command.id))?.status).toBe("FAILED");
+  expect((await commandRow(expiredCheckout.command.id))?.status).toBe("FAILED");
+  expect(abandoned.filter(({ org }) => customerListed(org))).toHaveLength(2);
+  // A fenced organization is closed by the first lane only, never merely observed by the second.
+  const refenced = await dueOpenCheckout();
+  await query("UPDATE organizations SET paid_work_fenced_at=now() WHERE id=$1", [
+    refenced.org.organizationId,
+  ]);
+  requests.length = 0;
+  await checkout.recoverStaleSubscriptionCheckouts(0, 50);
+  expect(customerListed(refenced.org)).toBe(false);
+  expect(sessions.get(refenced.sessionId)?.status).toBe("open");
+});
 
 test("recovery reads a dispatched checkout back within minutes so a paid session is settled without its webhook", async () => {
   // Paid three minutes ago; the webhook never arrived.
@@ -1035,21 +1108,19 @@ test("recovery reads a dispatched checkout back within minutes so a paid session
   const preparedCheckout = await seedCheckout(prepared, "plus_monthly");
   await ageDispatch(preparedCheckout.command.id, 3);
 
+  // Closure and expiry left over from other tests are not this test's subject.
+  await checkout.recoverStaleSubscriptionCheckouts(50, 0);
   requests.length = 0;
   const first = await checkout.recoverStaleSubscriptionCheckouts(50);
-  const listed = (org: Org) =>
-    requests.some(
-      (request) =>
-        request.path === "/v1/checkout/sessions" &&
-        request.query.get("customer") === org.customerId,
-    );
+  const listed = customerListed;
   expect(listed(paid)).toBe(true);
   expect(listed(open)).toBe(true);
   expect(listed(fresh)).toBe(false);
   expect(listed(prepared)).toBe(false);
   // The paid session went to settlement from provider evidence: the sweep fetched the session
-  // and then its invoice. (This loopback provider has no invoice objects, so finalization
-  // itself is covered by the finalization suites; here it is counted as unavailable.)
+  // and then its invoice. This loopback provider has no invoice objects, so it is counted as
+  // unavailable here; subscription-paid-renewal-recovery drives the same sweep to an applied
+  // subscription and entitlement, and races it against confirm and the webhook.
   const invoiceId = String(sessions.get(paidSession)?.invoice);
   expect(requests.map((request) => request.path)).toContain(`/v1/checkout/sessions/${paidSession}`);
   expect(requests.map((request) => request.path)).toContain(`/v1/invoices/${invoiceId}`);

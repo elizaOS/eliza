@@ -17,6 +17,8 @@ const { apiKeysService } = await import("../services/api-keys");
 const stewardSync = await import("../steward-sync");
 const lifecycle = await import("../services/account-lifecycle-authority");
 const { ApiError } = await import("../api/cloud-worker-errors");
+const { apiKeysRepository } = await import("../../db/repositories/api-keys");
+const { ElizaError } = await import("@elizaos/core");
 
 type Context = Parameters<typeof auth.requireUser>[0];
 type ManagedUser = NonNullable<
@@ -98,7 +100,7 @@ function mobileCaller(key: Credential | null, user: ManagedUser | undefined) {
   return validate;
 }
 
-test("a failed first-sign-in sync is a retryable 503, and optional auth stays anonymous", async () => {
+async function firstSignInFailingWith(syncError: unknown) {
   spies.push(
     spyOn(stewardClient, "verifyStewardTokenCached").mockResolvedValue({
       userId: "steward-new",
@@ -106,17 +108,74 @@ test("a failed first-sign-in sync is a retryable 503, and optional auth stays an
       expiration: 2,
     }),
     spyOn(usersService, "getByStewardId").mockResolvedValue(undefined),
-    spyOn(stewardSync, "syncUserFromSteward").mockRejectedValue(new Error("primary unavailable")),
+    spyOn(stewardSync, "syncUserFromSteward").mockRejectedValue(syncError),
   );
   const c = context({ authorization: "Bearer aaa.bbb.ccc" });
+  // Optional-auth callers always see an anonymous request.
   expect(await auth.getCurrentUser(c)).toBeNull();
   const error = await failure(() => auth.requireUser(c));
-  expect(error.status).toBe(503);
-  expect(error.toJSON()).toMatchObject({
-    success: false,
-    code: "account_not_ready",
-    retryAfterSeconds: 5,
-  });
+  restore();
+  return error;
+}
+
+test("an outage during first-sign-in provisioning is a retryable 503", async () => {
+  const outages = [
+    Object.assign(new Error("terminating connection"), { code: "57P01" }),
+    Object.assign(new Error("too many connections"), { code: "53300" }),
+    Object.assign(new Error("connection failure"), { code: "08006" }),
+    Object.assign(new Error("deadlock detected"), { code: "40P01" }),
+    Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }),
+    new Error("Failed query", {
+      cause: Object.assign(new Error("closed"), { code: "CONNECTION_CLOSED" }),
+    }),
+    new ElizaError("Fresh Steward binding activation is temporarily unavailable", {
+      code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+    }),
+  ];
+  for (const outage of outages) {
+    const error = await firstSignInFailingWith(outage);
+    expect(error.status).toBe(503);
+    expect(error.toJSON()).toMatchObject({
+      success: false,
+      code: "account_not_ready",
+      retryAfterSeconds: 5,
+    });
+  }
+});
+
+test("an identity conflict during first-sign-in provisioning is a 409, never a retry loop", async () => {
+  const conflicts = [
+    new stewardSync.StewardPhoneAccountConflictError("verified_phone_unique_conflict"),
+    new stewardSync.StewardTelegramAccountClaimError("identity_projection_conflict"),
+    new ElizaError("Email is held by another account; retry sign-in", {
+      code: "STEWARD_EMAIL_CLAIM_CONFLICT",
+    }),
+    // A conflict wins over an outage code on a wrapping error.
+    Object.assign(new Error("wrapped"), {
+      code: "57P01",
+      cause: new stewardSync.StewardPhoneAccountConflictError("verified_phone_mismatch"),
+    }),
+  ];
+  for (const conflict of conflicts) {
+    const error = await firstSignInFailingWith(conflict);
+    expect(error.status).toBe(409);
+    expect(error.code).toBe("identity_conflict");
+    expect(error.toJSON()).not.toHaveProperty("retryAfterSeconds");
+  }
+});
+
+test("any other provisioning failure stays an authentication failure", async () => {
+  const others = [
+    new Error("Cannot generate organization slug for Steward user steward-new"),
+    Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" }),
+    Object.assign(new Error('column "x" does not exist'), { code: "42703" }),
+    new TypeError("undefined is not an object"),
+  ];
+  for (const other of others) {
+    const error = await firstSignInFailingWith(other);
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("authentication_required");
+  }
 });
 
 test("an invalid session is still an authentication failure", async () => {
@@ -185,4 +244,46 @@ test("a revoked, unacknowledged, expired or foreign-organization mobile credenti
     expect(error.status).toBe(status);
     restore();
   }
+});
+
+test("a key that was exchanged but never acknowledged is refused by the real validation path", async () => {
+  // The stored row of an exchanged, unacknowledged credential: inactive, with its
+  // sealed secret still held for redelivery. Nothing is stubbed between the header
+  // and that row, so `validateApiKey` and `isUsableMobileApiKey` decide.
+  type StoredKey = Awaited<ReturnType<typeof apiKeysRepository.findByHashConsistent>>;
+  const lookup = spyOn(apiKeysRepository, "findByHashConsistent").mockResolvedValue(
+    credential({
+      is_active: false,
+      deleted_at: null,
+      key_ciphertext: "sealed",
+      key_nonce: "nonce",
+      key_auth_tag: "tag",
+    }) as StoredKey,
+  );
+  const membership = spyOn(usersRepository, "findWithOrganizationForWrite").mockResolvedValue(
+    member(),
+  );
+  spies.push(lookup, membership);
+  const key = `eliza_mobile_${"c".repeat(64)}`;
+  const error = await failure(() =>
+    auth.requireCurrentBillingManager(context({ authorization: `Bearer ${key}` })),
+  );
+  expect(error.status).toBe(401);
+  expect(error.code).toBe("authentication_required");
+  expect(lookup).toHaveBeenCalledTimes(1);
+  // Refused before any membership read.
+  expect(membership).not.toHaveBeenCalled();
+
+  // The same row once acknowledged (active, sealed secret released) is accepted.
+  lookup.mockResolvedValue(credential({ deleted_at: null }) as StoredKey);
+  spies.push(
+    spyOn(lifecycle, "readOrganizationLifecycleAuthority").mockResolvedValue(
+      {} as Awaited<ReturnType<typeof lifecycle.readOrganizationLifecycleAuthority>>,
+    ),
+    spyOn(lifecycle, "organizationLifecycleAllowsNewWork").mockReturnValue(true),
+  );
+  const accepted = await auth.requireCurrentBillingManager(
+    context({ authorization: `Bearer ${key}` }),
+  );
+  expect(accepted.mobileCredential?.id).toBe(credential().id);
 });

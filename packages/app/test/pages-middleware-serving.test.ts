@@ -718,6 +718,9 @@ describe("native checkout return fallback", () => {
     );
     const html = await response.text();
     expect(html).not.toContain("<script");
+    // An unauthenticated address never claims a payment or a plan.
+    expect(html).toContain("Return to Example Reader to finish.");
+    expect(html).not.toMatch(/payment|paid|plan|confirm|received/i);
     const match = html.match(/<a id="open" href="([^"]*)">/);
     expect(match).not.toBeNull();
     return unescapeHtml(match?.[1] ?? "");

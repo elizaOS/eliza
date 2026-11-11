@@ -303,10 +303,13 @@ export async function getCurrentUserForStewardToken(
           userId: claims.userId,
           error: error instanceof Error ? error.message : String(error),
         });
-        // The session itself is valid: only account provisioning failed. Keep
-        // optional-auth callers anonymous, and let `requireUser` answer with a
-        // retryable 503 so a client never treats this as a revoked session.
-        c.set("stewardAccountNotReady", true);
+        // The session itself is valid: only account provisioning failed.
+        // Optional-auth callers stay anonymous. `requireUser` reports an
+        // outage as a retryable 503 and an identity conflict as a 409, so a
+        // client neither treats an outage as a revoked session nor retries a
+        // conflict forever. Any other failure stays an authentication failure.
+        const failure = classifyStewardSyncFailure(error);
+        if (failure) c.set("stewardAccountSyncFailure", failure);
         c.set("user", null);
         return null;
       }
@@ -323,15 +326,79 @@ export async function getCurrentUserForStewardToken(
   return authed;
 }
 
+/** Sign-in identities that another account already holds; repeating the request cannot succeed. */
+const STEWARD_SYNC_CONFLICT_CODES = new Set([
+  "STEWARD_EMAIL_CLAIM_CONFLICT",
+  "STEWARD_TELEGRAM_ACCOUNT_CLAIM_CONFLICT",
+]);
+const STEWARD_SYNC_CONFLICT_NAMES = new Set([
+  "StewardPhoneAccountConflictError",
+  "StewardTelegramAccountClaimError",
+]);
+/** Driver-level connection failures that carry no SQLSTATE. */
+const TRANSPORT_FAILURE_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECT_TIMEOUT",
+]);
+
+/**
+ * Sorts a first-sign-in provisioning failure. `conflict` is a typed identity
+ * conflict (the same classes `/api/auth/steward-session` answers with 409).
+ * `unavailable` is a dependency outage: a typed `*_UNAVAILABLE` error, a
+ * PostgreSQL connection, resource or transaction-rollback SQLSTATE (classes
+ * 08, 53, 57, 40), or a driver transport failure. Constraint violations,
+ * programming errors and anything unrecognised are neither, and stay 401.
+ */
+export function classifyStewardSyncFailure(error: unknown): "conflict" | "unavailable" | null {
+  const seen = new Set<unknown>();
+  let unavailable = false;
+  for (
+    let current: unknown = error;
+    current && typeof current === "object" && !seen.has(current);
+    current = (current as { cause?: unknown }).cause
+  ) {
+    seen.add(current);
+    const { code, name } = current as { code?: unknown; name?: unknown };
+    if (
+      (typeof code === "string" && STEWARD_SYNC_CONFLICT_CODES.has(code)) ||
+      (typeof name === "string" && STEWARD_SYNC_CONFLICT_NAMES.has(name))
+    )
+      return "conflict";
+    if (typeof code !== "string") continue;
+    if (
+      code.endsWith("_UNAVAILABLE") ||
+      /^(08|53|57|40)[0-9A-Z]{3}$/.test(code) ||
+      TRANSPORT_FAILURE_CODES.has(code)
+    )
+      unavailable = true;
+  }
+  return unavailable ? "unavailable" : null;
+}
+
 export async function requireUser(c: AppContext): Promise<AuthedUser> {
   const user = await getCurrentUser(c);
   if (!user) {
-    if (c.get("stewardAccountNotReady")) {
+    const failure = c.get("stewardAccountSyncFailure");
+    if (failure === "unavailable") {
       throw new ApiError(
         503,
         "account_not_ready",
         "Your account could not be prepared. Try again.",
         { retryAfterSeconds: 5 },
+      );
+    }
+    if (failure === "conflict") {
+      throw new ApiError(
+        409,
+        "identity_conflict",
+        "This sign-in cannot be linked to an account automatically.",
       );
     }
     throw AuthenticationError();

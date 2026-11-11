@@ -78,12 +78,18 @@ export function createSubscriptionCheckoutRoute(
             ? 'A mobile credential must request presentation "mobile".'
             : 'presentation "mobile" requires the app\'s own mobile credential.',
         );
-      const mobileReturnUrl = mobileCredential
-        ? mobileBillingReturnUrl(
-            (await dependencies.resolveRegistration(c.env, mobileCredential))
-              .redirectUri,
-          )
-        : undefined;
+      // Read again before every provider write: a client disabled or re-pointed
+      // after this request started must not receive a checkout.
+      const resolveMobileReturn = async (
+        credential: typeof mobileCredential,
+      ): Promise<string | undefined> =>
+        credential
+          ? mobileBillingReturnUrl(
+              (await dependencies.resolveRegistration(c.env, credential))
+                .redirectUri,
+            )
+          : undefined;
+      const mobileReturnUrl = await resolveMobileReturn(mobileCredential);
       const data = await dependencies.submit(
         {
           ...input,
@@ -97,7 +103,9 @@ export function createSubscriptionCheckoutRoute(
             current.user.id !== user.id ||
             current.user.organization_id !== user.organization_id ||
             (current.mobileCredential?.id ?? null) !==
-              (mobileCredential?.id ?? null)
+              (mobileCredential?.id ?? null) ||
+            (await resolveMobileReturn(current.mobileCredential)) !==
+              mobileReturnUrl
           )
             throw ForbiddenError("Organization billing authority changed");
         },

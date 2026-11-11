@@ -44,13 +44,15 @@ const PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
 /** A create admitted before its deadline is visible to session listing well within this margin. */
 const PROVIDER_CREATE_SETTLE_MS = 5 * 60 * 1000;
 /**
- * How long after dispatch (and after its last inspection) the recovery sweep first reads a
- * pending checkout back from the provider. The webhook and its one-minute drain normally settle
- * a payment first; this only bounds how long a paid checkout waits when that delivery is late
- * or dead-lettered. It is independent of PROVIDER_RETRY_WINDOW_MS, which still alone decides
- * when a missing session may be created or declared expired.
+ * How long after dispatch the recovery sweep first reads a pending checkout back from the
+ * provider. The webhook and its one-minute drain normally settle a payment first; this only
+ * bounds how long a paid checkout waits when that delivery is late or dead-lettered. It is
+ * independent of PROVIDER_RETRY_WINDOW_MS, which still alone decides when a missing session may
+ * be created or declared expired.
  */
 export const CHECKOUT_SETTLE_SWEEP_MIN_AGE_MS = 2 * 60 * 1000;
+/** Longest wait between two read-backs of the same still-open checkout (2, 4, 8… minutes, then this). */
+export const CHECKOUT_SETTLE_SWEEP_MAX_BACKOFF_MS = 30 * 60 * 1000;
 
 export type SubscriptionCheckoutResult =
   /** Hosted (default): this account's own browser redirect, unchanged from the original contract. */
@@ -443,14 +445,22 @@ async function settlePendingCheckout(
   env: NodeJS.ProcessEnv,
   command: BillingSubscriptionCommand,
   errorCode: string,
-  options: { expireOpen: boolean; createIfMissing: boolean; reauthorize?: Reauthorize },
+  options: {
+    expireOpen: boolean;
+    createIfMissing: boolean;
+    reauthorize?: Reauthorize;
+    /** One provider account read shared by a sweep; read here when absent. */
+    providerAccountId?: () => Promise<string>;
+  },
 ): Promise<PendingCheckoutSettlement> {
   // PREPARED never reached the provider; the CAS makes a concurrent dispatch lose.
   if (command.status === "PREPARED") return classify(await retireCommand(command, errorCode));
   if (command.status !== "OUTCOME_UNKNOWN") return classify(command);
   const contract = readCheckoutContract(command);
-  const account = await stripe.accounts.retrieve(null);
-  assertCheckoutProviderAuthority(contract, account.id, env);
+  const accountId = options.providerAccountId
+    ? await options.providerAccountId()
+    : (await stripe.accounts.retrieve(null)).id;
+  assertCheckoutProviderAuthority(contract, accountId, env);
   const customerId = contract.params.customer;
   let session = await findCheckoutSession(stripe, customerId, command.id);
   if (!session) {
@@ -741,14 +751,22 @@ export async function expirePendingSubscriptionCheckoutsForOrganization(
 }
 
 /**
- * Settles org checkouts that reached their provider expiry (observed, never forced), closes
- * payable sessions for fenced organizations, and reads every other dispatched checkout back
- * from the provider once it is a few minutes old, so a captured payment whose webhook is late
- * or dead-lettered is entitled within minutes instead of at provider expiry. Completed sessions
- * are reconciled (idempotently with the webhook and `checkout/confirm`), never discarded; an
- * open session of an unfenced organization is only observed and rotated.
+ * Two lanes with separate budgets, so neither can starve the other:
+ *
+ * 1. `limit`: org checkouts that reached their provider expiry (observed, never forced) and
+ *    payable sessions of fenced organizations, which are closed.
+ * 2. `inspectionLimit`: every other dispatched checkout is read back from the provider once it
+ *    is a few minutes old, with a doubling per-checkout backoff, so a captured payment whose
+ *    webhook is late or dead-lettered is entitled within minutes instead of at provider expiry.
+ *    This lane only observes: an open session is left payable and rotated.
+ *
+ * Completed sessions are reconciled (idempotently with the webhook and `checkout/confirm`),
+ * never discarded. The provider account is read at most once per sweep.
  */
-export async function recoverStaleSubscriptionCheckouts(limit = 10): Promise<{
+export async function recoverStaleSubscriptionCheckouts(
+  limit = 10,
+  inspectionLimit = limit,
+): Promise<{
   inspected: number;
   settled: number;
   completed: number;
@@ -757,20 +775,34 @@ export async function recoverStaleSubscriptionCheckouts(limit = 10): Promise<{
 }> {
   const result = { inspected: 0, settled: 0, completed: 0, pending: 0, unavailable: 0 };
   const now = Date.now();
-  const candidates = await recovery.listStalePendingCheckouts(
-    new Date(now - PROVIDER_RETRY_WINDOW_MS),
-    limit,
-    new Date(now - CHECKOUT_SETTLE_SWEEP_MIN_AGE_MS),
-  );
+  const horizon = new Date(now - PROVIDER_RETRY_WINDOW_MS);
+  const stale = await recovery.listStalePendingCheckouts(horizon, limit);
+  const due =
+    inspectionLimit > 0
+      ? await recovery.listDispatchedCheckoutsDueForInspection({
+          now: new Date(now),
+          createdAfter: horizon,
+          minAgeMs: CHECKOUT_SETTLE_SWEEP_MIN_AGE_MS,
+          maxBackoffMs: CHECKOUT_SETTLE_SWEEP_MAX_BACKOFF_MS,
+          limit: inspectionLimit,
+        })
+      : [];
+  const candidates = [...stale, ...due.map((command) => ({ command, organizationFenced: false }))];
   if (candidates.length === 0) return result;
   const stripe = requireStripe();
   const env = getCloudAwareEnv();
+  let account: Promise<string> | undefined;
+  const providerAccountId = () => {
+    account ??= stripe.accounts.retrieve(null).then((value) => value.id);
+    return account;
+  };
   for (const { command, organizationFenced } of candidates) {
     result.inspected++;
     try {
       const outcome = await settlePendingCheckout(stripe, env, command, "CHECKOUT_EXPIRED", {
         expireOpen: organizationFenced,
         createIfMissing: false,
+        providerAccountId,
       });
       result[outcome]++;
       if (outcome === "pending") await recovery.rotateCheckoutRecovery(command);

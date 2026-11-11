@@ -8,9 +8,18 @@
  * the provider contract against a loopback Stripe in
  * subscription-checkout-recovery.pglite.test.ts.
  */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import { createServer } from "node:http";
 import type { CurrentBillingManagerCredential } from "@elizaos/cloud-shared/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   MobileAppAuthProtocolError,
   type MobileAppAuthRegistration,
@@ -19,6 +28,15 @@ import type { EntitlementPlanSummary } from "@elizaos/cloud-shared/lib/services/
 import { ElizaError } from "@elizaos/core";
 import type { SubscriptionCheckoutConfirmRouteDependencies } from "../v1/subscriptions/checkout/confirm/route";
 import type { SubscriptionCheckoutRouteDependencies } from "../v1/subscriptions/checkout/route";
+
+// The cross-organization test reads a session through the real Stripe SDK from
+// a loopback provider; it must fail before any database or entitlement work.
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+process.env.ENVIRONMENT = "local";
+process.env.NODE_ENV = "test";
+process.env.CLOUD_E2E = "1";
+process.env.STRIPE_SECRET_KEY = "sk_test_cloud_e2e";
 
 // The money limiter fails closed without shared Redis; it has its own suite.
 const rateLimitModule = await import(
@@ -287,6 +305,40 @@ describe("POST /api/v1/subscriptions/checkout with a mobile credential", () => {
     expect((await bodyOf(res)).code).toBe("access_denied");
   });
 
+  test("a client disabled or re-pointed while the request runs stops the checkout before the provider write", async () => {
+    for (const later of [
+      async (): Promise<MobileAppAuthRegistration> => {
+        throw new MobileAppAuthProtocolError("invalid_client", "disabled");
+      },
+      async (): Promise<MobileAppAuthRegistration> => ({
+        ...REGISTRATION,
+        redirectUri: "https://eliza.app/other/auth/callback",
+      }),
+    ]) {
+      let resolutions = 0;
+      let providerWrites = 0;
+      const { deps } = checkoutDeps(MOBILE, {
+        resolveRegistration: async () => {
+          resolutions += 1;
+          return resolutions === 1 ? REGISTRATION : await later();
+        },
+        submit: async (_input, reauthorize) => {
+          await reauthorize();
+          providerWrites += 1;
+          throw new Error("unreachable: the provider write was authorized");
+        },
+      });
+      const res = await post(createSubscriptionCheckoutRoute(deps), {
+        planKey: "plus_monthly",
+        idempotencyKey: KEY,
+        presentation: "mobile",
+      });
+      expect([401, 403]).toContain(res.status);
+      expect(resolutions).toBe(2);
+      expect(providerWrites).toBe(0);
+    }
+  });
+
   test("a member, or a credential that is not a manager's, is denied", async () => {
     const { deps, submitted } = checkoutDeps(MOBILE, {
       authorize: async () => {
@@ -308,8 +360,13 @@ function confirmDeps(
   overrides: Partial<SubscriptionCheckoutConfirmRouteDependencies> = {},
 ) {
   const reconciled: [string, string | undefined][] = [];
+  const resolved: string[] = [];
   const deps: SubscriptionCheckoutConfirmRouteDependencies = {
     authorize: async () => caller,
+    resolveRegistration: async (_env, credential) => {
+      resolved.push(credential.id);
+      return REGISTRATION;
+    },
     reconcile: async (sessionId, organizationId) => {
       reconciled.push([sessionId, organizationId]);
       return {
@@ -320,7 +377,7 @@ function confirmDeps(
     summary: async () => SUMMARY,
     ...overrides,
   };
-  return { deps, reconciled };
+  return { deps, reconciled, resolved };
 }
 
 describe("POST /api/v1/subscriptions/checkout/confirm", () => {
@@ -348,31 +405,50 @@ describe("POST /api/v1/subscriptions/checkout/confirm", () => {
     }
   });
 
-  test("a session of another organization is a conflict, an unpaid one is retryable", async () => {
-    for (const [code, reason, status, apiCode] of [
-      [
-        "SUBSCRIPTION_CHECKOUT_REJECTED",
-        "checkout_account_mismatch",
-        409,
-        "billing_state_conflict",
-      ],
-      [
-        "SUBSCRIPTION_CHECKOUT_UNAVAILABLE",
-        "checkout_payment_pending",
-        503,
-        "service_unavailable",
-      ],
+  test("an unpaid session is retryable", async () => {
+    const { deps } = confirmDeps(MOBILE, {
+      reconcile: async () => {
+        throw new ElizaError("checkout", {
+          code: "SUBSCRIPTION_CHECKOUT_UNAVAILABLE",
+          context: { reason: "checkout_payment_pending" },
+        });
+      },
+    });
+    const res = await post(createSubscriptionCheckoutConfirmRoute(deps), {
+      sessionId: "cs_test_unpaid",
+    });
+    expect(res.status).toBe(503);
+    expect((await bodyOf(res)).code).toBe("service_unavailable");
+  });
+
+  test("a mobile credential confirms only while its client is still registered; a session never resolves one", async () => {
+    const mobile = confirmDeps(MOBILE);
+    await post(createSubscriptionCheckoutConfirmRoute(mobile.deps), {
+      sessionId: "cs_test_1",
+    });
+    expect(mobile.resolved).toEqual([CREDENTIAL.id]);
+    const session = confirmDeps(SESSION);
+    await post(createSubscriptionCheckoutConfirmRoute(session.deps), {
+      sessionId: "cs_test_1",
+    });
+    expect(session.resolved).toEqual([]);
+    expect(session.reconciled).toHaveLength(1);
+
+    for (const [code, status, apiCode] of [
+      ["invalid_client", 401, "authentication_required"],
+      ["server_configuration_error", 503, "service_unavailable"],
     ] as const) {
-      const { deps } = confirmDeps(MOBILE, {
-        reconcile: async () => {
-          throw new ElizaError("checkout", { code, context: { reason } });
+      const { deps, reconciled } = confirmDeps(MOBILE, {
+        resolveRegistration: async () => {
+          throw new MobileAppAuthProtocolError(code, "registration");
         },
       });
       const res = await post(createSubscriptionCheckoutConfirmRoute(deps), {
-        sessionId: "cs_test_other",
+        sessionId: "cs_test_1",
       });
       expect(res.status).toBe(status);
       expect((await bodyOf(res)).code).toBe(apiCode);
+      expect(reconciled).toEqual([]);
     }
   });
 
@@ -399,5 +475,83 @@ describe("POST /api/v1/subscriptions/checkout/confirm", () => {
     });
     expect(res.status).toBe(400);
     expect(reconciled).toEqual([]);
+  });
+});
+
+describe("checkout/confirm with a mobile caller and the real organization check", () => {
+  const OWNER_ORGANIZATION = "82000000-0000-4000-8000-0000000000aa";
+  const SESSION_ID = "cs_test_ownedByAnotherOrganization";
+  const requests: string[] = [];
+  const server = createServer((request, response) => {
+    requests.push(`${request.method} ${request.url}`);
+    response.setHeader("Content-Type", "application/json");
+    if (
+      request.method === "GET" &&
+      request.url === `/v1/checkout/sessions/${SESSION_ID}`
+    )
+      return response.end(
+        JSON.stringify({
+          id: SESSION_ID,
+          object: "checkout.session",
+          mode: "subscription",
+          status: "complete",
+          payment_status: "paid",
+          customer: "cus_owner",
+          subscription: "sub_owner",
+          invoice: "in_owner",
+          livemode: false,
+          client_reference_id: "87000000-0000-4000-8000-0000000000aa",
+          metadata: {
+            app: "eliza-cloud",
+            organization_id: OWNER_ORGANIZATION,
+            command_id: "87000000-0000-4000-8000-0000000000aa",
+          },
+        }),
+      );
+    response.writeHead(404);
+    response.end(
+      JSON.stringify({ error: { message: "Unexpected provider request" } }),
+    );
+  });
+  beforeAll(async () => {
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Loopback address missing");
+    process.env.STRIPE_CLOUD_E2E_API_ORIGIN = `http://127.0.0.1:${address.port}`;
+  });
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  test("a paid session of another organization is refused after reading only that session", async () => {
+    // Only authentication and the registry are injected: the route's own
+    // reconcile compares the provider session's organization with the caller's.
+    const { reconcileSubscriptionCheckout } = await import(
+      "@elizaos/cloud-shared/lib/services/subscription-checkout"
+    );
+    let summaries = 0;
+    const res = await post(
+      createSubscriptionCheckoutConfirmRoute({
+        authorize: async () => MOBILE,
+        resolveRegistration: async () => REGISTRATION,
+        reconcile: reconcileSubscriptionCheckout,
+        summary: async () => {
+          summaries += 1;
+          return SUMMARY;
+        },
+      }),
+      { sessionId: SESSION_ID },
+    );
+    expect(res.status).toBe(409);
+    expect(await bodyOf(res)).toMatchObject({
+      success: false,
+      code: "billing_state_conflict",
+    });
+    expect(requests).toEqual([`GET /v1/checkout/sessions/${SESSION_ID}`]);
+    expect(summaries).toBe(0);
   });
 });
