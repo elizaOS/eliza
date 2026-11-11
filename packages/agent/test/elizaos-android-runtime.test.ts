@@ -85,7 +85,9 @@ it("an Android host can load only SMS drafting without the native inference prof
   expect(selected.has("@elizaos/plugin-native-contacts")).toBe(false);
 
   vi.resetModules();
-  const { appPhonePlugin } = await import("../src/runtime/android-app-plugins.ts");
+  const { appPhonePlugin } = await import(
+    "../src/runtime/android-app-plugins.ts"
+  );
   expect(appPhonePlugin).toMatchObject({
     name: phone,
     routes: [{ type: "POST", path: "/api/messages/reply-draft" }],

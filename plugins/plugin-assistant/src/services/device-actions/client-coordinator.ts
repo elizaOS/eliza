@@ -175,6 +175,7 @@ import {
   isSmsCompose,
   isTelephonyAction,
   isTelephonyRead,
+  selectedTelephonyView,
   type TelephonyActionOperation,
   type TelephonyActionResult,
   telephonyActionCapabilityAvailable,
@@ -1174,9 +1175,16 @@ export class DeviceActionCoordinator<
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
   private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
   private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
+  private selectedTelephonyRequests = new Map<
+    string,
+    { context: string; expiresAt: number }
+  >();
   constructor(
     ports: DeviceActionCoordinatorPorts<C, R>,
-    private readonly options: { currentRequestBrowserPolicy?: boolean } = {},
+    private readonly options: {
+      currentRequestBrowserPolicy?: boolean;
+      currentRequestTelephonyPolicy?: boolean;
+    } = {},
   ) {
     this.ports = ports;
     this.session = ports.session;
@@ -1618,15 +1626,21 @@ export class DeviceActionCoordinator<
     const browserRequestKey = proof
       ? this.requestKey(proof.messageId)
       : undefined;
-    if (this.options.currentRequestBrowserPolicy) proof?.current();
+    const currentRequestPolicy =
+      this.options.currentRequestBrowserPolicy ||
+      this.options.currentRequestTelephonyPolicy;
+    if (currentRequestPolicy) proof?.current();
     const { valid, invalid } = await this.listing(signal);
     assertCurrentReview();
-    if (this.options.currentRequestBrowserPolicy && proof) {
+    if (currentRequestPolicy && proof) {
       proof.current();
       if (browserRequestKey !== this.requestKey(proof.messageId))
         throw Error("The current device action request changed");
     }
     this.proposals.clear();
+    for (const [id, binding] of this.selectedTelephonyRequests)
+      if (binding.expiresAt <= Date.now())
+        this.selectedTelephonyRequests.delete(id);
     const pendingIds = new Set(valid.map((proposal) => proposal.id));
     for (const id of this.filesReviews.keys())
       if (!pendingIds.has(id)) this.filesReviews.delete(id);
@@ -1673,6 +1687,35 @@ export class DeviceActionCoordinator<
           notice: `${card.title}: ${notice}`,
         });
         continue;
+      }
+      const selectedView =
+        this.options.currentRequestTelephonyPolicy &&
+        selectedTelephonyView(proposal.operation);
+      if (selectedView) {
+        const messageId = proposal.requestMessageId;
+        const binding = messageId
+          ? this.selectedTelephonyRequests.get(messageId)
+          : undefined;
+        const selectionContext = contextKey(context);
+        if (
+          !messageId ||
+          context.view !== selectedView ||
+          (binding
+            ? binding.context !== selectionContext
+            : proof?.messageId !== messageId ||
+              this.selectedTelephonyRequests.size >= 128)
+        ) {
+          items.push({
+            proposalId: proposal.id,
+            proposal: null,
+            notice: `${card.title}: Ask again from the open ${selectedView === "messages" ? "conversation" : "voicemail"}.`,
+          });
+          continue;
+        }
+        this.selectedTelephonyRequests.set(messageId, {
+          context: selectionContext,
+          expiresAt: Math.max(binding?.expiresAt ?? 0, proposal.expiresAt),
+        });
       }
       // A Files move or trash binds the identity of each file as the card shows
       // it; whatever identity the agent sent is replaced.
