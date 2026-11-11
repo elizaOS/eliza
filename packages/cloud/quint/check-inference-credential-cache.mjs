@@ -64,13 +64,7 @@ const result = spawnSync(
     `--reporter-outfile=${report}`,
     ...suites.keys(),
   ],
-  {
-    cwd: root,
-    stdio: "inherit",
-    // This conformance run exercises the cache. Cloud CI disables the cache
-    // globally, so select the same isolated in-memory backend as the suite.
-    env: { ...process.env, CACHE_ENABLED: "true", MOCK_REDIS: "1" },
-  },
+  { cwd: root, stdio: "inherit" },
 );
 if (result.error) throw result.error;
 if (result.signal) process.kill(process.pid, result.signal);

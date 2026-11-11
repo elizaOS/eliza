@@ -351,7 +351,6 @@ export class InboxGoogleProvider {
       mailboxMutations: supported("modify"),
       /** Reviewed mark-read/mark-unread operations. Older servers omit this field. */
       readState: supported("modify"),
-      stars: supported("modify"),
       attachments: true,
       // The managed search route lists Trash for an explicit in:trash query.
       searchTrash: supported("read"),
@@ -695,9 +694,7 @@ export class InboxGoogleProvider {
       kind === "trash" ||
       kind === "untrash" ||
       kind === "mark-read" ||
-      kind === "mark-unread" ||
-      kind === "star" ||
-      kind === "unstar"
+      kind === "mark-unread"
     ) {
       fields(value, ["kind", "messageId", "expectedHistoryId"]);
       requireScope(grant, "modify");
@@ -715,10 +712,8 @@ export class InboxGoogleProvider {
         ? "UNREAD"
         : kind === "archive" || kind === "unarchive"
           ? "INBOX"
-          : kind === "star" || kind === "unstar"
-            ? "STARRED"
-            : null;
-      const add = kind === "unarchive" || kind === "mark-unread" || kind === "star";
+          : null;
+      const add = kind === "unarchive" || kind === "mark-unread";
       const review = { kind, messageId, expectedHistoryId, from: grant.email },
         digest = await inboxDigest(JSON.stringify(review));
       return {

@@ -15,9 +15,7 @@ export type InboxEffectKind =
   | "trash"
   | "untrash"
   | "mark-read"
-  | "mark-unread"
-  | "star"
-  | "unstar";
+  | "mark-unread";
 export type InboxReceiptState =
   | "prepared"
   | "dispatched"
