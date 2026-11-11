@@ -45,7 +45,7 @@ public final class UpdateActivity extends Activity {
         check.setOnClickListener(view -> {
             if (UpdateRunner.get(this).running() || SystemUpdateJob.requestedPending(this)) return;
             UpdateRunner.status(this, "Checking for updates");
-            SystemUpdateJob.schedule(this, true); handler.removeCallbacks(refresh); handler.post(refresh);
+            SystemUpdateJob.schedule(this, true, true); handler.removeCallbacks(refresh); handler.post(refresh);
         });
         content.addView(check); setContentView(content); content.requestApplyInsets();
     }
