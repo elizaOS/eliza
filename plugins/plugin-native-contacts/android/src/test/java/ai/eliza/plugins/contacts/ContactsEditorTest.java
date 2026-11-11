@@ -48,6 +48,7 @@ public final class ContactsEditorTest {
   static long nextRaw, nextData;
   /** Runs once when the next batch arrives, before any of its operations: another writer getting in first. */
   static Runnable beforeBatch;
+  static boolean refuseReadback;
   static int writes;
 
   static long addRaw(long contact) {
@@ -77,6 +78,7 @@ public final class ContactsEditorTest {
       MatrixCursor cursor = new MatrixCursor(projection);
       List<Map<String, Object>> rows = new ArrayList<>();
       if (path.get(0).equals("raw_contacts")) {
+        if (refuseReadback && path.size() > 1 && Arrays.asList(projection).contains("contact_id")) throw new SecurityException("Contacts read access changed");
         for (Map.Entry<Long, long[]> raw : raws.entrySet()) {
           if (path.size() > 1 ? !path.get(1).equals(String.valueOf(raw.getKey())) : !args[0].equals(String.valueOf(raw.getValue()[0]))) continue;
           Map<String, Object> row = new HashMap<>();
@@ -144,7 +146,7 @@ public final class ContactsEditorTest {
 
   ContactsEditor editor;
   @Before public void provider() {
-    raws.clear(); data.clear(); nextRaw = 0; nextData = 0; beforeBatch = null; writes = 0;
+    raws.clear(); data.clear(); nextRaw = 0; nextData = 0; beforeBatch = null; refuseReadback = false; writes = 0;
     ProviderInfo info = new ProviderInfo();
     info.authority = ContactsContract.AUTHORITY;
     Robolectric.buildContentProvider(Provider.class).create(info);
@@ -239,6 +241,20 @@ public final class ContactsEditorTest {
     writes = 0;
     JSObject renamed = off(() -> editor.save("101", saved.getString("version"), draft("Ada King", list("number", "5550100", "mobile", "5550102", "work"), list("address", "ada@example.test", "work"))));
     require(renamed.getString("status").equals("saved") && get("101").getString("displayName").equals("Ada King") && writes == 2, "the name alone is rewritten");
+  }
+
+  @Test public void committedSavesStillReportSavedWhenReadbackFails() throws Exception {
+    refuseReadback = true;
+    ContactsEditor.Draft original = draft("Ada", new JSONArray(), new JSONArray());
+    JSObject created = off(() -> editor.save(null, null, original));
+    require(created.getString("status").equals("saved") && created.isNull("id") && created.isNull("version"), "committed creation with no readback");
+    require(raws.size() == 1, "one contact was written");
+
+    String version = get("101").getString("version");
+    ContactsEditor.Draft renamed = draft("Ada King", new JSONArray(), new JSONArray());
+    JSObject edited = off(() -> editor.save("101", version, renamed));
+    require(edited.getString("status").equals("saved") && edited.isNull("id") && edited.isNull("version"), "committed update with no readback");
+    require(get("101").getString("displayName").equals("Ada King"), "the update was written");
   }
 
   @Test public void aContactThatChangedIsStaleAndNothingIsWritten() throws Exception {

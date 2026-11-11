@@ -273,16 +273,29 @@ public final class ContactsEditor {
       return false;
     }
   }
-  private JSObject saved(long rawContact) {
-    long contact = -1;
-    try (Cursor row = resolver.query(ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, rawContact), new String[] { ContactsContract.RawContacts.CONTACT_ID }, null, null, null)) {
-      if (row != null && row.moveToFirst() && !row.isNull(0)) contact = row.getLong(0);
-    }
-    List<long[]> raws = contact < 1 ? new ArrayList<>() : rawContacts(contact, null);
-    // The write happened; a contact that cannot be read back is still reported saved, never failed, with no version to edit from.
+  /** The transaction committed. A failed or incomplete readback only withholds the contact and version. */
+  private JSObject saved(Uri rawContact) {
     JSObject out = status("saved");
-    out.put("id", contact < 1 ? JSONObject.NULL : String.valueOf(contact));
-    out.put("version", raws.isEmpty() ? JSONObject.NULL : version(raws));
+    if (rawContact != null) {
+      try {
+        long contact = -1;
+        try (Cursor row = resolver.query(rawContact, new String[] { ContactsContract.RawContacts.CONTACT_ID }, null, null, null)) {
+          if (row != null && row.moveToFirst() && !row.isNull(0)) contact = row.getLong(0);
+        }
+        if (contact > 0) {
+          List<long[]> raws = rawContacts(contact, null);
+          if (!raws.isEmpty()) {
+            out.put("id", String.valueOf(contact));
+            out.put("version", version(raws));
+            return out;
+          }
+        }
+      } catch (RuntimeException unreadable) {
+        // The provider can disappear or revoke read access after it committed the write.
+      }
+    }
+    out.put("id", JSONObject.NULL);
+    out.put("version", JSONObject.NULL);
     return out;
   }
 
@@ -301,13 +314,13 @@ public final class ContactsEditor {
       if (!draft.displayName.isEmpty()) ops.add(insert(0, 0, StructuredName.CONTENT_ITEM_TYPE, null, new Field(draft.displayName, "")));
       for (Field phone : draft.phones) ops.add(insert(0, 0, Phone.CONTENT_ITEM_TYPE, PHONE_TYPES, phone));
       for (Field email : draft.emails) ops.add(insert(0, 0, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES, email));
+      final ContentProviderResult[] results;
       try {
-        ContentProviderResult[] results = resolver.applyBatch(ContactsContract.AUTHORITY, ops);
-        if (results.length < 1 || results[0].uri == null) return status("failed");
-        return saved(ContentUris.parseId(results[0].uri));
+        results = resolver.applyBatch(ContactsContract.AUTHORITY, ops);
       } catch (OperationApplicationException | android.os.RemoteException | RuntimeException refused) {
         return status("failed");
       }
+      return saved(results != null && results.length > 0 && results[0] != null ? results[0].uri : null);
     }
     long contact = row(id);
     if (contact < 0 || !versionShape(version)) throw new IllegalArgumentException("Selected contact and version required");
@@ -345,7 +358,7 @@ public final class ContactsEditor {
     } catch (android.os.RemoteException | RuntimeException refused) {
       return status("failed");
     }
-    return saved(target);
+    return saved(ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, target));
   }
 
   /** Deletes the contact read at {@code version}: {@code {status: "deleted" | "stale" | "not-found" | "failed"}}. */
