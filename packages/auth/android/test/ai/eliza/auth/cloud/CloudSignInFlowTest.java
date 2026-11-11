@@ -82,7 +82,39 @@ public final class CloudSignInFlowTest {
   check(CloudSignInFlow.Pending.parse(CloudSignInFlow.Pending.create(staging, now).serialize(), development) != null, "a development build reads its staging record");
   for (String bad : new String[]{null, "", "v2.production." + pending.state + "." + pending.verifier + ".1", "v1.production.short." + pending.verifier + ".1", "v1.production." + pending.state + "." + pending.verifier + ".x", pending.serialize() + ".extra"})
    check(CloudSignInFlow.Pending.parse(bad, development) == null, "refused record " + bad);
+  // A record written with the host's durable credential generation keeps it; one without stays the first format.
+  check(pending.generation == null && pending.serialize().startsWith("v1.") && restored.generation == null, "a host without a durable generation writes the first format");
+  CloudSignInFlow.Pending durable = CloudSignInFlow.Pending.create(production, now, "0b6f3c1e-5a52-4c0e-9d5e-1f2a3b4c5d6e");
+  CloudSignInFlow.Pending durableRestored = CloudSignInFlow.Pending.parse(durable.serialize(), product);
+  check(durable.serialize().startsWith("v2.") && durableRestored != null && "0b6f3c1e-5a52-4c0e-9d5e-1f2a3b4c5d6e".equals(durableRestored.generation)
+   && durableRestored.state.equals(durable.state) && durableRestored.verifier.equals(durable.verifier) && durableRestored.expiresAt == durable.expiresAt, "durable generation round trip");
+  check(CloudSignInFlow.Pending.create(production, now, "has.dot").generation == null && CloudSignInFlow.Pending.create(production, now, "").generation == null, "a generation the record cannot carry is treated as none");
+  for (String bad : new String[]{durable.serialize() + ".extra", durable.serialize().replace("v2.", "v1."), "v2.production." + durable.state + "." + durable.verifier + ".1.", "v2.production." + durable.state + "." + durable.verifier + ".1.a b"})
+   check(CloudSignInFlow.Pending.parse(bad, development) == null, "refused durable record " + bad);
   check(CloudSignInFlow.MAX_VERIFY_ATTEMPTS == 5 && CloudSignInFlow.RESEND_COOLDOWN_MS == 30_000L, "verify cap and send cooldown");
+
+  // Silent key renewal policy.
+  final long day = 24 * 60 * 60 * 1000L;
+  check(CloudKeyRenewal.RENEW_BEFORE_MS == 10 * day && CloudKeyRenewal.MIN_INTERVAL_MS == day && CloudKeyRenewal.WARN_BEFORE_MS == 3 * day, "renewal windows");
+  check(!CloudKeyRenewal.due(now, 0, now + 10 * day) && CloudKeyRenewal.due(now, 0, now + 10 * day - 1) && !CloudKeyRenewal.due(now, 0, now) && !CloudKeyRenewal.due(now, 0, now - 1), "due with less than ten days left, never once expired");
+  check(!CloudKeyRenewal.due(now, now - 59 * day, now + 31 * day) && CloudKeyRenewal.due(now, now - 60 * day, now + 30 * day) && !CloudKeyRenewal.due(now, 0, now + 30 * day), "due in the last third of a known life");
+  check(!CloudKeyRenewal.due(now, now + day, now + 30 * day) && !CloudKeyRenewal.due(now, now + 40 * day, now + 30 * day), "an issue time from the future or after the expiry is not trusted");
+  check(CloudKeyRenewal.allowed(now, 0) && !CloudKeyRenewal.allowed(now, now - day + 1) && CloudKeyRenewal.allowed(now, now - day) && CloudKeyRenewal.allowed(now, now + 1), "at most one request a day");
+  check(!CloudKeyRenewal.warn(now, now + 3 * day, true) && CloudKeyRenewal.warn(now, now + 3 * day - 1, true) && !CloudKeyRenewal.warn(now, now + day, false) && !CloudKeyRenewal.warn(now, now, true), "warning only inside three days and only when renewal cannot help");
+  check(CloudKeyRenewal.answer(200) == CloudKeyRenewal.Answer.CODE, "a code");
+  for (int status : new int[]{401, 403, 409}) check(CloudKeyRenewal.answer(status) == CloudKeyRenewal.Answer.SIGN_IN_REQUIRED, "full sign-in after " + status);
+  for (int status : new int[]{-1, 400, 404, 408, 429, 500, 503}) check(CloudKeyRenewal.answer(status) == CloudKeyRenewal.Answer.RETRY, "asked again after " + status);
+  org.json.JSONObject renewal = CloudKeyRenewal.body(product, production, state, CloudSignInFlow.s256(CloudSignInFlow.newVerifier()));
+  check(renewal.length() == 7 && "ai.example.signin".equals(renewal.getString("clientId")) && "production".equals(renewal.getString("environment")) && base.equals(renewal.getString("redirectUri"))
+   && state.equals(renewal.getString("state")) && "S256".equals(renewal.getString("codeChallengeMethod")) && "Example Phone".equals(renewal.getString("deviceName")) && !renewal.has("flow"), "strict renewal body");
+  try { CloudKeyRenewal.body(product, production, "short", state); check(false, "renewal state shape"); } catch (IllegalArgumentException expected) { checks++; }
+  String keyId = "55555555-5555-4555-8555-555555555555";
+  CloudKeyRenewal.Record record = new CloudKeyRenewal.Record(keyId, now, 0, CloudKeyRenewal.Record.NONE).attempted(now + 5, CloudKeyRenewal.Record.REFUSED);
+  CloudKeyRenewal.Record read = CloudKeyRenewal.Record.parse(record.serialize());
+  check(read != null && read.credentialId.equals(keyId) && read.issuedAt == now && read.attemptedAt == now + 5 && read.failed() && CloudKeyRenewal.Record.REFUSED.equals(read.result), "renewal record round trip");
+  check(CloudKeyRenewal.Record.of(read, keyId) == read && !CloudKeyRenewal.Record.of(read, "66666666-6666-4666-8666-666666666666").failed() && CloudKeyRenewal.Record.of(null, keyId).issuedAt == 0, "a record for another key says nothing");
+  for (String bad : new String[]{null, "", "v2|" + keyId + "|1|1|none", "v1|x|1|1|none", "v1|" + keyId + "|1|1|done", "v1|" + keyId + "|-1|1|none", "v1|" + keyId + "|1|x|none", record.serialize() + "|extra"})
+   check(CloudKeyRenewal.Record.parse(bad) == null, "refused renewal record " + bad);
 
   // Inputs and responses.
   check(CloudSignInFlow.validEmail("owner@example.invalid") && !CloudSignInFlow.validEmail("owner@") && !CloudSignInFlow.validEmail("a b@example.invalid") && !CloudSignInFlow.validEmail("owner@example.invalid‮"), "email shape");
@@ -102,14 +134,14 @@ public final class CloudSignInFlowTest {
   // Routes: exactly the fixed sign-in routes on an admitted API origin.
   for (String route : new String[]{CloudEmailCode.SEND_PATH, CloudEmailCode.VERIFY_PATH, CloudSmsCode.SEND_PATH, CloudSmsCode.VERIFY_PATH, "/steward/auth/oauth/exchange",
     "/steward/auth/oauth/google/native/challenge", "/steward/auth/oauth/google/native/verify", "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete",
-    "/steward/auth/logout", "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack"}) {
+    "/steward/auth/logout", "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack", "/api/v1/app-auth/mobile/renew"}) {
    check(CloudSignInRoutes.route(route, "POST", true), "sign-in route " + route);
    check(!CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "POST", false), "POST with a body only " + route);
   }
   for (String route : new String[]{"/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers", "/steward/auth/oauth/google/authorize"})
    check(CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "GET", true) && !CloudSignInRoutes.route(route, "POST", true), "readiness read " + route);
   for (String route : new String[]{"/steward/auth/email/send", "/steward/auth/mfa/passkey/complete", "/steward/auth/email/code/send/", "/steward/auth/revoke",
-    "/api/v1/app-auth/mobile/ack/x", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", null})
+    "/api/v1/app-auth/mobile/ack/x", "/api/v1/app-auth/mobile/renew/", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", null})
    check(!CloudSignInRoutes.route(route, "POST", true) && !CloudSignInRoutes.route(route, "GET", false), "refused sign-in route " + route);
   check(CloudSignInRoutes.origin(product, "https", "api.eliza.app", -1) && CloudSignInRoutes.origin(product, "https", "api.eliza.app", 443), "production API");
   check(!CloudSignInRoutes.origin(product, "https", "api-staging.eliza.app", -1) && CloudSignInRoutes.origin(development, "https", "api-staging.eliza.app", -1), "staging only when admitted");

@@ -14,6 +14,9 @@ public class CloudSignInChainTest {
  /** Startup acknowledgement requests wait here until the fixture runs them, apart from the sign-in worker. */
  final ArrayDeque<Runnable> recoveryQueued=new ArrayDeque<>();
  final java.util.concurrent.Executor recovery=recoveryQueued::add;
+ /** Renewal work waits on its own queue, apart from the sign-in worker and the acknowledgement requests. */
+ final ArrayDeque<Runnable> renewalQueued=new ArrayDeque<>();
+ final java.util.concurrent.Executor renewer=renewalQueued::add;
  long lastEmailSendAt, emailSendAllowedAt;
  final Main main=new Main();
  /** Delayed main-thread work is held here; only the scenarios that name it run it. */
@@ -26,8 +29,20 @@ public class CloudSignInChainTest {
  boolean pendingRetirementUnconfirmed; String cancelledBrowserState;
  String issuedState, issuedChallenge; int requests; long intent, reserved;
  final ArrayDeque<String> recoveryReplies = new ArrayDeque<>();
+ /** Renewal ports: Cloud's scripted answer, the lifetime of a minted key, the host's intent observation and the plain bookkeeping. */
+ String renewReply="ok";long mintedLife=60000;boolean observable=true;int observations;
+ final Map<String,CloudKeyRenewal.Record> renewalRecords=new HashMap<>();
+ CloudKeyRenewal.Record renewalRecord(CloudSignInEnvironment environment){return renewalRecords.get(environment.name);}
+ void storeRenewalRecord(CloudSignInEnvironment environment,CloudKeyRenewal.Record record){renewalRecords.put(environment.name,record);}
+ /** Observes the newest intent and reserves nothing. */
+ Runnable observeCredentialCommit(){if(!observable)return null;observations++;long mine=intent;return ()->{if(mine!=intent)throw new IllegalStateException("stale intent");};}
+ /** The host's durable generation follows its intents; a host without one adopts nothing. */
+ boolean durableGeneration;int adoptions;
+ String credentialGeneration(){return durableGeneration?"gen-"+intent:null;}
+ Runnable adoptCredentialCommit(String generation){adoptions++;if(!durableGeneration||!("gen-"+intent).equals(generation))return null;long mine=intent;return ()->{if(mine!=intent)throw new IllegalStateException("stale intent");};}
  boolean failReceiptRead, failReceiptRemove;
- static final String ID="00000000-0000-4000-8000-000000000001";
+ static final String ID="00000000-0000-4000-8000-000000000001", SAVED_ID="00000000-0000-4000-8000-000000000003";
+ static final List<String> revoked=new ArrayList<>();
  static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
  static final Map<String,String> slots=new HashMap<>();
  static final List<String> events=new ArrayList<>();
@@ -54,12 +69,12 @@ public class CloudSignInChainTest {
  }
  static class Attempt {
   final CloudSignInEnvironment environment=TestRegistration.PRODUCTION;
-  final String id=UUID.randomUUID().toString();final String requestId;Runnable credentialGuard=()->{};Attempt(){this(null);}Attempt(String requestId){this.requestId=requestId;}Attempt(CloudSignInEnvironment environment,boolean google,String requestId,Runnable guard){this(requestId);credentialGuard=guard;expiresAt=0;}String email="owner@example.invalid",emailVerifier=CloudSignInFlow.newVerifier(),mfaType,mfaChallenge,phone;
-  long expiresAt=System.currentTimeMillis()+60000,resendAt;boolean google,busy,cancelled,callbackReceived,browserLaunched,browserPaused,returnClaimed,returnHint,returnHintElapsed;String browserState,pendingRecord;int failedVerifies;PluginCall waiting;
+  final String id=UUID.randomUUID().toString();final String requestId;Runnable credentialGuard=()->{};Attempt(){this(null);}Attempt(String requestId){this.requestId=requestId;}Attempt(CloudSignInEnvironment environment,boolean google,String requestId,Runnable guard){this(requestId);this.google=google;credentialGuard=guard;expiresAt=0;}String email="owner@example.invalid",emailVerifier=CloudSignInFlow.newVerifier(),mfaType,mfaChallenge,phone;
+  long expiresAt=System.currentTimeMillis()+60000,resendAt;boolean google,busy,cancelled,callbackReceived,browserLaunched,browserPaused,returnClaimed,returnHint,returnHintElapsed,adopted;String browserState,pendingRecord;int failedVerifies;PluginCall waiting;
   void cancel(){cancelled=true;}
  }
  static class Response { final int status;final JSONObject data;String retryAfter;Response(int s,JSONObject d){status=s;data=d;} }
- static class CloudKeyRevocation { static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");return true;} }
+ static class CloudKeyRevocation { static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");revoked.add(token);return true;} }
  CloudSignInConfig config(){return TestRegistration.PRODUCT;}
  <T> T withCredentialRead(java.util.concurrent.Callable<T> read)throws Exception{synchronized(slots){return read.call();}}
  CloudCredentialSlots credentials(Runnable guard){
@@ -92,7 +107,7 @@ public class CloudSignInChainTest {
  void run(Runnable task){if(defer)queued.add(task);else task.run();}
  void refused(CloudSignInEnvironment environment,String code){}
  void requireAuthorization(Attempt current)throws Exception{events.add("authorization");}
- void notifyListeners(String event,JSObject value,boolean retained){check(("signInCompleted".equals(event)||"signInMfaRequired".equals(event)||"signInIncomplete".equals(event))&&retained,"only retained auth outcome expected");events.add(event);notifications.add(value);}
+ void notifyListeners(String event,JSObject value,boolean retained){check(("signInCompleted".equals(event)||"signInMfaRequired".equals(event)||"signInIncomplete".equals(event)||"signInRenewed".equals(event))&&retained,"only retained auth outcome expected");events.add(event);notifications.add(value);}
 
  Response post(Attempt current,String path,JSONObject body,String bearer)throws Exception{
   return post(current,current.environment,path,body,bearer);
@@ -101,7 +116,27 @@ public class CloudSignInChainTest {
   requests++;
   if(path.equals("/steward/auth/oauth/exchange")){
    check(!slots.containsKey(config().pendingSlot),"pending consumed before legacy exchange");
+   if(mode.equals("exchange-mfa"))return new Response(200,new JSONObject().put("mfaRequired",true).put("mfa",new JSONObject().put("type","totp").put("challengeId","fixture").put("expiresAt",System.currentTimeMillis()+60000)));
    return new Response(200,new JSONObject().put("token","synthetic-steward-token-for-fixture"));
+  }
+  if(path.equals(CloudKeyRenewal.PATH)){
+   events.add("renew");
+   check(OLD.equals(bearer),"the renewal request presents the saved key");
+   check(body.length()==7&&"ai.example.signin".equals(body.getString("clientId"))&&environment.name.equals(body.getString("environment"))&&environment.callback().equals(body.getString("redirectUri"))
+    &&"S256".equals(body.getString("codeChallengeMethod"))&&"Example Phone".equals(body.getString("deviceName"))&&!body.has("flow"),"strict renewal body with the mobile PKCE binding");
+   issuedState=body.getString("state");issuedChallenge=body.getString("codeChallenge");
+   check(CloudSignInFlow.validState(issuedState)&&CloudSignInFlow.validState(issuedChallenge),"fresh renewal state and challenge");
+   return switch(renewReply){
+    case "ok" -> new Response(200,new JSONObject().put("success",true).put("code","emac_"+"a".repeat(64)).put("expiresAt",System.currentTimeMillis()+300000));
+    case "bad-code" -> new Response(200,new JSONObject().put("success",true).put("code","not-a-code"));
+    case "offline" -> throw new SignInFailure("offline");
+    case "401" -> new Response(401,new JSONObject().put("error","authentication_required"));
+    case "403" -> new Response(403,new JSONObject().put("error","access_denied"));
+    case "409" -> new Response(409,new JSONObject().put("error","renewal_window_closed"));
+    case "429" -> new Response(429,new JSONObject().put("error","rate_limit_exceeded"));
+    case "503" -> new Response(503,new JSONObject().put("error","service_unavailable"));
+    default -> throw new AssertionError("unexpected renewal fixture reply");
+   };
   }
   if(path.equals(CloudEmailCode.SEND_PATH)){
    if(mode.equals("send-offline"))throw new SignInFailure("offline");
@@ -140,7 +175,7 @@ public class CloudSignInChainTest {
    check(issuedChallenge.equals(CloudSignInFlow.s256(body.getString("codeVerifier"))),"token PKCE");
    if(mode.equals("token-denied"))return new Response(401,new JSONObject());
    if(mode.equals("cancelled"))current.cancelled=true;
-   return new Response(200,new JSONObject().put("secret",mode.equals("bad-secret")?"wrong-prefix":NEW).put("credentialId",ID).put("expiresAt",System.currentTimeMillis()+(mode.equals("expired-token")?-1:60000)).put("acknowledgeBy",System.currentTimeMillis()+ackWindow).put("acknowledgementRequired",!mode.equals("missing-ack-contract")).put("tokenType","Bearer"));
+   return new Response(200,new JSONObject().put("secret",mode.equals("bad-secret")?"wrong-prefix":NEW).put("credentialId",ID).put("expiresAt",System.currentTimeMillis()+(mode.equals("expired-token")?-1:mintedLife)).put("acknowledgeBy",System.currentTimeMillis()+ackWindow).put("acknowledgementRequired",!mode.equals("missing-ack-contract")).put("tokenType","Bearer"));
   }
   if(path.equals("/api/v1/app-auth/mobile/ack")){
    events.add("ack");check(issuedState.equals(body.getString("state")),"ack state");
@@ -204,6 +239,7 @@ public class CloudSignInChainTest {
  /* ACTUAL_PREVIOUS_TOKEN */
  /* ACTUAL_ACK */
  /* ACTUAL_ACK_RECOVERY */
+ /* ACTUAL_RENEWAL */
  /* ACTUAL_OUTCOMES */
  /* ACTUAL_INSTANT */
 
@@ -271,20 +307,63 @@ public class CloudSignInChainTest {
  }
  static void callbackOwner(String mode)throws Exception{
   slots.clear();events.clear();notifications.clear();CloudSignInChainTest host=new CloudSignInChainTest();
-  CloudSignInFlow.Pending pending=CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,System.currentTimeMillis());
+  boolean cold=mode.startsWith("cold");
+  host.durableGeneration=cold&&!mode.equals("cold-no-ledger");
+  Attempt owner=new Attempt(REQUEST);owner.google=true;owner.browserLaunched=true;owner.credentialGuard=host.reserveCredentialCommit();
+  // As startGoogleBrowser does: the generation is read after the attempt reserved its intent.
+  long written=System.currentTimeMillis()-(mode.equals("cold-expired")?CloudSignInFlow.PENDING_TTL_MS+1000:0);
+  CloudSignInFlow.Pending pending=CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,written,mode.equals("cold-first-format")?null:host.credentialGeneration());
+  check((pending.generation!=null)==(host.durableGeneration&&!mode.equals("cold-first-format")),"the record carries the host's durable generation only when it keeps one");
   slots.put(host.config().pendingSlot,pending.serialize());
-  Attempt owner=new Attempt(REQUEST);owner.google=true;owner.browserLaunched=true;owner.browserState=pending.state;owner.pendingRecord=pending.serialize();owner.credentialGuard=host.reserveCredentialCommit();
+  owner.browserState=pending.state;owner.pendingRecord=pending.serialize();
   PluginCall call=new PluginCall();owner.waiting=call;
-  if(!mode.equals("cold-after-signout"))host.attempt=owner;
-  if(mode.equals("cold-after-signout"))host.intent++;
-  if(mode.equals("live-after-signout"))host.intent++;
-  Intent callback=new Intent(TestRegistration.PRODUCTION.callback()+"#code=fixture-code&state="+pending.state);
+  // A cold return arrives in a process that has no attempt: only the stored record and the host's generation remain.
+  if(!cold)host.attempt=owner;
+  if(mode.equals("cold-after-signout")||mode.equals("live-after-signout"))host.intent++;
+  if(mode.equals("cold-mfa"))host.mode="exchange-mfa";
+  Intent callback=new Intent(TestRegistration.PRODUCTION.callback()+(mode.equals("cold-error")?"?error=mfa_required&state="+pending.state:"#code=fixture-code&state="+pending.state));
   check(host.captureCallback(callback)&&callback.getData()==null,"registered callback consumed");
   check(host.reserved==1,"callback never reserves a new credential intent");
-  check(slots.containsKey(host.config().pendingSlot)!=mode.equals("live"),"only an authorized live return consumes its record");
+  boolean consumed=mode.equals("live")||mode.equals("cold")||mode.equals("cold-error")||mode.equals("cold-mfa");
+  check(slots.containsKey(host.config().pendingSlot)!=consumed,"only a return bound to the credential intent that wrote its record consumes it: "+mode);
+  check(host.attempt==null||mode.equals("live-after-signout"),"no attempt is left behind: "+mode);
   if(mode.equals("live"))check(call.result!=null&&"authenticated".equals(call.result.optString("status")),"live supported callback keeps its accepted owner");
-  else check(!slots.containsKey("cloud:production"),"newer signout cannot be undone by an old callback");
-  if(mode.equals("cold-after-signout"))check(host.requests==0&&events.contains("signInIncomplete"),"unbound cold callback requires fresh sign-in before network");
+  else if(mode.equals("cold")){
+   check(host.adoptions==1&&call.result==null,"the return adopts the intent that wrote its record; no call waited");
+   check(NEW.equals(new JSONObject(slots.get("cloud:production")).getString("token")),"the adopted return saves the key");
+   check(events.indexOf("authorization")>=0&&events.indexOf("authorization")<events.indexOf("key"),"the Android authorization still precedes the key");
+   check(notifications.size()==1&&events.get(events.size()-1).equals("logout")&&events.contains("signInCompleted"),"the sign-in is announced once, retained");
+   JSObject outcome=notifications.get(0);
+   check("authenticated".equals(outcome.getString("status"))&&outcome.length()==4&&!outcome.toString().contains(NEW),"the unscoped four-field outcome, without the key");
+  }else check(!slots.containsKey("cloud:production"),"nothing is saved: "+mode);
+  if(mode.equals("cold-after-signout")||mode.equals("cold-first-format")||mode.equals("cold-no-ledger")||mode.equals("cold-expired")){
+   check(host.requests==0&&notifications.size()==1&&"app-link-unverified".equals(notifications.get(0).getString("code")),"a return that cannot be adopted requires a fresh sign-in before any request: "+mode);
+   check(host.adoptions==(mode.equals("cold-after-signout")?1:0),"a record without a generation, or an expired one, never asks the host: "+mode);
+  }
+  if(mode.equals("cold-error"))check(host.requests==0&&notifications.size()==1&&"mfa-browser".equals(notifications.get(0).getString("code")),"an adopted error return is reported with its own code");
+  if(mode.equals("cold-mfa"))check(notifications.size()==1&&"mfa-browser".equals(notifications.get(0).getString("code"))&&!events.contains("authorization"),"an adopted return that needs a second factor sends the owner to the email code");
+ }
+ /** A browser return in a process that did not start the sign-in. */
+ static void coldReturnScenarios()throws Exception{
+  for(String mode:List.of("cold","cold-first-format","cold-no-ledger","cold-expired","cold-error","cold-mfa"))callbackOwner(mode);
+  // Adoption is single use: the same return delivered again finds no record.
+  slots.clear();events.clear();notifications.clear();CloudSignInChainTest host=new CloudSignInChainTest();host.durableGeneration=true;
+  host.reserveCredentialCommit();
+  CloudSignInFlow.Pending pending=CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,System.currentTimeMillis(),host.credentialGeneration());
+  slots.put(host.config().pendingSlot,pending.serialize());
+  String url=TestRegistration.PRODUCTION.callback()+"#code=fixture-code&state="+pending.state;
+  host.captureCallback(new Intent(url));int sent=host.requests;
+  check(notifications.size()==1&&NEW.equals(new JSONObject(slots.get("cloud:production")).getString("token")),"first delivery completes");
+  host.captureCallback(new Intent(url));
+  check(host.requests==sent&&notifications.size()==1,"a repeated delivery sends nothing and announces nothing");
+  // A sign-in the owner started in the new process is never displaced by an older return.
+  slots.clear();events.clear();notifications.clear();CloudSignInChainTest busy=new CloudSignInChainTest();busy.durableGeneration=true;
+  busy.reserveCredentialCommit();
+  CloudSignInFlow.Pending older=CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,System.currentTimeMillis(),busy.credentialGeneration());
+  slots.put(busy.config().pendingSlot,older.serialize());
+  Attempt typing=new Attempt(REQUEST);busy.attempt=typing;
+  busy.captureCallback(new Intent(TestRegistration.PRODUCTION.callback()+"#code=fixture-code&state="+older.state));
+  check(busy.attempt==typing&&!typing.cancelled&&busy.requests==0&&busy.adoptions==0&&!slots.containsKey("cloud:production"),"an attempt in progress keeps the plugin; the return completes nothing");
  }
  static void scopedCancel(String mode)throws Exception{
   slots.clear();events.clear();notifications.clear();CloudSignInChainTest host=new CloudSignInChainTest();
@@ -475,10 +554,12 @@ public class CloudSignInChainTest {
   return host;
  }
  void nextAcknowledgement(){
-  check(main.delayed.size()==1&&recoveryQueued.isEmpty(),"one acknowledgement round is waiting");
+  check(main.delayed.size()==1&&recoveryQueued.isEmpty()&&renewalQueued.isEmpty(),"one acknowledgement round is waiting");
+  int before=requests;
   main.delays.remove(0);main.delayed.remove().run();
-  check(requests==requestsBefore(),"the delayed round sends nothing on the main thread");
+  check(requests==before,"the delayed round sends nothing on the main thread");
   while(!recoveryQueued.isEmpty())recoveryQueued.remove().run();
+  while(!renewalQueued.isEmpty())renewalQueued.remove().run();
  }
  int requestsBefore(){return requests;}
  static void activationScenarios()throws Exception{
@@ -551,6 +632,161 @@ public class CloudSignInChainTest {
   CloudSignInChainTest closed=pendingActivation(closedCall,null,30000,"wrong");
   closed.destroyed=true;int quiet=closed.requests;closed.nextAcknowledgement();
   check(closed.requests==quiet&&slots.containsKey(receiptSlot)&&slots.containsKey("cloud:production")&&notifications.isEmpty(),"a closed plugin sends nothing and keeps the receipt for the next start");
+ }
+ static final long DAY=24*60*60*1000L;
+ /** A host with a saved, acknowledged key that has `remaining` left, and Cloud's scripted answers. */
+ static CloudSignInChainTest renewalHost(long remaining,String reply,String... acks){
+  slots.clear();events.clear();notifications.clear();revoked.clear();
+  CloudSignInChainTest host=new CloudSignInChainTest();host.renewReply=reply;host.mintedLife=30*DAY;host.ackReplies.addAll(List.of(acks));
+  slots.put("cloud:production",new JSONObject().put("credentialId",SAVED_ID).put("token",OLD).put("expiresAt",System.currentTimeMillis()+remaining).put("serverCredentialId",REQUEST).toString());
+  slots.put("cloud:staging","preserved-other-environment");
+  return host;
+ }
+ void drainRenewal(){check(recoveryQueued.isEmpty(),"renewal never uses the acknowledgement worker");while(!renewalQueued.isEmpty())renewalQueued.remove().run();}
+ PluginCall renewNowCall(){PluginCall call=new PluginCall();call.input.put("environment","production");int before=requests;renewSignIn(call);check(before==requests,"a renewal sends nothing on the bridge thread");drainRenewal();return call;}
+ static String savedToken(){String saved=slots.get("cloud:production");return saved==null?null:new JSONObject(saved).optString("token",null);}
+ static void unchanged(CloudSignInChainTest host,String why){
+  check(OLD.equals(savedToken())&&SAVED_ID.equals(new JSONObject(slots.get("cloud:production")).getString("credentialId")),"the working key stays saved: "+why);
+  check(!revoked.contains(OLD)&&!events.contains("key")&&!events.contains("receipt"),"it is neither revoked nor rewritten: "+why);
+  check("preserved-other-environment".equals(slots.get("cloud:staging"))&&host.reserved==0,"no other deployment is touched and no credential intent is reserved: "+why);
+ }
+ static void renewalScenarios()throws Exception{
+  // 1. Due (less than ten days left): renewed silently, confirmed before it is saved, old key revoked last.
+  CloudSignInChainTest due=renewalHost(5*DAY,"ok");
+  PluginCall renewed=due.renewNowCall();
+  check(renewed.result!=null&&"renewed".equals(renewed.result.getString("status"))&&"production".equals(renewed.result.getString("environment"))&&Boolean.FALSE.equals(renewed.result.opt("expiryWarning")),"renewed outcome");
+  JSONObject kept=new JSONObject(slots.get("cloud:production"));
+  check(NEW.equals(kept.getString("token"))&&ID.equals(kept.getString("serverCredentialId"))&&!SAVED_ID.equals(kept.getString("credentialId"))&&kept.getLong("expiresAt")==renewed.result.getLong("expiresAt"),"the new key is the saved one");
+  check(kept.getString("credentialId").equals(renewed.result.getString("credentialId"))&&!renewed.result.toString().contains(NEW)&&!renewed.result.toString().contains(OLD),"the outcome names the saved identity and carries no key");
+  check(events.indexOf("renew")<events.indexOf("ack")&&events.indexOf("ack")<events.indexOf("key")&&events.indexOf("key")<events.indexOf("revoke"),"renew, acknowledge, save, then revoke");
+  check(revoked.equals(List.of(OLD))&&!events.contains("receipt")&&!events.contains("authorization")&&!events.contains("logout"),"only the replaced key is revoked; no receipt, dialog or Steward session is involved");
+  check(due.requests==3&&due.reserved==0&&due.observations==1,"three requests, an observed intent and no reservation");
+  check(notifications.size()==1&&events.contains("signInRenewed")&&kept.getString("credentialId").equals(notifications.get(0).getString("credentialId"))&&notifications.get(0).length()==3&&!notifications.get(0).toString().contains(NEW),"the renderer is told once which saved identity to read again");
+  CloudKeyRenewal.Record after=due.renewalRecords.get("production");
+  check(after.credentialId.equals(kept.getString("credentialId"))&&after.issuedAt>0&&!after.failed(),"the new key's issue time is recorded");
+  PluginCall again=due.renewNowCall();
+  check("current".equals(again.result.getString("status"))&&due.requests==3,"the renewed key is not due");
+
+  // 2. Not due: nothing is sent. A known issue time makes the last third of the life due.
+  CloudSignInChainTest fresh=renewalHost(20*DAY,"ok");
+  PluginCall current=fresh.renewNowCall();
+  check("current".equals(current.result.getString("status"))&&fresh.requests==0&&Boolean.FALSE.equals(current.result.opt("expiryWarning")),"a key with twenty days left is left alone");
+  unchanged(fresh,"not due");
+  CloudSignInChainTest third=renewalHost(29*DAY,"ok");third.mintedLife=40*DAY;
+  third.renewalRecords.put("production",new CloudKeyRenewal.Record(SAVED_ID,System.currentTimeMillis()-61*DAY,0,CloudKeyRenewal.Record.NONE));
+  check("renewed".equals(third.renewNowCall().result.getString("status"))&&NEW.equals(savedToken()),"the last third of a known life is due");
+  CloudSignInChainTest other=renewalHost(29*DAY,"ok");
+  other.renewalRecords.put("production",new CloudKeyRenewal.Record(REQUEST,System.currentTimeMillis()-61*DAY,0,CloudKeyRenewal.Record.NONE));
+  check("current".equals(other.renewNowCall().result.getString("status"))&&other.requests==0,"another key's record says nothing about the saved one");
+
+  // 3. Cloud will not renew (401, 403, 409): today's behaviour, and the working key is not cleared.
+  for(String status:List.of("401","403","409")){
+   CloudSignInChainTest closed=renewalHost(5*DAY,status);
+   PluginCall refusedCall=closed.renewNowCall();
+   check("sign-in-required".equals(refusedCall.result.getString("status"))&&Boolean.FALSE.equals(refusedCall.result.opt("expiryWarning"))&&closed.requests==1,"a refusal is explicit, with no warning while three days or more remain: "+status);
+   unchanged(closed,status);
+   check(notifications.isEmpty()&&CloudKeyRenewal.Record.REFUSED.equals(closed.renewalRecords.get("production").result),"nothing is announced and the refusal is recorded: "+status);
+   PluginCall repeat=closed.renewNowCall();
+   check("sign-in-required".equals(repeat.result.getString("status"))&&closed.requests==1,"it is not asked again the same day: "+status);
+   CloudSignInChainTest late=renewalHost(2*DAY,status);
+   check(Boolean.TRUE.equals(late.renewNowCall().result.opt("expiryWarning")),"the warning appears only once renewal is refused and fewer than three days remain: "+status);
+   unchanged(late,status+" near expiry");
+  }
+
+  // 4. Cloud cannot answer (429, 503, no connection): kept, asked again a day later at the earliest.
+  for(String status:List.of("429","503","offline","bad-code")){
+   CloudSignInChainTest busy=renewalHost(2*DAY,status);
+   PluginCall failed=busy.renewNowCall();
+   check("deferred".equals(failed.result.getString("status"))&&Boolean.TRUE.equals(failed.result.opt("expiryWarning"))&&busy.requests==1,"a failed renewal near expiry warns: "+status);
+   unchanged(busy,status);
+   PluginCall soon=busy.renewNowCall();
+   check("deferred".equals(soon.result.getString("status"))&&busy.requests==1&&Boolean.TRUE.equals(soon.result.opt("expiryWarning")),"at most one request a day: "+status);
+   CloudKeyRenewal.Record asked=busy.renewalRecords.get("production");
+   busy.renewalRecords.put("production",new CloudKeyRenewal.Record(asked.credentialId,asked.issuedAt,System.currentTimeMillis()-DAY-1000,asked.result));
+   busy.renewReply="ok";
+   check("renewed".equals(busy.renewNowCall().result.getString("status"))&&NEW.equals(savedToken())&&revoked.equals(List.of(OLD)),"a day later the same key is renewed: "+status);
+  }
+
+  // 5. A lost acknowledgement answer: asked again, and Cloud's "already complete" confirms it.
+  CloudSignInChainTest lost=renewalHost(5*DAY,"ok","transport","complete");
+  check("renewed".equals(lost.renewNowCall().result.getString("status"))&&NEW.equals(savedToken())&&revoked.equals(List.of(OLD))&&lost.requests==4,"an unanswered acknowledgement is repeated inside the renewal");
+  // The same in the background, after the callers were answered.
+  CloudSignInChainTest slow=renewalHost(5*DAY,"ok","wrong","transport","complete");
+  PluginCall waited=slow.renewNowCall();
+  check("deferred".equals(waited.result.getString("status"))&&Boolean.FALSE.equals(waited.result.opt("expiryWarning")),"callers are answered while Cloud's confirmation is awaited");
+  unchanged(slow,"confirmation awaited");
+  check(revoked.isEmpty()&&slow.main.delays.equals(List.of(5000L)),"neither key is revoked meanwhile; the first background round waits five seconds");
+  int sent=slow.requests;
+  PluginCall joined=slow.renewNowCall();
+  check("deferred".equals(joined.result.getString("status"))&&slow.requests==sent&&slow.main.delayed.size()==1,"a second check joins the running renewal and sends nothing");
+  slow.nextAcknowledgement();
+  check(slow.requests==sent+1&&OLD.equals(savedToken())&&revoked.isEmpty()&&slow.main.delays.equals(List.of(10000L)),"no answer: asked again with a longer wait");
+  slow.nextAcknowledgement();
+  check(NEW.equals(savedToken())&&revoked.equals(List.of(OLD))&&slow.main.delayed.isEmpty()&&notifications.size()==1&&events.contains("signInRenewed"),"the late confirmation saves the new key, then revokes the old one, and tells the renderer");
+  check("current".equals(slow.renewNowCall().result.getString("status")),"the deployment is free for the next check");
+
+  // 6. The old key is revoked only after the new one is acknowledged and saved.
+  CloudSignInChainTest denied=renewalHost(5*DAY,"ok","denied");
+  check("deferred".equals(denied.renewNowCall().result.getString("status")),"a refused acknowledgement fails the renewal");
+  unchanged(denied,"acknowledgement refused");
+  check(revoked.equals(List.of(NEW))&&notifications.isEmpty(),"only the unconfirmed new key is revoked");
+  CloudSignInChainTest expired=renewalHost(5*DAY,"ok","wrong","retry");expired.ackWindow=400;
+  check("deferred".equals(expired.renewNowCall().result.getString("status"))&&expired.main.delays.get(0)<=1400,"the last round is sent just after Cloud's deadline");
+  Thread.sleep(450);expired.nextAcknowledgement();
+  unchanged(expired,"deadline passed");
+  check(revoked.equals(List.of(NEW))&&expired.main.delayed.isEmpty()&&notifications.isEmpty(),"past the deadline only the unconfirmed new key is revoked");
+
+  // 7. Never during a sign-in attempt.
+  CloudSignInChainTest active=renewalHost(5*DAY,"ok");active.attempt=new Attempt(REQUEST);
+  check("deferred".equals(active.renewNowCall().result.getString("status"))&&active.requests==0,"an attempt in progress defers the renewal before any request");
+  unchanged(active,"sign-in in progress");
+  CloudSignInChainTest started=renewalHost(5*DAY,"ok","wrong","success");
+  started.renewNowCall();started.attempt=new Attempt(REQUEST);int quiet=started.requests;
+  started.nextAcknowledgement();
+  check(started.requests==quiet&&started.main.delayed.isEmpty(),"a sign-in that starts while Cloud's confirmation is awaited ends the renewal");
+  unchanged(started,"sign-in started meanwhile");
+  check(revoked.equals(List.of(NEW))&&notifications.isEmpty(),"the unsaved key is revoked; nothing is announced");
+
+  // 8. A newer credential action (sign-out, sign-in, provider change) wins over a renewal in flight.
+  CloudSignInChainTest superseded=renewalHost(5*DAY,"ok","supersede","success");
+  check("deferred".equals(superseded.renewNowCall().result.getString("status")),"a superseded renewal saves nothing");
+  unchanged(superseded,"newer credential action");
+  check(revoked.equals(List.of(NEW))&&notifications.isEmpty(),"its confirmed but unsaved key is revoked");
+  CloudSignInChainTest replaced=renewalHost(5*DAY,"ok","wrong","success");
+  replaced.renewNowCall();
+  String newer=new JSONObject().put("credentialId",REQUEST).put("token","eliza_mobile_"+"c".repeat(64)).put("expiresAt",System.currentTimeMillis()+DAY).toString();
+  slots.put("cloud:production",newer);replaced.nextAcknowledgement();
+  check(newer.equals(slots.get("cloud:production"))&&revoked.equals(List.of(NEW))&&notifications.isEmpty(),"a saved key the renewal did not present is never replaced");
+
+  // 9. A host that cannot observe its credential intent renews nothing.
+  CloudSignInChainTest plain=renewalHost(2*DAY,"ok");plain.observable=false;
+  PluginCall impossible=plain.renewNowCall();
+  check("unavailable".equals(impossible.result.getString("status"))&&Boolean.TRUE.equals(impossible.result.opt("expiryWarning"))&&plain.requests==0,"impossible renewal near expiry warns and sends nothing");
+  unchanged(plain,"host without observation");
+  CloudSignInChainTest roomy=renewalHost(5*DAY,"ok");roomy.observable=false;
+  check(Boolean.FALSE.equals(roomy.renewNowCall().result.opt("expiryWarning")),"no warning while three days or more remain");
+
+  // 10. No usable saved key.
+  CloudSignInChainTest none=renewalHost(5*DAY,"ok");slots.remove("cloud:production");
+  check("signed-out".equals(none.renewNowCall().result.getString("status"))&&none.requests==0,"nothing saved");
+  CloudSignInChainTest lapsed=renewalHost(-1000,"ok");
+  check("signed-out".equals(lapsed.renewNowCall().result.getString("status"))&&lapsed.requests==0&&OLD.equals(savedToken()),"an expired key is not renewed and not removed");
+  CloudSignInChainTest unconfirmed=renewalHost(5*DAY,"ok");slots.put(TestRegistration.PRODUCT.receiptSlot(TestRegistration.PRODUCTION),"receipt");
+  check("deferred".equals(unconfirmed.renewNowCall().result.getString("status"))&&unconfirmed.requests==0,"a saved key that awaits its acknowledgement is not presented");
+
+  // 11. The automatic check on load and resume: silent, and at most hourly.
+  CloudSignInChainTest automatic=renewalHost(5*DAY,"ok");
+  automatic.renewSaved();check(automatic.requests==0,"the automatic check sends nothing on the main thread");automatic.drainRenewal();
+  check(NEW.equals(savedToken())&&revoked.equals(List.of(OLD))&&notifications.size()==1&&automatic.reserved==0,"the automatic check renews without a caller");
+  automatic.renewSaved();check(automatic.renewalQueued.isEmpty(),"a resume inside the hour reads nothing");
+  CloudSignInChainTest idle=renewalHost(5*DAY,"ok");idle.observable=false;idle.failReceiptRead=true;
+  idle.renewSaved();idle.drainRenewal();
+  check(idle.requests==0&&OLD.equals(savedToken())&&notifications.isEmpty(),"without host support the automatic check sends and changes nothing");
+
+  // 12. A key that would not outlive the saved one is neither confirmed nor saved.
+  CloudSignInChainTest shorter=renewalHost(5*DAY,"ok");shorter.mintedLife=DAY;
+  check("deferred".equals(shorter.renewNowCall().result.getString("status"))&&!events.contains("ack")&&revoked.isEmpty(),"a shorter key is left to lapse unacknowledged");
+  unchanged(shorter,"shorter key");
  }
  static void changedAfterCommit(String mode)throws Exception{
   slots.clear();events.clear();notifications.clear();
@@ -664,5 +900,9 @@ public class CloudSignInChainTest {
   System.out.println("PASS in-process acknowledgement retry and expiry (10 scenarios)");
   recoveryScenarios();
   System.out.println("PASS native startup acknowledgement recovery (18 scenarios)");
+  coldReturnScenarios();
+  System.out.println("PASS browser return in a new process (8 scenarios)");
+  renewalScenarios();
+  System.out.println("PASS silent key renewal (12 scenario groups)");
  }
 }

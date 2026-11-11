@@ -184,7 +184,7 @@ hosts still need to wire it to their private process protocol and lifecycle.
 `android/` is a Gradle library (`ai.eliza.auth.cloud`) for apps that sign in on
 their own native screens: email and SMS codes, the Android Google account picker,
 MFA, the mobile App Auth connect/token/ack tail, acknowledgement resume, best-effort
-replaced-key revocation and per-method readiness. A host subclasses
+replaced-key revocation, per-method readiness and silent key renewal. A host subclasses
 `CloudSignInPlugin`, declares its Capacitor name and returns a `CloudSignInConfig`
 (App Auth client id, device and product names, Steward app client for native Google,
 admitted deployments and its installed storage names) plus its protected
@@ -208,17 +208,103 @@ Old callers can still use unscoped cancellation. A queued scoped cleanup also ke
 the original intent guard, so it cannot erase a newer attempt's pending record.
 Cancellation
 acknowledgement suppresses later delivery for that interaction; it does not roll
-back a key already committed. An old browser pending record without a live intent
-requires a fresh native sign-in. Existing saved-key acknowledgement recovery stays
+back a key already committed. Existing saved-key acknowledgement recovery stays
 separate from interactive completion.
+
+### Readiness, acknowledgement and code steps
+
+- `status()` reports each method once Cloud is ready for the app. A ready method is
+  cached for six hours. A method that is not ready is measured again after 30
+  seconds, on resume and on an explicit retry (`refreshNegative`). In browser Google
+  mode a return link Android has not verified yet is watched with local checks for
+  up to about four minutes; readiness is measured once it is verified. A changed
+  answer is announced with the unretained `signInReadinessChanged` event.
+- A stored key Cloud did not confirm ends its sign-in step as `activation-pending`
+  and `status()` reports `activationPending`. Cloud is asked again in this process
+  until its deadline, with one request just after it, and again on the next start. A
+  late confirmation arrives as the retained `signInCompleted`. A key Cloud refused
+  or never confirmed is removed with its receipt, revoked best effort and reported
+  as `activation-expired` (a rejection in the sign-in step, the retained
+  `signInIncomplete` afterwards).
+- A wrong code, a request with no answer and a 408, 429 or 5xx answer keep the code
+  step. Their rejection carries `data.attemptKept === true`, which
+  `NativeCloudSignInError.from` preserves as `attemptKept`. Only a wrong code uses
+  the five-code budget.
+
+### Silent key renewal
+
+A saved key is renewed in the background when it has less than ten days left, or is
+in the last third of its life when its issue time is known. The plugin checks on
+load and resume (at most hourly per process) and on `renewSignIn({environment})`. It
+asks Cloud at most once in 24 hours per saved key and never while a sign-in attempt
+is active.
+
+1. `POST /api/v1/app-auth/mobile/renew` with the saved key (`Authorization: Bearer`
+   and `X-API-Key`) and a fresh mobile PKCE binding
+   (`clientId`, `environment`, `redirectUri`, `state`, `codeChallenge`,
+   `codeChallengeMethod: "S256"`, `deviceName`). 200 answers
+   `{success: true, code: "emac_…", expiresAt}`.
+2. The code is exchanged and acknowledged through the existing
+   `/api/v1/app-auth/mobile/token` and `/api/v1/app-auth/mobile/ack` routes. An
+   unanswered acknowledgement is repeated until Cloud's deadline.
+3. Only a key Cloud confirmed is saved, and only while the saved key is still the
+   one the renewal presented. The old key is then revoked with
+   `DELETE /api/v1/api-keys/current`, and the retained `signInRenewed` event
+   (`{environment, expiresAt, credentialId}`) tells the renderer to read the saved
+   sign-in again.
+
+401, 403 and 409 mean Cloud will not renew this key (`sign-in-required`). Every
+other failure is asked again a day later (`deferred`). Neither removes the working
+key: it stays saved until it expires, and the owner then signs in as before. A
+confirmed key that could not be saved is revoked best effort. Renewal writes no
+acknowledgement receipt, because a receipt holds no key and the unconfirmed key is
+never stored.
+
+`renewSignIn` answers `{environment, status, expiryWarning, expiresAt?, credentialId?}`
+(`nativeSignInRenewal`). `expiryWarning` is true only when fewer than three days
+remain and renewal is impossible or has failed; show the expiry warning from it,
+not from the remaining time alone.
+
+Renewal needs a host that implements `observeCredentialCommit()`: a check bound to
+the newest credential intent that reserves nothing, so background work never
+supersedes an owner's action and stops once one is reserved. The default returns
+null and the status is `unavailable`. No host in this repository implements it yet.
+The host's credential write runs its ordinary key-replacement path.
+
+### Browser Google return in a new process
+
+Android can end the host while the browser is in front. The return then starts a
+new process that has no attempt and no credential intent, and by default it
+completes nothing (`signInIncomplete` with `app-link-unverified`).
+
+A host can opt in with a durable credential generation. `CredentialIntentFence`
+(`plugins/plugin-native-secure-store`) takes a `Ledger` through `attach`: every
+reservation then records a fresh generation. The host returns it from
+`credentialGeneration()`, and the plugin stores it in the pending record (format
+`v2`; a record without one stays `v1`). In the new process
+`adoptCredentialCommit(generation)` returns a check bound to the current intent
+only while that generation is still the recorded one (`fence.adopt`), which means
+no sign-out, sign-in, provider change or reset was reserved since the record was
+written, in any process. Adoption reserves nothing. The return then follows the
+live path: the record is consumed under that check, the Android authorization
+dialog precedes the key, and the result arrives as the retained `signInCompleted`
+or `signInIncomplete`. A second factor is refused as `mfa-browser`.
+
+A record without a generation, an expired record, a sign-in already in progress
+and a host without a ledger are refused as before. One window remains: if a
+reservation's ledger write fails and that process dies before its next
+reservation, the earlier generation stays recorded until the pending record
+expires (ten minutes). No host in this repository attaches a ledger yet.
 
 The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
 (`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
 `NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
 `nativeSignInCodeStarted`, `nativeSignInVerified`, `nativeSignInGoogleOutcome`,
-`nativeSignInReadiness`), the failure codes the plugin rejects with and owner-facing copy
-that takes the app's and the deployment's names. An answer with an extra key, another
-deployment or a malformed time is refused as `unavailable`.
+`nativeSignInReadiness`, `nativeSignInActivationPending`, `nativeSignInRenewal`) and
+event (`nativeSignInReadinessChanged`, `nativeSignInRenewed`), the failure codes the
+plugin rejects with and owner-facing copy that takes the app's and the deployment's
+names. An answer with an extra key, another deployment or a malformed time is refused
+as `unavailable`; a readiness event that does not fit is ignored.
 
 ## Optional Blooio phone-code delivery
 

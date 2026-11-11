@@ -241,8 +241,13 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ACTUAL_ACK_RECOVERY: between(
       plugin,
       " /** A key stored before",
-      " // ── Outcomes and transport",
+      " // ── Silent key renewal",
     ),
+    ACTUAL_RENEWAL: between(
+      plugin,
+      " /** One renewal check of a deployment's saved key.",
+      " // ── Outcomes and transport",
+    ).replace("@PluginMethod ", ""),
     ACTUAL_OUTCOMES: between(
       plugin,
       " private void finish(",
@@ -283,6 +288,11 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       output,
       /^PASS in-process acknowledgement retry and expiry \(10 scenarios\)$/m,
     );
+    assert.match(
+      output,
+      /^PASS browser return in a new process \(8 scenarios\)$/m,
+    );
+    assert.match(output, /^PASS silent key renewal \(12 scenario groups\)$/m);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -531,7 +541,10 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
     " @Override protected void handleOnDestroy() {",
   );
   assert.doesNotMatch(resume, /end\(|attempt|cancel/);
-  assert.match(resume, /probe\(config\(\)\.defaultEnvironment\(\), null, false\);/);
+  assert.match(
+    resume,
+    /probe\(config\(\)\.defaultEnvironment\(\), null, false\);/,
+  );
   assert.doesNotMatch(plugin, /handleOnPause|browserPaused|"browser-closed"/);
   const start = between(
     plugin,
@@ -563,7 +576,10 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
     " private boolean hostIsHome() {",
     " /** Optional caller identity",
   );
-  assert.match(home, /Intent\.ACTION_MAIN\)\.addCategory\(Intent\.CATEGORY_HOME\)/);
+  assert.match(
+    home,
+    /Intent\.ACTION_MAIN\)\.addCategory\(Intent\.CATEGORY_HOME\)/,
+  );
   assert.match(
     home,
     /getContext\(\)\.getPackageName\(\)\.equals\(home\.activityInfo\.packageName\)/,
@@ -576,7 +592,9 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
   );
   assert.equal((release.match(/end\(/g) || []).length, 1);
   assert.match(release, /end\(claimed, "app-link-unverified", false\)/);
-  // A return after process death still completes nothing: no live credential intent exists for it.
+  // A return in a process that did not start the sign-in completes only by adopting the credential
+  // intent that wrote its record (the host's durable generation); it never reserves a new one, and
+  // without that it still completes nothing.
   const capture = between(
     plugin,
     " private boolean captureCallback(",
@@ -584,7 +602,116 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
   );
   assert.match(
     capture,
-    /if \(owner == null\) \{[\s\S]*?notifyListeners\("signInIncomplete"[\s\S]*?return;\s*\}\s*if \(!pending\.state\.equals\(owner\.browserState\)\) return;/,
+    /owner = adoptReturn\(pending, pendingRaw, now\);\s*if \(owner == null\) \{\s*notifyListeners\("signInIncomplete", new JSObject\(\)\.put\("code", "app-link-unverified"\), true\);\s*return;\s*\}\s*\}\s*if \(!pending\.state\.equals\(owner\.browserState\)\) return;/,
+  );
+  const adopt = between(capture, " private Attempt adoptReturn(", "\n }\n");
+  assert.ok(
+    adopt.indexOf(
+      "if (pending.generation == null || pending.expired(now)) return null;",
+    ) > 0 &&
+      adopt.indexOf(
+        "if (pending.generation == null || pending.expired(now)) return null;",
+      ) < adopt.indexOf("adoptCredentialCommit(pending.generation)"),
+    "a record without a generation, or an expired one, never reaches the host",
+  );
+  assert.match(adopt, /if \(guard == null\) return null;/);
+  assert.match(
+    adopt,
+    /if \(destroyed \|\| attempt != null \|\| pendingRetirementUnconfirmed\) return null;/,
+  );
+  assert.doesNotMatch(
+    capture,
+    /reserveCredentialCommit/,
+    "a return never reserves a credential intent",
+  );
+  // Hosts opt in: every new host hook refuses by default.
+  for (const hook of [
+    "protected Runnable observeCredentialCommit() { return null; }",
+    "protected String credentialGeneration() { return null; }",
+    "protected Runnable adoptCredentialCommit(String generation) { return null; }",
+  ])
+    assert.ok(plugin.includes(hook), hook);
+});
+
+test("silent renewal confirms the new key before saving it, revokes the old key last and reserves nothing", () => {
+  const renewal = between(
+    plugin,
+    " // ── Silent key renewal",
+    " // ── Outcomes and transport",
+  );
+  assert.doesNotMatch(
+    renewal,
+    /reserveCredentialCommit|requireAuthorization|\.write\(config\(\)\.receiptSlot|(owned|slots|store\(\))\.remove\(/,
+    "background renewal reserves no intent, shows no dialog, writes no receipt and removes nothing",
+  );
+  const settled = renewal.slice(
+    renewal.indexOf(" private JSObject renewalSettled("),
+  );
+  const refusal = settled.indexOf(
+      "if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) { CloudKeyRevocation.revoke(config(), environment, secret); return failed; }",
+    ),
+    save = settled.indexOf("owned.write(slot, "),
+    revokeOld = settled.indexOf(
+      "CloudKeyRevocation.revoke(config(), environment, previous)",
+    );
+  assert.ok(
+    refusal > 0 && refusal < save && save < revokeOld,
+    "unconfirmed: nothing saved; confirmed: saved, then the old key revoked",
+  );
+  assert.equal(
+    (renewal.match(/environment, previous\)/g) || []).length,
+    1,
+    "the working key is revoked in exactly one place",
+  );
+  assert.equal((renewal.match(/\.write\(/g) || []).length, 1);
+  // The request presents the saved key as a bearer token and an API key; no other request does.
+  assert.match(
+    renewal,
+    /post\(null, environment, CloudKeyRenewal\.PATH, CloudKeyRenewal\.body\(config\(\), environment, state, CloudSignInFlow\.s256\(verifier\)\), previous\)/,
+  );
+  assert.match(
+    plugin,
+    /if \(bearer != null && bearer\.startsWith\("eliza_mobile_"\)\) connection\.setRequestProperty\("X-API-Key", bearer\);/,
+  );
+  // Automatic check on load and resume.
+  assert.match(
+    plugin,
+    /@Override public void load\(\) \{[\s\S]*?renewSaved\(\);\n \}/,
+  );
+  assert.match(
+    between(
+      plugin,
+      " @Override protected void handleOnResume() {",
+      " @Override protected void handleOnDestroy() {",
+    ),
+    /renewSaved\(\);/,
+  );
+  assert.equal(
+    read(join(main, "CloudKeyRenewal.java")).match(
+      /public static final String PATH = "([^"]+)"/,
+    )[1],
+    "/api/v1/app-auth/mobile/renew",
+  );
+});
+
+test("the credential intent fence keeps a durable generation for work an earlier process began (plain JVM)", () => {
+  const workspace = resolve(root, "../../..");
+  assert.match(
+    runJvm(
+      [
+        join(
+          workspace,
+          "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+        ),
+        join(
+          workspace,
+          "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialIntentFence.java",
+        ),
+        join(root, "test/ai/eliza/auth/cloud/CredentialGenerationTest.java"),
+      ],
+      "ai.eliza.auth.cloud.CredentialGenerationTest",
+    ),
+    /^PASS durable credential generation \(\d+ checks\)/,
   );
 });
 

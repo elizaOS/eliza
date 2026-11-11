@@ -68,6 +68,8 @@ public class CloudSignInReadinessTest {
  /* ACTUAL_STATUS */
  /* ACTUAL_STATUS_OUTCOME */
  /* ACTUAL_PROBE */
+ /** Resume also starts the saved-key renewal check; its scenarios run in the chain fixture. */
+ int renewalChecks; void renewSaved() { renewalChecks++; }
  /* ACTUAL_RESUME */
 
  static void check(boolean value, String why) { if (!value) throw new AssertionError(why); }

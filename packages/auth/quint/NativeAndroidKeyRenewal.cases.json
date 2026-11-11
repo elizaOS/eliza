@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRenewal.java",
+    "packages/auth/android/test/native-sign-in.test.mjs",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
+  ],
+  "bounds": {
+    "domain": "One Android deployment, one saved key and one renewal at a time. At most two renewal requests on two days, three acknowledgement rounds per renewal, one sign-in attempt that starts meanwhile, one newer credential action (a sign-out or a sign-in that replaces the saved key), one deadline and one plugin close. Renewal answers are a code, a refusal (401, 403, 409) or no usable answer. Acknowledgement answers are confirmed, already complete, retryable, refused, or confirmed at Cloud with the answer lost.",
+    "assumptions": "The host's credential intent fence orders a renewal's guarded save against any newer credential action: the save and the action never interleave. The store compares the saved key with the one the renewal presented in the same guarded step. A day is projected to the nextDay event and Cloud's acknowledgement deadline to the deadline event. The inline and background acknowledgement rounds are one bounded sequence.",
+    "limitations": "Revocation requests are sent but their delivery is not modeled, so a confirmed key that was never saved can stay active at Cloud until it expires when its revocation is lost or the process dies between the confirmation and the save. The expiry warning, the preference record, the hourly automatic check, other deployments and overlapping plugin instances are outside this model. The JVM fixture runs the exact renewal methods against synthetic slot, HTTPS and lifecycle ports; it does not run Android or contact Cloud."
+  },
+  "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
+  "cases": [
+    {
+      "name": "silent-key-renewal",
+      "main": "NativeAndroidKeyRenewal",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OldKeyRevokedOnlyAfterInstall",
+        "InstalledKeyIsConfirmed",
+        "WorkingKeyKept",
+        "NewerActionWins",
+        "SavedKeyNotRevoked",
+        "UnsavedConfirmedKeyRevoked",
+        "AnnouncedOnlyWhenRenewed",
+        "RequestBudget"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

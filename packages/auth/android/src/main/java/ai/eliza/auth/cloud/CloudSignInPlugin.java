@@ -66,6 +66,14 @@ import org.json.JSONTokener;
  * the host (Home on a launcher host) does not end it. Returns follow the shared callback contract (CloudSignInFlow.parseCallback).
  * Native Google diagnostics contain only bounded stage/status/timing, never URLs, codes, headers or
  * bodies.
+ *
+ * Renewal: a saved key near its expiry is renewed silently (`renewSignIn`, and a check on load and
+ * resume) when the host can observe its credential intent ({@link #observeCredentialCommit()}). The
+ * new key replaces the saved one only after Cloud confirmed it, and the old key is revoked only
+ * after that; a refusal leaves the working key alone. A browser Google return that arrives in a new
+ * process completes only when the host keeps a durable credential generation
+ * ({@link #credentialGeneration()}, {@link #adoptCredentialCommit(String)}); otherwise it completes
+ * nothing.
  */
 public abstract class CloudSignInPlugin extends Plugin {
  private static final int RESPONSE_LIMIT = 256 * 1024;
@@ -92,6 +100,8 @@ public abstract class CloudSignInPlugin extends Plugin {
   volatile boolean cancelled, callbackReceived, browserLaunched, returnHint;
   /** Guarded by lock. A recognized return is waiting for its storage read. */
   boolean returnClaimed, returnHintElapsed;
+  /** Set before the attempt is published. Created in a new process for a browser return, with the intent that wrote its record; no call waits for it. */
+  boolean adopted;
   String browserState, pendingRecord;
   volatile HttpURLConnection connection;
   volatile android.os.CancellationSignal googleCancellation;
@@ -119,6 +129,8 @@ public abstract class CloudSignInPlugin extends Plugin {
  private final ExecutorService prober = Executors.newSingleThreadExecutor();
  /** Startup acknowledgement requests run apart from sign-in work, so a slow request never delays a sign-in step. */
  private final ExecutorService recovery = Executors.newSingleThreadExecutor();
+ /** Silent key renewal runs apart from sign-in work and from acknowledgement requests: it never delays either. */
+ private final ExecutorService renewer = Executors.newSingleThreadExecutor();
  private final Handler main = new Handler(Looper.getMainLooper());
  private final Map<String, CloudSignInReadiness.Result> readiness = new HashMap<>();
  private final Map<String, List<PluginCall>> probing = new HashMap<>();
@@ -126,7 +138,7 @@ public abstract class CloudSignInPlugin extends Plugin {
  private final Set<String> linkWatch = new HashSet<>();
  /** Deployments whose stored key still waits for Cloud's acknowledgement in this process. Guarded by lock. */
  private final Set<String> activating = new HashSet<>();
- private Attempt attempt;
+ private volatile Attempt attempt;
  /** The browser state of the last cancelled Google attempt, so a return queued behind the cancel stays quiet. */
  private String cancelledBrowserState;
  /** Failed retirement cannot authorize another callback in this process. */
@@ -174,6 +186,27 @@ public abstract class CloudSignInPlugin extends Plugin {
   * action supersedes it. Completion must never reserve a new intent. The default admits the write.
   */
  protected Runnable reserveCredentialCommit() { return () -> {}; }
+ /**
+  * A check bound to the newest credential intent at the time of the call. It reserves nothing, so
+  * background work (silent key renewal) never supersedes an owner's action, and it throws once any
+  * credential action has been reserved since. Null, the default, means the host has no such check:
+  * the saved key is then never renewed in the background.
+  */
+ protected Runnable observeCredentialCommit() { return null; }
+ /**
+  * The host's durable credential generation: a value that changes whenever a credential action is
+  * reserved and that survives the process (`[A-Za-z0-9_-]{1,128}`). Read after an accepted browser
+  * Google attempt reserved its intent and stored with its pending record. Null, the default, means the
+  * host keeps none: a browser return in a new process then completes nothing.
+  */
+ protected String credentialGeneration() { return null; }
+ /**
+  * For a browser return in a process that did not start the sign-in. When {@code generation} is still
+  * the host's durable credential generation (no credential action was reserved since the pending
+  * record was written, in that process or any later one), returns a check bound to the current
+  * intent without reserving a new one; otherwise null. The default refuses.
+  */
+ protected Runnable adoptCredentialCommit(String generation) { return null; }
  protected final CloudSignInConfig config() {
   synchronized (lock) { if (config == null) config = registration(); return config; }
  }
@@ -187,6 +220,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   run(this::resumeAcknowledgements);
   // Warm the cached readiness answer so opening sign-in rarely waits for it.
   probe(config().defaultEnvironment(), null, false);
+  renewSaved();
  }
  @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); captureCallback(intent); }
  /**
@@ -194,11 +228,12 @@ public abstract class CloudSignInPlugin extends Plugin {
   * from one that is still open in the browser's own task (Home on a launcher host, the app switcher,
   * "open in browser"), and that page can still return while the pending record is valid. The attempt
   * ends by its return, an explicit cancel or its expiry. A method that was not ready is measured
-  * again here once its short TTL has ended.
+  * again here once its short TTL has ended, and a saved key near its expiry is renewed.
   */
  @Override protected void handleOnResume() {
   super.handleOnResume();
   probe(config().defaultEnvironment(), null, false);
+  renewSaved();
  }
  @Override protected void handleOnDestroy() {
   destroyed = true;
@@ -206,6 +241,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   worker.shutdownNow();
   prober.shutdownNow();
   recovery.shutdownNow();
+  renewer.shutdownNow();
   super.handleOnDestroy();
  }
  private void run(Runnable task) {
@@ -318,6 +354,25 @@ public abstract class CloudSignInPlugin extends Plugin {
  private void storeReadiness(CloudSignInEnvironment environment, CloudSignInReadiness.Result result) {
   try { getContext().getSharedPreferences(config().readinessPreferences + "-" + config().googleSignInMode, android.content.Context.MODE_PRIVATE).edit().putString(environment.name, result.serialize()).apply(); }
   catch (Exception ignored) { /* Kept in memory. */ }
+ }
+ /** Non-secret renewal bookkeeping (CloudKeyRenewal.Record), in memory and in plain preferences. */
+ private final Map<String, CloudKeyRenewal.Record> renewalRecords = new HashMap<>();
+ private CloudKeyRenewal.Record renewalRecord(CloudSignInEnvironment environment) {
+  synchronized (renewalRecords) {
+   CloudKeyRenewal.Record known = renewalRecords.get(environment.name);
+   if (known != null) return known;
+   try { known = CloudKeyRenewal.Record.parse(getContext().getSharedPreferences(config().readinessPreferences + "-renewal", android.content.Context.MODE_PRIVATE).getString(environment.name, null)); }
+   catch (Exception unreadable) { known = null; }
+   if (known != null) renewalRecords.put(environment.name, known);
+   return known;
+  }
+ }
+ private void storeRenewalRecord(CloudSignInEnvironment environment, CloudKeyRenewal.Record record) {
+  synchronized (renewalRecords) {
+   renewalRecords.put(environment.name, record);
+   try { getContext().getSharedPreferences(config().readinessPreferences + "-renewal", android.content.Context.MODE_PRIVATE).edit().putString(environment.name, record.serialize()).apply(); }
+   catch (Exception ignored) { /* Kept in memory for this process. */ }
+  }
  }
  /** The readiness observations (CloudSignInReadiness). Every read is short, fixed and fail-safe. */
  private CloudSignInReadiness.Result measure(CloudSignInEnvironment environment) throws Exception {
@@ -435,7 +490,10 @@ public abstract class CloudSignInPlugin extends Plugin {
  }
  /** Browser mode remains an explicit host selection, never a fallback from a failed account picker. */
  private void startGoogleBrowser(Attempt next) {
-  final CloudSignInFlow.Pending pending = CloudSignInFlow.Pending.create(next.environment, System.currentTimeMillis());
+  // Read after this attempt reserved its intent. A newer reservation in between fails the guarded write below.
+  String generation = null;
+  try { generation = credentialGeneration(); } catch (RuntimeException unavailable) { /* No durable generation: the first record format. */ }
+  final CloudSignInFlow.Pending pending = CloudSignInFlow.Pending.create(next.environment, System.currentTimeMillis(), generation);
   next.browserState = pending.state; next.pendingRecord = pending.serialize(); next.expiresAt = pending.expiresAt; next.busy = true;
   synchronized (lock) { if (attempt != next || next.cancelled) return; pendingRetirementUnconfirmed = true; }
   expireBrowserAttempt(next, CloudSignInFlow.PENDING_TTL_MS);
@@ -644,22 +702,28 @@ public abstract class CloudSignInPlugin extends Plugin {
     }
     // Not this device's request (unknown, foreign or duplicate): ignored, nothing burned or ended.
     if (pending == null || pending.environment != returned || !pending.sameState(received)) return;
-    Attempt owner = waiting;
-    if (owner == null) {
+    final Attempt owner;
+    if (waiting != null) owner = waiting;
+    else {
      // A return queued behind the owner's own cancel is not news to the owner.
      synchronized (lock) { if (pending.state.equals(cancelledBrowserState)) return; }
-     // A return after process death has no live credential intent and cannot authorize a write.
-     notifyListeners("signInIncomplete", new JSObject().put("code", "app-link-unverified"), true);
-     return;
+     // A return in a process that did not start the sign-in has no live credential intent. It
+     // completes only with the intent that wrote this record, and only while the host confirms that
+     // no credential action followed it; otherwise it authorizes nothing.
+     owner = adoptReturn(pending, pendingRaw, now);
+     if (owner == null) {
+      notifyListeners("signInIncomplete", new JSObject().put("code", "app-link-unverified"), true);
+      return;
+     }
     }
     if (!pending.state.equals(owner.browserState)) return;
-    // State and the original live credential intent must both match before consuming the code.
+    // State and the original credential intent must both match before consuming the code.
     try {
      boolean consumed = credentials(() -> {
       if (destroyed || owner.cancelled) throw new IllegalStateException("Sign-in closed");
       owner.credentialGuard.run();
      }).compareExchange(config().pendingSlot, pendingRaw, null);
-     if (!consumed) return;
+     if (!consumed) { synchronized (lock) { if (owner.adopted && attempt == owner) attempt = null; } return; }
     } catch (Exception storage) {
      synchronized (lock) { if (attempt != owner) return; pendingRetirementUnconfirmed = true; }
      end(owner, "storage", false); return;
@@ -681,12 +745,38 @@ public abstract class CloudSignInPlugin extends Plugin {
      Response exchanged = post(owner, "/steward/auth/oauth/exchange", body, null);
      if (exchanged.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus("exchange", exchanged.status));
      JSONObject session = exchanged.data.optJSONObject("data") != null && !exchanged.data.has("token") ? exchanged.data.optJSONObject("data") : exchanged.data;
+     // No screen waits for a second factor of an adopted return: the owner uses the email code instead.
+     if (owner.adopted && Boolean.TRUE.equals(session.opt("mfaRequired"))) throw new SignInFailure("mfa-browser");
      completeOrRequireMfa(owner, session);
     } catch (SignInFailure failure) { end(owner, failure.code, false); }
     catch (Exception unexpected) { end(owner, "unavailable", false); }
    } finally { releaseReturnClaim(claimed); }
   });
   return true;
+ }
+ /**
+  * A return that arrives in a process that did not start the sign-in (Android ended the host while
+  * the browser was in front). The pending record names the host's durable credential generation at
+  * the time it was written. When the host confirms that generation is still the newest (no sign-out,
+  * sign-in, provider change or reset was reserved since, in any process) the return is given an
+  * attempt bound to that intent; nothing new is reserved. The record itself is state- and PKCE-bound
+  * and encrypted at rest, and the Android authorization dialog still precedes the key. A record
+  * without a generation, an expired one, a host without a durable generation and a running attempt
+  * are all refused.
+  */
+ private Attempt adoptReturn(CloudSignInFlow.Pending pending, String pendingRaw, long now) {
+  if (pending.generation == null || pending.expired(now)) return null;
+  final Runnable guard;
+  try { guard = adoptCredentialCommit(pending.generation); } catch (RuntimeException refused) { return null; }
+  if (guard == null) return null;
+  synchronized (lock) {
+   if (destroyed || attempt != null || pendingRetirementUnconfirmed) return null;
+   Attempt adopted = new Attempt(pending.environment, true, null, guard);
+   adopted.adopted = true; adopted.browserLaunched = true; adopted.busy = true;
+   adopted.browserState = pending.state; adopted.pendingRecord = pendingRaw; adopted.expiresAt = pending.expiresAt;
+   attempt = adopted;
+   return adopted;
+  }
  }
  /** A recognized but unconsumable return releases its own elapsed grace. The attempt otherwise stays:
   * the page can still return while the pending record is valid. */
@@ -1058,6 +1148,7 @@ public abstract class CloudSignInPlugin extends Plugin {
    JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
    credentials.write(config().credentialSlot(environment), saved.toString());
    // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.
+   storeRenewalRecord(environment, new CloudKeyRenewal.Record(saved.getString("credentialId"), System.currentTimeMillis(), 0, CloudKeyRenewal.Record.NONE));
    CloudSignInFlow.Ack acknowledged = acknowledge(current, proof, credentialId, secret);
    if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
    JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
@@ -1226,6 +1317,226 @@ public abstract class CloudSignInPlugin extends Plugin {
   }
  }
 
+ // ── Silent key renewal ───────────────────────────────────────────────────────────────────────
+
+ /** One renewal check of a deployment's saved key. Guarded by lock. */
+ private static final class Renewal {
+  final List<PluginCall> waiting = new ArrayList<>();
+  /** Set once the callers were answered; a check that still awaits Cloud's confirmation keeps it for later callers. */
+  JSObject answer;
+ }
+ private final Map<String, Renewal> renewing = new HashMap<>();
+ /** The automatic check (load, resume) reads storage at most once an hour in a process. */
+ private static final long RENEWAL_CHECK_INTERVAL_MS = 60 * 60 * 1000L;
+ private long renewalCheckedAt;
+
+ /**
+  * Renews the saved key of a deployment when it is due and reports where it stands:
+  * `{environment, status, expiryWarning, expiresAt?, credentialId?}`, never a key. `status` is
+  * `current` (not due), `renewed`, `deferred` (due, but a sign-in is in progress, the daily request
+  * was used, Cloud could not answer or the saved key still awaits its acknowledgement),
+  * `sign-in-required` (Cloud will not renew this key), `unavailable` (the host cannot renew in the
+  * background) or `signed-out` (no usable saved key). `expiryWarning` is true only with fewer than
+  * three days left and no renewal that can help. A refusal never removes the working key.
+  */
+ @PluginMethod public void renewSignIn(PluginCall call) {
+  final CloudSignInEnvironment environment;
+  try { String name = call.getString("environment"); environment = name == null ? config().defaultEnvironment() : config().environment(name); }
+  catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
+  renew(environment, call);
+ }
+ /** The automatic check on load and resume, for every admitted deployment. */
+ private void renewSaved() {
+  synchronized (lock) {
+   long now = System.currentTimeMillis();
+   if (destroyed || renewalCheckedAt > 0 && now >= renewalCheckedAt && now - renewalCheckedAt < RENEWAL_CHECK_INTERVAL_MS) return;
+   renewalCheckedAt = now;
+  }
+  for (CloudSignInEnvironment environment : config().environments()) renew(environment, null);
+ }
+ /** One check per deployment at a time, apart from sign-in work; concurrent callers join it. */
+ private void renew(CloudSignInEnvironment environment, PluginCall call) {
+  final Renewal current;
+  synchronized (lock) {
+   if (destroyed) { if (call != null) call.reject("Sign-in closed", "unavailable"); return; }
+   Renewal running = renewing.get(environment.name);
+   if (running != null) {
+    if (call == null) return;
+    if (running.answer != null) call.resolve(running.answer); else running.waiting.add(call);
+    return;
+   }
+   current = new Renewal(); if (call != null) current.waiting.add(call); renewing.put(environment.name, current);
+  }
+  final boolean explicit = call != null;
+  try {
+   renewer.execute(() -> {
+    JSObject outcome;
+    try { outcome = renewNow(environment, current, explicit); }
+    catch (Exception unavailable) { outcome = renewalOutcome(environment, "deferred", 0, false); }
+    if (outcome != null) renewalAnswered(environment, current, outcome, true);
+   });
+  } catch (java.util.concurrent.RejectedExecutionException closed) { renewalAnswered(environment, current, renewalOutcome(environment, "deferred", 0, false), true); }
+ }
+ private static JSObject renewalOutcome(CloudSignInEnvironment environment, String status, long expiresAt, boolean warning) {
+  JSObject outcome = new JSObject().put("environment", environment.name).put("status", status).put("expiryWarning", warning);
+  if (expiresAt > 0) outcome.put("expiresAt", expiresAt);
+  return outcome;
+ }
+ /** Answers the callers of this check. `ended` also frees the deployment for the next check. */
+ private void renewalAnswered(CloudSignInEnvironment environment, Renewal current, JSObject outcome, boolean ended) {
+  List<PluginCall> answered;
+  final JSObject delivered;
+  synchronized (lock) {
+   if (outcome != null) current.answer = outcome;
+   delivered = current.answer;
+   answered = new ArrayList<>(current.waiting); current.waiting.clear();
+   if (ended && renewing.get(environment.name) == current) renewing.remove(environment.name);
+  }
+  for (PluginCall waiting : answered) waiting.resolve(delivered);
+ }
+ /** No sign-in is in progress, the plugin is open and no credential action was reserved since the renewal read the saved key. Takes no lock: it also runs as a store guard. */
+ private boolean renewalCurrent(Runnable observed) {
+  if (destroyed || attempt != null) return false;
+  try { observed.run(); return true; } catch (RuntimeException superseded) { return false; }
+ }
+ /**
+  * The check itself, on the renewal worker. Returns the outcome, or null while Cloud's confirmation
+  * of a new key is still awaited in the background (the callers were answered `deferred`).
+  *
+  * Order: renewal request with the saved key, token, acknowledgement, and only then the save. The new
+  * key replaces the working one only after Cloud confirmed it, so an interrupted or refused renewal
+  * leaves the saved key as it was; an unsaved new key is never usable by anyone and is revoked best
+  * effort. The old key is revoked last.
+  */
+ private JSObject renewNow(CloudSignInEnvironment environment, Renewal current, boolean explicit) throws Exception {
+  final String slot = config().credentialSlot(environment);
+  final Runnable[] observation = new Runnable[1];
+  final String[] read = new String[2];
+  // The intent is observed with the read: a credential action reserved afterwards ends this renewal.
+  withCredentialRead(() -> {
+   observation[0] = observeCredentialCommit();
+   if (observation[0] == null && !explicit) return null;
+   CloudCredentialSlots slots = store();
+   read[0] = slots.read(slot); read[1] = slots.read(config().receiptSlot(environment));
+   return null;
+  });
+  final Runnable observed = observation[0];
+  if (observed == null && !explicit) return renewalOutcome(environment, "unavailable", 0, false);
+  JSONObject credential = read[0] == null ? null : new JSONObject(read[0]);
+  final String previous = credential == null ? null : credential.optString("token", null), localId = credential == null ? null : credential.optString("credentialId", null);
+  final long now = System.currentTimeMillis(), expiresAt = credential == null ? 0 : instant(credential.opt("expiresAt"));
+  if (!CloudSignInFlow.validMobileSecret(previous) || expiresAt <= now) return renewalOutcome(environment, "signed-out", 0, false);
+  // A saved key that still awaits its acknowledgement is not a usable sign-in yet.
+  boolean unconfirmed;
+  synchronized (lock) { unconfirmed = activating.contains(environment.name); }
+  if (read[1] != null || unconfirmed) return renewalOutcome(environment, "deferred", expiresAt, false);
+  if (!CloudSignInFlow.validUuid(localId)) return renewalOutcome(environment, "unavailable", expiresAt, CloudKeyRenewal.warn(now, expiresAt, true));
+  final CloudKeyRenewal.Record record = CloudKeyRenewal.Record.of(renewalRecord(environment), localId);
+  if (!CloudKeyRenewal.due(now, record.issuedAt, expiresAt)) return renewalOutcome(environment, "current", expiresAt, false);
+  if (observed == null) return renewalOutcome(environment, "unavailable", expiresAt, CloudKeyRenewal.warn(now, expiresAt, true));
+  boolean active;
+  synchronized (lock) { active = attempt != null; }
+  if (active) return renewalOutcome(environment, "deferred", expiresAt, CloudKeyRenewal.warn(now, expiresAt, record.failed()));
+  if (!CloudKeyRenewal.allowed(now, record.attemptedAt))
+   return renewalOutcome(environment, CloudKeyRenewal.Record.REFUSED.equals(record.result) ? "sign-in-required" : "deferred", expiresAt, CloudKeyRenewal.warn(now, expiresAt, record.failed()));
+  // Recorded before the request: an interrupted renewal still counts against the daily limit.
+  final CloudKeyRenewal.Record asked = record.attempted(now, CloudKeyRenewal.Record.RETRY);
+  storeRenewalRecord(environment, asked);
+  final JSObject failed = renewalOutcome(environment, "deferred", expiresAt, CloudKeyRenewal.warn(now, expiresAt, true));
+  String state = CloudSignInFlow.newState(), verifier = CloudSignInFlow.newVerifier();
+  Response renewed;
+  try { renewed = post(null, environment, CloudKeyRenewal.PATH, CloudKeyRenewal.body(config(), environment, state, CloudSignInFlow.s256(verifier)), previous); }
+  catch (SignInFailure unanswered) { return failed; }
+  CloudKeyRenewal.Answer answer = CloudKeyRenewal.answer(renewed.status);
+  if (answer == CloudKeyRenewal.Answer.SIGN_IN_REQUIRED) {
+   // Cloud will not renew this key. It stays saved and working until it expires; the owner then signs in again.
+   storeRenewalRecord(environment, asked.attempted(now, CloudKeyRenewal.Record.REFUSED));
+   return renewalOutcome(environment, "sign-in-required", expiresAt, CloudKeyRenewal.warn(now, expiresAt, true));
+  }
+  String code = renewed.data.optString("code", "");
+  if (answer != CloudKeyRenewal.Answer.CODE || !Boolean.TRUE.equals(renewed.data.opt("success")) || !code.matches("emac_[0-9a-f]{64}")
+   || renewed.data.has("codeType") && !"mobile_app_auth_code".equals(renewed.data.optString("codeType"))) return failed;
+  JSONObject proof = new JSONObject().put("clientId", config().clientId).put("environment", environment.name).put("redirectUri", environment.callback())
+   .put("code", code).put("state", state).put("codeVerifier", verifier);
+  Response minted;
+  try { minted = post(null, environment, "/api/v1/app-auth/mobile/token", new JSONObject(proof.toString()).put("grantType", "authorization_code"), null); }
+  catch (SignInFailure unanswered) { return failed; }
+  if (minted.status != 200) return failed;
+  String secret = minted.data.optString("secret", null), credentialId = minted.data.optString("credentialId", null);
+  long renewedUntil = instant(minted.data.opt("expiresAt")), acknowledgeBy = instant(minted.data.opt("acknowledgeBy"));
+  // A key that would not outlive the saved one renews nothing; unacknowledged, it lapses at Cloud.
+  if (!Boolean.TRUE.equals(minted.data.opt("acknowledgementRequired")) || !"Bearer".equals(minted.data.optString("tokenType"))
+   || !CloudSignInFlow.validMobileSecret(secret) || secret.equals(previous) || !CloudSignInFlow.validUuid(credentialId)
+   || renewedUntil <= expiresAt || acknowledgeBy <= System.currentTimeMillis()) return failed;
+  // Confirmed before it is saved. A sign-in or another credential action that began meanwhile ends the renewal here.
+  if (!renewalCurrent(observed)) return failed;
+  CloudSignInFlow.Ack acknowledged = acknowledge(null, proof, credentialId, secret);
+  if (acknowledged == CloudSignInFlow.Ack.RETRY && System.currentTimeMillis() < acknowledgeBy) {
+   // No answer yet: the callers are told, and Cloud is asked again in the background until its deadline.
+   renewalAnswered(environment, current, failed, false);
+   renewalAcknowledgement(observed, environment, current, proof, credentialId, secret, renewedUntil, acknowledgeBy, previous, expiresAt, 0);
+   return null;
+  }
+  return renewalSettled(observed, environment, acknowledged, credentialId, secret, renewedUntil, previous, expiresAt);
+ }
+ /** Background acknowledgement rounds of a renewal, on the schedule of a sign-in's (retryAcknowledgement). The new key stays in this closure. */
+ private void renewalAcknowledgement(Runnable observed, CloudSignInEnvironment environment, Renewal current, JSONObject proof, String credentialId, String secret, long renewedUntil, long acknowledgeBy, String previous, long expiresAt, int round) {
+  long wait = Math.min(CloudSignInFlow.ackRetryDelayMs(round), Math.max(1000L, acknowledgeBy - System.currentTimeMillis() + 1000L));
+  main.postDelayed(() -> {
+   try {
+    renewer.execute(() -> {
+     if (!renewalCurrent(observed)) {
+      // A sign-in, another credential action or a closed plugin ends the renewal: nothing was saved.
+      // The new key is revoked best effort in case a confirmation was lost.
+      if (!destroyed) CloudKeyRevocation.revoke(config(), environment, secret);
+      renewalAnswered(environment, current, null, true);
+      return;
+     }
+     CloudSignInFlow.Ack answer = CloudSignInFlow.Ack.RETRY;
+     try {
+      Response acked = post(null, environment, "/api/v1/app-auth/mobile/ack", new JSONObject(proof.toString()).put("credentialId", credentialId).put("secret", secret), null);
+      if (acked.status == 200 && "acknowledged".equals(acked.data.optString("status")) && credentialId.equals(acked.data.optString("credentialId"))) answer = CloudSignInFlow.Ack.ACKNOWLEDGED;
+      else if (acked.status == 409 && "authorization_complete".equals(acked.data.optString("error"))) answer = CloudSignInFlow.Ack.ACKNOWLEDGED;
+      else if (acked.status != 200 && !CloudSignInFlow.ackRetryable(acked.status)) answer = CloudSignInFlow.Ack.REFUSED;
+     } catch (Exception unanswered) { /* Asked again. */ }
+     if (answer == CloudSignInFlow.Ack.RETRY && System.currentTimeMillis() < acknowledgeBy) { renewalAcknowledgement(observed, environment, current, proof, credentialId, secret, renewedUntil, acknowledgeBy, previous, expiresAt, round + 1); return; }
+     renewalAnswered(environment, current, renewalSettled(observed, environment, answer, credentialId, secret, renewedUntil, previous, expiresAt), true);
+    });
+   } catch (java.util.concurrent.RejectedExecutionException closed) { renewalAnswered(environment, current, null, true); }
+  }, wait);
+ }
+ /**
+  * Cloud confirmed the new key, refused it or let its deadline pass. A confirmed key replaces the
+  * saved one only while this renewal still owns the slot (no sign-in in progress, no newer credential
+  * action, and the exact key it presented is still the saved one). The old key is revoked only after
+  * that save. In every other case the saved key is left as it was and the new one is revoked best effort.
+  */
+ private JSObject renewalSettled(Runnable observed, CloudSignInEnvironment environment, CloudSignInFlow.Ack acknowledged, String credentialId, String secret, long renewedUntil, String previous, long expiresAt) {
+  final JSObject failed = renewalOutcome(environment, "deferred", expiresAt, CloudKeyRenewal.warn(System.currentTimeMillis(), expiresAt, true));
+  if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) { CloudKeyRevocation.revoke(config(), environment, secret); return failed; }
+  final String slot = config().credentialSlot(environment), installed = UUID.randomUUID().toString();
+  try {
+   CloudCredentialSlots owned = credentials(() -> { if (!renewalCurrent(observed)) throw new IllegalStateException("Renewal superseded"); });
+   String saved = owned.read(slot);
+   if (saved == null || !previous.equals(new JSONObject(saved).optString("token", null))) throw new IllegalStateException("Saved sign-in changed");
+   owned.write(slot, new JSONObject().put("credentialId", installed).put("token", secret).put("expiresAt", renewedUntil).put("serverCredentialId", credentialId).toString());
+  } catch (Exception unsaved) {
+   // Not saved (a newer credential action owns the slot, or storage refused): the confirmed key is
+   // revoked. When the store cannot say what it holds, nothing is revoked.
+   try {
+    String now = store().read(slot);
+    if (now == null || !secret.equals(new JSONObject(now).optString("token", null))) { if (!CloudKeyRevocation.revoke(config(), environment, secret)) CloudKeyRevocation.revoke(config(), environment, secret); }
+   } catch (Exception unknown) { /* Neither key is revoked. */ }
+   return failed;
+  }
+  storeRenewalRecord(environment, new CloudKeyRenewal.Record(installed, System.currentTimeMillis(), 0, CloudKeyRenewal.Record.NONE));
+  // The replaced key is revoked only now that the confirmed new key is the saved one.
+  if (!CloudKeyRevocation.revoke(config(), environment, previous)) retryRevocation(observed, environment, previous, 0);
+  // Retained: a renderer that holds the old key must read the saved one again.
+  notifyListeners("signInRenewed", new JSObject().put("environment", environment.name).put("expiresAt", renewedUntil).put("credentialId", installed), true);
+  return renewalOutcome(environment, "renewed", renewedUntil, false).put("credentialId", installed);
+ }
+
  // ── Outcomes and transport ───────────────────────────────────────────────────────────────────
 
  private void finish(Attempt current, JSObject outcome) {
@@ -1268,6 +1579,8 @@ public abstract class CloudSignInPlugin extends Plugin {
   if (current.google && burn) burnUnclaimedPending(current);
   refused(current.environment, code);
   if (waiting != null) waiting.reject(code, code);
+  // No call waits for an adopted return: its failure is reported once, retained.
+  else if (current.adopted && !"cancelled".equals(code)) notifyListeners("signInIncomplete", new JSObject().put("code", code), true);
  }
  /** Cloud refusing the in-app sign-in invalidates the cached readiness, so the next sign-in re-checks it. */
  private void refused(CloudSignInEnvironment environment, String code) {
@@ -1326,6 +1639,8 @@ public abstract class CloudSignInPlugin extends Plugin {
    connection.setConnectTimeout(connectTimeout); connection.setReadTimeout(readTimeout); connection.setRequestMethod(body == null ? "GET" : "POST");
    connection.setRequestProperty("Accept", "application/json");
    if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
+   // A saved Cloud key (the renewal request) is also presented as an API key; a Steward session never is.
+   if (bearer != null && bearer.startsWith("eliza_mobile_")) connection.setRequestProperty("X-API-Key", bearer);
    if (body != null) {
     connection.setRequestProperty("Content-Type", "application/json");
     connection.setDoOutput(true); connection.setFixedLengthStreamingMode(body.length);
