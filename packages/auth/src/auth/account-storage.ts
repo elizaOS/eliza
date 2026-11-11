@@ -355,17 +355,23 @@ function quarantineStorageLock(
 }
 
 function removeLockDirectory(directory: string): void {
-  const entries = fs.readdirSync(directory);
-  if (entries.some((entry) => entry !== STORAGE_LOCK_OWNER_FILE)) {
-    throw storageError(
-      "AUTH_CREDENTIAL_STORAGE_LOCK_OWNERSHIP_LOST",
-      "Credential storage lock contains unexpected entries",
-      { directory, entries },
-    );
+  try {
+    const entries = fs.readdirSync(directory);
+    if (entries.some((entry) => entry !== STORAGE_LOCK_OWNER_FILE)) {
+      throw storageError(
+        "AUTH_CREDENTIAL_STORAGE_LOCK_OWNERSHIP_LOST",
+        "Credential storage lock contains unexpected entries",
+        { directory, entries },
+      );
+    }
+    if (entries.length)
+      fs.unlinkSync(path.join(directory, STORAGE_LOCK_OWNER_FILE));
+    fs.rmdirSync(directory);
+  } catch (cause) {
+    // Unique quarantine paths are never reused. Another reaper may finish
+    // removing this released directory after its owner file was unlinked.
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
   }
-  if (entries.length)
-    fs.unlinkSync(path.join(directory, STORAGE_LOCK_OWNER_FILE));
-  fs.rmdirSync(directory);
 }
 
 function quarantinedLockDirectories(policy: AccountStoragePolicy): string[] {
