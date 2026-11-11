@@ -308,7 +308,20 @@ export class BatchQueue<T> {
 					retryPolicy: this.options.retryPolicy,
 				});
 				const flushOutcomes = await flushProcessor.processBatch(high);
-				this.options.onDrainBatchOutcomes?.(flushOutcomes);
+				try {
+					this.options.onDrainBatchOutcomes?.(flushOutcomes);
+				} catch (error) {
+					// error-policy:J7 Outcome hooks observe an already completed
+					// batch; a throwing hook must not abort shutdown (same guard
+					// as drain()).
+					(this.runtime ?? runtime)?.reportError(
+						"BatchQueue.outcomeHook",
+						error,
+						{
+							queue: this.options.name,
+						},
+					);
+				}
 			}
 		}
 		await this.taskDrain?.dispose(runtime);
