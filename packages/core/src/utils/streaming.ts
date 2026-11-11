@@ -591,7 +591,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private emittedContent: Map<string, string> = new Map();
 	private reasoningFilters: Map<
 		string,
-		{ mode: "outside" | "inside"; pending: string; closeTag: string }
+		{ mode: "outside" | "inside"; pending: string; closeName: string }
 	> = new Map();
 	private state: ExtractorState = "streaming";
 	private formatDecided = false;
@@ -1154,7 +1154,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		const filter = this.reasoningFilters.get(field) ?? {
 			mode: "outside" as "outside" | "inside",
 			pending: "",
-			closeTag: "",
+			closeName: "",
 		};
 		const source = `${filter.pending}${value}`;
 		filter.pending = "";
@@ -1174,8 +1174,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				const open = matchReasoningOpenTagAt(source, candidate);
 				if (open.kind === "full") {
 					filter.mode = "inside";
-					filter.closeTag = `</${open.name}>`;
-					index = candidate + open.name.length + 2;
+					filter.closeName = open.name;
+					index = candidate + open.length;
+					continue;
+				}
+				if (open.kind === "selfClosing") {
+					// An empty reasoning block (`<think/>`) hides nothing.
+					index = candidate + open.length;
 					continue;
 				}
 				if (open.kind === "partial") {
@@ -1191,14 +1196,18 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (candidate === -1) {
 				break;
 			}
-			const close = matchTagAt(source, candidate, filter.closeTag);
-			if (close === "full") {
+			const close = matchReasoningCloseTagAt(
+				source,
+				candidate,
+				filter.closeName,
+			);
+			if (close.kind === "full") {
 				filter.mode = "outside";
-				index = candidate + filter.closeTag.length;
-				filter.closeTag = "";
+				index = candidate + close.length;
+				filter.closeName = "";
 				continue;
 			}
-			if (close === "partial") {
+			if (close.kind === "partial") {
 				filter.pending = source.slice(candidate);
 				break;
 			}
@@ -1236,22 +1245,100 @@ function decodeJsonEscape(raw: string): string {
  * Match any canonical reasoning open tag (`<think>`, `<thinking>`,...) at
  * `index`. `partial` means the source ends inside a prefix of at least one
  * tag, so the caller must hold the remainder until more input arrives.
+ *
+ * The match runs through the tag's closing `>`, not just its name: a model
+ * may emit `<think >` or `<think foo="...">`, and the exact-`<name>` form
+ * used to miss those, leaking the whole reasoning block into the streamed
+ * reply. The attribute run is scanned with `indexOf(">")`, the same
+ * terminator rule the canonical tag scanner in `reasoning-tags.ts` uses,
+ * so a `>` inside an attribute value still ends the tag (fail-closed: the
+ * text stays hidden rather than leaking). A self-closing `<think/>` hides
+ * nothing and is reported on its own so the caller can skip it.
  */
 function matchReasoningOpenTagAt(
 	source: string,
 	index: number,
-): { kind: "full"; name: string } | { kind: "partial" } | { kind: "none" } {
+):
+	| { kind: "full"; name: string; length: number }
+	| { kind: "selfClosing"; length: number }
+	| { kind: "partial" }
+	| { kind: "none" } {
 	let partial = false;
 	for (const name of REASONING_TAG_NAMES) {
-		const match = matchTagAt(source, index, `<${name}>`);
-		if (match === "full") {
-			return { kind: "full", name };
-		}
+		const prefix = `<${name}`;
+		const match = matchTagAt(source, index, prefix);
 		if (match === "partial") {
 			partial = true;
+			continue;
 		}
+		if (match === "none") {
+			continue;
+		}
+		const after = index + prefix.length;
+		if (after >= source.length) {
+			return { kind: "partial" };
+		}
+		const next = source[after] ?? "";
+		if (next === ">") {
+			return { kind: "full", name, length: prefix.length + 1 };
+		}
+		if (next === "/" || /\s/.test(next)) {
+			if (next === "/") {
+				let j = after + 1;
+				while (j < source.length && /\s/.test(source[j] ?? "")) {
+					j += 1;
+				}
+				if (j >= source.length) {
+					return { kind: "partial" };
+				}
+				if (source[j] === ">") {
+					return { kind: "selfClosing", length: j + 1 - index };
+				}
+			}
+			const end = source.indexOf(">", after);
+			if (end === -1) {
+				return { kind: "partial" };
+			}
+			return { kind: "full", name, length: end + 1 - index };
+		}
+		// A longer name may still match (`<thinking>` is not `<think>`).
 	}
 	return partial ? { kind: "partial" } : { kind: "none" };
+}
+
+/**
+ * Match the close tag for `name` (`</think>`) at `index`, allowing
+ * whitespace before `>`: `</think >` closes a block just like `</think>`.
+ * `partial` means the source ends inside the tag, so the caller must hold
+ * the remainder until more input arrives.
+ */
+function matchReasoningCloseTagAt(
+	source: string,
+	index: number,
+	name: string,
+):
+	| { kind: "full"; length: number }
+	| { kind: "partial" }
+	| { kind: "none" } {
+	const prefix = `</${name}`;
+	const match = matchTagAt(source, index, prefix);
+	if (match === "partial") {
+		return { kind: "partial" };
+	}
+	if (match === "none") {
+		return { kind: "none" };
+	}
+	let j = index + prefix.length;
+	while (j < source.length && /\s/.test(source[j] ?? "")) {
+		j += 1;
+	}
+	if (j >= source.length) {
+		return { kind: "partial" };
+	}
+	if (source[j] === ">") {
+		return { kind: "full", length: j + 1 - index };
+	}
+	return { kind: "none" };
 }
 
 function matchTagAt(
