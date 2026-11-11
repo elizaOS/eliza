@@ -1728,7 +1728,7 @@ export function createMailDraftsController(
       }
       const keptEarlierVersion = sameProvider && earlierVersion();
       const token = epoch;
-      if (!(await setAside()) || token !== epoch) return false;
+      if (saved && (!(await setAside()) || token !== epoch)) return false;
       draft = {
         version: 1,
         id: crypto.randomUUID(),
