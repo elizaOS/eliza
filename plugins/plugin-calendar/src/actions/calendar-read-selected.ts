@@ -102,8 +102,10 @@ export const calendarReadSelectedAction: Action = {
         side: seed.side,
         grantId: seed.grantId,
         calendarId: seed.calendarId,
-        timeMin: new Date(start - 1).toISOString(),
-        timeMax: new Date(start + 1).toISOString(),
+        // Google ignores milliseconds and excludes events starting at timeMax.
+        // Keep the lookup wide enough for its precision; exact identity follows.
+        timeMin: new Date(start - 1000).toISOString(),
+        timeMax: new Date(start + 1000).toISOString(),
         timeZone: seed.timezone ?? "UTC",
         forceSync: true,
         includeHiddenCalendars: true,
