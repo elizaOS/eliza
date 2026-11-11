@@ -2490,6 +2490,7 @@ export class DeviceActionService {
   private async requireActiveWorkflow(
     tx: TransactionalDb,
     binding: WorkflowDeviceBinding,
+    calendarProtocol?: number,
   ): Promise<void> {
     const rows = await executeRawSqlTx(
       tx,
@@ -2508,6 +2509,25 @@ export class DeviceActionService {
       throw new DeviceActionError(
         "Workflow is no longer accepting device decisions",
       );
+    if (calendarProtocol !== undefined && calendarProtocol < 4) {
+      // A peer can downgrade after queueing or approval. Recheck its ability
+      // to review the pinned relative spec before decision and claim.
+      const versions = await executeRawSqlTx(
+        tx,
+        `SELECT workflow FROM workflow.embedded_workflows WHERE agent_id = ${sqlText(this.runtime.agentId)} AND id = ${sqlText(binding.workflowId)} AND version_id = ${sqlText(binding.versionId)} UNION ALL SELECT workflow FROM workflow.workflow_revisions WHERE agent_id = ${sqlText(this.runtime.agentId)} AND workflow_id = ${sqlText(binding.workflowId)} AND version_id = ${sqlText(binding.versionId)}`,
+      );
+      const metadata = object(object(versions[0]?.workflow).metadata);
+      if (typeof metadata.elizaPhoneWorkflowSpec !== "string")
+        throw new DeviceActionError("Workflow specification unavailable");
+      const spec = object(JSON.parse(metadata.elizaPhoneWorkflowSpec));
+      const step = object(
+        (Array.isArray(spec.steps) ? spec.steps : []).find(
+          (raw) => object(raw).id === binding.stepId,
+        ),
+      );
+      if ("days" in validatePhoneCalendarRange(step.range))
+        throw new DeviceActionError("Workflow device protocol unavailable");
+    }
   }
   async validateWorkflowTarget(
     subjectUserId: string,
@@ -2872,7 +2892,13 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow device protocol unavailable");
     if (activeWorkflowTx && payload.workflow)
-      await this.requireActiveWorkflow(activeWorkflowTx, payload.workflow);
+      await this.requireActiveWorkflow(
+        activeWorkflowTx,
+        payload.workflow,
+        payload.operation.type === "read_calendar_range"
+          ? Number(row.workflow_protocol)
+          : undefined,
+      );
     return request;
   }
   async decide(

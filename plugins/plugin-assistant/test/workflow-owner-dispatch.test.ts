@@ -261,6 +261,16 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
     await expect(
       service.proposeForWorkflow(owner, calendarDispatch),
     ).rejects.toThrow();
+    const calendarDigest = deviceProposalDigest(calendarProposal);
+    await expect(
+      service.decide(credential, calendarProposal.id, calendarDigest, true),
+    ).rejects.toThrow();
+    await service.register(credential, "Synthetic device", 4, owner);
+    await service.decide(credential, calendarProposal.id, calendarDigest, true);
+    await service.register(credential, "Synthetic device", 3, owner);
+    await expect(
+      service.claim(credential, calendarProposal.id, calendarDigest),
+    ).rejects.toThrow();
     await pg.query(
       'UPDATE workflow.embedded_executions SET execution=execution || \'{"finished":true,"status":"cancelled"}\'::jsonb',
     );
