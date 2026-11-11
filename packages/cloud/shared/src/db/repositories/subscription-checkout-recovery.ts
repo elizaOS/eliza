@@ -69,11 +69,14 @@ export class SubscriptionCheckoutRecoveryRepository {
 
   /**
    * Pending org-level checkouts old enough to be at (or near) provider expiry, or whose organization
-   * can no longer receive paid authority. The caller confirms each one with the provider.
+   * can no longer receive paid authority, or (with `dispatchedBefore`) already sent to the provider
+   * and neither dispatched nor inspected since that instant, so a paid session can be settled
+   * without its webhook. The caller confirms each one with the provider.
    */
   async listStalePendingCheckouts(
     createdBefore: Date,
     limit: number,
+    dispatchedBefore?: Date,
   ): Promise<Array<{ command: BillingSubscriptionCommand; organizationFenced: boolean }>> {
     return dbWrite
       .select({
@@ -93,6 +96,15 @@ export class SubscriptionCheckoutRecoveryRepository {
             isNotNull(organizations.paid_work_fenced_at),
             isNotNull(organizations.account_deletion_request_id),
             eq(organizations.is_active, false),
+            ...(dispatchedBefore
+              ? [
+                  and(
+                    eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+                    lte(billingSubscriptionCommands.provider_started_at, dispatchedBefore),
+                    lte(billingSubscriptionCommands.updated_at, dispatchedBefore),
+                  ),
+                ]
+              : []),
           ),
         ),
       )

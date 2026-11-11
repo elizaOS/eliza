@@ -23,6 +23,7 @@ import type { ApiKey, NewApiKey } from "../../db/schemas/api-keys";
 import type { MobileAppAuthEnvironment } from "../../db/schemas/mobile-app-auth-grants";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
 import { selectRegisteredMobileClient } from "./mobile-client-registry";
+import { MOBILE_CHECKOUT_RETURN_SUFFIX } from "./subscription-checkout-contract";
 
 export const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
 export const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
@@ -197,6 +198,62 @@ export function resolveMobileAppAuthRegistration(
     scopes: MOBILE_APP_AUTH_SCOPES,
     credentialTtlSeconds: MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
   };
+}
+
+const MOBILE_AUTH_CALLBACK_SUFFIX = "/auth/callback";
+
+/**
+ * The billing return address of a registered native client: its registered
+ * sign-in callback with `/auth/callback` replaced by `/billing/return`, so the
+ * same origin and product prefix that Android already verifies for sign-in
+ * carry the checkout return. Never derived from request data.
+ */
+export function mobileBillingReturnUrl(redirectUri: string): string {
+  const callback = new URL(redirectUri);
+  if (
+    callback.protocol !== "https:" ||
+    callback.username ||
+    callback.password ||
+    callback.search ||
+    callback.hash ||
+    !callback.pathname.endsWith(MOBILE_AUTH_CALLBACK_SUFFIX)
+  ) {
+    return invalid(
+      "server_configuration_error",
+      "Registered mobile callback cannot carry a billing return",
+    );
+  }
+  const prefix = callback.pathname.slice(0, -MOBILE_AUTH_CALLBACK_SUFFIX.length);
+  return `${callback.origin}${prefix}${MOBILE_CHECKOUT_RETURN_SUFFIX}`;
+}
+
+/**
+ * Resolves the server registration an acknowledged mobile credential was issued
+ * under. The credential, its grant and the current registry must agree on the
+ * app, client, environment and callback; a disabled or re-pointed client fails.
+ */
+export async function resolveMobileCredentialRegistration(
+  env: MobileAppAuthRuntimeEnv,
+  credential: Pick<ApiKey, "id" | "user_id" | "organization_id" | "source_app_id">,
+): Promise<MobileAppAuthRegistration> {
+  const grant = await mobileAppAuthGrantsRepository.findAcknowledgedByCredentialId(credential.id);
+  if (
+    !grant ||
+    grant.user_id !== credential.user_id ||
+    grant.organization_id !== credential.organization_id ||
+    grant.app_id !== credential.source_app_id
+  ) {
+    return invalid("invalid_client", "Mobile credential has no acknowledged authorization");
+  }
+  const registration = resolveMobileAppAuthRegistration(env, grant.client_id);
+  if (
+    registration.appId !== grant.app_id ||
+    registration.environment !== grant.environment ||
+    registration.redirectUri !== grant.redirect_uri
+  ) {
+    return invalid("invalid_client", "Mobile credential registration has changed");
+  }
+  return registration;
 }
 
 export function validateMobileAppAuthClientBinding(

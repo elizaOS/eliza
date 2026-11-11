@@ -864,6 +864,211 @@ test("recovery settles provider-expired checkouts and closes payable sessions of
   expect((await commandRow(liveCheckout.command.id))?.status).toBe("OUTCOME_UNKNOWN");
 });
 
+const ALPHA_RETURN = "https://eliza.app/alphaphone/billing/return";
+
+function submitMobile(
+  org: Org,
+  planKey: "plus_monthly" | "pro_monthly",
+  idempotencyKey: string,
+  mobileReturnUrl: string | null = ALPHA_RETURN,
+) {
+  return checkout.submitSubscriptionCheckout(
+    {
+      organizationId: org.organizationId,
+      actorId: org.actorId,
+      planKey,
+      idempotencyKey,
+      presentation: "mobile",
+      ...(mobileReturnUrl ? { mobileReturnUrl } : {}),
+    },
+    async () => {},
+  );
+}
+
+test("mobile checkout is a hosted page that returns to the registered native billing return", async () => {
+  const org = await seedOrganization();
+  const key = randomUUID();
+  const result = await submitMobile(org, "plus_monthly", key);
+  if (result.status !== "open" || !("presentation" in result) || result.presentation !== "mobile")
+    throw new Error("expected an open mobile checkout");
+  expect(new URL(result.checkoutUrl).hostname).toBe("checkout.stripe.com");
+  expect(sessions.has(result.sessionId)).toBe(true);
+  expect(Date.parse(result.expiresAt)).toBeGreaterThan(Date.now() + 23 * HOUR);
+  const [create] = sessionCreates();
+  expect(create?.body.get("success_url")).toBe(
+    `${ALPHA_RETURN}?session_id={CHECKOUT_SESSION_ID}&result=success`,
+  );
+  expect(create?.body.get("cancel_url")).toBe(`${ALPHA_RETURN}?result=cancel`);
+  expect(create?.body.has("ui_mode")).toBe(false);
+
+  // The same intent, and another device of the same app, resume the one provider session.
+  requests.length = 0;
+  expect(await submitMobile(org, "plus_monthly", key)).toEqual(result);
+  expect(await submitMobile(org, "plus_monthly", randomUUID())).toEqual(result);
+  expect(sessionCreates()).toEqual([]);
+
+  // The same key can never be replayed toward another client's return.
+  await expect(
+    submitMobile(org, "plus_monthly", key, "https://eliza.app/other/billing/return"),
+  ).rejects.toMatchObject({
+    code: "SUBSCRIPTION_CHECKOUT_REJECTED",
+    context: { reason: "checkout_replay_mismatch" },
+  });
+  // Another registered client of the same organization closes this session before opening its own.
+  const other = await submitMobile(
+    org,
+    "plus_monthly",
+    randomUUID(),
+    "https://eliza.app/other/billing/return",
+  );
+  expect(other.commandId).not.toBe(result.commandId);
+  expect(sessions.get(result.sessionId)?.status).toBe("expired");
+});
+
+test("mobile checkout refuses a missing or malformed return before any provider write", async () => {
+  const org = await seedOrganization();
+  for (const value of [
+    null,
+    "http://eliza.app/alphaphone/billing/return",
+    "https://eliza.app/alphaphone/auth/callback",
+    "https://eliza.app/alphaphone/billing/return?next=https://evil.example",
+    "https://eliza.app/alphaphone/billing/return#x",
+    "https://user@eliza.app/alphaphone/billing/return",
+  ]) {
+    requests.length = 0;
+    await expect(submitMobile(org, "plus_monthly", randomUUID(), value)).rejects.toMatchObject({
+      code: expect.stringMatching(/^SUBSCRIPTION_CHECKOUT_(REJECTED|UNAVAILABLE)$/),
+    });
+    expect(providerWrites()).toEqual([]);
+  }
+  // A return address is never accepted for another presentation.
+  await expect(
+    checkout.submitSubscriptionCheckout(
+      {
+        organizationId: org.organizationId,
+        actorId: org.actorId,
+        planKey: "plus_monthly",
+        idempotencyKey: randomUUID(),
+        mobileReturnUrl: ALPHA_RETURN,
+      },
+      async () => {},
+    ),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_CHECKOUT_REJECTED" });
+  expect(
+    await query("SELECT id FROM billing_subscription_commands WHERE organization_id=$1", [
+      org.organizationId,
+    ]),
+  ).toEqual([]);
+});
+
+test("a stored mobile contract returns only to one billing return with the fixed query", async () => {
+  const org = await seedOrganization();
+  const { contract } = await seedCheckout(org, "plus_monthly");
+  const valid = (params: Record<string, unknown>) =>
+    contracts.checkoutContractSchema.safeParse({
+      ...contract,
+      presentation: "mobile",
+      params: { ...contract.params, ...params },
+    }).success;
+  const success = `${ALPHA_RETURN}?session_id={CHECKOUT_SESSION_ID}&result=success`;
+  const cancel = `${ALPHA_RETURN}?result=cancel`;
+  expect(valid({ success_url: success, cancel_url: cancel })).toBe(true);
+  expect(
+    valid({
+      success_url: success,
+      cancel_url: "https://evil.example/billing/return?result=cancel",
+    }),
+  ).toBe(false);
+  expect(valid({ success_url: `${success}&next=x`, cancel_url: cancel })).toBe(false);
+  expect(
+    valid({
+      success_url:
+        "https://eliza.app/alphaphone/auth/callback?session_id={CHECKOUT_SESSION_ID}&result=success",
+      cancel_url: "https://eliza.app/alphaphone/auth/callback?result=cancel",
+    }),
+  ).toBe(false);
+  // The web billing page is not a mobile return, and a mobile return is not a hosted one.
+  expect(valid({})).toBe(false);
+  expect(
+    contracts.checkoutContractSchema.safeParse({
+      ...contract,
+      params: { ...contract.params, success_url: success, cancel_url: cancel },
+    }).success,
+  ).toBe(false);
+});
+
+/** Backdates a checkout's dispatch (when it was dispatched) and its last inspection. */
+async function ageDispatch(commandId: string, minutes: number) {
+  const execute = (sql: string) => client.getPgliteClientForTests().exec(sql);
+  await execute("ALTER TABLE billing_subscription_commands DISABLE TRIGGER ALL");
+  try {
+    await query(
+      `UPDATE billing_subscription_commands
+         SET provider_started_at = CASE WHEN provider_started_at IS NULL THEN NULL
+                                        ELSE now() - make_interval(mins => $2::int) END,
+             updated_at = now() - make_interval(mins => $2::int)
+       WHERE id=$1`,
+      [commandId, minutes],
+    );
+  } finally {
+    await execute("ALTER TABLE billing_subscription_commands ENABLE TRIGGER ALL");
+  }
+}
+
+test("recovery reads a dispatched checkout back within minutes so a paid session is settled without its webhook", async () => {
+  // Paid three minutes ago; the webhook never arrived.
+  const paid = await seedOrganization();
+  const paidCheckout = await seedCheckout(paid, "plus_monthly", { dispatched: true });
+  const paidSession = openSession(paid, paidCheckout.command.id, "complete");
+  await ageDispatch(paidCheckout.command.id, 3);
+  // Still on the payment page after three minutes.
+  const open = await seedOrganization();
+  const openCheckout = await seedCheckout(open, "plus_monthly", { dispatched: true });
+  const openId = openSession(open, openCheckout.command.id, "open");
+  await ageDispatch(openCheckout.command.id, 3);
+  // Dispatched a moment ago: the webhook and its drain get the first chance.
+  const fresh = await seedOrganization();
+  const freshCheckout = await seedCheckout(fresh, "plus_monthly", { dispatched: true });
+  openSession(fresh, freshCheckout.command.id, "complete");
+  // Never dispatched: a prepared command is not retired early.
+  const prepared = await seedOrganization();
+  const preparedCheckout = await seedCheckout(prepared, "plus_monthly");
+  await ageDispatch(preparedCheckout.command.id, 3);
+
+  requests.length = 0;
+  const first = await checkout.recoverStaleSubscriptionCheckouts(50);
+  const listed = (org: Org) =>
+    requests.some(
+      (request) =>
+        request.path === "/v1/checkout/sessions" &&
+        request.query.get("customer") === org.customerId,
+    );
+  expect(listed(paid)).toBe(true);
+  expect(listed(open)).toBe(true);
+  expect(listed(fresh)).toBe(false);
+  expect(listed(prepared)).toBe(false);
+  // The paid session went to settlement from provider evidence: the sweep fetched the session
+  // and then its invoice. (This loopback provider has no invoice objects, so finalization
+  // itself is covered by the finalization suites; here it is counted as unavailable.)
+  const invoiceId = String(sessions.get(paidSession)?.invoice);
+  expect(requests.map((request) => request.path)).toContain(`/v1/checkout/sessions/${paidSession}`);
+  expect(requests.map((request) => request.path)).toContain(`/v1/invoices/${invoiceId}`);
+  expect(first.unavailable).toBeGreaterThanOrEqual(1);
+  expect(first.pending).toBeGreaterThanOrEqual(1);
+  // Observation never closes, expires or retires a payable session of an unfenced organization.
+  expect(providerWrites()).toEqual([]);
+  expect(sessions.get(openId)?.status).toBe("open");
+  expect((await commandRow(openCheckout.command.id))?.status).toBe("OUTCOME_UNKNOWN");
+  expect((await commandRow(paidCheckout.command.id))?.status).toBe("OUTCOME_UNKNOWN");
+  expect((await commandRow(preparedCheckout.command.id))?.status).toBe("PREPARED");
+
+  // An inspected checkout is rotated: it is not read again until the interval has passed.
+  requests.length = 0;
+  await checkout.recoverStaleSubscriptionCheckouts(50);
+  expect(listed(paid)).toBe(false);
+  expect(listed(open)).toBe(false);
+});
+
 test("fencing an organization closes its payable subscription checkout", async () => {
   const org = await seedOrganization();
   const pending = await seedCheckout(org, "plus_monthly", { dispatched: true });

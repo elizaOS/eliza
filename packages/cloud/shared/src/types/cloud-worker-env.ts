@@ -722,6 +722,12 @@ export interface Variables {
    * server-side only, so retries of one sign-in get the same answer.
    */
   stewardAccountCreated?: true;
+  /**
+   * A verified Steward session could not be resolved to a Cloud account because
+   * first-sign-in provisioning failed. `requireUser` reports it as a retryable
+   * `account_not_ready` 503 instead of an authentication failure.
+   */
+  stewardAccountNotReady?: true;
 }
 
 export type AppEnv = {

@@ -20,6 +20,7 @@ import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { timingSafeEqualSecret } from "./cron";
+import { isMobileApiKeySecret } from "./mobile-api-key";
 import {
   organizationCreatedBySignIn,
   STEWARD_SESSION_CLOCK_ALLOWANCE_MS,
@@ -302,6 +303,10 @@ export async function getCurrentUserForStewardToken(
           userId: claims.userId,
           error: error instanceof Error ? error.message : String(error),
         });
+        // The session itself is valid: only account provisioning failed. Keep
+        // optional-auth callers anonymous, and let `requireUser` answer with a
+        // retryable 503 so a client never treats this as a revoked session.
+        c.set("stewardAccountNotReady", true);
         c.set("user", null);
         return null;
       }
@@ -320,7 +325,17 @@ export async function getCurrentUserForStewardToken(
 
 export async function requireUser(c: AppContext): Promise<AuthedUser> {
   const user = await getCurrentUser(c);
-  if (!user) throw AuthenticationError();
+  if (!user) {
+    if (c.get("stewardAccountNotReady")) {
+      throw new ApiError(
+        503,
+        "account_not_ready",
+        "Your account could not be prepared. Try again.",
+        { retryAfterSeconds: 5 },
+      );
+    }
+    throw AuthenticationError();
+  }
   if (user.is_active === false) throw ForbiddenError("User account is inactive");
   return user;
 }
@@ -455,16 +470,37 @@ export async function requireCurrentBillingManagerSession(
 ): Promise<CurrentBillingManager> {
   const resolved = await requireSessionUserWithOrg(c);
   await revalidateBillingManagerCredential(c, resolved);
+  const current = await loadCurrentBillingManager({
+    userId: resolved.id,
+    organizationId: resolved.organization_id,
+    stewardUserId: resolved.steward_id,
+  });
+  const authorized = toAuthedUser(current) as CurrentBillingManager;
+  c.set("user", authorized);
+  c.set("authMethod", "session");
+  return authorized;
+}
 
+/**
+ * Reads the caller's membership from primary storage and requires a current
+ * organization owner or admin. Shared by the session and mobile-credential
+ * billing boundaries so both apply one eligibility rule.
+ */
+async function loadCurrentBillingManager(expected: {
+  userId: string;
+  organizationId: string;
+  /** Session callers also pin the Steward subject the session was issued for. */
+  stewardUserId?: string | null;
+}): Promise<UserWithOrganization> {
   let current: UserWithOrganization | undefined;
   try {
     const { usersRepository } = await import("../../db/repositories/users");
-    current = await usersRepository.findWithOrganizationForWrite(resolved.id);
+    current = await usersRepository.findWithOrganizationForWrite(expected.userId);
   } catch (error) {
     // error-policy:J1 the authorization boundary must distinguish an
     // unavailable primary membership read from an ordinary access denial.
     logger.error("[Billing Mutation Authority] Primary membership lookup failed", {
-      userId: resolved.id,
+      userId: expected.userId,
       error: error instanceof Error ? error.message : String(error),
     });
     throw new ApiError(
@@ -474,7 +510,11 @@ export async function requireCurrentBillingManagerSession(
     );
   }
 
-  if (!current || current.id !== resolved.id || current.steward_user_id !== resolved.steward_id) {
+  if (
+    !current ||
+    current.id !== expected.userId ||
+    (expected.stewardUserId !== undefined && current.steward_user_id !== expected.stewardUserId)
+  ) {
     throw AuthenticationError("The signed-in session is no longer valid");
   }
   if (
@@ -488,7 +528,7 @@ export async function requireCurrentBillingManagerSession(
   if (
     !current.organization_id ||
     !current.organization ||
-    current.organization_id !== resolved.organization_id ||
+    current.organization_id !== expected.organizationId ||
     current.organization.id !== current.organization_id ||
     !current.organization.is_active
   ) {
@@ -497,11 +537,56 @@ export async function requireCurrentBillingManagerSession(
   if (current.role !== "owner" && current.role !== "admin") {
     throw ForbiddenError("Only organization owners and admins can cancel billable resources");
   }
+  return current;
+}
 
+export type CurrentBillingManagerCredential = {
+  user: CurrentBillingManager;
+  /** The acknowledged first-party mobile credential, or null for a browser session. */
+  mobileCredential: ApiKey | null;
+};
+
+/**
+ * Billing authority for starting and confirming a subscription checkout: a
+ * signed-in owner/admin session, or that owner/admin's acknowledged first-party
+ * mobile credential (`eliza_mobile_…`). The mobile secret is read from primary
+ * storage on every call and must still belong to the caller's current
+ * organization. Standard API keys never qualify; cancellation, plan changes and
+ * the Customer Portal stay on `requireCurrentBillingManagerSession`.
+ */
+export async function requireCurrentBillingManager(
+  c: AppContext,
+): Promise<CurrentBillingManagerCredential> {
+  const presented = readApiKeyCredential(c);
+  if (!presented) {
+    return { user: await requireCurrentBillingManagerSession(c), mobileCredential: null };
+  }
+  if (!isMobileApiKeySecret(presented)) {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session or the app's own credential is required to manage billing.",
+    );
+  }
+  const credential = await validateApiKeyOrServiceUnavailable(presented);
+  if (!credential) throw AuthenticationError("Invalid or expired API key");
+  if (!credential.is_active) throw ForbiddenError("API key is inactive");
+  if (!credential.expires_at || credential.expires_at <= new Date()) {
+    throw AuthenticationError("API key has expired");
+  }
+  if (!credential.source_app_id) {
+    throw AuthenticationError("Mobile API key identity could not be proven");
+  }
+  const current = await loadCurrentBillingManager({
+    userId: credential.user_id,
+    organizationId: credential.organization_id,
+  });
   const authorized = toAuthedUser(current) as CurrentBillingManager;
+  await requireActiveAuthLifecycle(authorized);
   c.set("user", authorized);
-  c.set("authMethod", "session");
-  return authorized;
+  c.set("authMethod", "api_key");
+  c.set("apiKeyId", credential.id);
+  return { user: authorized, mobileCredential: credential };
 }
 
 async function requireActiveAuthLifecycle(user: AuthedUserWithOrg): Promise<void> {

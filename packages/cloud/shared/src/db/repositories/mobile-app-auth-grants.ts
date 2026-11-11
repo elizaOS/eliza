@@ -140,6 +140,21 @@ export class MobileAppAuthGrantsRepository {
     return state;
   }
 
+  /** The acknowledged grant that activated this credential; null for any other state. */
+  async findAcknowledgedByCredentialId(credentialId: string): Promise<MobileAppAuthGrant | null> {
+    const [grant] = await dbWrite
+      .select()
+      .from(mobileAppAuthGrants)
+      .where(
+        and(
+          eq(mobileAppAuthGrants.credential_id, credentialId),
+          eq(mobileAppAuthGrants.status, "acknowledged"),
+        ),
+      )
+      .limit(1);
+    return grant ?? null;
+  }
+
   async findStateByCodeHash(codeHash: string): Promise<MobileAppAuthGrantState | null> {
     const [state] = await dbWrite
       .select({ grant: mobileAppAuthGrants, credential: apiKeys })
