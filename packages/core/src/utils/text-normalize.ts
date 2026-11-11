@@ -75,6 +75,7 @@ function reserveEdge(ctx: WalkContext): void {
  * - Dates become deterministic ISO-8601 strings
  * - Errors become `Name: message` fragments
  * - Objects become `key: value` fragments
+ * - Maps become `key: value` fragments per entry; Sets flatten to values
  * - Scalars are stringified
  */
 export function flattenTextValues(value: unknown): string[] {
@@ -140,6 +141,39 @@ function flattenTextValuesWithAncestors(
 		}
 		ctx.ancestors.add(value);
 		try {
+			// Maps and Sets have no enumerable own keys, so the record walk
+			// below would drop them silently. Flatten their entries instead,
+			// under the same edge budget and cycle guard as arrays.
+			if (value instanceof Map) {
+				const fragments: string[] = [];
+				for (const [key, entry] of value) {
+					reserveEdge(ctx);
+					const keyText = flattenTextValuesWithAncestors(
+						key,
+						depth + 1,
+						ctx,
+					).join(", ");
+					const valueText = flattenTextValuesWithAncestors(
+						entry,
+						depth + 1,
+						ctx,
+					).join(", ");
+					if (valueText) {
+						fragments.push(keyText ? `${keyText}: ${valueText}` : valueText);
+					}
+				}
+				return fragments;
+			}
+			if (value instanceof Set) {
+				const fragments: string[] = [];
+				for (const entry of value) {
+					reserveEdge(ctx);
+					fragments.push(
+						...flattenTextValuesWithAncestors(entry, depth + 1, ctx),
+					);
+				}
+				return fragments;
+			}
 			const fragments: string[] =
 				value instanceof Error ? [formatErrorFragment(value)] : [];
 			const record = value as Record<string, unknown>;
