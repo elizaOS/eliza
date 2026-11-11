@@ -47,9 +47,11 @@ mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
     return true;
   },
 }));
-const coordinator = await import("./speech-relay-coordinator");
+const actualSpeechRelayCoordinator = {
+  ...(await import("./speech-relay-coordinator")),
+};
 mock.module("./speech-relay-coordinator", () => ({
-  ...coordinator,
+  ...actualSpeechRelayCoordinator,
   speechTokenDigest: () => "a".repeat(64),
   speechRelayMaxWindows: () => 2,
 }));
