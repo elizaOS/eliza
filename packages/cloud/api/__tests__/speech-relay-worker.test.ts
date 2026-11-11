@@ -123,6 +123,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
               const closing = `          "@elizaos/cloud-shared/db/client"
         );`;
               const opening = `      ]);
+      this.current();
       await runWithCloudBindingsAsync`;
               if (
                 contents.split(upgrade).length !== 2 ||
@@ -143,6 +144,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
                 .replace(
                   opening,
                   `      ]).then((modules) => testDeliverSpeechImport(modules, "opening"));
+      this.current();
       await runWithCloudBindingsAsync`,
                 );
               contents += `
