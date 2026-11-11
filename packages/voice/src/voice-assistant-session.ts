@@ -1237,47 +1237,47 @@ export class VoiceAssistantSession {
             // playback cannot start before the previous one ended, so two are in flight at most.
             const pending: Promise<void>[] = [];
             for (;;) {
-            while (!failure && begun < plan.length) {
-              const sentence = plan[begun++] as string;
-              let audible!: () => void;
-              const started = new Promise<void>((resolve) => {
-                audible = resolve;
-              });
-              const playback = this.playSentence(
-                session,
-                turn,
-                response,
-                sentence,
-                voice.signal,
-                guard,
-                audible,
-              );
-              if (!this.pipelineSpeech) {
-                await playback;
+              while (!failure && begun < plan.length) {
+                const sentence = plan[begun++] as string;
+                let audible!: () => void;
+                const started = new Promise<void>((resolve) => {
+                  audible = resolve;
+                });
+                const playback = this.playSentence(
+                  session,
+                  turn,
+                  response,
+                  sentence,
+                  voice.signal,
+                  guard,
+                  audible,
+                );
+                if (!this.pipelineSpeech) {
+                  await playback;
+                  continue;
+                }
+                pending.push(playback);
+                playback.catch(() => {});
+                await Promise.race([started, playback]);
+              }
+              if (failure) break;
+              if (!pending.length) {
+                // One sentence at a time: nothing is in flight once the loop above is done.
+                await Promise.all(pending);
+                if (begun >= plan.length) break;
                 continue;
               }
-              pending.push(playback);
-              playback.catch(() => {});
-              await Promise.race([started, playback]);
-            }
-            if (failure) break;
-            if (!pending.length) {
-              // One sentence at a time: nothing is in flight once the loop above is done.
-              await Promise.all(pending);
-              if (begun >= plan.length) break;
-              continue;
-            }
-            // Sentences planned while the handed-over ones play (a later stream frame, or the
-            // confirmed reply) are handed over at once, not dropped with the settled pump.
-            const planned = new Promise<"more">((resolve) => {
-              more = () => resolve("more");
-            });
-            const settled = await Promise.race([
-              Promise.all(pending).then(() => "played" as const),
-              planned,
-            ]);
-            more = undefined;
-            if (settled === "played" && begun >= plan.length) break;
+              // Sentences planned while the handed-over ones play (a later stream frame, or the
+              // confirmed reply) are handed over at once, not dropped with the settled pump.
+              const planned = new Promise<"more">((resolve) => {
+                more = () => resolve("more");
+              });
+              const settled = await Promise.race([
+                Promise.all(pending).then(() => "played" as const),
+                planned,
+              ]);
+              more = undefined;
+              if (settled === "played" && begun >= plan.length) break;
             }
           } catch (error) {
             playbackFailed = true;
