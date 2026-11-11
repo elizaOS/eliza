@@ -360,6 +360,29 @@
       ]
     }
   ],
+  "mcp_hosted_discovery.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.lifecycle.integration.test.ts",
+      "required": [
+        "stopping a disconnected HTTP session retires its lazy tool actions",
+        "stopping during real HTTP discovery prevents late tool publication",
+        "stop fences lazy publication after temporary HTTP transport close",
+        "stopping a lazy server preserves a replacement runtime action with the same name",
+        "stopping a started service rejects a pending lazy HTTP connection"
+      ]
+    },
+    {
+      "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.reconnect.test.ts",
+      "required": [
+        "failed connection retries back off and stop at the cap",
+        "transport construction failures also reach the cap",
+        "success resets the retry ladder",
+        "stop cancels retries even when no transport could be constructed",
+        "stop during an in-flight retry leaves no state or timers",
+        "an explicit reconnect starts a fresh retry ladder"
+      ]
+    }
+  ],
   "speech_deferred_opening.qnt": [
     {
       "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
