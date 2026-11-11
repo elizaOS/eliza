@@ -177,7 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m venv "$RUNNER_TEMP/benchmark-quint-python"
-          "$RUNNER_TEMP/benchmark-quint-python/bin/python" -m pip install +            --constraint packages/benchmarks/requirements-ci-constraints.txt pytest
+          "$RUNNER_TEMP/benchmark-quint-python/bin/python" -m pip install --constraint packages/benchmarks/requirements-ci-constraints.txt pytest
           echo "BENCHMARK_TEST_PYTHON=$RUNNER_TEMP/benchmark-quint-python/bin/python" >> "$GITHUB_ENV"
       - name: Quint application state models
         env:
