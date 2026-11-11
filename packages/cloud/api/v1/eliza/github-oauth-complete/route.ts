@@ -19,6 +19,7 @@
  */
 
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   createLifeOpsGithubReturnResponse,
   normalizePostMessageTargetOrigin,
@@ -33,7 +34,7 @@ import { Hono } from "hono";
 const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const dashboardUrl = `${baseUrl}/cloud/agents`;
 
   const agentId = c.req.query("agent_id") ?? null;

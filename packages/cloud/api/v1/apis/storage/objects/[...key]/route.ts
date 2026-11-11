@@ -28,6 +28,7 @@ import {
 } from "@elizaos/cloud-shared/db/repositories";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import {
   calculateStoragePutPrice,
@@ -195,7 +196,7 @@ app.put("/*", async (c) => {
       return c.json(
         {
           error: "Insufficient credits",
-          topUpUrl: "https://cloud.eliza.app/cloud/billing",
+          topUpUrl: getCloudDeployment().billingUrl,
         },
         402,
       );
@@ -335,7 +336,7 @@ function storageReadFailure(
     return c.json(
       {
         error: "Insufficient credits",
-        topUpUrl: "https://cloud.eliza.app/cloud/billing",
+        topUpUrl: getCloudDeployment().billingUrl,
       },
       402,
     );

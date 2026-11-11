@@ -17,6 +17,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -93,7 +94,7 @@ app.post("/", async (c) => {
       userId: user.id,
     });
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
 
     if (agent.is_public) {
       return c.json({

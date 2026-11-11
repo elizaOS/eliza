@@ -4,21 +4,21 @@
  */
 import { ElizaError } from "@elizaos/core";
 
+import { getCloudDeployment } from "./deployment/cloud-deployment";
 import { safeFetch } from "./security/safe-fetch";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
-const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
-
 function getR2PublicHost(): string {
-  const host = process.env.R2_PUBLIC_HOST;
-  return typeof host === "string" && host.length > 0 ? host : DEFAULT_R2_PUBLIC_HOST;
+  return getCloudDeployment().blobHost;
 }
 
 /**
  * Trusted blob storage hosts for URL validation.
  * Used to prevent SSRF attacks by ensuring URLs point to our storage.
  */
-export const TRUSTED_BLOB_HOSTS: readonly string[] = [getR2PublicHost()];
+export function getTrustedBlobHosts(): readonly string[] {
+  return [getR2PublicHost()];
+}
 
 /**
  * Validates that a URL points to a trusted blob storage host.
@@ -33,7 +33,7 @@ export function isValidBlobUrl(url: string): boolean {
     if (parsedUrl.protocol !== "https:") {
       return false;
     }
-    return TRUSTED_BLOB_HOSTS.some((host) => parsedUrl.hostname === host);
+    return getTrustedBlobHosts().some((host) => parsedUrl.hostname === host);
   } catch {
     return false;
   }
@@ -74,7 +74,7 @@ function toArrayBuffer(content: Buffer | string): ArrayBuffer {
 
 /**
  * Uploads a file to R2 storage via the runtime binding. R2 objects are public
- * via the bucket's public host (R2_PUBLIC_HOST, default "blob.eliza.app").
+ * via the Cloud deployment's public blob host (R2_PUBLIC_HOST).
  *
  * @param content - File content as Buffer or string.
  * @param options - Upload options including filename and metadata.

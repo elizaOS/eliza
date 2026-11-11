@@ -2,7 +2,7 @@
  * Service for processing and uploading affiliate character images.
  */
 
-import { TRUSTED_BLOB_HOSTS, uploadBase64Image, uploadFromUrl } from "../blob";
+import { getTrustedBlobHosts, uploadBase64Image, uploadFromUrl } from "../blob";
 import type {
   AffiliateImageReference,
   AffiliateMetadata,
@@ -61,7 +61,7 @@ function isManagedBlobUrl(str: string): boolean {
   if (!isValidHttpUrl(str)) return false;
   try {
     const url = new URL(str);
-    return TRUSTED_BLOB_HOSTS.some((host) => url.hostname === host);
+    return getTrustedBlobHosts().some((host) => url.hostname === host);
   } catch {
     return false;
   }

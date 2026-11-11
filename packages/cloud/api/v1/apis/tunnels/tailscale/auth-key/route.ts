@@ -8,6 +8,7 @@
  */
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { HeadscaleClient } from "@elizaos/cloud-shared/lib/services/headscale-client";
 import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
@@ -141,7 +142,7 @@ app.post("/", async (c) => {
             error: "Insufficient credits",
             requiredCredits: tunnelAuthKeyCostUsd,
             currentBalance: debit.newBalance,
-            topUpUrl: "https://cloud.eliza.app/cloud/billing",
+            topUpUrl: getCloudDeployment().billingUrl,
             billing: tunnelBilling(tunnelAuthKeyCostUsd, false),
           },
           402,
