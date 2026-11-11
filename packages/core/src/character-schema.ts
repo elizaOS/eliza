@@ -327,12 +327,23 @@ export const characterSchema = z
 	.strict()
 	.transform((value) => {
 		const { knowledge, ...character } = value;
+		// `knowledge` is the legacy alias for `documents`: a character that
+		// declares both must keep both sources, not silently drop `knowledge`.
+		// (normalizeCharacterInput merges them the same way, so validation
+		// must agree with it.) Dedupe identical entries so a source listed
+		// under both keys is ingested once.
+		const seen = new Set<string>();
+		const documents = [...character.documents, ...(knowledge ?? [])].filter(
+			(item) => {
+				const key = JSON.stringify(item);
+				if (seen.has(key)) return false;
+				seen.add(key);
+				return true;
+			},
+		);
 		return {
 			...character,
-			documents:
-				character.documents.length > 0
-					? character.documents
-					: (knowledge ?? []),
+			documents,
 		};
 	})
 	.describe(
