@@ -138,6 +138,19 @@ function parseHttpsUrl(value: string): URL | null {
   }
 }
 
+/** Canonical HTTPS authority, including a non-default port when configured. */
+function normalizeBlobHost(value: string, deploymentId: string): string {
+  const host = value.trim().toLowerCase();
+  if (/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/.test(host)) {
+    try {
+      return new URL(`https://${host}`).host;
+    } catch {
+      // A syntactically numeric port must also be valid for a URL.
+    }
+  }
+  throw new CloudDeploymentConfigError(deploymentId, "R2_PUBLIC_HOST", "invalid");
+}
+
 const ELIZA_PRODUCTION = ELIZA_DOMAIN_CONTRACTS.production;
 
 // The lists below are the allowlists each boundary carried before deployments
@@ -316,10 +329,7 @@ function resolveProductDeployment(id: string, env: CloudDeploymentEnv): CloudDep
 
   const serviceName = required("CLOUD_PUBLIC_SERVICE_NAME");
 
-  const blobHost = required("R2_PUBLIC_HOST").toLowerCase();
-  if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/.test(blobHost)) {
-    throw new CloudDeploymentConfigError(id, "R2_PUBLIC_HOST", "invalid");
-  }
+  const blobHost = normalizeBlobHost(required("R2_PUBLIC_HOST"), id);
 
   const assetsUrl = parseHttpsUrl(required("NEXT_PUBLIC_ASSETS_CDN_URL"));
   if (!assetsUrl || assetsUrl.search || assetsUrl.hash) {
@@ -436,14 +446,14 @@ export function resolveCloudBlobHost(bindings: {
 }): string {
   const explicit =
     typeof bindings.R2_PUBLIC_HOST === "string" ? bindings.R2_PUBLIC_HOST.trim() : "";
-  if (explicit) return explicit;
   const bound =
     typeof bindings.CLOUD_DEPLOYMENT_ID === "string" ? bindings.CLOUD_DEPLOYMENT_ID.trim() : "";
   const ambient = getCloudAwareEnv();
   const id = bound || setting(ambient, "CLOUD_DEPLOYMENT_ID") || ELIZA_CLOUD_DEPLOYMENT_ID;
+  if (explicit) return normalizeBlobHost(explicit, id);
   // Eliza callers that pass bindings have never consulted the ambient host.
   if (id === ELIZA_CLOUD_DEPLOYMENT_ID) return ELIZA_DEFAULT_BLOB_HOST;
   const configured = setting(ambient, "R2_PUBLIC_HOST");
   if (!configured) throw new CloudDeploymentConfigError(id, "R2_PUBLIC_HOST", "missing");
-  return configured;
+  return normalizeBlobHost(configured, id);
 }

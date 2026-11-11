@@ -195,6 +195,15 @@ function isHttpsUrl(value: string, allowQuery: boolean): boolean {
   }
 }
 
+function canonicalBlobHost(value: string): string | null {
+  if (!BLOB_HOST_PATTERN.test(value)) return null;
+  try {
+    return new URL(`https://${value}`).host;
+  } catch {
+    return null;
+  }
+}
+
 type Json = Record<string, unknown>;
 
 function isObject(value: unknown): value is Json {
@@ -366,11 +375,12 @@ function checkEnvironment(
     /^[A-Za-z0-9][A-Za-z0-9_-]*$/,
   );
   const serviceName = check.string(env.serviceName, `${path}.serviceName`);
-  const blobHost = check.string(
+  const configuredBlobHost = check.string(
     env.blobHost,
     `${path}.blobHost`,
-    BLOB_HOST_PATTERN,
+    (entry) => canonicalBlobHost(entry) !== null,
   );
+  const blobHost = canonicalBlobHost(configuredBlobHost) ?? configuredBlobHost;
   const assetsBase = check.string(
     env.assetsBase,
     `${path}.assetsBase`,

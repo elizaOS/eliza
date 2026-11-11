@@ -25,9 +25,10 @@ export async function putPublicObject(
   env: PublicObjectBindings,
   opts: PutPublicObjectOptions,
 ): Promise<{ url: string; key: string }> {
+  const url = publicUrlForR2Key(env, opts.key);
   await env.BLOB.put(opts.key, opts.body, {
     httpMetadata: { contentType: opts.contentType },
     customMetadata: opts.customMetadata,
   });
-  return { key: opts.key, url: publicUrlForR2Key(env, opts.key) };
+  return { key: opts.key, url };
 }

@@ -63,6 +63,35 @@ describe("deployment file validation", () => {
     expect(problemsOf(eliza())).toEqual([]);
   });
 
+  test("renders canonical blob authorities and refuses ports outside the URL range", () => {
+    for (const [configured, canonical] of [
+      ["blob.example.org:8443", "blob.example.org:8443"],
+      ["blob.example.org:443", "blob.example.org"],
+    ]) {
+      const deployment = validateDeployment(
+        productWith((env) => Object.assign(env, { blobHost: configured })),
+      );
+      const { config } = renderWranglerConfig({
+        deployment,
+        environment: "production",
+        upstreamRoot: UPSTREAM_ROOT,
+        outDir: PRODUCT_DIR,
+      });
+      const vars = config.vars as Record<string, string>;
+      expect(vars.R2_PUBLIC_HOST).toBe(canonical);
+      expect(resolveCloudDeployment(vars).blobHost).toBe(canonical);
+    }
+    for (const host of ["blob.example.org:65536", "blob.example.org:99999"]) {
+      expect(
+        problemsOf(
+          productWith((env) => Object.assign(env, { blobHost: host })),
+        ),
+      ).toContain(
+        "deployment.environments.production.blobHost: has an invalid value",
+      );
+    }
+  });
+
   test("refuses an eliza host anywhere in a product deployment", () => {
     for (const host of [
       "eliza.app",

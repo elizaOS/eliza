@@ -4,12 +4,16 @@
  */
 import { ElizaError } from "@elizaos/core";
 
-import { getCloudDeployment } from "./deployment/cloud-deployment";
+import { getCloudDeployment, resolveCloudBlobHost } from "./deployment/cloud-deployment";
 import { safeFetch } from "./security/safe-fetch";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
 function getR2PublicHost(): string {
-  return getCloudDeployment().blobHost;
+  const deployment = getCloudDeployment();
+  return resolveCloudBlobHost({
+    R2_PUBLIC_HOST: deployment.blobHost,
+    CLOUD_DEPLOYMENT_ID: deployment.id,
+  });
 }
 
 /**
@@ -30,10 +34,10 @@ export function getTrustedBlobHosts(): readonly string[] {
 export function isValidBlobUrl(url: string): boolean {
   try {
     const parsedUrl = new URL(url);
-    if (parsedUrl.protocol !== "https:") {
+    if (parsedUrl.protocol !== "https:" || parsedUrl.username || parsedUrl.password) {
       return false;
     }
-    return getTrustedBlobHosts().some((host) => parsedUrl.hostname === host);
+    return getTrustedBlobHosts().some((host) => parsedUrl.host === host);
   } catch {
     return false;
   }
@@ -92,6 +96,7 @@ export async function uploadToBlob(
   if (!bucket) {
     throw new Error("R2 bucket binding is not configured for this runtime");
   }
+  const publicHost = getR2PublicHost();
 
   const { filename, contentType, folder = "media", userId } = options;
 
@@ -108,7 +113,7 @@ export async function uploadToBlob(
   });
 
   const size = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content);
-  const url = `https://${getR2PublicHost()}/${pathname}`;
+  const url = `https://${publicHost}/${pathname}`;
 
   return {
     url,
