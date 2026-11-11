@@ -522,6 +522,43 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("returns empty extraction to the planner for repair without a Calendar effect", async () => {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => ({ rawResponse: "{}", parsed: {} })),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000402",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-11-11T22:00:00Z"),
+        content: { text: "Create a calendar event tomorrow at 5pm." },
+      } as Memory,
+      undefined,
+      { parameters: { subaction: "create_event" } },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        coachingFailure: true,
+        error: "CALENDAR_CREATE_EXTRACTION_INVALID",
+      },
+    });
+    expect(result?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_CREATE_EXTRACTION_INVALID",
+        acceptance: "rejected",
+      },
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(0);
+  });
+
   it("creates an unqualified local-time event in the current client clock instead of the server clock", async () => {
     const id = "00000000-0000-0000-0000-000000000401";
     const text =
