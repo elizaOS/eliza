@@ -13,7 +13,11 @@ import { toWellFormedUnicode, truncateWellFormed } from "./unicode.ts";
 
 /**
  * Render a reference for user-facing text: quoted only when it is name-shaped
- * (non-empty, single line, ≤64 chars), otherwise the neutral `fallback` noun.
+ * (non-empty, single line, ≤64 chars, and free of double quotes and control
+ * characters), otherwise the neutral `fallback` noun. A `"` inside the
+ * reference would close the quote early, and a control character (such as an
+ * ANSI escape) would ride along verbatim into chat or logs, so neither is
+ * name-shaped.
  */
 export function describeUserReference(
 	reference: string,
@@ -23,7 +27,10 @@ export function describeUserReference(
 	const safeFallback = typeof fallback === "string" ? fallback : "target";
 	const trimmed = toWellFormedUnicode(safeRef.trim());
 	const nameShaped =
-		trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
+		trimmed.length > 0 &&
+		trimmed.length <= 64 &&
+		!/[\r\n\u2028\u2029]/.test(trimmed) &&
+		!/["\p{Cc}]/u.test(trimmed);
 	return nameShaped ? `"${trimmed}"` : safeFallback;
 }
 
