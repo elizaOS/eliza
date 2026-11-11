@@ -6,6 +6,9 @@
  */
 import type { LocalInferencePriority } from "../types/model";
 
+/** Largest delay setTimeout accepts; a larger value overflows to 1 ms. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 /**
  * Device RAM class used by inference admission policy; hosts supply the probe result.
  */
@@ -227,18 +230,35 @@ export class InferencePriorityGate {
 
 			if (priority === "background" && opts.waitMs !== undefined) {
 				const waitMs = Math.max(0, opts.waitMs);
-				timer = setTimeout(() => {
-					this.logger?.warn(
-						`[InferencePriorityGate] background ${label} gave up after ${this.now() - enqueuedAtMs}ms waiting for the local model lane (holder=${this.holder?.label ?? "none"}, interactiveWaiting=${this.interactiveQueue.length})`,
-					);
-					waiter.fail(
-						new InferenceBackgroundWaitTimeoutError(
-							this.now() - enqueuedAtMs,
-							this.holder ? this.holder.label : null,
-						),
-					);
-				}, waitMs);
-				timer.unref?.();
+				// A wait past the 32-bit timer limit overflows to 1 ms and
+				// the waiter fails at once instead of waiting (same class
+				// as resolveAtDeadline): arm the timer in MAX_TIMEOUT_MS
+				// chunks so it fires at the requested time. An unbounded
+				// wait arms no timer and never expires on its own.
+				if (Number.isFinite(waitMs)) {
+					let remaining = waitMs;
+					const arm = (): void => {
+						const delay = Math.min(remaining, MAX_TIMEOUT_MS);
+						timer = setTimeout(() => {
+							remaining -= delay;
+							if (remaining > 0) {
+								arm();
+								return;
+							}
+							this.logger?.warn(
+								`[InferencePriorityGate] background ${label} gave up after ${this.now() - enqueuedAtMs}ms waiting for the local model lane (holder=${this.holder?.label ?? "none"}, interactiveWaiting=${this.interactiveQueue.length})`,
+							);
+							waiter.fail(
+								new InferenceBackgroundWaitTimeoutError(
+									this.now() - enqueuedAtMs,
+									this.holder ? this.holder.label : null,
+								),
+							);
+						}, delay);
+						timer.unref?.();
+					};
+					arm();
+				}
 			}
 
 			if (opts.signal) {
