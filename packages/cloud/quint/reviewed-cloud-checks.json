@@ -104,7 +104,7 @@
       "required": [
         "a delete that completes inside markRunning's read/write window cannot resurrect the row",
         "the same interleave on the pre-fix statement resurrects the row to running",
-        "sequential execution — one worker, one batch — is never corrupted",
+        "sequential execution \u2014 one worker, one batch \u2014 is never corrupted",
         "markError cannot flip a completed delete back to failed",
         "markCleanupRequired cannot pin node capacity on a completed delete",
         "markDeleted stays idempotent and stays organization-scoped",
@@ -360,6 +360,42 @@
       ]
     }
   ],
+  "mcp_hosted_discovery.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.lifecycle.integration.test.ts",
+      "required": [
+        "stopping a disconnected HTTP session retires its lazy tool actions",
+        "stopping during real HTTP discovery prevents late tool publication",
+        "stop fences lazy publication after temporary HTTP transport close",
+        "stopping a lazy server preserves a replacement runtime action with the same name",
+        "stopping a started service rejects a pending lazy HTTP connection"
+      ]
+    },
+    {
+      "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.reconnect.test.ts",
+      "required": [
+        "failed connection retries back off and stop at the cap",
+        "transport construction failures also reach the cap",
+        "success resets the retry ladder",
+        "stop cancels retries even when no transport could be constructed",
+        "stop during an in-flight retry leaves no state or timers",
+        "an explicit reconnect starts a fresh retry ladder"
+      ]
+    }
+  ],
+  "held_webhook_retry.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.test.ts",
+      "required": [
+        "complete ingress snapshot preserves content and expiry and cannot reopen after serving",
+        "hold transaction fences stale owners and preserves a reopened marker during cleanup",
+        "real hold drainer renews its native lease across long redelivery and does not dispatch twice",
+        "slow redelivery retains the full retry delay after the held outcome",
+        "a stale replica scan cannot redeliver a re-held member while another member is due",
+        "public ingress transport rejects imports and unrelated keyspaces"
+      ]
+    }
+  ],
   "speech_deferred_opening.qnt": [
     {
       "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
@@ -434,6 +470,18 @@
         "a worker that sees an already failed current generation settles it failed",
         "an older queued generation cannot change a newer deployment",
         "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
+      ]
+    }
+  ],
+  "press_submission_authority.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/press-submission-authority.pglite.test.ts",
+      "required": [
+        "concurrent cancellation and submission leave one consistent durable outcome",
+        "a submission key cannot acknowledge a different release",
+        "concurrent exact submissions replay one durable receipt",
+        "a rejected release transition rolls back its submission receipt",
+        "a cancelled release cannot acknowledge a historical orphan receipt"
       ]
     }
   ]

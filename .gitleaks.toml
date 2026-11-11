@@ -11,6 +11,16 @@ title = "elizaOS gitleaks config"
 # Pull in upstream default ruleset.
 useDefault = true
 
+# The reply-draft privacy test uses this fixed text to detect a leaked message
+# body. It is a synthetic discriminator, not a credential. Its duplicated
+# historical additions remain in this branch's required commit-range scan.
+[[allowlists]]
+description = "Synthetic reply-body discriminator in the phone privacy test"
+condition = "AND"
+paths = ['''^plugins/plugin-native-phone/test/reply-draft-route\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^walrus-onyx-0042$''']
+
 # GitHub's environment public keys seal registry updates; they cannot authenticate
 # or decrypt them. Keep the exact reviewed public values scoped to their owner file,
 # including its historical addition in commit-range scans.

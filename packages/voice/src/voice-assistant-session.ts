@@ -167,9 +167,9 @@ export interface AssistantHeard {
    * reply was confirmed: the host then finds the reply by `turnId` (its request id).
    */
   replyId: string;
-  /** Sentences whose playback completed, in order. */
+  /** The contiguous prefix whose playback completed, in order. */
   heard: string;
-  /** Everything not played to the end, including the sentence that was interrupted. */
+  /** The remainder of the plan after the confirmed prefix. */
   unheard: string;
   interrupted: boolean;
   /**
@@ -736,8 +736,11 @@ export class VoiceAssistantSession {
       .then(
         (capture) => {
           if (this.opening !== pending || !this.current(session)) {
-            void Promise.resolve(capture.cancel()).catch(() => {});
-            return undefined;
+            // Stop joins this opening receipt, including retirement of a late capture.
+            return Promise.resolve(capture.cancel()).then(
+              () => undefined,
+              () => undefined,
+            );
           }
           this.opening = undefined;
           // Muted or held while the microphone was opening: it never stays on.
@@ -1134,12 +1137,12 @@ export class VoiceAssistantSession {
     return closed;
   }
 
-  /** Plays one sentence of a reply and counts it as heard once its playback ended. */
+  /** Extends the heard prefix only when the next sentence completes. */
   private async playSentence(
     session: number,
     turn: number,
     response: Response,
-    sentence: string,
+    index: number,
     signal: AbortSignal,
     guard: () => void,
     audible?: () => void,
@@ -1148,7 +1151,7 @@ export class VoiceAssistantSession {
     const playback = this.ports.speak({
       turnId: response.turnId,
       replyId: response.replyId ?? "",
-      text: sentence,
+      text: response.sentences[index] as string,
       signal,
       onStarted: () => {
         audible?.();
@@ -1162,7 +1165,7 @@ export class VoiceAssistantSession {
     void playback.catch(() => {}).finally(() => this.speech.delete(playback));
     await playback;
     guard();
-    response.played++;
+    if (index === response.played) response.played++;
   }
 
   private owned(session: number, turn: number, response: Response) {
@@ -1211,8 +1214,8 @@ export class VoiceAssistantSession {
       guard();
       const speakable = (value: string) =>
         this.ports.speakable ? this.ports.speakable(value) : value;
-      // The sentences handed to the speaker, in order (also the heard/unheard accounting). `begun`
-      // of them have started playing; the rest are still waiting and may be withdrawn.
+      // The plan supplies the heard/unheard accounting. `begun` is the prefix already handed to
+      // the speaker, including any queued sentence. Only the rest may be withdrawn here.
       const plan: string[] = [];
       response.sentences = plan;
       let begun = 0;
@@ -1231,14 +1234,22 @@ export class VoiceAssistantSession {
         }
         if (failure) return;
         running = true;
+        const signal = voice.signal;
         pumping = (async () => {
           try {
             // Pipelined: the sentence after the audible one is already with the speaker. Its
             // playback cannot start before the previous one ended, so two are in flight at most.
             const pending: Promise<void>[] = [];
+            let pipelineFailure: { error: unknown } | undefined;
+            let wakeFailure!: () => void;
+            const failureWake = this.pipelineSpeech
+              ? new Promise<void>((resolve) => {
+                  wakeFailure = resolve;
+                })
+              : undefined;
             for (;;) {
-              while (!failure && begun < plan.length) {
-                const sentence = plan[begun++] as string;
+              while (!pipelineFailure && begun < plan.length) {
+                const index = begun++;
                 let audible!: () => void;
                 const started = new Promise<void>((resolve) => {
                   audible = resolve;
@@ -1247,20 +1258,26 @@ export class VoiceAssistantSession {
                   session,
                   turn,
                   response,
-                  sentence,
-                  voice.signal,
+                  index,
+                  signal,
                   guard,
                   audible,
                 );
-                if (!this.pipelineSpeech) {
+                if (!failureWake) {
                   await playback;
                   continue;
                 }
                 pending.push(playback);
-                playback.catch(() => {});
-                await Promise.race([started, playback]);
+                void playback.catch((error: unknown) => {
+                  // An earlier sentence can fail while its successor waits to start. Intentional
+                  // cancellation still lets the current playback settle through its normal port.
+                  if (signal.aborted) return;
+                  pipelineFailure ??= { error };
+                  wakeFailure();
+                });
+                await Promise.race([started, playback, failureWake]);
               }
-              if (failure) break;
+              if (pipelineFailure) throw pipelineFailure.error;
               if (!pending.length) {
                 // One sentence at a time: nothing is in flight once the loop above is done.
                 await Promise.all(pending);
@@ -1292,7 +1309,7 @@ export class VoiceAssistantSession {
       let early = true;
       const endEarly = () => {
         early = false;
-        plan.length = begun; // Sentences not yet started wait for the confirmed reply.
+        plan.length = begun; // The confirmed reply supplies the unhanded suffix.
       };
       const onText = (partial: string, frame?: AssistantTextFrame) => {
         if (
@@ -1424,7 +1441,7 @@ export class VoiceAssistantSession {
       response.replyId = reply.assistantMessageId;
       endEarly();
       const final = splitSpokenSentences(speakable(reply.text));
-      // Streamed sentences that already started are skipped only while they match the confirmed
+      // Streamed sentences already handed to the speaker are skipped only while they match the confirmed
       // reply sentence for sentence; from the first one that does not, the confirmed reply plays.
       let same = 0;
       while (same < begun && plan[same] === final[same]) same++;

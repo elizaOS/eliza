@@ -1,4 +1,4 @@
-/** Require the maintained adapter's complete Chromium conformance receipt. */
+/** Require the complete Chromium receipt for the draft adapter and controller. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -56,6 +56,8 @@ const required = [
   "stale cross-tab hold preserves a consume clear pending host acknowledgement",
   "async conflict, tab death and reload recovery pass",
   "draft adapter reload preserves cleared rows and writes cancelled after dispatch",
+  "browser restart keeps an unacknowledged release marked for review",
+  "browser restart restores the exact confirmed release and reviewed draft",
 ];
 const observed = result.stdout
   .split(/\r?\n/)

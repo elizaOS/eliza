@@ -72,6 +72,12 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
+  isTelephonyActionType,
+  type TelephonyActionOperation,
+  telephonyActionCapabilityAvailable,
+  validateTelephonyAction,
+} from "./telephony-actions-contract.ts";
+import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
   type WorkflowDeviceBinding,
@@ -108,6 +114,7 @@ export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
   | PhoneDialOperation
+  | TelephonyActionOperation
   | ReminderCreateOperation
   | ClockOperation
   | MapsOperation
@@ -138,6 +145,8 @@ export function deviceOperationSupportedByCapabilities(
   // A contact target also needs contacts.lookup.v1 (phoneDialCapabilityAvailable).
   if (type === "phone_dial")
     return capabilities?.includes(PHONE_DIAL_CAPABILITY) === true;
+  if (isTelephonyActionType(type))
+    return telephonyActionCapabilityAvailable(type, capabilities);
   if (type === "calendar_create_local")
     return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
   if (type === "calendar_read_next")
@@ -334,6 +343,50 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError(
           "Invalid dial operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
+        );
+      }
+    case "phone_call":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid call operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
+        );
+      }
+    case "contact_create":
+    case "contact_update":
+    case "contact_delete":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and a non-empty set of those fields; contact_delete needs query. Numbers are digits with an optional leading +.",
+        );
+      }
+    case "sms_compose":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid contact SMS operation. Use query (the contact name) and body.",
+        );
+      }
+    case "sms_reply_selected":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid reply draft operation. Use only body; the open conversation is the recipient.",
+        );
+      }
+    case "messages_read_selected":
+    case "voicemail_read_selected":
+    case "voicemail_delete_selected":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid open-item operation. It takes only its type.",
         );
       }
     case "files_filter":

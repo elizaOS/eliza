@@ -238,11 +238,17 @@ export const choiceAction: Action = {
         };
       }
       if (selectedOption === "ABORT") {
-        const approval = selectedTask.tags?.includes("APPROVAL")
-          ? runtime.getService<ApprovalService>(ServiceType.APPROVAL)
-          : null;
-        if (approval) {
-          await approval.cancelApproval(selectedTaskId);
+        if (selectedTask.tags?.includes("APPROVAL")) {
+          const approval = runtime.getService<ApprovalService>(
+            ServiceType.APPROVAL,
+          );
+          if (!approval) {
+            throw new ElizaError("Approval service is unavailable", {
+              code: "APPROVAL_SERVICE_UNAVAILABLE",
+              context: { taskId: selectedTaskId },
+            });
+          }
+          await approval.cancelPendingApproval(selectedTaskId);
         } else {
           await runtime.deleteTask(selectedTaskId);
         }
