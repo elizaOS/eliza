@@ -78,6 +78,25 @@ function sanitizeToken(value: string | undefined): string | undefined {
 			if (normalized.length > 0) pendingUnderscore = true;
 			continue;
 		}
+		// A camelCase boundary is a word boundary too: `RuntimeUnavailable`
+		// and `Runtime unavailable` must tokenize to the same
+		// `runtime_unavailable` the severity policy matches on. Without this,
+		// Error-name-derived kinds never matched the policy's snake_case
+		// constants, so expected lifeops fallbacks logged at warn.
+		const original = value[index] ?? "";
+		const isUpper = original >= "A" && original <= "Z";
+		if (isUpper && normalized.length > 0 && !pendingUnderscore) {
+			const previous = value[index - 1] ?? "";
+			const next = value[index + 1] ?? "";
+			const previousIsLowerOrDigit =
+				(previous >= "a" && previous <= "z") ||
+				(previous >= "0" && previous <= "9");
+			const previousIsUpper = previous >= "A" && previous <= "Z";
+			const nextIsLower = next >= "a" && next <= "z";
+			if (previousIsLowerOrDigit || (previousIsUpper && nextIsLower)) {
+				pendingUnderscore = true;
+			}
+		}
 		if (pendingUnderscore) {
 			normalized += "_";
 			if (normalized.length === 64) break;
