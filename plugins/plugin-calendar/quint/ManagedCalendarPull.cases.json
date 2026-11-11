@@ -11,9 +11,7 @@
       "main": "ManagedCalendarPull",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "invariant"
-      ],
+      "invariants": ["invariant"],
       "temporal": [],
       "maxSteps": 4,
       "samples": 100
