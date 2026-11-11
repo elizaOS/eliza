@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -36,6 +38,249 @@ function run(command, args) {
   assert.equal(r.status, 0, r.stdout + "\n" + r.stderr);
   return r.stdout;
 }
+
+function member(source, signature) {
+  const start = source.indexOf(`    ${signature}`);
+  assert.ok(start >= 0, `Missing production member: ${signature}`);
+  const end = source.indexOf("\n    }", start);
+  assert.ok(end > start, `Missing production member end: ${signature}`);
+  return source.slice(start, end + "\n    }".length);
+}
+
+async function checkStorage(beforeCommit) {
+  const updater = "packages/os/android/system-updater";
+  const sourcePaths = {
+    runner: `${updater}/host/ai/eliza/systemupdater/UpdateRunner.java`,
+    verifier: `${updater}/src/ai/eliza/systemupdater/PackageVerifier.java`,
+    journal: `${updater}/src/ai/eliza/systemupdater/UpdateJournal.java`,
+  };
+  const sources = {};
+  for (const [name, file] of Object.entries(sourcePaths)) {
+    sources[name] = beforeCommit
+      ? run("git", ["show", `${beforeCommit}:${file}`])
+      : await readFile(path.join(root, file), "utf8");
+  }
+  let storageGuard;
+  if (beforeCommit) {
+    const start = sources.verifier.indexOf("            long requiredSpace = ");
+    const closing = "\n            }";
+    const end = sources.verifier.indexOf(closing, start);
+    const block = sources.verifier.slice(start, end + closing.length);
+    assert.ok(
+      start >= 0 &&
+        end > start &&
+        block.includes(
+          'throw new IOException("Insufficient space to verify the update payload");',
+        ),
+      "Historical capacity guard differs from the original source",
+    );
+    storageGuard = `static void requirePayloadSpace(File outputDirectory, File destination, long size) throws IOException {\n${block}\n}`;
+  } else {
+    assert.ok(
+      sources.verifier.includes(
+        "requirePayloadSpace(outputDirectory, destination, size);",
+      ),
+    );
+    assert.ok(
+      sources.runner.includes(
+        "run.verifying = true;\n            VerifiedPayload payload = PackageVerifier.verify(",
+      ),
+    );
+    assert.ok(
+      sources.runner.includes(
+        "catch (Exception error) { failure(run, error); }",
+      ),
+    );
+    storageGuard = [
+      member(sources.verifier, "static final class StorageDeferred"),
+      member(sources.verifier, "static void requirePayloadSpace("),
+    ].join("\n");
+  }
+  const runnerMethods = [
+    "synchronized boolean stop(",
+    "private void failure(",
+    "private synchronized void finish(",
+  ]
+    .map((signature) => member(sources.runner, signature))
+    .join("\n");
+  const compiled = {
+    "UpdateRunner.java": `package ai.eliza.systemupdater;
+import java.security.GeneralSecurityException;
+import static ai.eliza.systemupdater.StorageReplay.*;
+final class UpdateRunner {
+    final Context context;
+    final Handler main;
+    Run active;
+    UpdateRunner(Context context) { this.context = context; main = new Handler(context); }
+    static void status(Context context, String message) { context.message = message; }
+    void report(Run run, Exception error) { failure(run, error); }
+${runnerMethods}
+}
+`,
+    "PackageVerifier.java": `package ai.eliza.systemupdater;
+import java.io.File;
+import java.io.IOException;
+final class PackageVerifier {
+${storageGuard}
+}
+`,
+    "UpdateJournal.java": sources.journal,
+  };
+  for (const [file, source] of Object.entries(compiled)) {
+    await writeFile(path.join(out, file), source);
+  }
+  const tool = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  const fixture = `${updater}/test/ai/eliza/systemupdater/StorageReplay.java`;
+  run(tool("javac"), [
+    "--release",
+    "17",
+    "-d",
+    out,
+    ...Object.keys(compiled).map((name) => path.join(out, name)),
+    fixture,
+  ]);
+  const lowRoot = process.env.ELIZA_SYSTEM_UPDATE_STORAGE_LOW_DIR;
+  const low = lowRoot
+    ? await mkdtemp(path.join(await realpath(lowRoot), "eliza-storage-"))
+    : undefined;
+  const storageDir = path.join(out, "storage");
+  await mkdir(storageDir);
+  const observations = path.join(out, "storage-observations.json");
+  try {
+    const actual = spawnSync(
+      tool("java"),
+      [
+        "-cp",
+        out,
+        "ai.eliza.systemupdater.StorageReplay",
+        storageDir,
+        beforeCommit ? "before" : "after",
+        ...(low ? [low] : []),
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 30_000,
+        maxBuffer: 2 * 1024 * 1024,
+      },
+    );
+    await writeFile(
+      path.join(out, "storage.log"),
+      `${actual.stdout ?? ""}${actual.stderr ?? ""}`,
+    );
+    const rows = (actual.stdout ?? "")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((row) => JSON.parse(row));
+    const evidence = {
+      schema: "eliza-system-update-storage-trace/v1",
+      beforeCommit: beforeCommit ?? null,
+      measuredLowVolume: !!low,
+      javaExitCode: actual.status,
+      scope:
+        "Exact production storage, stop, failure and finish methods with host ports and the actual UpdateJournal. Guard admission plus the verified journal transition represents successful verification. Android trust, extraction, AtomicFile and scheduling are outside this check.",
+      sourceHashes: Object.fromEntries(
+        Object.entries(sources).map(([name, source]) => [
+          sourcePaths[name],
+          createHash("sha256").update(source).digest("hex"),
+        ]),
+      ),
+      observations: rows,
+    };
+    await writeFile(observations, `${JSON.stringify(evidence, null, 2)}\n`);
+    process.stdout.write(`Storage observations: ${observations}\n`);
+    assert.equal(actual.status, 0, actual.error?.message ?? actual.stderr);
+    if (beforeCommit) {
+      assert.ok(
+        rows.some(
+          (row) =>
+            row.action === "beforeStickyFailure" && row.phase === "failed",
+        ),
+      );
+      process.stdout.write(
+        "Historical storage refusal persisted terminal FAILED.\n",
+      );
+      return;
+    }
+    const cases = Map.groupBy(
+      rows.filter((row) => row.case !== "already-applied-guard"),
+      (row) => row.case,
+    );
+    assert.equal(cases.size, low ? 5 : 4);
+    const wrapper = path.join(out, "StorageSourceConformance.qnt");
+    const model = path
+      .relative(out, path.join(root, "packages/os/quint/SystemUpdateHost.qnt"))
+      .replaceAll(path.sep, "/")
+      .replace(/\.qnt$/, "");
+    const actions = new Set([
+      "start",
+      "download",
+      "verify",
+      "stop",
+      "deferStorage",
+      "reject",
+    ]);
+    const definitions = [...cases.values()].map((trace, index) => {
+      assert.equal(trace[0].action, "init");
+      const expect = ({
+        phase,
+        active,
+        stopped,
+        verified,
+        checked,
+        storageReady,
+      }) =>
+        `all { M::s.phase == ${JSON.stringify(phase)}, M::s.active == ${active}, M::s.stopped == ${stopped}, M::s.verified == ${verified}, M::s.checked == ${checked}, M::s.storageReady == ${storageReady}, M::s.applyCalls == 0, M::s.reboots == 0 }`;
+      let test = `M::init.expect(${expect(trace[0])})`;
+      for (const row of trace.slice(1)) {
+        if (row.action === "storage")
+          test += `.then(M::storage(${row.storageReady}))`;
+        else if (row.action !== "observe") {
+          assert.ok(
+            actions.has(row.action),
+            `Unexpected source action: ${row.action}`,
+          );
+          test += `.then(M::${row.action})`;
+        }
+        test += `.expect(${expect(row)})`;
+      }
+      return `  run sourceStorage${index}Test = ${test}`;
+    });
+    await writeFile(
+      wrapper,
+      `module StorageSourceConformance {\n  import SystemUpdateHost as M from ${JSON.stringify(model)}\n${definitions.join("\n")}\n}\n`,
+    );
+    const replay = run(process.execPath, [
+      cli,
+      "test",
+      wrapper,
+      "--main=StorageSourceConformance",
+      "--backend=typescript",
+      "--max-samples=1",
+      "--seed=20261110",
+      "--match=^sourceStorage[0-9]+Test$",
+    ]);
+    assert.match(replay, new RegExp(`\\b${cases.size} passing`));
+    process.stdout.write(replay);
+    process.stdout.write(
+      `PASS ${cases.size} storage source traces and ${[...cases.values()].flat().length} checkpoints\n`,
+    );
+  } finally {
+    if (low) await rm(low, { recursive: true, force: true });
+  }
+}
+
+const storageBefore = process.argv[2] === "--storage-before";
+if (storageBefore || process.argv[2]?.endsWith("/SystemUpdateHost.qnt")) {
+  if (storageBefore) assert.match(process.argv[3], /^[0-9a-f]{40}$/);
+  await checkStorage(storageBefore ? process.argv[3] : undefined);
+  process.exit(0);
+}
+
 run(process.execPath, [
   cli,
   "run",
