@@ -24,7 +24,7 @@ let notes: NotesService;
 let verified: NotesTrashRecordingCleanup | undefined;
 
 class LocalRecordingHost extends NotesService {
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime, {
       store: new NotesStore({ filePath: file }),
       threeDayTrash: true,
