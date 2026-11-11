@@ -5955,9 +5955,9 @@ export function createCalendarActionRunner(
           // Outer arguments are proposals, including malformed invented guests.
           // Resolve guest intent from original user evidence first; the canonical
           // build below validates the resulting authorized attendees before writes.
-          const creationContextZone = clientTimeZone
-            ? planningTimeZone
-            : calendarZone.timeZone;
+          // Planner fields are proposals. Only the source-bound extraction may
+          // override this client/owner clock with a user-requested event zone.
+          const creationContextZone = clientTimeZone ?? calendarZone.timeZone;
           const configuredCreateZone =
             clientTimeZone || calendarZone.source !== "runtime-default"
               ? creationContextZone
@@ -8086,13 +8086,14 @@ export async function inferNativeCalendarCreate(args: {
       ].includes(error.code)
     )
       return { text: error.message };
-    // The native create runs before the action's service-error handling. Evidence
-    // that does not match the original request (for example invented guests) is a
-    // refusal of this extraction, not a failed turn: nothing was created, and the
-    // owner is asked again instead of the planner repeating the same request.
+    // The native create runs before the action's service-error handling. Empty
+    // fields or evidence that does not match the original request refuse this
+    // extraction: nothing was created, and the owner is asked again instead of
+    // the planner repeating the same request.
     if (
       error instanceof CalendarServiceError &&
-      error.code === "CALENDAR_CREATE_EVIDENCE_INVALID"
+      (error.code === "CALENDAR_CREATE_EVIDENCE_INVALID" ||
+        error.code === "CALENDAR_CREATE_EXTRACTION_INVALID")
     ) {
       args.runtime.reportError("calendar:native-create", error, {
         diagnosticOnly: true,

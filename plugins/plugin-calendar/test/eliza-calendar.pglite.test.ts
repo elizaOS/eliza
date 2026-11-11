@@ -560,65 +560,118 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   });
 
   it("creates an unqualified local-time event in the current client clock instead of the server clock", async () => {
-    const id = "00000000-0000-0000-0000-000000000401";
-    const text =
-      'Create "Client clock QA" on November 12, 2026 from 4:17 PM to 4:22 PM local time. No guests.';
-    const extract = vi.fn(
-      async ({
-        actionType,
-        prompt,
-      }: {
-        actionType: string;
-        prompt: string;
-      }) => {
-        if (actionType !== "lifeops.calendar.extract_create_event") return null;
-        expect(prompt).toContain("Current timezone: America/Los_Angeles");
-        expect(prompt).toContain(
-          "Calendar timezone for scheduling: America/Los_Angeles",
-        );
-        return {
-          rawResponse: "{}",
-          parsed: {
-            ...createEvidence(id, text),
-            title: "Client clock QA",
-            grantId: ELIZA_CALENDAR_GRANT_ID,
-            calendarId: ELIZA_CALENDAR_ID,
-            startAt: "2026-11-12T16:17:00",
-            endAt: "2026-11-12T16:22:00",
-            timeZone: "America/Los_Angeles",
-          },
-        };
+    const cases = [
+      {
+        id: "00000000-0000-0000-0000-000000000401",
+        title: "Client clock QA without planner zone",
+        plannerTimeZone: undefined,
+        extractedTimeZone: null,
+        requestedZone: "local time",
+        startAt: "2026-11-12T16:17:00",
+        endAt: "2026-11-12T16:22:00",
+        expectedStartAt: "2026-11-13T00:17:00.000Z",
+        expectedEndAt: "2026-11-13T00:22:00.000Z",
+        expectedTimeZone: "America/Los_Angeles",
       },
-    );
-    const action = createCalendarActionRunner({
-      runTextModel: vi.fn(async () => null),
-      runJsonModel: extract,
-      recentConversationTexts: vi.fn(async () => []),
-    });
-    const result = await action.handler(
-      runtime,
       {
-        id,
-        entityId: "00000000-0000-0000-0000-000000000102",
-        roomId: "00000000-0000-0000-0000-000000000103",
-        createdAt: Date.parse("2026-11-11T22:00:00Z"),
-        content: { text, metadata: { uiTimeZone: "America/Los_Angeles" } },
-      } as Memory,
-      undefined,
+        id: "00000000-0000-0000-0000-000000000403",
+        title: "Client clock QA with conflicting planner zone",
+        plannerTimeZone: "UTC",
+        extractedTimeZone: null,
+        requestedZone: "local time",
+        startAt: "2026-11-12T16:27:00",
+        endAt: "2026-11-12T16:32:00",
+        expectedStartAt: "2026-11-13T00:27:00.000Z",
+        expectedEndAt: "2026-11-13T00:32:00.000Z",
+        expectedTimeZone: "America/Los_Angeles",
+      },
       {
-        parameters: {
-          subaction: "create_event",
-          title: "Client clock QA",
-          details: { timeZone: "America/Los_Angeles" },
+        id: "00000000-0000-0000-0000-000000000404",
+        title: "Client clock QA with requested event zone",
+        plannerTimeZone: "UTC",
+        extractedTimeZone: "America/New_York",
+        requestedZone: "New York time",
+        startAt: "2026-11-12T16:37:00",
+        endAt: "2026-11-12T16:42:00",
+        expectedStartAt: "2026-11-12T21:37:00.000Z",
+        expectedEndAt: "2026-11-12T21:42:00.000Z",
+        expectedTimeZone: "America/New_York",
+      },
+    ];
+    for (const testCase of cases) {
+      const text = `Create "${testCase.title}" on November 12, 2026 from ${testCase.startAt.slice(11, 16)} to ${testCase.endAt.slice(11, 16)} ${testCase.requestedZone}. No guests.`;
+      const extract = vi.fn(
+        async ({
+          actionType,
+          prompt,
+        }: {
+          actionType: string;
+          prompt: string;
+        }) => {
+          if (actionType !== "lifeops.calendar.extract_create_event")
+            return null;
+          expect(prompt).toContain("Current timezone: America/Los_Angeles");
+          expect(prompt).toContain(
+            "Calendar timezone for scheduling: America/Los_Angeles",
+          );
+          return {
+            rawResponse: "{}",
+            parsed: {
+              ...createEvidence(testCase.id, text),
+              title: testCase.title,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              startAt: testCase.startAt,
+              endAt: testCase.endAt,
+              timeZone: testCase.extractedTimeZone,
+            },
+          };
         },
-      },
-    );
-    expect(result?.success, JSON.stringify(result)).toBe(true);
-    expect(result?.data?.event).toMatchObject({
-      startAt: "2026-11-13T00:17:00.000Z",
-      endAt: "2026-11-13T00:22:00.000Z",
-      timezone: "America/Los_Angeles",
-    });
+      );
+      const action = createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: extract,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      const result = await action.handler(
+        runtime,
+        {
+          id: testCase.id,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse("2026-11-11T22:00:00Z"),
+          content: { text, metadata: { uiTimeZone: "America/Los_Angeles" } },
+        } as Memory,
+        undefined,
+        {
+          parameters: {
+            subaction: "create_event",
+            title: testCase.title,
+            details: testCase.plannerTimeZone
+              ? { timeZone: testCase.plannerTimeZone }
+              : {},
+          },
+        },
+      );
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(result?.data?.event).toMatchObject({
+        startAt: testCase.expectedStartAt,
+        endAt: testCase.expectedEndAt,
+        timezone: testCase.expectedTimeZone,
+      });
+      const stored = await pg.query<{
+        start_at: string;
+        end_at: string;
+        timezone: string;
+      }>(
+        "SELECT start_at, end_at, timezone FROM app_calendar.life_calendar_events WHERE title = $1",
+        [testCase.title],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]?.start_at).toBe(testCase.expectedStartAt);
+      expect(stored.rows[0]?.end_at).toBe(testCase.expectedEndAt);
+      expect(stored.rows[0]?.timezone).toBe(testCase.expectedTimeZone);
+    }
   });
 
   it("ignores invented generated attendees after one original-grounded solo extraction", async () => {
