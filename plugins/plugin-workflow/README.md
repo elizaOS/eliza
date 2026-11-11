@@ -85,3 +85,11 @@ with an expired or revoked source records an unavailable result and removes the
 schedule without reading fresh source data. Schedule reconciliation also removes
 lapsed schedules. Saving the loop with a new reviewed source revision re-arms
 the schedule.
+
+### Recoverable prompt automations
+
+Alpha’s owner requested a Recently deleted flow during launch review. This change supplies recovery for prompt tasks. Unified selection and the other automation record families remain separate acceptance items.
+
+Hosts can provide the shared task-activity boundary for `POST /api/triggers/:id/archive` and `POST /api/triggers/:id/restore`. Both operations use the existing owned task record and require its `expectedRevision` digest from the current trigger response. A running task or changed revision is refused. Archived tasks keep their instructions, schedule and execution history, and cannot run.
+
+`GET /api/triggers?removed=1` returns archived tasks and advertises `recovery` when the host supports it. Restoring retains the definition and leaves it disabled so the owner can review or enable its schedule. The existing `DELETE` endpoint still permanently removes a task.
