@@ -181,9 +181,7 @@ export function parseReleaseManifest(
       !(["stable", "beta", "nightly"] as const).includes(item.channel as never)
     )
       fail("channel is unsupported.");
-    if (
-      !(["x86_64", "arm64"] as const).includes(item.architecture as never)
-    )
+    if (!(["x86_64", "arm64"] as const).includes(item.architecture as never))
       fail("architecture is unsupported.");
     if (!positiveInteger(item.sequence))
       fail("sequence must be a positive safe integer.");

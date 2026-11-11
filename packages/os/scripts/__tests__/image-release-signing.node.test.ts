@@ -1030,9 +1030,6 @@ test("input drift after manifest creation fails the signer's final validation", 
 
 test("canonical image signing rejects incomplete architecture sets", async () => {
   const paths = await fixture();
-  await writeFile(
-    path.join(paths.root, "elizaos-1.2.3-beta.4-arm64.raw"),
-    "",
-  );
+  await writeFile(path.join(paths.root, "elizaos-1.2.3-beta.4-arm64.raw"), "");
   await assert.rejects(signRelease(paths), /nonempty regular file/);
 });

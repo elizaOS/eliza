@@ -73,6 +73,9 @@ could not be shown to pass on it:
   they run Vitest.
 - `node --test` suites that use `module.stripTypeScriptTypes`, built-in module
   mocks, or a nested Wrangler. Their package scripts still start with `node`.
+- `node --test --test-reporter=tap` suites whose TAP output a Quint conformance
+  check reads case by case (`plugins/plugin-assistant` `test:files-review`).
+  `bun test` has no TAP reporter.
 - Wrangler (`wrangler dev --local` accepts no request on Bun).
 - `packages/app` launchers that load `tsx` (`run-node-tsx.ts`,
   `run-release-check.ts`) and the `node:test` half of `run-script-tests.ts`.

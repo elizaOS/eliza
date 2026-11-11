@@ -132,11 +132,7 @@ export function assertZigPinForTargets({
   }
 }
 
-export function ensureZigDrivers({
-  cacheDir,
-  abi,
-  zigBin = "zig",
-}) {
+export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
   const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
   if (!target) {
     throw new Error(`[compile-libllama] Unknown ABI: ${abi}`);
