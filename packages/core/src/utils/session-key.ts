@@ -79,8 +79,20 @@ export function parseAgentSessionKey(
 	const isAcp = parts[2] === "acp";
 	const isSubagent = parts[2] === "subagent";
 
-	// Check for thread suffix
-	const threadIndex = parts.indexOf("thread");
+	// Check for thread suffix. The suffix is appended to a complete base
+	// key, so the marker is the LAST "thread" segment with a segment after
+	// it, past the key's structured head. The first occurrence misreads a
+	// channel named "thread" ("agent:main:thread:dm:alice") or a subagent
+	// id of "thread" ("agent:main:subagent:thread:foo") as a thread marker
+	// and invents a thread id and parent key for a key that has none.
+	const firstThreadCandidate = parts[2] === "subagent" ? 4 : 3;
+	let threadIndex = -1;
+	for (let i = parts.length - 2; i >= firstThreadCandidate; i--) {
+		if (parts[i] === "thread") {
+			threadIndex = i;
+			break;
+		}
+	}
 	let threadId: string | undefined;
 	let parentKey: string | undefined;
 
