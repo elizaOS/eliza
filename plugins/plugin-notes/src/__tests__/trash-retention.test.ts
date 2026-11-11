@@ -19,7 +19,13 @@ afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
 });
 
-async function fixture(threeDayTrash = true) {
+async function fixture(
+  threeDayTrash = true,
+  verifyCleanup?: (
+    receipt: NotesTrashRecordingCleanup,
+    signal?: AbortSignal,
+  ) => Promise<boolean>,
+) {
   const directory = await mkdtemp(join(tmpdir(), "canonical-trash-"));
   directories.push(directory);
   const filePath = join(directory, "notes.json");
@@ -33,8 +39,10 @@ async function fixture(threeDayTrash = true) {
       now,
       createId: () => `note-trash-${++sequence}`,
       threeDayTrash,
-      verifyRecordingCleanup: async (receipt) =>
-        JSON.stringify(receipt) === JSON.stringify(verified),
+      verifyRecordingCleanup:
+        verifyCleanup ??
+        (async (receipt) =>
+          JSON.stringify(receipt) === JSON.stringify(verified)),
     });
     services.push(service);
     await service.initialize();
@@ -450,4 +458,314 @@ describe("canonical Notes Trash retention", () => {
       notes.length + (await f.service.readTrashRecordingCleanup()).length,
     ).toBe(1);
   });
+
+  it("cancels an owner erase queued behind a real store read without changing the reviewed deletion", async () => {
+    let persisted: string | null = null;
+    let holdRead = false;
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const service = new NotesService(undefined, {
+      store: new NotesStore({
+        agentId: "notes-trash-cancel-queue",
+        encryptedPort: {
+          agentId: "notes-trash-cancel-queue",
+          encryptedAtRest: true,
+          read: async () => {
+            if (holdRead) {
+              holdRead = false;
+              entered();
+              await held;
+            }
+            return persisted;
+          },
+          compareExchange: async (expected, next) => {
+            if (expected !== persisted) return false;
+            persisted = next;
+            return true;
+          },
+        },
+      }),
+      threeDayTrash: true,
+    });
+    services.push(service);
+    await service.initialize();
+    const entry = await trashNote(
+      service,
+      "CANCEL_HEAD\nKeep the full recording transcript\nCANCEL_TAIL",
+      "cancel-recording",
+    );
+    const before = persisted;
+    holdRead = true;
+    const read = service.store.persistedSnapshot();
+    await waiting;
+    const controller = new AbortController();
+    const erase = request(
+      service,
+      "POST",
+      "/api/notes/trash/erase",
+      entry,
+      true,
+      controller.signal,
+    );
+    controller.abort();
+    release();
+    await read;
+    expect(await erase).toMatchObject({
+      status: 499,
+      body: { error: { code: "NOTES_REQUEST_CANCELLED" } },
+    });
+    expect(persisted).toBe(before);
+    expect(service.snapshot().trash?.map((row) => row.note.id)).toEqual([
+      entry.id,
+    ]);
+    expect(await service.readTrashRecordingCleanup()).toEqual([]);
+    // An explicit fresh request with the unchanged review can still commit.
+    expect(
+      await request(service, "POST", "/api/notes/trash/erase", entry, true),
+    ).toMatchObject({ status: 200, body: { data: { erased: 1 } } });
+    expect(await service.readTrashRecordingCleanup()).toHaveLength(1);
+  });
+
+  it("retains the recording receipt when cancellation arrives during trusted host verification", async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = await fixture(true, async () => {
+      entered();
+      await held;
+      return true;
+    });
+    const entry = await trashNote(
+      f.service,
+      "Keep the cleanup receipt after a cancelled acknowledgement",
+      "verified-recording",
+    );
+    const { value } = await f.service.eraseTrash(entry);
+    const receipt = value.recordingCleanup[0];
+    if (!receipt) throw new Error("Missing cleanup receipt");
+    const before = await f.persisted();
+    const controller = new AbortController();
+    const acknowledgement = request(
+      f.service,
+      "POST",
+      "/api/notes/trash/recordings/complete",
+      receipt,
+      true,
+      controller.signal,
+    );
+    await waiting;
+    controller.abort();
+    release();
+    expect(await acknowledgement).toMatchObject({
+      status: 499,
+      body: { error: { code: "NOTES_REQUEST_CANCELLED" } },
+    });
+    expect(await f.persisted()).toBe(before);
+    expect(await f.service.readTrashRecordingCleanup()).toEqual([receipt]);
+    expect(await f.service.acknowledgeTrashRecordingCleanup(receipt)).toBe(
+      true,
+    );
+    expect(await f.service.readTrashRecordingCleanup()).toEqual([]);
+  });
+
+  it("recovers one committed recording receipt after a lost erase acknowledgement without replaying the write", async () => {
+    let persisted: string | null = null;
+    let loseAcknowledgement = false;
+    let writes = 0;
+    const port = {
+      agentId: "notes-trash-lost-ack",
+      encryptedAtRest: true as const,
+      read: async () => persisted,
+      compareExchange: async (expected: string | null, next: string) => {
+        if (expected !== persisted) return false;
+        persisted = next;
+        writes++;
+        if (loseAcknowledgement) {
+          loseAcknowledgement = false;
+          throw new Error(
+            "Controlled lost acknowledgement after the durable commit",
+          );
+        }
+        return true;
+      },
+    };
+    const open = async () => {
+      const service = new NotesService(undefined, {
+        store: new NotesStore({ agentId: port.agentId, encryptedPort: port }),
+        threeDayTrash: true,
+      });
+      services.push(service);
+      await service.initialize();
+      return service;
+    };
+    const first = await open();
+    const peer = await open();
+    const entry = await trashNote(
+      first,
+      "LOST_ACK_HEAD\nComplete authored text\nLOST_ACK_TAIL",
+      "lost-ack-recording",
+    );
+    loseAcknowledgement = true;
+    expect(
+      await request(first, "POST", "/api/notes/trash/erase", entry, true),
+    ).toMatchObject({
+      status: 500,
+      body: { error: { code: "NOTES_STORE_WRITE_FAILED" } },
+    });
+    const durable = JSON.parse(persisted ?? "null");
+    expect(durable.trash).toEqual([]);
+    expect(durable.trashRecordingCleanup).toHaveLength(1);
+    expect(durable.trashRecordingCleanup[0]).toMatchObject({
+      noteId: entry.id,
+      audioId: "lost-ack-recording",
+      deletedAt: entry.deletedAt,
+    });
+    // A failed acknowledgement must not turn the durable pending receipt into
+    // a successful empty response from the old cache.
+    await expect(first.readTrashRecordingCleanup()).rejects.toMatchObject({
+      code: "NOTES_STORE_WRITE_FAILED",
+    });
+    expect(first.status().phase).toBe("error");
+    await expect(peer.readTrashRecordingCleanup()).rejects.toMatchObject({
+      code: "NOTES_STORE_WRITE_FAILED",
+    });
+    expect(() => peer.snapshot()).toThrow();
+    const committedWrites = writes;
+    await first.stop();
+    expect(peer.status().phase).toBe("error");
+    await peer.stop();
+    const restarted = await open();
+    expect(restarted.snapshot().trash).toEqual([]);
+    expect(await restarted.readTrashRecordingCleanup()).toEqual(
+      durable.trashRecordingCleanup,
+    );
+    expect(
+      await request(restarted, "POST", "/api/notes/trash/erase", entry, true),
+    ).toMatchObject({ status: 409 });
+    expect(writes).toBe(committedWrites);
+  });
+
+  it("keeps the entire reviewed Empty collection when one recording cannot be verified", async () => {
+    const f = await fixture();
+    await trashNote(f.service, "Preserve this ordinary note too");
+    await trashNote(
+      f.service,
+      "Unverifiable native recording",
+      "r".repeat(101),
+    );
+    const before = await f.persisted();
+    const review = {
+      scope: "all",
+      expectedRevision: f.service.snapshot().revision,
+    };
+    expect(
+      await request(f.service, "POST", "/api/notes/trash/erase", review, true),
+    ).toMatchObject({
+      status: 409,
+      body: { error: { code: "NOTES_TRASH_RECORDING_UNAVAILABLE" } },
+    });
+    expect(await f.persisted()).toBe(before);
+    expect(f.service.snapshot().trash).toHaveLength(2);
+    expect(await f.service.readTrashRecordingCleanup()).toEqual([]);
+  });
+
+  it.each([
+    { outcome: "committed success", failure: "none" },
+    { outcome: "lost acknowledgement", failure: "cas" },
+    { outcome: "failed readback", failure: "readback" },
+    { outcome: "mismatched readback", failure: "mismatch" },
+  ])(
+    "keeps the durable receipt truthful after cancellation during $outcome",
+    async ({ failure }) => {
+      let persisted: string | null = null;
+      let previous: string | null = null;
+      let abortAtCommit = false;
+      let readbackConsumed = false;
+      const controller = new AbortController();
+      const agentId = "notes-trash-abort-after-commit";
+      const service = new NotesService(undefined, {
+        store: new NotesStore({
+          agentId,
+          encryptedPort: {
+            agentId,
+            encryptedAtRest: true,
+            read: async () => {
+              if (abortAtCommit && !readbackConsumed) {
+                readbackConsumed = true;
+                if (failure === "readback")
+                  throw new Error("Controlled readback failure after commit");
+                if (failure === "mismatch") return previous;
+              }
+              return persisted;
+            },
+            compareExchange: async (expected, next) => {
+              if (expected !== persisted) return false;
+              previous = persisted;
+              persisted = next;
+              if (abortAtCommit) {
+                controller.abort();
+                if (failure === "cas")
+                  throw new Error(
+                    "Controlled lost acknowledgement after commit and cancellation",
+                  );
+              }
+              return true;
+            },
+          },
+        }),
+        threeDayTrash: true,
+      });
+      services.push(service);
+      await service.initialize();
+      const entry = await trashNote(
+        service,
+        "Already admitted erase must retain its effect receipt",
+        "cancelled-after-commit",
+      );
+      abortAtCommit = true;
+      const response = await request(
+        service,
+        "POST",
+        "/api/notes/trash/erase",
+        entry,
+        true,
+        controller.signal,
+      );
+      expect(response).toMatchObject(
+        failure !== "none"
+          ? {
+              status: 500,
+              body: { error: { code: "NOTES_STORE_WRITE_FAILED" } },
+            }
+          : { status: 200, body: { data: { erased: 1 } } },
+      );
+      const durable = JSON.parse(persisted ?? "null");
+      expect(durable.trash).toEqual([]);
+      expect(durable.trashRecordingCleanup).toHaveLength(1);
+      expect(durable.trashRecordingCleanup[0]).toMatchObject({
+        noteId: entry.id,
+        audioId: "cancelled-after-commit",
+        deletedAt: entry.deletedAt,
+      });
+      if (failure !== "none")
+        await expect(service.readTrashRecordingCleanup()).rejects.toMatchObject(
+          { code: "NOTES_STORE_WRITE_FAILED" },
+        );
+      else
+        expect(await service.readTrashRecordingCleanup()).toEqual(
+          durable.trashRecordingCleanup,
+        );
+    },
+  );
 });

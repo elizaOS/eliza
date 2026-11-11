@@ -35,7 +35,7 @@ function ownerTrashRoute(
         return { status: 200, body: { success: true, data } };
       } catch (error) {
         // error-policy:J1 boundary translation — preserve typed refusal at the owner API.
-        if (context.signal.aborted)
+        if (context.signal.aborted && error === context.signal.reason)
           return {
             status: 499,
             body: {

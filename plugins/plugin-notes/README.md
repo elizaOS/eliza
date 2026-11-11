@@ -58,6 +58,12 @@ before `POST /api/notes/trash/recordings/complete` retires the receipt.
 Hosts enable the policy after connecting their recording store and cleanup
 scheduler. Notes content and recording transcripts stay out of cleanup receipts.
 
+An encrypted commit with a failed acknowledgement or readback leaves its shared
+store unavailable until every handle closes and an authoritative reopen reads
+the saved document. It cannot return stale Notes or an empty cleanup list as
+success. A definite compare-and-exchange conflict stays a typed conflict; an
+out-of-band writer requires an authoritative reopen, not a blind write retry.
+
 Capacity limits apply when adding to Trash. Existing documents remain readable and
 can be restored or purged after a host lowers its limits. A full Trash refuses new
 additions with `NotesTrashFull` (`isNotesTrashFull` also recognizes a host store's
