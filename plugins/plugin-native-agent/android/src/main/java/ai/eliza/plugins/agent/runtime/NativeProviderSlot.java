@@ -280,6 +280,58 @@ public final class NativeProviderSlot {
     return NativeProviderAdmission.providerIdentity(retained);
   }
 
+  /**
+   * Whether a clear has nothing to retire: the slot is empty, or holds a selection that is already
+   * unbound with only its owner's saved keys. A record that cannot be read is never "retired", so it
+   * takes the fenced clear and fails there.
+   */
+  public static boolean providerSlotRetired(String saved) {
+    if (saved == null) return true;
+    try {
+      return saved.equals(NativeProviderAdmission.unbindProvider(saved));
+    } catch (Exception unreadable) {
+      return false;
+    }
+  }
+
+  /** Reserves the caller's credential intent and answers the store whose writes that intent fences. */
+  public interface FencedStore {
+    Store reserve() throws Exception;
+  }
+
+  /** The slot's identity after {@link #clearProviderSlotIfBound}, and whether a binding was retired. */
+  public static final class ClearOutcome {
+    public final JSONObject identity;
+    /** False when the slot was already empty or retired: nothing was written and no intent reserved. */
+    public final boolean cleared;
+
+    ClearOutcome(JSONObject identity, boolean cleared) {
+      this.identity = identity;
+      this.cleared = cleared;
+    }
+  }
+
+  /**
+   * Clears the provider binding only when one is present. An automatic unbound start calls this
+   * instead of reserving a credential intent up front: clearing an already-empty (or already
+   * retired) slot writes nothing, so it must not supersede a sign-in that is waiting to bind or an
+   * acknowledgement that is being retried. {@code observer} reads the slot and checks only the
+   * bridge lifetime in {@code assertCurrent}; it never carries a credential intent. {@code fenced}
+   * is called at most once, and only when the slot holds a binding: it reserves the new intent
+   * (superseding older ones exactly as an unconditional clear does today) and returns the store
+   * fenced by it, which {@link #clearProviderSlot} then uses, re-reading the slot under that intent.
+   *
+   * <p>An empty observation is a clear that happened at that instant; a binding committed afterwards
+   * by a newer or pending intent is that intent's result, not something this call may remove.
+   */
+  public static ClearOutcome clearProviderSlotIfBound(Store observer, FencedStore fenced, boolean onlyIfPresent)
+      throws Exception {
+    String observed = observer.readProvider();
+    observer.assertCurrent();
+    if (providerSlotRetired(observed)) return new ClearOutcome(NativeProviderAdmission.providerIdentity(observed), false);
+    return new ClearOutcome(clearProviderSlot(fenced.reserve(), onlyIfPresent), true);
+  }
+
   /** Provider, Cloud and managed-Google variables an unbound launch must not inherit. */
   public static final String[] PROVIDER_ENVIRONMENT = {
     "ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_BASE_URL", "ELIZAOS_CLOUD_SMALL_MODEL", "ELIZAOS_CLOUD_LARGE_MODEL",

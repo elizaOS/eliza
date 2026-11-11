@@ -61,6 +61,14 @@ public final class CloudConnectionPolicy {
           "/api/v1/eliza/google/calendar/feed",
           "/api/v1/eliza/google/gmail/search",
           "/api/v1/eliza/google/gmail/read");
+  /** The subscription plan catalogue: one bare GET. */
+  public static final String SUBSCRIPTION_PLANS_PATH = "/api/v1/subscriptions/plans";
+  /** Body-only POSTs a signed-in device makes for its own plan and its own sign-in; exact paths. */
+  private static final Set<String> DEVICE_BILLING_POSTS =
+      setOf(
+          "/api/v1/subscriptions/checkout",
+          "/api/v1/subscriptions/checkout/confirm",
+          "/api/v1/app-auth/mobile/renew");
   private static final String MAPS_DATA = "/api/v1/maps/(geocode|reverse|places/search|places/details|routes|tiles/viewport)";
   public static boolean mapsTilePath(String path) {
     if (path == null || !path.matches("/api/v1/maps/tiles/(0|[1-9][0-9]?)/(0|[1-9][0-9]{0,6})/(0|[1-9][0-9]{0,6})")) return false;
@@ -120,6 +128,11 @@ public final class CloudConnectionPolicy {
     if (mapsTilePath(path)) return "GET".equals(method) && query == null && !hasBody;
     // Subscription code redemption carries its code and idempotency key in the JSON body only.
     if ("POST".equals(method) && "/api/v1/subscription/redeem".equals(path)) return query == null && hasBody;
+    // Paid plans, with the device's own sign-in key: the catalogue is a bare read; opening a checkout,
+    // confirming its return and renewing the device's own sign-in each carry one JSON body and no query.
+    // Cancel, portal, plan changes, sign-up codes, referrals and affiliates stay on the web.
+    if (SUBSCRIPTION_PLANS_PATH.equals(path)) return "GET".equals(method) && query == null && !hasBody;
+    if (DEVICE_BILLING_POSTS.contains(path)) return "POST".equals(method) && query == null && hasBody;
     if ("POST".equals(method))
       return query == null
           && (MANAGED_POSTS.contains(path)
