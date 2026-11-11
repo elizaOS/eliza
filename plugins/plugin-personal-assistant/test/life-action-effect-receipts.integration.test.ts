@@ -17,7 +17,15 @@ import {
   attestDeliveryAudienceFromCanonicalRoom,
   executePlannedToolCall,
 } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import * as taskCreate from "../src/actions/lib/extract-task-plan.js";
 import {
   OWNER_OPERATION_TAGS,
@@ -34,6 +42,12 @@ import {
 let runtimeResult: RealTestRuntimeResult | null = null;
 let runtime: AgentRuntime;
 let requestSequence = 0;
+
+function extractionPlan(value: Record<string, unknown>) {
+  const plan = taskCreate.buildTaskCreatePlan(value);
+  if (!plan) throw new Error("Invalid structured extractor fixture");
+  return plan;
+}
 
 function receipt(result: ActionResult): EffectReceipt {
   expect(result.effectReceipts).toHaveLength(1);
@@ -122,6 +136,10 @@ beforeAll(async () => {
   runtimeResult = await createLifeOpsTestRuntime();
   runtime = runtimeResult.runtime;
 }, 180_000);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 afterAll(async () => {
   await runtimeResult?.cleanup();
@@ -556,6 +574,20 @@ it.each([
         : ownerSurface === "OWNER_REMINDERS"
           ? "Add check the notification as a task due in 2 minutes and notify me then"
           : "Add check the notification as a task due in 2 minutes";
+    if (ownerSurface === "OWNER_REMINDERS") {
+      vi.spyOn(taskCreate, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+        extractionPlan({
+          mode: "create",
+          requestKind: "reminder",
+          notificationMode: "default",
+          nativeProjection: "in_app_only",
+          title: `${ownerSurface} two-minute ${requestKind}`,
+          cadenceKind: "once",
+          dueInMinutes: 2,
+          multiStep: false,
+        }),
+      );
+    }
     const created = await invoke(
       {
         action: "create",
@@ -884,6 +916,18 @@ it("keeps an unresolved reminder alert choice effect-free instead of treating a 
   const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
   try {
     const intent = "Add check the notification as a task due in 2 minutes";
+    vi.spyOn(taskCreate, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+      extractionPlan({
+        mode: "create",
+        requestKind: "reminder",
+        notificationMode: null,
+        nativeProjection: "in_app_only",
+        title: "Unresolved alert choice",
+        cadenceKind: "once",
+        dueInMinutes: 2,
+        multiStep: false,
+      }),
+    );
     const created = await invoke(
       {
         action: "create",
@@ -932,3 +976,119 @@ it("keeps an unresolved reminder alert choice effect-free instead of treating a 
     native.mockRestore();
   }
 }, 120000);
+
+it("rejects a planner-supplied reminder for a Calendar-only owner request", async () => {
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: runtime.agentId,
+  });
+  const before = (await service.listDefinitions())
+    .map((record) => record.definition.id)
+    .sort();
+  const ownerText =
+    'Create "Calendar only" tomorrow from 5:43 PM to 5:48 PM in my Calendar. No guests or reminders.';
+  const extraction = vi
+    .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
+    .mockResolvedValue(
+      extractionPlan({
+        mode: "respond",
+        requestKind: null,
+        response: "Use Calendar for this event.",
+        multiStep: false,
+      }),
+    );
+  try {
+    const rejected = await invoke(
+      {
+        action: "create",
+        ownerSurface: "OWNER_REMINDERS",
+        kind: "definition",
+        confirmed: true,
+        title: "Calendar only",
+        intent: "Remind me about Calendar only",
+        createPlan: {
+          mode: "create",
+          requestKind: "reminder",
+          nativeProjection: "in_app_only",
+          notificationMode: "default",
+          title: "Calendar only",
+          cadenceKind: "once",
+          dueInMinutes: 2,
+          multiStep: false,
+        },
+      },
+      ownerText,
+    );
+    expect(extraction).toHaveBeenCalledOnce();
+    expect(extraction.mock.calls[0]?.[0].intent).toBe(ownerText);
+    expect(rejected.result.success).toBe(false);
+    expect(rejected.result.data).toMatchObject({
+      error: "OWNER_REMINDER_INTENT_MISMATCH",
+      coachingFailure: true,
+    });
+    expect(
+      (await service.listDefinitions())
+        .map((record) => record.definition.id)
+        .sort(),
+    ).toEqual(before);
+    expect(
+      rejected.result.effectReceipts?.some(
+        (value) => value.outcome === "applied",
+      ),
+    ).not.toBe(true);
+  } finally {
+    extraction.mockRestore();
+  }
+}, 120000);
+
+it.each([
+  "Remind me in 2 minutes to check the notification in this app with an alert",
+  "Recuérdame revisar la notificación en esta app dentro de 2 minutos",
+])(
+  "keeps an explicit reminder actionable after checking its owner request: %s",
+  async (ownerText) => {
+    const createPlan = {
+      mode: "create",
+      requestKind: "reminder",
+      nativeProjection: "in_app_only",
+      notificationMode: "default",
+      title: "Explicit reminder",
+      cadenceKind: "once",
+      dueInMinutes: 2,
+      multiStep: false,
+    };
+    const extraction = vi
+      .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
+      .mockResolvedValue(extractionPlan(createPlan));
+    try {
+      const created = await invoke(
+        {
+          action: "create",
+          ownerSurface: "OWNER_REMINDERS",
+          kind: "definition",
+          confirmed: true,
+          intent: ownerText,
+          createPlan,
+        },
+        ownerText,
+      );
+      expect(extraction).toHaveBeenCalledOnce();
+      expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+      const applied = receipt(created.result);
+      expect(applied.outcome).toBe("applied");
+      const service = new LifeOpsService(runtime, {
+        ownerEntityId: runtime.agentId,
+      });
+      const id = applied.resource.id;
+      if (!id) throw new Error("Missing created reminder receipt");
+      const definition = await service.repository.getDefinition(
+        runtime.agentId,
+        id,
+      );
+      expect(definition?.title).toBe("Explicit reminder");
+      expect(definition?.metadata.ownerSurface).toBe("OWNER_REMINDERS");
+    } finally {
+      extraction.mockRestore();
+    }
+  },
+  120000,
+);

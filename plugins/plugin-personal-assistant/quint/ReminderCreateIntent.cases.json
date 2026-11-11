@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/actions/life.ts",
+    "plugins/plugin-personal-assistant/src/actions/lib/extract-task-plan.ts",
+    "plugins/plugin-personal-assistant/src/actions/lib/task-create-plan-parameter.ts",
+    "plugins/plugin-personal-assistant/test/life-action-effect-receipts.integration.test.ts",
+    "plugins/plugin-personal-assistant/quint/check-reminder-create-intent.mjs",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-reminder-create-intent.mjs",
+  "bounds": "One fresh creation, one supplied planner proposal, one original-request classification, one durable write. The supplied proposal cannot grant authority. Failed classification and cancellation before write produce zero writes. Weak fairness of checking and saving is required for progress. Classifier semantic accuracy, previously confirmed drafts, owner authorization, database concurrency, notification delivery and physical device behavior remain external. Implementation cases use the real handler and PGlite with controlled model classification; live-model/browser qualification is separate.",
+  "cases": [
+    {
+      "name": "original-request-before-reminder-write",
+      "main": "ReminderCreateIntent",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "VerifiedBeforeWrite",
+        "NoDuplicateWrite",
+        "RefusalHasNoEffect"
+      ],
+      "temporal": ["FairSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the original-request check and admitted durable write."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 300,
+      "deadlock": false
+    }
+  ]
+}
