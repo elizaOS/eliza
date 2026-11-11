@@ -120,13 +120,21 @@ async function createDriverLifecycleFixture() {
   };
 }
 
+function gate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((ready) => {
+    resolve = ready;
+  });
+  return { promise, resolve };
+}
+
 it.each(["received", "lost"])(
   "drains a held driver insert with %s acknowledgement and reloads one fresh row",
   async (acknowledgement) => {
     const { runtime, plugin, close } = await createDriverLifecycleFixture();
-    const createEntered = Promise.withResolvers<void>();
-    const releaseCreate = Promise.withResolvers<void>();
-    const workerRemoved = Promise.withResolvers<void>();
+    const createEntered = gate();
+    const releaseCreate = gate();
+    const workerRemoved = gate();
     const lostAcknowledgement = new Error("Driver insert acknowledgement lost");
     let creation: Promise<UUID> | undefined;
     let cleanupRead: Promise<Task[]> | undefined;
@@ -139,9 +147,10 @@ it.each(["received", "lost"])(
       .mockImplementation((task) => {
         if (creation || task.name !== STANDALONE_TICK_TASK_NAME)
           return createTask(task);
-        creation = releaseCreate.promise.then(() => createTask(task));
+        const write = releaseCreate.promise.then(() => createTask(task));
+        creation = write;
         createEntered.resolve();
-        return creation.then((id) => {
+        return write.then((id) => {
           if (acknowledgement === "lost") throw lostAcknowledgement;
           return id;
         });
@@ -217,8 +226,8 @@ it.each(["received", "lost"])(
 
 it("refuses a deferred boot from the old worker after reload", async () => {
   const { runtime, plugin, close } = await createDriverLifecycleFixture();
-  const markerCommitted = Promise.withResolvers<void>();
-  const releaseMarker = Promise.withResolvers<void>();
+  const markerCommitted = gate();
+  const releaseMarker = gate();
   const setCache = runtime.setCache.bind(runtime);
   const seed = vi
     .spyOn(runtime, "setCache")
