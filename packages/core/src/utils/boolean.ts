@@ -20,6 +20,7 @@ const DEFAULT_FALSY_SET = new Set<string>(DEFAULT_FALSY);
  *
  * Handles:
  * - Boolean values (passed through)
+ * - Number values (`1` => true; `0` => false)
  * - String values ("true", "1", "yes", "on" => true; "false", "0", "no", "off" => false)
  * - Custom truthy/falsy values via options
  *
@@ -30,6 +31,8 @@ const DEFAULT_FALSY_SET = new Set<string>(DEFAULT_FALSY);
  * @example
  * ```ts
  * parseBooleanValue(true) // => true
+ * parseBooleanValue(1) // => true
+ * parseBooleanValue(0) // => false
  * parseBooleanValue("yes") // => true
  * parseBooleanValue("1") // => true
  * parseBooleanValue("false") // => false
@@ -44,6 +47,14 @@ export function parseBooleanValue(
 ): boolean | undefined {
 	if (typeof value === "boolean") {
 		return value;
+	}
+	if (typeof value === "number") {
+		// Runtime settings arrive typed `string | boolean | number | null`,
+		// so a numeric setting must parse instead of falling through to
+		// the env fallback or the default as if it were unset.
+		if (value === 1) return true;
+		if (value === 0) return false;
+		return undefined;
 	}
 	if (typeof value !== "string") {
 		return undefined;
