@@ -2471,5 +2471,23 @@
       "packages/cloud/sdk/native-host/cloud-services.test.mjs",
       "packages/agent/native-host/gateway.e2e.test.mjs"
     ]
+  },
+  {
+    "id": "cloud-mailbox-star",
+    "model": "packages/cloud/quint/MailboxStarMutation.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-provider.ts",
+      "packages/cloud/shared/src/lib/services/agent-google-connector/inbox-receipts.ts",
+      "packages/cloud/shared/src/db/migrations/0571_managed_gmail_star_operations.sql",
+      "packages/cloud/shared/src/lib/services/oauth/provider-registry.ts",
+      "packages/cloud/api/v1/eliza/google/connect/initiate/route.ts"
+    ],
+    "invariants": [
+      "safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One request and bounded revision changes. Google provider atomicity and production migration require separate deployment proof."
+    ]
   }
 ]
