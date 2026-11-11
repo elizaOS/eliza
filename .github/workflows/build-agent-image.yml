@@ -302,7 +302,7 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           # develop push  → :develop + :sha-<short>
           # main push     → :stable + :latest + :sha-<short>
-# Keeping :latest on main avoids breaking the four code sites that
+          # Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
