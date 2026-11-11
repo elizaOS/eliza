@@ -28,6 +28,27 @@ export interface ParseCanonicalIntegerOptions {
 
 export type CanonicalIntegerResult = number | undefined | "invalid";
 
+/**
+ * Bounds are a programmer error, not user input: an integer parser must
+ * never return a fraction, and a clamp must never return a value outside
+ * [min, max]. Matches parseCanonicalInteger, which throws RangeError for
+ * unordered or non-safe-integer bounds. Infinite bounds stay valid: they
+ * are the defaults for "no bound".
+ */
+function assertClampedBounds(min: number, max: number, integer: boolean): void {
+	const validBound = (value: number): boolean =>
+		value === Number.POSITIVE_INFINITY ||
+		value === Number.NEGATIVE_INFINITY ||
+		(Number.isFinite(value) && (!integer || Number.isSafeInteger(value)));
+	if (!validBound(min) || !validBound(max) || min > max) {
+		throw new RangeError(
+			integer
+				? "clamped integer bounds must be ordered safe integers or infinities"
+				: "clamped float bounds must be ordered numbers",
+		);
+	}
+}
+
 function sanitizeNumericText(value: string | null | undefined): string {
 	return value == null ? "" : value.trim();
 }
@@ -155,6 +176,7 @@ export function parseClampedFloat(
 
 	const min = options.min ?? -Infinity;
 	const max = options.max ?? Infinity;
+	assertClampedBounds(min, max, false);
 	return Math.max(min, Math.min(max, parsed));
 }
 
@@ -182,5 +204,6 @@ export function parseClampedInteger(
 
 	const min = options.min ?? -Infinity;
 	const max = options.max ?? Infinity;
+	assertClampedBounds(min, max, true);
 	return Math.max(min, Math.min(max, parsed));
 }
