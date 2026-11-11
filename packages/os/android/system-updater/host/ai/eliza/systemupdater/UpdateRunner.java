@@ -93,9 +93,7 @@ final class UpdateRunner {
                     context.getResources().getStringArray(R.array.os_update_hosts),
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
             UpdateChannel.Candidate candidate = channel.discover();
-            boolean unapplied = current.phase == UpdateJournal.Phase.DOWNLOADING
-                    || current.phase == UpdateJournal.Phase.VERIFIED;
-            if (unapplied && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
+            if (current.isUnapplied() && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256))) {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
@@ -229,6 +227,10 @@ final class UpdateRunner {
             try {
                 JournalStore store = new JournalStore(context.getFilesDir());
                 UpdateJournal before = store.read();
+                if (failure instanceof PackageVerifier.StorageDeferred && before.isUnapplied()) {
+                    finish(run, "Waiting for enough storage to verify the system update");
+                    return;
+                }
                 store.write(before, before.failedBeforeApply());
             } catch (Exception unconfirmed) {
                 Log.w("ElizaSystemUpdater", "Rejected-package state is unconfirmed", unconfirmed);

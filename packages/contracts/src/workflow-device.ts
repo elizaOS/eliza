@@ -13,9 +13,12 @@ import { workflowApprovalNoticeIdentity } from "./notice-routes.ts";
 import {
   isPhoneWorkflowLocalDay,
   isPhoneWorkflowTimeZone,
+  type PhoneCalendarRange,
+  type PhoneRelativeCalendarRange,
   type PhoneWorkflowSpec,
   phoneWorkflowLocalDay,
   phoneWorkflowLocalDayBounds,
+  resolvePhoneCalendarRange,
   SELECTED_REMINDERS_WINDOW,
   validatePhoneSelectedRemindersScope,
   validatePhoneWorkflowSpec,
@@ -305,6 +308,30 @@ export function workflowReminderDayIsCurrent(
   );
 }
 
+/**
+ * True when a Calendar read is exactly the reviewed step range at `now`. A
+ * relative range also matches the day before for `graceMs`, so a request
+ * raised just before local midnight can still be reviewed.
+ */
+export function workflowCalendarReadMatches(
+  range: PhoneCalendarRange | PhoneRelativeCalendarRange,
+  read: Omit<WorkflowCalendarReadOperation, "type">,
+  now = Date.now(),
+  graceMs = 15 * 60_000,
+): boolean {
+  const values = (r: Omit<WorkflowCalendarReadOperation, "type">) =>
+    JSON.stringify([
+      r.calendarIds,
+      r.start,
+      r.end,
+      r.timeZone,
+      r.maximumEvents,
+    ]);
+  const matches = (at: number) =>
+    values(resolvePhoneCalendarRange(range, at)) === values(read);
+  return matches(now) || ("days" in range && matches(now - graceMs));
+}
+
 /** Revision input of one reminder row; both hosts hash exactly these values. */
 export function workflowReminderRevisionInput(
   row: Omit<WorkflowReminderRow, "revision">,
@@ -573,17 +600,17 @@ export function assertWorkflowOperation(
       )
         fail();
       return;
-    case "read_calendar_range":
+    case "read_calendar_range": {
+      const read = parseWorkflowRead(operation);
       if (
+        read.type !== "read_calendar_range" ||
         step.kind !== "Read" ||
         step.operation !== "calendar_range" ||
-        !same(
-          parseWorkflowRead({ type: operation.type, ...step.range }),
-          parseWorkflowRead(operation),
-        )
+        !workflowCalendarReadMatches(step.range, read, now)
       )
         fail();
       return;
+    }
     case "read_selected_reminders": {
       if (step.kind !== "Read" || step.operation !== "selected_reminders") {
         fail();
