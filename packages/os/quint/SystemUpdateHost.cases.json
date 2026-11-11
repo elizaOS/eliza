@@ -18,7 +18,7 @@
     "packages/os/android/system-updater/AndroidManifest.xml"
   ],
   "conformance": "packages/os/quint/check-system-update.mjs",
-  "bounds": "One device, one candidate, one pre-apply scratch slot, binary eligibility and verification-space availability. Completed download, cryptographic acceptance, retained payload availability and engine readiness are inputs. A verified journal is distinct from a successful check in the current job. The scratch state abstracts the private directory and its ownership checks. Android scheduling, platform authentication, engine effects and physical storage recovery require native qualification.",
+  "bounds": "One device, one applied candidate, one pre-apply scratch slot, binary eligibility and verification-space availability. Offer checks distinguish a match, no offer, a different offer and an unavailable read without deciding release withdrawal. Completed download, cryptographic acceptance, retained payload availability and engine readiness are inputs. A verified journal is distinct from a successful check in the current job. The scratch state abstracts the private directory and its ownership checks. Android scheduling, platform authentication, engine effects and physical storage recovery require native qualification.",
   "cases": [
     {
       "name": "interleavings",
@@ -29,6 +29,7 @@
         "NoUnverifiedApply",
         "NoReplay",
         "UnknownNeverActive",
+        "OfferHoldKeepsApplied",
         "ScratchNeverApplied"
       ],
       "temporal": [],
@@ -44,6 +45,7 @@
         "NoUnverifiedApply",
         "NoReplay",
         "UnknownNeverActive",
+        "OfferHoldKeepsApplied",
         "ScratchNeverApplied"
       ],
       "temporal": ["StableDeliveryCompletes", "DeliveryWithoutStorageFairness"],
@@ -53,7 +55,7 @@
           "expect": "holds",
           "assumptions": [
             "Eligibility stays true, the retained package and payload are valid, and the engine reports reboot readiness after apply.",
-            "No stop, crash, rejection or engine failure occurs in this case.",
+            "Both offer checks match the candidate. No stop, crash, rejection or engine failure occurs in this case.",
             "Enough storage eventually becomes available and stays available.",
             "Scheduling, download, storage deferral, verification, engine completion and reboot observation are weakly fair."
           ]
@@ -78,6 +80,7 @@
         "NoUnverifiedApply",
         "NoReplay",
         "UnknownNeverActive",
+        "OfferHoldKeepsApplied",
         "ScratchNeverApplied"
       ],
       "temporal": ["StableDeliveryCompletes", "DeliveryWithoutScratchFairness"],
@@ -88,7 +91,7 @@
           "assumptions": [
             "The initial scratch is an owned slot left by a pre-apply process death.",
             "Eligibility and sufficient space stay true, the retained package and payload are valid, and the engine reports reboot readiness after apply.",
-            "No later crash, stop, rejection or engine failure occurs in this case.",
+            "Both offer checks match the candidate. No later crash, stop, rejection or engine failure occurs in this case.",
             "Scratch cleanup, scheduling, verification, engine completion and reboot observation are weakly fair."
           ]
         },

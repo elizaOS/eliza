@@ -1,20 +1,20 @@
-/// One enrolled device and one candidate. Download completion and cryptographic acceptance are external facts.
+/// One enrolled device and one applied candidate. Offer observations and cryptographic acceptance are external facts.
 module SystemUpdateHost {
   type State = {phase: str, active: bool, eligible: bool, stopped: bool,
     verified: bool, checked: bool, storageReady: bool, scratch: str, writing: bool,
-    applyCalls: int, reboots: int}
+    applyCalls: int, reboots: int, offerHold: str}
   var s: State
   pure def initial(storageReady: bool): State = {
     phase: "idle", active: false, eligible: true, stopped: false,
     verified: false, checked: false, storageReady: storageReady, scratch: "none",
-    writing: false, applyCalls: 0, reboots: 0
+    writing: false, applyCalls: 0, reboots: 0, offerHold: "none"
   }
   action init = s' = initial(true)
   action storageBlockedInit = s' = initial(false)
   action scratchRecoveryInit = s' = {...initial(true), phase: "downloading", scratch: "owned"}
   action foreignScratchInit = s' = {...initial(true), scratch: "foreign"}
   action start = all {not(s.active), s.phase.in(Set("idle", "downloading", "verified", "ready")),
-    s' = {...s, active: true, stopped: false, checked: false}}
+    s' = {...s, active: true, stopped: false, checked: false, offerHold: "none"}}
   action download = all {s.active, s.phase == "idle", s.eligible,
     s' = {...s, phase: "downloading"}}
   val checkingUnapplied = s.active and not(s.stopped) and not(s.checked)
@@ -37,6 +37,10 @@ module SystemUpdateHost {
   action failure = all {s.phase == "applying", s' = {...s, phase: "failed", active: false}}
   action checkHeld(valid: bool): bool = all {s.active, not(s.stopped), not(s.checked), s.phase == "ready",
     s' = {...s, active: valid and s.storageReady, checked: valid and s.storageReady}}
+  action holdOffer(reason: str): bool = all {
+    s.active, not(s.stopped), s.phase == "ready", not(s.checked) or s.eligible,
+    reason.in(Set("no-offer", "different-offer", "offer-unavailable")),
+    s' = {...s, active: false, checked: false, offerHold: reason}}
   action holdEngine = all {s.active, not(s.stopped), s.eligible, s.checked, s.phase == "ready",
     s' = {...s, active: false, checked: false}}
   action reboot = all {s.active, not(s.stopped), s.eligible, s.checked, s.phase == "ready",
@@ -53,12 +57,15 @@ module SystemUpdateHost {
     s' = {...s, storageReady: ready}}
   action stutter = s' = s
   action step = any {start, download, writeScratch, reclaimScratch, refuseScratch, verify, deferStorage, reject, apply, callback, failure,
-    checkHeld(true), checkHeld(false), holdEngine, reboot, observeTarget, stop, crash, conditions(true), conditions(false), storage(true), storage(false), stutter}
+    checkHeld(true), checkHeld(false), holdOffer("no-offer"), holdOffer("different-offer"), holdOffer("offer-unavailable"),
+    holdEngine, reboot, observeTarget, stop, crash, conditions(true), conditions(false), storage(true), storage(false), stutter}
   action stableStep = any {start, download, reclaimScratch, verify, deferStorage, apply, callback, checkHeld(true), reboot, observeTarget,
     storage(true), stutter}
   val NoUnverifiedApply = (s.applyCalls == 0 or s.verified) and (s.phase != "applying" or s.checked)
   val NoReplay = s.applyCalls >= 0 and s.applyCalls <= 1 and s.reboots >= 0 and s.reboots <= 1
   val UnknownNeverActive = s.phase != "unknown" or not(s.active)
+  val OfferHoldKeepsApplied = s.offerHold == "none" or
+    (s.phase == "ready" and not(s.active) and not(s.checked) and s.applyCalls == 1 and s.reboots == 0)
   val ScratchNeverApplied = (s.scratch != "owned" or s.phase.in(Set("downloading", "verified", "failed")))
     and (not(s.writing) or (checkingUnapplied and s.scratch == "owned"))
   temporal StableDeliveryWork = start.weakFair(s) and download.weakFair(s) and verify.weakFair(s)
@@ -87,6 +94,14 @@ module SystemUpdateHost {
   run heldVerificationStillRequiresEngineReadinessTest = init.then(start).then(download).then(verify).then(apply)
     .then(callback).then(start).then(checkHeld(true)).then(holdEngine)
     .expect(s.phase == "ready" and not(s.active) and s.applyCalls == 1 and s.reboots == 0)
+  run differentOfferKeepsAppliedCandidateTest = init.then(start).then(download).then(verify).then(apply)
+    .then(callback).then(start).then(checkHeld(true)).then(holdOffer("different-offer"))
+    .expect(s.offerHold == "different-offer" and OfferHoldKeepsApplied)
+  run matchingOfferAllowsLaterReadyCheckTest = init.then(start).then(download).then(verify).then(apply)
+    .then(callback).then(start).then(holdOffer("no-offer"))
+    .expect(s.offerHold == "no-offer" and OfferHoldKeepsApplied)
+    .then(start).then(checkHeld(true)).then(reboot)
+    .expect(s.offerHold == "none" and s.reboots == 1 and NoReplay)
   run lowSpacePreservesDownloadUntilLaterJobTest = storageBlockedInit.then(start).then(download)
     .then(deferStorage).expect(s.phase == "downloading" and not(s.active) and s.applyCalls == 0)
     .then(storage(true)).then(start).then(verify).then(apply).expect(s.applyCalls == 1 and NoUnverifiedApply)
