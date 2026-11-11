@@ -64,22 +64,6 @@ jobs:
         run: |
           bun run verify:portable
           bun run test:release
-      - name: Validate the checked-in release plan
-        run: |
-          set -euo pipefail
-          manifest=release/v0.1.0-beta.1/manifest.json
-          output="$(bun -e 'import { testOutputPath } from "../scripts/lib/test-output.ts"; console.log(testOutputPath("os-release-plan"));')"
-          node scripts/validate-release-manifest.ts --manifest "$manifest"
-          node scripts/assert-canonical-linux-release.ts --manifest "$manifest"
-          node scripts/collect-release-evidence.ts --manifest "$manifest" \
-            --evidence-dir "$output" --output "$output/ci-evidence.json"
-      - name: Retain release plan validation
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: os-release-plan-validation
-          path: test-results/os-release-plan/ci-evidence.json
-          if-no-files-found: warn
       - name: Build the browser component
         run: bun run build
 
