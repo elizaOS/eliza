@@ -1710,7 +1710,13 @@ export async function handleChatCompletionsPOST(
       ) {
         // This lane uses the team's provider credential and creates no
         // organization charge, but still rechecks durable caller standing.
-        await credentialGuard[Symbol.asyncDispose]();
+        const pooledCredentialProof = credentialGuard.credentialForAdmission();
+        if (pooledCredentialProof) {
+          await assertInferenceCredentialActive(
+            user.organization_id,
+            pooledCredentialProof,
+          );
+        }
         settleReservation = async () => null;
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {

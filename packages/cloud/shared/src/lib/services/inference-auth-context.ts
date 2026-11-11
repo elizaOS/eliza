@@ -462,9 +462,9 @@ function getOrCreateApiKeyHydration(
           rateLimit: result.ctx.apiKeyRateLimit,
           expiresAt: result.ctx.apiKeyExpiresAt,
         };
-        // The warm path never calls the gate, so this is where a gate fence
-        // (revoked key, disabled subject or organization) reaches a cached
-        // entry. A fence is a decision: it replaces the entry with a denial
+        // The request checks durable fences before consuming cached identity.
+        // Refresh also replaces a retained positive with an explicit denial
+        // when the gate fences the key, subject or organization. A fence is a decision: it replaces the entry with a denial
         // even when the primary row read above still authorizes the key.
         const checkGate = async (): Promise<InferenceCredentialRevokedError | undefined> => {
           try {

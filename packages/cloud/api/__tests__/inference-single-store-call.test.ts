@@ -1003,9 +1003,13 @@ test("a refused pre-provider lease never invokes or debits the provider", async 
 test("a credential revoked between cached auth and durable dispatch cannot invoke the provider", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
-  gateReply = (path) => path === "/lease-dispatched-authorized"
-    ? Response.json({ allowed: false, reason: "credential_revoked" }, { status: 403 })
-    : undefined;
+  gateReply = (path) =>
+    path === "/lease-dispatched-authorized"
+      ? Response.json(
+          { allowed: false, reason: "credential_revoked" },
+          { status: 403 },
+        )
+      : undefined;
   const call = await chat(key.rawKey);
   expect(call.response.status).toBe(401);
   expect(providerCalls).toBe(0);
@@ -1016,13 +1020,16 @@ test("a credential revoked between cached auth and durable dispatch cannot invok
 test("an unavailable durable dispatch cannot invoke the provider", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
-  gateReply = (path) => path === "/lease-dispatched-authorized"
-    ? new Response("unavailable", { status: 503 })
-    : undefined;
+  gateReply = (path) =>
+    path === "/lease-dispatched-authorized"
+      ? new Response("unavailable", { status: 503 })
+      : undefined;
   const call = await chat(key.rawKey);
   expect(call.response.status).toBe(503);
   expect(providerCalls).toBe(0);
-  expect(gatePaths.filter((path) => path === "/lease-dispatched-authorized")).toHaveLength(3);
+  expect(
+    gatePaths.filter((path) => path === "/lease-dispatched-authorized"),
+  ).toHaveLength(3);
   await finish(call);
 });
 
@@ -1057,7 +1064,11 @@ test("a warm request on the pooled-credential lane reaches the provider after ca
         "Bearer pooled-team-key-for-single-store-call-test",
       );
       // No organization funding lease exists for this lane.
-      expect(gatePaths).toEqual(["/credential/check", "/rate-limit", "/credential/check"]);
+      expect(gatePaths).toEqual([
+        "/credential/check",
+        "/rate-limit",
+        "/credential/check",
+      ]);
     }
   } finally {
     for (const spy of pooled) spy.mockRestore();

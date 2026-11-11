@@ -50,9 +50,9 @@ that takes these locks in another order can be retried after a deadlock; it
 cannot skip the policy fence. Enroll a deployment only after its key and user
 policy writers use the managed mutation helpers.
 
-Bounded, direct Cerebras chat requests use the delegated path. The refill amount
-is a target, not a request limit: a larger request can claim the full available
-balance. Other operations retain primary admission and can reclaim idle funds.
+Fixed-price speech sessions may use the delegated path. Its refill amount is a
+target, not a request limit: a larger session can claim the full available balance.
+Request routes retain shared durable leases and can reclaim idle delegated funds.
 Funds backing active requests remain reserved. Drain and reconcile all grants,
 then use `disableInferenceBudgetAdmission` before turning off the mode.
 
