@@ -354,6 +354,71 @@ test("explicit global style starts at world scale, permits global manual pins an
   f.plane.destroy();
   assert.equal(f.map.removed, true);
 });
+test("a host chooses where a worldwide basemap opens; a regional map keeps its coverage", () => {
+  const f = fixture(global);
+  f.create({
+    initialView: { center: { longitude: -98, latitude: 45 }, zoom: 2.4 },
+  });
+  assert.deepEqual(Array.from(f.maps[1].options.center), [-98, 45]);
+  assert.equal(f.maps[1].options.zoom, 2.4);
+  f.create({ initialView: { center: { longitude: -98, latitude: 45 } } });
+  assert.equal(f.maps[2].options.zoom, 2);
+  const r = fixture(regional);
+  r.create({
+    initialView: { center: { longitude: -98, latitude: 45 }, zoom: 2.4 },
+  });
+  assert.deepEqual(
+    Array.from(r.maps[1].options.center),
+    Array.from(r.map.options.center),
+  );
+  assert.equal(r.maps[1].options.zoom, 14);
+});
+test("new result pins are brought into view once; selection, routes and following keep the camera", () => {
+  const f = fixture(global, {
+    selectionPadding: () => ({ top: 10, bottom: 300, left: 20, right: 20 }),
+  });
+  const pin = (id, longitude, latitude) => ({
+    id,
+    label: id,
+    coordinate: { longitude, latitude },
+  });
+  const pins = [pin("a", 7.42, 43.73), pin("b", 7.27, 43.7)];
+  f.plane.update(undefined, null, { pins });
+  assert.deepEqual(JSON.parse(JSON.stringify(f.map.fit.bounds)), [
+    [7.27, 43.7],
+    [7.42, 43.73],
+  ]);
+  assert.equal(f.map.fit.options.maxZoom, 14);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.map.fit.options.padding)), {
+    top: 10,
+    bottom: 300,
+    left: 20,
+    right: 20,
+  });
+  // The same results again leave a camera the user may have moved.
+  f.map.fit = undefined;
+  f.plane.update(undefined, null, { pins });
+  assert.equal(f.map.fit, undefined);
+  // A selected place owns the camera; its result pins do not refit.
+  f.plane.update({ longitude: 7.42, latitude: 43.73 }, null, {
+    pins: [pin("c", 2.35, 48.85)],
+  });
+  assert.equal(f.map.fit, undefined);
+  // Following navigation keeps the camera too.
+  f.plane.update(undefined, null, {
+    pins: [pin("d", 12.49, 41.9)],
+    position: {
+      coordinate: { longitude: 7.42, latitude: 43.73 },
+      accuracyMeters: 10,
+    },
+    follow: true,
+  });
+  assert.equal(f.map.fit, undefined);
+  // A regional map already shows its whole coverage.
+  const r = fixture(regional);
+  r.plane.update(undefined, null, { pins: [pin("e", 7.42, 43.73)] });
+  assert.equal(r.map.fit, undefined);
+});
 test("global style resources stay on the selected public origin; no arbitrary or credential-bearing target", () => {
   const f = fixture(global),
     request = f.map.options.transformRequest;
