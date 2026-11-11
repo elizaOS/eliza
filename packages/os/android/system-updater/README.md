@@ -22,6 +22,9 @@ An oversized partial or a complete partial with a wrong digest is cleared under
 the download lock. A later attempt can fetch the same candidate again.
 If payload verification needs more free space, an unapplied candidate keeps
 its journal and files. A later check can retry after space is available.
+Before apply, extraction uses one private scratch file. After process death,
+a matching unapplied journal can reclaim the file before the space checks. This
+does not retire old downloads, verified payloads or recovery files.
 The ordinary app remains nonprivileged. Android's shutdown path owns the reboot.
 
 The durable journal records an apply intent before Binder. An unsettled apply
