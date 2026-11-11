@@ -20,16 +20,20 @@ import java.nio.file.Files;
 public abstract class MmsResultReceiver extends BroadcastReceiver {
  static final String ACTION_MARK_READ = "ai.eliza.plugins.messages.action.MARK_THREAD_READ";
  static final String EXTRA_THREAD = "thread", EXTRA_THROUGH = "through";
+ static final String EXTRA_NOTICE = "notice";
  protected abstract SmsRoleConfiguration configuration();
 
  /** Marks the notified conversation read up to the notified message, as the default SMS app. */
  private void markRead(Context app, Intent intent) {
   final long thread = intent.getLongExtra(EXTRA_THREAD, 0), through = intent.getLongExtra(EXTRA_THROUGH, 0);
-  if (thread <= 0 || through <= 0) return;
+  final String notice = intent.getStringExtra(EXTRA_NOTICE);
+  if (thread <= 0 || through <= 0 || notice == null) return;
   final PendingResult pending = goAsync();
   try {
    SmsTelephony.WORK.execute(() -> {
     try {
+     // Incoming publication uses this same worker. A replaced notice cannot grant a later read.
+     if (!MmsStore.ownsNotice(app, thread, notice)) return;
      if (MmsStore.isDefaultSmsApp(app)) MmsStore.markThreadRead(app, thread, through);
      // Android ignores the write from any other app; the messages stay unread and only the notice goes.
      else MmsStore.cancelThreadNotice(app, thread);

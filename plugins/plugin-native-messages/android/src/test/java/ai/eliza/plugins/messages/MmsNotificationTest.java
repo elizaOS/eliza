@@ -90,8 +90,9 @@ public final class MmsNotificationTest {
     assertEquals("thread:4294967296", Shadows.shadowOf(two.contentIntent).getSavedIntent().getStringExtra(SmsRoleConfiguration.EXTRA_THREAD_ID));
   }
   @Test public void conversationRetainsItsMessagesAndReplyOnlyOpensCompose() {
-    post(1, 7, "First full text");
+    Notification previous = post(1, 7, "First full text");
     Notification notice = post(2, 7, "Second full text");
+    assertTrue("replacement retires its prior read action", Shadows.shadowOf(previous.actions[1].actionIntent).isCanceled());
     java.util.List<Notification.MessagingStyle.Message> messages = Notification.MessagingStyle.Message.getMessagesFromBundleArray(notice.extras.getParcelableArray(Notification.EXTRA_MESSAGES));
     assertEquals(2, messages.size());
     assertEquals("First full text", messages.get(0).getText());
@@ -119,7 +120,7 @@ public final class MmsNotificationTest {
   private static int read(String table, long id) {
     try (Cursor row = Provider.database.rawQuery("SELECT read FROM " + table + " WHERE _id=?", new String[] {Long.toString(id)})) { assertTrue(row.moveToFirst()); return row.getInt(0); }
   }
-  private void deliverRead(Notification notice) throws Exception {
+  private BroadcastReceiver.PendingResult beginRead(Notification notice) throws Exception {
     Receiver receiver = new Receiver();
     Object pending = org.robolectric.util.ReflectionHelpers.callConstructor(BroadcastReceiver.PendingResult.class,
         org.robolectric.util.ReflectionHelpers.ClassParameter.from(int.class, 0),
@@ -133,10 +134,14 @@ public final class MmsNotificationTest {
         org.robolectric.util.ReflectionHelpers.ClassParameter.from(int.class, 0));
     org.robolectric.util.ReflectionHelpers.callInstanceMethod(receiver, "setPendingResult", org.robolectric.util.ReflectionHelpers.ClassParameter.from(BroadcastReceiver.PendingResult.class, (BroadcastReceiver.PendingResult) pending));
     receiver.onReceive(context, Shadows.shadowOf(notice.actions[1].actionIntent).getSavedIntent());
+    return (BroadcastReceiver.PendingResult) pending;
+  }
+  private void finishRead(BroadcastReceiver.PendingResult pending) throws Exception {
     SmsTelephony.WORK.submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS);
     assertSame("receiver always releases its broadcast owner", pending,
-        Shadows.shadowOf((BroadcastReceiver.PendingResult) pending).getFuture().get(10, java.util.concurrent.TimeUnit.SECONDS));
+        Shadows.shadowOf(pending).getFuture().get(10, java.util.concurrent.TimeUnit.SECONDS));
   }
+  private void deliverRead(Notification notice) throws Exception { finishRead(beginRead(notice)); }
   @Test public void markReadChangesOnlyReceivedRowsInTheShownThreadThroughItsCutoff() throws Exception {
     Notification notice = post(1, 7, "Shown message");
     long cutoff = Shadows.shadowOf(notice.actions[1].actionIntent).getSavedIntent().getLongExtra(MmsResultReceiver.EXTRA_THROUGH, 0);
@@ -167,5 +172,27 @@ public final class MmsNotificationTest {
     assertEquals("the first provider effect is retained, not misrepresented as atomic", 1, read("sms", 1));
     assertEquals(0, read("mms", 1));
     assertEquals(1, context.getSystemService(NotificationManager.class).getActiveNotifications().length);
+    assertFalse("a failed effect keeps the same action available for retry", Shadows.shadowOf(notice.actions[1].actionIntent).isCanceled());
+    Provider.failMms = false; deliverRead(notice);
+    assertEquals(1, read("mms", 1));
+    assertEquals(0, context.getSystemService(NotificationManager.class).getActiveNotifications().length);
+    assertTrue("successful read retires its action", Shadows.shadowOf(notice.actions[1].actionIntent).isCanceled());
+  }
+  @Test public void oldQueuedReadCannotConsumeANewerConversationNotice() throws Exception {
+    Notification shown = post(1, 7, "Shown message"); unread("sms", 1, 7, SmsRecords.INBOX, 1);
+    org.robolectric.shadows.ShadowTelephony.ShadowSms.setDefaultSmsPackage(context.getPackageName());
+    java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1), release = new java.util.concurrent.CountDownLatch(1);
+    SmsTelephony.WORK.execute(() -> { entered.countDown(); try { if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Worker was not released"); } catch (InterruptedException stopped) { Thread.currentThread().interrupt(); } });
+    assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS));
+    try {
+      // Valid owner order: the incoming work was queued before the user taps the old notice.
+      SmsTelephony.WORK.execute(() -> { unread("sms", 2, 7, SmsRecords.INBOX, 1); post(2, 7, "New unread message with an older sender timestamp"); });
+      BroadcastReceiver.PendingResult pending = beginRead(shown);
+      release.countDown(); finishRead(pending);
+      assertEquals("a stale notice grants no new read effect", 0, read("sms", 2));
+      android.service.notification.StatusBarNotification[] notices = context.getSystemService(NotificationManager.class).getActiveNotifications();
+      assertEquals("the replacement unread notice stays visible", 1, notices.length);
+      assertEquals("New unread message with an older sender timestamp", notices[0].getNotification().extras.getCharSequence(Notification.EXTRA_TEXT));
+    } finally { release.countDown(); SmsTelephony.WORK.submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS); }
   }
 }

@@ -131,7 +131,10 @@ A host that can hold the SMS role declares thin subclasses of
   opens `openActivity` with `SmsRoleConfiguration.EXTRA_THREAD_ID`
   (`thread:<row>`), so the host can show that conversation. "Reply" opens the
   compose review for the sender; nothing is sent from the notice. "Mark as read"
-  goes to the host's `MmsResultReceiver` and marks the conversation read.
+  goes to the host's `MmsResultReceiver`. The current native notice owns that
+  action. A replaced notice cannot mark newer messages read or remove their
+  notice. The existing SMS worker checks this receipt before provider writes;
+  a failed write keeps the current action available for retry.
 - An MMS notification starts one download into a private file. The retrieved
   message (`MmsPdu` parses M-Retrieve.conf) is stored with its addresses and
   parts, then answered with M-NotifyResp.ind. A stored transaction is never

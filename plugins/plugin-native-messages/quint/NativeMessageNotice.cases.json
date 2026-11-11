@@ -11,7 +11,10 @@
     "packages/scripts/lib/test-output.ts",
     "packages/scripts/run-with-deadline.ts",
     "packages/app/scripts/android-native-plugins-gradle/settings.gradle",
-    "packages/app/scripts/android-native-plugins-gradle/build.gradle"
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsDeliverReceiver.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsWapPushReceiver.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsTelephony.java"
   ],
   "conformance": "packages/scripts/quint/check-native-android.ts",
   "nativeAndroid": {
@@ -25,15 +28,16 @@
           "conversationRetainsItsMessagesAndReplyOnlyOpensCompose",
           "markReadChangesOnlyReceivedRowsInTheShownThreadThroughItsCutoff",
           "lostSmsRoleDismissesTheNoticeWithoutAProviderWrite",
-          "failedProviderWriteKeepsTheNoticeAndFinishesTheReceiver"
+          "failedProviderWriteKeepsTheNoticeAndFinishesTheReceiver",
+          "oldQueuedReadCannotConsumeANewerConversationNotice"
         ]
       }
     ]
   },
   "bounds": {
-    "domain": "Two opaque thread identities. The actual hook uses native64-bit IDs1 and4294967296 with the same32-bit hash; TLC uses symbols1 and2 because its integer constants are32-bit, one notification action, one queued worker and separate SMS/MMS acknowledgements. Current role admission occurs when the worker begins. No fairness or provider success is assumed.",
-    "conformance": "Five exact Android JVM cases exercise actual notification/PendingIntent identities, MessagingStyle retained text, compose-only reply, the actual receiver and its completion future, and actual SQL provider update predicates for shown/later/foreign/sent rows, role loss and partial provider failure.",
-    "limits": "Read predicates are abstracted to selected-thread membership; timestamp units/cutoffs are checked by actual SQLite tests. Separate provider writes can partially succeed. Real default-SMS role grants, system Telephony provider enforcement, carrier delivery, audio/video, system notification rendering and process death remain external. Reply never invokes the send journal or radio."
+    "domain": "Two opaque thread identities (TLC symbols 1 and 2); the actual Android hook uses native 64-bit IDs 1 and 4294967296 with the same 32-bit hash. One queued read and two unique native-notice receipt generations per selected conversation. Incoming publication and reads share the existing serial worker. Native receipt uniqueness and successful notification publication are premises; no UUID collision proof or fairness/provider-success assumption is made for safety.",
+    "conformance": "Six exact Android JVM cases exercise actual notification/PendingIntent identities, MessagingStyle retained text, compose-only reply, the actual receiver and its completion future, and actual SQL provider update predicates for shown/later/foreign/sent rows, role loss and partial provider failure. A real held-worker incoming-before-old-tap case checks that even a new backdated row remains unread and its newer notice remains visible. Current-action retry and replaced/successful PendingIntent retirement are mandatory.",
+    "limits": "Read predicates are abstracted to selected-thread membership; timestamp units/cutoffs are checked by actual SQLite tests. Separate provider writes can partially succeed. Real default-SMS role grants, system Telephony provider enforcement, carrier delivery, audio/video, system notification rendering and process death remain external. Reply never invokes the send journal or radio. Other callers of the timestamp-based markThreadRead API retain their own view-selection contract. Failed or ambiguous native NotificationManager publication/cancellation is outside this finite normal-return projection. Timestamp predicates approximate membership for external or backdated provider changes outside these serial incoming paths; no complete provider-row snapshot or external-writer exclusion is proved."
   },
   "cases": [
     {
@@ -45,7 +49,8 @@
         "FullConversationIdentity",
         "WritesHaveSelectedOwner",
         "NoSendAuthority",
-        "FinishedReleasesReceiver"
+        "FinishedReleasesReceiver",
+        "StaleReceiptNeverWrites"
       ],
       "temporal": ["FairReceiverFinishes", "ReceiverFinishes"],
       "maxSteps": 30,
