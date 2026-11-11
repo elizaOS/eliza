@@ -80,6 +80,7 @@ dependencies {
     }
 
     testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.robolectric:robolectric:4.16.1"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     androidTestImplementation "androidx.webkit:webkit:$androidxWebkitVersion"
