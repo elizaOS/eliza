@@ -48,6 +48,12 @@ public final class CloudSignInReadiness {
   if (status != 200 || !Boolean.TRUE.equals(email)) return false;
   return !(Boolean.TRUE.equals(captchaEnabled) && captchaRequiredFor != null && (captchaRequiredFor.contains("email_otp") || captchaRequiredFor.contains("email")));
  }
+ /**
+  * A probe request that got no usable answer: a gateway or server error, a timeout answered for the
+  * origin, or a rate limit. It says nothing about the method the request asks about, unlike a 4xx
+  * refusal or a missing route. A request with no answer at all (no connection, a timeout) is the same.
+  */
+ public static boolean unanswered(int status) { return status >= 500 || status == 408 || status == 429; }
  /** The email code route exists: a bodiless request is refused as invalid, not as unknown. */
  public static boolean emailRoutePresent(int status) { return status >= 400 && status < 500 && status != 404 && status != 405; }
 
@@ -111,6 +117,18 @@ public final class CloudSignInReadiness {
   /** A fresh measurement: ready methods keep the long TTL, and any method that is not ready is due again after METHOD_RECHECK_MS. */
   public static Result measured(boolean email, boolean google, boolean phone, long now) {
    return new Result(email, google, phone, true, now + (email || google || phone ? READY_TTL_MS : NOT_READY_TTL_MS), now + METHOD_RECHECK_MS);
+  }
+  /**
+   * A measurement in which a method's own request got no usable answer (`null`). That method keeps
+   * what a still fresh `previous` answer said, and then the answer keeps that answer's TTL: nothing
+   * unmeasured is trusted for longer than it was. With no fresh answer to keep, it is not ready and is
+   * measured again after METHOD_RECHECK_MS. The other methods are the ones just measured.
+   */
+  public static Result measured(Boolean email, Boolean google, boolean phone, Result previous, long now) {
+   if (email != null && google != null) return measured(email, google, phone, now);
+   boolean kept = previous != null && previous.methodsKnown && previous.fresh(now);
+   Result result = measured(email != null ? email : kept && previous.email, google != null ? google : kept && previous.google, phone, now);
+   return kept ? new Result(result.email, result.google, result.phone, true, Math.min(previous.until, result.until), now + METHOD_RECHECK_MS) : result;
   }
   public static Result notReady(long now) { return new Result(false, false, false, false, now + NOT_READY_TTL_MS, now + METHOD_RECHECK_MS); }
   /** This measurement after `previous`: the same incomplete answer again waits longer before the next passive measurement. */

@@ -115,6 +115,28 @@ public final class CloudSignInFlowTest {
   check(CloudKeyRenewal.Record.of(read, keyId) == read && !CloudKeyRenewal.Record.of(read, "66666666-6666-4666-8666-666666666666").failed() && CloudKeyRenewal.Record.of(null, keyId).issuedAt == 0, "a record for another key says nothing");
   for (String bad : new String[]{null, "", "v2|" + keyId + "|1|1|none", "v1|x|1|1|none", "v1|" + keyId + "|1|1|done", "v1|" + keyId + "|-1|1|none", "v1|" + keyId + "|1|x|none", record.serialize() + "|extra"})
    check(CloudKeyRenewal.Record.parse(bad) == null, "refused renewal record " + bad);
+  check(CloudKeyRenewal.keyRefused(401) && !CloudKeyRenewal.keyRefused(403) && !CloudKeyRenewal.keyRefused(409) && !CloudKeyRenewal.keyRefused(503), "only 401 is Cloud refusing the saved key itself");
+  for (String result : new String[]{CloudKeyRenewal.Record.CONFIRMING, CloudKeyRenewal.Record.REJECTED}) {
+   CloudKeyRenewal.Record kept = CloudKeyRenewal.Record.parse(new CloudKeyRenewal.Record(keyId, now, now + 5, result).serialize());
+   check(kept != null && result.equals(kept.result) && kept.failed() && kept.signInRequired() && kept.spent() == result.equals(CloudKeyRenewal.Record.CONFIRMING), "renewal record round trip: " + result);
+  }
+  check(!new CloudKeyRenewal.Record(keyId, now, now, CloudKeyRenewal.Record.RETRY).signInRequired() && new CloudKeyRenewal.Record(keyId, now, now, CloudKeyRenewal.Record.REFUSED).signInRequired() && !new CloudKeyRenewal.Record(keyId, now, now, CloudKeyRenewal.Record.REFUSED).spent(), "a key Cloud would not renew may still be asked again a day later; one that may have a confirmed successor never");
+  check("X-Renewed-Credential-Id".equals(CloudKeyRevocation.RENEWED_CREDENTIAL_HEADER) && keyId.toLowerCase(java.util.Locale.ROOT).equals(CloudKeyRevocation.renewedCredential(keyId.toUpperCase(java.util.Locale.ROOT))), "the renewed key is named by its credential id");
+  check(CloudKeyRevocation.renewedCredential(null) == null && CloudKeyRevocation.renewedCredential("") == null && CloudKeyRevocation.renewedCredential("eliza_mobile_key") == null, "nothing else is a name");
+  check(!CloudKeyRevocation.retire(product, production, "eliza_mobile_" + "a".repeat(64), null) && !CloudKeyRevocation.retire(product, production, "eliza_mobile_" + "a".repeat(64), "not-an-id"), "a retirement that cannot name the renewed key sends nothing and is not done");
+  check(CloudKeyRevocation.retired(200) && CloudKeyRevocation.retired(204) && CloudKeyRevocation.retired(401) && !CloudKeyRevocation.retired(-1) && !CloudKeyRevocation.retired(400) && !CloudKeyRevocation.retired(503), "retired by Cloud's answer only");
+  for (int status : new int[]{500, 502, 503, 504, 408, 429}) check(CloudSignInReadiness.unanswered(status), "no judgement from " + status);
+  for (int status : new int[]{200, 302, 400, 401, 403, 404, 405}) check(!CloudSignInReadiness.unanswered(status), "an answer: " + status);
+  CloudSignInReadiness.Result held = CloudSignInReadiness.Result.measured(true, true, false, now);
+  CloudSignInReadiness.Result carried = CloudSignInReadiness.Result.measured(null, null, true, held, now + 60_000);
+  check(carried.email && carried.google && carried.phone && carried.until == held.until, "an unanswered method keeps a fresh answer, for no longer than that answer; a measured one is replaced");
+  check(carried.complete() || carried.recheckAt == now + 60_000 + CloudSignInReadiness.METHOD_RECHECK_MS, "recheck time");
+  CloudSignInReadiness.Result half = CloudSignInReadiness.Result.measured(null, false, false, held, now + 60_000);
+  check(half.email && !half.google && !half.phone && half.until == held.until && half.recheckAt == now + 60_000 + CloudSignInReadiness.METHOD_RECHECK_MS, "it is measured again on the short TTL");
+  CloudSignInReadiness.Result cold = CloudSignInReadiness.Result.measured(null, null, true, null, now), stale = CloudSignInReadiness.Result.measured(null, true, true, held, held.until);
+  check(!cold.email && !cold.google && cold.phone && !stale.email && stale.google, "with no fresh answer an unanswered method is not ready");
+  CloudSignInReadiness.Result plain = CloudSignInReadiness.Result.measured(Boolean.FALSE, Boolean.TRUE, true, held, now + 60_000);
+  check(!plain.email && plain.google && plain.until == now + 60_000 + CloudSignInReadiness.READY_TTL_MS, "a full measurement owes nothing to the earlier answer");
 
   // Inputs and responses.
   check(CloudSignInFlow.validEmail("owner@example.invalid") && !CloudSignInFlow.validEmail("owner@") && !CloudSignInFlow.validEmail("a b@example.invalid") && !CloudSignInFlow.validEmail("owner@example.invalid‮"), "email shape");

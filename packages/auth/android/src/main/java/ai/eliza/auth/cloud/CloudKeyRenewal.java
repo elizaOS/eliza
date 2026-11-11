@@ -12,6 +12,17 @@ import org.json.JSONObject;
  * is revoked only after the new one is saved. A refusal never removes the working key: the owner
  * signs in again when it expires.
  *
+ * Cloud's rules for the keys of one sign-in bound what this client may send:
+ * <ul>
+ * <li>A key that revokes itself ends the whole sign-in, unless it names its confirmed successor
+ * ({@link CloudKeyRevocation#RENEWED_CREDENTIAL_HEADER}). So the replaced key is revoked only with
+ * that name, and a new key that was not saved is never revoked while the key it was renewed from is
+ * still the saved one: that request would end the saved key.</li>
+ * <li>A key whose successor Cloud confirmed must not ask for renewal again: Cloud takes that as two
+ * holders and ends the sign-in. So once a confirmation may have reached Cloud, the saved key is not
+ * presented again unless Cloud said the new key was not confirmed ({@link Record#CONFIRMING}).</li>
+ * </ul>
+ *
  * Nothing here logs, sends a request or touches storage.
  */
 public final class CloudKeyRenewal {
@@ -52,6 +63,11 @@ public final class CloudKeyRenewal {
   if (status == 401 || status == 403 || status == 409) return Answer.SIGN_IN_REQUIRED;
   return Answer.RETRY;
  }
+ /**
+  * 401 to a renewal request is Cloud refusing the presented key itself (revoked, ended with its
+  * sign-in, expired, or its client disabled): unlike 403 and 409, the saved key does not keep working.
+  */
+ public static boolean keyRefused(int status) { return status == 401; }
 
  /** The strict request body: the mobile PKCE binding of the App Auth connect route, without a flow. */
  public static JSONObject body(CloudSignInConfig config, CloudSignInEnvironment environment, String state, String challenge) throws Exception {
@@ -64,12 +80,16 @@ public final class CloudKeyRenewal {
   * Non-secret renewal bookkeeping for one saved key, kept in plain preferences: the key's local
   * identity, when it was issued (0 when an older build saved it), when renewal was last asked and
   * what came of it. A record for another key says nothing about the saved one.
+  *
+  * `confirming`: a new key was sent to Cloud for confirmation and Cloud has not said it was refused,
+  * so the saved key may have a confirmed successor this phone does not hold. `rejected`: Cloud
+  * answered the renewal request of this key with 401.
   */
  public static final class Record {
-  public static final String NONE = "none", RETRY = "retry", REFUSED = "refused";
+  public static final String NONE = "none", RETRY = "retry", REFUSED = "refused", CONFIRMING = "confirming", REJECTED = "rejected";
   public final String credentialId, result; public final long issuedAt, attemptedAt;
   public Record(String credentialId, long issuedAt, long attemptedAt, String result) {
-   if (!CloudSignInFlow.validUuid(credentialId) || issuedAt < 0 || attemptedAt < 0 || !(NONE.equals(result) || RETRY.equals(result) || REFUSED.equals(result))) throw new IllegalArgumentException();
+   if (!CloudSignInFlow.validUuid(credentialId) || issuedAt < 0 || attemptedAt < 0 || !(NONE.equals(result) || RETRY.equals(result) || REFUSED.equals(result) || CONFIRMING.equals(result) || REJECTED.equals(result))) throw new IllegalArgumentException();
    this.credentialId = credentialId; this.issuedAt = issuedAt; this.attemptedAt = attemptedAt; this.result = result;
   }
   /** The record of this exact saved key, or an empty one for it. */
@@ -79,6 +99,10 @@ public final class CloudKeyRenewal {
   public Record attempted(long now, String outcome) { return new Record(credentialId, issuedAt, now, outcome); }
   /** The last request for this key did not renew it. */
   public boolean failed() { return !NONE.equals(result); }
+  /** This key is never presented for renewal again: Cloud may hold a confirmed successor of it. */
+  public boolean spent() { return CONFIRMING.equals(result); }
+  /** Cloud will not renew this key; the owner signs in again. */
+  public boolean signInRequired() { return REFUSED.equals(result) || REJECTED.equals(result) || CONFIRMING.equals(result); }
   public String serialize() { return "v1|" + credentialId + "|" + issuedAt + "|" + attemptedAt + "|" + result; }
   public static Record parse(String value) {
    if (value == null) return null;

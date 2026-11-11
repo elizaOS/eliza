@@ -293,7 +293,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       output,
       /^PASS browser return in a new process \(8 scenarios\)$/m,
     );
-    assert.match(output, /^PASS silent key renewal \(17 scenario groups\)$/m);
+    assert.match(output, /^PASS silent key renewal \(20 scenario groups\)$/m);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -720,12 +720,14 @@ test("silent renewal confirms the new key before saving it, stores the duty to r
     renewal.indexOf(" private boolean retireReplaced("),
   );
   const refusal = settled.indexOf(
-      "if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) { CloudKeyRevocation.revoke(config(), environment, secret); return failed; }",
+      "if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) {",
     ),
     duty = settled.indexOf("owned.write(retiring, "),
     save = settled.indexOf("owned.write(slot, "),
     readmit = settled.indexOf("savedKeyRenewed(environment, installed)"),
-    revokeOld = settled.indexOf("retireReplaced(environment, previous)"),
+    revokeOld = settled.indexOf(
+      "retireReplaced(environment, previous, credentialId)",
+    ),
     told = settled.indexOf('notifyListeners("signInRenewed"');
   assert.ok(
     refusal > 0 &&
@@ -737,12 +739,50 @@ test("silent renewal confirms the new key before saving it, stores the duty to r
     "unconfirmed: nothing saved; confirmed: duty stored, key saved, host re-admitted, old key revoked, renderer told",
   );
   assert.equal(
-    (renewal.match(/environment, previous\)/g) || []).length,
-    1,
-    "the working key is revoked in exactly one place",
+    (renewal.match(/\(environment, previous, credentialId[,)]/g) || []).length,
+    2,
+    "the working key is revoked in exactly one place (and its in-process retry), always naming the new key",
   );
   assert.equal((renewal.match(/\.write\(/g) || []).length, 2);
-  // A replaced key counts as retired when Cloud revoked it or already refuses it (401).
+  // To Cloud a key that revokes itself without naming a confirmed successor is signing out, which
+  // ends every key of the sign-in. A renewal sends that request in one place only: for a new key it
+  // did not save, after the saved key was found to be no longer the one it presented.
+  const selfRevocations = renewal.match(/CloudKeyRevocation\.revoke\(/g) || [];
+  const abandon = between(
+    renewal,
+    " private void abandonSuccessor(",
+    " /**\n  * Makes sure a key a renewal replaced",
+  );
+  assert.equal(
+    (
+      abandon.match(
+        /CloudKeyRevocation\.revoke\(config\(\), environment, secret\)/g,
+      ) || []
+    ).length,
+    selfRevocations.length,
+    "a renewal revokes an unsaved key nowhere else",
+  );
+  assert.ok(
+    abandon.indexOf(
+      "if (previous.equals(token) || secret.equals(token)) return;",
+    ) > 0 &&
+      abandon.indexOf(
+        "if (previous.equals(token) || secret.equals(token)) return;",
+      ) < abandon.indexOf("CloudKeyRevocation.revoke("),
+    "never while the key it was renewed from is still the saved one",
+  );
+  // The saved key is recorded as possibly superseded before the first confirmation request.
+  const check = renewal.slice(
+    renewal.indexOf(" private JSObject renewNow("),
+    renewal.indexOf(" private void renewalAcknowledgement("),
+  );
+  assert.ok(
+    check.indexOf("CloudKeyRenewal.Record.CONFIRMING") > 0 &&
+      check.indexOf("CloudKeyRenewal.Record.CONFIRMING") <
+        check.indexOf("acknowledge(null, proof, credentialId, secret)"),
+  );
+  // A replaced key counts as retired when Cloud revoked it or already refuses it (401), and the
+  // request names the key it was renewed into.
   const retire = between(
     renewal,
     " private boolean retireReplaced(",
@@ -750,14 +790,28 @@ test("silent renewal confirms the new key before saving it, stores the duty to r
   );
   assert.match(
     retire,
-    /if \(!CloudKeyRevocation\.retire\(config\(\), environment, replaced\)\) return false;/,
+    /if \(!CloudKeyRevocation\.retire\(config\(\), environment, replaced, successor\)\) return false;/,
+  );
+  const revocation = read(join(main, "CloudKeyRevocation.java"));
+  assert.match(
+    revocation,
+    /public static final String RENEWED_CREDENTIAL_HEADER = "X-Renewed-Credential-Id";/,
+  );
+  assert.match(
+    revocation,
+    /if \(renewedInto != null\) connection\.setRequestProperty\(RENEWED_CREDENTIAL_HEADER, renewedInto\);/,
+  );
+  assert.match(
+    revocation,
+    /return successor != null && retired\(request\(config, environment, token, successor\)\);/,
+    "a retirement never sends a request that names no successor",
   );
   // The stored duty never revokes the key that is still the saved one.
   const stored = renewal.slice(renewal.indexOf(" private void retireStored("));
   assert.ok(
-    stored.indexOf("if (stillSaved || ") > 0 &&
-      stored.indexOf("if (stillSaved || ") <
-        stored.indexOf("retireReplaced(environment, replaced)"),
+    stored.indexOf("if (stillSaved || successor == null || ") > 0 &&
+      stored.indexOf("if (stillSaved || successor == null || ") <
+        stored.indexOf("retireReplaced(environment, replaced, successor)"),
   );
   // While Cloud's confirmation of the new key is still awaited, no expiry warning is reported.
   assert.match(

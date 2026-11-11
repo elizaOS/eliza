@@ -122,7 +122,8 @@ export interface NativeCloudSignInReadinessChange<E extends string = string> {
  * - `current`: not due. `renewed`: a new key is saved; read the saved sign-in again.
  * - `deferred`: due, but a sign-in is in progress, today's request was used, Cloud could not answer
  *   or the saved key still awaits its acknowledgement.
- * - `sign-in-required`: Cloud will not renew this key; it keeps working until it expires.
+ * - `sign-in-required`: Cloud will not renew this key; it keeps working until it expires, unless
+ *   `keyRefused` says Cloud no longer accepts it at all.
  * - `unavailable`: this host cannot renew in the background. `signed-out`: no usable saved key.
  */
 export type NativeCloudSignInRenewalStatus =
@@ -144,6 +145,12 @@ export interface NativeCloudSignInRenewal<E extends string = string> {
   expiresAt?: number;
   /** The installed local credential generation after a renewal. */
   credentialId?: string;
+  /**
+   * Only with `sign-in-required`, and then always with `expiryWarning`: Cloud answered the renewal
+   * request with 401, so it no longer accepts the saved key. The key is still saved; ask the owner to
+   * sign in now instead of counting its remaining days.
+   */
+  keyRefused?: true;
 }
 /** The retained `signInRenewed` event: the saved key was replaced by a silent renewal. */
 export interface NativeCloudSignInRenewed<E extends string = string> {
@@ -619,11 +626,20 @@ export function nativeSignInRenewal<E extends string>(
           "expiryWarning",
           "expiresAt",
           "credentialId",
+          "keyRefused",
         ].includes(key),
     )
   )
     throw new NativeCloudSignInError("unavailable");
   const renewed = row.status === "renewed";
+  // A refused key is reported only as `true`, only when a sign-in is required, and it always warns.
+  if (
+    row.keyRefused !== undefined &&
+    (row.keyRefused !== true ||
+      row.status !== "sign-in-required" ||
+      !row.expiryWarning)
+  )
+    throw new NativeCloudSignInError("unavailable");
   // Only a renewal installs a credential, and it always says which one and until when.
   if (
     renewed
@@ -640,6 +656,7 @@ export function nativeSignInRenewal<E extends string>(
     expiryWarning: row.expiryWarning,
     ...(row.expiresAt === undefined ? {} : { expiresAt: time(row.expiresAt) }),
     ...(renewed ? { credentialId: row.credentialId as string } : {}),
+    ...(row.keyRefused === true ? { keyRefused: true as const } : {}),
   };
 }
 

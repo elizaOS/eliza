@@ -493,6 +493,36 @@ describe("native Cloud sign-in renderer contract", () => {
       expiryWarning: false,
     });
     expect("expiresAt" in signedOut).toBe(false);
+    // Cloud answered the renewal request with 401: the saved key is refused, whatever days it has left.
+    const refused = nativeSignInRenewal(
+      {
+        environment: "production",
+        status: "sign-in-required",
+        expiryWarning: true,
+        expiresAt: NOW,
+        keyRefused: true,
+      },
+      "production",
+    );
+    expect(refused).toEqual({
+      environment: "production",
+      status: "sign-in-required",
+      expiryWarning: true,
+      expiresAt: NOW,
+      keyRefused: true,
+    });
+    expect(
+      "keyRefused" in
+        nativeSignInRenewal(
+          {
+            environment: "production",
+            status: "sign-in-required",
+            expiryWarning: false,
+            expiresAt: NOW,
+          },
+          "production",
+        ),
+    ).toBe(false);
     const base = {
       environment: "production",
       status: "deferred",
@@ -507,6 +537,16 @@ describe("native Cloud sign-in renderer contract", () => {
       { ...base, expiryWarning: undefined },
       { ...base, expiresAt: "soon" },
       { ...base, token: "eliza_mobile_never" },
+      // A refused key is `true`, belongs to `sign-in-required` and always warns.
+      { ...base, keyRefused: true },
+      { ...base, status: "sign-in-required", keyRefused: false },
+      { ...base, status: "sign-in-required", keyRefused: "true" },
+      {
+        ...base,
+        status: "sign-in-required",
+        expiryWarning: false,
+        keyRefused: true,
+      },
       // Only a renewal installs a credential.
       { ...base, credentialId: CREDENTIAL },
       { ...base, status: "renewed", expiryWarning: false },

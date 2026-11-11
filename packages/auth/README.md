@@ -221,9 +221,15 @@ same outcomes as the in-process retries (below).
   `signInReadinessChanged` event, so a sign-in screen must listen for it. A call
   waits for a measurement only when there is no fresh answer, or on an explicit
   retry (`refreshNegative`) of an incomplete one.
-- A measurement that gets no result (no connection, a timeout) keeps a fresh
-  answer's ready methods and announces nothing; only the next measurement is put
-  off. The answer becomes "not ready" only when no fresh answer exists.
+- A method is measured not ready only by an answer that says so. A request that
+  gets no usable answer (no connection, a timeout, a 5xx, 408 or 429 from the
+  registration, providers or browser Google reads, a 5xx from the email route)
+  measures nothing. When it is the registration or the providers read, the whole
+  fresh answer is kept; when it is the email route or a browser Google read, that
+  one method keeps what the fresh answer said and the others are the ones just
+  measured. Nothing is announced, the answer keeps its expiry, and only the next
+  measurement is put off. A method becomes "not ready" this way only when no fresh
+  answer exists.
 - Resume measures only while a sign-in screen called `status()` in the last ten
   minutes or an attempt is in progress, and then with a growing wait while the
   answer stays the same (30 seconds, 2 minutes, 10 minutes, then hourly). A
@@ -280,28 +286,59 @@ is active.
 3. Only a key Cloud confirmed is saved, and only while the saved key is still the
    one the renewal presented. The duty to revoke the old key is stored first, in
    the native-only slot `cloud-signin:v1:retire:<environment>`
-   (`CloudSignInConfig.retiringSlot`); a renewal that cannot store it saves nothing.
+   (`CloudSignInConfig.retiringSlot`), as `{token, expiresAt, successor}` where
+   `successor` is the new key's `credentialId` from the token exchange; a renewal
+   that cannot store it saves nothing.
 4. The host's `savedKeyRenewed(environment, credentialId)` hook runs.
-5. The old key is revoked with `DELETE /api/v1/api-keys/current`. A 2xx answer or a
-   401 (Cloud already refuses that key) ends the duty. With no answer it is retried
-   twice in this process and again on later starts until the old key expires, so a
-   renewal rotates the key and never leaves two live ones behind. A stored duty for
-   a key that is still the saved one is dropped without a request.
+5. The old key is revoked with `DELETE /api/v1/api-keys/current`, presenting the
+   old key and the header `X-Renewed-Credential-Id: <successor>`. The header is
+   what makes this the last step of a renewal: Cloud then ends the old key alone.
+   Without it Cloud takes the request as a sign-out and ends every key of the
+   sign-in, the renewed one included (it tolerates a missing header only for two
+   minutes after the acknowledgement). So every attempt sends it, also the ones
+   made from storage on a later start. A 2xx answer or a 401 (Cloud already
+   refuses that key) ends the duty. With no answer it is retried twice in this
+   process and again on later starts until the old key expires, so a renewal
+   rotates the key and never leaves two live ones behind. A stored duty for a key
+   that is still the saved one, or one that names no successor, is dropped without
+   a request.
 6. The retained `signInRenewed` event (`{environment, expiresAt, credentialId}`)
    tells the renderer to read the saved sign-in again.
 
 401, 403 and 409 mean Cloud will not renew this key (`sign-in-required`). Every
-other failure is asked again a day later (`deferred`). Neither removes the working
-key: it stays saved until it expires, and the owner then signs in as before. A
-confirmed key that could not be saved is revoked best effort. Renewal writes no
-acknowledgement receipt, because a receipt holds no key and the unconfirmed key is
-never stored.
+other failure is asked again a day later (`deferred`). Neither removes the saved
+key. After 403 and 409 it keeps working until it expires, and the owner then signs
+in as before. 401 is different: Cloud refuses the key itself (it was revoked, or
+its whole sign-in was ended), so the answer also carries `keyRefused: true` and
+`expiryWarning: true` whatever time is left, and so does every later check that
+day. Ask the owner to sign in then. Renewal writes no acknowledgement receipt,
+because a receipt holds no key and the unconfirmed key is never stored.
 
-`renewSignIn` answers `{environment, status, expiryWarning, expiresAt?, credentialId?}`
+A new key that is not saved is never used, and it is not revoked while the key it
+was renewed from is still the saved one. Both belong to one sign-in, and to Cloud a
+key without a confirmed successor that revokes itself is signing out: that request
+would end the saved key. Unconfirmed, the new key lapses at Cloud's deadline.
+Confirmed (the save was refused, or a newer credential action owned the slot), it
+ends with the sign-in. It is revoked only when the saved key was removed or
+replaced meanwhile, because the owner signed out or signed in again.
+
+Cloud also ends a whole sign-in when a key asks for renewal after its successor
+was confirmed. The client therefore records, before the first acknowledgement
+request, that the saved key may have a confirmed successor (`confirming` in the
+plain renewal record). It clears that only when Cloud refuses the acknowledgement.
+While it stands, including after the process ended or Cloud's deadline passed with
+no answer, that key is not presented for renewal again: `renewSignIn` answers
+`sign-in-required`, the key keeps working until it expires, and the expiry warning
+appears in its last three days. This costs one full sign-in in the rare case that
+the confirmation never reached Cloud; asking again would cost the working key
+whenever it had.
+
+`renewSignIn` answers `{environment, status, expiryWarning, expiresAt?, credentialId?, keyRefused?}`
 (`nativeSignInRenewal`). `expiryWarning` is true only when fewer than three days
-remain and renewal is impossible or has failed; show the expiry warning from it,
-not from the remaining time alone. An answer given while Cloud's confirmation of
-the new key is still awaited (`deferred`) never carries the warning.
+remain and renewal is impossible or has failed, or when Cloud refused the key
+(`keyRefused`); show the expiry warning from it, not from the remaining time
+alone. An answer given while Cloud's confirmation of the new key is still awaited
+(`deferred`) never carries the warning.
 
 A browser Google sign-in that an earlier process began (a live pending record)
 counts as a sign-in in progress: nothing is renewed until it returns or expires.
@@ -323,10 +360,11 @@ A host that turns renewal on must do two more things:
   `signInRenewed` at that moment. The old key is revoked only after the hook
   returned. `test:native-android` runs the exact save through that store.
 
-Rotation is also Cloud's job: the client's `DELETE` is the second line. Cloud
-should retire the predecessor when the successor is acknowledged and allow one
-successor per key; this client then sees 401 for the old key and treats it as
-retired.
+Cloud allows one confirmed successor per key and keeps the old key valid until the
+client's `DELETE`. `test:native-android` runs the client's exact requests against
+those rules (the `Cloud` model in `CloudSignInChainTest`): after every renewal
+outcome the key the phone has saved is one Cloud still accepts, or the outcome
+says `keyRefused`.
 
 ### Browser Google return in a new process
 

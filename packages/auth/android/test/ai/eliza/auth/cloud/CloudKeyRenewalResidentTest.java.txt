@@ -22,10 +22,12 @@ public class CloudKeyRenewalResidentTest {
  static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
  static final String PROVIDER="provider", CLOUD="cloud:production", OTHER_CLOUD="cloud:staging", RETIRING="cloud-signin:v1:retire:production";
  static final List<String> events=new ArrayList<>();
+ /** The saved key's renewal record as the renewal request left it. */
+ static final CloudKeyRenewal.Record ASKED=new CloudKeyRenewal.Record(SAVED_ID,0,System.currentTimeMillis(),CloudKeyRenewal.Record.RETRY);
  static class JSObject extends JSONObject { @Override public JSObject put(String k,Object v){super.put(k,v);return this;} @Override public JSObject put(String k,long v){super.put(k,v);return this;} @Override public JSObject put(String k,boolean v){super.put(k,v);return this;} }
  static class CloudKeyRevocation {
   static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke:"+(NEW.equals(token)?"new":"old"));return true;}
-  static boolean retire(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("retire:"+(NEW.equals(token)?"new":"old"));return true;}
+  static boolean retire(CloudSignInConfig config,CloudSignInEnvironment environment,String token,String successor){check(SERVER_NEW.equals(successor),"the replaced key's revocation names the key it was renewed into");events.add("retire:"+(NEW.equals(token)?"new":"old"));return true;}
  }
  static class Main { void postDelayed(Runnable task,long delay){throw new AssertionError("no retry is expected");} }
  static final long[] REVOCATION_RETRY_MS={5000,25000};
@@ -116,7 +118,7 @@ public class CloudKeyRenewalResidentTest {
    check(admittedBefore!=null&&generationBefore!=null&&admittedBefore.equals(files.get(PROVIDER)),"the agent is admitted on the saved key");
    events.clear();agentRunning=true;
   }
-  JSObject renew(){return renewalSettled(()->{},TestRegistration.PRODUCTION,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,expiresAt+25*86_400_000L,OLD,expiresAt);}
+  JSObject renew(){return renewalSettled(()->{},TestRegistration.PRODUCTION,ASKED,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,expiresAt+25*86_400_000L,OLD,expiresAt);}
  }
  public static void main(String[] args)throws Exception{
   // 1. What the store does with the renewal's save, with a host that does nothing in the hook.
@@ -157,9 +159,14 @@ public class CloudKeyRenewalResidentTest {
   // 5. A credential action reserved meanwhile wins: nothing is written through the store.
   CloudSignInChainHost superseded=host("none");
   String before=superseded.files.get(CLOUD),provider=superseded.files.get(PROVIDER);
-  JSObject refused=superseded.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,superseded.expiresAt+86_400_000L,OLD,superseded.expiresAt);
+  JSObject refused=superseded.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,ASKED,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,superseded.expiresAt+86_400_000L,OLD,superseded.expiresAt);
   check("deferred".equals(refused.getString("status"))&&before.equals(superseded.files.get(CLOUD))&&provider.equals(superseded.files.get(PROVIDER))&&!superseded.files.containsKey(RETIRING),"a superseded renewal changes neither slot and stores no duty");
-  check(!events.contains("agent-stopped")&&events.equals(List.of("revoke:new"))&&superseded.store.admissionGeneration()!=null,"the agent keeps running on the saved key; only the unsaved new key is revoked");
+  check(!events.contains("agent-stopped")&&events.isEmpty()&&superseded.store.admissionGeneration()!=null,"the agent keeps running on the saved key, and the unsaved new key is not revoked: to Cloud that request would be a sign-out that ends the saved key too");
+  // The owner signed out meanwhile: the unsaved key ends with the sign-in it belonged to.
+  CloudSignInChainHost signedOut=host("none");
+  signedOut.files.remove(CLOUD);events.clear();
+  signedOut.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,ASKED,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,signedOut.expiresAt+86_400_000L,OLD,signedOut.expiresAt);
+  check(events.equals(List.of("revoke:new"))&&!signedOut.files.containsKey(CLOUD),"once the saved key is gone the unsaved one is revoked, and nothing is written");
   System.out.println("PASS renewal save through the resident credential store (5 scenarios)");
  }
 }
