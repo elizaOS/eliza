@@ -22,6 +22,7 @@ function fixture(provider: "eliza" | "google" = "eliza") {
     agentId: agent,
     ...source,
     title: "Selected QA",
+    description: `${"Complete selected event detail.\n".repeat(4096)}FINAL_SELECTED_DETAIL`,
     startAt: "2026-11-02T23:00:00Z",
     endAt: "2026-11-02T23:05:00Z",
     timezone: "America/Los_Angeles",
@@ -100,6 +101,11 @@ const run = (f: ReturnType<typeof fixture>) => {
 describe("current selected canonical Calendar read", () => {
   it("reads a selected Google event through second-precision filters and emits its versioned receipt", async () => {
     const f = fixture("google");
+    const neighbor = {
+      ...f.event,
+      id: "neighbor-event",
+      title: "Another event",
+    };
     // Google ignores fractional seconds and excludes events starting at timeMax.
     f.service.getCalendarFeedSnapshot.mockImplementation(
       async (_url, query) => {
@@ -109,16 +115,17 @@ describe("current selected canonical Calendar read", () => {
           ...f.snapshot,
           feed: {
             ...f.snapshot.feed,
-            events:
-              Date.parse(f.event.startAt) < timeMax &&
-              Date.parse(f.event.endAt) > timeMin
-                ? [f.event]
-                : [],
+            events: [f.event, neighbor].filter(
+              (event) =>
+                Date.parse(event.startAt) < timeMax &&
+                Date.parse(event.endAt) > timeMin,
+            ),
           },
         };
       },
     );
     const result = await run(f);
+    expect(result).toMatchObject({ data: { event: f.event } });
     expect(result).toMatchObject({
       success: true,
       data: {
@@ -143,6 +150,27 @@ describe("current selected canonical Calendar read", () => {
       forceSync: true,
       timeMin: "2026-11-02T22:59:59.000Z",
       timeMax: "2026-11-02T23:00:01.000Z",
+    });
+  });
+  it("refuses a selection replaced while its authorized feed read is pending", async () => {
+    const f = fixture("google");
+    let entered!: () => void;
+    const querying = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: (snapshot: typeof f.snapshot) => void;
+    f.service.getCalendarFeedSnapshot.mockImplementation(() => {
+      entered();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    });
+    const reading = run(f);
+    await querying;
+    f.target.id = "replacement-event";
+    release(f.snapshot);
+    await expect(reading).rejects.toMatchObject({
+      code: "CALENDAR_SELECTED_RECORD_UNAVAILABLE",
     });
   });
   it.each([

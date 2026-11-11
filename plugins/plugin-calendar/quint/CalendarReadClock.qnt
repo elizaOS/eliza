@@ -44,3 +44,58 @@ module CalendarReadClock {
   val WinterPacificIsEleven = not(phase == 2 and selected == 1 and not(summer)) or shownMinutes == 660
   val invariant = CanonicalInstantUnchanged and RequestClockSelected and DisplayOffsetMatchesDate and WinterPacificIsEleven
 }
+
+// Whole-second provider filtering for one selected canonical event. Identity and
+// owner checks are external facts; a query window never grants read authority.
+module SelectedCalendarSecondWindow {
+  type State = { fraction: int, duration: int, phase: int, found: bool,
+    authorized: bool, current: bool, complete: bool, matching: bool,
+    cancelled: bool, published: bool, output: int }
+  var s: State
+  action initialize(fraction: int, duration: int): bool = s' = {
+    fraction: fraction, duration: duration, phase: 0, found: false,
+    authorized: true, current: true, complete: true, matching: true,
+    cancelled: false, published: false, output: 0 }
+  action init = {
+    nondet fraction = Set(0, 500, 999).oneOf()
+    nondet duration = Set(1, 1000).oneOf()
+    initialize(fraction, duration)
+  }
+  val start = 10000 + s.fraction
+  pure def second(value: int): int = (value / 1000) * 1000
+  val included = start < second(start + 1000) and start + s.duration > second(start - 1000)
+  val legacyIncluded = start < second(start + 1) and start + s.duration > second(start - 1)
+  action queryReturns = all { s.phase == 0,
+    s' = s.with("phase", 1).with("found", included) }
+  action changeSelection = all { s.phase < 2, s.current,
+    s' = s.with("current", false) }
+  action revokeOwner = all { s.phase < 2, s.authorized,
+    s' = s.with("authorized", false) }
+  action partialFeed = all { s.phase < 2, s.complete,
+    s' = s.with("complete", false) }
+  action changeSource = all { s.phase < 2, s.matching,
+    s' = s.with("matching", false) }
+  action cancel = all { s.phase < 2, not(s.cancelled),
+    s' = s.with("cancelled", true) }
+  val eligible = s.found and s.authorized and s.current and s.complete and s.matching and not(s.cancelled)
+  action finish = all { s.phase == 1,
+    s' = s.with("phase", 2).with("published", eligible)
+      .with("output", if (eligible) 17 else 0) }
+  action step = any { queryReturns, finish, changeSelection, revokeOwner,
+    partialFeed, changeSource, cancel, s' = s }
+  val WholeSecondMarginIncludesSelection = included
+  val PublicationNeedsExactCurrentAuthority = s.published implies eligible
+  // 17 denotes the whole selected payload; adjacent records are not published.
+  val FullSelectedPayload = s.published implies s.output == 17
+  temporal FairReadSettles = (queryReturns.weakFair(s) and finish.weakFair(s)) implies
+    (s.phase < 2).leadsTo(s.phase == 2)
+  temporal ReadSettles = (s.phase < 2).leadsTo(s.phase == 2)
+  run oldWindowLosesWholeSecondEventTest = initialize(0, 1)
+    .expect(not(legacyIncluded) and included).then(queryReturns).then(finish)
+    .expect(s.published and FullSelectedPayload)
+  run fractionalStartsRemainInsideWindowTest = initialize(999, 1)
+    .then(queryReturns).then(finish).expect(s.published)
+  run replacedSelectionCannotPublishTest = initialize(500, 1000)
+    .then(queryReturns).then(changeSelection).then(finish)
+    .expect(not(s.published) and s.output == 0)
+}
