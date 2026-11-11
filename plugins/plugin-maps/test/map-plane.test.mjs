@@ -399,6 +399,18 @@ test("new result pins are brought into view once; selection, routes and followin
   f.map.fit = undefined;
   f.plane.update(undefined, null, { pins });
   assert.equal(f.map.fit, undefined);
+  // Provider ids may include delimiters. Distinct complete pin records must refit.
+  f.plane.update(undefined, null, {
+    pins: [pin("a", 1, 2), pin("b", 3, 4)],
+  });
+  f.map.fit = undefined;
+  f.plane.update(undefined, null, { pins: [pin("a:1,2|b", 3, 4)] });
+  assert.ok(f.map.fit, "A different complete pin input must fit");
+  assert.deepEqual(JSON.parse(JSON.stringify(f.map.fit.bounds)), [
+    [3, 4],
+    [3, 4],
+  ]);
+  f.map.fit = undefined;
   // A selected place owns the camera; its result pins do not refit.
   f.plane.update({ longitude: 7.42, latitude: 43.73 }, null, {
     pins: [pin("c", 2.35, 48.85)],

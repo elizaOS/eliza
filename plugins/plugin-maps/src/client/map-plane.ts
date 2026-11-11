@@ -667,12 +667,13 @@ export class MapPlane {
     }
     this.updateSelectionCamera(selectionChanged);
     const pins = overlay.pins || [];
-    const pinsKey = pins
-      .map(
-        (pin) =>
-          `${pin.id}:${pin.coordinate.longitude},${pin.coordinate.latitude}`,
-      )
-      .join("|");
+    const pinsKey = JSON.stringify(
+      pins.map((pin) => [
+        pin.id,
+        pin.coordinate.longitude,
+        pin.coordinate.latitude,
+      ]),
+    );
     const pinsChanged = pinsKey !== this.lastPins;
     this.lastPins = pinsKey;
     if (
