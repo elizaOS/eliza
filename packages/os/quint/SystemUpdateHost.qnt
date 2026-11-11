@@ -12,6 +12,8 @@ module SystemUpdateHost {
   action verify = all {s.active, s.phase == "downloading",
     s' = {...s, phase: "verified", verified: true}}
   action reject = all {s.active, s.phase == "downloading", s' = {...s, phase: "failed", active: false}}
+  action replaceRejected = all {not(s.active), s.phase == "failed", s.applyCalls == 0,
+    s' = {...s, phase: "idle", verified: false}}
   action apply = all {s.active, not(s.stopped), s.eligible, s.phase == "verified", s.verified,
     s' = {...s, phase: "applying", applyCalls: s.applyCalls + 1}}
   action callback = all {s.phase == "applying", s' = {...s, phase: "ready", active: false}}
@@ -25,7 +27,7 @@ module SystemUpdateHost {
     phase: if (s.phase == "applying") "unknown" else if (s.phase == "reboot-intent") "source-retained" else s.phase}}
   action conditions(eligible: bool): bool = s' = {...s, eligible: eligible}
   action stutter = s' = s
-  action step = any {start, download, verify, reject, apply, callback, failure,
+  action step = any {start, download, verify, reject, replaceRejected, apply, callback, failure,
     reboot, observeTarget, stop, crash, conditions(true), conditions(false), stutter}
   action stableStep = any {start, download, verify, apply, callback, reboot, observeTarget, stutter}
   val NoUnverifiedApply = s.applyCalls == 0 or s.verified
@@ -39,6 +41,9 @@ module SystemUpdateHost {
     .then(start).then(verify).then(apply).expect(s.applyCalls == 1 and NoUnverifiedApply and NoReplay)
   run rejectedPackageNoApplyTest = init.then(start).then(download).then(reject)
     .expect(s.applyCalls == 0 and NoUnverifiedApply and NoReplay)
+  run replacedRejectedPackageTest = init.then(start).then(download).then(reject)
+    .then(replaceRejected).then(start).then(download).then(verify).then(apply)
+    .expect(s.applyCalls == 1 and NoUnverifiedApply and NoReplay)
   run interruptedApplyStaysUnknownTest = init.then(start).then(download).then(verify).then(apply)
     .then(crash).expect(s.phase == "unknown" and s.applyCalls == 1 and UnknownNeverActive)
   run stoppedVerificationCannotApplyTest = init.then(start).then(download).then(verify).then(stop)

@@ -85,7 +85,7 @@ final class UpdateRunner {
             UpdateJournal observed = current.reconcile(android.os.Build.FINGERPRINT, boot());
             if (observed != current) { store.write(current, observed); current = observed; }
             if (current.phase == UpdateJournal.Phase.UNKNOWN
-                    || current.phase == UpdateJournal.Phase.FAILED
+                    || (current.phase == UpdateJournal.Phase.FAILED && !current.intentBoot.isEmpty())
                     || current.phase == UpdateJournal.Phase.REBOOT_INTENT) {
                 finish(run, "An earlier system update needs review"); return;
             }
@@ -94,13 +94,17 @@ final class UpdateRunner {
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
             UpdateChannel.Candidate candidate = channel.discover();
             boolean unapplied = current.phase == UpdateJournal.Phase.DOWNLOADING
-                    || current.phase == UpdateJournal.Phase.VERIFIED;
+                    || current.phase == UpdateJournal.Phase.VERIFIED
+                    || (current.phase == UpdateJournal.Phase.FAILED && current.intentBoot.isEmpty());
             if (unapplied && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256))) {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
             }
             if (candidate == null) { finish(run, "No newer system update was offered"); return; }
+            if (current.phase == UpdateJournal.Phase.FAILED) {
+                finish(run, "The rejected system update needs review"); return;
+            }
             if (current.phase == UpdateJournal.Phase.IDLE || current.phase == UpdateJournal.Phase.COMPLETE
                     || current.phase == UpdateJournal.Phase.SOURCE_RETAINED) {
                 UpdateJournal next = current.download(android.os.Build.FINGERPRINT,
@@ -227,7 +231,7 @@ final class UpdateRunner {
         Log.w("ElizaSystemUpdater", "System update operation stopped", failure);
         if (run.verifying && !run.stopped) {
             try {
-                JournalStore store = new JournalStore(context.getFilesDir());
+                JournalStore store = new JournalStore(context.getFilesDir().getCanonicalFile());
                 UpdateJournal before = store.read();
                 store.write(before, before.failedBeforeApply());
             } catch (Exception unconfirmed) {
