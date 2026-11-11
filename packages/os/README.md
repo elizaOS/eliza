@@ -1,6 +1,6 @@
 # @elizaos/os
 
-Android vendor overlays and desktop USB/device installers.
+Android vendor overlays and their release tooling.
 The built-in Chromium component of the AOSP image lives in `browser/`. Its Linux
 native-message relay is retained there for the browser tests; no image ships it.
 Build it with `bun run --cwd packages/os build:browser`; run its protocol and
@@ -14,16 +14,15 @@ Install workspace dependencies with Bun 1.4.2 at the repository root. Use Node
 24.15.0 for scripts. From the repository root:
 
 ```bash
-bun run --cwd packages/os build                 # installer web frontends only
-bun run --cwd packages/os verify:portable       # checks without native installer qualification
+bun run --cwd packages/os build                 # browser component
+bun run --cwd packages/os verify:portable       # typecheck, lint and tests
 bun run --cwd packages/os verify                # portable and release checks
 make -C packages/os/android bootstrap AOSP_ROOT=/path/to/aosp
 make -C packages/os/android build ARCH=x86_64 AOSP_ROOT=/path/to/aosp
 ```
 
-OS image builds are separate from the installer frontend build. See
-[Android](android/README.md) and the
-[USB installer](usb-installer/README.md) for their entrypoints.
+OS image builds are separate from the package build. See
+[Android](android/README.md) for their entrypoints.
 
 Release-script tests (`test:release`) require Python 3.11+, cryptography, binutils
 (`readelf`) and e2fsprogs (`mkfs.ext4`, `debugfs`) on `PATH`. Linux CI owns the

@@ -132,7 +132,7 @@ runtime and direct model-provider configuration remain first-class paths.
 ### elizaOS distributions
 
 [`packages/os`](packages/os/README.md) owns the bootable AOSP distribution,
-installers, release manifests, and OS toolchains. Application shells and native
+release manifests, and OS toolchains. Application shells and native
 runtime bridges live in their owning app and plugin packages.
 
 ## Build an agent

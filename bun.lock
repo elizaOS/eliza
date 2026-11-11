@@ -1269,59 +1269,6 @@
         "vitest": "5.1.0",
       },
     },
-    "packages/os/setup": {
-      "name": "@elizaos/setup",
-      "version": "1.0.0",
-      "dependencies": {
-        "@fontsource/poppins": "^5.2.7",
-        "vite": "^8.0.0",
-      },
-      "devDependencies": {
-        "@types/bun": "1.4.2",
-        "@types/node": "^25.0.0",
-        "@types/react": "^18.0.0 || ^19.0.0",
-        "@types/react-dom": "^19.3.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "electrobun": "1.18.1",
-        "jsdom": "^31.0.0",
-        "react": "^19.3.1",
-        "react-dom": "^19.3.1",
-        "typescript": "^6.0.3",
-        "vitest": "^5.1.0",
-      },
-      "peerDependencies": {
-        "react": "^18.0.0 || ^19.0.0",
-        "react-dom": "^18.0.0 || ^19.0.0",
-      },
-    },
-    "packages/os/usb-installer": {
-      "name": "@elizaos/os-usb-installer",
-      "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/host": "workspace:*",
-        "@elizaos/os": "workspace:*",
-        "@fontsource/poppins": "^5.2.7",
-        "vite": "^8.0.0",
-      },
-      "devDependencies": {
-        "@playwright/test": "^1.65.0",
-        "@types/bun": "1.4.2",
-        "@types/node": "^25.0.0",
-        "@types/react": "^18.0.0 || ^19.0.0",
-        "@types/react-dom": "^19.3.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "electrobun": "1.18.1",
-        "jsdom": "^31.0.0",
-        "react": "^19.3.1",
-        "react-dom": "^19.3.1",
-        "typescript": "^6.0.3",
-        "vitest": "^5.1.0",
-      },
-      "peerDependencies": {
-        "react": "^18.0.0 || ^19.0.0",
-        "react-dom": "^18.0.0 || ^19.0.0",
-      },
-    },
     "packages/scripts": {
       "name": "@elizaos/repository-tools",
       "version": "0.0.0",
@@ -4045,8 +3992,6 @@
 
     "@elizaos/os": ["@elizaos/os@workspace:packages/os"],
 
-    "@elizaos/os-usb-installer": ["@elizaos/os-usb-installer@workspace:packages/os/usb-installer"],
-
     "@elizaos/personality-bench": ["@elizaos/personality-bench@workspace:packages/benchmarks/suites/personality-bench"],
 
     "@elizaos/plugin-agent-orchestrator": ["@elizaos/plugin-agent-orchestrator@workspace:plugins/plugin-agent-orchestrator"],
@@ -4168,8 +4113,6 @@
     "@elizaos/repository-tools": ["@elizaos/repository-tools@workspace:packages/scripts"],
 
     "@elizaos/searchbench": ["@elizaos/searchbench@workspace:packages/benchmarks/suites/searchbench"],
-
-    "@elizaos/setup": ["@elizaos/setup@workspace:packages/os/setup"],
 
     "@elizaos/testing": ["@elizaos/testing@workspace:packages/testing"],
 
