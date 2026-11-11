@@ -133,6 +133,13 @@
       "required": [
         "registered typed generation HTTP route validates real enrollment and remains unsaved until explicit save"
       ]
+    },
+    {
+      "kind": "bun",
+      "file": "plugins/plugin-workflow/__tests__/integration/typed-schedule-e2e.test.ts",
+      "required": [
+        "typed local-time schedules: reviewed arming, exact occurrences, missed, overlap and restart"
+      ]
     }
   ]
 }
