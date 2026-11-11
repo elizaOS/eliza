@@ -177,6 +177,7 @@ async function workerRequest(
   rawKey: string,
   bindings: Record<string, unknown> = qualifiedBindings,
   primary: "trip" | "count" = "trip",
+  options: { strongCredentialCheck?: boolean } = {},
 ): Promise<HotPathCall> {
   const background: Promise<unknown>[] = [];
   primaryArmed = primary === "trip";
@@ -191,6 +192,7 @@ async function workerRequest(
           headers: { Authorization: `Bearer ${rawKey}` },
         }),
         {
+          ...options,
           executionCtx: {
             waitUntil(task) {
               background.push(task);
@@ -505,6 +507,73 @@ describe("a warm entry is decided without the organization gate", () => {
     expect(result.touches).toBe(0);
     await settle(result);
   }, 10_000);
+});
+
+describe("a caller that asks for the strong check meets the gate on a warm entry", () => {
+  const gate = (reply: () => Response) => {
+    const paths: string[] = [];
+    return {
+      paths,
+      bindings: {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: () => ({
+            async fetch(request: Request) {
+              paths.push(new URL(request.url).pathname);
+              return reply();
+            },
+          }),
+        },
+      },
+    };
+  };
+
+  test("an unfenced key is authorized after exactly one gate check and no primary query", async () => {
+    const key = await seedKey();
+    await seedPositiveEntry(key);
+    const open = gate(() => Response.json({ allowed: true }));
+    const call = await workerRequest(key.rawKey, open.bindings, "trip", {
+      strongCredentialCheck: true,
+    });
+    expect(call.touches).toBe(0);
+    expect(open.paths).toEqual(["/credential/check"]);
+    expect(call.resolution).toMatchObject({
+      kind: "authorized",
+      source: "cache",
+    });
+    await settle(call);
+  });
+
+  for (const [reason, expected] of [
+    ["credential_revoked", { kind: "rejected", status: 401, reason: "credential_inactive" }],
+    ["subject_moderation_disabled", { kind: "suspended", reason: "moderation_blocked" }],
+    ["organization_disabled", { kind: "suspended", reason: "organization_inactive" }],
+  ] as const) {
+    test(`a fenced key (${reason}) is refused on this request, from a fresh positive entry`, async () => {
+      const key = await seedKey();
+      await seedPositiveEntry(key);
+      const fenced = gate(() => Response.json({ allowed: false, reason }, { status: 403 }));
+      const call = await workerRequest(key.rawKey, fenced.bindings, "trip", {
+        strongCredentialCheck: true,
+      });
+      expect(call.touches).toBe(0);
+      expect(fenced.paths).toEqual(["/credential/check"]);
+      expect(call.resolution).toMatchObject(expected);
+      await settle(call);
+    });
+  }
+
+  test("an unreachable gate fails the request instead of authorizing it", async () => {
+    const key = await seedKey();
+    await seedPositiveEntry(key);
+    const down = gate(() => new Response("unavailable", { status: 503 }));
+    await expect(
+      workerRequest(key.rawKey, down.bindings, "trip", {
+        strongCredentialCheck: true,
+      }),
+    ).rejects.toMatchObject({
+      name: "InferenceCredentialRevocationUnavailableError",
+    });
+  });
 });
 
 describe("Worker billing admits from the snapshot alone", () => {

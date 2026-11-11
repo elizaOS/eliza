@@ -300,6 +300,7 @@ async function __hono_POST(c: AppContext) {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: willAdmit,
+        cachedDecisionIsFinal: true,
       });
     settlementOrganizationId = user.organization_id;
     settlementUserId = user.id;

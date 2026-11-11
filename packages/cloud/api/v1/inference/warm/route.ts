@@ -37,7 +37,9 @@ app.post("/", async (c) => {
     } catch {
       // error-policy:J4 local hosts await this separate advisory request.
     }
-    const caller = await requireGenerativeRouteCaller(c);
+    const caller = await requireGenerativeRouteCaller(c, {
+      cachedDecisionIsFinal: true,
+    });
     const orgId = caller.user.organization_id;
     const admission = caller.admissionSnapshot;
     // Cost: one foreground-triggered request per credential per minute. Reuse

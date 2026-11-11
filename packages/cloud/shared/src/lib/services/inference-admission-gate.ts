@@ -28,7 +28,6 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
-import { INFERENCE_RATE_LIMIT_GATE_PREFIX } from "./inference-policy-contract";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
@@ -40,8 +39,6 @@ const DISPATCH_GATE_MAX_ATTEMPTS = 3;
 const DISPATCH_GATE_TOTAL_BUDGET_MS = 4_500;
 const SETTLEMENT_FENCE_GATE_TOTAL_BUDGET_MS = 4_500;
 const SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS = 3;
-const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
-const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
 
 interface LeaseResponse {
   admitted: boolean;
@@ -70,10 +67,6 @@ interface SettlementFenceResponse {
 
 interface HydrateResponse {
   hydrated: boolean;
-}
-
-interface RateLimitWarmResponse {
-  warmed: boolean;
 }
 
 /** Authoritative balance observation published to the gate at settlement. */
@@ -209,16 +202,6 @@ function gateStub(organizationId: string): RuntimeDurableObjectStub {
     );
   }
   return namespace.getByName(organizationId);
-}
-
-function rateLimitGateStub(organizationId: string): RuntimeDurableObjectStub {
-  const namespace = getCloudBinding<RuntimeDurableObjectNamespace>(GATE_BINDING);
-  if (!namespace) {
-    throw new InferenceAdmissionGateUnavailableError(
-      "Inference admission Durable Object binding is missing",
-    );
-  }
-  return namespace.getByName(`${INFERENCE_RATE_LIMIT_GATE_PREFIX}${organizationId}`);
 }
 
 function gateTimingHeader(response: Response, name: string): number | undefined {
@@ -400,28 +383,6 @@ async function parseHydrateResponse(response: Response): Promise<HydrateResponse
   }
 }
 
-async function parseRateLimitWarmResponse(response: Response): Promise<RateLimitWarmResponse> {
-  try {
-    const value = await response.json();
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      (value as Record<string, unknown>).warmed !== true
-    ) {
-      throw new TypeError("response does not match the rate-limit warm schema");
-    }
-    return value as RateLimitWarmResponse;
-  } catch (error) {
-    // error-policy:J3 malformed responses never become successful prewarm.
-    throw new InferenceAdmissionGateUnavailableError(
-      `Inference admission gate returned invalid rate-limit warm JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    );
-  }
-}
-
 async function readGateErrorCode(response: Response): Promise<string | undefined> {
   try {
     const value = await response.json();
@@ -530,49 +491,6 @@ export async function publishInferenceAdmissionPolicy(params: {
     );
   }
   await parseHydrateResponse(response);
-}
-
-const rateLimitWarms = new Map<string, { expiresAt: number; promise: Promise<void> }>();
-
-/** Warm only the strongly ordered rate-limit window, without reading the balance database. */
-export async function warmInferenceRateLimitGate(
-  organizationId: string,
-  windowMs = 60_000,
-): Promise<void> {
-  const key = `${windowMs}:${organizationId}`;
-  const now = Date.now();
-  const existing = rateLimitWarms.get(key);
-  if (existing && existing.expiresAt > now) {
-    await existing.promise;
-    return;
-  }
-  if (rateLimitWarms.size >= RATE_LIMIT_WARM_MAX_ENTRIES) {
-    const oldest = rateLimitWarms.keys().next().value;
-    if (oldest !== undefined) rateLimitWarms.delete(oldest);
-  }
-  const warm = (async () => {
-    const response = await gateFetch(
-      organizationId,
-      "/rate-limit-warm",
-      {},
-      rateLimitGateStub(organizationId),
-      AbortSignal.timeout(HYDRATION_GATE_TIMEOUT_MS),
-    );
-    if (!response.ok) {
-      throw new InferenceAdmissionGateUnavailableError(
-        `Inference admission gate rate-limit warm failed with status ${response.status}`,
-      );
-    }
-    await parseRateLimitWarmResponse(response);
-  })().catch((error) => {
-    rateLimitWarms.delete(key);
-    throw error;
-  });
-  rateLimitWarms.set(key, {
-    expiresAt: now + RATE_LIMIT_WARM_TTL_MS,
-    promise: warm,
-  });
-  await warm;
 }
 
 function scheduleGateHydration(

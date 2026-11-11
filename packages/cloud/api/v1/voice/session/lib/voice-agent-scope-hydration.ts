@@ -11,10 +11,7 @@ import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@elizaos/cloud-shared/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
-import {
-  warmInferenceAdmissionGate,
-  warmInferenceRateLimitGate,
-} from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { warmInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import { coordinateSharedConversationPrewarm } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
@@ -137,18 +134,6 @@ export async function hydrateVoiceSharedAgentScope(
             // canonical fail-closed retry path if this latency prefill fails.
             logger.warn(
               "[voice-scope-hydration] admission gate prefill failed",
-              {
-                agentId: claims.agentId,
-                organizationId: claims.organizationId,
-                error: error instanceof Error ? error.message : String(error),
-              },
-            );
-          }),
-          warmInferenceRateLimitGate(claims.organizationId).catch((error) => {
-            // error-policy:J7 a cold serialized rate-limit authority remains on
-            // the canonical retryable warming path if this latency prefill fails.
-            logger.warn(
-              "[voice-scope-hydration] rate-limit gate prefill failed",
               {
                 agentId: claims.agentId,
                 organizationId: claims.organizationId,

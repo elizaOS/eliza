@@ -96,9 +96,11 @@ module InferenceCredentialCache {
     s.refresh == "read_primary",
     s' = s.with("refresh", if (s.originAllows and not(s.expired)) "read_gate" else "publish_deny")
   }
+  // A fence the refresh meets is a decision: it is published as a denial even
+  // though the primary read before it still allowed the key.
   action checkRefreshGate = all {
     s.refresh == "read_gate",
-    s' = s.with("refresh", if (gateAllows(s)) "publish_allow" else "idle")
+    s' = s.with("refresh", if (gateAllows(s)) "publish_allow" else "publish_deny")
   }
   action publishRefresh = all {
     Set("publish_allow", "publish_deny").contains(s.refresh),
@@ -193,9 +195,19 @@ module InferenceCredentialCache {
     .then(readRefreshPrimary).then(publishRefresh).then(finish).then(begin(true))
     .expect(s.result == "denied" and s.cache == "fresh_deny")
 
+  // The fence alone, with the primary still allowing the key (a revoke that
+  // fenced the gate and then failed its primary write): the refresh publishes
+  // the denial and the next request is refused from the cache.
+  run gateFenceAloneRewritesRetainedPositiveTest = initialize("stale_allow", true)
+    .then(setFence("key", true)).then(begin(true))
+    .expect(s.result == "allowed" and s.source == "cache")
+    .then(readRefreshPrimary).then(checkRefreshGate).expect(s.refresh == "publish_deny")
+    .then(publishRefresh).then(finish).then(begin(true))
+    .expect(s.result == "denied" and s.source == "cache" and s.cache == "fresh_deny")
+
   run fencedKeyIsNeverRepublishedTest = initialize("stale_deny", true).then(setFence("key", true))
-    .then(begin(true)).then(readRefreshPrimary).then(checkRefreshGate)
-    .expect(s.refresh == "idle" and s.cache == "stale_deny")
+    .then(begin(true)).then(readRefreshPrimary).then(checkRefreshGate).then(publishRefresh)
+    .expect(s.refresh == "idle" and s.cache == "fresh_deny")
 
   run clearingOneFenceCannotClearAnotherTest = initialize("empty", true)
     .then(setFence("account", true)).then(setFence("moderation", true))

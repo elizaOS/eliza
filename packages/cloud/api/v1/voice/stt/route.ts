@@ -535,6 +535,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: true,
+        cachedDecisionIsFinal: true,
       }).finally(() => {
         timings.push({
           name: "auth",

@@ -63,6 +63,12 @@ export type InferenceSessionContinuationResolution =
       ctx: InferenceSessionAuthContext;
       source: "cache" | "origin";
       credential?: InferenceCredentialCheck;
+      /**
+       * Rewrites this subject's cached decision from the primary, off the
+       * response. Paid admission calls it when the decision's funding
+       * standing is no longer true.
+       */
+      refreshEntry?: () => void;
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
   | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason };
@@ -352,6 +358,33 @@ export async function resolveInferenceSessionAuthContext(
     );
   }
 
+  const hydrationParams = {
+    stewardUserId: claims.userId,
+    email: claims.email,
+    walletAddress: claims.walletAddress,
+    walletChain: claims.walletChain,
+  };
+  // Post-response accounting rewrites the cached decision when it finds the
+  // organization can no longer fund a request (or can again). A hydration
+  // already in flight may predate that accounting, so the rewrite starts
+  // after it.
+  const executionCtx = options.executionCtx;
+  const refreshEntry =
+    options.useAuthCache === true && executionCtx
+      ? () => {
+          const inFlight = sessionHydrations.get(claims.userId)?.projection ?? Promise.resolve();
+          executionCtx.waitUntil(
+            inFlight.then(
+              () => getOrCreateHydration(hydrationParams, true, claims.issuedAt).projection,
+            ),
+          );
+        }
+      : undefined;
+  const withRefresh = (
+    resolved: InferenceSessionContinuationResolution,
+  ): InferenceSessionContinuationResolution =>
+    resolved.kind === "authorized" && refreshEntry ? { ...resolved, refreshEntry } : resolved;
+
   if (options.useAuthCache && cache.isAvailable()) {
     const cached = await readInferenceSessionAuthDecision(
       claims.userId,
@@ -366,25 +399,17 @@ export async function resolveInferenceSessionAuthContext(
     });
     if (cached) {
       if (options.executionCtx && Date.now() - cached.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
-        getOrCreateHydration(
-          {
-            stewardUserId: claims.userId,
-            email: claims.email,
-            walletAddress: claims.walletAddress,
-            walletChain: claims.walletChain,
-          },
-          true,
-          claims.issuedAt,
-          options.executionCtx,
-        );
+        getOrCreateHydration(hydrationParams, true, claims.issuedAt, options.executionCtx);
       }
-      return await enforceStrongSessionBoundary(
-        cached,
-        claims.userId,
-        claims.issuedAt,
-        "cache",
-        deferStrongCredentialCheck,
-        options.includeVerifiedCredential === true,
+      return withRefresh(
+        await enforceStrongSessionBoundary(
+          cached,
+          claims.userId,
+          claims.issuedAt,
+          "cache",
+          deferStrongCredentialCheck,
+          options.includeVerifiedCredential === true,
+        ),
       );
     }
   }
@@ -393,12 +418,7 @@ export async function resolveInferenceSessionAuthContext(
   // a disabled cache must not be pre-populated with positive identities
   // (mirrors the API-key path's flag-gated positive write).
   const hydration = getOrCreateHydration(
-    {
-      stewardUserId: claims.userId,
-      email: claims.email,
-      walletAddress: claims.walletAddress,
-      walletChain: claims.walletChain,
-    },
+    hydrationParams,
     options.useAuthCache === true,
     claims.issuedAt,
     options.executionCtx,
@@ -417,5 +437,5 @@ export async function resolveInferenceSessionAuthContext(
     if (resolved.status === 401) throw AuthenticationError();
     throw ForbiddenError();
   }
-  return resolved;
+  return withRefresh(resolved);
 }

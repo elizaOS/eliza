@@ -3,6 +3,16 @@
  * latency matrix and emits only coarse placement and rounded phase durations.
  * Raw telemetry and correlation identifiers never cross the private capture
  * directory boundary.
+ *
+ * An inference request is admitted from its cached auth entry and calls the
+ * organization gate only after the response: the lease commit, the settlement
+ * fence, the settlement, and any projection or standing refresh. Those are
+ * reported as `accounting`. A gate path that exists only to be awaited by a
+ * request (the rate window, a lease taken before dispatch) is reported as
+ * `requestGate`; a conforming trace has none. The classification is by path:
+ * the validated telemetry fields carry no span start time, so this evidence
+ * does not order a `/credential/check` or `/hydrate` against the provider
+ * fetch. That ordering is pinned by `inference-single-store-call.test.ts`.
  */
 
 import { writeFile } from "node:fs/promises";
@@ -37,11 +47,24 @@ const REQUIRED_KEYS = new Map([
   ["$metadata.traceId", "string"],
   ["$metadata.url", "string"],
 ]);
-const PHASE_BY_PATH = new Map([
-  ["/rate-limit", "rate"],
-  ["/lease-dispatched", "billing"],
-  ["/lease-dispatched-authorized", "billing"],
+/** Gate calls made after the response, in the order settlement makes them. */
+const ACCOUNTING_PHASE_BY_PATH = new Map([
+  ["/lease-dispatched", "lease"],
+  ["/settlement-fence", "fence"],
+  ["/settle", "settle"],
+  ["/release", "release"],
+  ["/hydrate", "publish"],
+  ["/credential/check", "standing"],
 ]);
+/** Gate calls that only a request awaiting the gate before its provider makes. */
+const REQUEST_PHASE_BY_PATH = new Map([
+  ["/rate-limit", "rate"],
+  ["/lease", "lease_before_dispatch"],
+  ["/lease-authorized", "lease_before_dispatch"],
+  ["/lease-dispatched-authorized", "lease_before_dispatch"],
+  ["/dispatch", "dispatch"],
+]);
+const ACCOUNTING_PHASE_ORDER = [...new Set(ACCOUNTING_PHASE_BY_PATH.values())];
 
 export class CloudflareTraceSchemaError extends Error {
   constructor(message, options) {
@@ -468,13 +491,13 @@ function phaseForEvent(event) {
     );
   }
   if (url.origin !== GATE_ORIGIN) return null;
-  const phase = PHASE_BY_PATH.get(url.pathname);
-  if (!phase) {
-    throw new CloudflareTraceSchemaError(
-      "Cloudflare inference admission trace contains an unknown phase",
-    );
-  }
-  return phase;
+  const accounting = ACCOUNTING_PHASE_BY_PATH.get(url.pathname);
+  if (accounting) return { kind: "accounting", phase: accounting };
+  const request = REQUEST_PHASE_BY_PATH.get(url.pathname);
+  if (request) return { kind: "request", phase: request };
+  throw new CloudflareTraceSchemaError(
+    "Cloudflare inference admission trace contains an unknown phase",
+  );
 }
 
 function requireMetadata(event, worker) {
@@ -606,13 +629,39 @@ export function sanitizeTraceEvents(rawEvents, references, worker) {
   }
   const counts = new Map();
   for (const candidate of subrequests) {
-    counts.set(candidate.phase, (counts.get(candidate.phase) ?? 0) + 1);
+    const name = candidate.phase.phase;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
   }
-  if (counts.get("rate") !== 1 || counts.get("billing") !== 1) return null;
-  const phases = subrequests.map(({ event, phase }) =>
-    sanitizePhase(event, phase, events, bySpanId, worker),
-  );
+  // A settled request commits its lease exactly once and fences and settles
+  // it at most once. A trace without the lease span is not complete yet (the
+  // post-response spans arrive after the root) or was not charged.
+  if (
+    counts.get("lease") !== 1 ||
+    (counts.get("fence") ?? 0) > 1 ||
+    (counts.get("settle") ?? 0) > 1
+  )
+    return null;
+  const phases = subrequests.map(({ event, phase }) => {
+    const sanitized = sanitizePhase(
+      event,
+      phase.phase,
+      events,
+      bySpanId,
+      worker,
+    );
+    return sanitized && { kind: phase.kind, value: sanitized };
+  });
   if (phases.some((phase) => phase === null)) return null;
+  const ordered = (kind, order) =>
+    phases
+      .filter((phase) => phase.kind === kind)
+      .map((phase) => phase.value)
+      .sort(
+        (left, right) =>
+          order.indexOf(left.phase) - order.indexOf(right.phase) ||
+          left.phase.localeCompare(right.phase) ||
+          left.subrequestMs - right.subrequestMs,
+      );
   return {
     sample: reference.sequence,
     ingressColo: reference.workerColo,
@@ -621,7 +670,8 @@ export function sanitizeTraceEvents(rawEvents, references, worker) {
       requireMetadata(workerRoots[0], worker).duration,
       "Worker root duration",
     ),
-    phases: Object.fromEntries(phases.map((phase) => [phase.phase, phase])),
+    requestGate: ordered("request", []),
+    accounting: ordered("accounting", ACCOUNTING_PHASE_ORDER),
   };
 }
 
@@ -910,6 +960,9 @@ export async function collectInferenceTraceEvidence({
       sampledTraces: rootDiscovery.traceIds.length,
       completeTraces: complete.length,
       incompleteTraces,
+      tracesWithRequestGateCalls: complete.filter(
+        (sample) => sample.requestGate.length > 0,
+      ).length,
       settleRounds: rootDiscovery.settleRounds,
       discoverySlices: rootDiscovery.discoverySlices,
       eventSweeps,

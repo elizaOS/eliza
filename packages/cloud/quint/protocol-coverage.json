@@ -768,6 +768,7 @@
       "packages/cloud/shared/src/lib/services/inference-credential-revocation.ts",
       "packages/cloud/api/src/inference-admission-gate.ts",
       "packages/cloud/shared/src/lib/services/inference-auth-hot-path.pglite.test.ts",
+      "packages/cloud/api/__tests__/inference-single-store-call.test.ts",
       "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
       "packages/cloud/api/test/fixtures/inference-admission-gate-worker.ts",
       "packages/cloud/quint/check-inference-credential-cache.mjs"
@@ -779,7 +780,7 @@
     "limitations": [
       "Standalone API-key authorization for a cache-qualified Worker with execution context and primary-only hosts. A matching unexpired cache allow is the whole decision for its request: no gate reply is read. A cached expiry denies locally. Malformed or foreign-hash entries reach the primary without supplying candidate identity.",
       "Only a cold primary decision and the refresh read the gate. The gate verdict reflects the serialized read, before reply delivery. Timeout or unusable output fails closed without a primary retry from the gate stage. Later mutations do not rewrite an already evaluated reply. This model does not prove authority at provider invocation.",
-      "A cached allow passes after the primary or a durable fence has changed, until writer invalidation or the aged refresh rewrites the entry; revocation latency is the cache's propagation time. One refresh slot can publish a checked positive or a primary denial, or retire on failure. Invalidation and delayed publication can overlap. A refresh never republishes a positive for a fenced key.",
+      "A cached allow passes after the primary or a durable fence has changed, until writer invalidation or the aged refresh rewrites the entry; revocation latency is the cache's propagation time. One refresh slot can publish a checked positive, a primary denial or the denial of a durable fence it met at the gate (whatever the primary answered), or retire on failure. Invalidation and delayed publication can overlap. A refresh never republishes a positive for a fenced key.",
       "One pending request and one refresh slot represent overlap, without modeling simultaneous request joins, exact retry counts, time values, availability fallback, or distributed cache convergence. Sessions, membership fences, deferred credential checks, and paid dispatch remain separate.",
       "PGlite exercises production resolution and primary reads with controlled gate replies. Workerd exercises the deployed Durable Object fence against retained KV and independent standing reasons. Neither harness composes the complete paid provider path."
     ]

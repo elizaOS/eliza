@@ -14,6 +14,13 @@ assert.equal(
 );
 const suites = new Map([
   [
+    "packages/cloud/api/__tests__/inference-single-store-call.test.ts",
+    [
+      "a gate fence (credential_revoked) met by the refresh replaces the entry with a denial while the primary still allows the key",
+      "a gate fence (subject_moderation_disabled) met by the refresh replaces the entry with a denial while the primary still allows the key",
+    ],
+  ],
+  [
     "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
     [
       "independent callers observe API-key revocation immediately",

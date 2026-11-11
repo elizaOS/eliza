@@ -26,6 +26,15 @@ import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
  * entry is readable (shared-cache propagation), and spend can exceed the
  * balance by the requests in flight during that window.
  *
+ * A request route records nothing durable before its provider call: the lease
+ * is first committed by the post-response task. If the isolate dies between
+ * the provider call and that commit (a CPU or memory limit, an eviction, the
+ * `waitUntil` cap), no lease, debit or recovery record exists and that
+ * request's provider cost is not charged. This is the accepted price of one
+ * store call before the provider. Once the lease is committed the gate alarm
+ * recovers an unsettled charge, and an operation that outlives its request
+ * (video, the speech relay) commits at dispatch (`commitLeaseAtDispatch`).
+ *
  * Hosts without a Worker lifetime keep a synchronous reservation because they
  * have no Durable Object to fence a deferred charge.
  */
@@ -127,11 +136,6 @@ export interface OrganizationInferenceAdmission {
 }
 
 export interface OrganizationInferenceAdmissionParams {
-  /** Provider-enforced bounds, distinct from estimates used for unknown-outcome recovery. */
-  maximumInputTokens?: number;
-  maximumOutputTokens?: number;
-  fundedBudgetRateReceipt?: string;
-  fundedBudgetEndpointType?: "completions" | "embeddings" | "standard" | "strict";
   context: BillingContext & {
     provider: string;
     billingSource: string;
@@ -395,30 +399,45 @@ function attachInferenceAdmissionLease(
         // the gate still holds the lease and must release it.
         leaseCommitted = true;
       }
-      const reconciliation =
-        selected.kind === "actual"
-          ? await settleAuthoritatively(selected.actualCostUsd)
-          : await settleUnknownAuthoritatively();
+      let reconciliation: CreditReconciliationResult | null;
+      try {
+        reconciliation =
+          selected.kind === "actual"
+            ? await settleAuthoritatively(selected.actualCostUsd)
+            : await settleUnknownAuthoritatively();
+      } catch (error) {
+        // The debit may have committed before the step that failed (its
+        // balance fence or republish), so the cached standing is unproven:
+        // read it again from the primary whatever went wrong.
+        refreshStandingOffResponse(params);
+        throw error;
+      }
+      // Decided from the debit itself, before the gate step below can fail.
+      const remaining = settledBalance?.();
+      const cannotFundNext =
+        standingRefused ||
+        reconciliation?.adjustmentType === "uncollected_overage" ||
+        (remaining !== undefined && !(remaining.balanceUsd > 0));
+      if (cannotFundNext) refreshStandingOffResponse(params);
       if (leaseCommitted) {
         const actualCostUsd =
           selected.kind === "actual"
             ? selected.actualCostUsd
             : Math.max(lease.estimatedCostUsd, reconciliation?.actualCost ?? 0);
         const amounts = inferenceSettlementAmounts(lease, actualCostUsd, reconciliation);
-        await settleInferenceAdmissionLease(
-          lease,
-          amounts.balanceBackedUsd,
-          amounts.gateConsumedUsd,
-          settledBalance?.(),
-        );
-      }
-      const remaining = settledBalance?.();
-      if (
-        standingRefused ||
-        reconciliation?.adjustmentType === "uncollected_overage" ||
-        (remaining !== undefined && !(remaining.balanceUsd > 0))
-      ) {
-        refreshStandingOffResponse(params);
+        try {
+          await settleInferenceAdmissionLease(
+            lease,
+            amounts.balanceBackedUsd,
+            amounts.gateConsumedUsd,
+            remaining,
+          );
+        } catch (error) {
+          // The gate did not take the settled balance, so its projection of
+          // this organization is stale too.
+          if (!cannotFundNext) refreshStandingOffResponse(params);
+          throw error;
+        }
       }
       return reconciliation;
     })();
@@ -549,11 +568,8 @@ async function admitOrganizationInferenceOnce(
     params.credential?.kind === "api_key" &&
     params.credential.rateLimit !== undefined &&
     params.credential.expiresAt !== undefined &&
-    ((params.flatCost && params.flatCost.totalCost > 0) ||
-      (Number.isSafeInteger(params.maximumInputTokens) &&
-        params.maximumInputTokens! > 0 &&
-        Number.isSafeInteger(params.maximumOutputTokens) &&
-        params.maximumOutputTokens! > 0))
+    params.flatCost !== undefined &&
+    params.flatCost.totalCost > 0
   ) {
     try {
       return await admitFundedBudgetInference(params);
@@ -593,11 +609,63 @@ async function admitWithoutGate(
 /**
  * A refusing snapshot younger than this was just read from the primary (an
  * isolate refill, a republished projection or a rewritten auth entry), so it
- * is not refilled again. It bounds a refused organization to one primary read
- * per isolate in this window; a payment that commits inside the window is
- * honoured when it ends.
+ * is not refilled again. It bounds a refused organization to one primary
+ * snapshot fill per isolate in this window; a payment that commits inside the
+ * window is honoured when it ends.
  */
 const REFUSAL_REFILL_MIN_AGE_MS = 1_000;
+
+/**
+ * How long one isolate waits before asking again for the same rewrite of the
+ * same credential's entry. A rewrite takes shared-cache propagation time to
+ * become readable, and the entry's own aged refresh repeats a lost one.
+ */
+const ENTRY_REWRITE_REPEAT_MS = 10_000;
+const ENTRY_REWRITE_MAX_TRACKED = 2_048;
+const requestedEntryRewrites = new Map<string, { standing: string; at: number }>();
+
+/** Test hook: forget which entry rewrites this isolate already requested. */
+export function __clearRequestedInferenceEntryRewrites(): void {
+  requestedEntryRewrites.clear();
+}
+
+/** The snapshot facts that decide funding; snapshots equal in them decide alike. */
+function fundingStanding(snapshot: InferenceAdmissionSnapshot): string {
+  return JSON.stringify([
+    snapshot.billingHold,
+    snapshot.subscriptionFunded,
+    snapshot.balance.balanceRevision,
+    snapshot.balance.balanceUsd,
+    snapshot.funding?.balanceRevision ?? null,
+    snapshot.funding?.balanceUsd ?? null,
+    snapshot.authority.generation,
+    snapshot.authority.effectiveUntil,
+  ]);
+}
+
+/**
+ * Rewrite the request's cached auth entry when a newer snapshot decided the
+ * request differently from the facts the entry carries. An entry that
+ * already carries the newer standing is left alone, and one isolate asks for
+ * the same rewrite once per `ENTRY_REWRITE_REPEAT_MS`: a client retrying a
+ * refusal in a loop starts no authoritative key hydration per request.
+ */
+function rewriteDisagreeingAuthEntry(
+  params: OrganizationInferenceAdmissionParams,
+  decided: InferenceAdmissionSnapshot,
+): void {
+  if (!params.refreshAuthEntry) return;
+  const standing = fundingStanding(decided);
+  const carried = params.admissionSnapshot;
+  if (isInferenceAdmissionSnapshot(carried) && fundingStanding(carried) === standing) return;
+  const credential = `${params.context.organizationId}:${params.apiKeyId ?? params.context.userId}`;
+  const now = Date.now();
+  const requested = requestedEntryRewrites.get(credential);
+  if (requested?.standing === standing && now - requested.at < ENTRY_REWRITE_REPEAT_MS) return;
+  if (requestedEntryRewrites.size >= ENTRY_REWRITE_MAX_TRACKED) requestedEntryRewrites.clear();
+  requestedEntryRewrites.set(credential, { standing, at: now });
+  params.refreshAuthEntry();
+}
 
 /**
  * The snapshot a Worker request is first decided from: the one carried by the
@@ -669,7 +737,8 @@ function allowancePeriodEndedSince(snapshot: InferenceAdmissionSnapshot): boolea
  * then from an inline primary fill (coalesced per isolate). A refusal is off
  * the hot path, so those reads cost an admitted request nothing. Whenever the
  * carried entry disagreed with the newer state, it is rewritten off the
- * response.
+ * response (`rewriteDisagreeingAuthEntry`); an entry that already refuses for
+ * the same facts is not.
  */
 async function admitFromSnapshot(
   params: OrganizationInferenceAdmissionParams,
@@ -707,7 +776,7 @@ async function admitFromSnapshot(
   const refusalIsCurrent = (decided: InferenceAdmissionSnapshot) =>
     snapshotAgeMs(decided) < REFUSAL_REFILL_MIN_AGE_MS && !allowancePeriodEndedSince(decided);
   if (refusalIsCurrent(snapshot)) {
-    if (snapshot !== params.admissionSnapshot) params.refreshAuthEntry?.();
+    rewriteDisagreeingAuthEntry(params, snapshot);
     throw refusal;
   }
   const published = await peekInferenceAdmissionSnapshot(organizationId);
@@ -718,14 +787,14 @@ async function admitFromSnapshot(
   ) {
     try {
       const admitted = await admitOnce(published);
-      params.refreshAuthEntry?.();
+      rewriteDisagreeingAuthEntry(params, published);
       return admitted;
     } catch (error) {
       if (!isStandingRefusal(error)) throw error;
       refusal = error;
     }
     if (refusalIsCurrent(published)) {
-      params.refreshAuthEntry?.();
+      rewriteDisagreeingAuthEntry(params, published);
       throw refusal;
     }
   }
@@ -742,7 +811,7 @@ async function admitFromSnapshot(
     throw refusal;
   }
   if (!snapshotIsComplete(fresh)) throw admissionUnavailable(params);
-  params.refreshAuthEntry?.();
+  rewriteDisagreeingAuthEntry(params, fresh);
   return await admitOnce(fresh);
 }
 

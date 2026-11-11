@@ -44,6 +44,8 @@ let bindings: typeof import("../runtime/cloud-bindings");
 let primaryCounting = false;
 let primaryStatements = 0;
 const gatePaths: string[] = [];
+/** A test's own gate answer for a path; undefined falls through to the default. */
+let gateReply: ((path: string) => Response | undefined) | undefined;
 
 const gate = {
   INFERENCE_ADMISSION_GATES: {
@@ -52,6 +54,8 @@ const gate = {
         async fetch(request: Request) {
           const path = new URL(request.url).pathname;
           gatePaths.push(path);
+          const reply = gateReply?.(path);
+          if (reply) return reply;
           // One reply that satisfies every gate schema this suite reaches.
           return Response.json({
             hydrated: true,
@@ -109,6 +113,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   primaryCounting = false;
+  gateReply = undefined;
+  admission.__clearRequestedInferenceEntryRewrites();
   snapshots.resetInferenceAdmissionMemoryCacheForTests();
 });
 
@@ -176,6 +182,7 @@ async function decide(
   org: { organizationId: string; userId: string },
   carried: InferenceAdmissionSnapshot,
   estimateUsd: number,
+  requestId: string = randomUUID(),
 ): Promise<Decision> {
   const background: Promise<unknown>[] = [];
   let entryRefreshes = 0;
@@ -193,7 +200,7 @@ async function decide(
           model: "qwen-3.8-27b",
           provider: "cerebras",
           billingSource: "cerebras",
-          requestId: randomUUID(),
+          requestId,
         },
         estimatedInputTokens: 0,
         estimatedOutputTokens: 0,
@@ -280,9 +287,12 @@ test("an uncollectable debit collects the remaining balance once and the next re
   expect(decision.entryRefreshes).toBe(1);
   await drain(decision);
 
-  // A replay of the same settlement collects nothing more.
-  await settle();
-  expect(await ledger(org.organizationId)).toEqual({ balance: 0, debits: [-0.1] });
+  // The same admission settles once: a repeat returns the first result.
+  expect(await settle()).toEqual(reconciliation);
+  expect(await ledger(org.organizationId)).toEqual({
+    balance: 0,
+    debits: [-0.1],
+  });
 
   // The entry another isolate still carries shows the old balance. This
   // isolate holds the refilled projection, so the request is refused.
@@ -364,4 +374,186 @@ test("a refusal that the primary cannot be read for stands", async () => {
   const decision = await decide(org, carried, 0.05);
   expect(decision.admitted).toBeUndefined();
   expect(decision.error).toBeInstanceOf(credits.InsufficientCreditsError);
+});
+
+test("a recovery of the same request after a top-up collects nothing on top of the remainder", async () => {
+  const org = await seedOrganization("0.100000");
+  const requestId = randomUUID();
+  const first = await decide(
+    org,
+    await carriedSnapshot(org.organizationId, FRESH),
+    0.05,
+    requestId,
+  );
+  await bindings.runWithCloudBindingsAsync(gate, () => first.admitted!.settle(0.5));
+  await drain(first);
+  expect(await ledger(org.organizationId)).toEqual({
+    balance: 0,
+    debits: [-0.1],
+  });
+
+  // Credit arrives, then another isolate (or the gate alarm) settles the same
+  // request id again from a fresh admission: the whole charge is affordable
+  // now, and the request was already settled for the remainder.
+  await credits.creditsService.addCredits({
+    organizationId: org.organizationId,
+    amount: 5,
+    description: "Granted credit",
+    deferCacheInvalidation: true,
+  });
+  snapshots.resetInferenceAdmissionMemoryCacheForTests();
+  const replay = await decide(
+    org,
+    await carriedSnapshot(org.organizationId, FRESH),
+    0.05,
+    requestId,
+  );
+  expect(replay.admitted?.mode).toBe("durable_object_debit");
+  await bindings.runWithCloudBindingsAsync(gate, () => replay.admitted!.settle(0.5));
+  await drain(replay);
+  const after = await ledger(org.organizationId);
+  expect(after.balance).toBe(5);
+  expect(after.debits.filter((amount) => amount < 0)).toEqual([-0.1]);
+
+  // The fast-path debit under the same identity is the same single row too.
+  const fastPath = await import("./inference-billing-fast-path");
+  await bindings.runWithCloudBindingsAsync(gate, () =>
+    fastPath.debitInferenceCost(
+      {
+        requestId,
+        organizationId: org.organizationId,
+        userId: org.userId,
+        model: "qwen-3.8-27b",
+        provider: "cerebras",
+        billingSource: "cerebras",
+      },
+      0.5,
+      "deferred",
+    ),
+  );
+  const direct = await ledger(org.organizationId);
+  expect(direct.balance).toBe(5);
+  expect(direct.debits.filter((amount) => amount < 0)).toEqual([-0.1]);
+});
+
+test("a gate that refuses the lease and fails the balance publication still leaves the debit committed and the cached standing refreshed", async () => {
+  const org = await seedOrganization("0.100000");
+  const decision = await decide(org, await carriedSnapshot(org.organizationId, FRESH), 0.05);
+  expect(decision.admitted?.mode).toBe("durable_object_debit");
+
+  // After the response the gate refuses the lease commit and cannot take the
+  // debit's balance publication either.
+  gateReply = (path) =>
+    path === "/lease-dispatched"
+      ? Response.json({ admitted: false, availableUsd: 0, requiredUsd: 0.05 }, { status: 402 })
+      : path === "/hydrate"
+        ? new Response("unavailable", { status: 503 })
+        : undefined;
+  let settlementError: unknown;
+  let reconciliation: unknown;
+  try {
+    reconciliation = await bindings.runWithCloudBindingsAsync(gate, () =>
+      decision.admitted!.settle(0.1),
+    );
+  } catch (error) {
+    settlementError = error;
+  }
+  // Whether the settlement reports the publication failure or not, the
+  // provider's cost was collected and the entry rewrite was requested.
+  expect(await ledger(org.organizationId)).toEqual({
+    balance: 0,
+    debits: [-0.1],
+  });
+  expect(decision.entryRefreshes).toBeGreaterThanOrEqual(1);
+  expect(settlementError !== undefined || reconciliation !== undefined).toBe(true);
+  await drain(decision);
+});
+
+test("a gate that cannot settle the lease still refreshes the cached standing", async () => {
+  const org = await seedOrganization("5.000000");
+  const decision = await decide(org, await carriedSnapshot(org.organizationId, FRESH), 0.05);
+  // The lease is committed and fenced; only the final settlement is lost.
+  gateReply = (path) =>
+    path === "/lease-dispatched"
+      ? Response.json({ admitted: true, dispatched: true, availableUsd: 5, requiredUsd: 0.05 })
+      : path === "/settlement-fence"
+        ? Response.json({ settlementFenced: true, estimatedCostUsd: 0.05 })
+        : path === "/settle"
+          ? new Response("unavailable", { status: 503 })
+          : undefined;
+  await expect(
+    bindings.runWithCloudBindingsAsync(gate, () => decision.admitted!.settle(0.05)),
+  ).rejects.toBeDefined();
+  expect(gatePaths).toContain("/settle");
+  expect(await ledger(org.organizationId)).toEqual({
+    balance: 4.95,
+    debits: [-0.05],
+  });
+  // Credit remains, so only the failed gate step asked for the refresh.
+  expect(decision.entryRefreshes).toBe(1);
+  await drain(decision);
+});
+
+test("a client retrying a refusal does not start an entry rewrite per request", async () => {
+  const org = await seedOrganization("0.000000");
+
+  // The entry already refuses for the facts the primary holds: nothing to
+  // rewrite, however often the request is repeated and re-read.
+  const refusing = await carriedSnapshot(org.organizationId, AGED);
+  let rewrites = 0;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const refused = await decide(org, refusing, 0.05);
+    expect(refused.error).toBeInstanceOf(credits.InsufficientCreditsError);
+    rewrites += refused.entryRefreshes;
+    await drain(refused);
+  }
+  expect(rewrites).toBe(0);
+
+  // An entry that still shows credit disagrees with the refusal this isolate
+  // just read from the primary: it is rewritten once, not once per request.
+  const stale: InferenceAdmissionSnapshot = {
+    ...refusing,
+    balance: { ...refusing.balance, balanceUsd: 5, balanceRevision: "stale" },
+  };
+  let staleRewrites = 0;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const refused = await decide(org, stale, 0.05);
+    expect(refused.error).toBeInstanceOf(credits.InsufficientCreditsError);
+    staleRewrites += refused.entryRefreshes;
+    await drain(refused);
+  }
+  expect(staleRewrites).toBe(1);
+});
+
+test("every funding refusal admission raises maps to 402 for routes that classify by error name", async () => {
+  const { getErrorStatusCode } = await import("../api/errors");
+  const { failureResponse } = await import("../api/cloud-worker-errors");
+  const context = {
+    json: (body: unknown, status: number, headers?: Record<string, string>) =>
+      new Response(JSON.stringify(body), { status, headers }),
+  } as unknown as Parameters<typeof failureResponse>[0];
+
+  // An exhausted plan allowance, as a subscriber's entry refuses it.
+  const org = await seedOrganization("0.000000");
+  const base = await carriedSnapshot(org.organizationId, FRESH);
+  const exhausted = await decide(
+    org,
+    {
+      ...base,
+      subscriptionFunded: true,
+      funding: { balanceUsd: 0, balanceRevision: base.balance.balanceRevision },
+    },
+    0.05,
+  );
+  expect(exhausted.error).toBeInstanceOf(admission.AllowanceExhaustedError);
+  // A billing hold, and plain exhausted credit.
+  const held = await decide(org, { ...base, billingHold: true }, 0.05);
+  expect(held.error).toBeInstanceOf(credits.BillingHoldActiveError);
+  const broke = await decide(org, base, 0.05);
+  expect(broke.error).toBeInstanceOf(credits.InsufficientCreditsError);
+
+  for (const refusal of [exhausted.error, held.error, broke.error]) {
+    expect(getErrorStatusCode(refusal)).toBe(402);
+    expect(failureResponse(context, refusal).status).toBe(402);
+  }
 });

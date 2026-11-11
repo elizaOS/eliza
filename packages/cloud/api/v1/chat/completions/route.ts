@@ -1703,12 +1703,10 @@ export async function handleChatCompletionsPOST(
           useMonetizedAppBilling,
         })
       ) {
-        if (admissionCredential) {
-          await assertInferenceCredentialActive(
-            user.organization_id,
-            admissionCredential,
-          );
-        }
+        // No gate call here: authentication already decided standing. A
+        // cached API-key entry is the whole decision, as in the organization
+        // lane, and a cold decision or a session was checked against the gate
+        // when it was resolved.
         settleReservation = async () => null;
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {

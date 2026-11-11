@@ -511,6 +511,14 @@ export async function requireGenerativeRouteCaller(
     deferStrongCredentialCheck?: boolean;
     /** Bounded speech bootstrap may retain verified identity metadata, not a raw credential. */
     includeVerifiedCredential?: boolean;
+    /**
+     * A cached API-key entry is the whole decision: no organization gate call
+     * before the provider. Only the inference hot-path routes (speech
+     * synthesis, transcription, warm) set it and accept cache-propagation
+     * revocation latency. Every other route checks the gate's durable fences
+     * on a cached hit, so a revoked key stops on its next request.
+     */
+    cachedDecisionIsFinal?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const request = options.request ?? c.req.raw;
@@ -546,6 +554,7 @@ export async function requireGenerativeRouteCaller(
       traceId: c.get("traceId") ?? c.get("requestId"),
       executionCtx,
       includeVerifiedCredential: options.includeVerifiedCredential === true,
+      strongCredentialCheck: options.cachedDecisionIsFinal !== true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
         : {}),

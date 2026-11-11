@@ -163,6 +163,14 @@ export interface ResolveInferenceAuthOptions {
   deferStrongCredentialCheck?: boolean;
   /** Return verified identity metadata for a bounded speech session; never skips an auth check. */
   includeVerifiedCredential?: boolean;
+  /**
+   * Check the organization gate's durable fences on a cached API-key hit,
+   * before returning. For routes that act outside inference (publishing,
+   * hosted browsers, paid upstreams), where a revoked key must stop on the
+   * next request instead of after cache propagation. The inference routes
+   * leave it unset: their cached entry is the whole decision.
+   */
+  strongCredentialCheck?: boolean;
 }
 
 interface MutableInferenceAuthTrace {
@@ -457,19 +465,49 @@ function getOrCreateApiKeyHydration(
           rateLimit: result.ctx.apiKeyRateLimit,
           expiresAt: result.ctx.apiKeyExpiresAt,
         };
+        // The warm path never calls the gate, so this is where a gate fence
+        // (revoked key, disabled subject or organization) reaches a cached
+        // entry. A fence is a decision: it replaces the entry with a denial
+        // even when the primary row read above still authorizes the key.
+        const checkGate = async (): Promise<InferenceCredentialRevokedError | undefined> => {
+          try {
+            await assertInferenceCredentialActive(result.ctx.orgId, credential);
+            return undefined;
+          } catch (error) {
+            if (error instanceof InferenceCredentialRevokedError) return error;
+            throw error;
+          }
+        };
+        let fenced: InferenceCredentialRevokedError | undefined;
         try {
-          await assertInferenceCredentialActive(result.ctx.orgId, credential);
+          fenced = await checkGate();
         } catch (error) {
           if (!(error instanceof InferenceCredentialRevocationUnavailableError)) throw error;
           // error-policy:J2 background projection may retry one unavailable
           // read with a fresh stub. A cold object can outlive the short check
           // deadline; abandoning the projection leaves every later request
-          // paying origin auth again. Neither attempt authorizes inference,
-          // extends cache freshness, nor retries an explicit revocation.
+          // paying origin auth again. Neither attempt authorizes inference
+          // nor extends cache freshness.
           logger.info("[InferenceAuth] retrying background credential projection", {
             traceId: boundedTraceId(options.traceId),
           });
-          await assertInferenceCredentialActive(result.ctx.orgId, credential);
+          fenced = await checkGate();
+        }
+        if (fenced) {
+          const revoked = fenced.reason === "credential_revoked";
+          const reason = inferenceCredentialRevocationReason(fenced.reason);
+          const write = await writeInferenceApiKeyAuthRejection(
+            keyHash,
+            revoked ? "rejected" : "suspended",
+            revoked ? 401 : 403,
+            reason,
+          );
+          logger.warn("[InferenceAuth] gate fence replaced a cached authorization", {
+            traceId: boundedTraceId(options.traceId),
+            reason,
+            cacheWrite: write.kind,
+          });
+          return;
         }
         const startedAt = performance.now();
         const write = await writeInferenceAuthContext(result.ctx);
@@ -673,6 +711,7 @@ export async function resolveInferenceAuthContext(
       trace.cacheAvailability = cache.isAvailable() ? "available" : "unavailable";
       trace.cacheBackend = cache.getBackendKind();
       if (session.kind === "authorized") {
+        if (session.refreshEntry) setRequestInferenceAuthEntryRefresh(session.refreshEntry);
         trace.cacheRead = session.source === "cache" ? "hit" : "miss";
         trace.authoritative = session.source === "origin" ? "authorized" : "not_run";
         trace.result = session.source === "cache" ? "authorized_cache" : "authorized_origin";
@@ -761,9 +800,31 @@ export async function resolveInferenceAuthContext(
           rateLimit: cached.ctx.apiKeyRateLimit,
           expiresAt: cached.ctx.apiKeyExpiresAt,
         };
-        // The cached entry is the whole decision: this read is the request's
-        // only store call. Revocation reaches it through writer invalidation
-        // and the aged refresh below, which checks the gate off the response.
+        if (options.strongCredentialCheck === true) {
+          try {
+            await assertInferenceCredentialActive(cached.ctx.orgId, credential);
+          } catch (error) {
+            if (!(error instanceof InferenceCredentialRevokedError)) throw error;
+            // The forced refresh meets the same fence and writes the denial.
+            scheduleRefresh(cached.ctx.cachedAt, true);
+            const revoked = error.reason === "credential_revoked";
+            const reason = inferenceCredentialRevocationReason(error.reason);
+            trace.result = revoked ? "rejected" : "suspended";
+            logStandingDenial({
+              status: revoked ? 401 : 403,
+              reason,
+              source: "authoritative",
+            });
+            return revoked
+              ? { kind: "rejected", status: 401, reason }
+              : { kind: "suspended", userId: cached.ctx.userId, reason };
+          }
+        }
+        // Otherwise the cached entry is the whole decision: this read is the
+        // request's only store call. Revocation reaches it through writer
+        // invalidation and the aged refresh below, which checks the gate off
+        // the response and replaces the entry with a denial when the gate
+        // holds a fence.
         observeInferenceApiKeyUsage(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
           options.executionCtx,
@@ -820,8 +881,9 @@ export async function resolveInferenceAuthContext(
         const decidedCredential = decided.credential;
         // A cold decision always checks the gate's durable fences inline.
         // Organization admission no longer carries the credential into a
-        // lease, so a deferred check would never run; the warm path is
-        // unaffected (its entry is rewritten by the refresh's own check).
+        // lease, so a deferred check would never run. The warm path is
+        // unaffected: its aged refresh makes the same check off the response
+        // and writes a denial over the entry when the gate holds a fence.
         try {
           await assertInferenceCredentialActive(decided.ctx.orgId, decidedCredential);
         } catch (error) {

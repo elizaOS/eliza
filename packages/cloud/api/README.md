@@ -27,8 +27,19 @@ an unfenced change for an enrolled organization.
 Request routes (chat, responses, messages, embeddings, speech and the other
 paid routes) never take the delegated lane or its rate window: they are admitted
 from the cached auth entry and counted per isolate whatever the flag says. The
-flag selects the delegated lane only for a session that commits its lease at
-dispatch (the speech relay) and for hosts without a Worker lifetime.
+flag selects the delegated lane only for a fixed-price Worker session that
+commits its lease at dispatch (the speech relay). A host without a Worker
+lifetime never takes the delegated lane: it reserves synchronously against the
+primary, and the flag only switches its rate limit to the budget rate window.
+
+A request route records nothing durable before its provider call. If its
+isolate dies after the provider call and before the post-response lease commit,
+that request's provider cost is not charged; once the lease is committed the
+gate alarm recovers it. Revocation of an API key reaches the inference routes
+through writer invalidation and the entry's aged refresh, which checks the gate
+and writes a denial when the gate holds a fence. Every other route that
+authenticates through `requireGenerativeRouteCaller` checks the gate on each
+request unless it passes `cachedDecisionIsFinal`.
 
 Migration 0553 also rejects an unfenced policy write in a repeatable-read or
 serializable transaction with SQLSTATE `40001`. Restart that whole transaction

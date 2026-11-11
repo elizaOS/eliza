@@ -1,11 +1,20 @@
 /**
  * A warm inference request makes exactly one awaited store call before the
  * provider fetch: the cached auth entry read. No Durable Object call and no
- * Postgres statement precedes the provider on chat completions, embeddings,
- * text-to-speech or speech-to-text, and the warm-up route answers after the
- * same single read. The entry alone also refuses a request: a billing hold,
- * an exhausted allowance, too little credit for the request, a revoked or an
- * expired key are answered without the provider or any second store.
+ * Postgres statement precedes the provider on chat completions (organization
+ * and pooled-credential lanes), embeddings, text-to-speech or speech-to-text,
+ * and the warm-up route answers after the same single read. The entry alone
+ * also refuses a request: a billing hold, an exhausted allowance, too little
+ * credit for the request, a revoked or an expired key are answered without
+ * the provider or any second store.
+ *
+ * One exception is pinned here rather than hidden: text-to-speech of a single
+ * short sentence also looks up the first-line audio cache (object storage)
+ * before the provider. It is not a gate or primary call.
+ *
+ * Every cache method is held until the request has returned, except the read
+ * of the auth entry, so an awaited cache call of any kind before the provider
+ * would stall the request instead of passing unnoticed.
  *
  * The real routes, auth resolution, limiter and organization admission run
  * here against a real PGlite primary. The providers are a recorded `fetch`;
@@ -68,6 +77,18 @@ const fastPath = await import(
 const snapshots = await import(
   "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
 );
+const teamPool = await import(
+  "@elizaos/cloud-shared/lib/services/team-credential-pool"
+);
+const firstLineCache = await import(
+  "@elizaos/cloud-shared/lib/services/tts-first-line-cache"
+);
+const stewardClient = await import(
+  "@elizaos/cloud-shared/lib/auth/steward-client"
+);
+const { requireGenerativeRouteCaller } = await import(
+  "../src/lib/generative-route-auth"
+);
 const { handleChatCompletionsPOST } = await import(
   "../v1/chat/completions/route"
 );
@@ -104,6 +125,10 @@ const PROVIDER_HOSTS = new Set([
 const AUTH_ENTRY_KEY_PREFIX = CacheKeys.inference
   .authContext("\u0000")
   .split("\u0000")[0]!;
+/** A signed-in session's cached decision: that caller's one auth read. */
+const SESSION_ENTRY_KEY_PREFIX = CacheKeys.inference
+  .sessionAuthContext("\u0000")
+  .split("\u0000")[0]!;
 
 /**
  * Store calls observed since the request began. Primary statements, gate
@@ -117,6 +142,16 @@ let primaryHold: Promise<void> = Promise.resolve();
 const gatePaths: string[] = [];
 let atProvider: typeof counts | undefined;
 let providerCalls = 0;
+let providerAuthorization: string | null = null;
+let firstLineLookups = 0;
+let firstLineLookupsAtProvider = 0;
+/** A test's own gate answer for a path; undefined falls through to the default. */
+let gateReply: ((path: string) => Response | undefined) | undefined;
+/**
+ * Gate calls wait for the request to return, so an awaited one would stall
+ * it. Cleared only by tests of callers that are meant to await the gate.
+ */
+let gateHeld = true;
 let debitedBalanceUsd = 9.99;
 const spies: Array<{ mockRestore(): void }> = [];
 const realFetch = globalThis.fetch;
@@ -126,10 +161,12 @@ const bindings = {
     getByName() {
       return {
         async fetch(request: Request) {
-          await primaryHold;
+          if (gateHeld) await primaryHold;
           counts.gateCalls += 1;
           const path = new URL(request.url).pathname;
           gatePaths.push(path);
+          const reply = gateReply?.(path);
+          if (reply) return reply;
           if (path === "/lease-dispatched")
             return Response.json({
               admitted: true,
@@ -397,25 +434,64 @@ beforeAll(async () => {
         return original(...args);
       });
   }
-  const getWithOutcome = cache.getWithOutcome.bind(cache);
+  // Every cache operation is a store call. Only a read of the auth entry may
+  // run before the request returns; all others wait for it.
+  const cacheMethods = cache as unknown as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >;
+  const authEntryReads = new Set(["get", "getWithOutcome"]);
+  for (const method of [
+    "get",
+    "getWithOutcome",
+    "getWithSWR",
+    "mget",
+    "getAndDelete",
+    "getOrSet",
+    "wrapNullable",
+    "set",
+    "setWithOutcome",
+    "setIfNotExists",
+    "incr",
+    "expire",
+    "pexpire",
+    "pttl",
+    "del",
+    "delConfirmed",
+    "delPattern",
+    "delPatternConfirmed",
+    "scanByPrefix",
+    "pushQueueHead",
+    "getQueueLength",
+    "moveQueueTail",
+    "removeQueueValue",
+    "listQueue",
+  ]) {
+    expect(typeof cacheMethods[method]).toBe("function");
+    const original = cacheMethods[method]!.bind(cache);
+    spies.push(
+      spyOn(cacheMethods, method).mockImplementation(
+        async (...args: unknown[]) => {
+          const isAuthEntryRead =
+            authEntryReads.has(method) &&
+            (String(args[0]).startsWith(AUTH_ENTRY_KEY_PREFIX) ||
+              String(args[0]).startsWith(SESSION_ENTRY_KEY_PREFIX));
+          if (!isAuthEntryRead) await primaryHold;
+          counts.cacheReads += 1;
+          return original(...args);
+        },
+      ),
+    );
+  }
+  // The first-line audio cache is object storage, outside the cache client.
   spies.push(
-    spyOn(cache, "getWithOutcome").mockImplementation((async (
-      ...args: Parameters<typeof cache.getWithOutcome>
-    ) => {
-      if (!String(args[0]).startsWith(AUTH_ENTRY_KEY_PREFIX)) await primaryHold;
-      counts.cacheReads += 1;
-      return getWithOutcome(...args);
-    }) as typeof cache.getWithOutcome),
-  );
-  const get = cache.get.bind(cache);
-  spies.push(
-    spyOn(cache, "get").mockImplementation((async (
-      ...args: Parameters<typeof cache.get>
-    ) => {
-      if (!String(args[0]).startsWith(AUTH_ENTRY_KEY_PREFIX)) await primaryHold;
-      counts.cacheReads += 1;
-      return get(...args);
-    }) as typeof cache.get),
+    spyOn(
+      firstLineCache.getCloudFirstLineCacheService(),
+      "get",
+    ).mockImplementation(async () => {
+      firstLineLookups += 1;
+      return null;
+    }),
   );
   // A warm isolate prices from memory; this file has no pricing table.
   spies.push(
@@ -484,6 +560,10 @@ beforeAll(async () => {
     if (!PROVIDER_HOSTS.has(host)) return realFetch(input, init);
     providerCalls += 1;
     atProvider = { ...counts };
+    firstLineLookupsAtProvider = firstLineLookups;
+    providerAuthorization = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    ).get("authorization");
     if (host === "api.openai.com")
       return Response.json({
         object: "list",
@@ -544,6 +624,11 @@ beforeAll(async () => {
 
 afterEach(() => {
   providerCalls = 0;
+  providerAuthorization = null;
+  firstLineLookups = 0;
+  firstLineLookupsAtProvider = 0;
+  gateReply = undefined;
+  gateHeld = true;
   debitedBalanceUsd = 9.99;
   authContext.__clearInferenceApiKeyHydrations();
   rateLimit.__clearIsolateRateWindows();
@@ -790,17 +875,17 @@ test("embeddings refuse with the same funding codes as chat", async () => {
   }
 });
 
-const speak = (rawKey: string) =>
+const speak = (
+  rawKey: string,
+  text = "The first sentence is spoken. The second one follows it.",
+) =>
   route("tts", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${rawKey}`,
       "Content-Type": "application/json",
     },
-    // Two sentences: a single short opener would consult the first-line cache.
-    body: JSON.stringify({
-      text: "The first sentence is spoken. The second one follows it.",
-    }),
+    body: JSON.stringify({ text }),
   });
 
 test("a warm text-to-speech request reaches the provider after one cache read and no other store call", async () => {
@@ -810,6 +895,19 @@ test("a warm text-to-speech request reaches the provider after one cache read an
   expect(call.response.status).toBe(200);
   expect(providerCalls).toBe(1);
   expect(call.beforeProvider).toEqual(ONE_READ);
+  // Two sentences are never served from the first-line audio cache.
+  expect(firstLineLookupsAtProvider).toBe(0);
+  await finish(call);
+});
+
+test("text-to-speech of one short sentence adds exactly one first-line audio lookup, and no gate or primary call", async () => {
+  const key = newKey();
+  await seedEntry(key, snapshot());
+  const call = await speak(key.rawKey, "Got it.");
+  expect(call.response.status).toBe(200);
+  expect(providerCalls).toBe(1);
+  expect(call.beforeProvider).toEqual(ONE_READ);
+  expect(firstLineLookupsAtProvider).toBe(1);
   await finish(call);
 });
 
@@ -893,29 +991,225 @@ test("a refused post-response lease still debits the request", async () => {
       mock: { calls: unknown[] };
     }
   ).mock.calls.length;
-  const refusing = {
-    INFERENCE_ADMISSION_GATES: {
-      getByName: () => ({
-        fetch: async () =>
-          Response.json(
-            { admitted: false, availableUsd: 0, requiredUsd: 1 },
-            { status: 402 },
-          ),
-      }),
-    },
-  };
-  const original = bindings.INFERENCE_ADMISSION_GATES;
-  bindings.INFERENCE_ADMISSION_GATES =
-    refusing.INFERENCE_ADMISSION_GATES as unknown as typeof original;
-  try {
-    const call = await chat(key.rawKey);
-    expect(call.response.status).toBe(200);
-    await finish(call);
-  } finally {
-    bindings.INFERENCE_ADMISSION_GATES = original;
-  }
+  // The debit is a controlled port here; the real ledger and a gate that
+  // also fails the debit's balance publication are exercised in
+  // inference-admission-refusal.pglite.test.ts.
+  gateReply = () =>
+    Response.json(
+      { admitted: false, availableUsd: 0, requiredUsd: 1 },
+      { status: 402 },
+    );
+  const call = await chat(key.rawKey);
+  expect(call.response.status).toBe(200);
+  await finish(call);
   expect(
     (fastPath.debitInferenceCost as unknown as { mock: { calls: unknown[] } })
       .mock.calls.length,
   ).toBe(debits + 1);
+});
+
+test("a warm request on the pooled-credential lane reaches the provider after one cache read and no gate call", async () => {
+  const key = newKey();
+  await seedEntry(key, snapshot());
+  const registry = teamPool.getTeamPoolRegistry();
+  const pooled = [
+    spyOn(registry, "selectCredentialCacheOnly").mockResolvedValue({
+      kind: "ready",
+      credential: {
+        credentialId: crypto.randomUUID(),
+        providerId: "cerebras-api",
+        envKey: "CEREBRAS_API_KEY",
+        apiKey: "pooled-team-key-for-single-store-call-test",
+        label: "Team pool",
+      },
+    }),
+  ];
+  try {
+    for (const stream of [true, false]) {
+      providerCalls = 0;
+      const call = await chat(key.rawKey, stream);
+      expect(call.response.status).toBe(200);
+      // The handler returned after its one read. A streamed response calls
+      // the provider when its body is pulled; a gate call awaited before
+      // that would have stalled the handler, since the gate is held.
+      expect(call.beforeResponse).toEqual(ONE_READ);
+      await finish(call);
+      expect(providerCalls).toBe(1);
+      // The team's own credential made the provider call.
+      expect(providerAuthorization).toBe(
+        "Bearer pooled-team-key-for-single-store-call-test",
+      );
+      // The lane charges nothing, so it never meets the gate at all.
+      expect(gatePaths).toEqual([]);
+    }
+  } finally {
+    for (const spy of pooled) spy.mockRestore();
+  }
+});
+
+const AGED = 120_000;
+
+for (const [reason, status, body] of [
+  ["credential_revoked", 401, { kind: "rejected" }],
+  ["subject_moderation_disabled", 403, { kind: "suspended" }],
+] as const) {
+  test(`a gate fence (${reason}) met by the refresh replaces the entry with a denial while the primary still allows the key`, async () => {
+    const key = newKey();
+    await seedPrimaryKey(key);
+    await seedEntry(key, snapshot(), { cachedAt: Date.now() - AGED });
+    // Only the gate knows: a revoke that fenced the gate and then failed its
+    // primary write. The key's row is still active.
+    gateReply = (path) =>
+      path === "/credential/check"
+        ? Response.json({ allowed: false, reason }, { status: 403 })
+        : undefined;
+    const stale = await chat(key.rawKey);
+    // The aged entry still decides its own request, with no gate call.
+    expect(stale.response.status).toBe(200);
+    expect(stale.beforeProvider).toEqual(ONE_READ);
+    await finish(stale);
+    expect(gatePaths).toContain("/credential/check");
+    expect(await readEntry(key)).toMatchObject({
+      decision: body.kind,
+      status,
+    });
+
+    // A later request, in an isolate with no memory of the first and with the
+    // fence still in place, is refused from its single read of that entry.
+    authContext.__clearInferenceApiKeyHydrations();
+    providerCalls = 0;
+    const next = await chat(key.rawKey);
+    expect(next.response.status).toBe(status);
+    expect(providerCalls).toBe(0);
+    expect(next.beforeResponse).toEqual(ONE_READ);
+  });
+}
+
+/** The caller resolution of a route outside the inference hot path. */
+async function resolveOrdinaryRouteCaller(rawKey: string): Promise<{
+  caller?: unknown;
+  error?: unknown;
+  gateCallsBeforeReturn: number;
+}> {
+  let caller: unknown;
+  let error: unknown;
+  const call = await serve(async (executionCtx) => {
+    const request = new Request("https://api.eliza.app/api/v1/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${rawKey}` },
+    });
+    const store = new Map<string, unknown>();
+    // The gate is the one store this resolution may await besides the entry.
+    gateHeld = false;
+    try {
+      caller = await requireGenerativeRouteCaller(
+        {
+          req: { raw: request, url: request.url },
+          env: {},
+          executionCtx,
+          get: (name: string) => store.get(name),
+          set: (name: string, value: unknown) => store.set(name, value),
+        } as unknown as Parameters<typeof requireGenerativeRouteCaller>[0],
+        { compatibility: "raw" },
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    return new Response(null);
+  });
+  return {
+    caller,
+    error,
+    gateCallsBeforeReturn: call.beforeResponse.gateCalls,
+  };
+}
+
+test("a route outside the inference hot path checks the gate's fences on a warm key and refuses a revoked one at once", async () => {
+  const key = newKey();
+  await seedEntry(key, snapshot());
+  const allowed = await resolveOrdinaryRouteCaller(key.rawKey);
+  expect(allowed.error).toBeUndefined();
+  expect(allowed.caller).toMatchObject({
+    apiKeyId: key.id,
+    authSource: "combined_cache",
+  });
+  expect(allowed.gateCallsBeforeReturn).toBe(1);
+  expect(gatePaths).toEqual(["/credential/check"]);
+
+  // The key is revoked at the gate; its cached entry is still positive.
+  gateReply = (path) =>
+    path === "/credential/check"
+      ? Response.json(
+          { allowed: false, reason: "credential_revoked" },
+          { status: 403 },
+        )
+      : undefined;
+  const revoked = await resolveOrdinaryRouteCaller(key.rawKey);
+  expect(revoked.caller).toBeUndefined();
+  expect(revoked.error).toMatchObject({ status: 401 });
+});
+
+test("a signed-in session whose settlement empties the balance rewrites its cached decision, and the next request is refused from it", async () => {
+  const SUBJECT = "subject_single_store";
+  const verified = spyOn(
+    stewardClient,
+    "verifyStewardTokenCached",
+  ).mockResolvedValue({
+    userId: SUBJECT,
+    issuedAt: Math.floor(Date.now() / 1000),
+  } as Awaited<ReturnType<typeof stewardClient.verifyStewardTokenCached>>);
+  const sessionToken = "header.payload.signature";
+  const readDecision = () =>
+    authCache.readInferenceSessionAuthDecision(SUBJECT);
+  // A session is checked against the gate on every request, before the provider.
+  gateHeld = false;
+  try {
+    // Seeded as stored, with credit the primary no longer has: the write
+    // path would replace the snapshot with the primary's own.
+    const seeded = await cache.setWithOutcome(
+      CacheKeys.inference.sessionAuthContext(
+        createHash("sha256").update(SUBJECT).digest("hex"),
+      ),
+      {
+        v: authCache.INFERENCE_AUTH_CONTEXT_VERSION,
+        cachedAt: Date.now(),
+        userId: USER,
+        orgId: ORG,
+        apiKeyId: null,
+        stewardUserId: SUBJECT,
+        admission: snapshot(),
+      },
+      CacheTTL.inference.authContext,
+      { keyClass: "inference_auth" },
+    );
+    expect(seeded.kind).toBe("written");
+    expect(await readDecision()).toMatchObject({
+      stewardUserId: SUBJECT,
+      admission: { balance: { balanceUsd: 10 } },
+    });
+    debitedBalanceUsd = 0;
+    const call = await chat(sessionToken);
+    expect(call.response.status).toBe(200);
+    expect(providerCalls).toBe(1);
+    await finish(call);
+    // The decision itself now carries the primary's state: no credit left.
+    expect(await readDecision()).toMatchObject({
+      userId: USER,
+      orgId: ORG,
+      admission: { billingHold: false, balance: { balanceUsd: 0 } },
+    });
+
+    // Another isolate, with no memory of the first, refuses from the entry.
+    snapshots.resetInferenceAdmissionMemoryCacheForTests();
+    providerCalls = 0;
+    const next = await chat(sessionToken);
+    expect(next.response.status).toBe(402);
+    expect((await next.response.json()) as unknown).toMatchObject({
+      error: { type: "insufficient_quota", code: "insufficient_credits" },
+    });
+    expect(providerCalls).toBe(0);
+    await Promise.allSettled(next.background);
+  } finally {
+    verified.mockRestore();
+  }
 });
