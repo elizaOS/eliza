@@ -100,7 +100,17 @@ export function getDeterministicNames(
 }
 
 export function stableStringify(value: unknown): string {
-	return JSON.stringify(sortStable(value));
+	// JSON.stringify maps top-level undefined/function/symbol to the value
+	// `undefined`, which would escape this function's `string` return type
+	// and break callers that use the result as a string. Reject those
+	// inputs with a descriptive TypeError instead, matching the atomic JSON
+	// writer's fail-fast rule for unserializable top-level values; nested
+	// undefined/function/symbol values keep standard stringify semantics.
+	const serialized = JSON.stringify(sortStable(value));
+	if (serialized === undefined) {
+		throw new TypeError(`Cannot serialize ${typeof value} to JSON`);
+	}
+	return serialized;
 }
 
 function sortStable(value: unknown): unknown {
