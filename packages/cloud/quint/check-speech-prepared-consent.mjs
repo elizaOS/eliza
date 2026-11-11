@@ -61,7 +61,7 @@ for (const [index, suite] of manifest.bun.entries()) {
     "bun",
     "--conditions=eliza-source",
     "test",
-    suite.file,
+    `./${suite.file}`,
     "--timeout=60000",
     "--reporter=junit",
     `--reporter-outfile=${report}`,
