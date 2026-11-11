@@ -69,9 +69,7 @@ public final class DeferredDeletionJournal {
  /** open, expired or clock-changed for a persisted row. */
  public static String window(JSONObject row, String continuity, long elapsed) throws Exception {
   JSONObject d = row.getJSONObject("deadline");
-  long start = d.getLong("createdElapsed"), expiry = d.getLong("expiresElapsed");
-  if (!d.getString("continuity").equals(continuity) || elapsed < start) return "clock-changed";
-  return elapsed < expiry ? "open" : "expired";
+  return DeletionDeadline.window(d.getString("continuity"), d.getLong("createdElapsed"), d.getLong("expiresElapsed"), continuity, elapsed);
  }
 
  /** Acknowledgements and listed rows from one read of the journal slot. */

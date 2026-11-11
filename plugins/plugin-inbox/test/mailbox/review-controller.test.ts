@@ -232,6 +232,34 @@ describe("createMailReviewController", () => {
     expect(f.dispatched).toHaveLength(1);
   });
 
+  it("lets the owner discard an attempted send that Gmail reports as not sent", async () => {
+    const f = fixture("prepared");
+    const composerEmail = { draftId: "d", proposal: email() };
+    f.controller.setComposer(() => composerEmail);
+    await f.controller.bind("grant");
+    await f.controller.prepare(email(), { draftId: "d" });
+    f.controller.render().provider.confirm();
+    await settle();
+    const view = f.controller.render().provider;
+    expect(view.status).toMatch(/A late request can still deliver it/);
+    expect(view.canConfirm).toBe(false);
+    expect(view.canClear).toBe(true);
+    expect(view.clearLabel).toBe("Discard this operation");
+    view.clear();
+    await settle();
+    expect(f.slots.size).toBe(0);
+    expect(f.controller.render().providerReview).toBe(false);
+    // The account can send again. The discarded request was dispatched one time.
+    f.setOutcome("succeeded");
+    await f.controller.prepare(email(), { draftId: "d" });
+    f.controller.render().provider.confirm();
+    await settle();
+    expect(f.dispatched).toHaveLength(2);
+    expect(f.controller.render().provider.status).toBe(
+      "Provider confirmed this operation.",
+    );
+  });
+
   it("offers a reviewed Undo after a confirmed trash", async () => {
     const f = fixture();
     let restored = 0;

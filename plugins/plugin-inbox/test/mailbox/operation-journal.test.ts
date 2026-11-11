@@ -196,6 +196,33 @@ describe("InboxOperation", () => {
     expect(fixture.calls.dispatch).toBe(1);
   });
 
+  it("discards an attempted operation only while the provider reports it as prepared", async () => {
+    const unsent = provider({ outcome: "prepared" });
+    const operation = journal(unsent);
+    await operation.prepare(send(), { draftId: "draft-1" });
+    const record = await operation.confirm({
+      draftId: "draft-1",
+      proposal: send(),
+    });
+    expect(record?.phase).toBe("dispatching");
+    await expect(operation.clear()).rejects.toThrow("Outcome is unresolved");
+    expect(await operation.abandon()).toBeNull();
+    expect(unsent.store.slots.size).toBe(0);
+    expect(unsent.calls.dispatch).toBe(1);
+
+    // The provider started this one, so the record stays with its receipt.
+    const lost = provider({ outcome: "lost" });
+    const uncertain = journal(lost);
+    await uncertain.prepare(send(), { draftId: "draft-1" });
+    await expect(
+      uncertain.confirm({ draftId: "draft-1", proposal: send() }),
+    ).rejects.toThrow("Failed to fetch");
+    const kept = await uncertain.abandon();
+    expect(kept?.phase).toBe("observed");
+    expect(kept?.receipt?.state).toBe("succeeded");
+    expect(lost.store.slots.size).toBe(1);
+  });
+
   it("refuses a server review that changed recipients or attachments", async () => {
     const changed = provider({
       tamper: (review) => ({ ...review, to: ["other@example.invalid"] }),

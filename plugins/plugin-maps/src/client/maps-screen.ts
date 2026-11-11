@@ -23,10 +23,12 @@ import type {
   MapsNavigationSurface,
 } from "./device-navigation.ts";
 import {
+  advanceStep,
   atStep,
   guidanceDistance,
   guidanceView,
   maneuverIcon,
+  type StepHold,
 } from "./guidance.ts";
 import type { MapsLocation, Position } from "./location.ts";
 import type { MapOverlay } from "./map-plane.ts";
@@ -285,7 +287,7 @@ export class MapsScreenController {
   private originMode = false;
   private navigating = false;
   private arrived = false;
-  private navStep = 0;
+  private navStep: StepHold = { index: 0, cleared: 0 };
   private navFix?: Position;
   private navRouteId = "";
   private follow = true;
@@ -574,6 +576,7 @@ export class MapsScreenController {
       return;
     }
     this.host.discardHandoff?.();
+    this.cancelLocate();
     const intent = ++this.searchIntent;
     this.selected = undefined;
     this.searching = true;
@@ -857,6 +860,16 @@ export class MapsScreenController {
     this.invalidate();
   }
 
+  /** A newer choice replaces a pending location request. A late fix does not change it. */
+  private cancelLocate(): void {
+    if (!this.locating) return;
+    this.locating = false;
+    this.recenterOnly = false;
+    clearTimeout(this.locationTimeout);
+    this.locationTimeout = undefined;
+    this.controller?.cancelLocate();
+  }
+
   /** Recenter: follow the device during navigation, otherwise a new location request. */
   recenter(): void {
     if (this.navigating) {
@@ -929,6 +942,7 @@ export class MapsScreenController {
   planOrigin(): void {
     const selected = this.selected;
     if (!selected) return;
+    this.cancelLocate();
     const text = this.originText.trim();
     const match = text.match(COORDINATES);
     if (match) {
@@ -1015,11 +1029,12 @@ export class MapsScreenController {
       this.invalidate();
       return;
     }
+    this.cancelLocate();
     this.host.voice.pause();
     this.arrived = false;
     this.navigating = true;
     this.follow = true;
-    this.navStep = 0;
+    this.navStep = { index: 0, cleared: 0 };
     this.offRoute = false;
     this.rerouting = false;
     this.navFix = undefined;
@@ -1146,7 +1161,7 @@ export class MapsScreenController {
         this.directions = false;
         this.originMode = false;
         this.searching = false;
-        this.locating = false;
+        this.cancelLocate();
         this.message = "";
         return this.showAgentPlace(place, resolveDetails);
       },
@@ -1155,7 +1170,7 @@ export class MapsScreenController {
         ++this.searchIntent;
         this.originMode = false;
         this.searching = false;
-        this.locating = false;
+        this.cancelLocate();
         this.originText = "";
         const controller = this.ensure();
         controller.clearOrigin();
@@ -1207,6 +1222,7 @@ export class MapsScreenController {
       },
       planFrom: async (origin) => {
         const controller = this.ensure();
+        this.cancelLocate();
         this.originMode = false;
         this.originText = coordLabel(origin);
         controller.setOrigin(origin);
@@ -1511,7 +1527,7 @@ export class MapsScreenController {
           ? atStep(
               routeProgress(this.navFix.coordinate, route),
               route.steps,
-              this.navStep,
+              this.navStep.index,
             )
           : undefined;
       const guidance = progress
@@ -1582,7 +1598,7 @@ export class MapsScreenController {
         this.message = `${next.route.error.message} The current route was kept.`;
       } else if (replacement) {
         this.rerouting = false;
-        this.navStep = 0;
+        this.navStep = { index: 0, cleared: 0 };
         this.navRouteId = replacement.id;
         this.host.voice.pause();
         this.message = "New route ready.";
@@ -1666,17 +1682,15 @@ export class MapsScreenController {
     } else {
       const nearest = distanceToRoute(fix.coordinate, current.geometry);
       this.offRoute = nearest > Math.max(75, fix.accuracyMeters * 2);
-      // A maneuver is passed once a fix comes within 40 m of it.
-      while (
-        this.navStep < current.steps.length - 1 &&
-        greatCircle(fix.coordinate, current.steps[this.navStep].coordinate) < 40
-      )
-        this.navStep++;
-      const reading = atStep(
-        routeProgress(fix.coordinate, current),
-        current.steps,
+      const progress = routeProgress(fix.coordinate, current);
+      this.navStep = advanceStep(
         this.navStep,
+        current,
+        progress,
+        fix,
+        !this.offRoute,
       );
+      const reading = atStep(progress, current.steps, this.navStep.index);
       const guidance = guidanceView(
         reading,
         new Date(this.now()),
@@ -1801,6 +1815,7 @@ export class MapsScreenController {
   }
 
   private chooseOrigin(candidate: Place | SavedPlace): void {
+    this.cancelLocate();
     this.originMode = false;
     this.originText = "label" in candidate ? candidate.label : candidate.name;
     this.message = "";
@@ -1810,6 +1825,7 @@ export class MapsScreenController {
 
   private editOrigin(text: string): void {
     const choosing = this.choosingOrigin();
+    this.cancelLocate();
     this.originText = text;
     this.ensure().clearOrigin();
     this.message = choosing
