@@ -481,6 +481,13 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 		if (!field || this.doneFields.has(field)) {
 			return;
 		}
+		// Non-stream fields never set `currentField`, so `completeCurrentField()`
+		// never ran for them. A field with content is complete here, so the
+		// retry prompt keeps it. An empty field stays partial.
+		if (this.fieldContents.get(field)) {
+			this.fieldStates.set(field, "complete");
+			this.validatedFields.add(field);
+		}
 		this.doneFields.add(field);
 		this.config.onFieldDone?.(field, this.fieldContents.get(field) ?? "");
 	}
