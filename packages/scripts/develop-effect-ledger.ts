@@ -808,6 +808,7 @@ export async function reconcileBranchEffects({
         api,
         repository: context.repository,
         treeSha: incoming.treeSha,
+        sourceSha,
         repoRoot,
       });
     }
