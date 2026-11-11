@@ -13,7 +13,9 @@
     "a provider phone number is a separate, callable field; Recenter reflects camera following",
     "a newer search, origin or Start retires a pending location request",
     "a retired location cleanup failure cannot overwrite a newer accepted fix",
-    "an unsupported provider phone remains visible without a fabricated Call target"
+    "an unsupported provider phone remains visible without a fabricated Call target",
+    "a host chooses where a worldwide basemap opens; a regional map keeps its coverage",
+    "new result pins are brought into view once; selection, routes and following keep the camera"
   ],
   "viewFile": "plugins/plugin-maps/test/maps-screen-view.test.tsx",
   "viewRequired": [
