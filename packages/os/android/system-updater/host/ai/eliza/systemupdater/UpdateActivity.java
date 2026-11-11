@@ -2,6 +2,9 @@
 package ai.eliza.systemupdater;
 
 import android.app.Activity;
+import android.graphics.Insets;
+import android.util.TypedValue;
+import android.view.WindowInsets;
 import android.os.Bundle;
 import android.os.Handler;
 import android.widget.Button;
@@ -24,14 +27,23 @@ public final class UpdateActivity extends Activity {
         setTitle(R.string.os_update_name);
         int padding = (int) (24 * getResources().getDisplayMetrics().density);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(padding, padding, padding, padding);
+        TypedValue titleSize = new TypedValue();
+        final int titleHeight = getActionBar() != null
+                && getTheme().resolveAttribute(android.R.attr.actionBarSize, titleSize, true)
+                ? TypedValue.complexToDimensionPixelSize(titleSize.data, getResources().getDisplayMetrics()) : 0;
+        content.setOnApplyWindowInsetsListener((view, insets) -> {
+            Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            view.setPadding(padding + bars.left, padding + bars.top + titleHeight,
+                    padding + bars.right, padding + bars.bottom);
+            return insets;
+        });
         status = new TextView(this); status.setTextSize(18); content.addView(status);
         Button check = new Button(this); check.setText("Check for updates");
         check.setOnClickListener(view -> {
             UpdateRunner.status(this, "Waiting for enough battery and an unmetered network");
             SystemUpdateJob.schedule(this, true); handler.removeCallbacks(refresh); handler.post(refresh);
         });
-        content.addView(check); setContentView(content);
+        content.addView(check); setContentView(content); content.requestApplyInsets();
     }
     @Override public void onStart() { super.onStart(); handler.removeCallbacks(refresh); handler.post(refresh); }
     @Override public void onStop() { handler.removeCallbacks(refresh); super.onStop(); }
