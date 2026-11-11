@@ -77,14 +77,14 @@ module RunTerminalOwner {
   }
   temporal FairTerminalReturns = Fairness implies TerminalReturns
 
-  run rejectingSiblingWaits = init.then(request("completed")).then(emit)
+  run rejectingSiblingWaitsTest = init.then(request("completed")).then(emit)
     .then(settle(1, false)).expect(s.emitResult == "none")
     .then(settle(2, true)).then(returnTerminal)
     .expect(s.firstFailure == 1 and s.emitResult == "failed")
-  run firstObservedFailureStays = init.then(request("completed")).then(emit)
+  run firstObservedFailureStaysTest = init.then(request("completed")).then(emit)
     .then(settle(2, false)).then(settle(1, false)).then(returnTerminal)
     .expect(s.firstFailure == 2 and s.emitResult == "failed")
-  run failedDeliveryRetainsReceipt = init.then(observeReceipt).then(admitWork)
+  run failedDeliveryRetainsReceiptTest = init.then(observeReceipt).then(admitWork)
     .then(request("failed")).then(refuseLate).then(finishDelivery(false)).then(finishWork)
     .then(emit).then(settle(1, true)).then(settle(2, true)).then(returnTerminal)
     .expect(s.capturedReceipt and s.lateRefused and s.work == "skipped")
