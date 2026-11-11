@@ -174,6 +174,7 @@ function resolveNoteIndex(
   notes: StickyNote[],
   selector: NoteLookupSelector,
   value: string,
+  noteRevisions?: Record<string, number>,
 ): number {
   const target = normalizedLookup(value);
   if (!target) {
@@ -202,7 +203,10 @@ function resolveNoteIndex(
       candidates.map(({ note }) => note),
     );
   }
-  const candidate = candidates[0];
+  // Identical copies resolve to the copy distinctNotes shows, so a lookup
+  // edit or delete acts on the note the owner sees.
+  const shown = distinctNotes(notes, noteRevisions);
+  const candidate = candidates.find(({ note }) => shown.includes(note));
   if (!candidate) {
     throw new ElizaError("Resolved sticky note was missing.", {
       code: "NOTES_NOTE_RESOLUTION_FAILED",
@@ -534,7 +538,12 @@ export class NotesService extends Service {
     const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       assertEditRevision(draft.revision, revision);
-      const index = resolveNoteIndex(draft.notes, selector, value);
+      const index = resolveNoteIndex(
+        draft.notes,
+        selector,
+        value,
+        draft.noteRevisions,
+      );
       const existing = draft.notes[index];
       if (!existing) {
         throw new ElizaError("Resolved sticky note was missing.", {
@@ -655,7 +664,12 @@ export class NotesService extends Service {
     let removedIds: string[] = [];
     assertNotesServiceMutation(this.runtime, "delete");
     const transaction = await this.store.transact((draft) => {
-      const index = resolveNoteIndex(draft.notes, selector, value);
+      const index = resolveNoteIndex(
+        draft.notes,
+        selector,
+        value,
+        draft.noteRevisions,
+      );
       const existing = draft.notes[index];
       if (!existing) {
         throw new ElizaError("Resolved sticky note was missing.", {
