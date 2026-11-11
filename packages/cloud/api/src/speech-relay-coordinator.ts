@@ -1,8 +1,6 @@
 /** Speech-only Durable Object. The caller's agent, history and tools stay on its device. */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
-import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import { createDurableVoiceUsageStore } from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
@@ -27,7 +25,6 @@ import {
 import { parseCartesiaUsdPerCredit } from "../v1/voice/stt/cartesia-pricing";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
-import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
 import {
   beginSpeechRetirement,
   claimSpeechOpening,
@@ -366,9 +363,12 @@ export class SpeechRelayCoordinator {
           !(url.pathname === "/revoke" && request.method === "POST")
         )
           return response(404, "speech_unavailable");
-        // Instantiates this object ahead of /initialize. It reads and stores nothing.
-        if (url.pathname === "/warm" && request.method === "POST")
+        // Warm speech code ahead of /initialize without reserving credits or
+        // opening a provider. Keep its billing graph out of Worker startup.
+        if (url.pathname === "/warm" && request.method === "POST") {
+          await import("./speech-relay-admission");
           return new Response(null, { status: 200 });
+        }
         if (
           (url.pathname === "/prepare" || url.pathname === "/initialize") &&
           request.method === "POST"
@@ -497,6 +497,9 @@ export class SpeechRelayCoordinator {
           request.headers.get("Upgrade")?.toLowerCase() !== "websocket"
         )
           return response(400, "websocket_required");
+        const { InsufficientCreditsError } = await import(
+          "@elizaos/cloud-shared/lib/services/credits"
+        );
         if (
           Date.now() >= ledger.expiresAt ||
           ledger.phase !== "minted" ||
@@ -745,6 +748,12 @@ export class SpeechRelayCoordinator {
     this.openingOwner = openingOwner;
     try {
       phases.claimMs = elapsed(startedAt);
+      const [{ runWithDbCacheAsync }, { reserveSpeechRelayAdmission }] =
+        await Promise.all([
+          import("@elizaos/cloud-shared/db/client"),
+          import("./speech-relay-admission"),
+        ]);
+      this.current();
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
         runWithDbCacheAsync(async () => {
           const key = this.env.CARTESIA_API_KEY?.trim(),
