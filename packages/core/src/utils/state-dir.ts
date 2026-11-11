@@ -55,9 +55,13 @@ export function resolveStateDir(
 	const xdgStateHome = readEnv("XDG_STATE_HOME", { env });
 	if (xdgStateHome) {
 		const base = xdgStateHome.trim();
-		return isAbsolute(base)
-			? join(base, namespace)
-			: join(getHome(), base, namespace);
+		// The XDG Base Directory spec requires these paths to be absolute:
+		// a relative value is invalid and must be ignored, not resolved
+		// under the home directory. Ignoring it falls through to the
+		// `~/.local/state/<namespace>` default below.
+		if (isAbsolute(base)) {
+			return join(base, namespace);
+		}
 	}
 	return join(getHome(), ".local", "state", namespace);
 }
