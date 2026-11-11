@@ -55,15 +55,12 @@ test("audit-turbo-build-deps", () => {
     });
     const failOutput = `${failResult.stdout}\n${failResult.stderr}`;
     if (failResult.status === 0) {
-      console.error("expected direct workspace cycle audit to fail");
-      process.exit(1);
+      throw new Error("expected direct workspace cycle audit to fail");
     }
     if (!failOutput.includes("@fixture/bar <-> @fixture/foo")) {
-      console.error(
-        "missing expected audit output: @fixture/bar <-> @fixture/foo",
+      throw new Error(
+        `missing expected audit output: @fixture/bar <-> @fixture/foo\n${failOutput}`,
       );
-      console.error(failOutput);
-      process.exit(1);
     }
 
     // Transitive 3-node cycle foo -> bar -> baz -> foo. A pairwise A<->B scan
@@ -85,20 +82,19 @@ test("audit-turbo-build-deps", () => {
     });
     const transitiveOutput = `${transitiveResult.stdout}\n${transitiveResult.stderr}`;
     if (transitiveResult.status === 0) {
-      console.error("expected transitive workspace cycle audit to fail");
-      process.exit(1);
+      throw new Error("expected transitive workspace cycle audit to fail");
     }
     for (const member of ["@fixture/foo", "@fixture/bar", "@fixture/baz"]) {
       if (!transitiveOutput.includes(member)) {
-        console.error(`transitive cycle output missing member: ${member}`);
-        console.error(transitiveOutput);
-        process.exit(1);
+        throw new Error(
+          `transitive cycle output missing member: ${member}\n${transitiveOutput}`,
+        );
       }
     }
     if (!transitiveOutput.includes(" -> ")) {
-      console.error("transitive cycle should render as a path");
-      console.error(transitiveOutput);
-      process.exit(1);
+      throw new Error(
+        `transitive cycle should render as a path\n${transitiveOutput}`,
+      );
     }
     fs.rmSync(path.join(tempRoot, "packages/baz"), {
       recursive: true,
@@ -117,17 +113,16 @@ test("audit-turbo-build-deps", () => {
     });
     const phantomOutput = `${phantomResult.stdout}\n${phantomResult.stderr}`;
     if (phantomResult.status === 0) {
-      console.error("expected phantom override audit to fail");
-      process.exit(1);
+      throw new Error("expected phantom override audit to fail");
     }
     for (const expected of [
       '@fixture/foo#typecheck — owner package does not define script "typecheck"',
       "@fixture/missing#build — owner package is not a workspace member",
     ]) {
       if (!phantomOutput.includes(expected)) {
-        console.error(`missing expected audit output: ${expected}`);
-        console.error(phantomOutput);
-        process.exit(1);
+        throw new Error(
+          `missing expected audit output: ${expected}\n${phantomOutput}`,
+        );
       }
     }
 
@@ -151,8 +146,9 @@ test("audit-turbo-build-deps", () => {
       encoding: "utf8",
     });
     if (passResult.status !== 0) {
-      process.stderr.write(passResult.stderr);
-      process.exit(passResult.status ?? 1);
+      throw new Error(
+        `expected clean fixture audit to pass (exit ${passResult.status})\n${passResult.stderr}`,
+      );
     }
 
     writeJson(path.join(tempRoot, "packages/bar/package.json"), {
