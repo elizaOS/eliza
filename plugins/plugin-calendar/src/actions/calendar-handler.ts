@@ -4232,6 +4232,13 @@ async function inferCreateEventDetails(
     hostDeps,
   );
   const extracted = result?.parsed ?? {};
+  if (Object.keys(extracted).length === 0) {
+    throw new CalendarServiceError(
+      400,
+      "The generated Calendar fields were empty. Retry extraction from the complete original request. No event was created.",
+      "CALENDAR_CREATE_EXTRACTION_INVALID",
+    );
+  }
   const authority = validateCalendarCreateAuthority(
     extracted,
     userSources,
@@ -7651,6 +7658,7 @@ export function createCalendarActionRunner(
           // swallowed "mode must be one of ..." surfaced only as
           // CALENDAR_SERVICE_400).
           const coachingFailure =
+            error.code === "CALENDAR_CREATE_EXTRACTION_INVALID" ||
             error.code === "CALENDAR_SEARCH_FILTER_UNBOUND" ||
             error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
             error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
@@ -7673,6 +7681,7 @@ export function createCalendarActionRunner(
               diagnosticOnly:
                 error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
                 error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+                error.code === "CALENDAR_CREATE_EXTRACTION_INVALID" ||
                 error.code === "CALENDAR_CREATE_EVIDENCE_INVALID" ||
                 (error.status === 400 && coachingFailure),
               subaction: subaction ?? "none",
@@ -7740,6 +7749,7 @@ export function createCalendarActionRunner(
                 error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
                 error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
                 error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
+                error.code !== "CALENDAR_CREATE_EXTRACTION_INVALID" &&
                 error.code !== "CALENDAR_CREATE_EVIDENCE_INVALID" &&
                 (subaction === "create_event" ||
                   subaction === "update_event" ||
