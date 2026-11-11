@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { isOrganizationPolicyStamp } from "../../lib/services/organization-policy-stamp";
 import { createBillingSnapshotFixture } from "./account-billing-snapshot-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -212,7 +213,10 @@ describe("subscription grant redemption", () => {
     const org = await newOrg();
     await newCode("AAAA-BBBB-CCCC-0002");
     const { grant } = await redeem(org, "AAAA-BBBB-CCCC-0002");
+    const during = await policyAt(org);
+    expect(isOrganizationPolicyStamp(during.authority)).toBe(true);
     const after = new Date(grant.ends_at!.getTime() + 1_000);
+    expect(isOrganizationPolicyStamp(during.authority, after.getTime())).toBe(false);
     const policy = await policyAt(org, after);
     expect(policy.authority.source).toBe("legacy");
     expect(policy.subscriptionFunded).toBe(false);
@@ -609,6 +613,12 @@ test("a lifetime grant publishes no expiry and retains revocation", async () => 
   const policy = await policyAt(org, farFuture);
   expect(policy.authority.source).toBe("promo_grant");
   expect(policy.authority.effectiveUntil).toBeNull();
+  expect(isOrganizationPolicyStamp(policy.authority, farFuture.getTime())).toBe(true);
+  const { inferenceAdmissionSnapshotFromPolicy } = await import(
+    "../../lib/services/inference-admission-snapshot"
+  );
+  const { isInferenceAdmissionSnapshot } = await import("../../lib/services/inference-auth-cache");
+  expect(isInferenceAdmissionSnapshot(inferenceAdmissionSnapshotFromPolicy(policy))).toBe(true);
   expect(policy.subscriptionFunded).toBe(true);
   const buckets = await rows<{ count: number }>(
     `SELECT count(*)::integer count FROM subscription_allowance_periods WHERE promo_grant_id = '${grant.id}'`,
