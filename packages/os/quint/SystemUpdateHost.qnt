@@ -27,8 +27,8 @@ module SystemUpdateHost {
     s' = {...s, active: false}}
   action verify = all {checkingUnapplied, s.storageReady, s.scratch == "none" or s.writing,
     s' = {...s, phase: "verified", verified: true, checked: true, scratch: "none", writing: false}}
-  action deferStorage = all {checkingUnapplied, not(s.storageReady), s.scratch == "none",
-    s' = {...s, active: false}}
+  action deferStorage = all {checkingUnapplied, not(s.storageReady), s.scratch == "none" or s.writing,
+    s' = {...s, active: false, scratch: "none", writing: false}}
   action reject = all {checkingUnapplied, s' = {...s, phase: "failed", active: false,
     scratch: if (s.writing) "none" else s.scratch, writing: false}}
   action apply = all {s.active, not(s.stopped), s.eligible, s.phase == "verified", s.checked,
@@ -109,6 +109,15 @@ module SystemUpdateHost {
     .then(stop).then(storage(false)).then(start).then(deferStorage)
     .expect(s.phase == "verified" and s.verified and not(s.checked) and s.applyCalls == 0)
     .then(start).then(storage(true)).then(verify).then(apply).expect(s.applyCalls == 1 and NoUnverifiedApply)
+  run exhaustedScratchDefersBeforePublicationTest = init.then(start).then(download).then(writeScratch)
+    .then(storage(false)).then(deferStorage)
+    .expect(s.phase == "downloading" and not(s.active) and s.scratch == "none" and not(s.writing) and s.applyCalls == 0)
+    .then(storage(true)).then(start).then(writeScratch).then(verify)
+    .expect(s.phase == "verified" and ScratchNeverApplied and s.applyCalls == 0)
+  run cancelledScratchKeepsUnappliedCandidateTest = init.then(start).then(download).then(writeScratch).then(stop)
+    .expect(s.phase == "downloading" and not(s.active) and s.stopped and s.scratch == "none" and s.applyCalls == 0)
+    .then(start).then(writeScratch).then(verify)
+    .expect(s.phase == "verified" and ScratchNeverApplied and s.applyCalls == 0)
   run recoveredSpaceDoesNotExcuseRejectionTest = storageBlockedInit.then(start).then(download)
     .then(deferStorage).then(storage(true)).then(start).then(reject)
     .expect(s.phase == "failed" and s.applyCalls == 0 and not(s.active))

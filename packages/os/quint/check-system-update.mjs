@@ -50,6 +50,29 @@ function member(source, signature) {
   return source.slice(start, end + "\n    }".length);
 }
 
+function runnerFailurePort(source) {
+  const runnerMethods = [
+    "synchronized boolean stop(",
+    "private void failure(",
+    "private synchronized void finish(",
+  ]
+    .map((signature) => member(source, signature))
+    .join("\n");
+  return `package ai.eliza.systemupdater;
+import java.security.GeneralSecurityException;
+import static ai.eliza.systemupdater.StorageReplay.*;
+final class UpdateRunner {
+    final Context context;
+    final Handler main;
+    Run active;
+    UpdateRunner(Context context) { this.context = context; main = new Handler(context); }
+    static void status(Context context, String message) { context.message = message; }
+    void report(Run run, Exception error) { failure(run, error); }
+${runnerMethods}
+}
+`;
+}
+
 async function checkStorage(beforeCommit) {
   const updater = "packages/os/android/system-updater";
   const sourcePaths = {
@@ -99,27 +122,8 @@ async function checkStorage(beforeCommit) {
       member(sources.verifier, "static void requirePayloadSpace("),
     ].join("\n");
   }
-  const runnerMethods = [
-    "synchronized boolean stop(",
-    "private void failure(",
-    "private synchronized void finish(",
-  ]
-    .map((signature) => member(sources.runner, signature))
-    .join("\n");
   const compiled = {
-    "UpdateRunner.java": `package ai.eliza.systemupdater;
-import java.security.GeneralSecurityException;
-import static ai.eliza.systemupdater.StorageReplay.*;
-final class UpdateRunner {
-    final Context context;
-    final Handler main;
-    Run active;
-    UpdateRunner(Context context) { this.context = context; main = new Handler(context); }
-    static void status(Context context, String message) { context.message = message; }
-    void report(Run run, Exception error) { failure(run, error); }
-${runnerMethods}
-}
-`,
+    "UpdateRunner.java": runnerFailurePort(sources.runner),
     "PackageVerifier.java": `package ai.eliza.systemupdater;
 import java.io.File;
 import java.io.IOException;
@@ -281,6 +285,7 @@ async function checkScratch({ includeHeld, heldOnly, heldBefore }) {
   const updater = "packages/os/android/system-updater";
   const javaSources = `${updater}/src/ai/eliza/systemupdater`;
   const fixture = `${updater}/test/ai/eliza/systemupdater/ScratchReplay.java`;
+  const storageFixture = `${updater}/test/ai/eliza/systemupdater/StorageReplay.java`;
   const runner = `${updater}/host/ai/eliza/systemupdater/UpdateRunner.java`;
   const model = "packages/os/quint/SystemUpdateHost.qnt";
   const sources = [
@@ -292,6 +297,7 @@ async function checkScratch({ includeHeld, heldOnly, heldBefore }) {
     model,
     "packages/os/quint/SystemUpdateHost.cases.json",
     "packages/os/quint/check-system-update.mjs",
+    storageFixture,
   ];
   const readSources = async () =>
     Object.fromEntries(
@@ -331,6 +337,122 @@ public final class ParcelFileDescriptor { public static final int MODE_READ_ONLY
     "android/content/res/AssetFileDescriptor.java": `package android.content.res;
 public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.ParcelFileDescriptor fd, long offset, long size) {
  throw new AssertionError("Engine descriptor is outside this replay"); } }`,
+    "android/system/ErrnoException.java": `package android.system;
+public final class ErrnoException extends Exception {
+ public final int errno;
+ public ErrnoException(String operation, int errno, Throwable cause) {
+  super(operation, cause);
+  this.errno = errno;
+ }
+}`,
+    "android/system/OsConstants.java": `package android.system;
+public final class OsConstants {
+ public static final int O_RDONLY = 0, O_WRONLY = 1, O_CREAT = 64, O_EXCL = 128,
+  O_NOFOLLOW = 131072, O_CLOEXEC = 524288, EIO = 5, ENOSPC = 28, EDQUOT = 122;
+}`,
+    "android/system/Os.java": `package android.system;
+import static android.system.OsConstants.*;
+import java.io.FileDescriptor;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.*;
+import java.util.IdentityHashMap;
+
+public final class Os {
+ private record OpenFile(Path path, FileChannel channel) {}
+ private static final IdentityHashMap<FileDescriptor, OpenFile> open = new IdentityHashMap<>();
+ private static String fault;
+ private static int errno;
+ private static boolean wrotePrefix;
+ private static String interruptAfter;
+ private static long interruptBytes;
+ private static int payloadSyncs;
+
+ public static void interruptAfter(String operation, long bytes) {
+  interruptAfter = operation;
+  interruptBytes = bytes;
+ }
+
+ public static int payloadSyncs() { return payloadSyncs; }
+
+ public static void failNext(String operation, int code) {
+  fault = operation;
+  errno = code;
+  wrotePrefix = false;
+ }
+
+ private static void checkFault(String operation, Path path) throws ErrnoException {
+  if ((operation + ":" + path.getFileName()).equals(fault)) {
+   if (operation.equals("write") && !wrotePrefix) {
+    wrotePrefix = true;
+    return;
+   }
+   fault = null;
+   throw new ErrnoException(operation, errno, null);
+  }
+ }
+
+ public static void mkdir(String name, int mode) throws ErrnoException {
+  Path path = Path.of(name);
+  checkFault("mkdir", path);
+  try { Files.createDirectory(path); }
+  catch (IOException error) { throw new ErrnoException("mkdir", EIO, error); }
+ }
+
+ public static FileDescriptor open(String name, int flags, int mode) throws ErrnoException {
+  Path path = Path.of(name);
+  checkFault("open", path);
+  try {
+   if ((flags & (O_NOFOLLOW | O_CLOEXEC)) != (O_NOFOLLOW | O_CLOEXEC)) {
+    throw new AssertionError("Scratch descriptor requires nofollow and close-on-exec");
+   }
+   FileChannel channel = (flags & O_CREAT) != 0
+      ? FileChannel.open(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW, LinkOption.NOFOLLOW_LINKS)
+      : FileChannel.open(path, (flags & O_WRONLY) != 0 ? StandardOpenOption.WRITE : StandardOpenOption.READ,
+           LinkOption.NOFOLLOW_LINKS);
+   if ((flags & O_CREAT) != 0 && (flags & O_EXCL) == 0) {
+    throw new AssertionError("Scratch creation must be exclusive");
+   }
+   FileDescriptor descriptor = new FileDescriptor();
+   open.put(descriptor, new OpenFile(path, channel));
+   return descriptor;
+  } catch (IOException error) { throw new ErrnoException("open", EIO, error); }
+ }
+
+ public static int write(FileDescriptor descriptor, byte[] bytes, int offset, int count) throws ErrnoException {
+  OpenFile file = open.get(descriptor);
+  checkFault("write", file.path());
+  try {
+   int written = file.channel().write(ByteBuffer.wrap(bytes, offset, Math.min(count, 4096)));
+   if (("write:" + file.path().getFileName()).equals(interruptAfter) && file.channel().position() == interruptBytes) {
+    interruptAfter = null;
+    Thread.currentThread().interrupt();
+   }
+   return written;
+  } catch (IOException error) { throw new ErrnoException("write", EIO, error); }
+ }
+
+ public static void fsync(FileDescriptor descriptor) throws ErrnoException {
+  OpenFile file = open.get(descriptor);
+  checkFault("fsync", file.path());
+  if (file.path().getFileName().toString().equals("payload.partial")) payloadSyncs++;
+  // Model a native syscall that can complete despite the Java interrupt flag.
+  boolean interrupted = Thread.interrupted();
+  try { file.channel().force(true); }
+  catch (IOException error) { throw new ErrnoException("fsync", EIO, error); }
+  finally { if (interrupted) Thread.currentThread().interrupt(); }
+  if (("fsync:" + file.path().getFileName()).equals(interruptAfter)) {
+   interruptAfter = null;
+   Thread.currentThread().interrupt();
+  }
+ }
+
+ public static void close(FileDescriptor descriptor) throws ErrnoException {
+  try { open.remove(descriptor).channel().close(); }
+  catch (IOException error) { throw new ErrnoException("close", EIO, error); }
+ }
+}`,
   };
   const portFiles = [];
   for (const [name, bytes] of Object.entries(ports)) {
@@ -356,6 +478,8 @@ public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.P
   if (heldOnly) return;
   const classes = path.join(out, "scratch-classes");
   await mkdir(classes);
+  const failurePort = path.join(out, "scratch-ports", "UpdateRunner.java");
+  await writeFile(failurePort, runnerFailurePort(runnerSource));
   run(tool("javac"), [
     "--release",
     "17",
@@ -363,6 +487,8 @@ public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.P
     classes,
     ...portFiles,
     ...sources.slice(0, 4),
+    storageFixture,
+    failurePort,
   ]);
   const actual = (dir, action, code = 0) => {
     const result = spawnSync(
@@ -383,6 +509,44 @@ public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.P
   };
 
   const slotName = "pre-apply-payload-scratch-v1";
+  const scratchFaults = [
+    [`mkdir:${slotName}`, 28],
+    ["open:owner", 28],
+    ["open:payload.partial", 122],
+    [`fsync:${slotName}`, 28],
+    ["write:payload.partial", 28],
+    ["write:payload.partial", 5],
+    ["fsync:payload.partial", 122],
+  ];
+  const storageFaults = [];
+  for (const [index, [operation, errno]] of scratchFaults.entries()) {
+    const dir = path.join(out, `scratch-fault-${index}`);
+    await mkdir(dir);
+    const row = JSON.parse(actual(dir, `fault:${operation}:${errno}`));
+    const deferred = errno !== 5;
+    assert.equal(row.retryPublished, deferred);
+    assert.equal(row.journalWrites, deferred ? 0 : 1);
+    assert.equal(row.phase, deferred ? row.initialPhase : "FAILED");
+    storageFaults.push({ operation, errno, ...row });
+  }
+  process.stdout.write(
+    `PASS ${scratchFaults.length} scratch errno, journal and retry cases\n`,
+  );
+  const interruptions = [];
+  for (const [operation, payloadSyncs] of [
+    ["write", 0],
+    ["fsync", 1],
+  ]) {
+    const dir = path.join(out, `scratch-interrupt-${operation}`);
+    await mkdir(dir);
+    const row = JSON.parse(actual(dir, `interrupt:${operation}`));
+    assert.equal(row.retryPublished, true);
+    assert.equal(row.journalWrites, 0);
+    assert.equal(row.phase, row.initialPhase);
+    assert.equal(row.payloadSyncs, payloadSyncs);
+    interruptions.push({ operation, ...row });
+  }
+  process.stdout.write("PASS final write and sync-return cancellation cases\n");
   const protectedBytes = "keep these bytes";
   const owned = await mkdir(path.join(out, "scratch-owned")).then(() =>
     path.join(out, "scratch-owned"),
@@ -503,8 +667,10 @@ public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.P
         schema: "eliza-system-update-scratch-trace/v1",
         sourceHashes,
         checkpoints,
+        storageFaults,
+        interruptions,
         scope:
-          "Exact Java extraction and scratch filesystem methods in separate host processes. Android trust, full job execution, reboot-ready extraction and power-loss durability are not exercised.",
+          "Exact Java extraction, scratch methods and runner failure transitions with real files and controlled Android errno and journal-storage ports. Android trust, full job execution and power-loss durability are outside this replay.",
       },
       null,
       2,
