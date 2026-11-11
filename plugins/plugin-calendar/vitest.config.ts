@@ -103,6 +103,14 @@ export default defineConfig({
     conditions: ["eliza-source"],
     alias: [
       {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/testing\/runtime$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/runtime.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-assistant$/,
         replacement: path.join(
           elizaRoot,
