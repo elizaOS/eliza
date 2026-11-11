@@ -27,8 +27,10 @@ import { hasRoleAccess } from "@elizaos/core";
 import { calendarAvailabilityKindFromMetadata } from "../internal/availability-metadata.js";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import { CalendarServiceError } from "../internal/errors.js";
-import { formatCalendarEventDateTime } from "../internal/format.js";
-import { addDaysToLocalDate, getZonedDateParts } from "../internal/time.js";
+import {
+  allDayDateForCalendarEvent,
+  formatCalendarEventDateTime,
+} from "../internal/format.js";
 import {
   buildZonedCalendarRange,
   type CalendarAvailabilityAttendee,
@@ -232,34 +234,6 @@ function attendeeFromCalendarEvent(
     organizer: attendee.organizer,
     optional: attendee.optional,
   };
-}
-
-/**
- * The availability engine reads an all-day `endDate` as an exclusive local
- * midnight, so the adapter must report the day AFTER the last covered day.
- * Google and ICS already store that exclusive end at UTC midnight, so their
- * ISO date prefix is the right day. EventKit stores 23:59:59 of the last
- * covered day in the event zone, so read it in that zone and add one day, as
- * CalendarService's all-day window check does.
- */
-function allDayDateForCalendarEvent(
-  event: LifeOpsCalendarEvent,
-  edge: "start" | "end",
-): string {
-  const instant = edge === "start" ? event.startAt : event.endAt;
-  if (event.provider !== "apple_calendar" || !event.timezone?.trim()) {
-    return instant.slice(0, 10);
-  }
-  const instantMs = Date.parse(instant);
-  const local = getZonedDateParts(
-    new Date(edge === "end" ? instantMs - 1 : instantMs),
-    event.timezone,
-  );
-  const date = edge === "end" ? addDaysToLocalDate(local, 1) : local;
-  return `${String(date.year).padStart(4, "0")}-${String(date.month).padStart(
-    2,
-    "0",
-  )}-${String(date.day).padStart(2, "0")}`;
 }
 
 /**

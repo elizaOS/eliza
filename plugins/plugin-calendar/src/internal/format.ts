@@ -33,6 +33,34 @@ function getCalendarYearForDisplay(date: Date, timeZone?: string): number {
   );
 }
 
+/**
+ * The civil start date or exclusive end date of an all-day event: the end is
+ * the day AFTER the last covered day, as the availability engine reads it.
+ * Google and ICS already store that exclusive end at UTC midnight, so their
+ * ISO date prefix is the right day. EventKit stores 23:59:59 of the last
+ * covered day in the event zone, so read it in that zone and add one day, as
+ * CalendarService's all-day window check does.
+ */
+export function allDayDateForCalendarEvent(
+  event: LifeOpsCalendarEvent,
+  edge: "start" | "end",
+): string {
+  const instant = edge === "start" ? event.startAt : event.endAt;
+  if (event.provider !== "apple_calendar" || !event.timezone?.trim()) {
+    return instant.slice(0, 10);
+  }
+  const instantMs = Date.parse(instant);
+  const local = getZonedDateParts(
+    new Date(edge === "end" ? instantMs - 1 : instantMs),
+    event.timezone,
+  );
+  const date = edge === "end" ? addDaysToLocalDate(local, 1) : local;
+  return `${String(date.year).padStart(4, "0")}-${String(date.month).padStart(
+    2,
+    "0",
+  )}-${String(date.day).padStart(2, "0")}`;
+}
+
 export function formatCalendarEventDateTime(
   event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone"> & {
     isAllDay?: boolean;
@@ -87,12 +115,42 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
+/**
+ * The covered days of an all-day event, such as "Nov 19 – Nov 21". The stored
+ * end is exclusive, so the last covered day is the day before it.
+ */
+function formatAllDayDates(
+  event: LifeOpsCalendarEvent,
+  reference?: { asOf: Date; timeZone: string },
+): string {
+  const day = (date: string, offset: number) => {
+    const [year, month, dayOfMonth] = date.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, dayOfMonth + offset));
+  };
+  const first = day(allDayDateForCalendarEvent(event, "start"), 0);
+  const last = day(allDayDateForCalendarEvent(event, "end"), -1);
+  const currentYear = getCalendarYearForDisplay(
+    reference?.asOf ?? new Date(),
+    reference?.timeZone ?? (event.timezone || undefined),
+  );
+  const includeYear =
+    first.getUTCFullYear() !== currentYear ||
+    last.getUTCFullYear() !== first.getUTCFullYear();
+  const format = (date: Date) =>
+    formatCalendarDatePart(date, "UTC", {
+      month: "short",
+      day: "numeric",
+      ...(includeYear ? { year: "numeric" } : {}),
+    });
+  return last > first ? `${format(first)} – ${format(last)}` : format(first);
+}
+
 export function formatCalendarEventTimeRange(
   event: LifeOpsCalendarEvent,
   reference?: { asOf: Date; timeZone: string },
 ): string {
   if (event.isAllDay) {
-    return "all day";
+    return `${formatAllDayDates(event, reference)}, all day`;
   }
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);

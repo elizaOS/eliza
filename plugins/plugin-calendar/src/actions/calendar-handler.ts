@@ -4757,9 +4757,8 @@ export function formatCalendarSearchResults(
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
   ];
   for (const event of events) {
-    const when = event.isAllDay
-      ? "all day"
-      : reference
+    const when =
+      reference || event.isAllDay
         ? formatCalendarEventTimeRange(event, reference)
         : formatCalendarEventDateTime(event);
     lines.push(`- **${event.title}** (${when})`);

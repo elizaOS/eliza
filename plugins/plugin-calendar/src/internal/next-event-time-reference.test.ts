@@ -243,7 +243,9 @@ describe("next-event temporal evidence", () => {
     );
     if (!source.event) throw new Error("Missing event fixture");
     source.event.isAllDay = true;
-    expect(formatNextEventContext(source)).toContain("(all day)");
+    expect(formatNextEventContext(source)).toMatch(
+      /\(Sep 29(, 2026)?, all day\)/,
+    );
     expect(formatNextEventContext(source)).not.toMatch(
       /; (today|tomorrow|yesterday)/,
     );
@@ -417,3 +419,44 @@ it("uses the same local range for one or multiple matching events", () => {
     ).toContain("Nov 10, 11:00 AM – 11:30 AM PST");
   }
 });
+
+it.each([
+  ["2026-11-14", "2026-11-15", "google", "Nov 14, all day"],
+  ["2026-11-19", "2026-11-22", "google", "Nov 19 – Nov 21, all day"],
+  ["2026-12-31", "2027-01-02", "google", "Dec 31, 2026 – Jan 1, 2027, all day"],
+  [
+    "2026-11-13T15:00:00.000Z",
+    "2026-11-14T14:59:59.000Z",
+    "apple_calendar",
+    "Nov 14, all day",
+  ],
+] as const)(
+  "says which days an all-day event from %s to %s covers",
+  (startAt, endAt, provider, expected) => {
+    const allDay: LifeOpsCalendarEvent = {
+      ...event(startAt, provider === "apple_calendar" ? "Asia/Tokyo" : "UTC"),
+      provider,
+      endAt,
+      isAllDay: true,
+    };
+    const reference = {
+      asOf: new Date("2026-11-11T18:00:00.000Z"),
+      timeZone: "America/New_York",
+    };
+    expect(
+      formatCalendarFeed(
+        { events: [allDay] } as Parameters<typeof formatCalendarFeed>[0],
+        "this week",
+        reference,
+      ),
+    ).toContain(`(${expected})`);
+    expect(
+      formatCalendarSearchResults(
+        [allDay, { ...allDay, id: "other" }],
+        "Review",
+        "this week",
+        reference,
+      ),
+    ).toContain(`(${expected})`);
+  },
+);

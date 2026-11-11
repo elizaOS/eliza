@@ -199,7 +199,7 @@ describe("current selected canonical Calendar read", () => {
     const result = await run(f);
     expect(result.promptData?.event).toMatchObject({
       displayDate: "Wednesday, November 11, 2026",
-      displayTime: "all day",
+      displayTime: expect.stringMatching(/^Nov 11(, 2026)?, all day$/),
       startAt: f.event.startAt,
       endAt: f.event.endAt,
     });
@@ -257,7 +257,7 @@ describe("current selected canonical Calendar read", () => {
     expect(result.promptData?.event).toMatchObject({
       ...f.event,
       displayDate: "Wednesday, November 11, 2026",
-      displayTime: "all day",
+      displayTime: expect.stringMatching(/^Nov 11(, 2026)?, all day$/),
     });
   });
   it.each([
