@@ -1,0 +1,24 @@
+[
+  {
+    "id": "NativeReminderAlarm",
+    "model": "plugins/plugin-native-reminders/android/quint/NativeReminderAlarm.qnt",
+    "sources": [
+      "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java",
+      "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderConfiguration.java",
+      "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderEngine.java",
+      "plugins/plugin-native-reminders/android/src/test/java/ai/eliza/plugins/reminders/ReminderQuestionTest.java"
+    ],
+    "invariants": [
+      "NeverRequestsCapability",
+      "FixedInstalledIdentity",
+      "HostIconOrFallback",
+      "ArmedHasAcknowledgement"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One persisted reminder alarm under the existing store lock, exact capability absent/held/withdrawn between check and call, two presentation icon choices and one installed identity. No fairness or wall-clock delivery guarantee is assumed.",
+      "Seven exact owning Android JVM cases exercise the actual engine/store/alarm calls and notification builders. A controlled AlarmManager shadow withdraws authority after the check, requiring the production SecurityException fallback to retain an inexact alarm. Existing tap, recurrence and durable release tests remain mandatory.",
+      "Native OS calls return normally except the modeled exact-alarm SecurityException. Broader platform/storage failures, alarm delivery timing, Doze, reboot, permission request UI and physical devices are separate. The library does not request exact capability and records mode inexact even for hosts that hold it."
+    ]
+  }
+]

@@ -220,27 +220,25 @@ public final class OwnedPhotoEdits {
     current(s);
     return s;
   }
-  private Bitmap geometry(Bitmap pixels, int rotation, boolean crop) {
+  private Bitmap geometry(Bitmap pixels, int rotation, PhotoCrop crop) {
     if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270)
       throw new IllegalArgumentException("Use a quarter-turn rotation");
     Matrix matrix = new Matrix();
     matrix.postRotate(rotation);
     Bitmap rotated =
         Bitmap.createBitmap(pixels, 0, 0, pixels.getWidth(), pixels.getHeight(), matrix, false);
-    if (!crop)
+    if (!crop.enabled())
       return rotated;
-    int width = Math.max(1, (int) Math.floor(rotated.getWidth() / 1.3)),
-        height = Math.max(1, (int) Math.floor(rotated.getHeight() / 1.3));
-    Bitmap result = Bitmap.createBitmap(rotated, (rotated.getWidth() - width) / 2,
-        (rotated.getHeight() - height) / 2, width, height);
+    int[] kept = crop.pixels(rotated.getWidth(), rotated.getHeight());
+    Bitmap result = Bitmap.createBitmap(rotated, kept[0], kept[1], kept[2], kept[3]);
     if (rotated != pixels && rotated != result)
       rotated.recycle();
     return result;
   }
-  private Bitmap transform(Session s, int rotation, boolean crop, String filter) {
+  private Bitmap transform(Session s, int rotation, PhotoCrop crop, String filter) {
     return transform(s, s.pixels, rotation, crop, filter);
   }
-  private Bitmap transform(Session s, Bitmap pixels, int rotation, boolean crop, String filter) {
+  private Bitmap transform(Session s, Bitmap pixels, int rotation, PhotoCrop crop, String filter) {
     Bitmap geometry = geometry(pixels, rotation, crop);
     try {
       Bitmap output = PhotoFilter.apply(geometry, filter, () -> s.cancelled);
@@ -254,6 +252,11 @@ public final class OwnedPhotoEdits {
     }
   }
   public JSObject preview(String token, int rotation, boolean crop, String filter)
+      throws Exception {
+    return preview(token, rotation, PhotoCrop.of(crop), filter);
+  }
+  /** A preview that keeps {@code crop} of the rotated photo. */
+  public JSObject preview(String token, int rotation, PhotoCrop crop, String filter)
       throws Exception {
     Session s = session(token);
     Bitmap bitmap = transform(s, rotation, crop, filter), small = bitmap;
@@ -345,25 +348,40 @@ public final class OwnedPhotoEdits {
     return receipt("failed", token, null);
   }
   public JSObject save(String token, int rotation, boolean crop, String filter) throws Exception {
+    return save(token, rotation, PhotoCrop.of(crop), filter);
+  }
+  /** A saved record names the same crop: the same flag and the same chosen rectangle, if any. */
+  private static boolean sameCrop(JSONObject previous, PhotoCrop crop) throws org.json.JSONException {
+    return previous.getBoolean("crop") == crop.enabled()
+        && previous.optString("cropRect", "").equals(crop.rectKey());
+  }
+  private static JSONObject putCrop(JSONObject record, PhotoCrop crop) throws org.json.JSONException {
+    record.put("crop", crop.enabled());
+    if (!crop.rectKey().isEmpty())
+      record.put("cropRect", crop.rectKey());
+    return record;
+  }
+  /** {@link #save(String, int, boolean, String)} keeping {@code crop} of the rotated photo. */
+  public JSObject save(String token, int rotation, PhotoCrop crop, String filter) throws Exception {
     PhotoFilter.validate(filter);
     Session s = session(token);
     String existing = journal.getString(token, null);
     if (existing != null) {
       JSONObject previous = new JSONObject(existing);
       if (previous.optBoolean("replace") || previous.getInt("rotation") != rotation
-          || previous.getBoolean("crop") != crop
+          || !sameCrop(previous, crop)
           || !previous.optString("filter", "none").equals(filter))
         throw new IllegalArgumentException("This save identity already has a different edit");
       return result(token);
     }
-    if (rotation == 0 && !crop && filter.equals("none"))
+    if (rotation == 0 && !crop.enabled() && filter.equals("none"))
       return receipt("unchanged", token, null);
-    JSONObject saveReceipt = new JSONObject()
-                                 .put("status", "incomplete")
-                                 .put("createdAt", System.currentTimeMillis())
-                                 .put("rotation", rotation)
-                                 .put("crop", crop)
-                                 .put("filter", filter);
+    JSONObject saveReceipt = putCrop(new JSONObject()
+                                         .put("status", "incomplete")
+                                         .put("createdAt", System.currentTimeMillis())
+                                         .put("rotation", rotation)
+                                         .put("filter", filter),
+        crop);
     if (!journal.edit().putString(token, saveReceipt.toString()).commit())
       throw new IOException("Save receipt could not be reserved");
     Bitmap bitmap = null;
@@ -480,13 +498,18 @@ public final class OwnedPhotoEdits {
    */
   public JSObject replace(String token, int rotation, boolean crop, String filter)
       throws Exception {
+    return replace(token, rotation, PhotoCrop.of(crop), filter);
+  }
+  /** {@link #replace(String, int, boolean, String)} keeping {@code crop} of the rotated photo. */
+  public JSObject replace(String token, int rotation, PhotoCrop crop, String filter)
+      throws Exception {
     PhotoFilter.validate(filter);
     name(token);
     String existing = journal.getString(token, null);
     if (existing != null) {
       JSONObject previous = new JSONObject(existing);
       if (!previous.optBoolean("replace") || previous.getInt("rotation") != rotation
-          || previous.getBoolean("crop") != crop
+          || !sameCrop(previous, crop)
           || !previous.optString("filter", "none").equals(filter))
         throw new IllegalArgumentException("This save identity already has a different edit");
       return result(token);
@@ -494,18 +517,18 @@ public final class OwnedPhotoEdits {
     Session s = open(token);
     if (!canReplace(s))
       throw new IllegalArgumentException("This photo can only be saved as a copy");
-    if (rotation == 0 && !crop && filter.equals("none"))
+    if (rotation == 0 && !crop.enabled() && filter.equals("none"))
       return receipt("unchanged", token, null);
     if (!unchanged(s))
       return receipt("stale", token, null);
-    JSONObject record = new JSONObject()
-                            .put("status", "incomplete")
-                            .put("replace", true)
-                            .put("id", s.id)
-                            .put("createdAt", System.currentTimeMillis())
-                            .put("rotation", rotation)
-                            .put("crop", crop)
-                            .put("filter", filter);
+    JSONObject record = putCrop(new JSONObject()
+                                    .put("status", "incomplete")
+                                    .put("replace", true)
+                                    .put("id", s.id)
+                                    .put("createdAt", System.currentTimeMillis())
+                                    .put("rotation", rotation)
+                                    .put("filter", filter),
+        crop);
     if (!journal.edit().putString(token, record.toString()).commit())
       throw new IOException("Save receipt could not be reserved");
     Bitmap full = null, edited = null;

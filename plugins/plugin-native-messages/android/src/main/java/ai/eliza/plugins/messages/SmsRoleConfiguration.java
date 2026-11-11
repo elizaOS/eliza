@@ -10,6 +10,12 @@ import android.content.BroadcastReceiver;
  * {@link #mmsFileAuthority}. The channel ID, actions and authority are installed identity.
  */
 public final class SmsRoleConfiguration {
+ /**
+  * String extra of the intent a new-message notification opens {@link #openActivity} with: the
+  * conversation's thread ID in the form the messaging bridge reports ({@code thread:<row>}).
+  * Absent when the provider did not name a conversation.
+  */
+ public static final String EXTRA_THREAD_ID = "ai.eliza.plugins.messages.extra.THREAD_ID";
  public final SmsTelephonyConfiguration telephony;
  public final String channelId, channelName, mmsDownloadedAction, mmsResponseSentAction, mmsFileAuthority;
  public final int notificationIcon;
@@ -18,6 +24,7 @@ public final class SmsRoleConfiguration {
 
  /**
   * @param openActivity what a new-message notification opens (for example the host's main activity).
+  *     The intent carries {@link #EXTRA_THREAD_ID} so the host can show that conversation.
   * @param composeActivity the host's {@link SmsComposeActivity} subclass, which reviews every send.
   */
  public SmsRoleConfiguration(SmsTelephonyConfiguration telephony, String channelId, String channelName, int notificationIcon,
