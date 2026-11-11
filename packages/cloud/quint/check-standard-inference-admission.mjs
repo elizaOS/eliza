@@ -1,4 +1,4 @@
-/** Run the required Durable Object lease and PGlite direct recovery cases. */
+/** Run the required Durable Object lease, PGlite direct recovery and stale-policy refill cases. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
@@ -21,6 +21,10 @@ const suites = new Map([
     "packages/cloud/shared/src/lib/services/inference-admission-recovery.pglite.test.ts",
     3,
   ],
+  [
+    "packages/cloud/shared/src/lib/services/__tests__/billing-suspension-resume.pglite.test.ts",
+    2,
+  ],
 ]);
 const required = [
   "real Durable Object serialization prevents concurrent overspend",
@@ -31,6 +35,8 @@ const required = [
   "direct recovery debits once and replays the same accounting result",
   "a post-commit callback failure returns no recovery result and replays without another debit",
   "a database failure rolls back the debit and ledger claim",
+  "a deferred commit refused for a superseded policy generation refills once and dispatches a healthy organization",
+  "a deferred commit whose refill finds a billing hold returns the hold and settles at zero",
 ];
 const pattern = `(?:${required.map((name) => RegExp.escape(name)).join("|")})$`;
 const output = testOutputPath("quint-standard-inference-admission");
@@ -72,7 +78,7 @@ assert.deepEqual(
     summary.files.map(({ file, executedTests }) => [file, executedTests]),
   ),
   suites,
-  "Both standard inference implementation suites must execute",
+  "Every standard inference implementation suite must execute",
 );
 const names = new Set(
   [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)]
