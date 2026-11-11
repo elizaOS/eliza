@@ -25,7 +25,11 @@ function wait(name: string): void {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
   }
 }
-const lockDir = path.join(root, "auth", ".credential-storage.lock");
+const lockDir = path.join(
+  fs.realpathSync(root),
+  "auth",
+  ".credential-storage.lock",
+);
 const originalRename = fs.renameSync;
 let pausedRename = false;
 if (mode === "reaper") {
@@ -40,6 +44,19 @@ if (mode === "reaper") {
   };
 }
 const originalUnlink = fs.unlinkSync;
+if (mode === "holder") {
+  fs.unlinkSync = (file) => {
+    originalUnlink(file);
+    if (
+      fs.existsSync(barrier("holder-go")) &&
+      String(file).startsWith(`${lockDir}.stale.`) &&
+      String(file).endsWith("/owner.json")
+    ) {
+      signal("holder-release-unlinked");
+      wait("holder-release-go");
+    }
+  };
+}
 if (mode === "reset-first-file" || mode === "recover-first-file") {
   let paused = false;
   fs.unlinkSync = (file) => {
