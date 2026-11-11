@@ -18,11 +18,33 @@
       "init": "init",
       "step": "step",
       "invariants": ["OneGrantOutcome", "CancelledNeverOpened"],
-      "temporal": ["ReloadDoesNotRetireAction", "RetiredGrantIsReleased", "FairCompletion"],
+      "temporal": [
+        "ReloadDoesNotRetireAction",
+        "RetiredGrantIsReleased",
+        "FairCompletion"
+      ],
       "temporalChecks": [
-        {"property": "ReloadDoesNotRetireAction", "expect": "holds", "assumptions": ["No fairness. The renderer and the open action do not share a storage-read ticket."]},
-        {"property": "RetiredGrantIsReleased", "expect": "holds", "assumptions": ["No fairness. If a retired selection returns a grant, the runner sends a release request."]},
-        {"property": "FairCompletion", "expect": "holds", "assumptions": ["Weak fairness of the outstanding view or storage receipt. The receipt can fail. There is no wall-clock completion guarantee."]}
+        {
+          "property": "ReloadDoesNotRetireAction",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The renderer and the open action do not share a storage-read ticket."
+          ]
+        },
+        {
+          "property": "RetiredGrantIsReleased",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. If a retired selection returns a grant, the runner sends a release request."
+          ]
+        },
+        {
+          "property": "FairCompletion",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the outstanding view or storage receipt. The receipt can fail. There is no wall-clock completion guarantee."
+          ]
+        }
       ],
       "maxSteps": 24,
       "samples": 250

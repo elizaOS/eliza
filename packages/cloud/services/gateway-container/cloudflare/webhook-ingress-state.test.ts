@@ -50,7 +50,11 @@ const call = (input: object, path = "/exercise", token = "test-only") =>
 const ok = async (input: object) => {
   const response = await call(input);
   expect(response.status).toBe(200);
-  return (await response.json()) as { result: unknown; deliveries: number };
+  return (await response.json()) as {
+    result: unknown;
+    deliveries: number;
+    settledAt?: number;
+  };
 };
 const key = "webhook:blooio:project:message:held";
 test("complete ingress snapshot preserves content and expiry and cannot reopen after serving", async () => {
@@ -144,6 +148,48 @@ test("real hold drainer renews its native lease across long redelivery and does 
   expect((await ok({ action: "get", key })).result).toBe("delivered");
   expect((await ok({ action: "drain" })).deliveries).toBe(0);
 });
+test("slow redelivery retains the full retry delay after the held outcome", async () => {
+  const retryKey = "webhook:blooio:project:message:slow-retry";
+  const text = "durable retry payload é".repeat(500);
+  await ok({ action: "hold", key: retryKey, value: text });
+  const first = await ok({ action: "drain", delay: 2250, rehold: true });
+  expect(first.result).toMatchObject({ rescheduled: 1, delivered: 0 });
+  const { settledAt } = first;
+  if (settledAt === undefined)
+    throw new Error("Missing callback completion time");
+  const eligibleUpperBound = Date.now() + 2000;
+  const due = await ok({ action: "due", now: settledAt });
+  const early = await ok({ action: "drain", now: settledAt });
+  expect({
+    due: due.result,
+    callbacks: early.deliveries - first.deliveries,
+  }).toEqual({
+    due: [],
+    callbacks: 0,
+  });
+
+  await worker.dispose();
+  worker = start();
+  await worker.ready;
+  const pending = await ok({
+    action: "get",
+    key: `webhook:cutover-hold:${retryKey}`,
+  });
+  expect(pending.result).toMatchObject({ attempts: 1, event: { text } });
+  expect((await ok({ action: "due", now: settledAt + 1999 })).result).toEqual(
+    [],
+  );
+  expect((await ok({ action: "due", now: eligibleUpperBound })).result).toEqual(
+    [retryKey],
+  );
+  const retried = await ok({ action: "drain", now: eligibleUpperBound });
+  expect(retried.result).toMatchObject({ delivered: 1, rescheduled: 0 });
+  expect(retried.deliveries).toBe(1);
+  expect((await ok({ action: "due", now: eligibleUpperBound })).result).toEqual(
+    [],
+  );
+}, 30_000);
+
 test("public ingress transport rejects imports and unrelated keyspaces", async () => {
   expect(
     (

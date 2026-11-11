@@ -2092,7 +2092,7 @@ describe("VoiceAssistantSession open microphone", () => {
 
 describe("VoiceAssistantSession pipelined speech", () => {
   it("hands the next sentence over once the current one is audible and counts heard in order", async () => {
-    const h = harness({ pipelineSpeech: true });
+    const h = harness({ pipelineSpeech: true, manualSpeech: true });
     await h.session.start();
     await h.say("tell me a story");
     await h.clock.advance(longGapMs);
@@ -2114,13 +2114,88 @@ describe("VoiceAssistantSession pipelined speech", () => {
     at(h.speeches, 1).input.onStarted();
     await flush();
     expect(h.speeches).toHaveLength(3);
-    h.session.interruptSpeech();
+    expect(h.session.interruptSpeech()).toBe(true);
     await flush();
     expect(at(h.log.heard, 0)).toMatchObject({
       heard: "Once upon a time there was a fox.",
       unheard: "It lived in a quiet wood. It was a happy fox.",
       interrupted: true,
     });
+    expect(h.speeches.map(({ input }) => input.signal.aborted)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.log.captures).toBe(1);
+    at(h.speeches, 2).input.onStarted();
+    at(h.speeches, 2).done.resolve();
+    await flush();
+    expect(h.log.heard).toHaveLength(1);
+    expect(h.log.captures).toBe(2);
+    expect(h.log.turns.map(([event]) => event)).toEqual([
+      "submitted",
+      "first-audio",
+      "interrupted",
+    ]);
+  });
+
+  it("a pipelined playback failure aborts a queued successor before it starts", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Once upon a time there was a fox. It lived in a quiet wood.");
+    await flush();
+    const first = at(h.speeches, 0);
+    first.input.onStarted();
+    await flush();
+    const second = at(h.speeches, 1);
+
+    first.done.reject(new Error("Speaker failed"));
+    await flush();
+    expect(second.input.signal.aborted).toBe(true);
+    expect(h.log.heard).toMatchObject([
+      {
+        replyId: "a-0",
+        heard: "",
+        unheard: "Once upon a time there was a fox. It lived in a quiet wood.",
+        interrupted: true,
+        playbackFailed: true,
+      },
+    ]);
+    expect(h.phase()).toBe("error");
+  });
+
+  it("a queued completion after an earlier playback failure never credits the failed sentence", async () => {
+    const h = harness({ pipelineSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Once upon a time there was a fox. It lived in a quiet wood.");
+    await flush();
+    const first = at(h.speeches, 0);
+    first.input.onStarted();
+    await flush();
+    const second = at(h.speeches, 1);
+
+    // The speaker has already queued the second call. The failure and its
+    // successor's callbacks can arrive before the controller resumes.
+    first.done.reject(new Error("Speaker failed"));
+    second.input.onStarted();
+    second.done.resolve();
+    await flush();
+    expect(h.log.heard).toMatchObject([
+      {
+        replyId: "a-0",
+        heard: "",
+        unheard: "Once upon a time there was a fox. It lived in a quiet wood.",
+        interrupted: true,
+        playbackFailed: true,
+      },
+    ]);
+    expect(h.phase()).toBe("error");
   });
 });
 

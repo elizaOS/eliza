@@ -489,3 +489,124 @@ module BrowserDraftCrossTabClaims {
     .expect(s.consume == "restoring" and s.send == "refused" and StaleHoldPreservesClearReceipt)
     .then(acknowledgeClear).expect(s.formText == "" and StaleHoldPreservesClearReceipt)
 }
+
+// A known non-dispatch releases one held draft. Closing the old page loses its
+// editor and host acknowledgement state. A new browser reads the same profile.
+module BrowserDraftReleaseReload {
+  type Receipt = { revision: int, text: str, sending: bool }
+  type State = {
+    phase: str,
+    saved: Receipt,
+    editor: str,
+    offered: str,
+    restartFrom: str,
+  }
+
+  var s: State
+
+  pure val mark: Receipt = { revision: 1, text: "draft", sending: true }
+  pure val released: Receipt = { revision: 2, text: "draft+newer", sending: false }
+  pure val reviewed: Receipt = { revision: 2, text: "draft", sending: false }
+
+  action init = s' = {
+    phase: "held", saved: mark, editor: "newer", offered: "", restartFrom: "none",
+  }
+
+  action requestRelease = all {
+    s.phase == "held",
+    s' = { ...s, phase: "restoring" },
+  }
+
+  action applyHostRestore = all {
+    s.phase == "restoring",
+    s' = { ...s, phase: "applied", editor: "draft+newer" },
+  }
+
+  action acknowledgeHostRestore = all {
+    s.phase == "applied",
+    s' = { ...s, phase: "writing" },
+  }
+
+  // Abstract the successful queued write and its receipt as one step.
+  action confirmRelease = all {
+    s.phase == "writing",
+    s' = { ...s, phase: "confirmed", saved: released },
+  }
+
+  action closePage = all {
+    Set("applied", "confirmed").contains(s.phase),
+    s' = { ...s, phase: "closed", editor: "", restartFrom: s.phase },
+  }
+
+  action reopen = all {
+    s.phase == "closed",
+    s' = if (s.saved.sending) {
+      ...s, phase: "review", offered: s.saved.text,
+    } else { ...s, phase: "opened", editor: s.saved.text },
+  }
+
+  action chooseSaved = all {
+    s.phase == "review",
+    s' = { ...s, phase: "review-writing", editor: s.offered },
+  }
+
+  action confirmReviewedCopy = all {
+    s.phase == "review-writing",
+    s' = { ...s, phase: "reviewed", saved: reviewed, offered: "" },
+  }
+
+  action reloadReviewed = all {
+    s.phase == "reviewed",
+    s' = { ...s, phase: "opened", editor: s.saved.text },
+  }
+
+  action step = any {
+    requestRelease, applyHostRestore, acknowledgeHostRestore, confirmRelease,
+    closePage, reopen, chooseSaved, confirmReviewedCopy, reloadReviewed, s' = s,
+  }
+
+  val UnconfirmedReleaseRetainsMark = and {
+    Set("held", "restoring", "applied", "writing").contains(s.phase) implies s.saved == mark,
+    s.restartFrom == "applied" and Set("closed", "review", "review-writing").contains(s.phase)
+      implies s.saved == mark,
+  }
+
+  val MarkedReloadOffersReview = s.phase == "review" implies and {
+    s.saved == mark, s.editor == "", s.offered == mark.text,
+  }
+
+  val ConfirmedReleaseSurvivesReload = and {
+    s.phase == "confirmed" or s.restartFrom == "confirmed" implies s.saved == released,
+    s.phase == "opened" and s.restartFrom == "confirmed" implies s.editor == released.text,
+  }
+
+  val ReviewedCopyHasNewReceipt = and {
+    s.phase == "reviewed" or (s.phase == "opened" and s.restartFrom == "applied")
+      implies s.saved == reviewed and s.editor == reviewed.text,
+    s.phase == "closed" implies s.editor == "",
+  }
+
+  temporal PendingWorkReachesReceiptOrClosure = and {
+    Set("restoring", "applied", "writing").contains(s.phase)
+      .leadsTo(Set("confirmed", "closed").contains(s.phase)),
+    (s.phase == "closed").leadsTo(Set("review", "opened").contains(s.phase)),
+    (s.phase == "review-writing").leadsTo(s.phase == "reviewed"),
+  }
+
+  temporal UnderFairRestoreWritesAndReopen = and {
+    applyHostRestore.weakFair(s), acknowledgeHostRestore.weakFair(s),
+    confirmRelease.weakFair(s), reopen.weakFair(s), confirmReviewedCopy.weakFair(s),
+  } implies PendingWorkReachesReceiptOrClosure
+
+  run UnacknowledgedRestoreNeedsReviewTest = init
+    .then(requestRelease).then(applyHostRestore)
+    .expect(s.editor == "draft+newer" and UnconfirmedReleaseRetainsMark)
+    .then(closePage).then(reopen).expect(s.phase == "review" and MarkedReloadOffersReview)
+    .then(chooseSaved).then(confirmReviewedCopy).then(reloadReviewed)
+    .expect(s.phase == "opened" and ReviewedCopyHasNewReceipt)
+
+  run ConfirmedReleaseRestoresMergedDraftTest = init
+    .then(requestRelease).then(applyHostRestore).then(acknowledgeHostRestore)
+    .then(confirmRelease).then(closePage).then(reopen)
+    .expect(s.phase == "opened" and ConfirmedReleaseSurvivesReload)
+}

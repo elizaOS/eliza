@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium, firefox, webkit } from "playwright";
+import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
 
 const engines = { chromium, firefox, webkit };
 const selected = process.argv.slice(2);
@@ -24,6 +27,185 @@ const server = createServer((request, response) => {
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const url = `http://127.0.0.1:${server.address().port}/`;
+
+async function initializeDraftPage(page) {
+  await page.evaluate(async () => {
+    const {
+      BrowserDocumentStore,
+      browserDocumentDraftSlot,
+      compareExchangeDraftStore,
+      DurableDraftController,
+    } = await import("/store.js");
+    window.store = new BrowserDocumentStore("transaction-test");
+    window.draftStore = (key, documents = window.store) =>
+      compareExchangeDraftStore(
+        "draft-binding",
+        browserDocumentDraftSlot(documents, key),
+      );
+    window.createDraftEditor = (beforeRestore, afterRestore) => {
+      let text = "";
+      const controller = new DurableDraftController(
+        async (binding) => window.draftStore(binding),
+        () => text,
+        async (value, expected, current) => {
+          await beforeRestore?.();
+          if (text === expected && current()) {
+            text = value;
+            if (afterRestore) await afterRestore();
+          }
+        },
+        () => {},
+      );
+      return {
+        controller,
+        get text() { return text; },
+        type(value) {
+          text = value;
+          controller.edit(value);
+        },
+      };
+    };
+  });
+}
+
+async function checkChromiumReleaseReload(executablePath) {
+  const output = testOutputPath("quint-browser-draft-storage");
+  await mkdir(output, { recursive: true });
+  const profile = await mkdtemp(join(output, "release-reload-profile-"));
+  const options = { headless: true, executablePath };
+  const keys = { pending: "release-pending-ack", confirmed: "release-confirmed" };
+  let context;
+  const deadline = setTimeout(() => {
+    console.error("chromium: draft release reload exceeded 60 seconds");
+    void context?.close();
+  }, 60_000);
+  try {
+    context = await chromium.launchPersistentContext(profile, options);
+    const beforeRestart = await context.newPage();
+    await beforeRestart.goto(url);
+    await initializeDraftPage(beforeRestart);
+    const before = await beforeRestart.evaluate(async (keys) => {
+      const outgoing = "Message that was not dispatched";
+      const newer = "Typed during the send";
+      const hold = async (key, afterRestore) => {
+        await window.draftStore(key).save(null, outgoing);
+        const editor = window.createDraftEditor(undefined, afterRestore);
+        await editor.controller.open(key);
+        await editor.controller.hold(outgoing);
+        editor.type(newer);
+        return { editor, mark: await window.store.read(key) };
+      };
+
+      const confirmed = await hold(keys.confirmed);
+      await confirmed.editor.controller.release();
+      await confirmed.editor.controller.flush();
+
+      const applied = Promise.withResolvers();
+      let waitForAcknowledgement = false;
+      const pending = await hold(keys.pending, () => {
+        if (!waitForAcknowledgement) return;
+        applied.resolve();
+        return new Promise(() => {});
+      });
+      waitForAcknowledgement = true;
+      const release = pending.editor.controller.release();
+      await Promise.race([
+        applied.promise,
+        release.then(() => { throw new Error("Release finished before host acknowledgement"); }),
+      ]);
+      return {
+        pendingMark: pending.mark,
+        pendingSnapshot: await window.store.read(keys.pending),
+        pendingEditor: pending.editor.text,
+        pendingHolding: pending.editor.controller.holding,
+        confirmedMark: confirmed.mark,
+        confirmedSnapshot: await window.store.read(keys.confirmed),
+      };
+    }, keys);
+    const original = "Message that was not dispatched";
+    const merged = `${original}\nTyped during the send`;
+    assert.equal(before.pendingEditor, merged);
+    assert.equal(before.pendingHolding, true);
+    assert.deepEqual(before.pendingSnapshot, before.pendingMark);
+    assert.equal(JSON.parse(before.pendingMark.raw).sending, true);
+    assert.equal(JSON.parse(before.pendingMark.raw).text, original);
+    assert.notEqual(before.confirmedSnapshot.revision, before.confirmedMark.revision);
+    assert.equal(JSON.parse(before.confirmedSnapshot.raw).sending, undefined);
+    assert.equal(JSON.parse(before.confirmedSnapshot.raw).text, merged);
+
+    await beforeRestart.close();
+    // A persistent context owns its browser process. Launch a new process
+    // from the same isolated profile and the same IndexedDB origin.
+    await context.close();
+    context = await chromium.launchPersistentContext(profile, options);
+    const afterRestart = await context.newPage();
+    await afterRestart.goto(url);
+    await initializeDraftPage(afterRestart);
+    const after = await afterRestart.evaluate(async (keys) => {
+      const pending = window.createDraftEditor();
+      await pending.controller.open(keys.pending);
+      const beforeReview = {
+        snapshot: await window.store.read(keys.pending),
+        text: pending.text,
+        conflict: pending.controller.state.conflict,
+        unsettled: pending.controller.state.unsettled,
+        offered: pending.controller.state.savedText,
+      };
+      const confirmed = window.createDraftEditor();
+      await confirmed.controller.open(keys.confirmed);
+      const confirmedRelease = {
+        snapshot: await window.store.read(keys.confirmed),
+        text: confirmed.text,
+        conflict: confirmed.controller.state.conflict,
+      };
+      await pending.controller.restoreSaved();
+      await pending.controller.flush();
+      return {
+        beforeReview,
+        confirmedRelease,
+        reviewedSnapshot: await window.store.read(keys.pending),
+      };
+    }, keys);
+    assert.deepEqual(after.beforeReview, {
+      snapshot: before.pendingMark,
+      text: "",
+      conflict: true,
+      unsettled: true,
+      offered: original,
+    });
+    assert.notEqual(after.reviewedSnapshot.revision, before.pendingMark.revision);
+    assert.equal(JSON.parse(after.reviewedSnapshot.raw).sending, undefined);
+    assert.equal(JSON.parse(after.reviewedSnapshot.raw).text, original);
+    console.log("chromium: browser restart keeps an unacknowledged release marked for review");
+
+    assert.deepEqual(after.confirmedRelease, {
+      snapshot: before.confirmedSnapshot,
+      text: merged,
+      conflict: false,
+    });
+    await afterRestart.reload();
+    await initializeDraftPage(afterRestart);
+    const reviewed = await afterRestart.evaluate(async (key) => {
+      const editor = window.createDraftEditor();
+      await editor.controller.open(key);
+      return {
+        snapshot: await window.store.read(key),
+        text: editor.text,
+        conflict: editor.controller.state.conflict,
+      };
+    }, keys.pending);
+    assert.deepEqual(reviewed, { snapshot: after.reviewedSnapshot, text: original, conflict: false });
+    console.log("chromium: browser restart restores the exact confirmed release and reviewed draft");
+  } finally {
+    clearTimeout(deadline);
+    try {
+      await context?.close();
+    } finally {
+      await rm(profile, { recursive: true, force: true });
+    }
+  }
+}
+
 try {
   for (const [name, engine] of Object.entries(engines).filter(([name]) => selected.length === 0 || selected.includes(name))) {
     const executablePath = name === "chromium"
@@ -40,40 +222,7 @@ try {
       const a = await context.newPage(), b = await context.newPage();
       for (const page of [a, b]) {
         await page.goto(url);
-        await page.evaluate(async () => {
-          const {
-            BrowserDocumentStore,
-            browserDocumentDraftSlot,
-            compareExchangeDraftStore,
-            DurableDraftController,
-          } = await import("/store.js");
-          window.store = new BrowserDocumentStore("transaction-test");
-          window.draftStore = (key, documents = window.store) =>
-            compareExchangeDraftStore(
-              "draft-binding",
-              browserDocumentDraftSlot(documents, key),
-            );
-          window.createDraftEditor = (beforeRestore) => {
-            let text = "";
-            const controller = new DurableDraftController(
-              async (binding) => window.draftStore(binding),
-              () => text,
-              async (value, expected, current) => {
-                await beforeRestore?.();
-                if (text === expected && current()) text = value;
-              },
-              () => {},
-            );
-            return {
-              controller,
-              get text() { return text; },
-              type(value) {
-                text = value;
-                controller.edit(value);
-              },
-            };
-          };
-        });
+        await initializeDraftPage(page);
       }
       // Rapid acquisition reproduces the localStorage/Web Locks lost-update case.
       const write = (page, owner) => page.evaluate(async owner => {
@@ -691,5 +840,6 @@ try {
       console.log(`${name}: async conflict, tab death and reload recovery pass`);
       console.log(`${name}: draft adapter reload preserves cleared rows and writes cancelled after dispatch`);
     } finally { clearTimeout(deadline); await browser.close(); }
+    if (name === "chromium") await checkChromiumReleaseReload(executablePath);
   }
 } finally { await new Promise(resolve => server.close(resolve)); }
