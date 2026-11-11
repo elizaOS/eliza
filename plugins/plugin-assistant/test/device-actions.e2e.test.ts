@@ -1988,6 +1988,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "calendar.named-read.v1",
           "notes.query.v1",
           "notes.organize.v1",
+          "notes.list-filter.v1",
           "photos.library.v1",
           "photos.view.v1",
           "files.browser.v1",
