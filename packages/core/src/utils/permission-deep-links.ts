@@ -97,7 +97,9 @@ export interface OpenPermissionSettingsDeps {
  * Open the system settings pane for the given permission. Resolves once the
  * opener has been invoked (it doesn't wait for the user). Win32 / Linux:
  * warns and returns because this table only defines macOS system settings deep
- * links today.
+ * links today. On macOS with no opener and no `window.open`, rejects instead
+ * of resolving silently: the caller must inject `deps.open` (for example a
+ * `child_process` call that runs `open <url>`) in a Node-only context.
  */
 export async function openPermissionSettings(
 	id: PermissionId,
@@ -113,10 +115,13 @@ export async function openPermissionSettings(
 	const url = getMacPermissionDeepLink(id);
 	const opener =
 		deps.open ??
-		((u: string) => {
-			if (typeof window !== "undefined" && typeof window.open === "function") {
-				window.open(u, "_self");
-			}
-		});
+		(typeof window !== "undefined" && typeof window.open === "function"
+			? (u: string) => window.open(u, "_self")
+			: undefined);
+	if (!opener) {
+		throw new Error(
+			`[permission-deep-links] openPermissionSettings: no opener is available on darwin (id=${id}); inject deps.open or run where window.open exists.`,
+		);
+	}
 	await opener(url);
 }
