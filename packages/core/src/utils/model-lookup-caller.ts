@@ -12,8 +12,18 @@ export type ModelLookupCallerTrace = {
 	callerStack: string[];
 };
 
-const INTERNAL_FRAME_RE =
-	/model-lookup-caller\.(?:ts|js)(?::|$)|(?:^|[/\\])runtime\.(?:ts|js)|(?:^|[/\\])getModel|(?:^|[/\\])useModel|resolveModelRegistration|node:internal|@vitest\/|vitest\/|\/bun:/;
+const INTERNAL_ENV_RE = /node:internal|@vitest\/|vitest\/|\/bun:/;
+
+/**
+ * The runtime's own files. Only frames from these paths are internal:
+ * `packages/core` in a monorepo checkout, or the installed `@elizaos/core`
+ * package (including its pnpm virtual-store layout).
+ */
+const CORE_PATH_RE =
+	/(?:^|\/)packages\/core\/|(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@elizaos\/core\//;
+
+const INTERNAL_CORE_FRAME_RE =
+	/model-lookup-caller\.(?:ts|js)(?::|$)|(?:^|[/\\])runtime\.(?:ts|js)|(?:^|[/\\])getModel|(?:^|[/\\])useModel|resolveModelRegistration/;
 
 const STACK_FRAME_WITH_FN_RE = /^(?:async )?(.+?) \((.+?):(\d+):(\d+)\)$/;
 const STACK_FRAME_FILE_ONLY_RE = /^(.+?):(\d+):(\d+)$/;
@@ -33,8 +43,14 @@ function parseFrameOrigin(line: string): string | null {
 	}
 	framePath = framePath.replace(/\\/g, "/");
 
-	if (INTERNAL_FRAME_RE.test(framePath)) return null;
-	if (withFn?.[1] && INTERNAL_FRAME_RE.test(withFn[1])) return null;
+	if (INTERNAL_ENV_RE.test(framePath)) return null;
+	// Only the runtime's own files are internal. A plugin file that happens
+	// to be named runtime.ts, useModel.ts, or getModelHelper.ts — or a plugin
+	// function named resolveModelRegistration — is the caller, not the runtime.
+	if (CORE_PATH_RE.test(framePath)) {
+		if (INTERNAL_CORE_FRAME_RE.test(framePath)) return null;
+		if (withFn?.[1] && INTERNAL_CORE_FRAME_RE.test(withFn[1])) return null;
+	}
 
 	// Installed elizaOS packages live under node_modules in package-mode
 	// deployments, so classify them before dropping unrelated dependencies.
