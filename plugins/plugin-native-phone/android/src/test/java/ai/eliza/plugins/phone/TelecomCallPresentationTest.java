@@ -3,11 +3,27 @@ package ai.eliza.plugins.phone;
 
 import static org.junit.Assert.assertEquals;
 import android.telecom.Call;
+import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.os.Looper;
+import java.lang.reflect.Constructor;
+import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.Shadows;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.LooperMode;
+import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.util.ReflectionHelpers.ClassParameter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 
+@RunWith(RobolectricTestRunner.class)
+@Config(manifest = Config.NONE, sdk = 35)
+@LooperMode(LooperMode.Mode.PAUSED)
 public class TelecomCallPresentationTest {
     private static List<String> offered(int state, boolean audioKnown, boolean speakerRoutable, boolean canHold) {
         TelecomCallPresentation.Controls controls = TelecomCallPresentation.controls(state, audioKnown, speakerRoutable, canHold);
@@ -102,5 +118,95 @@ public class TelecomCallPresentationTest {
         assertEquals("Ada · Call ended", TelecomCallPresentation.chipLabel("Ada", Call.STATE_DISCONNECTED));
         assertEquals("Mute, on", TelecomCallPresentation.toggleDescription("Mute", true));
         assertEquals("Speaker, off", TelecomCallPresentation.toggleDescription("Speaker", false));
+    }
+
+    public static class CallOwner extends TelecomCallService {
+        @Override protected TelecomCallConfiguration configuration() {
+            return new TelecomCallConfiguration("ownership-test", "Call review", "reviewcall", Activity.class);
+        }
+    }
+
+    private static Call activeCall() throws Exception {
+        // API 35's actual Call constructor initializes Android's callback registry.
+        for (Constructor<?> constructor : Call.class.getDeclaredConstructors()) {
+            if (constructor.getParameterCount() != 5) continue;
+            constructor.setAccessible(true);
+            Call call = (Call) constructor.newInstance(null, "owned-call", null, "test", 0);
+            ReflectionHelpers.setField(call, "mState", Call.STATE_ACTIVE);
+            return call;
+        }
+        throw new AssertionError("API 35 Call constructor not found");
+    }
+
+    private static void queueState(Call call) {
+        // This is Android's asynchronous callback dispatcher, not a fake callback.
+        ReflectionHelpers.callInstanceMethod(call, "fireStateChanged", ClassParameter.from(int.class, call.getState()));
+    }
+
+    @Test public void removedCallCannotRepublishAnAlreadyQueuedStateCallback() throws Exception {
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        try {
+            Call call = activeCall();
+            owner.onCallAdded(call);
+            NotificationManager notifications = owner.getSystemService(NotificationManager.class);
+            org.junit.Assert.assertEquals(1, notifications.getActiveNotifications().length);
+            queueState(call);
+            owner.onCallRemoved(call);
+            org.junit.Assert.assertEquals(0, notifications.getActiveNotifications().length);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            org.junit.Assert.assertEquals(0, notifications.getActiveNotifications().length);
+            org.junit.Assert.assertFalse(TelecomCallService.answerCall("missing", 0));
+            org.junit.Assert.assertFalse(TelecomCallService.disconnectCall("missing"));
+        } finally { owner.onDestroy(); }
+    }
+
+    @Test public void removedCallCannotRepublishAnAlreadyQueuedDetailsCallback() throws Exception {
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        try {
+            Call call = activeCall();
+            owner.onCallAdded(call);
+            ReflectionHelpers.callInstanceMethod(call, "fireDetailsChanged", ClassParameter.from(Call.Details.class, null));
+            owner.onCallRemoved(call);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            org.junit.Assert.assertEquals(0, owner.getSystemService(NotificationManager.class).getActiveNotifications().length);
+        } finally { owner.onDestroy(); }
+    }
+
+    @Test public void destroyedOwnerCannotRepublishAnAlreadyQueuedCall() throws Exception {
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        Call call = activeCall();
+        owner.onCallAdded(call);
+        queueState(call);
+        owner.onDestroy();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        org.junit.Assert.assertTrue(TelecomCallService.callIds().isEmpty());
+        org.junit.Assert.assertEquals(0, owner.getSystemService(NotificationManager.class).getActiveNotifications().length);
+    }
+
+    @Test public void removingOneCallRetainsTheOtherCallAndItsNotification() throws Exception {
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        try {
+            Call first = activeCall(), second = activeCall();
+            owner.onCallAdded(first); owner.onCallAdded(second);
+            org.junit.Assert.assertEquals(2, TelecomCallService.callIds().size());
+            queueState(first); owner.onCallRemoved(first);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            org.junit.Assert.assertEquals(1, TelecomCallService.callIds().size());
+            org.junit.Assert.assertSame(second, TelecomCallService.call(TelecomCallService.callIds().get(0)));
+            org.junit.Assert.assertEquals(1, owner.getSystemService(NotificationManager.class).getActiveNotifications().length);
+        } finally { owner.onDestroy(); }
+    }
+
+    @Test public void currentCallStillPublishesItsNativeStateChange() throws Exception {
+        CallOwner owner = Robolectric.buildService(CallOwner.class).create().get();
+        try {
+            Call call = activeCall(); owner.onCallAdded(call);
+            ReflectionHelpers.setField(call, "mState", Call.STATE_HOLDING); queueState(call);
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            NotificationManager notifications = owner.getSystemService(NotificationManager.class);
+            org.junit.Assert.assertEquals(1, notifications.getActiveNotifications().length);
+            Notification notification = notifications.getActiveNotifications()[0].getNotification();
+            org.junit.Assert.assertEquals("On hold", notification.extras.getString(Notification.EXTRA_TEXT));
+        } finally { owner.onDestroy(); }
     }
 }
