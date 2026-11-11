@@ -1597,6 +1597,7 @@ jobs:
         run: bash "$CHECKOUT_DIR/packages/cloud/scripts/prepare-worker-secrets.sh"
 
       - name: Deploy to Cloudflare Workers
+        id: worker_deploy
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
@@ -1767,6 +1768,15 @@ jobs:
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
+
+      - name: Preserve Worker startup CPU profile
+        if: ${{ failure() && steps.worker_deploy.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cloud-worker-startup-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CHECKOUT_DIR }}/packages/cloud/api/.wrangler/tmp/startup-profile-*/worker.cpuprofile
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Remove atomic Worker secrets file
         if: ${{ always() && steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' }}
