@@ -307,7 +307,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			}
 		}
 
-		this.closeCurrentTrackedField();
+		this.completeCurrentTrackedField();
 		this.state = "complete";
 		this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 		return "";
@@ -414,7 +414,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 
 		if (fieldMatch) {
 			this.completeCurrentField();
-			this.closeCurrentTrackedField();
+			this.completeCurrentTrackedField();
 			const rawKey = fieldMatch[1] ?? "";
 			const field = this.baseStructuredFieldName(rawKey);
 			const rawValue = fieldMatch[2] ?? "";
@@ -426,8 +426,6 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 				this.currentField = null;
 				if (rawValue.trim().length > 0) {
 					this.appendFieldContent(field, this.parseInlineValue(rawValue));
-					this.fieldStates.set(field, "complete");
-					this.closeCurrentTrackedField();
 				}
 				return;
 			}
@@ -435,8 +433,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			this.currentField = field;
 			if (rawValue.trim().length > 0) {
 				this.appendFieldContent(field, this.parseInlineValue(rawValue));
-				this.completeCurrentField();
-				this.closeCurrentTrackedField();
+				this.emitCurrentFieldContent();
 			}
 			return;
 		}
@@ -461,13 +458,44 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 		const field = this.currentField;
 		this.fieldStates.set(field, "complete");
 		this.validatedFields.add(field);
+		this.emitCurrentFieldContent();
+		this.currentField = null;
+	}
+
+	/**
+	 * Emit the current streamed field's not-yet-emitted content (level <= 1)
+	 * without completing the field. A header line with an inline value does
+	 * not end the field: indented continuation lines may still follow, and
+	 * closing here would drop them. The field completes at the next header
+	 * or at flush instead.
+	 */
+	private emitCurrentFieldContent(): void {
+		if (!this.currentField) {
+			return;
+		}
 		if (this.config.level <= 1) {
-			const content = this.fieldContents.get(field) || "";
+			const content = this.fieldContents.get(this.currentField) || "";
 			if (content) {
-				this.emitFieldContent(field, content);
+				this.emitFieldContent(this.currentField, content);
 			}
 		}
-		this.currentField = null;
+	}
+
+	/**
+	 * Mark the currently tracked field complete: it ended at the next field
+	 * header or at flush. This covers non-streamed fields too, whose
+	 * multiline values never passed through `completeCurrentField`, so they
+	 * used to stay "partial" in `diagnose()` and out of
+	 * `getValidatedFields()` even after their full content arrived.
+	 */
+	private completeCurrentTrackedField(): void {
+		const field = this.currentTrackedField;
+		if (!field) {
+			return;
+		}
+		this.fieldStates.set(field, "complete");
+		this.validatedFields.add(field);
+		this.closeCurrentTrackedField();
 	}
 
 	private emitFieldStart(field: string): void {
