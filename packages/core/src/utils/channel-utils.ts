@@ -455,14 +455,20 @@ type ResolvedLocation = NormalizedLocation & {
 };
 
 function resolveLocation(location: NormalizedLocation): ResolvedLocation {
-	const source =
-		location.source ??
-		(location.isLive
-			? "live"
-			: location.name || location.address
-				? "place"
-				: "pin");
-	const isLive = Boolean(location.isLive ?? source === "live");
+	const isLive = Boolean(location.isLive ?? location.source === "live");
+	// source and isLive describe the same fact: a live location's source is
+	// "live". Reconcile explicit values here so the text and context
+	// projections never disagree about whether the location is live.
+	let source: LocationSource;
+	if (isLive) {
+		source = "live";
+	} else if (location.source && location.source !== "live") {
+		source = location.source;
+	} else if (location.name || location.address) {
+		source = "place";
+	} else {
+		source = "pin";
+	}
 	return { ...location, source, isLive };
 }
 
