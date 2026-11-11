@@ -233,12 +233,9 @@ export async function drainCutoverHolds(
     expired: 0,
     stale: 0,
   };
-  const due = await redis.zrangebyscore(
-    HOLD_INDEX_KEY,
-    0,
-    now,
-    options.limit ?? 16,
-  );
+  const limit = options.limit ?? 16;
+  const readDue = () => redis.zrangebyscore(HOLD_INDEX_KEY, 0, now, limit);
+  const due = await readDue();
   for (const dedupKey of due) {
     const leaseKey = `${HOLD_LEASE_PREFIX}${dedupKey}`;
     const leaseToken = randomUUID();
@@ -291,6 +288,9 @@ export async function drainCutoverHolds(
         );
         continue;
       }
+      // The initial scan can outlive another drainer's retry publication.
+      // Recheck this member under the current lease before invoking a callback.
+      if (!(await readDue()).includes(dedupKey)) continue;
       if (now - held.heldAt > CUTOVER_HOLD_MAX_MS) {
         await handlers.release(held, "expired");
         if (await removeHeldRecord(true)) stats.expired += 1;
