@@ -52,6 +52,8 @@ const gate = required.steps.find(
   (step) => step.name === "Require every admission lane",
 );
 assert(gate && typeof gate.run === "string");
+const promotion = "github.base_ref == 'main'";
+assert.equal(gate.env.PROMOTION, `\${{ ${promotion} }}`);
 const bindings = [
   ...gate.env.RESULTS.matchAll(
     /(\S+)=\$\{\{\s*needs\.([^\s]+)\.result\s*\}\}/g,
@@ -66,6 +68,11 @@ assert.equal(workflow.jobs.quint.name, "Quint state and implementation checks");
 const shardJob = workflow.jobs["quint-models"];
 const shardGate = workflow.jobs.quint;
 assert.deepEqual(shardJob.strategy.matrix.shard, [1, 2, 3, 4]);
+assert.equal(
+  shardJob.if,
+  promotion,
+  "Quint shards must run only for a pull request into main",
+);
 assert.equal(shardJob.strategy["fail-fast"], false);
 assert.equal(shardJob.outputs.run, `\${{ steps.changes.outputs.run }}`);
 assert.equal(
@@ -94,8 +101,8 @@ for (const [job, name] of [
 assert.deepEqual(shardGate.needs, ["quint-models"]);
 assert.equal(
   shardGate.if,
-  `\${{ always() && !cancelled() }}`,
-  "The Quint aggregate must stop when the whole workflow is cancelled",
+  `\${{ always() && !cancelled() && ${promotion} }}`,
+  "The Quint aggregate must run only for promotion and stop when the whole workflow is cancelled",
 );
 const shardGuard = shardGate.steps.find(
   (step) => step.name === "Require successful Quint shards",
@@ -115,39 +122,45 @@ const output = testOutputPath("quint-ci-admission");
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
 const results = [];
-for (const rejectedLane of [undefined, ...lanes]) {
-  for (const outcome of rejectedLane
-    ? ["failure", "cancelled", "skipped", "running"]
-    : ["success"]) {
-    const resultValues = bindings
-      .map(
-        (match) =>
-          `${match[1]}=${match[1] === rejectedLane ? outcome : "success"}`,
-      )
-      .join(" ");
-    const result = spawnSync("bash", ["-c", gate.run], {
-      cwd: root,
-      env: { ...process.env, RESULTS: resultValues },
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-    if (result.error) throw result.error;
-    assert.equal(result.signal, null);
-    assert.equal(
-      result.status,
-      rejectedLane ? 1 : 0,
-      `Unexpected aggregate result for ${rejectedLane ?? "all lanes"}: ${outcome}`,
-    );
-    results.push({
-      rejectedLane: rejectedLane ?? null,
-      outcome,
-      exitCode: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    });
+const outcomes = ["success", "failure", "cancelled", "skipped", "running"];
+for (const promoted of ["true", "false"]) {
+  const expected = (lane) =>
+    lane === "quint" && promoted === "false" ? "skipped" : "success";
+  for (const rejectedLane of [undefined, ...lanes]) {
+    for (const outcome of rejectedLane
+      ? outcomes.filter((value) => value !== expected(rejectedLane))
+      : [undefined]) {
+      const resultValues = bindings
+        .map(
+          (match) =>
+            `${match[1]}=${match[1] === rejectedLane ? outcome : expected(match[1])}`,
+        )
+        .join(" ");
+      const result = spawnSync("bash", ["-c", gate.run], {
+        cwd: root,
+        env: { ...process.env, PROMOTION: promoted, RESULTS: resultValues },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      if (result.error) throw result.error;
+      assert.equal(result.signal, null);
+      assert.equal(
+        result.status,
+        rejectedLane ? 1 : 0,
+        `Unexpected aggregate result for ${rejectedLane ?? "all lanes"}: ${outcome} (promotion ${promoted})`,
+      );
+      results.push({
+        promotion: promoted,
+        rejectedLane: rejectedLane ?? null,
+        outcome: outcome ?? null,
+        exitCode: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+    }
   }
 }
-assert.equal(results.length, 29);
+assert.equal(results.length, 58);
 const shardResults = [];
 for (const result of [
   "success",
@@ -220,5 +233,5 @@ await writeFile(
   `${JSON.stringify({ status: "passed", workflowPath, workflowSha256: createHash("sha256").update(source).digest("hex"), results, shardResults, partitions }, null, 2)}\n`,
 );
 console.log(
-  `CI admission conformance passed 29 top-level and 18 shard shell outcomes plus seven partition tests. Results ${directory}`,
+  `CI admission conformance passed 58 top-level and 18 shard shell outcomes plus seven partition tests. Results ${directory}`,
 );

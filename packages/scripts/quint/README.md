@@ -58,7 +58,10 @@ hash. Remove the review when a model or coverage entry links the source.
 ownerless review. It also requires all declared gaps to be resolved. Review
 application state beyond the candidates found by source patterns.
 
-PR checks run four disjoint partitions. The required Quint check validates
+CI runs Quint only for a pull request into `main`, the promotion from staging
+to production. Other pull requests, merge candidates and branch pushes do not
+run it, so run `bun run test:quint` locally before merging. Promotion checks
+run four disjoint partitions. The required Quint check validates
 all four reports against the current source, including every case, invariant,
 temporal check and implementation hook. Missing or interrupted reports fail.
 Shard reports use `test-results/quint/shard-N-of-4/`. Run local partitions in
