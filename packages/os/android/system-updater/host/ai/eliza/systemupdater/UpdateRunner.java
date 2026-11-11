@@ -18,6 +18,7 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -93,9 +94,7 @@ final class UpdateRunner {
                     context.getResources().getStringArray(R.array.os_update_hosts),
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device));
             UpdateChannel.Candidate candidate = channel.discover();
-            boolean unapplied = current.phase == UpdateJournal.Phase.DOWNLOADING
-                    || current.phase == UpdateJournal.Phase.VERIFIED;
-            if (unapplied && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
+            if (current.isUnapplied() && (candidate == null || !current.targetBuild.equals(candidate.fingerprint)
                     || !current.packageSha256.equals(candidate.sha256))) {
                 UpdateJournal idle = current.cancelUnapplied();
                 store.write(current, idle); current = idle;
@@ -111,6 +110,8 @@ final class UpdateRunner {
                     || !current.packageSha256.equals(candidate.sha256)) {
                 finish(run, "The offered update changed; the earlier candidate remains held"); return;
             }
+            Path scratch = current.isUnapplied()
+                    ? PackageVerifier.reclaimExtractionScratch(directory.toPath()) : null;
             File ota = new File(directory, candidate.sha256 + ".zip");
             if (!ota.exists()) {
                 if (current.phase != UpdateJournal.Phase.DOWNLOADING) {
@@ -124,7 +125,7 @@ final class UpdateRunner {
             VerifiedPayload payload = PackageVerifier.verify(ota, directory,
                     candidate.sha256, candidate.bytes, candidate.fingerprint, candidate.timestamp,
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device),
-                    context.getString(R.string.os_update_ota_certificate));
+                    context.getString(R.string.os_update_ota_certificate), scratch);
             run.verifying = false;
             if (current.phase == UpdateJournal.Phase.DOWNLOADING) {
                 UpdateJournal next = current.verified(android.os.Build.FINGERPRINT,
@@ -229,6 +230,10 @@ final class UpdateRunner {
             try {
                 JournalStore store = new JournalStore(context.getFilesDir());
                 UpdateJournal before = store.read();
+                if (failure instanceof PackageVerifier.StorageDeferred && before.isUnapplied()) {
+                    finish(run, "Waiting for enough storage to verify the system update");
+                    return;
+                }
                 store.write(before, before.failedBeforeApply());
             } catch (Exception unconfirmed) {
                 Log.w("ElizaSystemUpdater", "Rejected-package state is unconfirmed", unconfirmed);

@@ -1,0 +1,329 @@
+{
+  "node": [
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "a cold file open waits for Files to render and survives its first reload"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "an agent file open retired during selection cannot report a current preview"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "an agent file open retired during preview cannot report a current preview"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "a read-only filter retains its results during Files activation"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "storage permission label follows native legacy=true"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "storage permission label follows native legacy=false"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "storage permission label follows native legacy=undefined"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-agent-filter.test.mjs",
+      "classname": "test",
+      "name": "a denied folder read updates the permission label without a second state read"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "bulk share hands one actual ZIP File to Web Share with exact nested Unicode bytes and empty folders"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "explicit bulk save downloads the same archive and revokes only its own object URL"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "unsupported bulk sharing (missing-share) never downloads or retries"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "unsupported bulk sharing (missing-canShare) never downloads or retries"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "unsupported bulk sharing (refused-files) never downloads or retries"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "Web Share cancellation propagates the original AbortError without downloading or retrying"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "Web Share refusal propagates once without a save fallback"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "shareMany rejects stale selections and unsafe archive paths before any destination dispatch"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "saveMany rejects stale selections and unsafe archive paths before any destination dispatch"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "storage volume sharing preserves every selected path beyond one hundred and includes folders"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
+      "name": "storage folder queries report bounded traversal instead of false completeness"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a filter date without a time is that day on the device"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a file with no Files preview opens in another app; a PDF opens in the preview"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a tap during a listing refresh still opens the file"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "Sort and view on Browse do not leave Browse"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a complete selection is shared once and changes use bounded storage calls"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a listing that is only part of the folder says so, and so does the filter"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "the agent opens a shown filter result by its position, without its name"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "empty and loading states carry text"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a filter is restored after both short and long visits away"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a shown position cannot switch to a new filter while access is pending"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a late shown grant is released when the displayed filter is replaced"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "leaving Files stops later batch admissions and retains the committed outcome"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a later unknown trash batch retains confirmed Undo without retrying unknown effects"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "an incomplete or failed empty search never claims no matching files"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "overlapping Undo operations keep the toolbar disabled until both settle"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-sort-order.test.mjs",
+      "classname": "test",
+      "name": "name: default preserves folders first and input bytes"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-sort-order.test.mjs",
+      "classname": "test",
+      "name": "name: reverse preserves folders first and input bytes"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-sort-order.test.mjs",
+      "classname": "test",
+      "name": "date: default preserves folders first and input bytes"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-sort-order.test.mjs",
+      "classname": "test",
+      "name": "date: reverse preserves folders first and input bytes"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-sort-order.test.mjs",
+      "classname": "test",
+      "name": "size: default preserves folders first and input bytes"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-sort-order.test.mjs",
+      "classname": "test",
+      "name": "size: reverse preserves folders first and input bytes"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "scan event suggestions preserve text and leave ambiguous dates or time zones for review"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "a reviewed event keeps its civil date across month/year boundaries without writing an event"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "invalid dates, missing times and durations cannot become calendar drafts"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "English poster dates and AM/PM suggestions retain explicit civil meaning"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "poster extraction does not invent years or accept conflicting, invalid or zoned times"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "ordinary website paths and band names are not mistaken for time zones"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "explicit same-day poster time ranges suggest duration without inventing meridiem or overnight dates"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "year-less dates suggest their next occurrence with a year-inferred disclosure"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "weekday, today and tomorrow resolve against the injected now and are disclosed"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "explicit IANA and offset zones convert to the device zone and keep the source zone visible"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "zone abbreviations, conflicting zones and undated or nonexistent zoned times stay blank"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "a dated poster without a time is suggested all-day, but a scan draft never saves an all-day event silently"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "repeat wording is only an opt-in hint; drafts repeat only when explicitly confirmed"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "ambiguous numeric dates stay blank with an explanation even with a reference date"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "an OCR line with an ambiguous numeric date and a zone abbreviation leaves date and time blank, saying why"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "an all-day suggestion becomes an all-day proposal, never a save"
+    },
+    {
+      "file": "plugins/plugin-files/test/scan-event.test.mjs",
+      "classname": "test",
+      "name": "all-day proposals validate the date, text and repeat"
+    },
+    {
+      "file": "plugins/plugin-files/test/source-links.test.mjs",
+      "classname": "test",
+      "name": "document links keep exact-byte identity and drop malformed references"
+    },
+    {
+      "file": "plugins/plugin-files/test/source-links.test.mjs",
+      "classname": "test",
+      "name": "web links are credential-free HTTPS pages the host does not treat as sensitive"
+    },
+    {
+      "file": "plugins/plugin-files/test/source-links.test.mjs",
+      "classname": "test",
+      "name": "recording links name an exact revision"
+    },
+    {
+      "file": "plugins/plugin-files/test/source-links.test.mjs",
+      "classname": "test",
+      "name": "saved and restorable items keep only their durable a1 references"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "external opening refuses a malformed grant and releases a retired fallback grant"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "legacy query completeness is unknown for both zero and 500 returned rows"
+    }
+  ],
+  "assistant": {
+    "file": "plugins/plugin-assistant/src/services/device-actions/files-browser-contract.test.ts",
+    "required": [
+      "files.browser.v1 operations validates one flat shape that validates again unchanged",
+      "files.browser.v1 operations carries the reviewed identity of each moved or trashed file",
+      "files.browser.v1 operations rejects escapes, duplicates, hidden folders, empty filters and extra fields",
+      "files.browser.v1 operations runs only filter and open directly; changes need Files on the unlocked screen",
+      "files.browser.v1 operations is advertised only to a phone that negotiated files.browser.v1"
+    ]
+  }
+}

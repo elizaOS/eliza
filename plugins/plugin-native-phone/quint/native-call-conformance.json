@@ -15,7 +15,12 @@
       "removedCallCannotRepublishAnAlreadyQueuedDetailsCallback",
       "destroyedOwnerCannotRepublishAnAlreadyQueuedCall",
       "removingOneCallRetainsTheOtherCallAndItsNotification",
-      "currentCallStillPublishesItsNativeStateChange"
+      "currentCallStillPublishesItsNativeStateChange",
+      "callNotificationUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne",
+      "revokedContactsPermissionFencesAnAlreadyRunningNameLookup",
+      "removedCallFencesAnAlreadyRunningNameLookup",
+      "destroyedServiceFencesAnAlreadyRunningNameLookup",
+      "cachedContactNameIsNotReusedAfterPermissionWithdrawal"
     ]
   },
   {

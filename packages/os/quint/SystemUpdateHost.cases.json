@@ -5,32 +5,47 @@
     "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateActivity.java",
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java",
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateJournal.java",
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
     "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
-    "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
+    "packages/os/android/system-updater/src/ai/eliza/systemupdater/VerifiedPayload.java",
+    "packages/os/android/system-updater/test/ai/eliza/systemupdater/StorageReplay.java",
+    "packages/os/android/system-updater/test/ai/eliza/systemupdater/ScratchReplay.java",
+    "packages/os/quint/check-system-update.mjs",
     "packages/os/android/system-updater/sepolicy/eliza_system_updater.te",
     "packages/os/android/system-updater/sepolicy/seapp_contexts",
     "packages/os/android/system-updater/AndroidManifest.xml"
   ],
-  "bounds": "One device, one candidate and binary current eligibility. Model safety covers stop/crash and policy changes; cryptographic checks, Android timing, storage and device behavior still require native qualification.",
+  "conformance": "packages/os/quint/check-system-update.mjs",
+  "bounds": "One device, one candidate, one pre-apply scratch slot, binary eligibility and verification-space availability. Completed download and cryptographic acceptance are inputs. A verified journal is distinct from a successful check in the current job. The scratch state abstracts the private directory and its ownership checks. Android scheduling, platform authentication, engine effects and physical storage recovery require native qualification.",
   "cases": [
     {
       "name": "interleavings",
       "main": "SystemUpdateHost",
       "init": "init",
       "step": "step",
-      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+      "invariants": [
+        "NoUnverifiedApply",
+        "NoReplay",
+        "UnknownNeverActive",
+        "ScratchNeverApplied"
+      ],
       "temporal": [],
       "maxSteps": 20,
       "samples": 200
     },
     {
-      "name": "stable-delivery",
+      "name": "delivery-after-space-recovers",
       "main": "SystemUpdateHost",
-      "init": "init",
+      "init": "storageBlockedInit",
       "step": "stableStep",
-      "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
-      "temporal": ["StableDeliveryCompletes"],
+      "invariants": [
+        "NoUnverifiedApply",
+        "NoReplay",
+        "UnknownNeverActive",
+        "ScratchNeverApplied"
+      ],
+      "temporal": ["StableDeliveryCompletes", "DeliveryWithoutStorageFairness"],
       "temporalChecks": [
         {
           "property": "StableDeliveryCompletes",
@@ -38,7 +53,49 @@
           "assumptions": [
             "Eligibility stays true and the package is valid.",
             "No stop, crash, rejection or engine failure occurs in this case.",
-            "Scheduling, verification, engine completion and reboot observation are weakly fair."
+            "Enough storage eventually becomes available and stays available.",
+            "Scheduling, download, storage deferral, verification, engine completion and reboot observation are weakly fair."
+          ]
+        },
+        {
+          "property": "DeliveryWithoutStorageFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "Job actions remain weakly fair, but sufficient storage might never become available."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 200
+    },
+    {
+      "name": "delivery-after-scratch-recovery",
+      "main": "SystemUpdateHost",
+      "init": "scratchRecoveryInit",
+      "step": "stableStep",
+      "invariants": [
+        "NoUnverifiedApply",
+        "NoReplay",
+        "UnknownNeverActive",
+        "ScratchNeverApplied"
+      ],
+      "temporal": ["StableDeliveryCompletes", "DeliveryWithoutScratchFairness"],
+      "temporalChecks": [
+        {
+          "property": "StableDeliveryCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "The initial scratch is an owned slot left by a pre-apply process death.",
+            "Eligibility and sufficient space stay true, and the package is valid.",
+            "No later crash, stop, rejection or engine failure occurs in this case.",
+            "Scratch cleanup, scheduling, verification, engine completion and reboot observation are weakly fair."
+          ]
+        },
+        {
+          "property": "DeliveryWithoutScratchFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "Other job actions remain weakly fair, but the owned scratch might never be removed."
           ]
         }
       ],

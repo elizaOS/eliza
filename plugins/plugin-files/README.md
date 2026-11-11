@@ -15,6 +15,28 @@ that resolves after the host commits and renders Files. The open action reads
 storage permission independently of the view refresh. Leaving Files or
 cancelling the action retires its pending selection and releases any late grant.
 Changes to files still require the owner to review them in the active Files view.
+`files_open` also accepts `shown`, the position of an item in the filter results on
+screen; the view binds that displayed result across permission and selection
+waits, so the filter still returns only a count. Filters remain until explicitly
+cleared. An incomplete search fails explicitly while retaining its visible rows;
+storage hosts must return `truncated: false` only for a complete query. Missing
+completeness metadata is treated as incomplete, including legacy native queries;
+returned rows remain available for selection without claiming there are no matches.
+
+Move, copy, Trash and Undo admit at most 500 paths per storage call. Leaving the
+view fences their later calls; confirmed Trash outcomes remain available for Undo,
+and an unknown later outcome is reported without retry. Browser sharing includes
+every selected file and folder in the existing exact-byte archive flow.
+
+A host storage port can implement `storageOpen` to hand a file to another app.
+Files then opens types it cannot preview (video, audio, office files) that way and
+gives the preview `pv.canOpenWith` and `pv.openWith`. Host templates can render the
+view output: `toolbar.disabled` and `toolbar.canSort`, `browse.loading` and
+`browse.deniedText`, `fd.loading`, `fd.emptyText` and `fd.note` (a listing that is
+only part of the folder), `filterEmptyText`, `filterLoading`, `filterNote` and
+`loadingText`.
+These optional bindings need consumer adoption; controller guards also apply
+when an existing template does not render them.
 
 The `documents/*` exports provide scan correction and edge suggestions, reviewed
 text-layer validation, PDF generation, local OCR and revisioned draft persistence.

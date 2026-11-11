@@ -3,6 +3,7 @@ import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
   NAMED_TARGET_CAPABILITY,
+  NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
 } from "@elizaos/contracts";
 import {
@@ -97,6 +98,7 @@ export function deviceRequestCredential(
     "notes.local-record.v1",
     "notes.query.v1",
     "notes.organize.v1",
+    NOTES_LIST_FILTER_CAPABILITY,
     "photos.library.v1",
     "photos.view.v1",
     CALENDAR_NAMED_READ_CAPABILITY,
@@ -196,6 +198,7 @@ export async function handleDeviceActionRoutes(
             "notes.local-record.v1",
             "notes.query.v1",
             "notes.organize.v1",
+            NOTES_LIST_FILTER_CAPABILITY,
             "photos.library.v1",
             "photos.view.v1",
             CALENDAR_AVAILABILITY_CAPABILITY,
@@ -288,7 +291,7 @@ export async function handleDeviceActionRoutes(
     if (method === "POST" && pathname === "/api/client-devices/register") {
       const body = await ctx.readJsonBody<{
         label: string;
-        workflowProtocol?: 0 | 1 | 2;
+        workflowProtocol?: number;
       }>(req, res);
       if (body)
         json(
