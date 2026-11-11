@@ -75,10 +75,11 @@ public final class ContactsEditorTest {
     }
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
       List<String> path = uri.getPathSegments();
+      if (projection == null) projection = new String[] { "_id" };
       MatrixCursor cursor = new MatrixCursor(projection);
       List<Map<String, Object>> rows = new ArrayList<>();
       if (path.get(0).equals("raw_contacts")) {
-        if (refuseReadback && path.size() > 1 && Arrays.asList(projection).contains("contact_id")) throw new SecurityException("Contacts read access changed");
+        if (refuseReadback && path.size() > 1 && Arrays.equals(projection, new String[] { "contact_id" })) throw new SecurityException("Contacts read access changed");
         for (Map.Entry<Long, long[]> raw : raws.entrySet()) {
           if (path.size() > 1 ? !path.get(1).equals(String.valueOf(raw.getKey())) : !args[0].equals(String.valueOf(raw.getValue()[0]))) continue;
           Map<String, Object> row = new HashMap<>();
@@ -255,6 +256,25 @@ public final class ContactsEditorTest {
     JSObject edited = off(() -> editor.save("101", version, renamed));
     require(edited.getString("status").equals("saved") && edited.isNull("id") && edited.isNull("version"), "committed update with no readback");
     require(get("101").getString("displayName").equals("Ada King"), "the update was written");
+  }
+
+  @Test public void mergingOrReplacingRawContactsDuringDeleteMakesItStale() throws Exception {
+    long original = addRaw(0);
+    long other = addRaw(0);
+    String version = get("101").getString("version");
+
+    // Aggregation changes only CONTACT_ID. Neither raw contact's version changes.
+    beforeBatch = () -> raws.get(other)[0] = 101;
+    JSObject merged = off(() -> editor.remove("101", version));
+    require(merged.getString("status").equals("stale") && writes == 0 && raws.size() == 2, "a newly merged contact was not deleted");
+
+    raws.get(other)[0] = 102;
+    beforeBatch = () -> {
+      raws.get(original)[0] = 102;
+      raws.get(other)[0] = 101;
+    };
+    JSObject replaced = off(() -> editor.remove("101", version));
+    require(replaced.getString("status").equals("stale") && writes == 0 && raws.size() == 2, "the replacement contact was not deleted");
   }
 
   @Test public void aContactThatChangedIsStaleAndNothingIsWritten() throws Exception {

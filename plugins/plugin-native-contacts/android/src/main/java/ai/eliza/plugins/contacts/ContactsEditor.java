@@ -153,11 +153,13 @@ public final class ContactsEditor {
 
   // ---- Reads -------------------------------------------------------------------------------------
 
+  private static final String LIVE_CONTACT = ContactsContract.RawContacts.CONTACT_ID + "=? AND " + ContactsContract.RawContacts.DELETED + "=0";
+
   /** {rawContactId, version} of every live raw contact of the contact, lowest ID first; empty when the contact is gone. */
   private List<long[]> rawContacts(long contact, CancellationSignal cancel) {
     List<long[]> out = new ArrayList<>();
     try (Cursor rows = resolver.query(ContactsContract.RawContacts.CONTENT_URI, new String[] { ContactsContract.RawContacts._ID, ContactsContract.RawContacts.VERSION },
-        ContactsContract.RawContacts.CONTACT_ID + "=? AND " + ContactsContract.RawContacts.DELETED + "=0", new String[] { String.valueOf(contact) }, ContactsContract.RawContacts._ID + " ASC", cancel)) {
+        LIVE_CONTACT, new String[] { String.valueOf(contact) }, ContactsContract.RawContacts._ID + " ASC", cancel)) {
       if (rows == null) throw new IllegalStateException("Contacts provider unavailable");
       while (rows.moveToNext()) {
         if (out.size() >= MAX_RAW_CONTACTS) throw new IllegalStateException("Too many merged contacts");
@@ -256,10 +258,14 @@ public final class ContactsEditor {
     }
     for (Field field : missing) ops.add(insert(rawContact, null, mime, types, field));
   }
-  /** Fails the whole batch, inside the provider's transaction, unless every raw contact still has the version that was read. */
-  private static void assertUnchanged(ArrayList<ContentProviderOperation> ops, List<long[]> raws) {
+  /** Fails the transaction unless both the aggregate membership and each member's version still match. */
+  private static void assertUnchanged(ArrayList<ContentProviderOperation> ops, long contact, List<long[]> raws) {
+    ops.add(ContentProviderOperation.newAssertQuery(ContactsContract.RawContacts.CONTENT_URI)
+      .withSelection(LIVE_CONTACT, new String[] { String.valueOf(contact) })
+      .withExpectedCount(raws.size()).build());
     for (long[] raw : raws)
       ops.add(ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, raw[0]))
+        .withValue(ContactsContract.RawContacts.CONTACT_ID, contact)
         .withValue(ContactsContract.RawContacts.VERSION, raw[1]).withExpectedCount(1).build());
   }
   /**
@@ -338,7 +344,7 @@ public final class ContactsEditor {
     } catch (RuntimeException unreadable) {
       return status("failed");
     }
-    assertUnchanged(ops, raws);
+    assertUnchanged(ops, contact, raws);
     long target = raws.get(0)[0];
     if (!draft.displayName.equals(summary[1])) {
       String[] args = new String[raws.size() + 1];
@@ -375,7 +381,7 @@ public final class ContactsEditor {
     if (raws.isEmpty()) return status("not-found");
     if (!version(raws).equals(version)) return status("stale");
     ArrayList<ContentProviderOperation> ops = new ArrayList<>();
-    assertUnchanged(ops, raws);
+    assertUnchanged(ops, contact, raws);
     ops.add(ContentProviderOperation.newDelete(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contact)).build());
     try {
       ContentProviderResult[] results = resolver.applyBatch(ContactsContract.AUTHORITY, ops);
