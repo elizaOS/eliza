@@ -292,10 +292,11 @@ function valuePattern(value: string): string {
 		: `(?<!\\S)${escaped}(?!\\S)`;
 }
 
-/** Only string values are secret-bearing in a complete JSON document. */
-function replaceJsonStringValues(
+/** Rewrite JSON string tokens in a complete document while keeping JSON valid. */
+function replaceJsonStrings(
 	text: string,
 	replace: (value: string) => string,
+	skipKeys: boolean,
 ): string | null {
 	const trimmed = text.trimStart();
 	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
@@ -306,14 +307,41 @@ function replaceJsonStringValues(
 		return null;
 	}
 	return text.replace(/"(?:\\[\s\S]|[^"\\])*"/g, (token, offset: number) => {
-		// Object keys are protocol structure, not credential values.
-		let next = offset + token.length;
-		while (next < text.length && /\s/.test(text[next])) next++;
-		if (text[next] === ":") return token;
+		if (skipKeys) {
+			// Object keys are protocol structure, not credential values.
+			let next = offset + token.length;
+			while (next < text.length && /\s/.test(text[next])) next++;
+			if (text[next] === ":") return token;
+		}
 		const value = JSON.parse(token) as string;
 		const replaced = replace(value);
 		return replaced === value ? token : JSON.stringify(replaced);
 	});
+}
+
+function replaceStructuredText(
+	text: string,
+	replace: (value: string) => string,
+	skipKeys: boolean,
+): string {
+	const json = replaceJsonStrings(text, replace, skipKeys);
+	if (json !== null) return json;
+	if (!text.includes("```")) return replace(text);
+	// Evaluators also accept fenced JSON. Protect its structure while still
+	// rewriting surrounding prose; malformed fences keep ordinary replacement.
+	const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm;
+	let cursor = 0;
+	const parts: string[] = [];
+	for (const match of text.matchAll(fence)) {
+		const body = match[1];
+		const replaced = replaceJsonStrings(body, replace, skipKeys);
+		if (replaced === null) continue;
+		const bodyStart = match.index + match[0].indexOf("\n") + 1;
+		parts.push(replace(text.slice(cursor, bodyStart)), replaced);
+		cursor = bodyStart + body.length;
+	}
+	parts.push(replace(text.slice(cursor)));
+	return parts.join("");
 }
 
 /** Matches an existing placeholder (kept) or `value` (replaced); compiled once per session value. */
@@ -329,28 +357,15 @@ function replaceValue(
 	pattern: RegExp,
 	placeholder: string,
 ): string {
-	const replace = (value: string) =>
-		value.replace(
-			pattern,
-			(_match, existingPlaceholder) => existingPlaceholder ?? placeholder,
-		);
-	const json = replaceJsonStringValues(text, replace);
-	if (json !== null) return json;
-	// Evaluators also accept fenced JSON. Protect its structure while still
-	// redacting surrounding prose; malformed fences keep ordinary redaction.
-	const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm;
-	let cursor = 0;
-	const parts: string[] = [];
-	for (const match of text.matchAll(fence)) {
-		const body = match[1];
-		const replaced = replaceJsonStringValues(body, replace);
-		if (replaced === null) continue;
-		const bodyStart = match.index + match[0].indexOf("\n") + 1;
-		parts.push(replace(text.slice(cursor, bodyStart)), replaced);
-		cursor = bodyStart + body.length;
-	}
-	parts.push(replace(text.slice(cursor)));
-	return parts.join("");
+	return replaceStructuredText(
+		text,
+		(value) =>
+			value.replace(
+				pattern,
+				(_match, existingPlaceholder) => existingPlaceholder ?? placeholder,
+			),
+		true,
+	);
 }
 
 function createSecretSwapWalkContext(): SecretSwapWalkContext {
@@ -718,15 +733,18 @@ export class SecretSwapSession {
 		options: { failOnUnresolved?: boolean } = {},
 	): string {
 		const unresolved = new Set<string>();
-		this.placeholderPattern.lastIndex = 0;
-		const restored = text.replace(this.placeholderPattern, (placeholder) => {
-			const entry = this.placeholderToEntry.get(placeholder);
-			if (!entry) {
-				unresolved.add(placeholder);
-				return placeholder;
-			}
-			return entry.value;
-		});
+		const restorePlain = (value: string) => {
+			this.placeholderPattern.lastIndex = 0;
+			return value.replace(this.placeholderPattern, (placeholder) => {
+				const entry = this.placeholderToEntry.get(placeholder);
+				if (!entry) {
+					unresolved.add(placeholder);
+					return placeholder;
+				}
+				return entry.value;
+			});
+		};
+		const restored = replaceStructuredText(text, restorePlain, false);
 		if (options.failOnUnresolved && unresolved.size > 0) {
 			throw new SecretSwapUnresolvedPlaceholderError([...unresolved].sort());
 		}

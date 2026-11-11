@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SecretSwapSession } from "../src/security/secret-swap";
+import {
+	SecretSwapSession,
+	SecretSwapUnresolvedPlaceholderError,
+} from "../src/security/secret-swap";
 
 describe("secret swapping structured model output", () => {
 	it("preserves JSON primitives and keys while protecting credential strings", () => {
@@ -77,5 +80,53 @@ describe("secret swapping structured model output", () => {
 		expect(values[0]).toBe(true);
 		expect(values[2].ok).toBe(true);
 		expect(session.substituteText(first)).toBe(first);
+	});
+	it("restores escaped secrets inside JSON and fenced JSON", () => {
+		const secret = 'hi "friend"\\path\nline2';
+		const session = new SecretSwapSession({
+			knownSecrets: { PASSWORD: secret },
+		});
+		const input = JSON.stringify({
+			ok: true,
+			message: secret,
+			city: "東京",
+		});
+		const swapped = session.substituteText(input);
+		expect(swapped).not.toContain("friend");
+		const restored = session.restoreText(swapped, { failOnUnresolved: true });
+		expect(JSON.parse(restored)).toEqual({
+			ok: true,
+			message: secret,
+			city: "東京",
+		});
+
+		const fenced = [
+			`prose ${secret}`,
+			"```json",
+			input,
+			"```",
+			`after ${secret}`,
+		].join("\n");
+		const swappedFenced = session.substituteText(fenced);
+		const restoredFenced = session.restoreInValue(
+			{ payload: swappedFenced },
+			{ failOnUnresolved: true },
+		).payload;
+		expect(restoredFenced).toBe(fenced);
+		const body = restoredFenced.split("```json\n")[1]?.split("\n```")[0] ?? "";
+		expect(JSON.parse(body).message).toBe(secret);
+	});
+	it("fails on unresolved placeholders inside JSON strings and keys", () => {
+		const session = new SecretSwapSession({
+			knownSecrets: { PASSWORD: 'hi "friend"' },
+		});
+		const swapped = session.substituteText('{"message":"hi \\"friend\\""}');
+		const placeholder = JSON.parse(swapped).message as string;
+		const fabricated = placeholder.replace(/_1__$/, "_999__");
+		expect(() =>
+			session.restoreText(JSON.stringify({ [fabricated]: "ok" }), {
+				failOnUnresolved: true,
+			}),
+		).toThrow(SecretSwapUnresolvedPlaceholderError);
 	});
 });
