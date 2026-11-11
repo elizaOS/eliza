@@ -106,12 +106,13 @@ export interface ContactDraft {
  * `saved`: written. `id` and `version` are null only if the saved contact could not be read back;
  * read the list again then. `stale`: the contact changed after it was read; nothing was written.
  * `not-found`: the contact is gone. `failed`: Android refused the write; nothing was written.
+ * `unknown`: the provider did not confirm the write; refresh before deciding whether to try again.
  */
 export type ContactSaveResult =
   | { status: "saved"; id: string | null; version: string | null }
-  | { status: "stale" | "not-found" | "failed" };
+  | { status: "stale" | "not-found" | "failed" | "unknown" };
 export type ContactRemoveResult = {
-  status: "deleted" | "stale" | "not-found" | "failed";
+  status: "deleted" | "stale" | "not-found" | "failed" | "unknown";
 };
 export type ContactDraftProblem =
   | "empty-contact"
@@ -392,13 +393,16 @@ export function parseContactSave(
   exact(data, ["status"], "contact save");
   if (
     data.status !== "failed" &&
+    data.status !== "unknown" &&
     (id === undefined ||
       (data.status !== "stale" && data.status !== "not-found"))
   )
     throw invalid("contact save");
-  return { status: data.status as "stale" | "not-found" | "failed" };
+  return {
+    status: data.status as "stale" | "not-found" | "failed" | "unknown",
+  };
 }
-const REMOVED = ["deleted", "stale", "not-found", "failed"] as const;
+const REMOVED = ["deleted", "stale", "not-found", "failed", "unknown"] as const;
 export function parseContactRemove(value: unknown): ContactRemoveResult {
   const data = object(value, "contact removal");
   exact(data, ["status"], "contact removal");
