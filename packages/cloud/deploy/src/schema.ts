@@ -201,6 +201,10 @@ function isObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function fieldPath(path: string, key: string): string {
+  return `${path}.${looksLikeSecretValue(key) ? "[redacted field]" : key}`;
+}
+
 class Checker {
   readonly problems: string[] = [];
 
@@ -215,7 +219,7 @@ class Checker {
     }
     for (const key of Object.keys(value)) {
       if (!known.includes(key))
-        this.fail(`${path}.${key}`, "is not a known field");
+        this.fail(fieldPath(path, key), "is not a known field");
     }
     return value;
   }
@@ -235,7 +239,7 @@ class Checker {
     }
     const ok =
       !test || (test instanceof RegExp ? test.test(value) : test(value));
-    if (!ok) this.fail(path, `has an invalid value ${JSON.stringify(value)}`);
+    if (!ok) this.fail(path, "has an invalid value");
     return value;
   }
 
@@ -252,16 +256,13 @@ class Checker {
     }
     for (const [key, entry] of Object.entries(value)) {
       if (!keyPattern.test(key))
-        this.fail(`${path}.${key}`, "is not a valid name");
+        this.fail(fieldPath(path, key), "is not a valid name");
       if (typeof entry !== "string") {
-        this.fail(`${path}.${key}`, "must be a string");
+        this.fail(fieldPath(path, key), "must be a string");
         continue;
       }
       if (test && !test.test(entry)) {
-        this.fail(
-          `${path}.${key}`,
-          `has an invalid value ${JSON.stringify(entry)}`,
-        );
+        this.fail(fieldPath(path, key), "has an invalid value");
       }
       out[key] = entry;
     }
@@ -506,7 +507,7 @@ function checkEnvironment(
       );
       if (!name) return;
       if (secrets.includes(name))
-        check.fail(`${path}.secrets[${index}]`, `repeats ${name}`);
+        check.fail(`${path}.secrets[${index}]`, "is repeated");
       if (
         (DERIVED_VARS as readonly string[]).includes(name) ||
         (vars && name in vars)
@@ -554,8 +555,8 @@ function eachString(
     });
   } else if (isObject(value)) {
     for (const [key, entry] of Object.entries(value)) {
-      visit(key, `${path}.${key} (name)`);
-      eachString(entry, `${path}.${key}`, visit);
+      visit(key, `${fieldPath(path, key)} (name)`);
+      eachString(entry, fieldPath(path, key), visit);
     }
   }
 }
@@ -606,10 +607,7 @@ export function validateDeployment(input: unknown): Deployment {
 
   eachString(input, "deployment", (value, path) => {
     if (id !== ELIZA_DEPLOYMENT_ID && mentionsElizaHost(value)) {
-      check.fail(
-        path,
-        `names a host of the eliza deployment (${JSON.stringify(value)})`,
-      );
+      check.fail(path, "names a host of the eliza deployment");
     }
     if (looksLikeSecretValue(value)) {
       // The value is deliberately not echoed.

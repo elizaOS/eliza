@@ -1,24 +1,8 @@
 /**
- * A warm inference request makes exactly one awaited store call before the
- * provider fetch: the cached auth entry read. No Durable Object call and no
- * Postgres statement precedes the provider on chat completions (organization
- * and pooled-credential lanes), embeddings, text-to-speech or speech-to-text,
- * and the warm-up route answers after the same single read. The entry alone
- * also refuses a request: a billing hold, an exhausted allowance, too little
- * credit for the request, a revoked or an expired key are answered without
- * the provider or any second store.
- *
- * One exception is pinned here rather than hidden: text-to-speech of a single
- * short sentence also looks up the first-line audio cache (object storage)
- * before the provider. It is not a gate or primary call.
- *
- * Every cache method is held until the request has returned, except the read
- * of the auth entry, so an awaited cache call of any kind before the provider
- * would stall the request instead of passing unnoticed.
- *
- * The real routes, auth resolution, limiter and organization admission run
- * here against a real PGlite primary. The providers are a recorded `fetch`;
- * the debit, usage ledger and price lookups are controlled ports.
+ * Cached identity avoids primary reads while durable revocation, shared request
+ * limits and a recoverable funding lease are checked before provider work.
+ * The real routes run against PGlite and controlled provider/gate ports; all
+ * unrelated cache/primary work is held until the response has returned.
  */
 
 import {
@@ -59,9 +43,6 @@ const authCache = await import(
 );
 const authContext = await import(
   "@elizaos/cloud-shared/lib/services/inference-auth-context"
-);
-const rateLimit = await import(
-  "@elizaos/cloud-shared/lib/middleware/rate-limit"
 );
 const pricing = await import("@elizaos/cloud-shared/lib/pricing");
 const flatPricing = await import(
@@ -151,7 +132,7 @@ let gateReply: ((path: string) => Response | undefined) | undefined;
  * Gate calls wait for the request to return, so an awaited one would stall
  * it. Cleared only by tests of callers that are meant to await the gate.
  */
-let gateHeld = true;
+let gateHeld = false;
 let debitedBalanceUsd = 9.99;
 const spies: Array<{ mockRestore(): void }> = [];
 const realFetch = globalThis.fetch;
@@ -167,7 +148,13 @@ const bindings = {
           gatePaths.push(path);
           const reply = gateReply?.(path);
           if (reply) return reply;
-          if (path === "/lease-dispatched")
+          if (path === "/rate-limit")
+            return Response.json({
+              allowed: true,
+              remaining: 59,
+              resetAt: Date.now() + 60_000,
+            });
+          if (path.startsWith("/lease-dispatched"))
             return Response.json({
               admitted: true,
               dispatched: true,
@@ -628,10 +615,9 @@ afterEach(() => {
   firstLineLookups = 0;
   firstLineLookupsAtProvider = 0;
   gateReply = undefined;
-  gateHeld = true;
+  gateHeld = false;
   debitedBalanceUsd = 9.99;
   authContext.__clearInferenceApiKeyHydrations();
-  rateLimit.__clearIsolateRateWindows();
   snapshots.resetInferenceAdmissionMemoryCacheForTests();
 });
 
@@ -642,7 +628,7 @@ afterAll(async () => {
 });
 
 for (const stream of [true, false]) {
-  test(`a warm ${stream ? "streamed" : "buffered"} request reaches the provider after one cache read and no other store call`, async () => {
+  test(`a warm ${stream ? "streamed" : "buffered"} request reaches the provider after cached auth and durable admission`, async () => {
     const key = newKey();
     await seedEntry(key, snapshot());
     const call = await chat(key.rawKey, stream);
@@ -650,20 +636,23 @@ for (const stream of [true, false]) {
     expect(providerCalls).toBe(1);
     expect(call.beforeProvider).toEqual({
       cacheReads: 1,
-      gateCalls: 0,
+      gateCalls: 3,
       primary: 0,
     });
     await finish(call);
-    // Accounting runs only after the response: lease, fence, then settlement.
+    // Revocation, shared limits and a recoverable lease precede provider work;
+    // accounting fences and settles that same durable owner after the response.
     expect(gatePaths).toEqual([
-      "/lease-dispatched",
+      "/credential/check",
+      "/rate-limit",
+      "/lease-dispatched-authorized",
       "/settlement-fence",
       "/settle",
     ]);
   });
 }
 
-test("a billing hold in the entry is refused with 402 before any provider or gate call", async () => {
+test("a billing hold in the entry is refused with 402 before provider dispatch", async () => {
   const key = newKey();
   await seedEntry(key, snapshot({ billingHold: true }));
   const call = await chat(key.rawKey);
@@ -672,7 +661,7 @@ test("a billing hold in the entry is refused with 402 before any provider or gat
     error: { type: "insufficient_quota", code: "billing_hold_active" },
   });
   expect(providerCalls).toBe(0);
-  expect(call.beforeResponse.gateCalls).toBe(0);
+  expect(call.beforeResponse.gateCalls).toBe(2);
   expect(call.beforeResponse.primary).toBe(0);
 });
 
@@ -700,7 +689,7 @@ test("an exhausted plan allowance is refused with allowance_exhausted and its re
     },
   });
   expect(providerCalls).toBe(0);
-  expect(call.beforeResponse.gateCalls).toBe(0);
+  expect(call.beforeResponse.gateCalls).toBe(2);
   expect(call.beforeResponse.primary).toBe(0);
 });
 
@@ -718,7 +707,7 @@ test("an entry with no credit is refused with insufficient_credits", async () =>
     error: { type: "insufficient_quota", code: "insufficient_credits" },
   });
   expect(providerCalls).toBe(0);
-  expect(call.beforeResponse.gateCalls).toBe(0);
+  expect(call.beforeResponse.gateCalls).toBe(2);
   expect(call.beforeResponse.primary).toBe(0);
 });
 
@@ -772,7 +761,7 @@ test("an entry with less credit than the request's estimate is refused before th
   expect(providerCalls).toBe(0);
   expect(call.beforeResponse).toEqual({
     cacheReads: 1,
-    gateCalls: 0,
+    gateCalls: 2,
     primary: 0,
   });
 });
@@ -787,7 +776,7 @@ for (const stream of [true, false]) {
     expect(call.response.status).toBe(200);
     expect(call.beforeProvider).toEqual({
       cacheReads: 1,
-      gateCalls: 0,
+      gateCalls: 3,
       primary: 0,
     });
     await finish(call);
@@ -814,13 +803,14 @@ for (const stream of [true, false]) {
     expect(providerCalls).toBe(0);
     expect(next.beforeResponse).toEqual({
       cacheReads: 1,
-      gateCalls: 0,
+      gateCalls: 2,
       primary: 0,
     });
   });
 }
 
-const ONE_READ = { cacheReads: 1, gateCalls: 0, primary: 0 };
+const AUTH_AND_RATE = { cacheReads: 1, gateCalls: 2, primary: 0 };
+const AUTH_RATE_AND_LEASE = { cacheReads: 1, gateCalls: 3, primary: 0 };
 
 const embed = (rawKey: string) =>
   route("embeddings", {
@@ -832,13 +822,13 @@ const embed = (rawKey: string) =>
     body: JSON.stringify({ model: "text-embedding-3-small", input: "hello" }),
   });
 
-test("a warm embeddings request reaches the provider after one cache read and no other store call", async () => {
+test("a warm embeddings request reaches the provider after cached auth and durable admission", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const call = await embed(key.rawKey);
   expect(call.response.status).toBe(200);
   expect(providerCalls).toBe(1);
-  expect(call.beforeProvider).toEqual(ONE_READ);
+  expect(call.beforeProvider).toEqual(AUTH_RATE_AND_LEASE);
   await finish(call);
 });
 
@@ -871,7 +861,7 @@ test("embeddings refuse with the same funding codes as chat", async () => {
       error: { type: "insufficient_quota", ...refusal },
     });
     expect(providerCalls).toBe(0);
-    expect(call.beforeResponse).toEqual(ONE_READ);
+    expect(call.beforeResponse).toEqual(AUTH_AND_RATE);
   }
 });
 
@@ -888,25 +878,25 @@ const speak = (
     body: JSON.stringify({ text }),
   });
 
-test("a warm text-to-speech request reaches the provider after one cache read and no other store call", async () => {
+test("a warm text-to-speech request reaches the provider after cached auth and durable admission", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const call = await speak(key.rawKey);
   expect(call.response.status).toBe(200);
   expect(providerCalls).toBe(1);
-  expect(call.beforeProvider).toEqual(ONE_READ);
+  expect(call.beforeProvider).toEqual(AUTH_RATE_AND_LEASE);
   // Two sentences are never served from the first-line audio cache.
   expect(firstLineLookupsAtProvider).toBe(0);
   await finish(call);
 });
 
-test("text-to-speech of one short sentence adds exactly one first-line audio lookup, and no gate or primary call", async () => {
+test("text-to-speech of one short sentence adds exactly one first-line audio lookup, with durable admission and no primary read", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const call = await speak(key.rawKey, "Got it.");
   expect(call.response.status).toBe(200);
   expect(providerCalls).toBe(1);
-  expect(call.beforeProvider).toEqual(ONE_READ);
+  expect(call.beforeProvider).toEqual(AUTH_RATE_AND_LEASE);
   expect(firstLineLookupsAtProvider).toBe(1);
   await finish(call);
 });
@@ -934,7 +924,7 @@ test("text-to-speech refuses an exhausted allowance in the shape clients parse",
     required: 0.02,
   });
   expect(providerCalls).toBe(0);
-  expect(call.beforeResponse).toEqual(ONE_READ);
+  expect(call.beforeResponse).toEqual(AUTH_AND_RATE);
 });
 
 const transcribe = (rawKey: string) => {
@@ -947,13 +937,13 @@ const transcribe = (rawKey: string) => {
   });
 };
 
-test("a warm speech-to-text request reaches the provider after one cache read and no other store call", async () => {
+test("a warm speech-to-text request reaches the provider after cached auth and durable admission", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const call = await transcribe(key.rawKey);
   expect(call.response.status).toBe(200);
   expect(providerCalls).toBe(1);
-  expect(call.beforeProvider).toEqual(ONE_READ);
+  expect(call.beforeProvider).toEqual(AUTH_RATE_AND_LEASE);
   await finish(call);
 });
 
@@ -966,10 +956,10 @@ test("speech-to-text refuses a billing hold in the shape clients parse", async (
     error: { type: "insufficient_quota", code: "billing_hold_active" },
   });
   expect(providerCalls).toBe(0);
-  expect(call.beforeResponse).toEqual(ONE_READ);
+  expect(call.beforeResponse).toEqual(AUTH_AND_RATE);
 });
 
-test("the warm-up route answers after one cache read and awaits no other store", async () => {
+test("the warm-up route checks durable credential standing without a primary read", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const call = await route("warm", {
@@ -977,13 +967,13 @@ test("the warm-up route answers after one cache read and awaits no other store",
     headers: { Authorization: `Bearer ${key.rawKey}` },
   });
   expect(call.response.status).toBe(202);
-  expect(call.beforeResponse).toEqual(ONE_READ);
+  expect(call.beforeResponse).toEqual(AUTH_AND_RATE);
   await finish(call);
   // Its gate publication ran, after the response.
   expect(counts.gateCalls).toBeGreaterThan(0);
 });
 
-test("a refused post-response lease still debits the request", async () => {
+test("a refused pre-provider lease never invokes or debits the provider", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const debits = (
@@ -991,24 +981,52 @@ test("a refused post-response lease still debits the request", async () => {
       mock: { calls: unknown[] };
     }
   ).mock.calls.length;
-  // The debit is a controlled port here; the real ledger and a gate that
-  // also fails the debit's balance publication are exercised in
-  // inference-admission-refusal.pglite.test.ts.
-  gateReply = () =>
-    Response.json(
-      { admitted: false, availableUsd: 0, requiredUsd: 1 },
-      { status: 402 },
-    );
+  // A durable refusal arrives after cached identity/rate checks and before
+  // provider invocation, so it cannot create a billable provider effect.
+  gateReply = (path) =>
+    path.startsWith("/lease-dispatched")
+      ? Response.json(
+          { admitted: false, availableUsd: 0, requiredUsd: 1 },
+          { status: 402 },
+        )
+      : undefined;
   const call = await chat(key.rawKey);
-  expect(call.response.status).toBe(200);
+  expect(call.response.status).toBe(402);
+  expect(providerCalls).toBe(0);
   await finish(call);
   expect(
     (fastPath.debitInferenceCost as unknown as { mock: { calls: unknown[] } })
       .mock.calls.length,
-  ).toBe(debits + 1);
+  ).toBe(debits);
 });
 
-test("a warm request on the pooled-credential lane reaches the provider after one cache read and no gate call", async () => {
+test("a credential revoked between cached auth and durable dispatch cannot invoke the provider", async () => {
+  const key = newKey();
+  await seedEntry(key, snapshot());
+  gateReply = (path) => path === "/lease-dispatched-authorized"
+    ? Response.json({ allowed: false, reason: "credential_revoked" }, { status: 403 })
+    : undefined;
+  const call = await chat(key.rawKey);
+  expect(call.response.status).toBe(401);
+  expect(providerCalls).toBe(0);
+  expect(gatePaths).toContain("/lease-dispatched-authorized");
+  await finish(call);
+});
+
+test("an unavailable durable dispatch cannot invoke the provider", async () => {
+  const key = newKey();
+  await seedEntry(key, snapshot());
+  gateReply = (path) => path === "/lease-dispatched-authorized"
+    ? new Response("unavailable", { status: 503 })
+    : undefined;
+  const call = await chat(key.rawKey);
+  expect(call.response.status).toBe(503);
+  expect(providerCalls).toBe(0);
+  expect(gatePaths.filter((path) => path === "/lease-dispatched-authorized")).toHaveLength(3);
+  await finish(call);
+});
+
+test("a warm request on the pooled-credential lane reaches the provider after cached auth and durable credential/rate checks", async () => {
   const key = newKey();
   await seedEntry(key, snapshot());
   const registry = teamPool.getTeamPoolRegistry();
@@ -1029,18 +1047,17 @@ test("a warm request on the pooled-credential lane reaches the provider after on
       providerCalls = 0;
       const call = await chat(key.rawKey, stream);
       expect(call.response.status).toBe(200);
-      // The handler returned after its one read. A streamed response calls
-      // the provider when its body is pulled; a gate call awaited before
-      // that would have stalled the handler, since the gate is held.
-      expect(call.beforeResponse).toEqual(ONE_READ);
+      // This lane performs durable credential/rate checks but does not create
+      // a funding lease because it uses the team's own provider credential.
+      expect(call.beforeResponse).toEqual(AUTH_RATE_AND_LEASE);
       await finish(call);
       expect(providerCalls).toBe(1);
       // The team's own credential made the provider call.
       expect(providerAuthorization).toBe(
         "Bearer pooled-team-key-for-single-store-call-test",
       );
-      // The lane charges nothing, so it never meets the gate at all.
-      expect(gatePaths).toEqual([]);
+      // No organization funding lease exists for this lane.
+      expect(gatePaths).toEqual(["/credential/check", "/rate-limit", "/credential/check"]);
     }
   } finally {
     for (const spy of pooled) spy.mockRestore();
@@ -1053,7 +1070,7 @@ for (const [reason, status, body] of [
   ["credential_revoked", 401, { kind: "rejected" }],
   ["subject_moderation_disabled", 403, { kind: "suspended" }],
 ] as const) {
-  test(`a gate fence (${reason}) met by the refresh replaces the entry with a denial while the primary still allows the key`, async () => {
+  test(`a gate fence (${reason}) refuses the current request and rewrites the entry while the primary still allows the key`, async () => {
     const key = newKey();
     await seedPrimaryKey(key);
     await seedEntry(key, snapshot(), { cachedAt: Date.now() - AGED });
@@ -1064,9 +1081,11 @@ for (const [reason, status, body] of [
         ? Response.json({ allowed: false, reason }, { status: 403 })
         : undefined;
     const stale = await chat(key.rawKey);
-    // The aged entry still decides its own request, with no gate call.
-    expect(stale.response.status).toBe(200);
-    expect(stale.beforeProvider).toEqual(ONE_READ);
+    // The primary still allows the key, but the durable fence stops this request.
+    expect(stale.response.status).toBe(status);
+    expect(stale.beforeProvider).toBeUndefined();
+    expect(stale.beforeResponse.gateCalls).toBe(1);
+    expect(providerCalls).toBe(0);
     await finish(stale);
     expect(gatePaths).toContain("/credential/check");
     expect(await readEntry(key)).toMatchObject({
@@ -1081,7 +1100,11 @@ for (const [reason, status, body] of [
     const next = await chat(key.rawKey);
     expect(next.response.status).toBe(status);
     expect(providerCalls).toBe(0);
-    expect(next.beforeResponse).toEqual(ONE_READ);
+    expect(next.beforeResponse).toEqual({
+      cacheReads: 1,
+      gateCalls: 0,
+      primary: 0,
+    });
   });
 }
 

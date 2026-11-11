@@ -157,18 +157,15 @@ export interface ResolveInferenceAuthOptions {
   onAuthoritativeRejection?(reason: InferenceAuthRejectionReason): void;
   /**
    * The caller wants the verified credential back (app-funded admission and
-   * the speech relay bind it). A cached API-key entry is the whole decision;
-   * a cold decision and a session are still checked against the gate here.
+   * the speech relay bind it). Cached identity still requires a durable check;
+   * every consumed decision is checked against the gate here.
    */
   deferStrongCredentialCheck?: boolean;
   /** Return verified identity metadata for a bounded speech session; never skips an auth check. */
   includeVerifiedCredential?: boolean;
   /**
-   * Check the organization gate's durable fences on a cached API-key hit,
-   * before returning. For routes that act outside inference (publishing,
-   * hosted browsers, paid upstreams), where a revoked key must stop on the
-   * next request instead of after cache propagation. The inference routes
-   * leave it unset: their cached entry is the whole decision.
+   * Compatibility option. Consumed cached API-key decisions always check the
+   * organization gate's durable fences before returning; this cannot disable it.
    */
   strongCredentialCheck?: boolean;
 }
@@ -800,31 +797,26 @@ export async function resolveInferenceAuthContext(
           rateLimit: cached.ctx.apiKeyRateLimit,
           expiresAt: cached.ctx.apiKeyExpiresAt,
         };
-        if (options.strongCredentialCheck === true) {
-          try {
-            await assertInferenceCredentialActive(cached.ctx.orgId, credential);
-          } catch (error) {
-            if (!(error instanceof InferenceCredentialRevokedError)) throw error;
-            // The forced refresh meets the same fence and writes the denial.
-            scheduleRefresh(cached.ctx.cachedAt, true);
-            const revoked = error.reason === "credential_revoked";
-            const reason = inferenceCredentialRevocationReason(error.reason);
-            trace.result = revoked ? "rejected" : "suspended";
-            logStandingDenial({
-              status: revoked ? 401 : 403,
-              reason,
-              source: "authoritative",
-            });
-            return revoked
-              ? { kind: "rejected", status: 401, reason }
-              : { kind: "suspended", userId: cached.ctx.userId, reason };
-          }
+        try {
+          await assertInferenceCredentialActive(cached.ctx.orgId, credential);
+        } catch (error) {
+          if (!(error instanceof InferenceCredentialRevokedError)) throw error;
+          // The forced refresh meets the same fence and writes the denial.
+          scheduleRefresh(cached.ctx.cachedAt, true);
+          const revoked = error.reason === "credential_revoked";
+          const reason = inferenceCredentialRevocationReason(error.reason);
+          trace.result = revoked ? "rejected" : "suspended";
+          logStandingDenial({
+            status: revoked ? 401 : 403,
+            reason,
+            source: "authoritative",
+          });
+          return revoked
+            ? { kind: "rejected", status: 401, reason }
+            : { kind: "suspended", userId: cached.ctx.userId, reason };
         }
-        // Otherwise the cached entry is the whole decision: this read is the
-        // request's only store call. Revocation reaches it through writer
-        // invalidation and the aged refresh below, which checks the gate off
-        // the response and replaces the entry with a denial when the gate
-        // holds a fence.
+        // Cached identity avoids primary reads, while the durable fence check
+        // above preserves revocation even before cache invalidation propagates.
         observeInferenceApiKeyUsage(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
           options.executionCtx,

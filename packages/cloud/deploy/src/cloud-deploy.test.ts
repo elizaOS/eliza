@@ -117,6 +117,31 @@ describe("deployment file validation", () => {
     }
   });
 
+  test("never echoes rejected credentials through structural or host diagnostics", () => {
+    const secret = `sk_live_${"a".repeat(24)}`;
+    for (const input of [
+      productWith((env) => {
+        env.workerName = secret;
+      }),
+      productWith((env) => {
+        (env.resources as Table).hyperdriveId = secret;
+      }),
+      productWith((env) => {
+        env.billingUrl = `https://app:${secret}@api.eliza.app`;
+      }),
+      productWith((env) => {
+        (env.vars as Table)[secret] = "value";
+      }),
+      productWith((env) => {
+        (env.secrets as string[]).push(secret, secret);
+      }),
+    ]) {
+      const problems = problemsOf(input);
+      expect(problems.length).toBeGreaterThan(0);
+      expect(problems.join("\n")).not.toContain(secret);
+    }
+  });
+
   test("refuses a secret name used as a plain variable, and a value in the secrets list", () => {
     expect(
       problemsOf(

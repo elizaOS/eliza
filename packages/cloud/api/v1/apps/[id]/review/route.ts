@@ -21,6 +21,7 @@ import {
   runAppReview,
 } from "@elizaos/cloud-shared/lib/services/app-review";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -41,6 +42,10 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       rateLimitEndpoint: "strict",
       deferStrongCredentialCheck: true,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     const { user } = caller;
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
@@ -58,7 +63,9 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     const review = await runAppReview({
       app: appRow,
       triggeredByUserId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
 
     logger.info("[AppReview API] Submitted app for review", {

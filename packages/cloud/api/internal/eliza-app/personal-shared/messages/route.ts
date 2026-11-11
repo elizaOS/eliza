@@ -121,9 +121,7 @@ type DeliveryStage =
 
 const SAFE_ERROR_NAMES = new Set([
   "AbortError",
-  "AllowanceExhaustedError",
   "ApiError",
-  "BillingHoldActiveError",
   "Error",
   "HTTPException",
   "InsufficientCreditsError",

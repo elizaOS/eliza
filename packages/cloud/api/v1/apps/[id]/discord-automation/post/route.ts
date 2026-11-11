@@ -11,6 +11,7 @@ import { Hono } from "hono";
  */
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { discordAppAutomationService } from "@elizaos/cloud-shared/lib/services/discord-automation/app-automation";
 import {
   type GenerativeOperationContext,
@@ -107,11 +108,17 @@ __hono_app.post("/", async (c) => {
       rateLimitEndpoint: "strict",
       deferStrongCredentialCheck: true,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     return await __hono_POST(
       c.req.raw,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
-      getGenerativeOperationContext(c, caller),
+      getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     );
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);

@@ -63,6 +63,7 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
@@ -606,7 +607,12 @@ app.post("/", async (c) => {
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
+  let guardOrganizationId: string | undefined;
   try {
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
     try {
       const resolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
@@ -639,6 +645,7 @@ app.post("/", async (c) => {
           id: resolution.ctx.userId,
           organization_id: resolution.ctx.orgId,
         };
+        guardOrganizationId = user.organization_id;
         apiKey = resolution.ctx.apiKeyId
           ? { id: resolution.ctx.apiKeyId }
           : null;
@@ -840,7 +847,7 @@ app.post("/", async (c) => {
             affiliateCode,
             executionCtx,
             admissionSnapshot,
-            credential: admissionCredential,
+            credential: credentialGuard.credentialForAdmission(),
             atomicProviderBoundary: true,
           });
           settleReservation = admission.settle;
@@ -917,6 +924,7 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: Boolean(executionCtx),
         });
         settleReservation = admission.settle;

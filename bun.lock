@@ -810,6 +810,13 @@
         "ws": "^8.22.1",
       },
     },
+    "packages/cloud/deploy": {
+      "name": "@elizaos/cloud-deploy",
+      "version": "0.0.0",
+      "bin": {
+        "cloud-deploy": "src/cli.ts",
+      },
+    },
     "packages/cloud/e2e": {
       "name": "@elizaos/cloud-e2e",
       "version": "0.0.0",
@@ -4001,6 +4008,8 @@
     "@elizaos/claude-subscription-gateway": ["@elizaos/claude-subscription-gateway@workspace:packages/benchmarks/harnesses/transports/claude-subscription-gateway"],
 
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud/api"],
+
+    "@elizaos/cloud-deploy": ["@elizaos/cloud-deploy@workspace:packages/cloud/deploy"],
 
     "@elizaos/cloud-e2e": ["@elizaos/cloud-e2e@workspace:packages/cloud/e2e"],
 

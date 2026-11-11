@@ -5,7 +5,7 @@ deployment file, so a product deploys its own Cloud from upstream code without
 editing `packages/cloud/api/wrangler.toml`.
 
 Private and unpublished. Run it with Bun from an upstream checkout; it has no
-dependencies. It is not yet a workspace member.
+runtime dependencies. It is a workspace member checked by repository verification.
 
 ## Product directory
 

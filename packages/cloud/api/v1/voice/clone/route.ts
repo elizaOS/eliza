@@ -42,6 +42,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { calculateVoiceCloneCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import type { VoiceCloneFailureReason } from "@elizaos/cloud-shared/lib/services/voice-clone-failure";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -339,6 +340,10 @@ app.post("/", async (c) => {
       deferStrongCredentialCheck:
         pendingConfigResponse === undefined && validationError === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     user = caller.user;
     apiKeyId = caller.apiKeyId;
     if (pendingConfigResponse) return pendingConfigResponse;
@@ -448,6 +453,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost: cloneCost,
         admissionSnapshot: caller.admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
         atomicProviderBoundary: true,
       });
     } catch (error) {
