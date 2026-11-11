@@ -24,6 +24,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  createApprovalQueue,
   createGlobalPauseStore,
   resolvePendingPromptsStore,
 } from "@elizaos/plugin-assistant";
@@ -95,6 +96,110 @@ describe("processDueScheduledTasks — production wiring", () => {
       runtimeResult = null;
     }
   });
+
+  it.each(["scheduled", "fired"] as const)(
+    "retires a resolved approval's %s follow-up before dispatch or escalation",
+    async (status) => {
+      runtimeResult = await createLifeOpsTestRuntime();
+      const { runtime } = runtimeResult;
+      const owner = "approval-owner";
+      const now = new Date("2026-11-11T23:00:00.000Z");
+      const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+      const approval = await queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: "Synthetic approval, no provider dispatch",
+        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        payload: {
+          action: "send_email",
+          to: ["self@example.test"],
+          cc: [],
+          bcc: [],
+          subject: "Approval follow-up QA",
+          body: "Test only",
+          threadId: null,
+          replyToMessageId: null,
+        },
+      });
+      const task = await seedScheduledTask(runtime, {
+        kind: "approval",
+        promptInstructions: "Approval needed",
+        trigger: { kind: "once", atIso: "2026-11-11T21:00:00Z" },
+        priority: "high",
+        respectsGlobalPause: false,
+        source: "plugin",
+        ownerVisible: true,
+        subject: { kind: "self", id: owner },
+        idempotencyKey: `approval:${approval.id}`,
+        metadata: { approvalRequestId: approval.id },
+        completionCheck: {
+          kind: "user_acknowledged",
+          followupAfterMinutes: 60,
+        },
+        state: {
+          status,
+          followupCount: 0,
+          ...(status === "fired" ? { firedAt: "2026-11-11T21:00:00Z" } : {}),
+        },
+      });
+      const prompts = resolvePendingPromptsStore(runtime);
+      await prompts.record({
+        roomId: `approval:${approval.id}`,
+        taskId: task.taskId,
+        promptSnippet: "Approval needed",
+        firedAt: "2026-11-11T21:00:00Z",
+      });
+      await queue.approve(approval.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Owner approved in the review dialog",
+      });
+      const waiting = await processDueScheduledTasks({
+        runtime,
+        agentId: runtime.agentId,
+        now,
+        limit: 5,
+      });
+      expect(waiting.fires).toEqual([]);
+      expect(waiting.completions).toEqual([]);
+      expect(waiting.completionTimeouts).toEqual([]);
+      expect(
+        (
+          await new LifeOpsRepository(runtime).getScheduledTask(
+            runtime.agentId,
+            task.taskId,
+          )
+        )?.state.status,
+      ).toBe(status);
+      await queue.revertApprovedToPending(approval.id, owner);
+      await queue.reject(approval.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Owner declined after preflight returned to review",
+      });
+      const result = await processDueScheduledTasks({
+        runtime,
+        agentId: runtime.agentId,
+        now,
+        limit: 5,
+      });
+      expect(result.errors).toEqual([]);
+      expect(result.fires).toEqual([]);
+      expect(result.completionTimeouts).toEqual([]);
+      expect(result.completions.map((item) => item.taskId)).toContain(
+        task.taskId,
+      );
+      const saved = await new LifeOpsRepository(runtime).getScheduledTask(
+        runtime.agentId,
+        task.taskId,
+      );
+      expect(saved?.state.status).toBe("completed");
+      expect(await prompts.list(`approval:${approval.id}`, { now })).toEqual(
+        [],
+      );
+      expect((await queue.byId(approval.id, owner))?.state).toBe("rejected");
+    },
+  );
 
   it("fires a due one-shot reminder via the real runner wired through LifeOpsRepository", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
