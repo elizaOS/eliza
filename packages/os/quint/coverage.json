@@ -50,8 +50,11 @@
       "packages/os/android/system-updater/host/ai/eliza/systemupdater/UpdateActivity.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/EngineInstaller.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/JournalStore.java",
+      "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateJournal.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/UpdateChannel.java",
       "packages/os/android/system-updater/src/ai/eliza/systemupdater/PackageVerifier.java",
+      "packages/os/android/system-updater/test/ai/eliza/systemupdater/StorageReplay.java",
+      "packages/os/quint/check-system-update.mjs",
       "packages/os/android/system-updater/sepolicy/eliza_system_updater.te",
       "packages/os/android/system-updater/sepolicy/seapp_contexts",
       "packages/os/android/system-updater/AndroidManifest.xml"
@@ -59,7 +62,8 @@
     "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
     "status": "partial",
     "limitations": [
-      "Finite phase model, one candidate and binary eligibility; native adapter conformance is not established by source links.",
+      "One candidate, binary eligibility and space availability. The host replay checks the actual space guard and failure transition with real private files and controlled Android and journal-storage ports.",
+      "Progress requires enough storage to become and stay available, a valid package, continued eligibility and fair jobs and callbacks.",
       "Android resource/permission/SELinux admission, download interruptions, storage crashes, real signature checks and physical update/reboot/recovery remain qualification gates."
     ]
   },
