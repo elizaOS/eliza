@@ -2,6 +2,10 @@
  * Regression tests for counterexamples of quint/TaskService.qnt and
  * quint/TaskScheduler.qnt. Real TaskService, real scheduler daemon, real PGlite.
  */
+import {
+	PGliteClientManager,
+	PgliteDatabaseAdapter,
+} from "@elizaos/plugin-sql";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import { TaskService } from "../src/services/task";
@@ -587,3 +591,95 @@ it("a scheduler restart does not dispatch a second runTick to a busy service", a
 		await f.cleanup();
 	}
 }, 20_000);
+
+it("rechecks a peer registration after another agent awaits inside a shared batch", async () => {
+	const manager = new PGliteClientManager({ dataDir: "memory://" });
+	const create = (characterName: string) =>
+		createTestRuntime({
+			characterName,
+			configureRuntime: async (runtime) => {
+				const adapter = new PgliteDatabaseAdapter(runtime.agentId, manager);
+				await adapter.initialize();
+				runtime.registerDatabaseAdapter(adapter);
+			},
+		});
+	const first = await create("Shared batch first agent");
+	const entered = latch(),
+		release = latch();
+	let second: Awaited<ReturnType<typeof createTestRuntime>> | undefined;
+	const services = [new TaskService(first.runtime)];
+	const workerCalls: string[] = [];
+	try {
+		second = await create("Shared batch second agent");
+		services.push(new TaskService(second.runtime));
+		const runtimes = [first.runtime, second.runtime];
+		expect(first.runtime.agentId).not.toBe(second.runtime.agentId);
+		const ids = await Promise.all(
+			runtimes.map(async (runtime) => {
+				runtime.registerTaskWorker({
+					name: "SHARED_BATCH_OWNERSHIP",
+					execute: async () => {
+						workerCalls.push(runtime.agentId);
+						if (workerCalls.length === 1) {
+							entered.resolve();
+							await release.promise;
+						}
+					},
+				});
+				return runtime.createTask({
+					name: "SHARED_BATCH_OWNERSHIP",
+					tags: ["queue"],
+					metadata: { blocking: true },
+				});
+			}),
+		);
+		const queries = vi.spyOn(first.runtime.adapter, "getTasks");
+		const oldDispatches = services.map((service) =>
+			vi.spyOn(service, "runTick"),
+		);
+		startTaskScheduler(first.runtime.adapter);
+		for (const service of services) service.startTimer();
+		await entered.promise;
+		expect(queries).toHaveBeenCalledTimes(1);
+		expect(new Set(queries.mock.calls[0][0].agentIds)).toEqual(
+			new Set(runtimes.map((runtime) => runtime.agentId)),
+		);
+		// The database owns row order. The held worker identifies the first
+		// dispatch, so the test changes whichever registration is still queued.
+		const peer = workerCalls[0] === first.runtime.agentId ? 1 : 0;
+		const oldPeer = services[peer];
+		const replacement = new TaskService(runtimes[peer]);
+		services.push(replacement);
+		const queriesAtDispatch: number[] = [];
+		const runTick = replacement.runTick.bind(replacement);
+		vi.spyOn(replacement, "runTick").mockImplementation(async (tasks) => {
+			queriesAtDispatch.push(queries.mock.calls.length);
+			await runTick(tasks);
+		});
+		replacement.startTimer();
+		await oldPeer.stop();
+		expect(oldDispatches[peer]).not.toHaveBeenCalled();
+		expect(queriesAtDispatch).toEqual([]);
+		release.resolve();
+		await expect
+			.poll(
+				async () =>
+					Promise.all(runtimes.map((runtime, i) => runtime.getTask(ids[i]))),
+				{ timeout: 10_000 },
+			)
+			.toEqual([null, null]);
+		expect(oldDispatches[peer]).not.toHaveBeenCalled();
+		expect(queriesAtDispatch).toHaveLength(1);
+		expect(queriesAtDispatch[0]).toBeGreaterThan(1);
+		expect(workerCalls).toEqual([
+			runtimes[1 - peer].agentId,
+			runtimes[peer].agentId,
+		]);
+	} finally {
+		release.resolve();
+		await Promise.all(services.map((service) => service.stop()));
+		await stopTaskScheduler();
+		vi.restoreAllMocks();
+		await Promise.all([first.cleanup(), second?.cleanup()]);
+	}
+}, 120_000);

@@ -3,10 +3,15 @@
 		"packages/core/src/services/task-scheduler.ts",
 		"packages/core/src/services/task.ts",
 		"packages/core/test/task-scheduler-model.test.ts",
-		"packages/core/src/runtime.ts"
+		"packages/core/src/runtime.ts",
+		"plugins/plugin-sql/src/base.ts",
+		"plugins/plugin-sql/src/pglite/adapter.ts"
 	],
 	"conformance": "packages/core/scripts/quint-task-service-conformance.mjs",
-	"bounds": "One agent, two service identities, two adapter identities, two query slots and two registrations. One scheduler stop and restart plus adapter retirement. The adapter owner may be absent from queried services. Query success, failure and delayed results retain exact service and adapter ownership until settlement.",
+	"bounds": {
+		"external-query-retirement": "One agent, two service identities, two adapter identities, two query slots and two registrations. One scheduler stop and restart plus adapter retirement. The adapter owner may be absent from queried services. Query success, failure and delayed results retain exact service and adapter ownership until settlement.",
+		"batch-registration-replacement": "Two agents in one already-admitted query batch and one fresh query for the waiting peer task. One scheduler generation and a shared storage connection. The first service can remain in runTick while the peer registers its replacement and unregisters its old service. Results are grouped in storage order. Worker internals, query failures, empty periodic ticks and other generations are abstracted or checked in the adjacent models."
+	},
 	"cases": [
 		{
 			"name": "external-query-retirement",
@@ -63,6 +68,36 @@
 				}
 			],
 			"maxSteps": 35,
+			"samples": 500
+		},
+		{
+			"name": "batch-registration-replacement",
+			"main": "TaskSchedulerBatchDispatch",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"DispatchUsesCurrentRegistration",
+				"OldUnregisterKeepsReplacement",
+				"PeerTaskHasOneDispatch"
+			],
+			"temporal": ["PeerTaskCompletes", "PeerTaskWithoutFairness"],
+			"temporalChecks": [
+				{
+					"property": "PeerTaskCompletes",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of advance. The admitted query and first service settle, the scheduler continues to the next group, a pending replacement task gets a fresh query, and the peer work settles. The projection covers one queued one-shot task for each of two agents and one replacement registration."
+					]
+				},
+				{
+					"property": "PeerTaskWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. A held earlier service or a delayed scheduler continuation can leave the replacement task pending."
+					]
+				}
+			],
+			"maxSteps": 25,
 			"samples": 500
 		}
 	]

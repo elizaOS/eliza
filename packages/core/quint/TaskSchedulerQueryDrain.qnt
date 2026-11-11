@@ -71,17 +71,20 @@ module TaskSchedulerQueryDrain {
     s.stopRequested, not(s.restarted), not(s.retiredAdapters.contains("storage-new")),
     s' = { ...s, active: true, adapter: "storage-new", generation: s.generation + 1, restarted: true },
   }
-  action step = {
-    nondet owner = Services.oneOf()
-    nondet q = Queries.oneOf()
-    nondet adapterOwner = Adapters.oneOf()
-    nondet succeeded = Set(true, false).oneOf()
-    any {
-      register(owner), begin(q), unregister(owner), closeStorage(owner),
-      retireAdapter(adapterOwner), closeAdapter(adapterOwner),
-      settle(q, succeeded), dispatch(q), stopScheduler, returnSchedulerStop,
-      restart, s' = s,
-    }
+  action step = any {
+    {
+      nondet owner = Services.oneOf()
+      any { register(owner), unregister(owner), closeStorage(owner) }
+    },
+    {
+      nondet q = Queries.oneOf()
+      any { begin(q), settle(q, true), settle(q, false), dispatch(q) }
+    },
+    {
+      nondet owner = Adapters.oneOf()
+      any { retireAdapter(owner), closeAdapter(owner) }
+    },
+    stopScheduler, returnSchedulerStop, restart, s' = s,
   }
 
   val ClosedStorageHasNoQueries = s.closed.forall(owner => ownedPending(owner).size() == 0)
@@ -121,4 +124,82 @@ module TaskSchedulerQueryDrain {
     .then(settle("first", true)).then(closeAdapter("storage-old"))
     .expect(s.active and s.adapter == "storage-new" and ClosedAdapterHasNoQueries)
 
+}
+
+// task-scheduler.ts checks each group again before dispatch because an earlier
+// service can await inside runTick. The first and peer roles follow the query's
+// result order. One existing batch and one fresh peer query bound the projection.
+module TaskSchedulerBatchDispatch {
+  var s: {
+    phase: str, includesFirst: bool, groupedPeer: bool, peerTaskPending: bool,
+    peerRegistration: int, capturedPeer: int, replacementRegistered: bool,
+    oldPeerUnregistered: bool, peerDirty: bool, peerDispatches: int,
+    dispatchedRegistration: int, currentAtDispatch: int
+  }
+  action init = s' = {
+    phase: "query", includesFirst: true, groupedPeer: false, peerTaskPending: true,
+    peerRegistration: 1, capturedPeer: 1, replacementRegistered: false,
+    oldPeerUnregistered: false, peerDirty: false, peerDispatches: 0,
+    dispatchedRegistration: 0, currentAtDispatch: 0
+  }
+  action registerReplacement = all {
+    not(s.replacementRegistered),
+    s' = { ...s, replacementRegistered: true, peerRegistration: 2, peerDirty: true }
+  }
+  action unregisterOldPeer = all {
+    not(s.oldPeerUnregistered),
+    s' = { ...s, oldPeerUnregistered: true,
+      peerRegistration: if (s.peerRegistration == 1) 0 else s.peerRegistration,
+      peerDirty: s.peerRegistration != 1 and s.peerDirty }
+  }
+  action receiveQuery = all {
+    s.phase == "query",
+    s' = { ...s, phase: if (s.includesFirst) "first-ready" else "peer-ready",
+      groupedPeer: s.peerTaskPending and s.peerRegistration == s.capturedPeer }
+  }
+  action dispatchFirst = all {
+    s.phase == "first-ready", s' = { ...s, phase: "first-running" }
+  }
+  action settleFirst = all {
+    s.phase == "first-running", s' = { ...s, phase: "peer-ready" }
+  }
+  val peerIsCurrent = s.groupedPeer and s.capturedPeer == s.peerRegistration
+  action deliverPeer = s' = { ...s, phase: "peer-running", peerDispatches: s.peerDispatches + 1,
+    dispatchedRegistration: s.capturedPeer, currentAtDispatch: s.peerRegistration }
+  action dispatchPeer = all { s.phase == "peer-ready", peerIsCurrent, deliverPeer }
+  action skipPeer = all {
+    s.phase == "peer-ready", not(peerIsCurrent), s' = { ...s, phase: "done" }
+  }
+  action settlePeer = all {
+    s.phase == "peer-running", s' = { ...s, phase: "done", peerTaskPending: false }
+  }
+  action queryReplacement = all {
+    s.phase == "done", s.peerDirty, s.peerTaskPending, s.peerRegistration == 2,
+    s' = { ...s, phase: "query", includesFirst: false, groupedPeer: false,
+      capturedPeer: s.peerRegistration, peerDirty: false }
+  }
+  action advance = any { receiveQuery, dispatchFirst, settleFirst, dispatchPeer,
+    skipPeer, settlePeer, queryReplacement }
+  action step = any { registerReplacement, unregisterOldPeer, advance, s' = s }
+
+  val DispatchUsesCurrentRegistration = s.peerDispatches > 0 implies
+    s.dispatchedRegistration == s.currentAtDispatch
+  val OldUnregisterKeepsReplacement = s.replacementRegistered implies s.peerRegistration == 2
+  val PeerTaskHasOneDispatch = s.peerDispatches <= 1 and
+    (not(s.peerTaskPending) implies s.peerDispatches == 1)
+  temporal PeerTaskWithoutFairness = (s.replacementRegistered and s.peerTaskPending)
+    .leadsTo(not(s.peerTaskPending))
+  temporal PeerTaskCompletes = advance.weakFair(s).implies(PeerTaskWithoutFairness)
+
+  // Omitting the second identity check lets a previously grouped result cross
+  // a registration change that occurred during the first service's await.
+  action legacyDispatchPeer = all { s.phase == "peer-ready", s.groupedPeer, deliverPeer }
+  run replacementQueriesAfterPrecedingDispatchTest = init.then(receiveQuery).then(dispatchFirst)
+    .then(registerReplacement).then(unregisterOldPeer).then(settleFirst).then(skipPeer)
+    .expect(s.peerTaskPending and s.peerDispatches == 0 and OldUnregisterKeepsReplacement)
+    .then(queryReplacement).then(receiveQuery).then(dispatchPeer).then(settlePeer)
+    .expect(DispatchUsesCurrentRegistration and PeerTaskHasOneDispatch and s.dispatchedRegistration == 2)
+  run missingPreDispatchCheckWitnessTest = init.then(receiveQuery).then(dispatchFirst)
+    .then(registerReplacement).then(settleFirst).then(legacyDispatchPeer)
+    .expect(not(DispatchUsesCurrentRegistration))
 }

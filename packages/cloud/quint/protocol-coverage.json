@@ -931,10 +931,36 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite message-delivery model yet.",
+      "General message delivery remains open. The managed Discord install-welcome queue has separate partial coverage.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Redelivery does not duplicate an acknowledged effect | Tenant routing is retained | Provider failures are not fabricated success",
       "Abstract states: received, deduplicated, queued, dispatched, acknowledged, retrying, failed"
+    ]
+  },
+  {
+    "id": "cloud-flow-discord-install-welcome-queue",
+    "model": "packages/cloud/quint/DiscordWelcomeQueue.qnt",
+    "sources": [
+      "packages/cloud/services/gateway-discord/src/discord-install-welcome-queue.ts",
+      "packages/cloud/services/gateway-discord/src/cloudflare-welcome-store.ts",
+      "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.ts"
+    ],
+    "invariants": [
+      "StopRequiresQuiescence",
+      "MarkerRequiresObservedAcceptance",
+      "RetainedMarkerSkipsProvider",
+      "RetryRetainsBothCopies",
+      "AcceptedClaimWithoutMarkerSurvives",
+      "AcceptedDeliveryHasNoRetryCopy",
+      "RemovalRequiresDurableReplacement",
+      "MarkerPreventsRecoverySend"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One managed owner, one symbolic valid job, at most two starts and one original processing row. Startup recovery and an admitted drain stay owned until stop settles. A transient retry writes a pending copy before acknowledging processing. Retained markers skip provider sends.",
+      "Real Workerd SQLite exercises startup/stop, claim retention, recovery after restart, stable retry identity and marker replay, with controlled provider responses. Import, FIFO among several jobs and public request boundaries are named tests outside the finite model.",
+      "A second bounded case separates SQLite commits from missing marker, removal and retry publication replies. A retained marker skips provider work after restart. Without a marker, storage failure preserves the original processing row and reports the error without consuming a provider attempt. A retry publication can leave two durable copies, with later selection and stale backoff bypass outside the case.",
+      "Progress assumes admitted operations settle and recovery uses the same storage. Cross-pod leadership, overlapping live owners, marker expiry, repeated storage failures, actual provider nonce guarantees, retry deadlines/budgets and recovery past the bounded duplicate-copy window remain open."
     ]
   },
   {
@@ -2013,31 +2039,22 @@
     ]
   },
   {
-    "id": "cloud-flow-responses-adaptation",
-    "model": null,
-    "sources": [
-      "packages/cloud/api/v1/responses/route.ts",
-      "packages/cloud/api/v1/chat/completions/route.ts"
-    ],
-    "invariants": [],
-    "status": "unmodeled",
-    "limitations": [
-      "Responses adaptation remains a distinct implementation obligation. ChatSdkStreamSettlement models the admitted chat SDK callback owner only; it does not establish Responses request or stream translation, complete context preservation, buffering, cancellation propagation or response event ordering.",
-      "Preserve the authorized complete request and response representations. Model the adaptation and its failure/recovery boundaries, and connect implementation conformance before claiming coverage."
-    ]
-  },
-  {
     "id": "cloud-flow-personal-shared-conversation",
-    "model": null,
+    "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
     "sources": [
       "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts",
       "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "ReleaseNeedsCheckpoint",
+      "FailureHoldsRoom",
+      "ReadRetainsHistory"
+    ],
+    "status": "partial",
     "limitations": [
-      "PersonalSharedConsent models consent and durable delivery authorization only. The shared runtime conversation and message route remain distinct obligations for membership-scoped context selection, complete retained content, provider send composition and reconciliation.",
-      "Do not infer conversation or request-boundary correctness from the consent repository model. Source selection, restoration, cancellation and cross-component failure interleavings need their own models and implementation conformance."
+      "The interrupted-turn model covers one cancellation checkpoint, room release and recovery after eviction. The real Workerd test verifies the original message and interrupted pair with exact content and order.",
+      "PersonalSharedConsent covers a separate delivery authorization owner. Membership-scoped selection, arbitrary retained content and archive failures, provider send composition and reconciliation remain distinct obligations."
     ]
   },
   {
@@ -2510,6 +2527,8 @@
       "packages/cloud/api/v1/responses/compatibility.ts",
       "packages/cloud/api/v1/responses/route.ts",
       "packages/cloud/api/v1/chat/completions/route.ts",
+      "packages/cloud/api/v1/chat/completions/provider-boundary.ts",
+      "packages/cloud/shared/src/lib/services/native-application-inference.ts",
       "packages/cloud/api/v1/responses/route.test.ts",
       "packages/cloud/api/v1/responses/provider-contract.test.ts",
       "packages/cloud/quint/check-responses-adaptation.ts",
@@ -2526,13 +2545,14 @@
       "deniedNeverDispatches",
       "unknownNeverCompletes",
       "safety",
-      "refusalTyped"
+      "refusalTyped",
+      "Safety"
     ],
     "status": "partial",
     "limitations": [
       "One stateless request, fixed full transcript and output atoms; three supported and two rejected input classes, nine canonical outcomes. Refusal-only empty output has two billed output tokens in this case. Real strings, media bytes and parallel tool call grouping are checked by implementation tests, not symbolically proved.",
-      "Canonical authentication, billing, provider truth, native authority, HTTP delivery and cancellation implementation correctness remain outside this adapter model. Tests control those external ports; one integration case runs the actual OpenAI SDK.",
-      "Unsupported items and parameters are explicitly refused before native/canonical effects. Stored responses, background operation, streaming and hosted tools are not implemented by this route.",
+      "The admitted cancellation projection covers the request signal during dispatch acknowledgement and SDK fetch. The real Hono and OpenAI SDK cases observe refusal before provider invocation and unknown settlement selection after provider invocation. Controlled ports do not prove live provider interruption, durable billing, or authorization.",
+      "Unsupported items and parameters are explicitly refused before native/canonical effects. Stored responses, background operation, streaming and hosted tools are not implemented by this route. Actual HTTP disconnect delivery, native credential selection, asynchronous accounting and arbitrary request or response refinement remain separate.",
       "Eventual completion requires fair local steps and eventual provider completion or failure. A hung provider can remain pending; unconditional completion has a checked counterexample.",
       "Finite models and selected executable tests do not establish whole-backend coverage or TypeScript refinement.",
       "Response identity allocation relies on the platform UUID generator; same-clock request separation has an actual SDK regression, not a proof of random uniqueness."

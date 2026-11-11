@@ -1,0 +1,69 @@
+{
+  "sources": [
+    "packages/cloud/api/src/shared-runtime-conversation.ts",
+    "packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts",
+    "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": "One admitted stream, one room, one original snapshot message, one ordered interrupted pair, one checkpoint, independent finalization, and one eviction after a successful checkpoint.",
+  "limitations": [
+    "Cancelling the upstream reader synchronously stages the exact partial turn before capturing the checkpoint promise. Room release waits for the durable acknowledgement. Provider, billing and other finalization behavior are abstracted as independent success, failure or non-completion.",
+    "A failed checkpoint keeps this generation closed even if separate finalization succeeds. Restart from an unconfirmed checkpoint, applied-but-unacknowledged storage, incomplete chunk recovery, provider behavior and concurrent generation writes are outside the bound.",
+    "Eviction after a successful checkpoint clears the old generation. The real Workerd test runs the production Durable Object, controlled cancellation and failed finalization, and checks the complete ordered history before and after eviction. It does not drive a live provider, a failed storage transaction or canonical authorization."
+  ],
+  "cases": [
+    {
+      "name": "interrupted-history-before-room-release",
+      "main": "SharedInterruptedTurn",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ReleaseNeedsCheckpoint",
+        "FailureHoldsRoom",
+        "ReadRetainsHistory"
+      ],
+      "temporal": [
+        "CheckpointStaysDurable",
+        "FairGateSettles",
+        "FairReload",
+        "GateSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "CheckpointStaysDurable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. One checkpoint transaction records the complete pair. This bound has no explicit history deletion."
+          ]
+        },
+        {
+          "property": "FairGateSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the checkpoint outcome and the room release continuation. The outcome can fail and keep the room closed. Finalization need not complete."
+          ]
+        },
+        {
+          "property": "FairReload",
+          "expect": "holds",
+          "assumptions": [
+            "After one modeled eviction, weak fairness of successful loading from the original snapshot and acknowledged archive. Availability of that storage and a wall-clock deadline are not proved."
+          ]
+        },
+        {
+          "property": "GateSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A cancelled stream's checkpoint or room release continuation can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

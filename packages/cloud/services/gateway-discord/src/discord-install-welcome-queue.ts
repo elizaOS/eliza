@@ -156,6 +156,8 @@ export async function sendDiscordInstallWelcome(
 
 export class DiscordInstallWelcomeQueue {
   private interval: ReturnType<typeof setInterval> | null = null;
+  private startInFlight: Promise<void> | null = null;
+  private stopInFlight: Promise<void> | null = null;
   private drainInFlight: Promise<void> | null = null;
 
   constructor(
@@ -168,19 +170,45 @@ export class DiscordInstallWelcomeQueue {
     await this.redis.lpush(QUEUE_KEY, JSON.stringify(job));
   }
 
-  async start(): Promise<void> {
-    if (this.interval) return;
-    await this.recoverProcessingJobs();
-    this.interval = setInterval(() => this.scheduleDrain(), POLL_INTERVAL_MS);
-    this.scheduleDrain();
+  start(): Promise<void> {
+    if (this.stopInFlight || this.interval) return Promise.resolve();
+    if (this.startInFlight) return this.startInFlight;
+    // Publish the startup before any recovery request can leave this owner.
+    this.startInFlight = Promise.resolve()
+      .then(async () => {
+        await this.recoverProcessingJobs();
+        if (this.stopInFlight) return;
+        this.interval = setInterval(
+          () => this.scheduleDrain(),
+          POLL_INTERVAL_MS,
+        );
+        this.scheduleDrain();
+      })
+      .finally(() => {
+        this.startInFlight = null;
+      });
+    return this.startInFlight;
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (this.stopInFlight) return this.stopInFlight;
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
-    await this.drainInFlight;
+    // Join recovery as well as delivery before releasing ownership. The start
+    // caller receives any recovery error through its original promise.
+    this.stopInFlight = Promise.allSettled([
+      this.startInFlight,
+      this.drainInFlight,
+    ])
+      .then(([, drain]) => {
+        if (drain.status === "rejected") throw drain.reason;
+      })
+      .finally(() => {
+        this.stopInFlight = null;
+      });
+    return this.stopInFlight;
   }
 
   async drainOnce(): Promise<boolean> {
@@ -242,12 +270,6 @@ export class DiscordInstallWelcomeQueue {
         botToken: this.botToken,
         fetchImpl: this.fetchImpl,
       });
-      // Discord's enforce_nonce makes a replay safe if the process dies after
-      // the REST response but before this durable delivered marker is written.
-      await this.redis.set(deliveredKey, "1", {
-        ex: DELIVERED_TTL_SECONDS,
-      });
-      await this.redis.lrem(PROCESSING_KEY, 1, raw);
     } catch (error) {
       const attempts = (job.attempts ?? 0) + 1;
       const terminal = isTerminalDeliveryFailure(error);
@@ -266,8 +288,8 @@ export class DiscordInstallWelcomeQueue {
         attempts,
         retryAt: new Date(Date.now() + retryDelayMs(attempts)).toISOString(),
       };
-      // Requeue before removing the processing claim. A crash between these
-      // operations creates a harmless duplicate rather than losing the job.
+      // Keep a durable copy if removing the original claim fails. An
+      // interruption between these writes can leave both copies for recovery.
       await this.redis.lpush(QUEUE_KEY, JSON.stringify(retry));
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
       logger.warn("Discord install welcome delivery will retry", {
@@ -276,12 +298,19 @@ export class DiscordInstallWelcomeQueue {
         retryAt: retry.retryAt,
         error: sanitizeDiscordInstallWelcomeError(error),
       });
+      return true;
     }
+    // Storage errors are not provider failures. The next drain can inspect
+    // the retained marker or recover the processing claim with the same nonce.
+    await this.redis.set(deliveredKey, "1", {
+      ex: DELIVERED_TTL_SECONDS,
+    });
+    await this.redis.lrem(PROCESSING_KEY, 1, raw);
     return true;
   }
 
   private scheduleDrain(): void {
-    if (this.drainInFlight) return;
+    if (this.stopInFlight || this.drainInFlight) return;
     this.drainInFlight = this.drainOnce()
       .then(() => undefined)
       .catch((error) => {

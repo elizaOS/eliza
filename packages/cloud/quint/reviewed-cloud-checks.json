@@ -1,4 +1,21 @@
 {
+  "DiscordWelcomeQueue.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.test.ts",
+      "required": [
+        "quiesced import preserves FIFO order, processing recovery, and delivered markers",
+        "an abandoned processing claim survives restart with its complete payload",
+        "public queue transport rejects imports, unauthorized callers and foreign lists",
+        "stop joins processing recovery and leaves the welcome available to the next owner",
+        "stop joins admitted delivery before another startup can recover its claim",
+        "transient welcome delivery retains its payload and nonce through durable retry",
+        "accepted welcome survives a rejected marker write at the delivery attempt limit",
+        "lost delivered-marker reply preserves the claim for marker replay",
+        "lost processing-removal reply does not requeue a delivered welcome",
+        "lost retry publication reply leaves the original and retry payload durable after restart"
+      ]
+    }
+  ],
   "worker_cache_circuit.qnt": [
     {
       "file": "packages/cloud/api/__tests__/cache-circuit.miniflare.test.ts",
@@ -301,6 +318,25 @@
         "mismatched provider/plan/period observation fails closed: invalid_period_start",
         "deleted-account, cross-tenant and unavailable authority cannot finalize",
         "an immutable invoice receipt cannot enter terminal lifecycle finalization"
+      ]
+    }
+  ],
+  "SharedInterruptedTurn.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
+      "required": [
+        "a committed seal rejects a reminder before history mutation or inference",
+        "fallback recovery seals its imported snapshot and retains admission fencing after failed import",
+        "an evicted object reloads a checkpointed interrupted turn before admission",
+        "a connector turn refused by the cutover seal is a retryable hold, before and after commit",
+        "real DO rejects forged Network scope before transport or history access",
+        "Slop and Friends transport metadata keep one canonical Personal conversation",
+        "actual Shared bridge and stream replay DO receipts across Network changes without inference",
+        "canonical Network delivery extends Personal history once and honors ownership fences before dispatch",
+        "first handled text requires real Gateway JWT and service proof, then reuses the phone owner and canonical history",
+        "canonical eliza-app handled proof reaches its delivery verifier and records history once",
+        "a legacy dispatching intent without dispatchedAt keeps the claim grace window",
+        "a retryable gateway refusal leaves the delivery sendable on retry"
       ]
     }
   ],
