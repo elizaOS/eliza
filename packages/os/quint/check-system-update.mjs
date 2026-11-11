@@ -86,7 +86,7 @@ async function checkStorage(beforeCommit) {
     );
     assert.ok(
       sources.runner.includes(
-        "run.verifying = true;\n            VerifiedPayload payload = PackageVerifier.verify(",
+        "run.verifying = unapplied;\n            VerifiedPayload payload = PackageVerifier.verify(",
       ),
     );
     assert.ok(
@@ -277,7 +277,7 @@ ${storageGuard}
   }
 }
 
-async function checkScratch() {
+async function checkScratch({ includeHeld, heldOnly, heldBefore }) {
   const updater = "packages/os/android/system-updater";
   const javaSources = `${updater}/src/ai/eliza/systemupdater`;
   const fixture = `${updater}/test/ai/eliza/systemupdater/ScratchReplay.java`;
@@ -309,11 +309,11 @@ async function checkScratch() {
   const verifierSource = await readFile(path.join(root, sources[0]), "utf8");
   assert.match(
     runnerSource,
-    /if \(!current\.targetBuild\.equals\(candidate\.fingerprint\)\s+\|\| !current\.packageSha256\.equals\(candidate\.sha256\)\) \{[^}]+return;\s+\}\s+Path scratch = current\.isUnapplied\(\)\s+\? PackageVerifier\.reclaimExtractionScratch\(directory\.toPath\(\)\) : null;[\s\S]*?channel\.download\(candidate, directory\);[\s\S]*?run\.verifying = true;[\s\S]*?PackageVerifier\.verify\([\s\S]*?R\.string\.os_update_ota_certificate\), scratch\);/,
+    /if \(!current\.targetBuild\.equals\(candidate\.fingerprint\)\s+\|\| !current\.packageSha256\.equals\(candidate\.sha256\)\) \{[^}]+return;\s+\}\s+boolean unapplied = current\.isUnapplied\(\);\s+Path scratch = unapplied\s+\? PackageVerifier\.reclaimExtractionScratch\(directory\.toPath\(\)\) : null;[\s\S]*?channel\.download\(candidate, directory\);[\s\S]*?run\.verifying = unapplied;[\s\S]*?PackageVerifier\.verify\([\s\S]*?R\.string\.os_update_ota_certificate\), scratch\);/,
   );
   assert.match(
     verifierSource,
-    /hasRetainedPayload\(destination, scratch\);\s+requirePayloadSpace\(outputDirectory, destination, size\);[\s\S]*?createExtractionScratch\(scratch\);/,
+    /hasRetainedPayload\(destination\);\s+if \(!retained && scratch == null\) throw new IOException\([^)]*\);\s+requirePayloadSpace\(outputDirectory, destination, size\);[\s\S]*?createExtractionScratch\(scratch\);/,
   );
 
   // Compile the exact verifier. Android trust and engine ports are never called here.
@@ -343,6 +343,17 @@ public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.P
     process.env.JAVA_HOME
       ? path.join(process.env.JAVA_HOME, "bin", name)
       : name;
+  if (includeHeld || heldOnly) {
+    await checkHeldVerification({
+      tool,
+      portFiles,
+      runner,
+      model,
+      javaSources,
+      heldBefore,
+    });
+  }
+  if (heldOnly) return;
   const classes = path.join(out, "scratch-classes");
   await mkdir(classes);
   run(tool("javac"), [
@@ -502,15 +513,257 @@ public final class AssetFileDescriptor { public AssetFileDescriptor(android.os.P
   process.stdout.write(`PASS scratch restart, publish and refusal: ${out}\n`);
 }
 
+async function checkHeldVerification({
+  tool,
+  portFiles,
+  runner,
+  model,
+  javaSources,
+  heldBefore,
+}) {
+  const fixture =
+    "packages/os/android/system-updater/test/ai/eliza/systemupdater/HeldVerificationReplay.java";
+  const read = async (file) =>
+    heldBefore
+      ? run("git", ["show", `${heldBefore}:${file}`])
+      : await readFile(path.join(root, file), "utf8");
+  const runnerSource = await read(runner);
+  const engine = `${javaSources}/EngineInstaller.java`;
+  const verifier = `${javaSources}/PackageVerifier.java`;
+  const journal = `${javaSources}/UpdateJournal.java`;
+  const payload = `${javaSources}/VerifiedPayload.java`;
+  const production = [runner, engine, verifier, journal, payload];
+  const harness = [
+    fixture,
+    model,
+    "packages/os/quint/SystemUpdateHost.cases.json",
+    "packages/os/quint/check-system-update.mjs",
+  ];
+  const readSources = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        [...production, ...harness].map(async (file) => [
+          file,
+          createHash("sha256")
+            .update(
+              production.includes(file)
+                ? await read(file)
+                : await readFile(path.join(root, file)),
+            )
+            .digest("hex"),
+        ]),
+      ),
+    );
+  const sourceHashes = await readSources();
+  const verifierSource = await read(verifier);
+  const start = runnerSource.indexOf(
+    "            if (!current.targetBuild.equals(candidate.fingerprint)",
+  );
+  const end = runnerSource.indexOf(
+    "            if (current.phase != UpdateJournal.Phase.VERIFIED",
+    start,
+  );
+  assert.ok(
+    start >= 0 && end > start,
+    "Missing exact verification and reboot branch",
+  );
+  const dispatch = runnerSource.slice(start, end);
+  assert.match(
+    dispatch,
+    /PackageVerifier\.verify\([\s\S]*if \(current\.phase == UpdateJournal\.Phase\.REBOOT_READY\) \{\s+rebootIfAllowed\(run, store, channel, candidate\); return;/,
+  );
+  const runnerMethods = [
+    "private void rebootIfAllowed(",
+    "private static boolean same(",
+    "private void failure(",
+    "private synchronized void finish(",
+  ]
+    .map((signature) => member(runnerSource, signature))
+    .join("\n");
+  const trustPath = 'new ZipFile("/system/etc/security/otacerts.zip")';
+  assert.ok(verifierSource.includes(trustPath));
+  const compiled = {
+    "UpdateRunner.java": `package ai.eliza.systemupdater;
+import java.io.*;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import static ai.eliza.systemupdater.HeldVerificationReplay.*;
+final class UpdateRunner {
+    final Context context;
+    final Handler main = new Handler(Looper.getMainLooper());
+    Run active;
+    UpdateRunner(Context context) { this.context = context; }
+    static void status(Context context, String message) { context.status = message; }
+    boolean installAllowed() { return context.eligible; }
+    void replay(JournalStore store, UpdateChannel channel, UpdateChannel.Candidate candidate) {
+        Run run = active = new Run(context);
+        File directory = context.getFilesDir();
+        UpdateJournal current = store.read();
+        try {
+${dispatch}
+            throw new AssertionError("Held candidate reached apply dispatch");
+        } catch (Exception failure) { failure(run, failure); }
+    }
+${runnerMethods}
+}
+`,
+    "EngineInstaller.java": `package ai.eliza.systemupdater;
+import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import static ai.eliza.systemupdater.HeldVerificationReplay.*;
+final class EngineInstaller {
+${member(await read(engine), "static int observeStatus(")}
+}
+`,
+    "PackageVerifier.java": verifierSource.replace(
+      trustPath,
+      'new ZipFile(System.getProperty("fixture.otacerts"))',
+    ),
+    "UpdateJournal.java": await read(journal),
+    "VerifiedPayload.java": await read(payload),
+    "android/os/RecoverySystem.java": `package android.os;
+public final class RecoverySystem { public static void verifyPackage(java.io.File file, Object a, Object b) { } }`,
+  };
+  const classes = path.join(out, "held-classes");
+  await mkdir(classes);
+  const files = [];
+  for (const [name, source] of Object.entries(compiled)) {
+    const file = path.join(out, "held-source", name);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, source);
+    files.push(file);
+  }
+  const key = path.join(out, "held-fixture.p12"),
+    cert = path.join(out, "held-fixture.x509");
+  run(tool("keytool"), [
+    "-genkeypair",
+    "-alias",
+    "fixture",
+    "-keyalg",
+    "RSA",
+    "-storetype",
+    "PKCS12",
+    "-keystore",
+    key,
+    "-storepass",
+    "fixture-pass",
+    "-dname",
+    "CN=Fixture",
+    "-validity",
+    "2",
+    "-noprompt",
+  ]);
+  run(tool("keytool"), [
+    "-exportcert",
+    "-alias",
+    "fixture",
+    "-keystore",
+    key,
+    "-storepass",
+    "fixture-pass",
+    "-file",
+    cert,
+  ]);
+  await rm(key);
+  run(tool("javac"), [
+    "--release",
+    "17",
+    "-d",
+    classes,
+    ...files,
+    ...portFiles.filter((file) => !file.endsWith("/RecoverySystem.java")),
+    fixture,
+  ]);
+  const data = path.join(out, "held-fixtures");
+  await mkdir(data);
+  const actual = run(tool("java"), [
+    "-cp",
+    classes,
+    "ai.eliza.systemupdater.HeldVerificationReplay",
+    data,
+    cert,
+    heldBefore ? "before" : "after",
+  ]);
+  process.stdout.write(actual);
+  const results = actual.trim().split("\n");
+  if (heldBefore) {
+    assert.deepEqual(results, [
+      "before: missing payload was recreated before engine status",
+    ]);
+  } else {
+    assert.deepEqual(results, [
+      "missing REBOOT_READY 0 0",
+      "invalid REBOOT_READY 0 0",
+      "symlink REBOOT_READY 0 0",
+      "missing-archive REBOOT_READY 0 0",
+      "changed REBOOT_READY 0 0",
+      "ineligible REBOOT_READY 0 0",
+      "engine-idle REBOOT_READY 1 0",
+      "ready REBOOT_INTENT 1 1",
+    ]);
+    const importPath = path
+      .relative(out, path.join(root, model))
+      .replaceAll(path.sep, "/")
+      .replace(/\.qnt$/, "");
+    const wrapper = path.join(out, "HeldSourceConformance.qnt");
+    await writeFile(
+      wrapper,
+      `module HeldSourceConformance {
+      import SystemUpdateHost as M from ${JSON.stringify(importPath)}
+      action prepared = M::init.then(M::start).then(M::download).then(M::verify).then(M::apply).then(M::callback).then(M::start)
+      run sourceMissingHeldTest = prepared.then(M::checkHeld(false))
+        .expect(M::s.phase == "ready" and M::s.reboots == ${Number(results[0].at(-1))} and not(M::s.writing))
+      run sourceEngineIdleTest = prepared.then(M::checkHeld(true)).then(M::holdEngine)
+        .expect(M::s.phase == "ready" and M::s.reboots == ${Number(results[6].at(-1))})
+      run sourceReadyHeldTest = prepared.then(M::checkHeld(true)).then(M::reboot)
+        .expect(M::s.phase == "reboot-intent" and M::s.reboots == ${Number(results[7].at(-1))})
+    }\n`,
+    );
+    const replay = run(process.execPath, [
+      cli,
+      "test",
+      wrapper,
+      "--main=HeldSourceConformance",
+      "--backend=typescript",
+      "--match=^source.*Test$",
+      "--verbosity=1",
+    ]);
+    assert.match(replay, /\b3 passing/);
+    process.stdout.write(replay);
+  }
+  assert.deepEqual(await readSources(), sourceHashes);
+  await writeFile(
+    path.join(out, "held-observations.json"),
+    `${JSON.stringify(
+      {
+        beforeCommit: heldBefore ?? null,
+        sourceHashes,
+        results,
+        scope:
+          "Exact source verification, reboot admission and engine status methods. Real temporary files, fixture trust store, controlled Android service ports and headroom.",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  process.stdout.write(`PASS held verification: ${out}\n`);
+}
+
 const storageBefore = process.argv[2] === "--storage-before";
 const scratchOnly = process.argv[2] === "--scratch-only";
+const beforeHeld = process.argv[2] === "--held-before";
+const heldOnly = process.argv[2] === "--held-only" || beforeHeld;
+const heldBefore = beforeHeld ? process.argv[3] : undefined;
 const hostModel = process.argv[2]?.endsWith("/SystemUpdateHost.qnt");
 if (storageBefore || hostModel) {
   if (storageBefore) assert.match(process.argv[3], /^[0-9a-f]{40}$/);
   await checkStorage(storageBefore ? process.argv[3] : undefined);
 }
-if (hostModel || scratchOnly) await checkScratch();
-if (storageBefore || hostModel || scratchOnly) {
+if (beforeHeld) assert.match(heldBefore, /^[0-9a-f]{40}$/);
+if (hostModel || scratchOnly || heldOnly)
+  await checkScratch({ includeHeld: hostModel, heldOnly, heldBefore });
+if (storageBefore || hostModel || scratchOnly || heldOnly) {
   process.exit(0);
 }
 
