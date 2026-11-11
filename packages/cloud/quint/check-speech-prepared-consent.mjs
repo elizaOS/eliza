@@ -4,6 +4,7 @@ const result = spawnSync(
   "bun",
   [
     "test",
+    "--isolate",
     "packages/cloud/api/src/speech-retirement-route.test.ts",
     "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
     "packages/cloud/api/__tests__/voice-speech-mint.test.ts",
