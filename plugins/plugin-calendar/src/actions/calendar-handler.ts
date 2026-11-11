@@ -5472,11 +5472,13 @@ export function createCalendarActionRunner(
         metadata && typeof metadata === "object" && !Array.isArray(metadata)
           ? (metadata as Record<string, unknown>).uiTimeZone
           : undefined;
-      const planningTimeZone = resolveCalendarTimeZone(
-        details,
+      const clientTimeZone =
         typeof clientZone === "string" && isValidTimeZone(clientZone)
           ? clientZone
-          : calendarZone.timeZone,
+          : undefined;
+      const planningTimeZone = resolveCalendarTimeZone(
+        details,
+        clientTimeZone ?? calendarZone.timeZone,
       );
       const explicitSubaction = normalizeCalendarSubaction(params.subaction);
       // A promoted CALENDAR_* tool call is already the action planner's typed
@@ -5946,13 +5948,18 @@ export function createCalendarActionRunner(
           // Outer arguments are proposals, including malformed invented guests.
           // Resolve guest intent from original user evidence first; the canonical
           // build below validates the resulting authorized attendees before writes.
+          const creationContextZone = clientTimeZone
+            ? planningTimeZone
+            : calendarZone.timeZone;
+          const configuredCreateZone =
+            clientTimeZone || calendarZone.source !== "runtime-default"
+              ? creationContextZone
+              : null;
           const calendarContext = await loadCreateEventCalendarContext(
             service,
             true,
-            calendarZone.timeZone,
-            calendarZone.source === "runtime-default"
-              ? null
-              : calendarZone.timeZone,
+            creationContextZone,
+            configuredCreateZone,
             nativeGrantId,
           );
           if (!calendarContext) {
@@ -5973,7 +5980,7 @@ export function createCalendarActionRunner(
             state,
             intent,
             calendarContext,
-            calendarZone.timeZone,
+            creationContextZone,
             details,
             hostDeps,
           );

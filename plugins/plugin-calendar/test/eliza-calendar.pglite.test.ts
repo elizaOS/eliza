@@ -522,6 +522,68 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("creates an unqualified local-time event in the current client clock instead of the server clock", async () => {
+    const id = "00000000-0000-0000-0000-000000000401";
+    const text =
+      'Create "Client clock QA" on November 12, 2026 from 4:17 PM to 4:22 PM local time. No guests.';
+    const extract = vi.fn(
+      async ({
+        actionType,
+        prompt,
+      }: {
+        actionType: string;
+        prompt: string;
+      }) => {
+        if (actionType !== "lifeops.calendar.extract_create_event") return null;
+        expect(prompt).toContain("Current timezone: America/Los_Angeles");
+        expect(prompt).toContain(
+          "Calendar timezone for scheduling: America/Los_Angeles",
+        );
+        return {
+          rawResponse: "{}",
+          parsed: {
+            ...createEvidence(id, text),
+            title: "Client clock QA",
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            startAt: "2026-11-12T16:17:00",
+            endAt: "2026-11-12T16:22:00",
+            timeZone: "America/Los_Angeles",
+          },
+        };
+      },
+    );
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: extract,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id,
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-11-11T22:00:00Z"),
+        content: { text, metadata: { uiTimeZone: "America/Los_Angeles" } },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "create_event",
+          title: "Client clock QA",
+          details: { timeZone: "America/Los_Angeles" },
+        },
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.event).toMatchObject({
+      startAt: "2026-11-13T00:17:00.000Z",
+      endAt: "2026-11-13T00:22:00.000Z",
+      timezone: "America/Los_Angeles",
+    });
+  });
+
   it("ignores invented generated attendees after one original-grounded solo extraction", async () => {
     const extract = vi.fn(async ({ actionType }: { actionType: string }) =>
       actionType === "lifeops.calendar.extract_create_event"
