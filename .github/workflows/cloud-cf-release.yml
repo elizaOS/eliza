@@ -383,8 +383,6 @@ jobs:
     # Hosted unconditionally: CI must never contend with production
     # agent-placement nodes for disk or CPU (#17881).
     runs-on: ubuntu-latest
-    # Job-level concurrency groups are repo-wide, so this also serializes
-    # against an explicitly dispatched legacy cloud-deploy-backend migration.
     # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
     # queued run (25907128646) that wedged the workflow-level v3 group also
     # pins cloud-db-migrate-staging, so migration jobs sat pending forever

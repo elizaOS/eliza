@@ -6,8 +6,9 @@ Workflow YAML owns triggers and permissions; package scripts own product checks.
 PR admission includes mock-backed payment replay Playwright proof. Device
 qualification is available through `workflow_dispatch` or `workflow_call` from
 authorized callers. Android packaging runs on demand through `android-build.yml`.
-Develop validation retains affected integration and browser lanes. The shared
-selector compares against the last successfully validated ancestor and follows
+Full validation runs on pushes to `staging` and `main`, the promotion steps, and
+retains affected integration and browser lanes. Pushes to `develop` do not run
+it. The shared selector compares against the last successfully validated ancestor and follows
 reverse workspace dependencies; shared tooling, unknown paths,
 and unavailable history require full validation. Unit-test fan-out and platform,
 RISC-V, and live smoke workflows are retired. Cloud browser/database jobs run in
@@ -20,11 +21,6 @@ is disabled in GitHub Actions and is absent from the staging and main effect
 registries. Both API environments set `APPS_DEPLOY_ENABLED=0`, so new app container
 deploy requests return `503` without creating a job. Resume these controls together
 only after the Apps service is approved and qualified.
-
-`staging-launch-gate.yml` is the manual exact-SHA staging certification. It
-runs front door, first turn, reload, messaging, and routing against the staging
-head that Pages and the API Worker both serve, and uploads privacy-safe lane
-receipts plus one composed receipt naming the owner of the first failed lane.
 
 `deploy-gateway-webhook.yml` deploys these fixed targets:
 
