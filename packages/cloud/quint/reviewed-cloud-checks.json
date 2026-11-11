@@ -1,4 +1,23 @@
 {
+  "DiscordWelcomeQueue.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/discord-welcome-state.test.ts",
+      "required": [
+        "quiesced import preserves FIFO order, processing recovery, and delivered markers",
+        "an abandoned processing claim survives restart with its complete payload",
+        "public queue transport rejects imports, unauthorized callers and foreign lists",
+        "stop joins processing recovery and leaves the welcome available to the next owner",
+        "stop joins admitted delivery before another startup can recover its claim",
+        "transient welcome delivery retains its payload and nonce through durable retry",
+        "accepted welcome survives a rejected marker write at the delivery attempt limit",
+        "lost delivered-marker reply preserves the claim for marker replay",
+        "lost processing-removal reply does not requeue a delivered welcome",
+        "lost retry replacement reply retains only the delayed retry after restart",
+        "retry replacement preserves unrelated and duplicate legacy processing members",
+        "the same welcome poller resumes its retained claim after the state owner supports atomic retry"
+      ]
+    }
+  ],
   "worker_cache_circuit.qnt": [
     {
       "file": "packages/cloud/api/__tests__/cache-circuit.miniflare.test.ts",
@@ -35,6 +54,8 @@
         "a lost child insert response retains the committed child without failing the app",
         "app deploy handoff recovery preserves the URL published by its ready child",
         "a live provision child links its container when its original parent is terminal",
+        "exhausted provision acknowledgement preserves the committed app READY result",
+        "an exhausted pre-READY provision failure still marks the current deployment failed",
         "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
         "an app deletion claim does not hide its interrupted deployment from recovery",
         "a deploy attempt that fails after the runner claims it leaves the app redeployable",
@@ -83,7 +104,7 @@
       "required": [
         "a delete that completes inside markRunning's read/write window cannot resurrect the row",
         "the same interleave on the pre-fix statement resurrects the row to running",
-        "sequential execution \u2014 one worker, one batch \u2014 is never corrupted",
+        "sequential execution — one worker, one batch — is never corrupted",
         "markError cannot flip a completed delete back to failed",
         "markCleanupRequired cannot pin node capacity on a completed delete",
         "markDeleted stays idempotent and stays organization-scoped",
@@ -304,6 +325,41 @@
       ]
     }
   ],
+  "SharedHistoryHydration.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts",
+      "required": [
+        "a cold room's first history read joins in-flight hydration instead of returning warming",
+        "hydration slower than the bound still fails closed with the retryable warming",
+        "a failed history load returns warming and starts a fresh read on retry",
+        "a canonical Personal Shared turn lets keep-warm prewarm report its owning organization",
+        "deferred prewarm joins one warmup and a cancelled body leaves the room and peer live",
+        "a deferred module failure fails both bodies and a later prewarm starts a fresh attempt"
+      ]
+    }
+  ],
+  "SharedInterruptedTurn.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts",
+      "required": [
+        "a stale idle alarm retains a newer saved turn and its replay claim",
+        "idle expiry rechecks its deadline after awaiting the dirty snapshot mirror",
+        "idle expiry retains a failed mirror and retires only after an acknowledged retry",
+        "a committed seal rejects a reminder before history mutation or inference",
+        "fallback recovery seals its imported snapshot and retains admission fencing after failed import",
+        "an evicted object reloads a checkpointed interrupted turn before admission",
+        "a connector turn refused by the cutover seal is a retryable hold, before and after commit",
+        "real DO rejects forged Network scope before transport or history access",
+        "Slop and Friends transport metadata keep one canonical Personal conversation",
+        "actual Shared bridge and stream replay DO receipts across Network changes without inference",
+        "canonical Network delivery extends Personal history once and honors ownership fences before dispatch",
+        "first handled text requires real Gateway JWT and service proof, then reuses the phone owner and canonical history",
+        "canonical eliza-app handled proof reaches its delivery verifier and records history once",
+        "a legacy dispatching intent without dispatchedAt keeps the claim grace window",
+        "a retryable gateway refusal leaves the delivery sendable on retry"
+      ]
+    }
+  ],
   "speech_deferred_opening.qnt": [
     {
       "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
@@ -328,6 +384,56 @@
         "revoke during deferred upgrade import refuses late public socket allocation",
         "revoke joins a claimed opening across deferred imports before confirming no dispatch",
         "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade"
+      ]
+    }
+  ],
+  "agent_backup_capture_handoff.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts",
+      "required": [
+        "reopens capture-only handoff, verifies bytes, and resumes partial publication",
+        "repairs a lost recordCaptured response before captured advances to uploading",
+        "rejects stale execution before taking the spool lock",
+        "stops the cleanup janitor after abort during its first await without starting another action",
+        "releases the spool lock after abort and resumes partial cleanup",
+        "keeps published spool until authoritative protected proof, then removes it",
+        "retains changed partial replay until terminal settlement authorizes bounded cleanup",
+        "retains a durable cleanup intent across retention expiry and retries it"
+      ]
+    }
+  ],
+  "agent_backup_spool_cleanup.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts",
+      "required": [
+        "reopens capture-only handoff, verifies bytes, and resumes partial publication",
+        "repairs a lost recordCaptured response before captured advances to uploading",
+        "rejects stale execution before taking the spool lock",
+        "stops the cleanup janitor after abort during its first await without starting another action",
+        "releases the spool lock after abort and resumes partial cleanup",
+        "keeps published spool until authoritative protected proof, then removes it",
+        "retains changed partial replay until terminal settlement authorizes bounded cleanup",
+        "retains a durable cleanup intent across retention expiry and retries it"
+      ]
+    }
+  ],
+  "app_deploy_ready_writeback.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+      "required": [
+        "an interrupted deploy without an exact child retains an unresolved job and app generation",
+        "an interrupted deploy acknowledges its exact durable child without repeating the handoff",
+        "a lost child insert response retains the committed child without failing the app",
+        "app deploy handoff recovery preserves the URL published by its ready child",
+        "a live provision child links its container when its original parent is terminal",
+        "exhausted provision acknowledgement preserves the committed app READY result",
+        "an exhausted pre-READY provision failure still marks the current deployment failed",
+        "an exhausted deploy lease keeps an unconfirmed app generation in the deletion inventory",
+        "an app deletion claim does not hide its interrupted deployment from recovery",
+        "a deploy attempt that fails after the runner claims it leaves the app redeployable",
+        "a worker that sees an already failed current generation settles it failed",
+        "an older queued generation cannot change a newer deployment",
+        "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
       ]
     }
   ]

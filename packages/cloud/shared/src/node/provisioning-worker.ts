@@ -2118,6 +2118,8 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
                 eq(apps.id, appId),
                 eq(apps.organization_id, row.organizationId),
                 generationFilter,
+                // The child can lose its reply after the READY write commits.
+                inArray(apps.deployment_status, ["building", "deploying"]),
               ),
             )
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });

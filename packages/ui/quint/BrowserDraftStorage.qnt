@@ -217,3 +217,275 @@ module BrowserDraftStorage {
     weakFair(advance(2), s),
   } implies EveryDispatchedWriteSettles
 }
+
+// DurableDraftController hold, consume and release over two IndexedDB keys.
+// Revision numbers stand for fresh receipts, with an exact marked-row read
+// by a second controller before any release write.
+module BrowserDraftHoldConsume {
+  type Receipt = { text: str, revision: int, sending: bool }
+  type State = {
+    mode: str,
+    send: str,
+    outgoing: Receipt,
+    form: Receipt,
+    editor: str,
+    consume: str,
+    releaseRequested: bool,
+    reopened: bool,
+    reopenedEditor: str,
+    offered: str,
+  }
+
+  var s: State
+
+  pure val initialDraft: Receipt = { text: "draft", revision: 1, sending: false }
+  pure val sendMark: Receipt = { ...initialDraft, revision: 2, sending: true }
+  pure val reviewedForm: Receipt = { text: "form", revision: 1, sending: false }
+  pure val consumedForm: Receipt = { ...reviewedForm, text: "", revision: 2 }
+
+  action start(mode: str): bool = s' = {
+    mode: mode, send: "ready", outgoing: initialDraft, form: reviewedForm,
+    editor: "draft", consume: "idle", releaseRequested: false,
+    reopened: false, reopenedEditor: "", offered: "",
+  }
+
+  action init = {
+    nondet mode = Set("held", "queued", "separate").oneOf()
+    start(mode)
+  }
+
+  // hold claims the send synchronously after its queue wait, before marking.
+  action claimHold = all {
+    s.send == "ready",
+    s' = { ...s, send: "marking" },
+  }
+
+  action confirmMark = all {
+    s.send == "marking",
+    s.mode != "queued" or s.consume == "refused",
+    s' = { ...s, send: "held", outgoing: sendMark },
+  }
+
+  // A held owner retains the marked row as the editor changes. In the
+  // separate-key case, open restores the previously saved form.
+  action prepareForm = all {
+    s.mode != "queued",
+    s.send == "held",
+    s.editor == "draft",
+    s' = { ...s, editor: "form" },
+  }
+
+  action consume = all {
+    s.consume == "idle",
+    if (s.mode == "queued") s.send == "marking"
+      else s.send == "held" and s.editor == "form",
+    s' = if (s.mode == "separate") {
+      ...s, consume: "restoring", form: consumedForm,
+    } else { ...s, consume: "refused" },
+  }
+
+  action openFreshController = all {
+    s.mode == "held",
+    s.send == "held" and s.consume == "refused",
+    not(s.reopened),
+    s' = {
+      ...s, reopened: true,
+      reopenedEditor: if (s.outgoing.sending) "" else s.outgoing.text,
+      offered: if (s.outgoing.sending) s.outgoing.text else "",
+    },
+  }
+
+  action requestRelease = all {
+    not(s.releaseRequested),
+    s.send == "held",
+    if (s.mode == "held") s.consume == "refused"
+      else s.mode == "separate" and s.consume == "restoring",
+    s' = { ...s, releaseRequested: true },
+  }
+
+  action acknowledgeFormRestore = all {
+    s.consume == "restoring",
+    s' = { ...s, consume: "cleared", editor: "" },
+  }
+
+  action finishRelease = {
+    val restored = if (s.mode == "held") "draft+form" else "draft"
+    all {
+      s.releaseRequested and s.send == "held",
+      s.consume != "restoring",
+      s' = {
+        ...s, send: "released",
+        outgoing: { text: restored, revision: 3, sending: false },
+        editor: if (s.mode == "held") restored else s.editor,
+      },
+    }
+  }
+
+  action step = any {
+    claimHold, confirmMark, prepareForm, consume, openFreshController,
+    requestRelease, acknowledgeFormRestore, finishRelease, s' = s,
+  }
+
+  val HeldSendOwnsReceipt = and {
+    s.send == "marking" implies s.outgoing == initialDraft,
+    s.send == "held" implies s.outgoing == sendMark,
+  }
+  val SameKeyConsumeIsRefused =
+    s.mode != "separate" implies Set("idle", "refused").contains(s.consume)
+  val FreshControllerOffersMarkForReview =
+    s.reopened implies s.reopenedEditor == "" and s.offered == "draft"
+  val PendingRestoreBlocksRelease =
+    s.consume == "restoring" implies
+      s.send == "held" and s.form == consumedForm and s.editor == "form"
+  val ReleasePreservesDrafts = s.send == "released" implies and {
+    s.outgoing.revision == 3 and not(s.outgoing.sending),
+    if (s.mode == "held")
+      s.outgoing.text == "draft+form" and s.editor == "draft+form"
+    else
+      s.outgoing.text == "draft" and s.form == consumedForm and s.editor == "",
+  }
+
+  temporal RequestedReleaseSettles = always(
+    s.releaseRequested implies eventually(s.send == "released")
+  )
+  temporal UnderFairRestoreAndRelease = and {
+    weakFair(acknowledgeFormRestore, s),
+    weakFair(finishRelease, s),
+  } implies RequestedReleaseSettles
+
+  run heldSendRetainsReceiptTest = start("held")
+    .then(claimHold).then(confirmMark).then(prepareForm).then(consume)
+    .then(openFreshController).expect(s.reopened and FreshControllerOffersMarkForReview)
+    .then(requestRelease).then(finishRelease).expect(ReleasePreservesDrafts)
+
+  run holdClaimsQueueFirstTest = start("queued")
+    .then(claimHold).then(consume).expect(s.consume == "refused" and HeldSendOwnsReceipt)
+    .then(confirmMark).expect(s.send == "held" and HeldSendOwnsReceipt)
+
+  run separateFormAcknowledgesBeforeReleaseTest = start("separate")
+    .then(claimHold).then(confirmMark).then(prepareForm).then(consume)
+    .then(requestRelease).expect(PendingRestoreBlocksRelease and HeldSendOwnsReceipt)
+    .then(acknowledgeFormRestore).then(finishRelease).expect(ReleasePreservesDrafts)
+}
+
+// Two tabs open one unmarked draft before either starts writing. The first
+// successful CAS takes the initial receipt. The losing controller must recover
+// independently while the winning send or form restore is still pending.
+module BrowserDraftCrossTabClaims {
+  type Document = {
+    documentRevision: int, draftRevision: int, text: str, sending: bool,
+  }
+  type State = {
+    document: Document,
+    send: str,
+    consume: str,
+    senderText: str,
+    formText: str,
+    formOffer: str,
+  }
+
+  var s: State
+
+  pure val original: Document = {
+    documentRevision: 1, draftRevision: 1, text: "draft", sending: false,
+  }
+  pure val marked: Document = {
+    ...original, documentRevision: 2, draftRevision: 2, sending: true,
+  }
+  pure val cleared: Document = {
+    ...original, documentRevision: 2, draftRevision: 2, text: "",
+  }
+  pure val released: Document = { ...original, documentRevision: 3, draftRevision: 3 }
+  pure val confirmed: Document = { ...released, documentRevision: 4 }
+
+  action init = s' = {
+    document: original, send: "ready", consume: "ready",
+    senderText: "draft", formText: "draft", formOffer: "",
+  }
+
+  action attemptHold = all {
+    s.send == "ready",
+    s' = if (s.document == original) {
+      ...s, document: marked, send: "held", senderText: "",
+    } else { ...s, send: "refused" },
+  }
+
+  action attemptConsume = all {
+    s.consume == "ready",
+    s' = if (s.document == original) {
+      ...s, document: cleared, consume: "restoring",
+    } else { ...s, consume: "unsettled", formOffer: s.document.text },
+  }
+
+  action acknowledgeClear = all {
+    s.consume == "restoring" and s.send == "refused",
+    s' = { ...s, consume: "cleared", formText: "" },
+  }
+
+  action release = all {
+    s.send == "held" and s.consume == "unsettled",
+    s' = { ...s, document: released, send: "released", senderText: "draft" },
+  }
+
+  // The stale consume's failed receipt still needs review even when the
+  // released copy and the form editor now hold identical text.
+  action retry = all {
+    s.send == "released" and s.consume == "unsettled",
+    s' = { ...s, consume: "retained" },
+  }
+
+  // keepCurrent performs a new CAS. The unmarked draft bytes stay identical,
+  // while IndexedDB publishes a fresh document revision for the confirmation.
+  action confirm = all {
+    s.consume == "retained",
+    s' = { ...s, document: confirmed, consume: "confirmed" },
+  }
+
+  action step = any {
+    attemptHold, attemptConsume, acknowledgeClear, release, retry, confirm,
+    s' = s,
+  }
+
+  val InitialReceiptHasOneWinner = not(
+    Set("held", "released").contains(s.send) and
+      Set("restoring", "cleared").contains(s.consume)
+  )
+
+  val StaleConsumePreservesMarkedReceipt = and {
+    s.send == "held" implies s.document == marked,
+    s.consume == "unsettled" implies s.formOffer == "draft" and s.formText == "draft",
+  }
+
+  val StaleHoldPreservesClearReceipt = and {
+    Set("restoring", "cleared").contains(s.consume) implies s.document == cleared,
+    s.send == "refused" implies s.senderText == "draft",
+  }
+
+  val RecoveryRequiresConfirmation = and {
+    s.consume == "retained" implies s.document == released and s.formOffer == "draft",
+    s.consume == "confirmed" implies s.document == confirmed and s.formText == "draft",
+  }
+
+  temporal StartedOperationsReachOutcome = always(
+    (s.send != "ready" or s.consume != "ready") implies eventually(
+      s.consume == "confirmed" or (s.consume == "cleared" and s.send == "refused")
+    )
+  )
+
+  temporal UnderFairCrossTabRecovery = and {
+    weakFair(attemptHold, s), weakFair(attemptConsume, s),
+    weakFair(acknowledgeClear, s), weakFair(release, s), weakFair(retry, s),
+    weakFair(confirm, s),
+  } implies StartedOperationsReachOutcome
+
+  run markWinsThenConsumeNeedsReviewTest = init
+    .then(attemptHold).then(attemptConsume)
+    .expect(s.consume == "unsettled" and StaleConsumePreservesMarkedReceipt)
+    .then(release).then(retry).expect(s.consume == "retained" and RecoveryRequiresConfirmation)
+    .then(confirm).expect(s.consume == "confirmed" and RecoveryRequiresConfirmation)
+
+  run clearWinsBeforeHostAcknowledgementTest = init
+    .then(attemptConsume).then(attemptHold)
+    .expect(s.consume == "restoring" and s.send == "refused" and StaleHoldPreservesClearReceipt)
+    .then(acknowledgeClear).expect(s.formText == "" and StaleHoldPreservesClearReceipt)
+}

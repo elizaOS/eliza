@@ -1,4 +1,5 @@
 import {
+  FILES_DIRECT_TYPES,
   type FilesAgentOperation,
   type FilesAgentRunner,
   filesFilterOf,
@@ -854,6 +855,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     status: "failed" as const,
     summary: "Files needs storage access. Nothing was changed.",
   };
+  const foreground = () => typeof document === "undefined" || !document.hidden;
+  const visible = () => !!api?.isActive() && foreground();
+  const agentViewCurrent = (epoch: number, signal: AbortSignal) =>
+    visible() && epoch === selectionEpoch && !signal.aborted;
+  const readAccess = () => storage.storageState().catch(() => undefined);
   /** Own the read-only request independently of the reload that opens Files. */
   async function showFilter(
     value: FilesFilter,
@@ -861,10 +867,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   ): ReturnType<FilesAgentRunner["run"]> {
     const epoch = selectionEpoch;
     const current = () =>
-      pendingFilter === value &&
-      epoch === selectionEpoch &&
-      !!api?.isActive() &&
-      !signal.aborted;
+      pendingFilter === value && agentViewCurrent(epoch, signal);
     const unavailable = {
       status: "failed" as const,
       summary: "Files could not read this filter.",
@@ -873,7 +876,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     try {
       // The reload owns shared access and volume state. The filter only needs
       // its own read admission and must survive that reload's state ticket.
-      const state = await storage.storageState().catch(() => undefined);
+      const state = await readAccess();
       signal.throwIfAborted();
       if (!current()) return unavailable;
       if (state?.access !== "granted") return accessRequired;
@@ -899,8 +902,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     }
   }
   const reviewingPrimary = () =>
-    api?.isActive?.() &&
-    (typeof document === "undefined" || !document.hidden) &&
+    visible() &&
     !(place.kind === "folder" && place.volume && place.volume !== "primary");
   const runner: FilesAgentRunner = {
     async reviewedIdentities(paths, signal) {
@@ -916,7 +918,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         throw Error("Files changed. Review them again.");
       return result.reviewed;
     },
-    async run(op: FilesAgentOperation, signal) {
+    async run(op: FilesAgentOperation, signal, openFiles) {
       signal.throwIfAborted();
       const reviewRequired = {
         status: "failed" as const,
@@ -927,15 +929,57 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         (!op.reviewed || !reviewingPrimary())
       )
         return reviewRequired;
-      if (!api)
-        return {
-          status: "failed",
-          summary: "Files is unavailable. Nothing was changed.",
-        };
-      if (!api.isActive?.()) api.open?.("files");
+      const unavailable = {
+        status: "failed" as const,
+        summary: "Files is unavailable. Nothing was changed.",
+      };
+      if (!foreground()) return unavailable;
+      if (!visible()) {
+        if (!FILES_DIRECT_TYPES.includes(op.type)) return reviewRequired;
+        if (openFiles) {
+          if (!(await openFiles())) return unavailable;
+        } else api?.open?.("files");
+        signal.throwIfAborted();
+      }
+      const currentApi = api;
+      if (!currentApi || !visible()) return unavailable;
       if (op.type === "files_filter")
         return showFilter(validateFilesFilter(filesFilterOf(op)), signal);
-      const refreshed = await refreshState(() => !signal.aborted);
+      const ticket = selectionEpoch;
+      const current = () => agentViewCurrent(ticket, signal);
+      if (op.type === "files_open") {
+        const stale = {
+          status: "failed" as const,
+          summary: "Files changed. Nothing was opened.",
+        };
+        // The screen's first reload can complete in either order. This read
+        // checks permission for the action and does not supersede that reload.
+        const state = await readAccess();
+        signal.throwIfAborted();
+        if (!current()) return stale;
+        if (!state) return unavailable;
+        if (state.access !== "granted") return accessRequired;
+        const value = await storage.storageSelect({ path: op.path });
+        if (!current()) {
+          if (value.selectionId)
+            await forgetSelected(value.selectionId).catch(() => {});
+          return stale;
+        }
+        if (value.status !== "selected" || !value.selectionId)
+          return {
+            status: "failed",
+            summary: "That file is not there. Nothing was opened.",
+          };
+        opened = { path: op.path, selectionId: value.selectionId };
+        await accept("files", value, currentApi, false);
+        if (!current())
+          return {
+            status: "failed",
+            summary: "The file preview is no longer open.",
+          };
+        return { status: "succeeded", summary: "Opened the file in Files." };
+      }
+      const refreshed = await refreshState(current);
       signal.throwIfAborted();
       if (!refreshed)
         return {
@@ -943,27 +987,6 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           summary: "Files changed. Nothing was changed.",
         };
       if (access !== "granted") return accessRequired;
-      if (op.type === "files_open") {
-        const currentApi = api,
-          ticket = selectionEpoch;
-        const value = await storage.storageSelect({ path: op.path });
-        if (ticket !== selectionEpoch || !currentApi.isActive?.()) {
-          if (value.selectionId)
-            await forgetSelected(value.selectionId).catch(() => {});
-          return {
-            status: "failed",
-            summary: "Files changed. Nothing was opened.",
-          };
-        }
-        if (value.status !== "selected")
-          return {
-            status: "failed",
-            summary: "That file is not there. Nothing was opened.",
-          };
-        opened = { path: op.path, selectionId: value.selectionId };
-        await accept("files", value, currentApi, false);
-        return { status: "succeeded", summary: "Opened the file in Files." };
-      }
       if (op.type === "files_share") {
         const value = await storage.storageShare({ paths: op.paths });
         return value.status === "opened"
