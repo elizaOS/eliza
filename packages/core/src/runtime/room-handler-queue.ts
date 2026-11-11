@@ -544,7 +544,14 @@ export class RoomHandlerQueue {
 		if (!this.ownershipStorage) return fn();
 		// Already inside this turn's ownership: keep every room it holds.
 		if (this.ownershipStorage.getStore()?.get(roomId) === lease) return fn();
-		return this.ownershipStorage.run(new Map([[roomId, lease]]), fn);
+		// Merge the new lease into the live inherited ownership instead of
+		// replacing the store: a turn holding several rooms must keep seeing
+		// its siblings while work runs under an explicit lease for one room.
+		// Released entries are dropped so single-ownership snapshots keep
+		// their shape.
+		const inherited = this.liveAmbientLeases();
+		inherited.set(roomId, lease);
+		return this.ownershipStorage.run(inherited, fn);
 	}
 
 	/** Return the exact live capability inherited by the current async work. */
