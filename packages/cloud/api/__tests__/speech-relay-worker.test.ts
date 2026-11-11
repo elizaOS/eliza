@@ -1981,7 +1981,8 @@ test("revoke joins a claimed opening across deferred imports before confirming n
       speechFenceCounts: Record<string, number>;
     }
   ).speechFenceCounts;
-  expect(fenceCounts[f.owner.organization_id]).toBe(1);
+  // The resumed opening stops before it can create a revocation subscription.
+  expect(fenceCounts[f.owner.organization_id] ?? 0).toBe(0);
 });
 
 test("failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade", async () => {
