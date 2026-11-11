@@ -194,9 +194,11 @@ export interface NativeCloudSignInPort<E extends string = string> {
   renewSignIn?(input?: { environment: E }): Promise<unknown>;
   /**
    * `signInCompleted` (retained): a sign-in completed with no waiting call: a Google return after
-   * the app restarted, or a key Cloud confirmed after its sign-in step had ended.
+   * the app restarted, or a key Cloud confirmed after its sign-in step had ended (in the same
+   * process or on the next start).
    * `signInIncomplete` (retained): `{code}`. A return without a sign-in result arrived with no
-   * waiting call, or a saved key was removed because Cloud never confirmed it (`activation-expired`).
+   * waiting call, or a saved key was removed because Cloud never confirmed it (`activation-expired`,
+   * also found on the next start).
    * `signInMfaRequired` (retained): a hint that must be revalidated through `resumeMfa`.
    * `signInReadinessChanged` (not retained): a method's readiness changed; see
    * `nativeSignInReadinessChanged`.
@@ -221,6 +223,27 @@ export interface NativeCloudSignInErrorData {
    * entered again (a wrong code) or sent again unchanged (no answer, 408, 429 or a server error).
    */
   attemptKept?: true;
+  /**
+   * When the next code of that method may be requested (epoch milliseconds). Sent with `cooldown`
+   * and with a send Cloud answered and refused (`rate-limited`). Cloud's longer wait applies to the
+   * method that was asked: an SMS limit does not hold back an email code.
+   */
+  resendAt?: number;
+}
+
+/** Only the documented rejection data survives; anything else the native side sent is dropped. */
+function nativeSignInErrorData(
+  data: { attemptKept?: unknown; resendAt?: unknown } | undefined,
+): NativeCloudSignInErrorData {
+  const kept: NativeCloudSignInErrorData = {};
+  if (data?.attemptKept === true) kept.attemptKept = true;
+  if (
+    typeof data?.resendAt === "number" &&
+    Number.isSafeInteger(data.resendAt) &&
+    data.resendAt > 0
+  )
+    kept.resendAt = data.resendAt;
+  return kept;
 }
 
 export class NativeCloudSignInError extends Error {
@@ -233,8 +256,12 @@ export class NativeCloudSignInError extends Error {
   ) {
     super(`Cloud sign-in ${code}`);
     this.code = code;
-    this.data = data.attemptKept === true ? { attemptKept: true } : {};
+    this.data = nativeSignInErrorData(data);
     this.name = "NativeCloudSignInError";
+  }
+  /** When the next code of the refused method may be requested, if the native side said so. */
+  get resendAt(): number | undefined {
+    return this.data.resendAt;
   }
   /** The native side kept the code step: do not leave it or discard what the owner typed. */
   get attemptKept(): boolean {
@@ -242,7 +269,8 @@ export class NativeCloudSignInError extends Error {
   }
   /**
    * A native rejection keeps its code only when it is one the client defines, and its data only
-   * where the contract documents it (`data.attemptKept === true`).
+   * where the contract documents it (`data.attemptKept === true`, a positive integer
+   * `data.resendAt`).
    */
   static from(error: unknown): NativeCloudSignInError {
     if (error instanceof NativeCloudSignInError) return error;
@@ -253,7 +281,7 @@ export class NativeCloudSignInError extends Error {
     const code = row?.code;
     const data =
       row?.data && typeof row.data === "object" && !Array.isArray(row.data)
-        ? (row.data as { attemptKept?: unknown })
+        ? (row.data as { attemptKept?: unknown; resendAt?: unknown })
         : undefined;
     return new NativeCloudSignInError(
       typeof code === "string" &&
@@ -262,7 +290,7 @@ export class NativeCloudSignInError extends Error {
         )
         ? (code as NativeCloudSignInFailureCode)
         : "unavailable",
-      data?.attemptKept === true ? { attemptKept: true } : {},
+      nativeSignInErrorData(data),
     );
   }
 }

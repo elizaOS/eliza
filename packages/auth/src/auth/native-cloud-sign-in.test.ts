@@ -269,6 +269,49 @@ describe("native Cloud sign-in renderer contract", () => {
     expect(built.attemptKept).toBe(true);
   });
 
+  it("keeps when the next code may be requested from a cooldown or a refused send, and nothing else", () => {
+    const resendAt = 1_800_000_090_000;
+    for (const code of ["cooldown", "rate-limited"]) {
+      const error = NativeCloudSignInError.from({
+        code,
+        message: code,
+        data: { resendAt, token: "never-kept", retryAfter: "3600" },
+      });
+      expect(error.code).toBe(code);
+      expect(error.resendAt).toBe(resendAt);
+      expect(error.data).toEqual({ resendAt });
+      expect(error.attemptKept).toBe(false);
+    }
+    // Only a positive integer time is kept.
+    for (const value of [
+      undefined,
+      null,
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      "1800000090000",
+      { at: resendAt },
+    ]) {
+      const error = NativeCloudSignInError.from({
+        code: "cooldown",
+        data: { resendAt: value },
+      });
+      expect(error.resendAt).toBeUndefined();
+      expect(error.data).toEqual({});
+    }
+    // An unanswered send has nothing to report.
+    expect(
+      NativeCloudSignInError.from({ code: "offline" }).resendAt,
+    ).toBeUndefined();
+    const both = new NativeCloudSignInError("rate-limited", {
+      attemptKept: true,
+      resendAt,
+    });
+    expect(both.data).toEqual({ attemptKept: true, resendAt });
+  });
+
   it("defines a key Cloud never confirmed as its own failure", () => {
     expect(NATIVE_CLOUD_SIGN_IN_FAILURE_CODES.has("activation-expired")).toBe(
       true,

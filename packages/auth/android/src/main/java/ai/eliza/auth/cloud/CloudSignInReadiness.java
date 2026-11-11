@@ -22,6 +22,16 @@ public final class CloudSignInReadiness {
   * Android can finish verifying the return link, or Cloud can enable a method, after the first probe.
   */
  public static final long METHOD_RECHECK_MS = 30 * 1000L;
+ /**
+  * Measurements nobody asked for (load, resume) of an answer that keeps coming back the same wait
+  * longer each time. The sign-in screen asking (status) keeps METHOD_RECHECK_MS.
+  */
+ public static final long[] PASSIVE_RECHECK_MS = {30 * 1000L, 2 * 60 * 1000L, 10 * 60 * 1000L, 60 * 60 * 1000L};
+ /** A resume measures only while a sign-in screen asked for status this recently, or an attempt is in progress. */
+ public static final long RESUME_PROBE_WINDOW_MS = 10 * 60 * 1000L;
+ public static boolean resumeProbe(long now, long statusAskedAt, boolean attemptActive) {
+  return attemptActive || statusAskedAt > 0 && statusAskedAt <= now && now - statusAskedAt < RESUME_PROBE_WINDOW_MS;
+ }
  /** Local checks of the return link after a probe found it unverified (no request is sent by them). */
  public static final long[] LINK_WATCH_MS = {3000, 7000, 15000, 30000, 60000, 120000};
  /** Each probe request is short; the renderer waits at most a few seconds before offering email alone. */
@@ -82,34 +92,57 @@ public final class CloudSignInReadiness {
   return false;
  }
 
- /** The probe's answer. Ready methods are trusted until `until`; a method that is not ready is measured again from `recheckAt`. */
+ /**
+  * The probe's answer. Ready methods are trusted until `until`. A method that is not ready is measured
+  * again from `recheckAt` when a sign-in screen asks, and from `passiveAt` (which grows with every
+  * `unchanged` answer in a row) when nobody asked.
+  */
  public static final class Result {
-  public final boolean inApp, email, google, phone, methodsKnown; public final long until, recheckAt;
+  public final boolean inApp, email, google, phone, methodsKnown; public final long until, recheckAt, passiveAt; public final int unchanged;
   public Result(boolean email, boolean google, boolean phone, long until) { this(email, google, phone, true, until); }
   public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until) { this(email, google, phone, methodsKnown, until, until); }
-  public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until, long recheckAt) {
+  public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until, long recheckAt) { this(email, google, phone, methodsKnown, until, recheckAt, recheckAt, 0); }
+  public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until, long recheckAt, long passiveAt, int unchanged) {
    this.methodsKnown = methodsKnown; this.email = email; this.google = google; this.phone = phone; this.inApp = email || google || phone; this.until = until;
    this.recheckAt = email && google && phone ? until : Math.min(until, recheckAt);
+   this.passiveAt = email && google && phone ? until : Math.min(until, Math.max(this.recheckAt, passiveAt));
+   this.unchanged = Math.max(0, Math.min(unchanged, PASSIVE_RECHECK_MS.length));
   }
   /** A fresh measurement: ready methods keep the long TTL, and any method that is not ready is due again after METHOD_RECHECK_MS. */
   public static Result measured(boolean email, boolean google, boolean phone, long now) {
    return new Result(email, google, phone, true, now + (email || google || phone ? READY_TTL_MS : NOT_READY_TTL_MS), now + METHOD_RECHECK_MS);
   }
   public static Result notReady(long now) { return new Result(false, false, false, false, now + NOT_READY_TTL_MS, now + METHOD_RECHECK_MS); }
+  /** This measurement after `previous`: the same incomplete answer again waits longer before the next passive measurement. */
+  public Result repeated(Result previous, long now) {
+   if (complete() || !sameMethods(previous)) return this;
+   int count = previous.unchanged + 1;
+   return new Result(email, google, phone, methodsKnown, until, recheckAt, now + PASSIVE_RECHECK_MS[Math.min(count, PASSIVE_RECHECK_MS.length - 1)], count);
+  }
+  /**
+   * A measurement over this answer got no result (no connection, a timeout). That says nothing about
+   * the methods: they and their TTL stay, and only the next measurement is put off.
+   */
+  public Result unmeasured(long now) {
+   int count = unchanged + 1;
+   return new Result(email, google, phone, methodsKnown, until, now + METHOD_RECHECK_MS, now + PASSIVE_RECHECK_MS[Math.min(count, PASSIVE_RECHECK_MS.length - 1)], count);
+  }
   /** A cache entry from the future (beyond the longest TTL) is not trusted. */
   public boolean fresh(long now) { return now < until && until - now <= READY_TTL_MS; }
   /** Every method is ready: nothing is left to measure again before `until`. */
   public boolean complete() { return email && google && phone; }
   /** A method is not ready and its short TTL has ended. A recheck time from the future is not trusted. */
   public boolean recheckDue(long now) { return !complete() && (now >= recheckAt || recheckAt - now > METHOD_RECHECK_MS); }
+  /** As recheckDue, for a measurement nobody asked for: the growing wait has ended. */
+  public boolean passiveDue(long now) { return !complete() && (now >= passiveAt || passiveAt - now > PASSIVE_RECHECK_MS[PASSIVE_RECHECK_MS.length - 1]); }
   public boolean sameMethods(Result other) { return other != null && email == other.email && google == other.google && phone == other.phone && methodsKnown == other.methodsKnown; }
-  public String serialize() { return "v5-method-ttl|" + email + "|" + google + "|" + phone + "|" + methodsKnown + "|" + until + "|" + recheckAt; }
+  public String serialize() { return "v6-passive-recheck|" + email + "|" + google + "|" + phone + "|" + methodsKnown + "|" + until + "|" + recheckAt + "|" + passiveAt + "|" + unchanged; }
   public static Result parse(String value) {
    if (value == null) return null;
    String[] parts = value.split("\\|", -1);
-   if (parts.length != 7 || !"v5-method-ttl".equals(parts[0])) return null;
+   if (parts.length != 9 || !"v6-passive-recheck".equals(parts[0])) return null;
    for (int i = 1; i <= 4; i++) if (!"true".equals(parts[i]) && !"false".equals(parts[i])) return null;
-   try { return new Result(Boolean.parseBoolean(parts[1]), Boolean.parseBoolean(parts[2]), Boolean.parseBoolean(parts[3]), Boolean.parseBoolean(parts[4]), Long.parseLong(parts[5]), Long.parseLong(parts[6])); }
+   try { return new Result(Boolean.parseBoolean(parts[1]), Boolean.parseBoolean(parts[2]), Boolean.parseBoolean(parts[3]), Boolean.parseBoolean(parts[4]), Long.parseLong(parts[5]), Long.parseLong(parts[6]), Long.parseLong(parts[7]), Integer.parseInt(parts[8])); }
    catch (Exception invalid) { return null; }
   }
  }

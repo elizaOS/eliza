@@ -13,6 +13,12 @@ package ai.eliza.plugins.securestore.nativeonly;
  * reservation then records a fresh durable generation, and {@link #adopt} admits the earlier work
  * only while its generation is still the recorded one, that is, while no credential action was
  * reserved after it in any process. Without a ledger nothing changes and nothing is adopted.
+ *
+ * <p>A reservation whose generation cannot be recorded must not leave the previous one on disk for a
+ * later process to trust: the write is tried twice, then the stored value is cleared, and while even
+ * that fails every later use of the fence tries again. Only a ledger that accepts neither a write nor
+ * a clear until the process ends can leave a stale generation behind; a host closes that case by
+ * removing the earlier work's own record (the pending sign-in) in the action that reserved.
  */
 public final class CredentialIntentFence {
   /**
@@ -23,8 +29,17 @@ public final class CredentialIntentFence {
     /** The recorded generation, or null when none was recorded. */
     String read() throws Exception;
 
-    /** Records {@code generation} durably before returning. */
+    /**
+     * Records {@code generation} durably before returning, as an atomic replacement: a reader sees the
+     * old value or the new one, never a mixture.
+     */
     void write(String generation) throws Exception;
+
+    /**
+     * Removes the recorded generation durably before returning (delete the file or entry). Called
+     * when a new generation could not be written, so that a later process finds nothing to adopt.
+     */
+    void clear() throws Exception;
   }
 
   private final Object lock;
@@ -32,6 +47,8 @@ public final class CredentialIntentFence {
   private Ledger ledger;
   /** The recorded generation of the newest intent; null while unknown or unrecorded. */
   private String generation;
+  /** The ledger may still hold a generation older than the newest intent: neither a write nor a clear succeeded. */
+  private boolean stale;
 
   /** A fence guarded by its own lock. */
   public CredentialIntentFence() {
@@ -80,6 +97,7 @@ public final class CredentialIntentFence {
    */
   public String generation() {
     synchronized (lock) {
+      if (stale) record();
       return generation;
     }
   }
@@ -91,21 +109,36 @@ public final class CredentialIntentFence {
    */
   public long adopt(String expected) {
     synchronized (lock) {
+      if (stale) record();
       return generation != null && generation.equals(expected) ? epoch : -1;
     }
   }
 
   /**
-   * Records a fresh generation for the newest intent. A failed write leaves this process with no
-   * generation, so it adopts nothing and hands out none; the next reservation records again.
+   * Records a fresh generation for the newest intent. When the write fails twice the stored value is
+   * cleared instead, so no later process adopts what this intent superseded; this process then has no
+   * generation, adopts nothing and hands out none, and the next reservation records again. When the
+   * clear fails as well the ledger is stale, and every later reservation, {@link #generation} and
+   * {@link #adopt} tries to record again first.
    */
   private void record() {
     String next = java.util.UUID.randomUUID().toString();
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        ledger.write(next);
+        generation = next;
+        stale = false;
+        return;
+      } catch (Exception unrecorded) {
+        // Tried once more, then cleared.
+      }
+    }
+    generation = null;
     try {
-      ledger.write(next);
-      generation = next;
-    } catch (Exception unrecorded) {
-      generation = null;
+      ledger.clear();
+      stale = false;
+    } catch (Exception uncleared) {
+      stale = true;
     }
   }
 

@@ -4,14 +4,15 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { delimiter, join, resolve } from "node:path";
 import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..");
@@ -236,11 +237,11 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ACTUAL_ACK: between(
       plugin,
       " private CloudSignInFlow.Ack acknowledge(",
-      " /** A key stored before",
+      " /**\n  * A key stored before an interrupted ack",
     ),
     ACTUAL_ACK_RECOVERY: between(
       plugin,
-      " /** A key stored before",
+      " /**\n  * A key stored before an interrupted ack",
       " // ── Silent key renewal",
     ),
     ACTUAL_RENEWAL: between(
@@ -274,7 +275,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     );
     assert.match(
       output,
-      /^PASS native startup acknowledgement recovery \(18 scenarios\)$/m,
+      /^PASS native startup acknowledgement recovery \(26 scenarios\)$/m,
     );
     assert.match(
       output,
@@ -282,7 +283,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     );
     assert.match(
       output,
-      /^PASS SMS sends honour Cloud's cooldown \(5 scenarios\)$/m,
+      /^PASS SMS sends honour Cloud's cooldown for SMS only \(8 scenarios\)$/m,
     );
     assert.match(
       output,
@@ -292,7 +293,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       output,
       /^PASS browser return in a new process \(8 scenarios\)$/m,
     );
-    assert.match(output, /^PASS silent key renewal \(12 scenario groups\)$/m);
+    assert.match(output, /^PASS silent key renewal \(17 scenario groups\)$/m);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -313,20 +314,21 @@ test("exact readiness measurement, cache and single-flight probe (plain JVM)", (
     ACTUAL_STATUS_OUTCOME: between(
       plugin,
       " private JSObject statusOutcome(",
-      " /** Fresh positive readiness",
+      " /**\n  * A fresh cached answer is served at once",
     ),
     ACTUAL_PROBE: between(
       plugin,
       " private void probe(",
       " /** Cloud refused this app",
     ),
-    // The exact resume handler, without the Capacitor superclass call.
+    // The exact pause and resume handlers, without the Capacitor superclass calls.
     ACTUAL_RESUME: between(
       plugin,
-      " @Override protected void handleOnResume() {",
+      " @Override protected void handleOnPause() {",
       " @Override protected void handleOnDestroy() {",
     )
-      .replace("@Override protected ", "")
+      .replaceAll("@Override protected ", "")
+      .replace("super.handleOnPause();", "")
       .replace("super.handleOnResume();", ""),
   });
   try {
@@ -504,7 +506,7 @@ test("the plugin owns every secret, compares state before burning and logs only 
   );
   assert.match(
     email,
-    /if \(now < Math\.max\(lastEmailSendAt \+ CloudSignInFlow\.RESEND_COOLDOWN_MS, emailSendAllowedAt\)\)/,
+    /long allowedAt = Math\.max\(lastEmailSendAt \+ CloudSignInFlow\.RESEND_COOLDOWN_MS, emailSendAllowedAt\);\s*if \(now < allowedAt\) \{ call\.reject\("Wait before requesting another code", "cooldown", sendWait\(allowedAt\)\); return; \}/,
   );
   assert.ok(
     plugin.indexOf(
@@ -513,6 +515,27 @@ test("the plugin owns every secret, compares state before burning and logs only 
       plugin.indexOf(
         'if (sent.status != 200 && sent.status != 202) throw new SignInFailure(CloudSignInFlow.failureForStatus("send"',
       ),
+  );
+  // Cloud's longer wait belongs to the method that was asked: only the local minimum is shared.
+  const phone = between(
+    plugin,
+    "@PluginMethod public void startPhone(",
+    "/** A failed send leaves the code already sent",
+  );
+  assert.match(
+    phone,
+    /long allowedAt = Math\.max\(lastEmailSendAt \+ CloudSignInFlow\.RESEND_COOLDOWN_MS, smsSendAllowedAt\);\s*if \(now < allowedAt\) \{ call\.reject\("Wait before requesting another code", "cooldown", sendWait\(allowedAt\)\); return; \}/,
+  );
+  assert.match(
+    phone,
+    /lastEmailSendAt = now; smsSendAllowedAt = Math\.max\(smsSendAllowedAt, resendAt\);/,
+  );
+  assert.doesNotMatch(phone, /emailSendAllowedAt/);
+  assert.doesNotMatch(email, /smsSendAllowedAt/);
+  // The only datum a send rejection carries is when the next send may be tried.
+  assert.match(
+    plugin,
+    /private static JSObject sendWait\(long resendAt\) \{ return new JSObject\(\)\.put\("resendAt", resendAt\); \}/,
   );
   assert.doesNotMatch(
     plugin,
@@ -533,19 +556,52 @@ test("the plugin owns every secret, compares state before burning and logs only 
   assert.doesNotMatch(gate, /PluginCall|call\.getBoolean|\.write\(/);
 });
 
-test("a browser Google attempt ends only by its return, a cancel or its expiry; a Home host opens the page in the browser's task", () => {
-  // Resume: readiness only. Nothing in the resume or pause path can end an attempt.
+test("a browser Google attempt on a Home host ends only by its return, a cancel or its expiry; in a host's own task a closed page ends it", () => {
+  // Pause and resume can end an attempt only through `browserPaused`, which is set only for a page
+  // that was opened in the host's own task (any host that is not the Home app).
+  const pause = between(
+    plugin,
+    " @Override protected void handleOnPause() {",
+    " /**\n  * A browser Google page in the host's own task",
+  );
+  assert.match(
+    pause,
+    /if \(attempt != null && attempt\.browserLaunched && attempt\.browserInHostTask\) attempt\.browserPaused = true;/,
+  );
+  assert.equal(
+    (plugin.match(/browserPaused = true/g) || []).length,
+    1,
+    "one place marks a page as covering the host",
+  );
+  assert.equal(
+    (plugin.match(/browserInHostTask = /g) || []).length,
+    1,
+    "one place decides whose task holds the page",
+  );
   const resume = between(
     plugin,
     " @Override protected void handleOnResume() {",
     " @Override protected void handleOnDestroy() {",
   );
-  assert.doesNotMatch(resume, /end\(|attempt|cancel/);
   assert.match(
     resume,
-    /probe\(config\(\)\.defaultEnvironment\(\), null, false\);/,
+    /if \(current == null \|\| !current\.browserPaused\) return;\s*main\.postDelayed\(\(\) -> \{\s*synchronized \(lock\) \{\s*if \(attempt != current \|\| current\.cancelled \|\| current\.callbackReceived \|\| current\.returnHint \|\| current\.returnClaimed\) return;\s*end\(current, "browser-closed", true\);\s*\}\s*\}, BROWSER_RETURN_GRACE_MS\);/,
   );
-  assert.doesNotMatch(plugin, /handleOnPause|browserPaused|"browser-closed"/);
+  assert.equal((resume.match(/end\(/g) || []).length, 1);
+  // Readiness on resume is passive and bounded: only for a recent sign-in screen or an attempt.
+  assert.match(
+    resume,
+    /measure = CloudSignInReadiness\.resumeProbe\(System\.currentTimeMillis\(\), statusAskedAt, current != null\);/,
+  );
+  assert.match(
+    resume,
+    /if \(measure\) probe\(config\(\)\.defaultEnvironment\(\), null, false, true\);/,
+  );
+  assert.equal(
+    (plugin.match(/"browser-closed"/g) || []).length,
+    2,
+    "a closed page is reported by the resume grace and by a return that could not be consumed",
+  );
   const start = between(
     plugin,
     " private void startGoogleBrowser(Attempt next) {",
@@ -568,7 +624,11 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
   );
   assert.match(
     start,
-    /final int task = hostIsHome\(\) \? Intent\.FLAG_ACTIVITY_NEW_TASK : 0;/,
+    /final boolean home = hostIsHome\(\);\s*synchronized \(lock\) \{\s*if \(attempt != next \|\| next\.cancelled \|\| destroyed\) return;\s*next\.browserLaunched = true; next\.browserInHostTask = !home;\s*\}/,
+  );
+  assert.match(
+    start,
+    /final int task = home \? Intent\.FLAG_ACTIVITY_NEW_TASK : 0;/,
   );
   assert.equal((start.match(/\.addFlags\(task\)/g) || []).length, 2);
   const home = between(
@@ -584,14 +644,18 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
     home,
     /getContext\(\)\.getPackageName\(\)\.equals\(home\.activityInfo\.packageName\)/,
   );
-  // A return that cannot be consumed leaves the attempt; only an elapsed parameterless hint ends it.
+  // A return that cannot be consumed leaves the attempt. Only an elapsed parameterless hint ends it,
+  // or, for a page in the host's own task, having come back to the host without one.
   const release = between(
     plugin,
     " private void releaseReturnClaim(Attempt claimed) {",
     " /** Retire only the captured record",
   );
-  assert.equal((release.match(/end\(/g) || []).length, 1);
-  assert.match(release, /end\(claimed, "app-link-unverified", false\)/);
+  assert.equal((release.match(/end\(/g) || []).length, 2);
+  assert.match(
+    release,
+    /if \(claimed\.returnHintElapsed\) end\(claimed, "app-link-unverified", false\);\s*else if \(claimed\.browserPaused && !claimed\.returnHint\) end\(claimed, "browser-closed", true\);/,
+  );
   // A return in a process that did not start the sign-in completes only by adopting the credential
   // intent that wrote its record (the host's durable generation); it never reserves a new one, and
   // without that it still completes nothing.
@@ -633,7 +697,7 @@ test("a browser Google attempt ends only by its return, a cancel or its expiry; 
     assert.ok(plugin.includes(hook), hook);
 });
 
-test("silent renewal confirms the new key before saving it, revokes the old key last and reserves nothing", () => {
+test("silent renewal confirms the new key before saving it, stores the duty to revoke the old key, revokes it last and reserves nothing", () => {
   const renewal = between(
     plugin,
     " // ── Silent key renewal",
@@ -641,29 +705,69 @@ test("silent renewal confirms the new key before saving it, revokes the old key 
   );
   assert.doesNotMatch(
     renewal,
-    /reserveCredentialCommit|requireAuthorization|\.write\(config\(\)\.receiptSlot|(owned|slots|store\(\))\.remove\(/,
-    "background renewal reserves no intent, shows no dialog, writes no receipt and removes nothing",
+    /reserveCredentialCommit|requireAuthorization|\.write\(config\(\)\.receiptSlot/,
+    "background renewal reserves no intent, shows no dialog and writes no receipt",
   );
+  // The only slot a renewal ever removes is its own stored duty to revoke a replaced key.
+  const removals =
+    renewal.match(/(owned|slots|store\(\))\.remove\([^)]*\)/g) || [];
+  assert.deepEqual(removals, [
+    "slots.remove(retiring)",
+    "slots.remove(retiring)",
+  ]);
   const settled = renewal.slice(
     renewal.indexOf(" private JSObject renewalSettled("),
+    renewal.indexOf(" private boolean retireReplaced("),
   );
   const refusal = settled.indexOf(
       "if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) { CloudKeyRevocation.revoke(config(), environment, secret); return failed; }",
     ),
+    duty = settled.indexOf("owned.write(retiring, "),
     save = settled.indexOf("owned.write(slot, "),
-    revokeOld = settled.indexOf(
-      "CloudKeyRevocation.revoke(config(), environment, previous)",
-    );
+    readmit = settled.indexOf("savedKeyRenewed(environment, installed)"),
+    revokeOld = settled.indexOf("retireReplaced(environment, previous)"),
+    told = settled.indexOf('notifyListeners("signInRenewed"');
   assert.ok(
-    refusal > 0 && refusal < save && save < revokeOld,
-    "unconfirmed: nothing saved; confirmed: saved, then the old key revoked",
+    refusal > 0 &&
+      refusal < duty &&
+      duty < save &&
+      save < readmit &&
+      readmit < revokeOld &&
+      revokeOld < told,
+    "unconfirmed: nothing saved; confirmed: duty stored, key saved, host re-admitted, old key revoked, renderer told",
   );
   assert.equal(
     (renewal.match(/environment, previous\)/g) || []).length,
     1,
     "the working key is revoked in exactly one place",
   );
-  assert.equal((renewal.match(/\.write\(/g) || []).length, 1);
+  assert.equal((renewal.match(/\.write\(/g) || []).length, 2);
+  // A replaced key counts as retired when Cloud revoked it or already refuses it (401).
+  const retire = between(
+    renewal,
+    " private boolean retireReplaced(",
+    " /** Two more tries in this process",
+  );
+  assert.match(
+    retire,
+    /if \(!CloudKeyRevocation\.retire\(config\(\), environment, replaced\)\) return false;/,
+  );
+  // The stored duty never revokes the key that is still the saved one.
+  const stored = renewal.slice(renewal.indexOf(" private void retireStored("));
+  assert.ok(
+    stored.indexOf("if (stillSaved || ") > 0 &&
+      stored.indexOf("if (stillSaved || ") <
+        stored.indexOf("retireReplaced(environment, replaced)"),
+  );
+  // While Cloud's confirmation of the new key is still awaited, no expiry warning is reported.
+  assert.match(
+    renewal,
+    /renewalAnswered\(environment, current, renewalOutcome\(environment, "deferred", expiresAt, false\), false\);/,
+  );
+  assert.match(
+    plugin,
+    /protected void savedKeyRenewed\(CloudSignInEnvironment environment, String credentialId\) throws Exception \{\}/,
+  );
   // The request presents the saved key as a bearer token and an API key; no other request does.
   assert.match(
     renewal,
@@ -692,6 +796,84 @@ test("silent renewal confirms the new key before saving it, revokes the old key 
     )[1],
     "/api/v1/app-auth/mobile/renew",
   );
+});
+
+/** org.json as Android ships it, for the fixtures that run plugin-native-agent's real admission code. */
+function jsonJar() {
+  const cache = join(
+    homedir(),
+    ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
+  );
+  const jar =
+    process.env.ELIZA_JSON_JAR ||
+    (existsSync(cache)
+      ? readdirSync(cache).flatMap((directory) =>
+          readdirSync(join(cache, directory))
+            .filter((file) => file === "json-20250517.jar")
+            .map((file) => join(cache, directory, file)),
+        )[0]
+      : undefined);
+  assert.ok(
+    jar,
+    "Set ELIZA_JSON_JAR to org.json:json:20250517, or resolve that Gradle dependency",
+  );
+  return jar;
+}
+
+test("the exact renewal save through the resident credential store: the agent is stopped and re-admitted by the host hook before the old key is revoked (plain JVM)", () => {
+  const { file, directory } = harness("CloudKeyRenewalResidentTest.java.txt", {
+    ACTUAL_RENEWAL_SETTLED: between(
+      plugin,
+      " private JSObject renewalSettled(",
+      " /**\n  * Stored duties to revoke a key a renewal replaced",
+    ),
+  });
+  const workspace = resolve(root, "../../..");
+  const agent = join(
+    workspace,
+    "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime",
+  );
+  const storage = join(
+    workspace,
+    "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly",
+  );
+  const output = mkdtempSync(join(tmpdir(), "eliza-cloud-renewal-resident-"));
+  try {
+    const jar = jsonJar();
+    execFileSync(
+      binary("javac"),
+      [
+        "--release",
+        "17",
+        "-cp",
+        jar,
+        "-d",
+        output,
+        ...pure,
+        join(tests, "TestRegistration.java"),
+        join(agent, "ResidentCredentialStore.java"),
+        join(agent, "NativeProviderAdmission.java"),
+        join(storage, "CredentialMutationConductor.java"),
+        file,
+      ],
+      { timeout: 120000 },
+    );
+    assert.match(
+      execFileSync(
+        binary("java"),
+        [
+          "-cp",
+          `${output}${delimiter}${jar}`,
+          "ai.eliza.auth.cloud.CloudKeyRenewalResidentTest",
+        ],
+        { encoding: "utf8", timeout: 120000 },
+      ),
+      /^PASS renewal save through the resident credential store \(5 scenarios\)/,
+    );
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("the credential intent fence keeps a durable generation for work an earlier process began (plain JVM)", () => {
@@ -867,6 +1049,12 @@ public class ElizaHostContractTest {
   store.write("cloud-signin:v1:ack:production", "receipt");
   store.write("cloud-signin:v1:pending", "pending");
   check("receipt".equals(store.read("cloud-signin:v1:ack:production")) && "pending".equals(slots.values.get("cloud-signin:v1:pending")), "native slots");
+  // A key a renewal replaced waits for its revocation in its own native-only slot.
+  store.write("cloud-signin:v1:retire:production", "retiring");
+  check("retiring".equals(store.read("cloud-signin:v1:retire:production")) && "retiring".equals(slots.values.get("cloud-signin:v1:retire:production")), "the retiring slot is a native slot");
+  store.remove("cloud-signin:v1:retire:production");
+  check(store.read("cloud-signin:v1:retire:production") == null, "retiring removed");
+  refused(unsafe(() -> new ElizaCloudCredentialSlots(product, () -> {}, tokens, slots).read("cloud-signin:v1:retire:staging")), "a product build has no staging retiring slot");
   check(tokens.writes == 2, "native slots never touch the session token");
   store.remove("cloud-signin:v1:pending");
   check(store.read("cloud-signin:v1:pending") == null, "pending removed");

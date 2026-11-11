@@ -87,19 +87,32 @@ public final class CloudKeyRevocation {
 
  /** One attempt. Returns true only for a 2xx answer; never throws. */
  public static boolean revoke(CloudSignInConfig config, CloudSignInEnvironment environment, String token) {
+  int status = request(config, environment, token);
+  return status >= 200 && status < 300;
+ }
+ /**
+  * One attempt to make sure a replaced key is unusable. True for a 2xx answer and for 401: Cloud no
+  * longer accepts the key (it was revoked already, by Cloud when its successor was confirmed or by an
+  * earlier request whose answer was lost, or it expired). Never throws.
+  */
+ public static boolean retire(CloudSignInConfig config, CloudSignInEnvironment environment, String token) {
+  return retired(request(config, environment, token));
+ }
+ public static boolean retired(int status) { return status >= 200 && status < 300 || status == 401; }
+ /** The answer's status, or -1 when no request was sent or none was answered. */
+ private static int request(CloudSignInConfig config, CloudSignInEnvironment environment, String token) {
   HttpURLConnection connection = null;
   try {
-   String value = bearer(token); if (value == null) return false;
+   String value = bearer(token); if (value == null) return -1;
    URI url = URI.create(endpoint(environment));
-   if (!CloudSignInRoutes.selfRevocation(config, url.getScheme(), url.getHost(), url.getPort(), url.getRawPath(), url.getRawQuery(), "DELETE", false)) return false;
+   if (!CloudSignInRoutes.selfRevocation(config, url.getScheme(), url.getHost(), url.getPort(), url.getRawPath(), url.getRawQuery(), "DELETE", false)) return -1;
    connection = (HttpURLConnection) url.toURL().openConnection();
    connection.setInstanceFollowRedirects(false); connection.setUseCaches(false);
    connection.setConnectTimeout(TIMEOUT_MS); connection.setReadTimeout(TIMEOUT_MS);
    connection.setRequestMethod("DELETE");
    connection.setRequestProperty("Accept", "application/json"); connection.setRequestProperty("Authorization", "Bearer " + value);
-   int status = connection.getResponseCode();
-   return status >= 200 && status < 300;
-  } catch (Exception ignored) { return false; }
+   return connection.getResponseCode();
+  } catch (Exception ignored) { return -1; }
   finally { if (connection != null) connection.disconnect(); }
  }
 }

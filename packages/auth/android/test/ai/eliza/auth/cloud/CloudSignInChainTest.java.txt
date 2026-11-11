@@ -17,7 +17,7 @@ public class CloudSignInChainTest {
  /** Renewal work waits on its own queue, apart from the sign-in worker and the acknowledgement requests. */
  final ArrayDeque<Runnable> renewalQueued=new ArrayDeque<>();
  final java.util.concurrent.Executor renewer=renewalQueued::add;
- long lastEmailSendAt, emailSendAllowedAt;
+ long lastEmailSendAt, emailSendAllowedAt, smsSendAllowedAt;
  final Main main=new Main();
  /** Delayed main-thread work is held here; only the scenarios that name it run it. */
  static class Main { final ArrayDeque<Runnable> delayed=new ArrayDeque<>();final List<Long> delays=new ArrayList<>();void postDelayed(Runnable task,long delay){delayed.add(task);delays.add(delay);} }
@@ -40,7 +40,7 @@ public class CloudSignInChainTest {
  boolean durableGeneration;int adoptions;
  String credentialGeneration(){return durableGeneration?"gen-"+intent:null;}
  Runnable adoptCredentialCommit(String generation){adoptions++;if(!durableGeneration||!("gen-"+intent).equals(generation))return null;long mine=intent;return ()->{if(mine!=intent)throw new IllegalStateException("stale intent");};}
- boolean failReceiptRead, failReceiptRemove;
+ boolean failReceiptRead, failReceiptRemove, failRetiringWrite, dieBeforeKeyWrite;
  static final String ID="00000000-0000-4000-8000-000000000001", SAVED_ID="00000000-0000-4000-8000-000000000003";
  static final List<String> revoked=new ArrayList<>();
  static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
@@ -74,7 +74,20 @@ public class CloudSignInChainTest {
   void cancel(){cancelled=true;}
  }
  static class Response { final int status;final JSONObject data;String retryAfter;Response(int s,JSONObject d){status=s;data=d;} }
- static class CloudKeyRevocation { static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");revoked.add(token);return true;} }
+ /** `retire` is the renewal's revocation of the key it replaced; the fixture can leave it unanswered. */
+ static class CloudKeyRevocation {
+  static boolean unanswered;static final List<String> retirements=new ArrayList<>();
+  static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");revoked.add(token);return true;}
+  static boolean retire(CloudSignInConfig config,CloudSignInEnvironment environment,String token){retirements.add(token);if(unanswered)return false;events.add("revoke");revoked.add(token);return true;}
+ }
+ /** The host's native re-admission of a renewed key. */
+ String readmitted;boolean readmitFails;
+ void savedKeyRenewed(CloudSignInEnvironment environment,String credentialId)throws Exception{
+  events.add("readmit");readmitted=credentialId;
+  check(credentialId.equals(new JSONObject(slots.get("cloud:production")).getString("credentialId"))&&!revoked.contains(OLD),"the host re-admits the saved new key before the old one is revoked");
+  if(readmitFails)throw new IllegalStateException("controlled host failure");
+ }
+ static final String RETIRING="cloud-signin:v1:retire:production";
  CloudSignInConfig config(){return TestRegistration.PRODUCT;}
  <T> T withCredentialRead(java.util.concurrent.Callable<T> read)throws Exception{synchronized(slots){return read.call();}}
  CloudCredentialSlots credentials(Runnable guard){
@@ -84,7 +97,12 @@ public class CloudSignInChainTest {
      throw new IllegalStateException("controlled receipt read failure");
     return slots.get(key);
    }
-   public void write(String key,String value){guard.run();slots.put(key,value);events.add(key.startsWith("cloud:")?"key":"receipt");}
+   public void write(String key,String value){
+    guard.run();
+    if(failRetiringWrite&&key.equals(RETIRING))throw new IllegalStateException("controlled retiring write failure");
+    if(dieBeforeKeyWrite&&key.startsWith("cloud:"))throw new IllegalStateException("controlled key write failure");
+    slots.put(key,value);events.add(key.startsWith("cloud:")?"key":key.equals(RETIRING)?"retiring":"receipt");
+   }
    public boolean compareExchange(String key,String expected,String value){
     synchronized(slots){
      guard.run();
@@ -519,30 +537,43 @@ public class CloudSignInChainTest {
   call.input.put("environment","production");call.input.put("phone","+14155550100");
   return call;
  }
- /** SMS sends share the email cooldown and honour Cloud's longer wait (Retry-After or resendAt). */
+ /** SMS sends honour Cloud's longer wait (Retry-After or resendAt) for SMS only; the local minimum is shared with email. */
  static void phoneCooldownFollowsCloud()throws Exception{
   slots.clear();events.clear();notifications.clear();
   CloudSignInChainTest host=new CloudSignInChainTest();host.mode="sms-limited";
   long before=System.currentTimeMillis();
   PluginCall limited=phoneCall();host.startPhone(limited);
   check("rate-limited".equals(limited.error)&&host.attempt==null,"a refused SMS send is explicit");
-  check(host.emailSendAllowedAt>=before+120000&&host.emailSendAllowedAt<=System.currentTimeMillis()+120000,"Retry-After on a refused SMS send sets the shared wait");
-  host.mode="valid";host.lastEmailSendAt=0;
+  check(host.smsSendAllowedAt>=before+120000&&host.smsSendAllowedAt<=System.currentTimeMillis()+120000,"Retry-After on a refused SMS send sets the SMS wait");
+  check(limited.errorData!=null&&limited.errorData.length()==1&&limited.errorData.getLong("resendAt")==host.smsSendAllowedAt,"the refusal says when SMS may be tried again, and nothing else");
+  check(host.emailSendAllowedAt==0,"an SMS limit is not an email limit");
+  host.mode="valid";
+  PluginCall emailInsideMinimum=sendCall();host.startEmail(emailInsideMinimum);
+  check("cooldown".equals(emailInsideMinimum.error)&&host.requests==1&&emailInsideMinimum.errorData.getLong("resendAt")==host.lastEmailSendAt+CloudSignInFlow.RESEND_COOLDOWN_MS,"the local 30 seconds still apply across methods, and the rejection says when they end");
+  host.lastEmailSendAt=0;
   PluginCall early=phoneCall();host.startPhone(early);
   check("cooldown".equals(early.error)&&host.requests==1,"an SMS send inside Cloud's wait sends nothing, although the local 30 seconds have passed");
-  PluginCall emailEarly=sendCall();host.startEmail(emailEarly);
-  check("cooldown".equals(emailEarly.error)&&host.requests==1,"the wait applies to an email send as well");
-  host.emailSendAllowedAt=0;host.smsResendAt=Instant.ofEpochMilli(System.currentTimeMillis()+90000).toString();
+  check(early.errorData!=null&&early.errorData.length()==1&&early.errorData.getLong("resendAt")==host.smsSendAllowedAt,"the cooldown says how long the wait is");
+  // The owner switches to the email code: Cloud's SMS limit (it can be an hour for one number) does not lock it out.
+  PluginCall email=sendCall();host.startEmail(email);
+  check(email.result!=null&&host.requests==2&&host.attempt!=null&&host.attempt.email!=null,"an email code can be sent while SMS is limited");
+  check(email.result.getLong("resendAt")<System.currentTimeMillis()+CloudSignInFlow.RESEND_COOLDOWN_MS+1000,"its resend time is the email one, not the SMS limit");
+  host.attempt=null;host.lastEmailSendAt=0;
+  host.smsSendAllowedAt=0;host.smsResendAt=Instant.ofEpochMilli(System.currentTimeMillis()+90000).toString();
   long resend=Instant.parse(host.smsResendAt).toEpochMilli();
   PluginCall sent=phoneCall();host.startPhone(sent);
   check(sent.result!=null&&host.attempt!=null&&host.attempt.phone!=null,"SMS code sent");
-  check(sent.result.getLong("resendAt")==resend&&host.emailSendAllowedAt==resend,"the code step reports Cloud's resend time, not the local 30 seconds");
+  check(sent.result.getLong("resendAt")==resend&&host.smsSendAllowedAt==resend,"the code step reports Cloud's resend time, not the local 30 seconds");
   host.lastEmailSendAt=0;
   PluginCall again=phoneCall();host.startPhone(again);
-  check("cooldown".equals(again.error)&&host.requests==2,"a resend waits for Cloud's time");
-  host.emailSendAllowedAt=0;host.smsResendAt=null;long now=System.currentTimeMillis();
+  check("cooldown".equals(again.error)&&host.requests==3&&again.errorData.getLong("resendAt")==resend,"a resend waits for Cloud's time");
+  host.smsSendAllowedAt=0;host.smsResendAt=null;long now=System.currentTimeMillis();
   PluginCall plain=phoneCall();host.startPhone(plain);
   check(plain.result!=null&&plain.result.getLong("resendAt")>=now+CloudSignInFlow.RESEND_COOLDOWN_MS,"without a Cloud time the local minimum still applies");
+  // A send that got no answer has no wait to report.
+  CloudSignInChainTest offline=new CloudSignInChainTest();offline.mode="send-offline";
+  PluginCall unanswered=sendCall();offline.startEmail(unanswered);
+  check("offline".equals(unanswered.error)&&unanswered.errorData==null,"an unanswered send carries no resend time");
  }
  /** One committed sign-in whose first acknowledgement answers are scripted. */
  static CloudSignInChainTest pendingActivation(PluginCall call,String requestId,long window,String... replies)throws Exception{
@@ -636,7 +667,7 @@ public class CloudSignInChainTest {
  static final long DAY=24*60*60*1000L;
  /** A host with a saved, acknowledged key that has `remaining` left, and Cloud's scripted answers. */
  static CloudSignInChainTest renewalHost(long remaining,String reply,String... acks){
-  slots.clear();events.clear();notifications.clear();revoked.clear();
+  slots.clear();events.clear();notifications.clear();revoked.clear();CloudKeyRevocation.unanswered=false;CloudKeyRevocation.retirements.clear();
   CloudSignInChainTest host=new CloudSignInChainTest();host.renewReply=reply;host.mintedLife=30*DAY;host.ackReplies.addAll(List.of(acks));
   slots.put("cloud:production",new JSONObject().put("credentialId",SAVED_ID).put("token",OLD).put("expiresAt",System.currentTimeMillis()+remaining).put("serverCredentialId",REQUEST).toString());
   slots.put("cloud:staging","preserved-other-environment");
@@ -647,7 +678,7 @@ public class CloudSignInChainTest {
  static String savedToken(){String saved=slots.get("cloud:production");return saved==null?null:new JSONObject(saved).optString("token",null);}
  static void unchanged(CloudSignInChainTest host,String why){
   check(OLD.equals(savedToken())&&SAVED_ID.equals(new JSONObject(slots.get("cloud:production")).getString("credentialId")),"the working key stays saved: "+why);
-  check(!revoked.contains(OLD)&&!events.contains("key")&&!events.contains("receipt"),"it is neither revoked nor rewritten: "+why);
+  check(!revoked.contains(OLD)&&!CloudKeyRevocation.retirements.contains(OLD)&&!events.contains("key")&&!events.contains("receipt"),"it is neither revoked nor rewritten: "+why);
   check("preserved-other-environment".equals(slots.get("cloud:staging"))&&host.reserved==0,"no other deployment is touched and no credential intent is reserved: "+why);
  }
  static void renewalScenarios()throws Exception{
@@ -658,7 +689,8 @@ public class CloudSignInChainTest {
   JSONObject kept=new JSONObject(slots.get("cloud:production"));
   check(NEW.equals(kept.getString("token"))&&ID.equals(kept.getString("serverCredentialId"))&&!SAVED_ID.equals(kept.getString("credentialId"))&&kept.getLong("expiresAt")==renewed.result.getLong("expiresAt"),"the new key is the saved one");
   check(kept.getString("credentialId").equals(renewed.result.getString("credentialId"))&&!renewed.result.toString().contains(NEW)&&!renewed.result.toString().contains(OLD),"the outcome names the saved identity and carries no key");
-  check(events.indexOf("renew")<events.indexOf("ack")&&events.indexOf("ack")<events.indexOf("key")&&events.indexOf("key")<events.indexOf("revoke"),"renew, acknowledge, save, then revoke");
+  check(events.indexOf("renew")<events.indexOf("ack")&&events.indexOf("ack")<events.indexOf("retiring")&&events.indexOf("retiring")<events.indexOf("key")&&events.indexOf("key")<events.indexOf("readmit")&&events.indexOf("readmit")<events.indexOf("revoke")&&events.indexOf("revoke")<events.indexOf("signInRenewed"),"renew, acknowledge, store the duty to revoke, save, re-admit, revoke, then tell the renderer");
+  check(!slots.containsKey(RETIRING)&&kept.getString("credentialId").equals(due.readmitted),"a confirmed revocation leaves no duty behind, and the host was given the saved identity");
   check(revoked.equals(List.of(OLD))&&!events.contains("receipt")&&!events.contains("authorization")&&!events.contains("logout"),"only the replaced key is revoked; no receipt, dialog or Steward session is involved");
   check(due.requests==3&&due.reserved==0&&due.observations==1,"three requests, an observed intent and no reservation");
   check(notifications.size()==1&&events.contains("signInRenewed")&&kept.getString("credentialId").equals(notifications.get(0).getString("credentialId"))&&notifications.get(0).length()==3&&!notifications.get(0).toString().contains(NEW),"the renderer is told once which saved identity to read again");
@@ -714,6 +746,7 @@ public class CloudSignInChainTest {
   CloudSignInChainTest slow=renewalHost(5*DAY,"ok","wrong","transport","complete");
   PluginCall waited=slow.renewNowCall();
   check("deferred".equals(waited.result.getString("status"))&&Boolean.FALSE.equals(waited.result.opt("expiryWarning")),"callers are answered while Cloud's confirmation is awaited");
+  check(!slots.containsKey(RETIRING),"no duty to revoke is stored before Cloud confirmed the new key");
   unchanged(slow,"confirmation awaited");
   check(revoked.isEmpty()&&slow.main.delays.equals(List.of(5000L)),"neither key is revoked meanwhile; the first background round waits five seconds");
   int sent=slow.requests;
@@ -724,6 +757,18 @@ public class CloudSignInChainTest {
   slow.nextAcknowledgement();
   check(NEW.equals(savedToken())&&revoked.equals(List.of(OLD))&&slow.main.delayed.isEmpty()&&notifications.size()==1&&events.contains("signInRenewed"),"the late confirmation saves the new key, then revokes the old one, and tells the renderer");
   check("current".equals(slow.renewNowCall().result.getString("status")),"the deployment is free for the next check");
+  // Fewer than three days left and yesterday's request failed: a renewal that is still being confirmed warns nobody.
+  CloudSignInChainTest nearly=renewalHost(2*DAY,"ok","wrong","transport","complete");
+  nearly.renewalRecords.put("production",new CloudKeyRenewal.Record(SAVED_ID,0,System.currentTimeMillis()-DAY-1000,CloudKeyRenewal.Record.RETRY));
+  PluginCall awaiting=nearly.renewNowCall();
+  check("deferred".equals(awaiting.result.getString("status"))&&Boolean.FALSE.equals(awaiting.result.opt("expiryWarning")),"no expiry warning while the renewal can still succeed silently");
+  check(Boolean.FALSE.equals(nearly.renewNowCall().result.opt("expiryWarning")),"nor for a caller that joins the background rounds");
+  nearly.nextAcknowledgement();nearly.nextAcknowledgement();
+  check(NEW.equals(savedToken())&&notifications.size()==1&&events.contains("signInRenewed"),"it then succeeds silently");
+  CloudSignInChainTest lapsing=renewalHost(2*DAY,"ok","wrong","retry");lapsing.ackWindow=400;
+  check(Boolean.FALSE.equals(lapsing.renewNowCall().result.opt("expiryWarning")),"still no warning before the deadline");
+  Thread.sleep(450);lapsing.nextAcknowledgement();
+  check(Boolean.TRUE.equals(lapsing.renewNowCall().result.opt("expiryWarning"))&&OLD.equals(savedToken()),"the warning appears once the renewal has failed");
 
   // 6. The old key is revoked only after the new one is acknowledged and saved.
   CloudSignInChainTest denied=renewalHost(5*DAY,"ok","denied");
@@ -788,6 +833,55 @@ public class CloudSignInChainTest {
   check("deferred".equals(shorter.renewNowCall().result.getString("status"))&&!events.contains("ack")&&revoked.isEmpty(),"a shorter key is left to lapse unacknowledged");
   unchanged(shorter,"shorter key");
  }
+ /** Rotation: the key a renewal replaced is revoked even when the process ends before Cloud confirmed it. */
+ static void retirementScenarios()throws Exception{
+  // 13. Cloud does not answer the revocation: the duty stays stored, is retried in this process, and again on a later start.
+  CloudSignInChainTest offline=renewalHost(5*DAY,"ok");CloudKeyRevocation.unanswered=true;
+  PluginCall renewed=offline.renewNowCall();
+  check("renewed".equals(renewed.result.getString("status"))&&NEW.equals(savedToken())&&revoked.isEmpty()&&CloudKeyRevocation.retirements.equals(List.of(OLD)),"the new key is saved although the old one could not be revoked yet");
+  JSONObject duty=new JSONObject(slots.get(RETIRING));
+  check(OLD.equals(duty.getString("token"))&&duty.length()==2&&duty.getLong("expiresAt")>System.currentTimeMillis(),"the duty names the replaced key and when it lapses on its own");
+  check(offline.main.delays.equals(List.of(5000L)),"one retry is scheduled in this process");
+  offline.main.delays.remove(0);offline.main.delayed.remove().run();offline.drainRenewal();
+  check(revoked.isEmpty()&&CloudKeyRevocation.retirements.size()==2&&slots.containsKey(RETIRING)&&offline.main.delays.equals(List.of(25000L)),"an unanswered retry keeps the duty");
+  // The process ends here. The next one finds the duty and no closure.
+  CloudSignInChainTest next=new CloudSignInChainTest();next.observable=false;
+  next.renewSaved();check(revoked.isEmpty(),"nothing is sent on the main thread");next.drainRenewal();
+  check(revoked.isEmpty()&&slots.containsKey(RETIRING),"still unanswered: the duty waits");
+  CloudKeyRevocation.unanswered=false;
+  CloudSignInChainTest later=new CloudSignInChainTest();later.observable=false;
+  later.renewSaved();later.drainRenewal();
+  check(revoked.equals(List.of(OLD))&&!slots.containsKey(RETIRING)&&NEW.equals(savedToken()),"a later start revokes the replaced key from storage, whether or not the host still renews, and forgets the duty");
+  check(later.requests==0&&later.reserved==0&&notifications.size()==1,"it sends no sign-in request, reserves nothing and announces nothing");
+  // 14. The process ends between the stored duty and the save: the saved, working key is never revoked.
+  CloudSignInChainTest interrupted=renewalHost(5*DAY,"ok");interrupted.dieBeforeKeyWrite=true;
+  check("deferred".equals(interrupted.renewNowCall().result.getString("status"))&&OLD.equals(savedToken())&&slots.containsKey(RETIRING),"the save failed after the duty was stored");
+  check(revoked.equals(List.of(NEW))&&CloudKeyRevocation.retirements.isEmpty(),"only the unsaved new key is revoked");
+  CloudSignInChainTest restarted=new CloudSignInChainTest();
+  restarted.renewalRecords.putAll(interrupted.renewalRecords);
+  restarted.renewSaved();restarted.drainRenewal();
+  check(!slots.containsKey(RETIRING)&&CloudKeyRevocation.retirements.isEmpty()&&OLD.equals(savedToken())&&restarted.requests==0,"a duty for the key that is still saved is dropped without a request");
+  // A lapsed key needs no request either.
+  slots.put(RETIRING,new JSONObject().put("token","eliza_mobile_"+"d".repeat(64)).put("expiresAt",System.currentTimeMillis()-1000).toString());
+  CloudSignInChainTest lapsed=new CloudSignInChainTest();lapsed.renewSaved();lapsed.drainRenewal();
+  check(!slots.containsKey(RETIRING)&&CloudKeyRevocation.retirements.isEmpty(),"an expired replaced key is forgotten");
+  // 15. A renewal that cannot store the duty saves nothing: it never forks the sign-in.
+  CloudSignInChainTest unstored=renewalHost(5*DAY,"ok");unstored.failRetiringWrite=true;
+  check("deferred".equals(unstored.renewNowCall().result.getString("status")),"without the stored duty the renewal fails");
+  unchanged(unstored,"duty not stored");
+  check(revoked.equals(List.of(NEW))&&notifications.isEmpty()&&!events.contains("readmit"),"the confirmed new key is revoked instead, and nobody is told");
+  // 16. The host's re-admission failing does not strand the renewal: the old key is retired and the renderer told.
+  CloudSignInChainTest hostFails=renewalHost(5*DAY,"ok");hostFails.readmitFails=true;
+  check("renewed".equals(hostFails.renewNowCall().result.getString("status"))&&revoked.equals(List.of(OLD))&&notifications.size()==1&&events.indexOf("readmit")<events.indexOf("revoke"),"a failed host re-admission still revokes the old key afterwards and tells the renderer");
+  // 17. A browser Google sign-in begun by an earlier process is a sign-in in progress: nothing is renewed under it.
+  CloudSignInChainTest inBrowser=renewalHost(5*DAY,"ok");
+  slots.put(inBrowser.config().pendingSlot,CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,System.currentTimeMillis(),null).serialize());
+  check("deferred".equals(inBrowser.renewNowCall().result.getString("status"))&&inBrowser.requests==0,"a live pending browser record defers the renewal before any request");
+  unchanged(inBrowser,"browser sign-in in another process");
+  slots.put(inBrowser.config().pendingSlot,CloudSignInFlow.Pending.create(TestRegistration.PRODUCTION,System.currentTimeMillis()-CloudSignInFlow.PENDING_TTL_MS-1000,null).serialize());
+  CloudSignInChainTest stale=new CloudSignInChainTest();stale.mintedLife=30*DAY;
+  check("renewed".equals(stale.renewNowCall().result.getString("status")),"an expired pending record defers nothing");
+ }
  static void changedAfterCommit(String mode)throws Exception{
   slots.clear();events.clear();notifications.clear();
   CloudSignInChainTest host=new CloudSignInChainTest();host.mode=mode;
@@ -814,8 +908,9 @@ public class CloudSignInChainTest {
   check(requests==0,"startup recovery sends no request on the sign-in worker");
   while(!recoveryQueued.isEmpty())recoveryQueued.remove().run();
  }
- static CloudSignInChainTest recoverReceipt(String input, boolean removed, String... replies)throws Exception{
-  slots.clear();events.clear();notifications.clear();
+ String receiptBefore, keyBefore;
+ static CloudSignInChainTest recoverReceipt(String input, String expect, String... replies)throws Exception{
+  slots.clear();events.clear();notifications.clear();revoked.clear();
   CloudSignInChainTest host=new CloudSignInChainTest();host.mode="recovery";
   host.recoveryReplies.addAll(List.of(replies));
   String receiptSlot=host.config().receiptSlot(TestRegistration.PRODUCTION);
@@ -828,49 +923,115 @@ public class CloudSignInChainTest {
    .put("redirectUri",TestRegistration.PRODUCTION.callback())
    .put("code","emac_"+"a".repeat(64)).put("state",host.issuedState)
    .put("codeVerifier",verifier).put("credentialId",ID)
-   .put("acknowledgeBy",input.equals("expired")?1:System.currentTimeMillis()+60000);
+   .put("acknowledgeBy",input.startsWith("expired")?1:System.currentTimeMillis()+60000);
   if(!input.equals("absent"))slots.put(receiptSlot,input.equals("malformed")?"invalid-fixture-frame":receipt.toString());
   if(!input.equals("missing-key"))slots.put(savedSlot,new JSONObject().put("credentialId",REQUEST)
    .put("serverCredentialId",input.equals("wrong-credential")?REQUEST:ID)
    .put("token",NEW).put("expiresAt",System.currentTimeMillis()+60000).toString());
+  slots.put("cloud:staging","preserved-other-environment");
   host.failReceiptRead=input.equals("read-failure");
   host.failReceiptRemove=input.equals("remove-failure");
   host.destroyed=input.equals("destroyed");
-  String originalReceipt=slots.get(receiptSlot), originalKey=slots.get(savedSlot);
+  host.observable=!input.endsWith("-unobserved");
+  host.receiptBefore=slots.get(receiptSlot);host.keyBefore=slots.get(savedSlot);
   host.recover();
+  // The request after a passed deadline waits for its turn on the main thread, as the in-process rounds do.
+  if(input.startsWith("expired")){
+   check(host.requests==0&&host.activating.contains("production")&&host.main.delays.equals(List.of(1000L)),"a passed deadline schedules the one request after it: "+input);
+   host.nextAcknowledgement();
+  }
   check(host.requests==replies.length && host.recoveryReplies.isEmpty(),"recovery round count: "+input);
-  check(Objects.equals(slots.get(savedSlot),originalKey),"startup leaves saved key untouched: "+input);
-  check(Objects.equals(slots.get(receiptSlot),List.of(replies).contains("newer")?"newer-receipt":removed?null:originalReceipt),"receipt outcome: "+input);
-  check(notifications.isEmpty() && host.reserved==0,"startup recovery does not create an interactive attempt");
+  host.recovered(expect,input);
   return host;
  }
+ /**
+  * `stale`: the receipt names no saved key and goes. `kept`: nothing is settled yet. `confirmed`: the
+  * key stays, the receipt goes and the sign-in is announced. `expired`: the dead key and its receipt
+  * are removed, the key is revoked and the owner is told. `closed`: the plugin closed meanwhile.
+  */
+ void recovered(String expect,String input){
+  String receiptSlot=config().receiptSlot(TestRegistration.PRODUCTION), savedSlot=config().credentialSlot(TestRegistration.PRODUCTION);
+  check("preserved-other-environment".equals(slots.get("cloud:staging"))&&reserved==0,"startup recovery touches no other deployment and creates no interactive attempt: "+input);
+  switch(expect){
+   case "stale" -> check(!slots.containsKey(receiptSlot)&&Objects.equals(slots.get(savedSlot),keyBefore)&&notifications.isEmpty()&&revoked.isEmpty()&&!activating.contains("production")&&main.delayed.isEmpty(),"a receipt for no saved key is dropped and nothing else changes: "+input);
+   case "kept","closed" -> {
+    check(Objects.equals(slots.get(receiptSlot),receiptBefore)&&Objects.equals(slots.get(savedSlot),keyBefore)&&notifications.isEmpty()&&revoked.isEmpty(),"nothing is settled: "+input);
+    if(expect.equals("closed"))check(main.delayed.isEmpty(),"a closed plugin schedules nothing: "+input);
+   }
+   case "confirmed" -> {
+    check(Objects.equals(slots.get(savedSlot),keyBefore)&&revoked.isEmpty()&&!activating.contains("production")&&main.delayed.isEmpty(),"a confirmed key stays saved: "+input);
+    if("newer-receipt".equals(slots.get(receiptSlot)))check(!"newer-receipt".equals(receiptBefore),"a receipt a newer sign-in wrote stays: "+input);
+    else if(input.equals("remove-failure"))check(Objects.equals(slots.get(receiptSlot),receiptBefore),"a receipt that cannot be removed waits for the next start: "+input);
+    else check(!slots.containsKey(receiptSlot),"its receipt goes: "+input);
+    check(notifications.size()==1&&events.contains("signInCompleted"),"the sign-in is announced once, retained: "+input);
+    JSObject outcome=notifications.get(0);
+    check("authenticated".equals(outcome.getString("status"))&&"production".equals(outcome.getString("environment"))&&outcome.length()==4&&outcome.has("expiresAt")&&outcome.opt("accountCreated")==JSONObject.NULL&&!outcome.toString().contains(NEW),"the unscoped four-field outcome, without the key: "+input);
+   }
+   case "expired" -> {
+    check(!slots.containsKey(savedSlot)&&!slots.containsKey(receiptSlot)&&revoked.equals(List.of(NEW)),"the key Cloud will never accept is removed with its receipt and revoked: "+input);
+    check(notifications.size()==1&&events.contains("signInIncomplete")&&"activation-expired".equals(notifications.get(0).getString("code"))&&notifications.get(0).length()==1,"the owner is told once with the fixed code: "+input);
+    check(!activating.contains("production")&&main.delayed.isEmpty(),"nothing further is pending: "+input);
+   }
+   default -> throw new AssertionError(expect);
+  }
+ }
  static void recoveryScenarios()throws Exception{
-  recoverReceipt("absent",false);
-  recoverReceipt("missing-key",true);
-  recoverReceipt("wrong-credential",true);
-  recoverReceipt("wrong-environment",true);
-  recoverReceipt("expired",true);
-  recoverReceipt("malformed",false);
-  recoverReceipt("read-failure",false);
-  recoverReceipt("destroyed",false);
-  recoverReceipt("current",true,"success");
-  recoverReceipt("current",true,"complete");
-  recoverReceipt("current",false,"wrong");
-  recoverReceipt("current",false,"denied");
-  recoverReceipt("current",false,"unexpected");
-  recoverReceipt("current",true,"transport","retry","success");
-  CloudSignInChainTest exhausted=recoverReceipt("current",false,"timeout","rate","retry");
+  String receiptSlot=TestRegistration.PRODUCT.receiptSlot(TestRegistration.PRODUCTION);
+  recoverReceipt("absent","kept");
+  recoverReceipt("missing-key","stale");
+  recoverReceipt("wrong-credential","stale");
+  recoverReceipt("wrong-environment","stale");
+  recoverReceipt("malformed","kept");
+  recoverReceipt("read-failure","kept");
+  recoverReceipt("destroyed","closed");
+  recoverReceipt("current","confirmed","success");
+  recoverReceipt("current","confirmed","complete");
+  recoverReceipt("current","confirmed","transport","retry","success");
+  recoverReceipt("remove-failure","confirmed","success");
+  recoverReceipt("current","confirmed","newer");
+  recoverReceipt("current","closed","destroy");
+  // Cloud refuses at startup: the never-confirmed key does not stay saved as a sign-in that cannot work.
+  recoverReceipt("current","expired","denied");
+  // The restart came after Cloud's deadline (the sign-in ended activation-pending, then the phone rebooted).
+  recoverReceipt("expired","expired","retry");
+  recoverReceipt("expired","expired","denied");
+  recoverReceipt("expired","expired","transport");
+  // The confirmation was given and only its answer was lost: the key works and stays.
+  recoverReceipt("expired","confirmed","complete");
+  recoverReceipt("expired","confirmed","success");
+  // No answer at startup, before the deadline: the background rounds of the in-process path take over.
+  for(String first:List.of("wrong","unexpected")){
+   CloudSignInChainTest waiting=recoverReceipt("current","kept",first);
+   check(waiting.activating.contains("production")&&waiting.main.delays.equals(List.of(5000L)),"an unanswered startup acknowledgement is pending and asked again: "+first);
+   waiting.recoveryReplies.add("retry");waiting.nextAcknowledgement();
+   check(waiting.main.delays.equals(List.of(10000L))&&notifications.isEmpty()&&waiting.activating.contains("production"),"asked again with a longer wait: "+first);
+   waiting.recoveryReplies.add(first.equals("wrong")?"success":"denied");waiting.nextAcknowledgement();
+   waiting.recovered(first.equals("wrong")?"confirmed":"expired","restart between background rounds, "+first);
+  }
+  CloudSignInChainTest exhausted=recoverReceipt("current","kept","timeout","rate","retry");
+  check(exhausted.activating.contains("production")&&exhausted.main.delayed.size()==1,"three unanswered startup rounds hand over to the background rounds");
   CloudSignInChainTest restart=new CloudSignInChainTest();restart.mode="recovery";
   restart.issuedState=exhausted.issuedState;restart.issuedChallenge=exhausted.issuedChallenge;
   restart.recoveryReplies.add("success");
   String saved=slots.get(restart.config().credentialSlot(TestRegistration.PRODUCTION));
   restart.recover();
   check(restart.requests==1 && restart.recoveryReplies.isEmpty(),"new startup retries the saved receipt");
-  check(!slots.containsKey(restart.config().receiptSlot(TestRegistration.PRODUCTION)),"new startup removes the acknowledged receipt");
-  check(saved.equals(slots.get(restart.config().credentialSlot(TestRegistration.PRODUCTION))),"new startup preserves the saved key");
-  recoverReceipt("current",false,"destroy");
-  recoverReceipt("remove-failure",false,"success");
-  recoverReceipt("current",false,"newer");
+  check(!slots.containsKey(receiptSlot),"new startup removes the acknowledged receipt");
+  check(saved.equals(slots.get(restart.config().credentialSlot(TestRegistration.PRODUCTION)))&&notifications.size()==1&&events.contains("signInCompleted"),"new startup preserves the saved key and announces it");
+  // A newer credential action after the restart owns the slot: the old recovery settles nothing.
+  CloudSignInChainTest older=recoverReceipt("current","kept","wrong");
+  older.intent++;older.nextAcknowledgement();
+  check(older.requests==1&&!older.activating.contains("production")&&older.main.delayed.isEmpty(),"a superseded recovery sends nothing more");
+  older.recovered("kept","superseded after restart");
+  CloudSignInChainTest lateOlder=recoverReceipt("current","kept","wrong");
+  lateOlder.recoveryReplies.add("denied");
+  String replacement=new JSONObject().put("credentialId",SAVED_ID).put("serverCredentialId",SAVED_ID).put("token",OLD).put("expiresAt",System.currentTimeMillis()+60000).toString();
+  slots.put("cloud:production",replacement);lateOlder.nextAcknowledgement();
+  check(replacement.equals(slots.get("cloud:production"))&&!events.contains("signInCompleted"),"a key saved since the restart is never removed for the old receipt");
+  // A host that cannot observe its credential intent still settles by the exact saved key.
+  check(lateOlder.observations==1,"the intent is observed once, before the read");
+  CloudSignInChainTest plain=recoverReceipt("expired-unobserved","expired","retry");
+  check(plain.observations==0,"without an observable intent the exact saved key alone bounds the removal");
  }
  public static void main(String[] args)throws Exception{
   changedAfterCommit("intent-after-commit");changedAfterCommit("replacement-after-commit");credentialIdentityReads();
@@ -895,14 +1056,14 @@ public class CloudSignInChainTest {
   transientVerifyKeepsStep();
   System.out.println("PASS transient verification answers keep the code step (5 scenarios)");
   phoneCooldownFollowsCloud();
-  System.out.println("PASS SMS sends honour Cloud's cooldown (5 scenarios)");
+  System.out.println("PASS SMS sends honour Cloud's cooldown for SMS only (8 scenarios)");
   activationScenarios();
   System.out.println("PASS in-process acknowledgement retry and expiry (10 scenarios)");
   recoveryScenarios();
-  System.out.println("PASS native startup acknowledgement recovery (18 scenarios)");
+  System.out.println("PASS native startup acknowledgement recovery (26 scenarios)");
   coldReturnScenarios();
   System.out.println("PASS browser return in a new process (8 scenarios)");
-  renewalScenarios();
-  System.out.println("PASS silent key renewal (12 scenario groups)");
+  renewalScenarios();retirementScenarios();
+  System.out.println("PASS silent key renewal (17 scenario groups)");
  }
 }

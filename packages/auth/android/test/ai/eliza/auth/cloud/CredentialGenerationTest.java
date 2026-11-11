@@ -12,10 +12,11 @@ public final class CredentialGenerationTest {
  private static int checks;
  private static void check(boolean condition, String message) { checks++; if (!condition) throw new AssertionError(message); }
  /** One durable value shared by the "processes" of a scenario. */
- static final class Disk implements CredentialIntentFence.Ledger {
-  String value; boolean failWrites, failReads; int writes;
+ static class Disk implements CredentialIntentFence.Ledger {
+  String value; boolean failWrites, failReads, failClears; int writes, writeAttempts, clears;
   public String read() { if (failReads) throw new IllegalStateException("controlled read failure"); return value; }
-  public void write(String generation) { if (failWrites) throw new IllegalStateException("controlled write failure"); value = generation; writes++; }
+  public void write(String generation) { writeAttempts++; if (failWrites) throw new IllegalStateException("controlled write failure"); value = generation; writes++; }
+  public void clear() { if (failClears) throw new IllegalStateException("controlled clear failure"); value = null; clears++; }
  }
  static CredentialIntentFence process(Disk disk) { CredentialIntentFence fence = new CredentialIntentFence(); fence.attach(disk); return fence; }
 
@@ -64,9 +65,38 @@ public final class CredentialGenerationTest {
   broken.failWrites = true;
   long unrecorded = failing.reserve();
   check(failing.generation() == null && failing.adopt(before) == -1 && failing.isCurrent(unrecorded), "a failed record adopts nothing in this process");
+  // Nor in a later one: the superseded generation is no longer on disk (the sign-out whose record
+  // failed, then the host is killed while the browser is in front, then the page returns).
+  check(broken.value == null && broken.clears == 1, "a record that cannot be written clears the stored generation after one more try");
+  check(process(broken).adopt(before) == -1, "a later process adopts nothing a failed record superseded, while writes still fail");
   broken.failWrites = false;
+  check(process(broken).adopt(before) == -1, "nor once writes work again");
   failing.reserve();
   check(failing.generation() != null && !before.equals(failing.generation()) && failing.generation().equals(broken.value), "the next reservation records again");
+  // One failed write is tried again before anything is cleared.
+  Disk flaky = new Disk() { int failures = 1; @Override public void write(String generation) { if (failures-- > 0) { writeAttempts++; throw new IllegalStateException("controlled single failure"); } super.write(generation); } };
+  CredentialIntentFence retried = new CredentialIntentFence(); retried.attach(flaky);
+  check(retried.generation() != null && retried.generation().equals(flaky.value) && flaky.clears == 0 && flaky.writeAttempts == 2, "a single failed write is retried, not cleared");
+  // Neither a write nor a clear works: the ledger is stale, so every later use of the fence records
+  // again before it answers, and the stale value is gone as soon as the storage accepts anything.
+  Disk stuck = new Disk();
+  CredentialIntentFence held = process(stuck);
+  held.reserve();
+  String superseded = held.generation();
+  stuck.failWrites = true; stuck.failClears = true;
+  held.reserve();
+  check(superseded.equals(stuck.value) && held.generation() == null && held.adopt(superseded) == -1, "a stale ledger adopts nothing in the process that knows it is stale");
+  stuck.failWrites = false;
+  check(held.adopt(superseded) == -1 && stuck.value != null && !superseded.equals(stuck.value) && stuck.value.equals(held.generation()), "the next use of the fence replaces the stale generation without a new reservation");
+  check(process(stuck).adopt(superseded) == -1, "and a later process no longer finds it");
+  Disk clearable = new Disk();
+  CredentialIntentFence cleared = process(clearable);
+  cleared.reserve();
+  String older = cleared.generation();
+  clearable.failWrites = true; clearable.failClears = true;
+  cleared.reserve();
+  clearable.failClears = false;
+  check(cleared.adopt(older) == -1 && clearable.value == null && process(clearable).adopt(older) == -1, "a clear that works later removes the stale generation as well");
   // An unreadable or malformed ledger starts a fresh generation.
   Disk unreadable = new Disk(); unreadable.value = "kept"; unreadable.failReads = true;
   check(process(unreadable).adopt("kept") == -1 && !"kept".equals(unreadable.value), "an unreadable ledger adopts nothing");

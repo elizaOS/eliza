@@ -184,7 +184,7 @@ hosts still need to wire it to their private process protocol and lifecycle.
 `android/` is a Gradle library (`ai.eliza.auth.cloud`) for apps that sign in on
 their own native screens: email and SMS codes, the Android Google account picker,
 MFA, the mobile App Auth connect/token/ack tail, acknowledgement resume, best-effort
-replaced-key revocation, per-method readiness and silent key renewal. A host subclasses
+replaced-key revocation, per-method readiness and silent key renewal with rotation. A host subclasses
 `CloudSignInPlugin`, declares its Capacitor name and returns a `CloudSignInConfig`
 (App Auth client id, device and product names, Steward app client for native Google,
 admitted deployments and its installed storage names) plus its protected
@@ -208,24 +208,54 @@ Old callers can still use unscoped cancellation. A queued scoped cleanup also ke
 the original intent guard, so it cannot erase a newer attempt's pending record.
 Cancellation
 acknowledgement suppresses later delivery for that interaction; it does not roll
-back a key already committed. Existing saved-key acknowledgement recovery stays
-separate from interactive completion.
+back a key already committed. Saved-key acknowledgement recovery on the next start
+creates no interactive attempt and reserves no intent; it settles the key with the
+same outcomes as the in-process retries (below).
 
 ### Readiness, acknowledgement and code steps
 
 - `status()` reports each method once Cloud is ready for the app. A ready method is
-  cached for six hours. A method that is not ready is measured again after 30
-  seconds, on resume and on an explicit retry (`refreshNegative`). In browser Google
-  mode a return link Android has not verified yet is watched with local checks for
-  up to about four minutes; readiness is measured once it is verified. A changed
-  answer is announced with the unretained `signInReadinessChanged` event.
+  cached for six hours. A fresh cached answer is always returned at once. When a
+  method in it is not ready and 30 seconds have passed, the plugin measures again
+  behind that answer and announces a change with the unretained
+  `signInReadinessChanged` event, so a sign-in screen must listen for it. A call
+  waits for a measurement only when there is no fresh answer, or on an explicit
+  retry (`refreshNegative`) of an incomplete one.
+- A measurement that gets no result (no connection, a timeout) keeps a fresh
+  answer's ready methods and announces nothing; only the next measurement is put
+  off. The answer becomes "not ready" only when no fresh answer exists.
+- Resume measures only while a sign-in screen called `status()` in the last ten
+  minutes or an attempt is in progress, and then with a growing wait while the
+  answer stays the same (30 seconds, 2 minutes, 10 minutes, then hourly). A
+  launcher host that is resumed on every Home press therefore sends nothing while
+  the owner is signed in.
+- In browser Google mode a return link Android has not verified yet is watched with
+  local checks for up to about four minutes; readiness is measured once it is
+  verified.
+- A browser Google page opens in the browser's own task on a Home (launcher) host.
+  Pressing Home does not end that attempt: it ends by its return, a cancel or the
+  pending record's ten-minute expiry. On every other host the page is in the host's
+  task, and coming back to the host without a return ends the attempt as
+  `browser-closed` after a short grace, as before.
 - A stored key Cloud did not confirm ends its sign-in step as `activation-pending`
   and `status()` reports `activationPending`. Cloud is asked again in this process
-  until its deadline, with one request just after it, and again on the next start. A
-  late confirmation arrives as the retained `signInCompleted`. A key Cloud refused
-  or never confirmed is removed with its receipt, revoked best effort and reported
-  as `activation-expired` (a rejection in the sign-in step, the retained
+  until its deadline, with one request just after it. A late confirmation arrives
+  as the retained `signInCompleted`. A key Cloud refused or never confirmed is
+  removed with its receipt, revoked best effort and reported as
+  `activation-expired` (a rejection in the sign-in step, the retained
   `signInIncomplete` afterwards).
+- The next start settles a receipt the same way. Before the deadline it
+  acknowledges at once and then continues the background rounds. After the
+  deadline it sends the one request that tells a lost confirmation from a dead
+  key. A confirmed key is announced with `signInCompleted` (four fields,
+  `accountCreated: null`); a refused or never-confirmed key is removed, only while
+  it is still the exact saved key, and reported with `signInIncomplete`. A
+  never-activated key is not left saved as a sign-in that cannot work.
+- Code sends share a local minimum of 30 seconds across email and SMS. A longer wait
+  from Cloud (`resendAt` or `Retry-After`, honoured up to one day) applies to the
+  method that was asked: an SMS limit does not hold back an email code. A
+  `cooldown` rejection and a send Cloud refused carry `data.resendAt`, which
+  `NativeCloudSignInError.from` preserves as `resendAt`.
 - A wrong code, a request with no answer and a 408, 429 or 5xx answer keep the code
   step. Their rejection carries `data.attemptKept === true`, which
   `NativeCloudSignInError.from` preserves as `attemptKept`. Only a wrong code uses
@@ -248,10 +278,17 @@ is active.
    `/api/v1/app-auth/mobile/token` and `/api/v1/app-auth/mobile/ack` routes. An
    unanswered acknowledgement is repeated until Cloud's deadline.
 3. Only a key Cloud confirmed is saved, and only while the saved key is still the
-   one the renewal presented. The old key is then revoked with
-   `DELETE /api/v1/api-keys/current`, and the retained `signInRenewed` event
-   (`{environment, expiresAt, credentialId}`) tells the renderer to read the saved
-   sign-in again.
+   one the renewal presented. The duty to revoke the old key is stored first, in
+   the native-only slot `cloud-signin:v1:retire:<environment>`
+   (`CloudSignInConfig.retiringSlot`); a renewal that cannot store it saves nothing.
+4. The host's `savedKeyRenewed(environment, credentialId)` hook runs.
+5. The old key is revoked with `DELETE /api/v1/api-keys/current`. A 2xx answer or a
+   401 (Cloud already refuses that key) ends the duty. With no answer it is retried
+   twice in this process and again on later starts until the old key expires, so a
+   renewal rotates the key and never leaves two live ones behind. A stored duty for
+   a key that is still the saved one is dropped without a request.
+6. The retained `signInRenewed` event (`{environment, expiresAt, credentialId}`)
+   tells the renderer to read the saved sign-in again.
 
 401, 403 and 409 mean Cloud will not renew this key (`sign-in-required`). Every
 other failure is asked again a day later (`deferred`). Neither removes the working
@@ -263,13 +300,33 @@ never stored.
 `renewSignIn` answers `{environment, status, expiryWarning, expiresAt?, credentialId?}`
 (`nativeSignInRenewal`). `expiryWarning` is true only when fewer than three days
 remain and renewal is impossible or has failed; show the expiry warning from it,
-not from the remaining time alone.
+not from the remaining time alone. An answer given while Cloud's confirmation of
+the new key is still awaited (`deferred`) never carries the warning.
+
+A browser Google sign-in that an earlier process began (a live pending record)
+counts as a sign-in in progress: nothing is renewed until it returns or expires.
 
 Renewal needs a host that implements `observeCredentialCommit()`: a check bound to
 the newest credential intent that reserves nothing, so background work never
 supersedes an owner's action and stops once one is reserved. The default returns
 null and the status is `unavailable`. No host in this repository implements it yet.
-The host's credential write runs its ordinary key-replacement path.
+
+A host that turns renewal on must do two more things:
+
+- Store the retiring slot like the receipt slot. A store that refuses the name makes
+  every renewal end as `deferred`.
+- Handle the save as the credential replacement it is. A store that binds a local
+  agent to the saved key (plugin-native-agent's `ResidentCredentialStore`) stops that
+  agent, removes its Cloud provider admission and runs its "Cloud changed" effects on
+  this write, exactly as for a new sign-in. Admit the agent again in
+  `savedKeyRenewed`, so that does not depend on a renderer listening for
+  `signInRenewed` at that moment. The old key is revoked only after the hook
+  returned. `test:native-android` runs the exact save through that store.
+
+Rotation is also Cloud's job: the client's `DELETE` is the second line. Cloud
+should retire the predecessor when the successor is acknowledged and allow one
+successor per key; this client then sees 401 for the old key and treats it as
+retired.
 
 ### Browser Google return in a new process
 
@@ -291,10 +348,14 @@ dialog precedes the key, and the result arrives as the retained `signInCompleted
 or `signInIncomplete`. A second factor is refused as `mfa-browser`.
 
 A record without a generation, an expired record, a sign-in already in progress
-and a host without a ledger are refused as before. One window remains: if a
-reservation's ledger write fails and that process dies before its next
-reservation, the earlier generation stays recorded until the pending record
-expires (ten minutes). No host in this repository attaches a ledger yet.
+and a host without a ledger are refused as before. A reservation whose generation
+cannot be written is tried once more and then clears the recorded value
+(`Ledger.clear`), so a later process finds nothing to adopt; `Ledger.write` must be
+an atomic replacement. One window remains: storage that accepts neither the write
+nor the clear until the process dies leaves the earlier generation recorded until
+the pending record expires (ten minutes). A host closes it by removing the pending
+slot in the same sign-out or reset that reserves the intent. No host in this
+repository attaches a ledger yet.
 
 The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
 (`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a

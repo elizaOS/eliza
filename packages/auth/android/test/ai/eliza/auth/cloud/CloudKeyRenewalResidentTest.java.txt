@@ -1,0 +1,165 @@
+package ai.eliza.auth.cloud;
+
+import ai.eliza.plugins.agent.runtime.NativeProviderAdmission;
+import ai.eliza.plugins.agent.runtime.ResidentCredentialStore;
+import ai.eliza.plugins.securestore.nativeonly.CredentialMutationConductor;
+import java.util.*;
+import org.json.JSONObject;
+
+/**
+ * The exact renewal save (CloudSignInPlugin.renewalSettled) through the store real hosts put behind
+ * `credentials(guard)` for a resident local agent: plugin-native-agent's ResidentCredentialStore with
+ * its real provider admission. Host JVM, real org.json; no Android, network, agent process or secret.
+ *
+ * What it pins: to that store a renewed key is a credential replacement. The agent is stopped, the
+ * Cloud provider admission is removed and the host's "Cloud changed" effects run, exactly as for a new
+ * sign-in. So a host that renews must admit the agent again natively (`savedKeyRenewed`), and the old
+ * key is revoked only after that hook returned.
+ */
+public class CloudKeyRenewalResidentTest {
+ static final String SAVED_ID="00000000-0000-4000-8000-000000000003", SERVER_OLD="00000000-0000-4000-8000-000000000002", SERVER_NEW="00000000-0000-4000-8000-000000000001";
+ static final String USER="3b241101-e2bb-4255-8caf-4136c566a962", ORGANIZATION="6ba7b810-9dad-41d1-80b4-00c04fd430c8";
+ static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
+ static final String PROVIDER="provider", CLOUD="cloud:production", OTHER_CLOUD="cloud:staging", RETIRING="cloud-signin:v1:retire:production";
+ static final List<String> events=new ArrayList<>();
+ static class JSObject extends JSONObject { @Override public JSObject put(String k,Object v){super.put(k,v);return this;} @Override public JSObject put(String k,long v){super.put(k,v);return this;} @Override public JSObject put(String k,boolean v){super.put(k,v);return this;} }
+ static class CloudKeyRevocation {
+  static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke:"+(NEW.equals(token)?"new":"old"));return true;}
+  static boolean retire(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("retire:"+(NEW.equals(token)?"new":"old"));return true;}
+ }
+ static class Main { void postDelayed(Runnable task,long delay){throw new AssertionError("no retry is expected");} }
+ static final long[] REVOCATION_RETRY_MS={5000,25000};
+ final Main main=new Main();final java.util.concurrent.Executor renewer=Runnable::run;
+ boolean destroyed;Object attempt;
+
+ // The host: plain slots behind the real resident policy; a stop is recorded where the conductor would retire the agent.
+ final Map<String,String> files=new HashMap<>();
+ final Object vault=new Object();
+ long epoch,intent;boolean agentRunning=true;Runnable writeGuard=()->{};
+ final ResidentCredentialStore store=new ResidentCredentialStore(new ResidentCredentialStore.Slots(){
+  public String read(String name){return files.get(name);}
+  public void write(String name,String value){check(Thread.holdsLock(vault),"slot writes hold the vault");files.put(name,value);events.add("write:"+label(name));}
+  public void remove(String name){check(Thread.holdsLock(vault),"slot removals hold the vault");files.remove(name);events.add("remove:"+label(name));}
+ },new ResidentCredentialStore.Authority(){
+  public Object credentialLock(){return vault;}
+  public void assertCurrent(){writeGuard.run();}
+  public <T> T mutate(Runnable extra,CredentialMutationConductor.Mutation<T> change)throws Exception{
+   synchronized(vault){
+    writeGuard.run();extra.run();
+    // The conductor retires the agent before a commit that needs it; an agent that is not running has nothing to stop.
+    if(change.requiresShutdown()&&agentRunning){agentRunning=false;events.add("agent-stopped");}
+    return change.commit();
+   }
+  }
+  public long epoch(){return epoch;}
+  public long intent(){return intent;}
+  public <T> T withEpoch(long expected,java.util.concurrent.Callable<T> action)throws Exception{synchronized(vault){if(expected!=epoch)throw new IllegalStateException("Owner changed");return action.call();}}
+  public void changed(){epoch++;events.add("authority-changed");}
+  public boolean admissionReadable(){return true;}
+ },new ResidentCredentialStore.Compatibility(){
+  public void beforeMutation(){}
+  public void cloudChanged(){events.add("cloud-changed");}
+  public void clearPendingReturn(){events.add("pending-return-cleared");}
+ },PROVIDER,CLOUD,OTHER_CLOUD);
+ static String label(String slot){return slot.equals(CLOUD)?"cloud":slot.equals(PROVIDER)?"provider":slot.equals(RETIRING)?"retiring":slot;}
+
+ CloudSignInConfig config(){return TestRegistration.PRODUCT;}
+ /** As a host binds it: every write and removal goes through the resident policy under the caller's guard. */
+ CloudCredentialSlots credentials(Runnable guard){
+  return new CloudCredentialSlots(){
+   public String read(String slot){return files.get(slot);}
+   public void write(String slot,String value)throws Exception{writeGuard=guard;try{store.mutateSlot(slot,null,value,false);}finally{writeGuard=()->{};}}
+   public void remove(String slot)throws Exception{writeGuard=guard;try{store.mutateSlot(slot,null,null,false);}finally{writeGuard=()->{};}}
+   public boolean compareExchange(String slot,String expected,String value)throws Exception{writeGuard=guard;try{return store.mutateSlot(slot,expected,value,true);}finally{writeGuard=()->{};}}
+  };
+ }
+ CloudCredentialSlots store(){return credentials(()->{if(destroyed)throw new IllegalStateException("closed");});}
+ boolean renewalCurrent(Runnable observed){if(destroyed||attempt!=null)return false;try{observed.run();return true;}catch(RuntimeException superseded){return false;}}
+ static JSObject renewalOutcome(CloudSignInEnvironment environment,String status,long expiresAt,boolean warning){
+  JSObject outcome=new JSObject().put("environment",environment.name).put("status",status).put("expiryWarning",warning);
+  if(expiresAt>0)outcome.put("expiresAt",expiresAt);
+  return outcome;
+ }
+ final Map<String,CloudKeyRenewal.Record> records=new HashMap<>();
+ void storeRenewalRecord(CloudSignInEnvironment environment,CloudKeyRenewal.Record record){records.put(environment.name,record);}
+ final List<JSObject> renewed=new ArrayList<>();
+ void notifyListeners(String event,JSObject value,boolean retained){check("signInRenewed".equals(event)&&retained,"only the retained renewal is announced");events.add("signInRenewed");renewed.add(value);}
+ /** The host hook under test. */
+ String hook="none";
+ void savedKeyRenewed(CloudSignInEnvironment environment,String credentialId)throws Exception{
+  events.add("savedKeyRenewed");
+  check(!events.contains("retire:old"),"the hook runs before the replaced key is revoked");
+  if(hook.equals("fails"))throw new IllegalStateException("controlled host failure");
+  if(!hook.equals("readmit"))return;
+  // Native re-admission: the same verified account, the new saved credential, then the agent starts again.
+  String saved=files.get(CLOUD);
+  String admitted=this.store.compareExchangeAdmission(files.get(PROVIDER),selection(credentialId),CLOUD,saved,identity());
+  check(admitted!=null,"the host re-admits the renewed key");
+  agentRunning=true;events.add("agent-started");
+ }
+ static String selection(String credentialId){return new JSONObject().put("provider","elizacloud").put("model",NativeProviderAdmission.CLOUD_PROVIDER_MODEL).put("environment","production").put("credentialId",credentialId).toString();}
+ static JSONObject identity(){return new JSONObject().put("userId",USER).put("organizationId",ORGANIZATION);}
+
+ /* ACTUAL_RENEWAL_SETTLED */
+
+ static void check(boolean value,String label){if(!value)throw new AssertionError(label);}
+ static CloudSignInChainHost host(String hook)throws Exception{return new CloudSignInChainHost(hook);}
+ /** A signed-in phone whose resident agent is admitted on the saved Cloud key. */
+ static final class CloudSignInChainHost extends CloudKeyRenewalResidentTest {
+  final String admittedBefore,generationBefore;final long expiresAt=System.currentTimeMillis()+5*86_400_000L;
+  CloudSignInChainHost(String hook)throws Exception{
+   events.clear();this.hook=hook;
+   String saved=new JSONObject().put("credentialId",SAVED_ID).put("token",OLD).put("expiresAt",expiresAt).put("serverCredentialId",SERVER_OLD).toString();
+   files.put(CLOUD,saved);
+   admittedBefore=store.compareExchangeAdmission(null,selection(SAVED_ID),CLOUD,saved,identity());
+   generationBefore=store.admissionGeneration();
+   check(admittedBefore!=null&&generationBefore!=null&&admittedBefore.equals(files.get(PROVIDER)),"the agent is admitted on the saved key");
+   events.clear();agentRunning=true;
+  }
+  JSObject renew(){return renewalSettled(()->{},TestRegistration.PRODUCTION,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,expiresAt+25*86_400_000L,OLD,expiresAt);}
+ }
+ public static void main(String[] args)throws Exception{
+  // 1. What the store does with the renewal's save, with a host that does nothing in the hook.
+  CloudSignInChainHost plain=host("none");
+  JSObject outcome=plain.renew();
+  check("renewed".equals(outcome.getString("status")),"the renewal saved the new key");
+  JSONObject saved=new JSONObject(plain.files.get(CLOUD));
+  check(NEW.equals(saved.getString("token"))&&SERVER_NEW.equals(saved.getString("serverCredentialId"))&&!SAVED_ID.equals(saved.getString("credentialId")),"the new key is the saved one, under a new local identity");
+  check(!NativeProviderAdmission.sameCloudCredential(new JSONObject().put("credentialId",SAVED_ID).put("token",OLD).toString(),plain.files.get(CLOUD)),"to the resident store it is a different credential");
+  check(events.indexOf("write:retiring")>=0&&events.indexOf("write:retiring")<events.indexOf("agent-stopped"),"the duty to revoke the old key is stored first, without stopping the agent");
+  check(events.indexOf("agent-stopped")<events.indexOf("write:cloud")&&Collections.frequency(events,"agent-stopped")==1,"the resident agent is stopped once, before the new key is written");
+  check(events.contains("cloud-changed")&&events.contains("authority-changed")&&events.contains("pending-return-cleared"),"the host's credential-replacement effects run, as for a new sign-in");
+  check(plain.store.admissionGeneration()==null&&!plain.files.get(PROVIDER).equals(plain.admittedBefore)&&NativeProviderAdmission.withoutAdmission(plain.admittedBefore).equals(plain.files.get(PROVIDER)),"the Cloud provider admission is removed; the selection itself stays");
+  check(!plain.agentRunning,"nothing in the plugin starts the agent again: without the host hook it waits for the renderer");
+  check(events.indexOf("write:cloud")<events.indexOf("savedKeyRenewed")&&events.indexOf("savedKeyRenewed")<events.indexOf("retire:old")&&events.indexOf("retire:old")<events.indexOf("signInRenewed"),"saved, host hook, old key revoked, renderer told");
+  check(plain.renewed.size()==1&&saved.getString("credentialId").equals(plain.renewed.get(0).getString("credentialId"))&&!plain.renewed.get(0).toString().contains(NEW),"the retained event names the identity to admit, never a key");
+  check(!plain.files.containsKey(RETIRING)&&events.contains("remove:retiring"),"the confirmed revocation removes the stored duty");
+
+  // 2. A host that admits the renewed key in the hook: the agent runs again before the old key stops working.
+  CloudSignInChainHost native_=host("readmit");
+  native_.renew();
+  String generationAfter=native_.store.admissionGeneration();
+  check(generationAfter!=null&&!generationAfter.equals(native_.generationBefore),"the agent is admitted again, on a new generation for the new credential");
+  check(new JSONObject(native_.files.get(PROVIDER)).getString("credentialId").equals(new JSONObject(native_.files.get(CLOUD)).getString("credentialId")),"the admission names the renewed credential");
+  check(native_.agentRunning&&events.indexOf("agent-started")<events.indexOf("retire:old")&&events.indexOf("retire:old")<events.indexOf("signInRenewed"),"re-admission does not depend on a renderer listener, and the old key is revoked only after it");
+  check(Collections.frequency(events,"agent-stopped")==1,"one stop for the whole renewal");
+
+  // 3. The hook fails: the old key is still retired and the renderer is still told, so it can admit the key.
+  CloudSignInChainHost failing=host("fails");
+  check("renewed".equals(failing.renew().getString("status"))&&events.contains("retire:old")&&failing.renewed.size()==1&&failing.store.admissionGeneration()==null,"a failed hook strands nothing silently");
+
+  // 4. The agent is on another provider (the Cloud key is saved but not selected): no stop, no admission change.
+  CloudSignInChainHost unselected=host("none");
+  unselected.files.remove(PROVIDER);events.clear();
+  unselected.renew();
+  check(!events.contains("agent-stopped")&&NEW.equals(new JSONObject(unselected.files.get(CLOUD)).getString("token"))&&unselected.agentRunning,"a key no agent is bound to is renewed without stopping anything");
+
+  // 5. A credential action reserved meanwhile wins: nothing is written through the store.
+  CloudSignInChainHost superseded=host("none");
+  String before=superseded.files.get(CLOUD),provider=superseded.files.get(PROVIDER);
+  JSObject refused=superseded.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,superseded.expiresAt+86_400_000L,OLD,superseded.expiresAt);
+  check("deferred".equals(refused.getString("status"))&&before.equals(superseded.files.get(CLOUD))&&provider.equals(superseded.files.get(PROVIDER))&&!superseded.files.containsKey(RETIRING),"a superseded renewal changes neither slot and stores no duty");
+  check(!events.contains("agent-stopped")&&events.equals(List.of("revoke:new"))&&superseded.store.admissionGeneration()!=null,"the agent keeps running on the saved key; only the unsaved new key is revoked");
+  System.out.println("PASS renewal save through the resident credential store (5 scenarios)");
+ }
+}

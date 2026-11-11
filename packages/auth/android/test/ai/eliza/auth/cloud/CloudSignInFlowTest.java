@@ -201,6 +201,30 @@ public final class CloudSignInFlowTest {
   check(CloudEmailCode.expiresAt(null, t) == t + 600_000L && CloudEmailCode.expiresAt(t + 3_600_000L, t) == t + 900_000L && CloudEmailCode.expiresAt(t + 60_000L, t) == t + 60_000L, "code expiry bounded");
   check(CloudEmailCode.resendAt(null, null, t) == t + 30_000L && CloudEmailCode.resendAt(t + 90_000L, "5", t) == t + 90_000L && CloudEmailCode.resendAt(null, "120", t) == t + 120_000L
    && CloudEmailCode.resendAt("invalid", "not a date", t) == t + 30_000L && CloudEmailCode.resendAt(t - 1000, "0", t) == t + 30_000L, "a server deadline is never shortened");
+  check(CloudEmailCode.resendAt(null, "3600", t) == t + 3_600_000L && CloudEmailCode.resendAt(null, "999999999", t) == t + CloudEmailCode.MAX_RESEND_WAIT_MS
+   && CloudEmailCode.resendAt(t + 365L * 86_400_000L, null, t) == t + CloudEmailCode.MAX_RESEND_WAIT_MS, "an hour is honoured; a wait of years is bounded at a day");
+  // A replaced key is retired once Cloud revoked it or already refuses it; any other answer, or none, is asked again.
+  check(CloudKeyRevocation.retired(200) && CloudKeyRevocation.retired(204) && CloudKeyRevocation.retired(401)
+   && !CloudKeyRevocation.retired(-1) && !CloudKeyRevocation.retired(403) && !CloudKeyRevocation.retired(429) && !CloudKeyRevocation.retired(500) && !CloudKeyRevocation.retired(302), "retired only by a revocation or a key Cloud no longer accepts");
+  check(product.retiringSlot(production).equals("cloud-signin:v1:retire:production") && !product.retiringSlot(production).equals(product.receiptSlot(production))
+   && TestRegistration.base().environment(production).retiringSlotPrefix("host:retire:").build().retiringSlot(production).equals("host:retire:production"), "the retiring slot is its own native-only slot");
+  // Readiness rechecks nobody asked for wait longer with every unchanged answer; a failed one keeps the methods.
+  CloudSignInReadiness.Result partial = CloudSignInReadiness.Result.measured(true, false, true, t);
+  check(partial.unchanged == 0 && partial.passiveAt == t + 30_000L && partial.passiveDue(t + 30_000L) && !partial.passiveDue(t + 29_999L), "the first passive recheck is due with the short TTL");
+  CloudSignInReadiness.Result again = CloudSignInReadiness.Result.measured(true, false, true, t + 30_000L).repeated(partial, t + 30_000L);
+  check(again.unchanged == 1 && again.passiveAt == t + 30_000L + 120_000L && again.recheckAt == t + 60_000L && again.recheckDue(t + 60_000L) && !again.passiveDue(t + 60_000L), "an unchanged answer: the sign-in screen keeps 30 seconds, a resume waits two minutes");
+  CloudSignInReadiness.Result third = CloudSignInReadiness.Result.measured(true, false, true, t).repeated(again, t), fourth = CloudSignInReadiness.Result.measured(true, false, true, t).repeated(third, t), fifth = CloudSignInReadiness.Result.measured(true, false, true, t).repeated(fourth, t);
+  check(third.passiveAt == t + 600_000L && fourth.passiveAt == t + 3_600_000L && fifth.passiveAt == t + 3_600_000L && fifth.unchanged == 4, "then ten minutes, then hourly");
+  CloudSignInReadiness.Result changed = CloudSignInReadiness.Result.measured(true, true, false, t).repeated(fourth, t);
+  check(changed.unchanged == 0 && changed.passiveAt == t + 30_000L && CloudSignInReadiness.Result.measured(true, true, true, t).repeated(fourth, t).unchanged == 0, "a changed or complete answer starts over");
+  CloudSignInReadiness.Result unmeasured = partial.unmeasured(t + 40_000L);
+  check(unmeasured.email && !unmeasured.google && unmeasured.phone && unmeasured.methodsKnown && unmeasured.until == partial.until && unmeasured.recheckAt == t + 70_000L && unmeasured.unchanged == 1 && unmeasured.sameMethods(partial), "a measurement with no result keeps the methods and their TTL and only puts off the next one");
+  CloudSignInReadiness.Result restoredPassive = CloudSignInReadiness.Result.parse(again.serialize());
+  check(restoredPassive.passiveAt == again.passiveAt && restoredPassive.unchanged == 1 && restoredPassive.recheckAt == again.recheckAt, "the passive wait survives the stored cache");
+  check(CloudSignInReadiness.Result.parse("v5-method-ttl|true|false|true|true|" + (t + 1000) + "|" + (t + 500)) == null, "an earlier cache format is measured again");
+  check(new CloudSignInReadiness.Result(true, false, true, true, t + CloudSignInReadiness.READY_TTL_MS, t, t + 365L * 86_400_000L, 2).passiveDue(t), "a passive time from the future is not trusted");
+  check(CloudSignInReadiness.resumeProbe(t, t - 1000, false) && CloudSignInReadiness.resumeProbe(t, 0, true) && !CloudSignInReadiness.resumeProbe(t, 0, false)
+   && !CloudSignInReadiness.resumeProbe(t, t - CloudSignInReadiness.RESUME_PROBE_WINDOW_MS, false) && !CloudSignInReadiness.resumeProbe(t, t + 1000, false), "resume measures only for a recent sign-in screen or an attempt in progress");
   for (String phone : new String[]{null, "", "4155550100", "+01234567", "+1 4155550100", "+12345", "+1234567890123456"}) {
    check(!CloudSmsCode.validPhone(phone), "invalid phone " + phone);
    try { CloudSmsCode.sendBody(production, phone); check(false, "invalid phone accepted"); } catch (IllegalArgumentException expected) { checks++; }

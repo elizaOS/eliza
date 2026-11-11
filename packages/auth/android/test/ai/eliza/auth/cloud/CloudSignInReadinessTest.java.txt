@@ -27,7 +27,10 @@ public class CloudSignInReadinessTest {
   void resolve(JSObject value) { resolved++; result = value; }
   void reject(String message, String code) { rejected++; }
  }
- static class Attempt { boolean google; String mfaType, phone; }
+ static class Attempt { boolean google, browserLaunched, browserInHostTask, browserPaused, cancelled, callbackReceived, returnHint, returnClaimed; String mfaType, phone, ended; }
+ static final long BROWSER_RETURN_GRACE_MS = 1500;
+ long statusAskedAt;
+ void end(Attempt current, String code, boolean burn) { check(burn, "a closed page burns its pending record"); current.ended = code; if (attempt == current) attempt = null; }
  static class Queue implements Executor { final List<Runnable> tasks = new ArrayList<>(); boolean closed; public void execute(Runnable task) { if (closed) throw new RejectedExecutionException(); tasks.add(task); } void drain() { while (!tasks.isEmpty()) tasks.remove(0).run(); } }
 
  final Object lock = new Object(); Attempt attempt; final Queue prober = new Queue();
@@ -68,6 +71,7 @@ public class CloudSignInReadinessTest {
  /* ACTUAL_STATUS */
  /* ACTUAL_STATUS_OUTCOME */
  /* ACTUAL_PROBE */
+ void probe(CloudSignInEnvironment environment, PluginCall call, boolean refreshNegative) { probe(environment, call, refreshNegative, false); }
  /** Resume also starts the saved-key renewal check; its scenarios run in the chain fixture. */
  int renewalChecks; void renewSaved() { renewalChecks++; }
  /* ACTUAL_RESUME */
@@ -127,31 +131,118 @@ public class CloudSignInReadinessTest {
   check(soon.resolved == 1 && Boolean.FALSE.equals(soon.result.values.get("google")) && fresh.prober.tasks.isEmpty(), "inside the short TTL the cached answer is served");
   System.now = start + CloudSignInReadiness.METHOD_RECHECK_MS;
   PluginCall opened = call(false), joinedOpen = call(false); fresh.status(opened); fresh.status(joinedOpen);
-  check(opened.resolved == 0 && fresh.prober.tasks.size() == 1, "after the short TTL an ordinary lookup measures the missing method again, never serving six-hour-old Google=false");
+  check(opened.resolved == 1 && joinedOpen.resolved == 1 && Boolean.TRUE.equals(opened.result.values.get("email")) && Boolean.FALSE.equals(opened.result.values.get("google")), "after the short TTL the cached ready methods are still served at once: opening sign-in never waits for a recheck");
+  check(fresh.prober.tasks.size() == 1, "and the missing method is measured again behind that answer, once, so Google=false is never kept for six hours");
   fresh.next = CloudSignInReadiness.Result.measured(true, true, true, System.now); fresh.prober.drain();
-  check(fresh.measures == 2 && opened.resolved == 1 && joinedOpen.resolved == 1 && Boolean.TRUE.equals(opened.result.values.get("google")), "Google appears without an explicit retry");
-  check(fresh.changes.size() == 1 && Boolean.TRUE.equals(fresh.changes.get(0).values.get("google")) && "production".equals(fresh.changes.get(0).values.get("environment")), "the change is announced once with its deployment");
+  check(fresh.measures == 2 && opened.resolved == 1 && joinedOpen.resolved == 1, "the calls were answered once");
+  check(fresh.changes.size() == 1 && Boolean.TRUE.equals(fresh.changes.get(0).values.get("google")) && "production".equals(fresh.changes.get(0).values.get("environment")), "Google appears without an explicit retry: the change is announced once with its deployment");
+  PluginCall after = call(false); fresh.status(after); check(Boolean.TRUE.equals(after.result.values.get("google")) && fresh.prober.tasks.isEmpty(), "the next lookup has it");
   for (boolean[] row : new boolean[][]{{false, true, true}, {true, true, false}}) {
    System.now = start;
    CloudSignInReadinessTest other = scripted(); other.readiness.put(e.name, CloudSignInReadiness.Result.measured(row[0], row[1], row[2], System.now));
    System.now += CloudSignInReadiness.METHOD_RECHECK_MS; PluginCall due = call(false); other.status(due);
-   check(due.resolved == 0 && other.prober.tasks.size() == 1, "email and SMS are measured again on the short TTL as well");
+   check(due.resolved == 1 && other.prober.tasks.size() == 1, "email and SMS are measured again on the short TTL as well");
    other.next = CloudSignInReadiness.Result.measured(row[0], row[1], row[2], System.now); other.prober.drain();
    check(due.resolved == 1 && other.changes.isEmpty(), "an unchanged answer announces nothing");
   }
-  // Resume: a due method is measured in the background; a browser attempt in progress is left alone.
+  // An explicit Retry of an incomplete answer is the one lookup that waits for the measurement.
+  System.now = start;
+  CloudSignInReadinessTest asked = scripted(); asked.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, false, true, System.now));
+  PluginCall explicit = call(true); asked.status(explicit);
+  check(explicit.resolved == 0 && asked.prober.tasks.size() == 1, "Retry waits for a fresh measurement");
+  asked.next = CloudSignInReadiness.Result.measured(true, true, true, System.now); asked.prober.drain();
+  check(explicit.resolved == 1 && Boolean.TRUE.equals(explicit.result.values.get("google")), "and is answered by it");
+
+  // A recheck that gets no result (a few seconds without a connection) keeps the cached ready methods.
+  System.now = start;
+  CloudSignInReadinessTest gap = scripted(); CloudSignInReadiness.Result partialCache = CloudSignInReadiness.Result.measured(true, false, true, System.now);
+  gap.readiness.put(e.name, partialCache); gap.stored.put(e.name, partialCache);
+  System.now += CloudSignInReadiness.METHOD_RECHECK_MS; gap.measureFails = true;
+  PluginCall open = call(false); gap.status(open); gap.prober.drain();
+  check(gap.measures == 1 && open.resolved == 1 && Boolean.TRUE.equals(open.result.values.get("email")) && Boolean.TRUE.equals(open.result.values.get("phone")), "the open sign-in screen keeps email and SMS");
+  CloudSignInReadiness.Result keptCache = gap.readiness.get(e.name);
+  check(keptCache.email && keptCache.phone && !keptCache.google && keptCache.methodsKnown && keptCache.until == partialCache.until && gap.stored.get(e.name) == keptCache, "a failed recheck neither replaces nor persists the answer as not ready");
+  check(gap.changes.isEmpty(), "and announces nothing");
+  check(keptCache.recheckAt == System.now + CloudSignInReadiness.METHOD_RECHECK_MS && !keptCache.recheckDue(System.now + CloudSignInReadiness.METHOD_RECHECK_MS - 1) && keptCache.recheckDue(System.now + CloudSignInReadiness.METHOD_RECHECK_MS), "the next recheck is due in 30 seconds");
+  PluginCall retryGap = call(true); gap.status(retryGap); gap.prober.drain();
+  check(retryGap.resolved == 1 && Boolean.TRUE.equals(retryGap.result.values.get("email")) && gap.changes.isEmpty(), "an explicit Retry without a connection also keeps what was ready");
+  gap.measureFails = false; gap.next = CloudSignInReadiness.Result.measured(true, true, true, System.now);
+  System.now += CloudSignInReadiness.METHOD_RECHECK_MS; gap.status(call(false)); gap.prober.drain();
+  check(gap.changes.size() == 1 && gap.readiness.get(e.name).complete(), "once the connection is back the missing method is measured and announced");
+  // Only a cache that is no longer fresh falls back to not ready on a failed measurement.
+  System.now = start;
+  CloudSignInReadinessTest expired = scripted(); expired.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, false, true, System.now));
+  System.now += CloudSignInReadiness.READY_TTL_MS; expired.measureFails = true;
+  PluginCall cold = call(false); expired.status(cold);
+  check(cold.resolved == 0, "an expired answer is not served");
+  expired.prober.drain();
+  check(cold.resolved == 1 && !ready(cold) && !expired.readiness.get(e.name).methodsKnown, "with no fresh answer a failed measurement is not ready");
+
+  // Resume: a due method is measured in the background while a sign-in screen asked recently; an attempt
+  // whose page is in the browser's own task (a Home host) is left alone.
   System.now = start;
   CloudSignInReadinessTest resumed = scripted(); resumed.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, false, true, System.now));
-  resumed.attempt = new Attempt(); resumed.attempt.google = true; Attempt waitingInBrowser = resumed.attempt;
+  resumed.attempt = new Attempt(); resumed.attempt.google = true; resumed.attempt.browserLaunched = true; Attempt waitingInBrowser = resumed.attempt;
+  resumed.handleOnPause(); check(!waitingInBrowser.browserPaused, "Home on a launcher host does not mark the page closed");
   resumed.handleOnResume(); check(resumed.prober.tasks.isEmpty(), "resume inside the short TTL sends nothing");
   System.now += CloudSignInReadiness.METHOD_RECHECK_MS; resumed.handleOnResume(); resumed.handleOnResume();
   check(resumed.prober.tasks.size() == 1, "resume measures a due method once");
   resumed.next = CloudSignInReadiness.Result.measured(true, true, true, System.now); resumed.prober.drain();
-  check(resumed.changes.size() == 1 && resumed.attempt == waitingInBrowser && resumed.main.delayed.isEmpty(), "resume announces the change and never ends or times a waiting browser attempt");
+  check(resumed.changes.size() == 1 && resumed.attempt == waitingInBrowser && waitingInBrowser.ended == null && resumed.main.delayed.isEmpty(), "resume announces the change and never ends or times a browser attempt in the browser's own task");
   PluginCall during = call(false); resumed.status(during);
   check(Boolean.TRUE.equals(during.result.values.get("active")) && "google".equals(during.result.values.get("kind")) && !during.result.values.containsKey("activationPending"), "the waiting attempt is still reported active");
   resumed.activating.add(e.name); PluginCall pendingKey = call(false); resumed.status(pendingKey);
   check(Boolean.TRUE.equals(pendingKey.result.values.get("activationPending")), "a stored key that waits for its acknowledgement is reported");
+
+  // Any other host: the page is in the host's own task, so coming back without a return means it was closed.
+  for (String how : new String[]{"closed", "returned", "hinted", "cancelled"}) {
+   CloudSignInReadinessTest hostTask = scripted(); hostTask.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, true, true, System.now));
+   Attempt tab = new Attempt(); tab.google = true; tab.browserLaunched = true; tab.browserInHostTask = true; hostTask.attempt = tab;
+   hostTask.handleOnPause(); check(tab.browserPaused, "the page covers the host");
+   hostTask.handleOnResume();
+   check(tab.ended == null && hostTask.main.delays.equals(List.of(BROWSER_RETURN_GRACE_MS)), "a return that is on its way gets a short grace");
+   if (how.equals("returned")) tab.returnClaimed = true; if (how.equals("hinted")) tab.returnHint = true; if (how.equals("cancelled")) { tab.cancelled = true; hostTask.attempt = null; }
+   hostTask.main.next();
+   if (how.equals("closed")) check("browser-closed".equals(tab.ended) && hostTask.attempt == null, "a closed tab ends the attempt, so email and SMS are not refused as login-active for ten minutes");
+   else check(tab.ended == null, "a return, a hint or a cancel decides instead: " + how);
+  }
+  CloudSignInReadinessTest notLaunched = scripted(); notLaunched.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, true, true, System.now));
+  notLaunched.attempt = new Attempt(); notLaunched.attempt.browserInHostTask = true;
+  notLaunched.handleOnPause(); notLaunched.handleOnResume();
+  check(notLaunched.main.delayed.isEmpty() && notLaunched.attempt.ended == null, "an attempt without a launched page (email, SMS, the account picker) is never ended by resume");
+
+  // Resume is bounded: a launcher resumes on every Home press. With one method that never becomes ready
+  // (a tenant without SMS) nothing is measured unless a sign-in screen asked recently, and then on a growing wait.
+  System.now = start;
+  CloudSignInReadinessTest launcher = scripted(); launcher.next = CloudSignInReadiness.Result.measured(true, true, false, System.now);
+  launcher.probe(e, null, false, true); launcher.prober.drain();
+  check(launcher.measures == 1, "the load-time warm-up measures once");
+  for (int minute = 1; minute <= 24 * 60; minute++) { System.now = start + minute * 60_000L; launcher.next = CloudSignInReadiness.Result.measured(true, true, false, System.now); launcher.handleOnResume(); launcher.prober.drain(); }
+  check(launcher.measures == 1 && launcher.changes.isEmpty(), "a day of resumes with no sign-in screen sends no probe at all");
+  check(launcher.renewalChecks == 24 * 60, "the renewal check still runs (it limits itself)");
+  System.now = start;
+  CloudSignInReadinessTest screen = scripted(); screen.next = CloudSignInReadiness.Result.measured(true, true, false, System.now);
+  PluginCall mounted = call(false); screen.status(mounted); screen.prober.drain();
+  check(screen.measures == 1 && mounted.resolved == 1, "the sign-in screen asks once");
+  List<Long> probedAt = new ArrayList<>();
+  for (int tick = 1; tick <= 120; tick++) {
+   System.now = start + tick * 30_000L;
+   if (tick % 10 == 0) screen.statusAskedAt = System.now;
+   screen.next = CloudSignInReadiness.Result.measured(true, true, false, System.now);
+   int before = screen.measures; screen.handleOnResume(); screen.prober.drain();
+   if (screen.measures > before) probedAt.add((System.now - start) / 1000);
+  }
+  check(probedAt.equals(List.of(30L, 150L, 750L)), "an hour of resumes every 30 seconds with the sign-in screen open sends three probes on a growing wait (30 s, 2 min, 10 min, then hourly), not 120: " + probedAt);
+  check(screen.changes.isEmpty() && screen.readiness.get(e.name).unchanged == 3, "an unchanged answer announces nothing and keeps counting");
+  PluginCall reopened = call(false); screen.status(reopened);
+  check(reopened.resolved == 1 && screen.prober.tasks.size() == 1, "the sign-in screen asking again still rechecks on the short TTL, behind the cached answer");
+  screen.next = CloudSignInReadiness.Result.measured(true, true, true, System.now); screen.prober.drain();
+  check(screen.changes.size() == 1 && screen.readiness.get(e.name).unchanged == 0, "a changed answer is announced and the wait starts over");
+  System.now = start;
+  CloudSignInReadinessTest idleScreen = scripted(); idleScreen.next = CloudSignInReadiness.Result.measured(true, true, false, System.now);
+  idleScreen.status(call(false)); idleScreen.prober.drain();
+  System.now += CloudSignInReadiness.RESUME_PROBE_WINDOW_MS; idleScreen.handleOnResume();
+  check(idleScreen.prober.tasks.isEmpty(), "ten minutes after the last lookup a resume measures nothing");
 
   // Fresh install in browser mode: Android verifies the return link after the first probe.
   System.now = start;

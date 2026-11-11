@@ -8,7 +8,7 @@
   "bounds": {
     "domain": "One Android deployment and one sign-in whose key and receipt are stored and unconfirmed. Up to four background acknowledgement rounds before Cloud's deadline and one after it. Answers are confirmed, already complete, retryable, refused, or confirmed at Cloud with the answer lost. One newer credential action (a sign-out or a sign-in that stores its own key and receipt) and one plugin close can occur at any point.",
     "assumptions": "The host's credential intent fence orders this sign-in's guarded removals against a newer credential action. The growing delay between rounds is projected to round order, and Cloud's deadline to the deadline event. The first, inline acknowledgement attempts of the sign-in step happened before the initial state.",
-    "limitations": "Revocation delivery, the replaced key's revocation, the renderer's handling of the retained events and a restart between rounds are outside this model; NativeAndroidAckRecovery covers the receipt on the next start. The JVM fixture runs the exact background acknowledgement, activation and expiry methods against synthetic slot, HTTPS and lifecycle ports."
+    "limitations": "Revocation delivery, the replaced key's revocation and the renderer's handling of the retained events are outside this model. A restart between rounds is outside it too: the next start settles the receipt with the same outcomes, which NativeAndroidAckRecovery models and the JVM fixture runs. The JVM fixture runs the exact background acknowledgement, activation and expiry methods against synthetic slot, HTTPS and lifecycle ports."
   },
   "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
   "cases": [
