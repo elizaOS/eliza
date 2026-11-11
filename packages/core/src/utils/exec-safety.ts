@@ -7,22 +7,14 @@ const UNSAFE_CHARS = /[\0\r\n;&|`$<>"']/;
 const BARE_NAME = /^[A-Za-z0-9._+-]+$/;
 
 function hasPathArguments(value: string): boolean {
+	// Any second whitespace-separated token is an argument, whatever it
+	// looks like. The old check only caught bare-name and dash tokens, so
+	// a path-like token ("/usr/bin/foo bar/baz") slipped through and the
+	// caller below then accepted the whole string as a plain path.
 	let index = 0;
-	while (index < value.length) {
-		if (value[index]?.trim() !== "") {
-			index += 1;
-			continue;
-		}
-
-		while (index < value.length && value[index]?.trim() === "") index += 1;
-		const tokenStart = index;
-		while (index < value.length && value[index]?.trim() !== "") index += 1;
-		if (tokenStart === index) return false;
-
-		const token = value.slice(tokenStart, index);
-		if (token.startsWith("-") || BARE_NAME.test(token)) return true;
-	}
-	return false;
+	while (index < value.length && value[index]?.trim() !== "") index += 1;
+	while (index < value.length && value[index]?.trim() === "") index += 1;
+	return index < value.length;
 }
 
 function isLikelyPath(value: string): boolean {
