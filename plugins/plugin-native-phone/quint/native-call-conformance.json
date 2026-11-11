@@ -15,7 +15,8 @@
       "removedCallCannotRepublishAnAlreadyQueuedDetailsCallback",
       "destroyedOwnerCannotRepublishAnAlreadyQueuedCall",
       "removingOneCallRetainsTheOtherCallAndItsNotification",
-      "currentCallStillPublishesItsNativeStateChange"
+      "currentCallStillPublishesItsNativeStateChange",
+      "callNotificationUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne"
     ]
   },
   {

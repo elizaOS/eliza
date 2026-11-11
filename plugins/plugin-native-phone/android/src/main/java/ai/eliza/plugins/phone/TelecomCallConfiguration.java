@@ -8,12 +8,20 @@ import android.app.Activity;
  */
 public final class TelecomCallConfiguration {
  public final String channelId, channelName, callScheme;
+ /** Status-bar icon of call notifications. */
+ public final int notificationIcon;
  public final Class<? extends Activity> callActivity;
 
  public TelecomCallConfiguration(String channelId, String channelName, String callScheme, Class<? extends Activity> callActivity) {
+  this(channelId, channelName, callScheme, callActivity, 0);
+ }
+
+ /** @param notificationIcon the host's monochrome drawable for call notifications; 0 keeps the platform call glyph. */
+ public TelecomCallConfiguration(String channelId, String channelName, String callScheme, Class<? extends Activity> callActivity, int notificationIcon) {
   if (channelId == null || !channelId.matches("[A-Za-z0-9_.-]{1,64}") || channelName == null || channelName.trim().isEmpty() || channelName.length() > 64
     || callScheme == null || !callScheme.matches("[a-z][a-z0-9+.-]{0,31}")) throw new IllegalArgumentException("Invalid call configuration");
   this.channelId = channelId; this.channelName = channelName; this.callScheme = callScheme;
   this.callActivity = java.util.Objects.requireNonNull(callActivity);
+  this.notificationIcon = notificationIcon != 0 ? notificationIcon : android.R.drawable.sym_action_call;
  }
 }

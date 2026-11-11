@@ -179,7 +179,8 @@ export interface DownloadRequestedEvent extends SurfaceIdOptions {
 }
 
 /**
- * A tapped link that belongs to another app (`tel:`, `mailto:`, `market:`, `intent:`).
+ * A tapped link that belongs to another app (`tel:`, `mailto:`, `sms:`, `smsto:`,
+ * `geo:`, `market:`, `intent:`).
  * The page stays where it is. `openExternalLink` opens it after the host asks; `dial`
  * only opens the dialer. `refuse` links cannot open; `fallbackUrl` is an https page an
  * `intent:` link offered instead, which the host may check and `navigate` to.

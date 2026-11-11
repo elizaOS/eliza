@@ -1445,9 +1445,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val intent = try {
                 val uri = android.net.Uri.parse(url)
                 when (uri.scheme?.lowercase()) {
-                    "mailto" -> Intent(Intent.ACTION_SENDTO, uri)
+                    "mailto", "sms", "smsto" -> Intent(Intent.ACTION_SENDTO, uri)
                     "tel" -> Intent(Intent.ACTION_DIAL, uri)
-                    "market" -> Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+                    "geo", "market" -> Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
                     else -> {
                         val parsed = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
                         Intent(Intent.ACTION_VIEW, parsed.data).addCategory(Intent.CATEGORY_BROWSABLE).apply {
