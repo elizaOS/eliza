@@ -15,10 +15,13 @@ import android.widget.TextView;
 public final class UpdateActivity extends Activity {
     private final Handler handler = new Handler();
     private TextView status;
+    private Button check;
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             status.setText(getSharedPreferences("update-status", MODE_PRIVATE)
                     .getString("message", "Check for a system update"));
+            check.setEnabled(!UpdateRunner.get(UpdateActivity.this).running()
+                    && !SystemUpdateJob.requestedPending(UpdateActivity.this));
             handler.postDelayed(this, 2000);
         }
     };
@@ -38,9 +41,10 @@ public final class UpdateActivity extends Activity {
             return insets;
         });
         status = new TextView(this); status.setTextSize(18); content.addView(status);
-        Button check = new Button(this); check.setText("Check for updates");
+        check = new Button(this); check.setText("Check for updates");
         check.setOnClickListener(view -> {
-            UpdateRunner.status(this, "Waiting for enough battery and an unmetered network");
+            if (UpdateRunner.get(this).running() || SystemUpdateJob.requestedPending(this)) return;
+            UpdateRunner.status(this, "Checking for updates");
             SystemUpdateJob.schedule(this, true); handler.removeCallbacks(refresh); handler.post(refresh);
         });
         content.addView(check); setContentView(content); content.requestApplyInsets();
