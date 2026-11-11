@@ -28,8 +28,18 @@ Device navigation exposes provider-reported maneuvers, route progress, origin
 search, saved-place matches and explicit rerouting. Route projection uses the
 short great-circle segments, including routes across the date line. The optional
 map plane draws selectable pins and a moving-device heading, and can follow the
-position during navigation. Hosts still own location permission, voice policy,
-provider configuration and presentation.
+position during navigation. `onInteraction` reports a direct map gesture (pass it to
+`stopFollowing`) and `onViewport` the settled centre and zoom (pass it to
+`setViewport`, which ranks later searches around a regional view). `MapsScreen`
+passes both callbacks to the host's `createPlane` argument; forward them to
+`MapPlaneOptions`. Hosts still own location permission, voice policy, provider
+configuration and presentation.
+
+Hosts may set `initialView` to choose the opening centre and zoom of a worldwide
+basemap. Regional maps keep their coverage. A new complete result-pin input is
+fitted once; repeating it leaves the camera alone. Selection, routes and active
+following retain camera ownership. `MapsObservation.qnt` includes this bounded
+camera contract; it does not prove an external host uses the opening option.
 
 A host may supply `selectionPadding` for its own panels. The map samples it on
 updates and idle after resize, so a selected place stays visible when panels
@@ -45,7 +55,8 @@ same helper when a route is fitted. Controls outside the map reserve no space.
 
 `MapsScreenController` (`./client/maps-screen`) is the phone Maps screen without
 markup: search and coordinate pins, place detail with saved places and renaming,
-directions from an explicit origin, provider-limited travel modes, foreground
+directions from the device position when location is already granted (otherwise from a
+chosen starting point), provider-limited travel modes, foreground
 guidance from fresh precise fixes, explicit reroute, screen-off sessions, voice,
 sharing, retained place/route state across view changes, cross-app hand-offs (for example a Calendar event's location, with Back
 to that event) and the agent's `MapsNavigationSurface`. A host renders `view()`
@@ -63,7 +74,12 @@ space and use side-by-side panels in wide, short windows. `--maps-text-scale`
 navigation actions, while ordinary text keeps map overlays. Primary
 controls precede the map and sheets in reading order. Map Retry recreates only
 the map plane; the selected place, route and navigation remain in the controller.
-The screen never invents a place, route, arrival time or location.
+The screen never invents a place, route, arrival time or location. Search context
+revisions bind the admitted query, provider, area, readiness and complete ordered
+results. An unchanged render retains its revision. `quint/MapsObservation.qnt`
+checks this bounded observation contract and camera intent against the real
+controller and complete React view suite. It does not prove external host wiring
+or physical navigation.
 
 ## Eliza Cloud Maps
 

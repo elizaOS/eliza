@@ -76,6 +76,8 @@ export interface MapPlaneOptions {
   onPin?(id: string): void;
   /** Only direct map gestures interrupt camera following. */
   onInteraction?(): void;
+  /** The centre and zoom of the visible map, each time the map settles. */
+  onViewport?(center: Coordinate, zoom: number): void;
   fontUrl: string;
   workerUrl: string;
   accent: string;
@@ -96,6 +98,11 @@ export interface MapPlaneOptions {
   ): Promise<{ status: number; bytes: Uint8Array<ArrayBuffer> }>;
   /** Provider copyright for the visible area of a Cloud raster basemap. */
   onCopyright?(text: string): void;
+  /**
+   * Where a worldwide basemap opens. The default is the whole world around the
+   * prime meridian. A regional map always opens on its own coverage.
+   */
+  initialView?: { center: Coordinate; zoom?: number };
 }
 /** Renderer only: regional transport or explicit public imagery; no search or geolocation. */
 export class MapPlane {
@@ -109,6 +116,7 @@ export class MapPlane {
   private requestedRoute?: Route | null;
   private requestedOverlay: MapOverlay = {};
   private pins = new Map<string, { key: string; marker: Marker }>();
+  private lastPins = "";
   private position?: Marker;
   private lastPosition = "";
   private following = false;
@@ -157,10 +165,15 @@ export class MapPlane {
     setWorkerCount(1);
     const protocol = this.protocol;
 
+    const opening = worldwide ? options.initialView : undefined;
     const mapOptions: MapOptions = {
       container,
-      center: worldwide ? [0, 20] : [(w + e) / 2, (s + n) / 2],
-      zoom: worldwide ? Math.max(2, raster?.minZoom ?? 0) : 14,
+      center: opening
+        ? [opening.center.longitude, opening.center.latitude]
+        : worldwide
+          ? [0, 20]
+          : [(w + e) / 2, (s + n) / 2],
+      zoom: worldwide ? Math.max(opening?.zoom ?? 2, raster?.minZoom ?? 0) : 14,
       minZoom: worldwide ? (raster?.minZoom ?? 0) : 11,
       maxZoom: raster ? Math.min(raster.maxZoom, 20) : 18,
       maxBounds: worldwide
@@ -363,6 +376,14 @@ export class MapPlane {
     this.map.on("idle", () => {
       if (this.destroyed) return;
       container.dataset.mapZoom = String(this.map.getZoom());
+      if (options.onViewport) {
+        // MapLibre keeps unwrapped longitudes while panning world copies.
+        const center = this.map.getCenter().wrap();
+        options.onViewport(
+          { latitude: center.lat, longitude: center.lng },
+          this.map.getZoom(),
+        );
+      }
       container.dataset.mapFeatureCount = String(
         this.map.queryRenderedFeatures(
           worldwide ? undefined : { layers: ["roads"] },
@@ -598,6 +619,23 @@ export class MapPlane {
       duration: newSelection && this.globalBasemap ? 0 : 350,
     });
   }
+  /**
+   * Bring a new set of result pins into view on a worldwide basemap. A selected
+   * place, a route and navigation following each own the camera instead.
+   */
+  private showPins(pins: readonly MapPin[]) {
+    const padding =
+      this.options.selectionPadding?.() ?? this.options.routePadding;
+    const longitudes = pins.map((pin) => pin.coordinate.longitude),
+      latitudes = pins.map((pin) => pin.coordinate.latitude);
+    this.map.fitBounds(
+      [
+        [Math.min(...longitudes), Math.min(...latitudes)],
+        [Math.max(...longitudes), Math.max(...latitudes)],
+      ],
+      { padding, duration: 350, maxZoom: 14 },
+    );
+  }
   update(
     selected?: Coordinate,
     route?: Route | null,
@@ -628,6 +666,25 @@ export class MapPlane {
       }
     }
     this.updateSelectionCamera(selectionChanged);
+    const pins = overlay.pins || [];
+    const pinsKey = JSON.stringify(
+      pins.map((pin) => [
+        pin.id,
+        pin.coordinate.longitude,
+        pin.coordinate.latitude,
+      ]),
+    );
+    const pinsChanged = pinsKey !== this.lastPins;
+    this.lastPins = pinsKey;
+    if (
+      pinsChanged &&
+      pins.length &&
+      this.globalBasemap &&
+      !selected &&
+      !route &&
+      !overlay.follow
+    )
+      this.showPins(pins);
     const routeKey = route?.id || "";
     if (routeKey === this.lastRoute) return;
     this.lastRoute = routeKey;

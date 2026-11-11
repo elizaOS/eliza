@@ -47,9 +47,13 @@ public final class LocalVoiceRecording {
   if(stale!=null)for(File candidate:stale)candidate.delete();
  }
  private static JSONObject put(JSONObject value,String key,Object item){try{return value.put(key,item);}catch(JSONException error){throw new IllegalStateException(error);}}
- public synchronized JSONObject start(int maxDurationMs)throws IOException{
+ /** Checks admission without acquiring or replacing any microphone owner. */
+ public synchronized void checkStart(int maxDurationMs){
   if(maxDurationMs!=SHORT_LIMIT_MS&&maxDurationMs!=LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");
   if(file!=null)throw new IllegalStateException("Finish or discard the current recording first");
+ }
+ public synchronized JSONObject start(int maxDurationMs)throws IOException{
+  checkStart(maxDurationMs);
   id=UUID.randomUUID().toString();file=new File(context.getCacheDir(),prefix+id+".m4a");
   try{
    recorder=new MediaRecorder();
@@ -98,6 +102,12 @@ public final class LocalVoiceRecording {
   final String ownedId=id;
   try{events.accept(stop());}
   catch(RuntimeException error){JSONObject result=new JSONObject();put(result,"recordingId",ownedId);put(result,"status","failed");put(result,"message","Recording could not be saved");events.accept(result);}
+ }
+ /** A new live owner may proceed only after the draft microphone was released.
+  * Keep a successfully finalized draft available to its original caller. */
+ public synchronized void finishBeforeCapture(){
+  stopAutomatically();
+  if(recorder!=null)throw new IllegalStateException("Recording microphone cleanup is unconfirmed");
  }
  /**
   * The host's own finished recordings that transcription may also select by id, for example the

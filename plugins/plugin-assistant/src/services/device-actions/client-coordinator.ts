@@ -21,6 +21,7 @@
  * journal store, executors and recovery readers, and a small profile with the
  * owner-facing product name, record copy and view admission policy.
  */
+import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   browserDestinationMatches,
   directBrowserDestination,
@@ -171,6 +172,18 @@ import {
   validateReminderCreate,
   validateReminderCreateResult,
 } from "./reminder-create-contract.ts";
+import {
+  isSmsCompose,
+  isTelephonyAction,
+  isTelephonyRead,
+  selectedTelephonyView,
+  type TelephonyActionOperation,
+  type TelephonyActionResult,
+  telephonyActionCapabilityAvailable,
+  telephonyActionReceiptOutcome,
+  validateTelephonyAction,
+  validateTelephonyActionResult,
+} from "./telephony-actions-contract.ts";
 import type {
   WorkflowDeviceBinding,
   WorkflowDeviceTarget,
@@ -249,6 +262,7 @@ export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
   | PhoneDialOperation
+  | TelephonyActionOperation
   | ReminderCreateOperation
   | WorkflowPresentationOperation
   | ClockHandoffOperation
@@ -352,6 +366,8 @@ export interface DeviceExecutionResult {
   cameraResult?: CameraCaptureResult;
   smsResult?: SmsSendResult;
   dialResult?: PhoneDialResult;
+  /** The one typed result of a call, contact change, contact SMS or open-item read. */
+  telephonyResult?: TelephonyActionResult;
   /** Local Browser presentation only; never persisted or uploaded. */
   presentBrowser?: () => void;
 }
@@ -518,6 +534,17 @@ export function dialDeviceStatus(
 ): "succeeded" | "failed" {
   return phoneDialReceiptOutcome(result) === "applied" ? "succeeded" : "failed";
 }
+/** A call receipt proves a started call, never a connected one; an unknown SMS stays unknown. */
+export function telephonyDeviceStatus(
+  result: TelephonyActionResult,
+): "succeeded" | "failed" | "unknown" {
+  const outcome = telephonyActionReceiptOutcome(result);
+  return outcome === "applied"
+    ? "succeeded"
+    : outcome === "failed"
+      ? "failed"
+      : "unknown";
+}
 export function validateDeviceOperation(
   value: unknown,
   policy: DeviceOperationPolicy,
@@ -526,6 +553,7 @@ export function validateDeviceOperation(
   if (isCameraCapture(p)) return validateCameraCapture(p);
   if (isSmsSend(p)) return validateSmsSend(p);
   if (isPhoneDial(p)) return validatePhoneDial(p);
+  if (isTelephonyAction(p)) return validateTelephonyAction(p);
   if (isReminderCreate(p)) return validateReminderCreate(p);
   if (isClockHandoffOperation(p)) return validateClockHandoffDispatch(p);
   if (isMapsOperation(p)) return validateMapsOperation(p);
@@ -612,6 +640,14 @@ export function validateReviewableDeviceOperation(
 // ── Screen binding ──────────────────────────────────────────────────────────
 
 export const CAMERA_CONTEXT_NOTICE = "Open Camera to take the requested photo.";
+/**
+ * Thrown by a device executor that refused before it started any effect, with
+ * a reason the owner can read. The attempt closes as failed with that reason.
+ * Any other executor failure stays an unknown outcome.
+ */
+export class DeviceActionNotStarted extends Error {
+  override readonly name = "DeviceActionNotStarted";
+}
 /** A pending proposal that does not fit the current screen. Its message is shown to the owner. */
 export class ContextNotice extends Error {
   override readonly name = "ContextNotice";
@@ -799,6 +835,17 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     throw new ContextNotice(
       "Unlock the phone and keep it open to review this number.",
     );
+  // Calls, contact changes, contact SMS, voicemail deletion and reads of the
+  // open thread or voicemail never run on a locked or hidden phone.
+  if (
+    isTelephonyAction(operation) &&
+    (context.sensitive || ports.foregroundHidden())
+  )
+    throw new ContextNotice(
+      isTelephonyRead(operation)
+        ? "Unlock the phone and keep it open to share this."
+        : "Unlock the phone and keep it open to review this action.",
+    );
   if (
     isSmsSend(operation) &&
     (context.sensitive ||
@@ -818,9 +865,11 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     !notesOrganizeContextAllowed(context, operation)
   )
     throw new ContextNotice(
-      operation.type === "notes_record"
-        ? "Open Notes to record a voice note."
-        : "Open Home or Notes to review this Notes action.",
+      operation.type === "notes_list_filter"
+        ? "Open the Notes list to filter it."
+        : operation.type === "notes_record"
+          ? "Open Notes to record a voice note."
+          : "Open Home or Notes to review this Notes action.",
     );
   if (isFilesOperation(operation) && !filesContextAllowed(operation, context))
     throw new ContextNotice(
@@ -1137,9 +1186,16 @@ export class DeviceActionCoordinator<
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
   private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
   private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
+  private selectedTelephonyRequests = new Map<
+    string,
+    { context: string; expiresAt: number }
+  >();
   constructor(
     ports: DeviceActionCoordinatorPorts<C, R>,
-    private readonly options: { currentRequestBrowserPolicy?: boolean } = {},
+    private readonly options: {
+      currentRequestBrowserPolicy?: boolean;
+      currentRequestTelephonyPolicy?: boolean;
+    } = {},
   ) {
     this.ports = ports;
     this.session = ports.session;
@@ -1293,6 +1349,11 @@ export class DeviceActionCoordinator<
       !phoneDialCapabilityAvailable(op, this.credential.capabilities)
     )
       throw Error("Dialing was not negotiated with this phone");
+    if (
+      isTelephonyAction(op) &&
+      !telephonyActionCapabilityAvailable(op.type, this.credential.capabilities)
+    )
+      throw Error("This telephony action was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
       throw Error("Native SMS was not negotiated with this phone");
     if (
@@ -1312,7 +1373,11 @@ export class DeviceActionCoordinator<
       throw Error("Files access was not negotiated with this agent");
     if (
       isNotesOrganizeOperation(op) &&
-      !this.capability(NOTES_ORGANIZE_CAPABILITY)
+      !this.capability(
+        op.type === "notes_list_filter"
+          ? NOTES_LIST_FILTER_CAPABILITY
+          : NOTES_ORGANIZE_CAPABILITY,
+      )
     )
       throw Error("Notes folders were not negotiated with this agent");
     if (
@@ -1480,6 +1545,8 @@ export class DeviceActionCoordinator<
         title: "Open dial screen",
         description: `${op.target.kind === "number" ? `Number: ${op.target.number}` : `Contact: ${op.target.query}`}\n\nOpens your phone app with this number. You place the call there.`,
       };
+    if (isTelephonyAction(op))
+      return { ...base, ...describeTelephonyAction(op), ...readReply };
     if (isSmsSend(op)) {
       const sim = this.profile.simLabel?.(op.subscriptionId);
       return {
@@ -1574,15 +1641,21 @@ export class DeviceActionCoordinator<
     const browserRequestKey = proof
       ? this.requestKey(proof.messageId)
       : undefined;
-    if (this.options.currentRequestBrowserPolicy) proof?.current();
+    const currentRequestPolicy =
+      this.options.currentRequestBrowserPolicy ||
+      this.options.currentRequestTelephonyPolicy;
+    if (currentRequestPolicy) proof?.current();
     const { valid, invalid } = await this.listing(signal);
     assertCurrentReview();
-    if (this.options.currentRequestBrowserPolicy && proof) {
+    if (currentRequestPolicy && proof) {
       proof.current();
       if (browserRequestKey !== this.requestKey(proof.messageId))
         throw Error("The current device action request changed");
     }
     this.proposals.clear();
+    for (const [id, binding] of this.selectedTelephonyRequests)
+      if (binding.expiresAt <= Date.now())
+        this.selectedTelephonyRequests.delete(id);
     const pendingIds = new Set(valid.map((proposal) => proposal.id));
     for (const id of this.filesReviews.keys())
       if (!pendingIds.has(id)) this.filesReviews.delete(id);
@@ -1629,6 +1702,35 @@ export class DeviceActionCoordinator<
           notice: `${card.title}: ${notice}`,
         });
         continue;
+      }
+      const selectedView =
+        this.options.currentRequestTelephonyPolicy &&
+        selectedTelephonyView(proposal.operation);
+      if (selectedView) {
+        const messageId = proposal.requestMessageId;
+        const binding = messageId
+          ? this.selectedTelephonyRequests.get(messageId)
+          : undefined;
+        const selectionContext = contextKey(context);
+        if (
+          !messageId ||
+          context.view !== selectedView ||
+          (binding
+            ? binding.context !== selectionContext
+            : proof?.messageId !== messageId ||
+              this.selectedTelephonyRequests.size >= 128)
+        ) {
+          items.push({
+            proposalId: proposal.id,
+            proposal: null,
+            notice: `${card.title}: Ask again from the open ${selectedView === "messages" ? "conversation" : "voicemail"}.`,
+          });
+          continue;
+        }
+        this.selectedTelephonyRequests.set(messageId, {
+          context: selectionContext,
+          expiresAt: Math.max(binding?.expiresAt ?? 0, proposal.expiresAt),
+        });
       }
       // A Files move or trash binds the identity of each file as the card shows
       // it; whatever identity the agent sent is replaced.
@@ -1727,6 +1829,8 @@ export class DeviceActionCoordinator<
   /** Only proposals bound by the host to this exact freshly sent user message may run.
    * Only reversible local actions bypass the optional review. Sends, deletes, private
    * reads and Calendar/reminder writes retain their recorded separate review policy.
+   * A reply draft is such a local action: it lands in the open conversation's text
+   * field, visible and editable, and only the owner's own Send tap sends it.
    * Recovery, workflows and old hosts remain review-only; ordinary OS permissions still apply. */
   async performRequested(
     messageId: string,
@@ -1742,6 +1846,7 @@ export class DeviceActionCoordinator<
       "browser_navigate",
       "camera_capture_photo",
       "photo_library_select",
+      "sms_reply_selected",
       ...NOTES_ORGANIZE_DIRECT_TYPES,
       ...FILES_DIRECT_TYPES,
       ...PHOTOS_VIEW_DIRECT_TYPES,
@@ -1925,6 +2030,19 @@ export class DeviceActionCoordinator<
         throw Error("Missing dial result");
     } else if (result.dialResult !== undefined)
       throw Error("Unexpected dial result");
+    let telephonyResult: TelephonyActionResult | undefined;
+    if (isTelephonyAction(op)) {
+      if (result.telephonyResult !== undefined) {
+        telephonyResult = validateTelephonyActionResult(
+          op,
+          result.telephonyResult,
+        );
+        if (telephonyDeviceStatus(telephonyResult) !== result.status)
+          throw Error("Telephony outcome mismatch");
+      } else if (result.status !== "unknown")
+        throw Error("Missing telephony result");
+    } else if (result.telephonyResult !== undefined)
+      throw Error("Unexpected telephony result");
     let smsResult: SmsSendResult | undefined;
     if (isSmsSend(op)) {
       if (result.smsResult !== undefined) {
@@ -2054,6 +2172,7 @@ export class DeviceActionCoordinator<
     return {
       smsResult,
       dialResult,
+      telephonyResult,
       clockResult,
       mapsResult,
       photoLibraryResult,
@@ -2092,7 +2211,11 @@ export class DeviceActionCoordinator<
     const p = reviewed.proposal,
       // Minted before `busy` is taken: a context without randomUUID refuses
       // this approval instead of leaving the coordinator busy for good.
-      minted = isSmsSend(p.operation) ? p.id : crypto.randomUUID();
+      // Both SMS operations use the proposal as the native journal identity.
+      minted =
+        isSmsSend(p.operation) || isSmsCompose(p.operation)
+          ? p.id
+          : crypto.randomUUID();
     this.busy = true;
     this.executing = proposalId;
     this.proposals.delete(proposalId);
@@ -2111,7 +2234,8 @@ export class DeviceActionCoordinator<
         earlier.operationHash === operationHash &&
         this.ownEntry(earlier, p) &&
         this.ownDevice(earlier) &&
-        (!isSmsSend(p.operation) || earlier.operationId === p.id)
+        (!(isSmsSend(p.operation) || isSmsCompose(p.operation)) ||
+          earlier.operationId === p.id)
           ? earlier
           : undefined;
       const operationId = adopted?.operationId ?? minted;
@@ -2178,7 +2302,7 @@ export class DeviceActionCoordinator<
       execution.assertPrepared();
       const claimed = await this.mutation(p, "claim", {}, signal);
       if (
-        isSmsSend(p.operation) &&
+        (isSmsSend(p.operation) || isSmsCompose(p.operation)) &&
         claimed.providerIdempotencyKey !== operationId
       )
         throw Error("SMS execution claim identity changed");
@@ -2191,14 +2315,16 @@ export class DeviceActionCoordinator<
         attemptId: claimed.attemptId,
       });
       let result: ExecutionResult;
+      let notDispatched = false;
       try {
         signal.throwIfAborted();
-        if (p.expiresAt <= Date.now()) throw new Error("Expired action");
         const bindingHash = await this.bindingHash(
           this.session.sessionId,
           p,
           operationId,
         );
+        if (p.expiresAt <= Date.now())
+          throw new DeviceActionNotStarted("This action expired.");
         execution.markDispatched(reserved.entry);
         const journalIdentity = { scope: this.scope, proposalId: p.id };
         if (isForegroundReviewOperation(p.operation)) {
@@ -2234,14 +2360,23 @@ export class DeviceActionCoordinator<
             journalIdentity,
             p.calendarAgendaSource,
           );
-      } catch {
+      } catch (error) {
         // `markDispatched` runs before any port call, so an attempt that never
-        // reached it had no effect; one that did stays uncertain.
-        result = execution.dispatched
-          ? { status: "unknown", summary: UNKNOWN_SUMMARY }
-          : { status: "failed", summary: NOT_DISPATCHED_SUMMARY };
+        // reached it had no effect, and an executor that throws
+        // DeviceActionNotStarted refused before its effect. Any other failure
+        // after dispatch stays uncertain.
+        const refused = error instanceof DeviceActionNotStarted;
+        notDispatched = refused || !execution.dispatched;
+        result = notDispatched
+          ? {
+              status: "failed",
+              summary:
+                refused && error.message
+                  ? `${NOT_DISPATCHED_SUMMARY} ${error.message}`
+                  : NOT_DISPATCHED_SUMMARY,
+            }
+          : { status: "unknown", summary: UNKNOWN_SUMMARY };
       }
-      const notDispatched = !execution.dispatched;
       const typed: TypedResults = notDispatched
         ? {}
         : await this.typedResults(p, result, operationId, context);
@@ -2250,7 +2385,13 @@ export class DeviceActionCoordinator<
         proposalId,
         status: result.status,
         summary: result.summary,
-        result: { operationId, ...definedResults(typed) },
+        result: {
+          operationId,
+          ...definedResults(typed),
+          ...(result.status === "failed"
+            ? { dispatch: notDispatched ? "not_started" : "attempted" }
+            : {}),
+        },
       });
       if (execution.dispatched) execution.settle(reserved.entry);
       // A completed device effect is journaled even if the UI epoch was cancelled.
@@ -2343,6 +2484,7 @@ export class DeviceActionCoordinator<
           typed.calendarResult ||
           typed.reminderResult ||
           typed.mapsResult ||
+          typed.telephonyResult ||
           typed.readResult ||
           fg?.kind === "calendar_availability" ||
           (fg?.kind === "calendar_named" && fg.action === "read")) &&
@@ -2593,6 +2735,11 @@ export class DeviceActionCoordinator<
       if (isPhoneDial(op)) {
         const result = await this.savedDialResult(p, entry);
         return result && dialDeviceStatus(result);
+      }
+      if (isTelephonyAction(op)) {
+        const result = await this.savedTelephonyResult(p, entry);
+        const status = result && telephonyDeviceStatus(result);
+        return status === "unknown" ? undefined : status;
       }
       const result = await this.savedClockResult(p, entry);
       return !result || result.status === "unknown"
@@ -2894,7 +3041,7 @@ export class DeviceActionCoordinator<
         ...identity,
         status: "failed",
         summary: NOT_DISPATCHED_SUMMARY,
-        result: { operationId: entry.operationId },
+        result: { operationId: entry.operationId, dispatch: "not_started" },
       });
     } else {
       if (entry.attemptId !== p.attemptId) return entry;
@@ -2915,6 +3062,7 @@ export class DeviceActionCoordinator<
         result: {
           operationId: entry.operationId,
           ...(smsResult ? { smsResult } : {}),
+          ...(status === "failed" ? { dispatch: "attempted" } : {}),
         },
       });
     }
@@ -2927,6 +3075,7 @@ export class DeviceActionCoordinator<
     return {
       smsResult: await this.savedSmsResult(p, entry),
       dialResult: await this.savedDialResult(p, entry),
+      telephonyResult: await this.savedTelephonyResult(p, entry),
       clockResult: await this.savedClockResult(p, entry),
       mapsResult: await this.savedMapsResult(p, entry),
       cameraResult: await this.savedCameraResult(p, entry),
@@ -3058,6 +3207,35 @@ export class DeviceActionCoordinator<
     );
     if (entry.status !== dialDeviceStatus(result))
       throw Error("Saved dial outcome mismatch");
+    return result;
+  }
+  /** Saved native evidence only; a call, change or send is never repeated to obtain it. */
+  private async savedTelephonyResult(
+    p: DeviceProposal,
+    summary: DeviceJournalEntry,
+  ): Promise<TelephonyActionResult | undefined> {
+    const op = p.operation;
+    if (!isTelephonyAction(op)) return undefined;
+    const refusal =
+      "No exact saved telephony receipt; the action will not be repeated";
+    const entry = await this.savedEntry(p, summary, refusal, { device: true });
+    if (
+      isSmsCompose(op) &&
+      (entry.operationId !== p.id ||
+        p.providerIdempotencyKey !== entry.operationId)
+    )
+      throw Error(refusal);
+    if (entry.result?.telephonyResult === undefined) {
+      if (entry.status !== "unknown")
+        throw Error("Missing saved telephony receipt");
+      return undefined;
+    }
+    const result = validateTelephonyActionResult(
+      op,
+      entry.result.telephonyResult,
+    );
+    if (entry.status !== telephonyDeviceStatus(result))
+      throw Error("Saved telephony outcome mismatch");
     return result;
   }
   private async savedClockResult(
@@ -3304,6 +3482,18 @@ export class DeviceActionCoordinator<
         applied !== (dialDeviceStatus(dialResult) === "succeeded"))
     )
       throw Error("Dial reconciliation requires exact saved handoff evidence");
+    const telephonyResult = entry
+      ? await this.savedTelephonyResult(p, entry)
+      : undefined;
+    if (
+      isTelephonyAction(op) &&
+      (!telephonyResult ||
+        telephonyDeviceStatus(telephonyResult) === "unknown" ||
+        applied !== (telephonyDeviceStatus(telephonyResult) === "succeeded"))
+    )
+      throw Error(
+        "Telephony reconciliation requires exact saved evidence; an unknown outcome cannot be called applied or not applied",
+      );
     const clockResult = entry
       ? await this.savedClockResult(p, entry)
       : undefined;
@@ -3384,13 +3574,15 @@ export class DeviceActionCoordinator<
           ...((applied ||
             isClockHandoffOperation(op) ||
             isSmsSend(op) ||
-            isPhoneDial(op)) &&
+            isPhoneDial(op) ||
+            isTelephonyAction(op)) &&
           entry
             ? { operationId: entry.operationId }
             : {}),
           ...receiptResult({
             smsResult,
             dialResult,
+            telephonyResult,
             foregroundResult,
             clockResult,
             mapsResult,
@@ -3411,6 +3603,7 @@ export class DeviceActionCoordinator<
 type TypedResults = {
   smsResult?: SmsSendResult;
   dialResult?: PhoneDialResult;
+  telephonyResult?: TelephonyActionResult;
   clockResult?: ClockHandoffResult;
   mapsResult?: MapsResult;
   cameraResult?: CameraCaptureResult;
@@ -3426,20 +3619,104 @@ function handoffOperation(operation: ReviewableDeviceOperation): boolean {
   return (
     isSmsSend(operation) ||
     isPhoneDial(operation) ||
+    (isTelephonyAction(operation) && !isTelephonyRead(operation)) ||
     isClockHandoffOperation(operation)
   );
+}
+/** Review-card copy. The phone's own review shows the resolved name, number and before/after. */
+function describeTelephonyAction(operation: TelephonyActionOperation): {
+  title: string;
+  description: string;
+} {
+  const fields = (set: {
+    displayName?: string;
+    phoneNumbers?: string[];
+    emailAddresses?: string[];
+  }) =>
+    [
+      set.displayName === undefined ? undefined : `Name: ${set.displayName}`,
+      set.phoneNumbers === undefined
+        ? undefined
+        : `Numbers: ${set.phoneNumbers.join(", ") || "none"}`,
+      set.emailAddresses === undefined
+        ? undefined
+        : `Email: ${set.emailAddresses.join(", ") || "none"}`,
+    ]
+      .filter((line) => line !== undefined)
+      .join("\n");
+  switch (operation.type) {
+    case "phone_call":
+      return {
+        title: "Place call",
+        description: `${operation.target.kind === "number" ? `Number: ${operation.target.number}` : `Contact: ${operation.target.query}`}\n\nCalls this number from your phone after you confirm. An emergency number opens your phone app instead.`,
+      };
+    case "contact_create":
+      return {
+        title: "Add contact",
+        description: `${fields(operation.contact)}\n\nSaves this contact on your phone after you confirm.`,
+      };
+    case "contact_update":
+      return {
+        title: "Change contact",
+        description: `Contact: ${operation.query}\n${fields(operation.set)}\n\nReplaces these details after you confirm. Nothing else is shared with the agent.`,
+      };
+    case "contact_delete":
+      return {
+        title: "Delete contact",
+        description: `Contact: ${operation.query}\n\nDeletes this contact from your phone after you confirm.`,
+      };
+    case "sms_compose":
+      return {
+        title: "Review SMS",
+        description: `To contact: ${operation.query}\n\n${operation.body}\n\nConfirm the recipient again in Android.`,
+      };
+    case "sms_reply_selected":
+      return {
+        title: "Draft reply",
+        description: `${operation.body}\n\nPuts this in the open conversation's text field. Nothing is sent until you tap Send there.`,
+      };
+    case "messages_read_selected":
+      return {
+        title: "Share open messages",
+        description:
+          "Share the messages showing in the open thread with the agent. Other threads and phone numbers stay private.",
+      };
+    case "voicemail_read_selected":
+      return {
+        title: "Share open voicemail",
+        description:
+          "Share the open voicemail and its transcript with the agent. Other voicemail stays private.",
+      };
+    case "voicemail_delete_selected":
+      return {
+        title: "Delete voicemail",
+        description: "Deletes the open voicemail after you confirm.",
+      };
+  }
 }
 const UNKNOWN_SUMMARY =
   "Action outcome needs review. It will not be repeated automatically.";
 const NOT_DISPATCHED_SUMMARY = "Not started. Nothing was sent.";
 const NOT_DISPATCHED_CODE = "DEVICE_NOT_DISPATCHED";
-/** A journal entry this device finished before dispatch: failed, with no typed result. */
+/** A journal entry this device finished with no effect: failed, with no typed result. */
 function notDispatchedEntry(entry: DeviceJournalEntry): boolean {
+  const result = entry.result;
+  if (
+    entry.phase !== "terminal" ||
+    entry.status !== "failed" ||
+    result?.operationId !== entry.operationId
+  )
+    return false;
+  if (result.dispatch === "not_started")
+    return Object.keys(result).every(
+      (key) => key === "operationId" || key === "dispatch",
+    );
+  // Old coordinator records used one fixed no-call summary. New failures
+  // always carry a marker; executor display copy cannot acquire this authority.
   return (
-    entry.phase === "terminal" &&
-    entry.status === "failed" &&
+    result.dispatch === undefined &&
     entry.summary === NOT_DISPATCHED_SUMMARY &&
-    Object.keys(entry.result ?? {}).every((key) => key === "operationId")
+    Object.keys(result).every((key) => key === "operationId")
   );
 }
 function receiptOutcome(
@@ -3456,6 +3733,7 @@ function receiptResult(results: TypedResults): CommittedReceiptResult {
   const value =
     results.smsResult ??
     results.dialResult ??
+    results.telephonyResult ??
     results.foregroundResult ??
     results.clockResult ??
     results.mapsResult ??

@@ -126,7 +126,7 @@ it("rejects a damaged choice before worker effects while healthy and repaired ch
 });
 
 /** Exercise the actual registered approval owner and choice action over SQLite. */
-async function approvalChoiceFixture() {
+async function approvalChoiceFixture(onSelect?: () => Promise<void>) {
   const name = "ChoiceApprovalCancellationAgent";
   const runtime = new AgentRuntime({
     character: createCharacter({ name }),
@@ -171,8 +171,10 @@ async function approvalChoiceFixture() {
       description: "Confirm the pending operation",
       roomId,
       options: [{ name: "approve" }, { name: "deny", isCancel: true }],
+      timeoutMs: 60_000,
       onSelect: async (option) => {
         calls.push(option);
+        await onSelect?.();
       },
     })
     .then((result) => {
@@ -215,6 +217,7 @@ async function approvalChoiceFixture() {
     taskId,
     calls,
     waiting,
+    result: () => approvalResult,
     replies,
     abort,
     cleanup: async () => {
@@ -225,7 +228,7 @@ async function approvalChoiceFixture() {
   };
 }
 
-it("ABORT settles the SQLite approval caller before confirming cancellation", async () => {
+it("ABORT confirms owned SQLite cancellation only after deletion and caller settlement", async () => {
   const f = await approvalChoiceFixture();
   try {
     expect(await f.abort()).toMatchObject({ success: true });
@@ -240,7 +243,7 @@ it("ABORT settles the SQLite approval caller before confirming cancellation", as
   }
 });
 
-it("ABORT exposes SQLite deletion failure and retries without replaying approval effects", async () => {
+it("ABORT retains the SQLite approval owner on deletion failure and retries without effects", async () => {
   const f = await approvalChoiceFixture();
   try {
     const failure = new ElizaError("cancel task delete failed", {
@@ -249,15 +252,69 @@ it("ABORT exposes SQLite deletion failure and retries without replaying approval
     vi.spyOn(f.runtime.adapter, "deleteTasks").mockRejectedValueOnce(failure);
     await expect(f.abort()).rejects.toBe(failure);
     expect(f.replies).toEqual([]);
-    expect(f.service.listPendingUserActions()).toEqual([]);
+    expect(f.service.listPendingUserActions()).toHaveLength(1);
     const row = await f.runtime.getTask(f.taskId);
     assert(row);
-    expect(await f.waiting).toMatchObject({ cancelled: true, success: false });
+    expect(f.result()).toBeUndefined();
     expect(await f.abort()).toMatchObject({ success: true });
+    expect(await f.waiting).toMatchObject({ cancelled: true, success: false });
     expect(f.replies).toHaveLength(1);
     expect(f.replies[0].settled).toBe(true);
     expect(f.calls).toEqual([]);
     expect(await f.runtime.getTask(f.taskId)).toBeNull();
+  } finally {
+    await f.cleanup();
+  }
+});
+
+it("ABORT refuses an already-claimed SQLite approval without a cancellation receipt", async () => {
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = await approvalChoiceFixture(async () => {
+    enter();
+    await held;
+  });
+  try {
+    const selecting = f.service.handleSelection(f.taskId, "approve");
+    await entered;
+    await expect(f.abort()).rejects.toMatchObject({
+      code: "APPROVAL_CALLBACK_UNAVAILABLE",
+    });
+    expect(f.replies).toEqual([]);
+    expect(f.result()).toBeUndefined();
+    expect(await f.runtime.getTask(f.taskId)).not.toBeNull();
+    release();
+    await selecting;
+    expect(await f.waiting).toMatchObject({
+      selectedOption: "approve",
+      success: true,
+      cancelled: false,
+    });
+    expect(f.calls).toEqual(["approve"]);
+  } finally {
+    release();
+    await f.cleanup();
+  }
+});
+
+it("ABORT retains the SQLite approval when its registered owner is unavailable", async () => {
+  const f = await approvalChoiceFixture();
+  try {
+    vi.spyOn(f.runtime, "getService").mockReturnValue(null);
+    await expect(f.abort()).rejects.toMatchObject({
+      code: "APPROVAL_SERVICE_UNAVAILABLE",
+    });
+    expect(f.replies).toEqual([]);
+    expect(f.result()).toBeUndefined();
+    expect(f.service.listPendingUserActions()).toHaveLength(1);
+    expect(await f.runtime.getTask(f.taskId)).not.toBeNull();
+    expect(f.calls).toEqual([]);
   } finally {
     await f.cleanup();
   }

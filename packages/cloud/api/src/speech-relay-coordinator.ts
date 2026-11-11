@@ -16,6 +16,7 @@ import {
   parseSpeechRelayJson,
   readConfirmedSpeechRetirement,
 } from "@elizaos/host/voice/speech-relay-wire";
+import { v5 as uuidv5 } from "uuid";
 import {
   createWorkerCartesiaFactory,
   createWorkerCartesiaInkFactory,
@@ -100,6 +101,16 @@ export function speechSessionIdForConsent(
   const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
+/** Stable recovery identity with a UUID version supported by existing speech clients. */
+export function preparedSpeechSessionIdForConsent(
+  userId: string,
+  consentNonce: string,
+): string {
+  return uuidv5(
+    `https://api.eliza.app/voice/consent/${userId}/${consentNonce}`,
+    uuidv5.URL,
+  );
+}
 const response = (status: number, code: string) =>
   Response.json({ error: code }, { status });
 
@@ -137,11 +148,18 @@ export class SpeechRelayCoordinator {
   }
   private async update(
     change: (record: Ledger | undefined) => Ledger,
+    bootstrapExpiry?: number,
   ): Promise<Ledger> {
     const ledger = await this.state.storage.transaction(async (storage) => {
       const current = await storage.get<Ledger>("session");
       const next = change(current);
-      if (next !== current) await storage.put("session", next);
+      if (next !== current) {
+        await storage.put("session", next);
+        // SQLite storage includes this alarm in the same transaction. A
+        // prepared session and its expiry must become durable together.
+        if (bootstrapExpiry !== undefined)
+          await this.state.storage.setAlarm(bootstrapExpiry);
+      }
       return next;
     });
     this.ledger = ledger;
@@ -348,9 +366,12 @@ export class SpeechRelayCoordinator {
           !(url.pathname === "/revoke" && request.method === "POST")
         )
           return response(404, "speech_unavailable");
-        // Instantiates this object ahead of /initialize. It reads and stores nothing.
-        if (url.pathname === "/warm" && request.method === "POST")
+        // Warm speech code ahead of /initialize without reserving credits or
+        // opening a provider. Keep its billing graph out of Worker startup.
+        if (url.pathname === "/warm" && request.method === "POST") {
+          await import("./speech-relay-admission");
           return new Response(null, { status: 200 });
+        }
         if (
           (url.pathname === "/prepare" || url.pathname === "/initialize") &&
           request.method === "POST"
@@ -380,7 +401,6 @@ export class SpeechRelayCoordinator {
               !/^[0-9a-f]{64}$/.test(input.consentDigest))
           )
             return response(400, "invalid_preparation");
-          let alarmAt: number | undefined;
           try {
             await this.update((record) => {
               if (input.consentDigest !== undefined) {
@@ -395,7 +415,6 @@ export class SpeechRelayCoordinator {
                     input.caller.user.organization_id
                 )
                   throw Error("Speech preparation is absent or retired");
-                alarmAt = input.expiresAt;
                 return {
                   ...record,
                   phase: "minted",
@@ -406,7 +425,6 @@ export class SpeechRelayCoordinator {
               }
               if (record?.phase === "prepared" && !preparing)
                 throw Error("Prepared speech requires its original consent");
-              if (!record) alarmAt = input.expiresAt;
               return initializeSpeechRecord(
                 record,
                 {
@@ -421,11 +439,10 @@ export class SpeechRelayCoordinator {
                 },
                 Date.now(),
               );
-            });
+            }, input.expiresAt);
           } catch {
             return response(409, "session_exists");
           }
-          if (alarmAt !== undefined) await this.state.storage.setAlarm(alarmAt);
           return Response.json({ initialized: true });
         }
         const ledger = await this.load();
@@ -515,6 +532,15 @@ export class SpeechRelayCoordinator {
           error?: unknown,
           code: "unavailable" | "unauthorized" = "unavailable",
         ) => {
+          if (error instanceof InsufficientCreditsError) {
+            logger.error("[SpeechRelay] credit admission refused", {
+              organizationId: ledger.caller.user.organization_id,
+              sessionId: ledger.sessionId,
+              requiredUsd: error.required,
+              availableUsd: error.available,
+              reason: error.reason,
+            });
+          }
           try {
             server.send(
               JSON.stringify({
@@ -735,6 +761,7 @@ export class SpeechRelayCoordinator {
         import("@elizaos/cloud-shared/lib/services/voice-usage-meter"),
         import("./speech-relay-admission"),
       ]);
+      this.current();
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
         runWithDbCacheAsync(async () => {
           const key = this.env.CARTESIA_API_KEY?.trim(),

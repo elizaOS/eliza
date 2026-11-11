@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-native-phone",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "type": "module",
   "description": "Phone app for Eliza \u2014 Android dialer/call-log overlay (@elizaos/plugin-native-phone/bridge) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "main": "./dist/index.js",
@@ -60,6 +60,7 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"

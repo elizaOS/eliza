@@ -285,6 +285,7 @@
 		"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
 		"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections.",
 		"Persisted callback requirements use the existing boolean metadata. Mixed callback shapes, legacy or externally changed metadata, automatic worker registration and startup reconstruction of deadline timers remain outside these two persisted projections.",
-		"Attached metadata is projected away after the implementation conformance establishes that it cannot replace source-owned task options, approval request coordinates and callback requirements."
+		"Attached metadata is projected away after the implementation conformance establishes that it cannot replace source-owned task options, approval request coordinates and callback requirements.",
+		"Receipt-bearing cancelPendingApproval uses the existing pending owner and fails closed for claimed or unavailable callbacks. ChoiceApprovalCancellation models its durable delete-before-settlement and retry contract separately. Real Core conformance covers exclusive callback-free cancellation, original-deadline restoration and stop success/failure races. Legacy cancelApproval remains orphan-row cleanup, not a cancellation receipt. A real committed-delete/lost-acknowledgement case also verifies that a missing task cannot produce a successful timeout callback receipt; unknown storage acknowledgement remains outside the finite model."
 	]
 }

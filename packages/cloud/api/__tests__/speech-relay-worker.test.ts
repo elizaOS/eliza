@@ -6,6 +6,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import {
+  preparedSpeechSessionIdForConsent,
+  speechTokenDigest,
+} from "../src/speech-relay-coordinator";
 import { CARTESIA_PUBLISHED_USD_PER_CREDIT } from "../v1/voice/stt/cartesia-pricing";
 
 let worker: Miniflare;
@@ -119,6 +123,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
               const closing = `          "@elizaos/cloud-shared/db/client"
         );`;
               const opening = `      ]);
+      this.current();
       await runWithCloudBindingsAsync`;
               if (
                 contents.split(upgrade).length !== 2 ||
@@ -139,6 +144,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
                 .replace(
                   opening,
                   `      ]).then((modules) => testDeliverSpeechImport(modules, "opening"));
+      this.current();
       await runWithCloudBindingsAsync`,
                 );
               contents += `
@@ -236,6 +242,38 @@ function next(
     socket.addEventListener("message", receive);
   });
 }
+test("prepared speech and its expiry persist together in real SQLite storage", async () => {
+  const session = crypto.randomUUID(),
+    expiresAt = Date.now() + 60000;
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body ? "POST" : "GET",
+      headers: {
+        "x-test-session": session,
+        "Content-Type": "application/json",
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  const input = {
+    sessionId: session,
+    tokenDigest: "a".repeat(64),
+    expiresAt,
+    caller: { user: account },
+    proofVersion: 1,
+  };
+  expect((await request("/prepare", input)).status).toBe(200);
+  expect(await (await request("/test-bootstrap-state")).json()).toEqual({
+    phase: "prepared",
+    expiresAt,
+    alarmAt: expiresAt,
+  });
+  expect((await request("/prepare", input)).status).toBe(200);
+  expect(await (await request("/test-bootstrap-state")).json()).toEqual({
+    phase: "prepared",
+    expiresAt,
+    alarmAt: expiresAt,
+  });
+});
 test("ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation", async () => {
   const token = "private-test-capability";
   const digest = new Bun.CryptoHasher("sha256").update(token).digest("hex");
@@ -1943,7 +1981,8 @@ test("revoke joins a claimed opening across deferred imports before confirming n
       speechFenceCounts: Record<string, number>;
     }
   ).speechFenceCounts;
-  expect(fenceCounts[f.owner.organization_id]).toBe(1);
+  // The resumed opening stops before it can create a revocation subscription.
+  expect(fenceCounts[f.owner.organization_id] ?? 0).toBe(0);
 });
 
 test("failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade", async () => {
@@ -1970,4 +2009,150 @@ test("failed deferred close import preserves an unconfirmed outcome and blocks a
     phase: "minted",
     retirement: { generation: 0 },
   });
+});
+
+async function preparedConsentCase() {
+  const nonce = crypto.randomUUID();
+  const sessionId = preparedSpeechSessionIdForConsent(account.id, nonce);
+  const request = async (path: string, body?: unknown) => {
+    const result = await worker.dispatchFetch(
+      `https://speech-relay.internal${path}`,
+      {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          "x-test-session": sessionId,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      },
+    );
+    // Consume every reply before sharing Bun/Miniflare's loopback connection.
+    return {
+      status: result.status,
+      body: (await result.json()) as Record<string, unknown> | null,
+    };
+  };
+  await request("/test-allow-admission");
+  const before = (await request("/test-stats")).body ?? {};
+  const caller = {
+    user: account,
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  };
+  const prepare = () =>
+    request("/prepare", {
+      sessionId,
+      tokenDigest: speechTokenDigest(nonce),
+      expiresAt: Date.now() + 300000,
+      caller,
+      proofVersion: 1,
+    });
+  const mintBody = (token = "prepared-test-capability") => ({
+    sessionId,
+    tokenDigest: speechTokenDigest(token),
+    consentDigest: speechTokenDigest(nonce),
+    expiresAt: Date.now() + 60000,
+    caller,
+    proofVersion: 1,
+  });
+  const revoke = () =>
+    request("/revoke", {
+      userId: account.id,
+      organizationId: account.organization_id,
+      proofVersion: 1,
+    });
+  const unchangedProviders = async () => {
+    const after = (await request("/test-stats")).body ?? {};
+    for (const counter of [
+      "sttOpened",
+      "ttsOpened",
+      "admissions",
+      "dispatches",
+    ])
+      expect(after[counter] ?? 0).toBe(before[counter] ?? 0);
+  };
+  return { sessionId, request, prepare, mintBody, revoke, unchangedProviders };
+}
+
+test.each([
+  "missing",
+  "foreign owner",
+  "foreign organization",
+  "wrong nonce",
+  "expired",
+])(
+  "prepared UUIDv5 consent refuses %s before provider admission",
+  async (reason) => {
+    const f = await preparedConsentCase();
+    if (reason !== "missing") expect((await f.prepare()).status).toBe(200);
+    if (reason === "expired")
+      expect((await f.request("/test-expire-preparation", {})).status).toBe(
+        200,
+      );
+    const before = (await f.request("/test-ledger")).body;
+    const input = f.mintBody();
+    if (reason === "foreign owner")
+      input.caller = {
+        ...input.caller,
+        user: { ...account, id: "33333333-3333-4333-8333-333333333333" },
+      };
+    if (reason === "foreign organization")
+      input.caller = {
+        ...input.caller,
+        user: {
+          ...account,
+          organization_id: "44444444-4444-4444-8444-444444444444",
+        },
+      };
+    if (reason === "wrong nonce")
+      input.consentDigest = speechTokenDigest(crypto.randomUUID());
+    expect((await f.request("/initialize", input)).status).toBe(409);
+    expect((await f.request("/test-ledger")).body).toEqual(before);
+    await f.unchangedProviders();
+    if (reason !== "missing") expect((await f.revoke()).status).toBe(200);
+  },
+);
+
+test("prepared UUIDv5 consent revocation rejects a delayed mint and replays the same retirement", async () => {
+  const f = await preparedConsentCase();
+  expect((await f.prepare()).status).toBe(200);
+  expect((await f.request("/test-ledger")).body?.phase).toBe("prepared");
+  const retired = await f.revoke();
+  expect(retired.status).toBe(200);
+  expect(retired.body).toMatchObject({
+    revoked: true,
+    retirement: {
+      sessionId: f.sessionId,
+      state: "confirmed",
+      mode: "never_started",
+    },
+  });
+  expect((await f.request("/initialize", f.mintBody())).status).toBe(409);
+  expect((await f.request("/test-ledger")).body?.phase).toBe("closed");
+  expect(await f.revoke()).toEqual(retired);
+  await f.unchangedProviders();
+});
+
+test("prepared UUIDv5 consent has one atomic mint winner and no replay", async () => {
+  const f = await preparedConsentCase();
+  expect((await f.prepare()).status).toBe(200);
+  const inputs = [
+    f.mintBody("prepared-first-capability"),
+    f.mintBody("prepared-second-capability"),
+  ];
+  const results = await Promise.all(
+    inputs.map((input) => f.request("/initialize", input)),
+  );
+  expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+  const winner = results.findIndex((result) => result.status === 200);
+  const stored = (await f.request("/test-ledger")).body;
+  expect(stored).toMatchObject({
+    phase: "minted",
+    tokenDigest: inputs[winner].tokenDigest,
+  });
+  expect((await f.request("/initialize", inputs[winner])).status).toBe(409);
+  expect((await f.request("/test-ledger")).body).toEqual(stored);
+  expect((await f.revoke()).status).toBe(200);
+  await f.unchangedProviders();
 });

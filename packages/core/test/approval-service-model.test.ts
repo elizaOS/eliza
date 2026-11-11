@@ -170,11 +170,214 @@ describe("ApprovalService model properties", () => {
 		const taskId = await pendingId();
 		const selection = select(taskId);
 		await held.entered;
+		await expect(service.cancelPendingApproval(taskId)).rejects.toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
+		expect(await runtime.getTask(taskId)).not.toBeNull();
 		await service.cancelApproval(taskId);
 		held.release();
 		await selection;
 		expect(await result).toMatchObject({ cancelled: false, success: true });
 	});
+
+	it("confirms owned cancellation only after SQLite deletion and preserves a failed owner's retry", async () => {
+		const calls: string[] = [];
+		let settled = false;
+		const result = service.requestApproval(request(calls, 60_000));
+		void result.then(() => {
+			settled = true;
+		});
+		const taskId = await pendingId();
+		const expiresAt = service.listPendingUserActions()[0].expiresAt;
+		const failure = new ElizaError("approval cancellation delete failed", {
+			code: "DB_QUERY_FAILED",
+		});
+		vi.spyOn(runtime.adapter, "deleteTasks").mockRejectedValueOnce(failure);
+		await expect(service.cancelPendingApproval(taskId)).rejects.toBe(failure);
+		await tick();
+		expect(settled).toBe(false);
+		expect(await runtime.getTask(taskId)).not.toBeNull();
+		expect(service.listPendingUserActions()[0].expiresAt).toBe(expiresAt);
+		await service.cancelPendingApproval(taskId);
+		expect(await result).toMatchObject({
+			cancelled: true,
+			success: false,
+			timedOut: false,
+		});
+		expect(await runtime.getTask(taskId)).toBeNull();
+		expect(calls).toEqual([]);
+	});
+	it("exclusively owns callback-free cancellation until its durable acknowledgement", async () => {
+		const held = gate();
+		const taskId = await service.requestApprovalAsync({
+			...request([]),
+			onSelect: undefined,
+			onTimeout: undefined,
+		});
+		const remove = runtime.deleteTask.bind(runtime);
+		const deletion = vi
+			.spyOn(runtime, "deleteTask")
+			.mockImplementationOnce(async (id) => {
+				await held.wait();
+				await remove(id);
+			});
+		const cancelling = observe(service.cancelPendingApproval(taskId));
+		try {
+			await held.entered;
+			await expect(
+				service.handleSelection(taskId, "approve"),
+			).rejects.toMatchObject({ code: "APPROVAL_CALLBACK_UNAVAILABLE" });
+			await expect(service.cancelPendingApproval(taskId)).rejects.toMatchObject(
+				{ code: "APPROVAL_CALLBACK_UNAVAILABLE" },
+			);
+			await expect(service.cancelApproval(taskId)).rejects.toMatchObject({
+				code: "APPROVAL_CALLBACK_UNAVAILABLE",
+			});
+			expect(deletion).toHaveBeenCalledOnce();
+			expect(await runtime.getTask(taskId)).not.toBeNull();
+		} finally {
+			held.release();
+		}
+		expect((await cancelling).error).toBeUndefined();
+		expect(await runtime.getTask(taskId)).toBeNull();
+	});
+	it("restores the original deadline after cancellation deletion fails past expiry", async () => {
+		const calls: string[] = [];
+		let settled = false;
+		const result = service.requestApproval(request(calls, 1_000));
+		void result.then(() => {
+			settled = true;
+		});
+		const taskId = await pendingId();
+		const expiresAt = service.listPendingUserActions()[0].expiresAt;
+		assert(expiresAt !== null);
+		const held = gate();
+		const failure = new ElizaError("approval cancellation delete failed", {
+			code: "DB_QUERY_FAILED",
+		});
+		vi.spyOn(runtime.adapter, "deleteTasks").mockImplementationOnce(
+			async () => {
+				await held.wait();
+				throw failure;
+			},
+		);
+		const cancelling = observe(service.cancelPendingApproval(taskId));
+		try {
+			await held.entered;
+			await new Promise<void>((resolve) =>
+				setTimeout(resolve, Math.max(0, expiresAt - Date.now()) + 50),
+			);
+			expect(settled).toBe(false);
+			expect(calls).toEqual([]);
+		} finally {
+			held.release();
+		}
+		expect((await cancelling).error).toBe(failure);
+		expect(service.listPendingUserActions()[0].expiresAt).toBe(expiresAt);
+		expect(await result).toMatchObject({
+			timedOut: true,
+			cancelled: true,
+			success: false,
+		});
+		expect(calls).toEqual(["timeout"]);
+		await vi.waitFor(async () =>
+			expect(await runtime.getTask(taskId)).toBeNull(),
+		);
+	});
+
+	it("refuses a positive timeout receipt when cancellation deletion commits without its acknowledgement", async () => {
+		const calls: string[] = [];
+		const result = observe(
+			service.requestApproval({
+				...request(calls, 1_000),
+				timeoutDefault: "approve",
+			}),
+		);
+		const taskId = await pendingId();
+		const expiresAt = service.listPendingUserActions()[0].expiresAt;
+		const failure = new ElizaError(
+			"approval cancellation acknowledgement lost",
+			{ code: "DB_QUERY_FAILED" },
+		);
+		const remove = runtime.deleteTask.bind(runtime);
+		vi.spyOn(runtime, "deleteTask").mockImplementationOnce(async (id) => {
+			await remove(id);
+			throw failure;
+		});
+		await expect(service.cancelPendingApproval(taskId)).rejects.toBe(failure);
+		expect(await runtime.getTask(taskId)).toBeNull();
+		expect(service.listPendingUserActions()[0].expiresAt).toBe(expiresAt);
+		expect((await result).error).toMatchObject({
+			code: "APPROVAL_TASK_UNAVAILABLE",
+		});
+		expect(calls).toEqual([]);
+		expect(service.listPendingUserActions()).toEqual([]);
+		expect(runtime.getRecentReportedErrors()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					scope: "ApprovalService.cancelRetryTimeout",
+					code: "APPROVAL_TASK_UNAVAILABLE",
+				}),
+			]),
+		);
+	});
+	for (const fail of [false, true]) {
+		it(
+			fail
+				? "rejects an owned cancellation failure during stop without a false cancelled receipt"
+				: "drains an owned cancellation acknowledgement before stop settles its caller",
+			async () => {
+				const held = gate();
+				const calls: string[] = [];
+				let settled = false;
+				const result = observe(service.requestApproval(request(calls)));
+				void result.then(() => {
+					settled = true;
+				});
+				const taskId = await pendingId();
+				const failure = new ElizaError("approval cancellation delete failed", {
+					code: "DB_QUERY_FAILED",
+				});
+				const remove = runtime.adapter.deleteTasks.bind(runtime.adapter);
+				vi.spyOn(runtime.adapter, "deleteTasks").mockImplementationOnce(
+					async (ids) => {
+						await held.wait();
+						if (fail) throw failure;
+						await remove(ids);
+					},
+				);
+				const cancelling = observe(service.cancelPendingApproval(taskId));
+				await held.entered;
+				let stopped = false;
+				const stopping = runtime.unloadPlugin(pluginName).then(() => {
+					stopped = true;
+				});
+				try {
+					await tick();
+					expect(settled).toBe(false);
+					expect(stopped).toBe(false);
+				} finally {
+					held.release();
+				}
+				expect((await cancelling).error).toBe(fail ? failure : undefined);
+				const outcome = await result;
+				if (fail) {
+					expect(outcome.error).toBe(failure);
+					expect(outcome.value).toBeUndefined();
+				} else {
+					expect(outcome.error).toBeUndefined();
+					expect(outcome.value).toMatchObject({
+						cancelled: true,
+						success: false,
+					});
+				}
+				await stopping;
+				expect((await runtime.getTask(taskId)) === null).toBe(!fail);
+				expect(service.listPendingUserActions()).toEqual([]);
+				expect(calls).toEqual([]);
+			},
+		);
+	}
 	it("settles the caller when onSelect throws (CallerSettles)", async () => {
 		const result = observe(
 			service.requestApproval({
@@ -471,6 +674,9 @@ describe("ApprovalService model properties", () => {
 		expect(oldCalls).toEqual([]);
 		expect(newCalls).toEqual([]);
 		expect(await runtime.getTask(taskId)).not.toBeNull();
+		await expect(service.cancelPendingApproval(taskId)).rejects.toMatchObject({
+			code: "APPROVAL_CALLBACK_UNAVAILABLE",
+		});
 		await select(freshId);
 		expect(newCalls).toEqual(["select:approve"]);
 		await service.cancelApproval(taskId);

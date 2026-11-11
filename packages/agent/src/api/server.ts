@@ -30,6 +30,7 @@ import {
   resolveOwnerEntityIdOrDefault,
   resolveStateDir,
   ServiceType,
+  type UUID,
 } from "@elizaos/core";
 import {
   readJsonBody as parseJsonBody,
@@ -136,6 +137,7 @@ import {
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import { withTriggerTaskActivity } from "../triggers/activity.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -2307,6 +2309,14 @@ async function handleRequestForViewClient(
       json,
       error,
       executeTriggerTask,
+      serializeTaskMutation: (
+        runtime: IAgentRuntime,
+        taskId: UUID,
+        operation: () => Promise<boolean>,
+      ) =>
+        withTriggerTaskActivity(runtime, taskId, operation, {
+          rejectIfBusy: true,
+        }),
       getTriggerHealthSnapshot,
       getTriggerLimit,
       listTriggerTasks,

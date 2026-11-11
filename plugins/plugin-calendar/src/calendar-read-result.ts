@@ -10,6 +10,7 @@ import { isValidTimeZone } from "./internal/constants.js";
 import { formatCalendarEventTimeRange } from "./internal/format.js";
 export function calendarReadPromptProjection(
   data: ActionResult["data"],
+  options: { selectedEvent?: boolean } = {},
 ): Pick<ActionResult, "promptData" | "promptDataMode"> {
   if (!data) return {};
   // Source identities stay in canonical data for authorization, freshness,
@@ -21,7 +22,8 @@ export function calendarReadPromptProjection(
     : Array.isArray(calendarSources)
       ? calendarSources
       : undefined;
-  const unified = sourceInventory !== undefined;
+  const unified =
+    sourceInventory !== undefined || options.selectedEvent === true;
   const rawReply = data.replyContext;
   const reply =
     rawReply && typeof rawReply === "object" && !Array.isArray(rawReply)
@@ -51,25 +53,46 @@ export function calendarReadPromptProjection(
       calendarSummary: _calendarSummary,
       ...record
     } = event as ProviderDataRecord;
+    // An exact selected-event read retains all authorized source context.
+    // General aggregate reads keep their existing unified presentation.
+    const selectedRecord = options.selectedEvent
+      ? (event as ProviderDataRecord)
+      : record;
     // Keep the canonical instants and source zone. Supply the already computed
     // local range as well, so a response never needs to guess the DST offset.
     return displayZone &&
-      typeof record.startAt === "string" &&
-      typeof record.endAt === "string" &&
-      typeof record.isAllDay === "boolean" &&
-      Number.isFinite(Date.parse(record.startAt)) &&
-      Number.isFinite(Date.parse(record.endAt))
+      typeof selectedRecord.startAt === "string" &&
+      typeof selectedRecord.endAt === "string" &&
+      typeof selectedRecord.isAllDay === "boolean" &&
+      Number.isFinite(Date.parse(selectedRecord.startAt)) &&
+      Number.isFinite(Date.parse(selectedRecord.endAt))
       ? {
-          ...record,
+          ...selectedRecord,
+          displayDate: new Intl.DateTimeFormat("en-US", {
+            timeZone: selectedRecord.isAllDay ? "UTC" : displayZone,
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }).format(
+            new Date(
+              // All-day values retain their civil date, matching the existing
+              // Calendar formatter, even when the source carries an offset.
+              selectedRecord.isAllDay &&
+                /^\d{4}-\d{2}-\d{2}/.test(selectedRecord.startAt)
+                ? `${selectedRecord.startAt.slice(0, 10)}T00:00:00.000Z`
+                : selectedRecord.startAt,
+            ),
+          ),
           displayTime: formatCalendarEventTimeRange(
-            record as unknown as LifeOpsCalendarEvent,
+            selectedRecord as unknown as LifeOpsCalendarEvent,
             {
               asOf: new Date(),
               timeZone: displayZone,
             },
           ),
         }
-      : record;
+      : selectedRecord;
   };
   // Facts duplicate the structured events and can contain a legacy source
   // enumeration. Keep the actual scope/selection constraints, not that prose.
@@ -90,7 +113,7 @@ export function calendarReadPromptProjection(
         calendarView: {
           name: "Calendar",
           state: data.state,
-          sourceIssues: sourceInventory
+          sourceIssues: (sourceInventory ?? [])
             .filter(
               (source) =>
                 source &&
@@ -106,7 +129,7 @@ export function calendarReadPromptProjection(
                   : undefined,
             })),
           presentation:
-            "This is one canonical Calendar with optional connected sync. Describe its events and read coverage, not separate provider calendars. Event IDs and provenance fields are internal routing evidence, not additional user calendars. Preserve partial/unavailable status and the requested time-window boundary; never claim an incomplete view is empty.",
+            "This is one canonical Calendar with optional connected sync. Use each event’s computed displayDate and displayTime for weekday, date and local time. Describe its events and read coverage, not separate provider calendars. Event IDs and provenance fields are internal routing evidence, not additional user calendars. Preserve partial/unavailable status and the requested time-window boundary; never claim an incomplete view is empty.",
         },
       }
     : data;

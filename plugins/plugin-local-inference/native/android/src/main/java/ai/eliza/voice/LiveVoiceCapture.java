@@ -183,9 +183,22 @@ public final class LiveVoiceCapture {
 
  /** Stops capture; returns the capture duration. The host closes an open segment itself. */
  public long stop(){
+  return stop(false);
+ }
+ /** Waits off the UI thread until the original source and detector actually release.
+  * A new microphone owner must not use the bounded stop as a release receipt. */
+ public long stopAndWait(){return stop(true);}
+ private long stop(boolean awaitRelease){
   Thread active;synchronized(this){running=false;active=thread;}
   resource.requestStop(); // AudioRecord.stop unblocks a read before waiting for its worker.
-  if(active!=null&&active!=Thread.currentThread()){try{active.join(1500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}}
+  if(active!=null&&active!=Thread.currentThread()){
+   if(awaitRelease){
+    boolean interrupted=false;
+    for(;;)try{active.join();break;}catch(InterruptedException cancelled){interrupted=true;}
+    if(interrupted)Thread.currentThread().interrupt();
+   }else try{active.join(1500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}
+  }
+  if(awaitRelease&&!resource.released())throw new IllegalStateException("Microphone release is unconfirmed");
   long began=startedAt;return began==0?0:Math.max(0,System.currentTimeMillis()-began);
  }
 

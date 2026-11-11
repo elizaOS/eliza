@@ -1,9 +1,17 @@
 {
   "sources": [
     "plugins/plugin-calendar/src/service/CalendarService.ts",
-    "plugins/plugin-calendar/test/calendar-managed-default-feed.pglite.test.ts"
+    "plugins/plugin-calendar/test/calendar-managed-default-feed.pglite.test.ts",
+    "plugins/plugin-calendar/src/service/managed-calendar-read-diagnostic.test.ts",
+    "plugins/plugin-calendar/src/service/CalendarRepository.ts",
+    "plugins/plugin-calendar/src/service/managed-calendar-read.ts",
+    "plugins/plugin-calendar/src/service/managed-linked-calendar.ts",
+    "plugins/plugin-calendar/quint/check-managed-calendar-pull.mjs",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts"
   ],
-  "bounds": "One mapped event, unchanged/changed/deleted provider version, clean/held link and current/retired owner. The sequential read-reconcile-project path reaches projection in two steps without fairness assumptions. Existing reconciler tests cover revision races and uncertain writes; this model does not prove provider availability or the live UI. The local revision is fixed in these cases; concurrent authorized local edits and provider mutations remain covered by the existing shared reconciler tests, not by NoProviderWrites in this model.",
+  "bounds": "One mapped event, unchanged/changed/deleted provider version, clean/held link and current/retired owner. The sequential read-reconcile-project path reaches projection in two steps without fairness assumptions. Existing reconciler tests cover revision races and uncertain writes; this model does not prove provider availability or the live UI. The local revision is fixed in these cases; concurrent authorized local edits and provider mutations remain covered by the existing shared reconciler tests, not by NoProviderWrites in this model. A readable managed observation enters the canonical cache even without linked-write permission. Absent events are not erased by a bounded feed. The owning real-store test verifies persistence before selected-event lookup. The cache-drain case covers one service, two calendars in either the same or different grants, one purge with at most one pre-deletion failure and retry, one optional fresh post-purge read, binary complete/invalid broker results, cancellation before or after write admission, and successful/failed persistence. The grant admission lock fences new reads while all registered per-calendar tails drain; separate calendars remain concurrent and unrelated grants are preserved. A purge is not revocation: reads admitted after its receipt may import while the source remains enabled. A write admitted before cancellation may commit, but the read cannot report success and purge drains it. One symbolic event per calendar represents its whole payload. Concrete real-store hooks require all56 named mapped/feed/diagnostic cases without skips, including the four-read bound, removal, cancelled write drain, invalid feeds and selected cache persistence. The old mapped model fixes local revisions; post-lock reconciliation uses existing Eliza-only CAS/restore ports and cannot reinsert a Google projection. Fair purge progress assumes broker completion, persistence settlement (success or failure), and purge settlement/retry after the single modeled failure; an unfair stuttering counterexample is required. Multi-process ordering, transaction rollback, arbitrary provider response sizes, broker/provider authority, and provider eventual consistency remain outside this finite service projection. The identity case adds one globally keyed cache row (present or absent), seven stable identity coordinates (agent/provider/side/grant/calendar/external/account), two equality classes per coordinate, one complete incoming payload17, original payload11 and one optional fresh exact-source retry after refusal. Nullable IDs compare null-safely; display email and calendar labels are not identity. Inserts or exact-identity updates may replace payload; an ambiguous shared wire ID must fail with the existing typed persistence error and leave its stored owner/source/payload unchanged. The real-store suite drives both actual managed-service collisions on a shared DB and requires unavailable feed plus unchanged original row, then a successful matching update. Wire/selection IDs remain unchanged; this does not make ambiguous IDs simultaneously usable for different sources. Provider-ID uniqueness, distributed SQL implementations and new account/source reassignment protocols are not proved. The atomic write transition completes without a fairness assumption; no retry or source repair is assumed.",
   "cases": [
     {
       "name": "mapped-readback",
@@ -14,6 +22,53 @@
       "temporal": [],
       "maxSteps": 4,
       "samples": 100
+    },
+    {
+      "name": "grant-cache-removal-drain",
+      "main": "ManagedCalendarCacheDrain",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "NoOldReadWritesAfterReceipt",
+        "ReceiptDrainedOldReads",
+        "WritesNeedValidatedFeed",
+        "NoFabricatedSuccess",
+        "UnrelatedCacheRetained"
+      ],
+      "temporal": ["FairPurgeCompletes", "PurgeCompletes"],
+      "temporalChecks": [
+        {
+          "property": "FairPurgeCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of broker response, cache-write settlement (including failure), removal and retry. At most one pre-deletion removal failure; provider success and new admission are not assumed."
+          ]
+        },
+        {
+          "property": "PurgeCompletes",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness: a held broker read or pending persistence may stutter forever."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 300
+    },
+    {
+      "name": "cache-source-payload-identity",
+      "main": "ManagedCalendarCacheIdentity",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "ExistingIdentityRetained",
+        "ConflictLeavesPayloadUnchanged",
+        "SuccessNeedsExactSourceAndWholePayload",
+        "NonCollidingInsertWorks"
+      ],
+      "temporal": [],
+      "maxSteps": 6,
+      "samples": 300
     }
   ],
   "conformance": "plugins/plugin-calendar/quint/check-managed-calendar-pull.mjs"

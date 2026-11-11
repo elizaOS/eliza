@@ -295,6 +295,14 @@ test("staging fails closed before writing an output", (t) => {
       },
       /no companions/,
     ],
+    [
+      {
+        privilegedPermissions: [
+          "android.permission.READ_PRIVILEGED_PHONE_STATE",
+        ],
+      },
+      /no privileged permissions/,
+    ],
   ] as const)
     assert.throws(
       () => reviewDescriptor(policy, brand, { ...reviewed, ...change }),

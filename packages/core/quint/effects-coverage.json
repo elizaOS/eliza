@@ -44,7 +44,8 @@
 			"Stopping an already-pending request retains its durable task row. Callback failure retains the row but removes its in-memory callback. Unavailable callbacks fail closed; durable function reconstruction and retries remain unsupported.",
 			"Retirement assumes admitted callbacks settle and do not await their own service unload or stop. Independent instances running concurrently and reentrant lifecycle calls remain separate obligations.",
 			"Creation failure is checked before a successful commit. Unknown commit acknowledgements and external database mutation are outside these projections.",
-			"Two additional finite cases cover a single persisted required-callback task (sync or async) or callback-free async task, one runtime restart and same-name worker registration. Mixed callback shapes, legacy/externally changed metadata and startup deadline reconstruction remain open."
+			"Two additional finite cases cover a single persisted required-callback task (sync or async) or callback-free async task, one runtime restart and same-name worker registration. Mixed callback shapes, legacy/externally changed metadata and startup deadline reconstruction remain open.",
+			"ChoiceApprovalCancellation separately models receipt-bearing cancellation. Core real SQLite checks cover delete acknowledgement before settlement, exclusive callback-free ownership, failure retry with the original deadline and concurrent stop success/failure. Legacy orphan cleanup has no cancellation receipt. A real committed-delete/lost-acknowledgement case also verifies that a missing task cannot produce a successful timeout callback receipt; unknown storage acknowledgement remains outside the finite model."
 		]
 	},
 	{

@@ -48,5 +48,37 @@
       "The maintained controller suite checks ordinary turn drain, idle Mute and Unmute, rejected reopen, muted reopen close failure, Stop during close, and a returned late capture whose asynchronous cancel remains pending.",
       "The proof uses controlled host ports. Physical microphone release, cancellation failure recovery, concurrent Stop or restart, binding replacement, and overlap with a new turn while Unmute acquisition is pending are separate."
     ]
+  },
+  {
+    "id": "live-frame-backlog",
+    "model": "packages/voice/quint/VoiceDeferredState.qnt",
+    "sources": ["packages/voice/src/live-voice-session.ts"],
+    "invariants": [
+      "QueueBounded",
+      "OneOverflowFailure",
+      "FailureSettlesSegments",
+      "CancelFencesResults"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "Bounded backlog projection: two queued frames represent the actual 960-frame boundary; two outstanding segments and one overflow or cancel. Complete owning17-case implementation suite includes actual960 overflow and an abort-ignoring late provider response.",
+      "Not complete live-session coverage. PCM, empty-frame edge floods, every response/event interleaving, host authentication, native capture and physical audio remain outside this finite model. Retained closures release only if the transport promise settles."
+    ]
+  },
+  {
+    "id": "deferred-voice-timing",
+    "model": "packages/voice/quint/VoiceDeferredState.qnt",
+    "sources": ["packages/voice/src/voice-turn-timing.ts"],
+    "invariants": [
+      "MarksDoNoStorageWrite",
+      "SendRequiresReady",
+      "StorageDoesNotRetireTurn",
+      "ClearCannotResurrect"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "One active turn, recording-end/transcript-ready/send ordering, deferred flush, failure and clear. Full owning8-case suite covers additional real diagnostic field validation, sink failures, stale turn boundaries and clear before a pending timer.",
+      "Not all record fields or browser scheduling. No persistence after storage failure, process death, shared-key writers from different instances, native callback delivery or physical latency is established. Diagnostic failure intentionally leaves the voice turn active."
+    ]
   }
 ]

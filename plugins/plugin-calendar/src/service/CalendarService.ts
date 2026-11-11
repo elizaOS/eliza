@@ -4553,6 +4553,25 @@ export class CalendarService extends Service {
     }
   }
 
+  private async withManagedCalendarFeedLock<T>(
+    grantId: string,
+    calendarId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    // Register under the grant admission lock, without holding it during I/O.
+    // Calendars stay concurrent; a purge can fence admission and drain them all.
+    const { read } = await this.withGoogleSyncLock(
+      `managed:${grantId}`,
+      async () => ({
+        read: this.withGoogleSyncLock(
+          `managed:${grantId}:${calendarId}`,
+          operation,
+        ),
+      }),
+    );
+    return read;
+  }
+
   private async syncGoogleCalendarFeed(args: {
     requestUrl: URL;
     requestedMode?: LifeOpsConnectorMode;
@@ -5959,18 +5978,32 @@ export class CalendarService extends Service {
               acquired = true;
               signal.throwIfAborted();
               return {
-                feed: await timeInferenceSpan(
-                  "calendar:feed:managed-source",
-                  () =>
-                    managed.feed(
-                      calendar,
-                      timeMin,
-                      timeMax,
-                      timeZone,
-                      this.agentId(),
-                      signal,
-                    ),
-                  { provider: calendar.provider },
+                feed: await this.withManagedCalendarFeedLock(
+                  calendar.grantId,
+                  calendar.calendarId,
+                  async () => {
+                    signal.throwIfAborted();
+                    const feed = await timeInferenceSpan(
+                      "calendar:feed:managed-source",
+                      () =>
+                        managed.feed(
+                          calendar,
+                          timeMin,
+                          timeMax,
+                          timeZone,
+                          this.agentId(),
+                          signal,
+                        ),
+                      { provider: calendar.provider },
+                    );
+                    // Use the same canonical cache as ordinary provider reads.
+                    // Selected-event actions still verify the live revision.
+                    for (const event of feed.events) {
+                      signal.throwIfAborted();
+                      await this.repo.upsertCalendarEvent(event, calendar.side);
+                    }
+                    return feed;
+                  },
                 ),
               };
             } catch (error) {
@@ -6735,6 +6768,29 @@ export class CalendarService extends Service {
         "CALENDAR_IMPORTED_DATA_CONFIRMATION_REQUIRED",
       );
     }
+    const purge = () => this.purgeImportedCalendarDataUnlocked(request, now);
+    // Drain reads already admitted for this managed owner grant before deleting
+    // their cache writes. A later read may import again if the source is enabled.
+    return request.provider === "google" &&
+      request.side === "owner" &&
+      request.connectorAccountId === request.grantId &&
+      this.managedCalendar?.acceptsGrantId(request.grantId)
+      ? this.withGoogleSyncLock(`managed:${request.grantId}`, async () => {
+          const prefix = `managed:${request.grantId}:`;
+          await Promise.all(
+            [...this.googleSyncLocks]
+              .filter(([key]) => key.startsWith(prefix))
+              .map(([, settled]) => settled),
+          );
+          return purge();
+        })
+      : purge();
+  }
+
+  private async purgeImportedCalendarDataUnlocked(
+    request: PurgeLifeOpsCalendarImportedDataRequest,
+    now: Date,
+  ): Promise<LifeOpsCalendarImportedDataPurgeReceipt> {
     const events = await this.repo.listCalendarEvents(
       this.agentId(),
       request.provider,

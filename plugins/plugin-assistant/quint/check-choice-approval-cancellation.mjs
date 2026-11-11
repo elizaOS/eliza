@@ -11,8 +11,10 @@ if (process.argv[2]) assert.equal(path.resolve(process.argv[2]), model);
 const test = "src/integration/choice-schedule.test.ts";
 const required = [
   "rejects a damaged choice before worker effects while healthy and repaired choices execute",
-  "ABORT settles the SQLite approval caller before confirming cancellation",
-  "ABORT exposes SQLite deletion failure and retries without replaying approval effects",
+  "ABORT confirms owned SQLite cancellation only after deletion and caller settlement",
+  "ABORT retains the SQLite approval owner on deletion failure and retries without effects",
+  "ABORT refuses an already-claimed SQLite approval without a cancellation receipt",
+  "ABORT retains the SQLite approval when its registered owner is unavailable",
 ];
 
 const output = testOutputPath("quint-choice-approval-cancellation");

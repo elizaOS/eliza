@@ -29,7 +29,10 @@ module speech_deferred_opening {
       else s.with("opening", "unclaimed")
   }
   action claimFailed = all { s.opening == "claiming", s' = s.with("opening", "unclaimed") }
-  action openingImportDone = all { s.opening == "importing", s' = s.with("opening", "fencing") }
+  action openingImportDone = all {
+    s.opening == "importing",
+    s' = s.with("opening", if (stopped) "settled" else "fencing")
+  }
   action openingImportFailed = all { s.opening == "importing", s' = s.with("opening", "settled") }
   action fenceDone = all {
     s.opening == "fencing",
@@ -93,7 +96,7 @@ module speech_deferred_opening {
   run claimedOpeningIsJoinedBeforeProofTest = init.then(upgradeImportDone).then(hello).then(claimDone)
     .then(stop).then(closeImportDone).then(markRetiring)
     .expect(not(openingSettled) and not(confirmed))
-    .then(openingImportDone).then(fenceDone).then(joinOpening).then(commitProof)
+    .then(openingImportDone).expect(s.opening == "settled").then(joinOpening).then(commitProof)
     .expect(proofMode == "not_dispatched" and s.generation == 2)
   run retiredClaimCannotBeReusedTest = init.then(upgradeImportDone).then(hello).then(stop)
     .then(closeImportDone).then(markRetiring).then(claimDone).then(joinOpening).then(commitProof)

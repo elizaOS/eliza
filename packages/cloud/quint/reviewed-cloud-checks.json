@@ -104,7 +104,7 @@
       "required": [
         "a delete that completes inside markRunning's read/write window cannot resurrect the row",
         "the same interleave on the pre-fix statement resurrects the row to running",
-        "sequential execution — one worker, one batch — is never corrupted",
+        "sequential execution \u2014 one worker, one batch \u2014 is never corrupted",
         "markError cannot flip a completed delete back to failed",
         "markCleanupRequired cannot pin node capacity on a completed delete",
         "markDeleted stays idempotent and stays organization-scoped",
@@ -419,7 +419,15 @@
         "a new host cannot revoke an old legacy session; the retained namespace can settle it once",
         "revoke during deferred upgrade import refuses late public socket allocation",
         "revoke joins a claimed opening across deferred imports before confirming no dispatch",
-        "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade"
+        "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade",
+        "prepared UUIDv5 consent refuses missing before provider admission",
+        "prepared UUIDv5 consent refuses foreign owner before provider admission",
+        "prepared UUIDv5 consent refuses foreign organization before provider admission",
+        "prepared UUIDv5 consent refuses wrong nonce before provider admission",
+        "prepared UUIDv5 consent refuses expired before provider admission",
+        "prepared UUIDv5 consent revocation rejects a delayed mint and replays the same retirement",
+        "prepared UUIDv5 consent has one atomic mint winner and no replay",
+        "prepared speech and its expiry persist together in real SQLite storage"
       ]
     }
   ],
@@ -482,6 +490,37 @@
         "concurrent exact submissions replay one durable receipt",
         "a rejected release transition rolls back its submission receipt",
         "a cancelled release cannot acknowledge a historical orphan receipt"
+      ]
+    }
+  ],
+  "GrantPolicyStampAdmission.qnt": [
+    {
+      "file": "packages/cloud/shared/src/db/repositories/subscription-grants.pglite.test.ts",
+      "required": [
+        "explicit-family migration preserves existing codes and rejects omitted campaigns",
+        "a redeemed code serves the organization as an active Plus subscriber",
+        "admission reverts to the pay-as-you-go policy when the grant ends",
+        "a replay returns the original grant; a second code of the family is refused",
+        "concurrent redemptions never exceed the limit or grant an organization twice",
+        "unknown, expired, disabled and exhausted codes share one refusal",
+        "an effective paid subscription keeps precedence; the grant serves after it lapses",
+        "an exclusive code is refused while the organization has an open paid subscription",
+        "a canceled subscription (projected as free) is served by the active grant",
+        "a incomplete_expired subscription (projected as free) is served by the active grant",
+        "revoking the grant of a canceled subscriber serves the free plan",
+        "an organization holding a grant gets the generic refusal for a code that is not redeemable",
+        "deleting the redeeming user keeps the grant and clears its user",
+        "grant terms stay immutable and grant rows cannot be deleted",
+        "a revoked grant stops serving at once and its buckets are retired",
+        "an unknown grant id is a typed error",
+        "splits a window into calendar months and prorates the remainder",
+        "a lifetime grant publishes no expiry and retains revocation",
+        "lifetime replenishment skips missed months and replays without double credit",
+        "UTC calendar months clamp month ends, including leap years",
+        "a six-month code grants six full allowance months ending on the calendar date",
+        "an unknown subscription authority refuses an exclusive code",
+        "a code cannot carry both a day and a month term",
+        "the account snapshot reports the grant's free-through date and current allowance"
       ]
     }
   ]
