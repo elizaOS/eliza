@@ -240,3 +240,15 @@ test("a consent session name is a UUID bound to its user and nonce", async () =>
   ).not.toBe(id);
   expect(id).not.toContain(NONCE.slice(0, 8));
 });
+
+test("prepared consent names remain compatible with existing speech clients", async () => {
+  const { preparedSpeechSessionIdForConsent } = await import(
+    "../src/speech-relay-coordinator"
+  );
+  const id = preparedSpeechSessionIdForConsent(USER, NONCE);
+  expect(id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  expect(preparedSpeechSessionIdForConsent(USER, NONCE)).toBe(id);
+  expect(preparedSpeechSessionIdForConsent(ORG, NONCE)).not.toBe(id);
+});
