@@ -341,6 +341,17 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Build linked workspaces
         run: bun run build:core
+      - name: Verify speech transport and retirement
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/cloud-startup
+          for test_file in \
+            packages/cloud/api/src/speech-retirement-coordinator.test.ts \
+            packages/cloud/api/src/speech-retirement-composition.test.ts \
+            packages/cloud/api/__tests__/speech-relay-worker.test.ts; do
+            bun test "$test_file" 2>&1 | tee -a test-results/cloud-startup/speech-tests.log
+          done
       - name: Profile local Worker startup
         working-directory: packages/cloud/api
         shell: bash
