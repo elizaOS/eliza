@@ -590,17 +590,21 @@ export class InboxOperation {
       throw new Error(
         "Gmail answered for a different request, so nothing was confirmed. Check the saved receipt before trying again; do not send this message again.",
       );
-    // A prepared response after an attempted dispatch remains uncertain locally; never re-enable Send.
+    // A stale prepared receipt cannot replace an attempted dispatch or a
+    // receipt we already observed. The original request is never rearmed.
+    if (
+      receipt.state === "prepared" &&
+      (record.phase === "dispatching" || record.phase === "observed")
+    )
+      return;
     await this.save({
       ...record,
       receipt: copy(receipt),
       phase:
         receipt.state === "prepared"
-          ? record.phase === "dispatching"
-            ? "dispatching"
-            : record.review
-              ? "review"
-              : "preparing"
+          ? record.review
+            ? "review"
+            : "preparing"
           : "observed",
     });
   }
