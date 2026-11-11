@@ -19,7 +19,9 @@ Changes to files still require the owner to review them in the active Files view
 screen; the view binds that displayed result across permission and selection
 waits, so the filter still returns only a count. Filters remain until explicitly
 cleared. An incomplete search fails explicitly while retaining its visible rows;
-storage hosts must report `truncated` when their query leaves sources unread.
+storage hosts must return `truncated: false` only for a complete query. Missing
+completeness metadata is treated as incomplete, including legacy native queries;
+returned rows remain available for selection without claiming there are no matches.
 
 Move, copy, Trash and Undo admit at most 500 paths per storage call. Leaving the
 view fences their later calls; confirmed Trash outcomes remain available for Undo,

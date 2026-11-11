@@ -94,19 +94,20 @@ module FilesBatchOwnership {
 module FilesViewState {
   type State = { filter: bool, cleared: bool, active: bool, longAbsence: bool,
     refresh: bool, busy: bool, started: Set[int], pending: Set[int], query: int,
-    partial: bool, failed: bool, anyRows: bool, emptyClaim: bool, completeClaim: bool,
+    partial: bool, metadataKnown: bool, failed: bool, anyRows: bool, emptyClaim: bool, completeClaim: bool,
     requested: int, shared: int, shareDone: bool }
   var s: State
-  action init = {
+  action initKnown(known: bool): bool = {
     nondet partial = Bool.oneOf()
     nondet failed = Bool.oneOf()
     nondet rows = Bool.oneOf()
     nondet requested = Set(0, 100, 101, 1200).oneOf()
     s' = { filter: true, cleared: false, active: true, longAbsence: false,
       refresh: true, busy: false, started: Set(), pending: Set(), query: 0,
-      partial: partial, failed: failed, anyRows: rows, emptyClaim: false, completeClaim: false,
+      partial: partial, metadataKnown: known, failed: failed, anyRows: rows, emptyClaim: false, completeClaim: false,
       requested: requested, shared: 0, shareDone: false }
   }
+  action init = { nondet known = Bool.oneOf(); initKnown(known) }
   action leave = all { s.active, s' = s.with("active", false) }
   action age = all { not(s.longAbsence), s' = s.with("longAbsence", true) }
   action enter = all { not(s.active), s' = s.with("active", true) }
@@ -117,21 +118,23 @@ module FilesViewState {
     s' = s.with("pending", s.pending.exclude(Set(i))).with("busy", s.pending.exclude(Set(i)).size() > 0) }
   action refreshReply = all { s.refresh, s' = s.with("refresh", false) }
   action queryReply = all { s.query == 0,
-    s' = s.with("query", 1).with("completeClaim", not(s.partial) and not(s.failed))
-      .with("emptyClaim", not(s.partial) and not(s.failed) and not(s.anyRows)) }
+    s' = s.with("query", 1).with("completeClaim", s.metadataKnown and not(s.partial) and not(s.failed))
+      .with("emptyClaim", s.metadataKnown and not(s.partial) and not(s.failed) and not(s.anyRows)) }
   action share = all { not(s.shareDone),
     s' = s.with("shareDone", true).with("shared", s.requested) }
   action step = any { leave, age, enter, clear, begin(0), begin(1), finish(0), finish(1),
     refreshReply, queryReply, share, s' = s }
   val FilterRestoration = s.filter == not(s.cleared)
   val NoInventedEmptyOrComplete = (s.emptyClaim or s.completeClaim) implies
-    (not(s.partial) and not(s.failed))
+    (s.metadataKnown and not(s.partial) and not(s.failed))
   val WholeAuthorizedSelection = not(s.shareDone) or s.shared == s.requested
   val OwnedBusyCount = s.pending.subseteq(s.started) and s.pending.size() <= 2 and
     s.busy == (s.pending.size() > 0)
   temporal FairOperationsDrain = (finish(0).weakFair(s) and finish(1).weakFair(s)) implies
     (s.pending.size() > 0).leadsTo(s.pending.size() == 0)
   temporal OperationsDrain = (s.pending.size() > 0).leadsTo(s.pending.size() == 0)
+  run unknownMetadataCannotClaimEmpty = initKnown(false).then(queryReply)
+    .expect(not(s.emptyClaim) and not(s.completeClaim))
   run longAbsenceKeepsFilter = init.then(leave).then(age).then(enter).expect(FilterRestoration and s.filter)
   run overlappingOwnersDrainSeparately = init.then(begin(0)).then(begin(1)).then(finish(0))
     .expect(s.pending == Set(1)).then(finish(1)).expect(s.pending.size() == 0)

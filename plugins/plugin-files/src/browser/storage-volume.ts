@@ -248,7 +248,7 @@ export class BrowserStorageVolume {
   }
   async query(
     input: { folders?: boolean; folder?: string } = {},
-  ): Promise<{ entries: StorageEntry[]; truncated?: boolean }> {
+  ): Promise<{ entries: StorageEntry[]; truncated: boolean }> {
     return input.folders === true
       ? this.walkFolders(typeof input.folder === "string" ? input.folder : "")
       : this.walk();

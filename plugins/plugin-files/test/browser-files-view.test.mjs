@@ -271,7 +271,7 @@ test("the agent opens a shown filter result by its position, without its name", 
     file("Download/old.pdf", "application/pdf", 1),
   ];
   const view = files(t, {
-    storageQuery: async () => ({ status: "ready", entries }),
+    storageQuery: async () => ({ status: "ready", entries, truncated: false }),
   });
   view.render();
   await tick();
@@ -315,6 +315,7 @@ test("a filter is restored after both short and long visits away", async (t) => 
     storageQuery: async () => ({
       status: "ready",
       entries: [file("Download/lease.pdf", "application/pdf")],
+      truncated: false,
     }),
   });
   view.render();
@@ -350,6 +351,7 @@ test("a shown position cannot switch to a new filter while access is pending", a
     storageQuery: async ({ text }) => ({
       status: "ready",
       entries: [file(`Download/${text}.pdf`, "application/pdf")],
+      truncated: false,
     }),
   });
   view.render();
@@ -371,6 +373,7 @@ test("a late shown grant is released when the displayed filter is replaced", asy
     storageQuery: async ({ text }) => ({
       status: "ready",
       entries: [file(`Download/${text}.pdf`, "application/pdf")],
+      truncated: false,
     }),
     storageSelect: () => selected.promise,
   });
@@ -552,4 +555,63 @@ test("external opening refuses a malformed grant and releases a retired fallback
   await tick();
   assert.deepEqual(view.accepted, []);
   assert.deepEqual(view.forgotten, ["late-external-fallback"]);
+});
+
+test("legacy query completeness is unknown for both zero and 500 returned rows", async (t) => {
+  const observations = [];
+  for (const count of [0, 500]) {
+    const entries = Array.from({ length: count }, (_, i) =>
+      file(`Download/${i}.pdf`, "application/pdf"),
+    );
+    const view = files(t, {
+      storageQuery: async () => ({ status: "ready", entries }),
+    });
+    view.render();
+    await tick();
+    const signal = new AbortController().signal;
+    const outcome = await view.runner.run(
+      { type: "files_filter", kind: "pdf" },
+      signal,
+    );
+    const empty = view.render().filterEmpty;
+    const opening = count
+      ? await view.runner.run({ type: "files_open", shown: count }, signal)
+      : undefined;
+    observations.push({
+      count,
+      status: outcome.status,
+      empty,
+      returnedRowsRemainAccessible: opening?.status,
+    });
+    view.leave();
+  }
+  const malformed = files(t, {
+    storageQuery: async () => ({ status: "ready", truncated: false }),
+  });
+  malformed.render();
+  await tick();
+  const outcome = await malformed.runner.run(
+    { type: "files_filter", kind: "pdf" },
+    new AbortController().signal,
+  );
+  observations.push({
+    count: "missing-entries",
+    status: outcome.status,
+    empty: malformed.render().filterEmpty,
+  });
+  assert.deepEqual(observations, [
+    {
+      count: 0,
+      status: "failed",
+      empty: false,
+      returnedRowsRemainAccessible: undefined,
+    },
+    {
+      count: 500,
+      status: "failed",
+      empty: false,
+      returnedRowsRemainAccessible: "succeeded",
+    },
+    { count: "missing-entries", status: "failed", empty: false },
+  ]);
 });

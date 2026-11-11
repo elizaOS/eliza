@@ -962,12 +962,14 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         ...(value.to ? { to: filterTime(value.to, true) } : {}),
       });
       if (!current()) return;
-      if (query.status === "ready") {
+      if (query.status === "ready" && Array.isArray(query.entries)) {
         filterRows = sortEntries(
-          (query.entries || []).filter((entry) => filterMatches(value, entry)),
+          query.entries.filter((entry) => filterMatches(value, entry)),
           "date",
         );
-        filterTruncated = query.truncated === true;
+        // Older native ports return a bounded page without completeness
+        // metadata. Keep those rows, but never infer a complete/empty search.
+        filterTruncated = query.truncated !== false;
         filterUnavailable = false;
         return filterRows.length;
       }

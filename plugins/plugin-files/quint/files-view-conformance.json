@@ -309,6 +309,11 @@
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
       "name": "external opening refuses a malformed grant and releases a retired fallback grant"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "legacy query completeness is unknown for both zero and 500 returned rows"
     }
   ],
   "assistant": {
