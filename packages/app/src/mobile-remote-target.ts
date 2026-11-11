@@ -12,7 +12,6 @@ import {
   Service,
 } from "@elizaos/core";
 import type { HttpPlugin, Route } from "@elizaos/host/protocol";
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import { LoopbackRemoteTargetExecutor } from "../platforms/electrobun/src/remote-target-executor";
 import { RemoteTargetDesktopService } from "../platforms/electrobun/src/remote-target-rpc";
@@ -151,7 +150,7 @@ export async function createAndroidAgentExecutor(
 ): Promise<RemoteTargetCommandExecutor> {
   return new LoopbackRemoteTargetExecutor({
     apiBase: "http://127.0.0.1",
-    apiToken: resolveAliasedEnvValue("ELIZA_API_TOKEN") ?? "",
+    apiToken: process.env.ELIZA_API_TOKEN?.trim() || "",
     fetchImpl: await createAndroidAgentFetch(runtime),
   });
 }

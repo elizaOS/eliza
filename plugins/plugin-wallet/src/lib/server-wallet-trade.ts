@@ -7,7 +7,6 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import type { TradePermissionMode } from "@elizaos/contracts";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 
 import type { WalletExportRequestBody } from "../contracts.js";
 import {
@@ -87,7 +86,7 @@ function resolveBaseWalletExportRejection(
     };
   }
 
-  const expected = readAliasedEnv("ELIZA_WALLET_EXPORT_TOKEN");
+  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
   if (!expected) {
     return {
       status: 403,

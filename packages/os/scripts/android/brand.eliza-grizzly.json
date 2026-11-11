@@ -9,7 +9,6 @@
   "lunchTarget": "eliza_grizzly_phone-cp2a-userdebug",
   "aospDeviceTreePaths": ["vendor/google_devices/grizzly/grizzly.mk"],
   "aospLockPath": "android/pixel11pro.lock.json",
-  "envPrefix": "ELIZA",
   "propertyPrefix": "elizaos",
   "vendorDir": "android/vendor/eliza",
   "initRcName": "init.eliza.rc",

@@ -18,12 +18,10 @@
  *   scanner only reads JS/TS content, so a `.py` or `.sh` payload is executed
  *   having never been opened.
  *
- * Matched by suffix rather than exact name on purpose. `readAliasedEnv`
- * resolves a brand partner for every `ELIZA_*` key
- * (packages/host/src/config/brand-env-aliases.ts carries
- * `TERMINAL_RUN_TOKEN`), and the brand prefix is deployment-configurable, so
- * `ELIZA_TERMINAL_RUN_TOKEN` and `<PREFIX>_TERMINAL_RUN_TOKEN` are the same
- * switch to the runtime. Pinning one spelling would leave the partner open.
+ * Matched by suffix rather than exact name on purpose. Agent images built
+ * before brand env aliases were removed resolve `<PREFIX>_TERMINAL_RUN_TOKEN`
+ * as the same switch as `ELIZA_TERMINAL_RUN_TOKEN`, so pinning one spelling
+ * would leave the partner open on those images.
  *
  * Removed here, rather than denied on the write routes, because a denylist on
  * those routes cannot hold: the stored `environment_vars` row is replayed

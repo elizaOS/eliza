@@ -608,9 +608,9 @@ export function rebuildLauncherApk(brand, browserPin) {
       ? bindBrowserCertificate(process.env, browserPin)
       : process.env),
     ELIZAOS_OS_REPO_ROOT: repoRoot,
-    [`${brand.envPrefix}_APP_ID`]: brand.packageName,
-    [`${brand.envPrefix}_AOSP_BUILD`]: "1",
-    [`${brand.envPrefix}_GRADLE_AOSP_BUILD`]: "true",
+    ELIZA_APP_ID: brand.packageName,
+    ELIZA_AOSP_BUILD: "1",
+    ELIZA_GRADLE_AOSP_BUILD: "true",
   };
   const [cmd, ...rest] = brand.buildAndroidSystemCmd;
   run(cmd, rest, { cwd: elizaRoot, env });

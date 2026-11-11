@@ -12,7 +12,6 @@
     "device/eliza/cuttlefish_e1/eliza_e1_cuttlefish.mk"
   ],
   "aospDeviceOverlay": "android/cuttlefish-e1.lock.json",
-  "envPrefix": "ELIZA",
   "propertyPrefix": "elizaos",
   "vendorDir": "android/vendor/eliza",
   "initRcName": "init.eliza.rc",
