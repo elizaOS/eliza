@@ -303,16 +303,52 @@ export function createMailDraftsController(
     );
   };
 
-  async function saveShelf(next: Shelf) {
-    const token = epoch,
-      expected = shelf;
-    const receipt = await store.compareExchange(shelfSlot(), expected, next);
-    if (token !== epoch) throw Error("Draft account changed");
-    if (receipt.status !== "saved")
-      throw Error(
-        "Drafts changed in another window. Reload before continuing.",
+  async function saveShelf(next: Shelf, append = false) {
+    const token = epoch;
+    let expected = shelf;
+    const added = next.items.filter(
+      (row) =>
+        !expected?.items.some(
+          (old) => old.draft.id === row.draft.id && same(old, row),
+        ),
+    );
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const receipt = await store.compareExchange(shelfSlot(), expected, next);
+      if (token !== epoch) throw Error("Draft account changed");
+      if (receipt.status === "saved") {
+        shelf = next;
+        return;
+      }
+      if (!append) throw Error("Drafts changed. Try again.");
+      const current = await store.read<Shelf>(shelfSlot());
+      if (token !== epoch) throw Error("Draft account changed");
+      if (current !== null && !shelfValid(current))
+        throw Error("Saved drafts need recovery");
+      const merged = new Map(
+        (current?.items || []).map((row) => [row.draft.id, row]),
       );
-    shelf = next;
+      for (const row of added) {
+        const peer = merged.get(row.draft.id);
+        const before = expected?.items.find(
+          (old) => old.draft.id === row.draft.id,
+        );
+        if (peer && !same(peer, row) && !same(peer, before)) {
+          // Both windows edited this draft. Keep both complete versions.
+          const copy = structuredClone(row);
+          copy.draft.id = crypto.randomUUID();
+          copy.draft.revision = crypto.randomUUID();
+          merged.set(copy.draft.id, copy);
+        } else merged.set(row.draft.id, row);
+      }
+      next = { version: 1, owner, items: [...merged.values()] };
+      if (
+        !shelfValid(next) ||
+        new TextEncoder().encode(JSON.stringify(next)).length > DRAFT_BYTES
+      )
+        throw Error("Draft storage is full. Your current email is still here.");
+      expected = current;
+    }
+    throw Error("Drafts are still updating. Try again.");
   }
 
   const pendingEdits = new Map<
@@ -732,7 +768,7 @@ export function createMailDraftsController(
     busy = true;
     publish();
     try {
-      await saveShelf(next);
+      await saveShelf(next, true);
       if (token !== epoch) return false;
       if (saved) {
         const receipt = await store.compareExchange(slot(), saved, null);
@@ -1406,7 +1442,85 @@ export function createMailDraftsController(
     ...(d.reply ? { replyMessageId: d.reply.messageId } : {}),
   });
 
+  let selectionShelf: Shelf | null = null;
+  let selectionEpoch = -1;
+
+  async function prepareSelection(): Promise<boolean> {
+    selectionShelf = null;
+    selectionEpoch = -1;
+    if (!(await setAside())) return false;
+    selectionShelf = structuredClone(shelf);
+    selectionEpoch = epoch;
+    return true;
+  }
+
+  /** Remove only the exact saved versions selected by this owner. */
+  async function removeSelection(
+    ids: readonly string[],
+    current: () => boolean,
+  ): Promise<boolean> {
+    if (
+      !ready ||
+      busy ||
+      selectionEpoch !== epoch ||
+      !selectionShelf ||
+      !current()
+    )
+      return false;
+    const token = epoch;
+    const key = shelfSlot();
+    const selected = new Set(ids);
+    const targets = selectionShelf.items.filter((row) =>
+      selected.has(row.draft.id),
+    );
+    if (!selected.size || targets.length !== selected.size) return false;
+    busy = true;
+    publish();
+    try {
+      const latest = await store.read<Shelf>(key);
+      if (token !== epoch || !current()) return false;
+      if (latest !== null && !shelfValid(latest))
+        throw Error("Saved drafts need recovery");
+      for (const target of targets) {
+        const found = latest?.items.find(
+          (row) => row.draft.id === target.draft.id,
+        );
+        if (found && !same(found, target))
+          throw Error("A selected draft changed. Select it again.");
+      }
+      const next: Shelf = {
+        version: 1,
+        owner,
+        items: (latest?.items || []).filter(
+          (row) => !selected.has(row.draft.id),
+        ),
+      };
+      if (next.items.length !== (latest?.items.length || 0)) {
+        try {
+          const receipt = await store.compareExchange(key, latest, next);
+          if (receipt.status !== "saved")
+            throw Error("Drafts changed. Select them again.");
+        } catch (error) {
+          // A lost reply is resolved by exact readback, never a second delete.
+          const observed = await store.read<Shelf>(key);
+          if (!same(observed, next)) throw error;
+        }
+      }
+      if (token !== epoch || !current()) return false;
+      shelf = next;
+      selectionShelf = structuredClone(next);
+      return true;
+    } finally {
+      if (token === epoch) {
+        busy = false;
+        publish();
+      }
+    }
+  }
+
   const controller = {
+    prepareSelection,
+    removeSelection,
     bind,
     reset,
     begin,
@@ -1599,6 +1713,22 @@ export function createMailDraftsController(
           );
         }
       }
+      const sameProvider =
+        saved?.provider?.draftId === reference.draftId &&
+        saved?.provider?.providerDigest === reference.providerDigest;
+      if (sameProvider && !earlierVersion()) {
+        draft = fromSaved();
+        baseRevision = saved!.revision;
+        staleBase = false;
+        open = true;
+        confirm = false;
+        toQ = "";
+        publish();
+        return true;
+      }
+      const keptEarlierVersion = sameProvider && earlierVersion();
+      const token = epoch;
+      if (!(await setAside()) || token !== epoch) return false;
       draft = {
         version: 1,
         id: crypto.randomUUID(),
@@ -1628,6 +1758,15 @@ export function createMailDraftsController(
         "Editing a Gmail draft. Save locally to keep your edits. This draft may have changed in Gmail, and saving replaces it.";
       publish();
       await update();
+      if (
+        token === epoch &&
+        keptEarlierVersion &&
+        saved?.provider?.draftId === reference.draftId
+      ) {
+        status =
+          "Earlier version of a sent email kept in Drafts. This is the current Gmail draft.";
+        publish();
+      }
       return (
         saved?.provider?.draftId === reference.draftId &&
         saved?.provider?.providerDigest === reference.providerDigest
@@ -1709,6 +1848,7 @@ export function createMailDraftsController(
                   "Open local draft",
                   () => void openShelved(row.draft.id),
                 ),
+                id: row.draft.id,
                 subject: row.draft.subject || "(No subject)",
                 snippet: row.draft.body.slice(0, 160) || "Draft on this device",
               })) || []),
