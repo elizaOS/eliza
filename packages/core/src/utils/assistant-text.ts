@@ -58,6 +58,13 @@ function normalizeProse(input: string): string {
 // container rules. Slice the original source so CRLF, tabs and indentation survive.
 const assistantMarkdown = new MarkdownIt("commonmark");
 
+function isEscapedBacktickRun(input: string, run: RegExpMatchArray): boolean {
+	const index = run.index ?? 0;
+	let escapeStart = index;
+	while (escapeStart > 0 && input[escapeStart - 1] === "\\") escapeStart--;
+	return (index - escapeStart) % 2 !== 0;
+}
+
 function normalizeInlineParagraph(input: string): string {
 	// Backtick runs close only a run of exactly the same length. Index them once
 	// so a long streamed reply with unmatched runs does not trigger quadratic scans.
@@ -69,19 +76,26 @@ function normalizeInlineParagraph(input: string): string {
 		group.push(index);
 		byLength.set(length, group);
 	}
+	// A backslash-escaped run is literal text, never a delimiter — on either
+	// side of a span. The opener check below already skipped escaped runs,
+	// but the closer search did not, so an escaped run closed the span early
+	// and the rest of the code span was cleaned as prose.
+	const escaped = runs.map((run) => isEscapedBacktickRun(input, run));
 	const cursors = new Map<number, number>();
 	let output = "";
 	let offset = 0;
 	for (let index = 0; index < runs.length; index++) {
 		const opener = runs[index];
-		let escapeStart = opener.index;
-		while (escapeStart > 0 && input[escapeStart - 1] === "\\") escapeStart--;
-		if ((opener.index - escapeStart) % 2 !== 0) continue;
+		if (escaped[index]) continue;
 		const length = opener[0].length;
 		const group = byLength.get(length);
 		if (!group) continue;
 		let cursor = cursors.get(length) ?? 0;
-		while (cursor < group.length && group[cursor] <= index) cursor++;
+		while (
+			cursor < group.length &&
+			(group[cursor] <= index || escaped[group[cursor]])
+		)
+			cursor++;
 		cursors.set(length, cursor);
 		const closingIndex = group[cursor];
 		if (closingIndex === undefined) continue;
