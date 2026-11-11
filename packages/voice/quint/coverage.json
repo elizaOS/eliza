@@ -2,12 +2,8 @@
   {
     "id": "NativeSpeechRequest",
     "model": "packages/voice/quint/NativeSpeechRequest.qnt",
-    "sources": [
-      "packages/voice/src/native-speech-request.ts"
-    ],
-    "invariants": [
-      "invariant"
-    ],
+    "sources": ["packages/voice/src/native-speech-request.ts"],
+    "invariants": ["invariant"],
     "status": "modeled",
     "limitations": [
       "Models one request and permanent request-binding invalidation. A binding that becomes valid again is excluded.",
@@ -56,9 +52,7 @@
   {
     "id": "live-frame-backlog",
     "model": "packages/voice/quint/VoiceDeferredState.qnt",
-    "sources": [
-      "packages/voice/src/live-voice-session.ts"
-    ],
+    "sources": ["packages/voice/src/live-voice-session.ts"],
     "invariants": [
       "QueueBounded",
       "OneOverflowFailure",
@@ -74,9 +68,7 @@
   {
     "id": "deferred-voice-timing",
     "model": "packages/voice/quint/VoiceDeferredState.qnt",
-    "sources": [
-      "packages/voice/src/voice-turn-timing.ts"
-    ],
+    "sources": ["packages/voice/src/voice-turn-timing.ts"],
     "invariants": [
       "MarksDoNoStorageWrite",
       "SendRequiresReady",
