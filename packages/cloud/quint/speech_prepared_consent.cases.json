@@ -5,11 +5,27 @@
     "packages/cloud/api/src/speech-retirement-route.test.ts",
     "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
     "packages/cloud/api/__tests__/voice-speech-mint.test.ts",
+    "packages/cloud/api/src/speech-retirement-state.ts",
+    "packages/cloud/shared/src/lib/voice-session/consent-nonce.ts",
     "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
-    "packages/cloud/api/test/fixtures/speech-relay-worker.ts"
+    "packages/cloud/api/test/fixtures/speech-relay-worker.ts",
+    "packages/host/src/voice/cloud-speech-relay-client.ts",
+    "packages/host/src/voice/cloud-speech-retirement-recovery.test.ts",
+    "packages/app/src/api/cloud-speech-recovery-journal.ts",
+    "packages/cloud/quint/check-speech-prepared-consent.mjs",
+    "packages/cloud/quint/speech-prepared-consent-conformance.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "packages/cloud/quint/check-speech-prepared-consent.mjs",
-  "bounds": "One new prepared consent, matching or foreign owner and nonce, expiry, retirement, restart, and legacy-route attempts. Existing random recovery IDs retain the Redis path. Storage commit and acknowledgement are atomic in this model. Lost acknowledgements and provider/billing activity retain the existing retirement protocol and are not proved here. Repeated rejected attempts remain stuttering transitions; their unused count is omitted so the state space is finite. No rejection path is removed. No liveness promise or fairness assumption is made. Bootstrap expiry and the prepared record commit together; a failed preparation retains neither. The real SQLite Worker test verifies the stored record and alarm after acknowledgement.",
+  "bounds": {
+    "domain": "One new server-generated consent, one persisted prepared record, one user and organization, exact/mismatching nonce, original absolute expiry, retirement and restart. Admissions are bounded0..1; rejection records only the last outcome, not an unbounded counter. One armed expiry flag projects the persisted bootstrap alarm.",
+    "scope": "A UUIDv5 name selects the exact prepared Durable Object; it is not consent authority. Mint requires prepared phase, original nonce digest, matching user and organization, and the original unexpired preparation. Restart preserves the original record and expiry. New nonces have no legacy Redis entry; old random recovery IDs keep the existing Redis precondition.",
+    "assumptions": "HTTP authentication and a visible consent action precede preparation. Equality of nonce digest abstracts collision-resistant token comparison. The existing Durable Object storage transaction atomically checks and commits each phase change. Local filesystem journal operations and provider boundaries in conformance are controlled; real Workerd SQLite/socket behavior remains actual. Bootstrap record and expiry alarm commit in one SQLite storage transaction. A failed preparation retains neither record nor alarm. Armed abstracts an unexpired scheduled bootstrap alarm; expiry and retirement clear that abstraction.",
+    "limitations": "Partial consent-admission model, not a proof of UI consent, cryptographic derivation, authentication, policy propagation, credential-revocation timing, multiple sessions, lost storage acknowledgements, deployment latency or provider/billing effects. A stored preparation may mint once after process recreation only until its original expiry and for its original user/organization; restart never grants fresh consent. Provider admission/cleanup and unknown costs remain covered by their existing owners, not this finite model. Missing-record retirement is a conservative extra refusal state: the actual server returns404 without creating a record. Alarm execution, clock precision and general transaction refinement remain outside this projection.",
+    "progress": "No new liveness or wall-clock promise. Storage commit/acknowledgement is one atomic transition in this model; failures, waits and recovery scheduling remain outside it. Mandatory real implementation checks cover replay, retirement, expiry, client cancellation and owner changes at named boundaries."
+  },
   "cases": [
     {
       "name": "prepared-single-use",

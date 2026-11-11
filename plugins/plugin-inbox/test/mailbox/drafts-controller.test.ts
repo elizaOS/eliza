@@ -527,6 +527,10 @@ describe("createMailDraftsController", () => {
       "a@b.c",
       "d@e.f",
     ]);
+    // A save that an invalid Cc address stops names Cc and Bcc as the cause.
+    type(f.controller, "onCc", "a@b.c, friend");
+    await save(f.controller);
+    expect(f.toasts.at(-1)).toMatch(/^Cc or Bcc contains an invalid address/);
   });
 
   it("reopens a shelved earlier version of a sent email with a valid recovery copy", async () => {

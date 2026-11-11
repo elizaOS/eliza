@@ -1,0 +1,25 @@
+[
+  {
+    "className": "ai.eliza.plugins.messages.TelephonyPluginReviewTest",
+    "required": [
+      "smsCancellationBeforeJournalReplyMustRetireQueuedReview",
+      "mmsCancellationBeforeJournalReplyMustRetireQueuedReview",
+      "backgroundBeforeJournalReplyMustRetireQueuedReview",
+      "cancellationAfterSendTapFencesQueuedDispatch",
+      "unrelatedCancellationCannotRetireAnotherReview",
+      "cancellationCannotEraseARecordedSubmission"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.messages.SmsSendJournalTest",
+    "required": [
+      "journalBindingEvidenceDurabilityAndMapping",
+      "ownOutboxRowsSettleFromSentCallbacksOnly",
+      "retiredFilterNamespaceIsMigrationSensitive"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.messages.MmsSendJournalTest",
+    "required": ["mmsBindingValidationAndEvidence"]
+  }
+]

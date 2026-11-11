@@ -39,6 +39,11 @@ export const LIVE_ASR_STATUS_PATH = "/api/asr/local-inference/live/status";
 export const LIVE_SAMPLE_RATE = 16000;
 const MAX_TEXT = 16000;
 const MAX_FRAMES_PER_POST = 64;
+/**
+ * Most frames a segment stream holds while they wait for their post: about 30 s of the capture's
+ * 32 ms frames. More means the agent does not keep up, and the stream fails as `TRANSPORT`.
+ */
+export const LIVE_MAX_UNPOSTED_FRAMES = 960;
 
 export type LiveAudioFrame = {
   pcm16: string;
@@ -526,6 +531,10 @@ export interface LiveSegmentHandlers {
  *
  * Interim text (`onInterim`) needs a transport with an event stream (`subscribe`). A request-only
  * transport delivers finals only; nothing is synthesized in place of a partial.
+ *
+ * Posts go one at a time. When more than `LIVE_MAX_UNPOSTED_FRAMES` frames wait for a post, the
+ * stream stops: it drops the waiting audio, gives null for each outstanding segment and calls
+ * `onFatal("TRANSPORT")` once.
  */
 export function createLiveSegmentStream(
   input: {
@@ -539,6 +548,13 @@ export function createLiveSegmentStream(
   let finished = false;
   let discarded = false;
   let expected = 0;
+  let unposted = 0;
+  const fatal = (code: "LIVE_ASR_UNAVAILABLE" | "TRANSPORT") => {
+    const outstanding = expected;
+    expected = 0;
+    for (let index = 0; index < outstanding; index++) input.onSegment(null);
+    input.onFatal?.(code);
+  };
   const session = createLiveVoiceSession({
     transport: input.transport,
     ...(input.roomId ? { roomId: input.roomId } : {}),
@@ -561,10 +577,7 @@ export function createLiveSegmentStream(
         }
         return;
       }
-      const outstanding = expected;
-      expected = 0;
-      for (let index = 0; index < outstanding; index++) input.onSegment(null);
-      input.onFatal?.(code);
+      fatal(code);
     },
   });
   const closeSegment = (at: number) => {
@@ -597,7 +610,18 @@ export function createLiveSegmentStream(
         } else if (closeSegment(edge.timestampMs)) edges.push(edge);
       }
       if (!kept.length && !edges.length) return Promise.resolve();
-      return session.push(kept, edges);
+      if (unposted + kept.length > LIVE_MAX_UNPOSTED_FRAMES) {
+        // The agent does not keep up. Drop the waiting audio and stop.
+        finished = true;
+        open = false;
+        session.dispose();
+        fatal("TRANSPORT");
+        return Promise.resolve();
+      }
+      unposted += kept.length;
+      return session.push(kept, edges).finally(() => {
+        unposted -= kept.length;
+      });
     },
     /** The user stopped at `at` (epoch ms, the frames' clock). Later audio is never forwarded. */
     cutoff(at: number) {

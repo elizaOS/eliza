@@ -1089,6 +1089,54 @@ test("a location callback after the timeout cannot replace the retained origin",
   f.screen.dispose();
 });
 
+test("a newer search, origin or Start retires a pending location request", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const origin = (f) => f.screen.surface(async () => true).snapshot().origin;
+
+  // A submitted search keeps its results when the fix arrives late.
+  const searched = fixture();
+  searched.screen.locate();
+  searched.screen.setQuery("Destination");
+  searched.screen.submit();
+  await settle();
+  assert.equal(searched.screen.view().status.locationBusy, false);
+  searched.emitDevice(searched.fix());
+  assert.equal(searched.screen.view().mode, "results");
+  assert.equal(searched.screen.view().hasResults, true);
+  searched.screen.dispose();
+
+  // A typed origin ends the request. The late fix and the timer change nothing.
+  const typed = fixture();
+  typed.screen.setQuery("Destination");
+  typed.screen.submit();
+  await settle();
+  typed.screen.choose("place:fixture:destination");
+  await settle();
+  typed.screen.openDirections();
+  typed.screen.locate();
+  typed.screen.setOriginText(`${ORIGIN.latitude}, ${ORIGIN.longitude}`);
+  typed.screen.planOrigin();
+  await settle();
+  assert.equal(typed.screen.view().status.locationBusy, false);
+  typed.emitDevice(typed.fix());
+  t.mock.timers.tick(15_000);
+  await settle();
+  assert.deepEqual(origin(typed), ORIGIN);
+  assert.equal(typed.screen.view().directions?.routeReady, true);
+  assert.doesNotMatch(typed.screen.view().status.text, /Couldn't find/);
+  assert.equal(typed.calls.routes.length, 1);
+
+  // Start keeps its route when a pending current-location fix arrives.
+  typed.screen.locate();
+  typed.screen.start();
+  await settle();
+  typed.emitDevice(typed.fix());
+  await settle();
+  assert.equal(typed.screen.isNavigating(), true);
+  assert.deepEqual(origin(typed), ORIGIN);
+  typed.screen.dispose();
+});
+
 test("a hidden page without background admission stops guidance and keeps its route for explicit resume", async () => {
   const f = fixture();
   await planned(f);

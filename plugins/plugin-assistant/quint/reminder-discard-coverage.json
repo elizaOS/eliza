@@ -1,0 +1,23 @@
+[
+  {
+    "id": "ReminderUnconfirmedDiscard",
+    "model": "plugins/plugin-assistant/quint/ReminderUnconfirmedDiscard.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/services/device-actions/reminder-journal.ts",
+      "plugins/plugin-assistant/src/services/device-actions/reminder-journal.test.ts",
+      "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts"
+    ],
+    "invariants": [
+      "ConfirmedCreationRetained",
+      "ForgotOnlyUnconfirmed",
+      "DiscardNeverExecutesOrAcknowledges",
+      "ForgottenRemainsForgotten"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One reminder journal ID, one explicit owner discard, one concurrent confirming readback and atomic host compare-and-set storage. The action projection has one already admitted external effect that may appear before or after forgetting.",
+      "Discard is local journal removal after a host warning, not cancellation or a receipt of an external outcome. Confirmed creations remain retained, including a stale absent read followed by a newer found row. Changes after the final read are refused by the host compare-and-set.",
+      "Host authentication, the warning UI and explicit owner consent are assumptions outside this library. Durable host store implementation, failed or lost storage acknowledgements, multiple IDs, full-journal trimming, clock and schedule behavior, process death and real native reminder delivery are outside the finite model. Implementation conformance uses the actual journal with controlled storage/readback ports; it is not physical-device qualification."
+    ]
+  }
+]

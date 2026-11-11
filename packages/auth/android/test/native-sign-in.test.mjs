@@ -201,6 +201,17 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       " private void burnUnclaimedPending(Attempt owner)",
       " // ── Email code and MFA:",
     ),
+    ACTUAL_START_EMAIL:
+      between(
+        plugin,
+        " @PluginMethod public void startEmail(",
+        " @PluginMethod public void startPhone(",
+      ).replace("@PluginMethod ", "") +
+      between(
+        plugin,
+        " /** A failed send leaves",
+        " /** Check registration and tenant SMS policy",
+      ),
     ACTUAL_VERIFY:
       between(
         plugin,
@@ -255,15 +266,15 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     );
     assert.match(
       output,
-      /^PASS native code verification ownership \(3 scenarios\)$/m,
+      /^PASS native code verification ownership \(4 scenarios\)$/m,
     );
     assert.match(
       output,
-      /^PASS native sign-in chain \(38 scenarios; no browser facilities\)/m,
+      /^PASS native sign-in chain \(39 scenarios; no browser facilities\)/m,
     );
     assert.match(
       output,
-      /^PASS native startup acknowledgement recovery \(17 scenarios\)$/m,
+      /^PASS native startup acknowledgement recovery \(18 scenarios\)$/m,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

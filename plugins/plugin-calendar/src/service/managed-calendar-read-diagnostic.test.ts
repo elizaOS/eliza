@@ -21,6 +21,7 @@ import {
 import { projectToolResultForModel } from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
 import { __testing } from "../apple-calendar.js";
 import { calendarHttpRoutes } from "../routes/plugin-routes.js";
+import { CalendarRepository } from "./CalendarRepository.js";
 import { CalendarService } from "./CalendarService.js";
 import {
   attachManagedCalendarReadDiagnostic,
@@ -999,9 +1000,9 @@ it("admits larger managed feeds while keeping feed and source response bounds", 
   ).toMatchObject({ operation: "sources", code: "BODY_LIMIT" });
 });
 
-it("keeps a managed feed event in the canonical store for selected-event reads", async () => {
-  const grantId = `alpha-google:${"c".repeat(64)}`;
-  const calendarId = "selected-read-fixture";
+function managedCacheSource(letter: string) {
+  const grantId = `alpha-google:${letter.repeat(64)}`;
+  const calendarId = `cache-fixture-${letter}`;
   const source = {
     ...managedCalendarPlaceholder(),
     grantId,
@@ -1011,14 +1012,14 @@ it("keeps a managed feed event in the canonical store for selected-event reads",
     includeInFeed: true,
   };
   const event = {
-    id: `${grantId}:selected-read-event`,
+    id: `${grantId}:cache-event`,
     agentId: String(testRuntime.runtime.agentId),
     provider: "google",
     side: "owner",
     grantId,
     connectorAccountId: grantId,
     calendarId,
-    externalId: "selected-read-event",
+    externalId: "cache-event",
     title: "Managed selected event",
     description: "",
     location: "",
@@ -1035,6 +1036,16 @@ it("keeps a managed feed event in the canonical store for selected-event reads",
     syncedAt: "2026-10-31T19:00:00.000Z",
     updatedAt: "2026-10-31T19:00:00.000Z",
   };
+  return { grantId, calendarId, source, event };
+}
+
+type CacheSource = ReturnType<typeof managedCacheSource>;
+function managedCacheService(
+  entries: CacheSource[],
+  beforeFeed: (entry: CacheSource) => Promise<void> = async () => {},
+  feedState = "complete",
+  runtime: IAgentRuntime = testRuntime.runtime,
+) {
   vi.stubEnv("ELIZA_MANAGED_CALENDAR_READ_BROKER", ENDPOINT);
   vi.stubEnv("ELIZA_API_TOKEN", TEST_AUTH);
   vi.stubGlobal(
@@ -1042,37 +1053,291 @@ it("keeps a managed feed event in the canonical store for selected-event reads",
     async (_input: RequestInfo | URL, init?: RequestInit) => {
       const { calendar } = JSON.parse(String(init?.body));
       if (calendar.operation === "sources")
-        return Response.json({ calendars: [source] });
+        return Response.json({
+          calendars: entries.map((entry) => entry.source),
+        });
+      const entry = entries.find(
+        (entry) =>
+          entry.grantId === calendar.grantId &&
+          entry.calendarId === calendar.calendarId,
+      );
+      if (!entry) throw new Error("Unexpected cache fixture source");
+      await beforeFeed(entry);
       return Response.json({
         feed: {
-          calendarId,
-          state: "complete",
+          calendarId: entry.calendarId,
+          state: feedState,
           source: "synced",
           timeMin: calendar.timeMin,
           timeMax: calendar.timeMax,
-          events: [event],
+          events: [entry.event],
           sources: [
             {
-              key: { provider: "google", side: "owner", grantId, calendarId },
+              key: {
+                provider: "google",
+                side: "owner",
+                grantId: entry.grantId,
+                calendarId: entry.calendarId,
+              },
               status: "fresh",
             },
           ],
-          syncedAt: event.syncedAt,
+          syncedAt: entry.event.syncedAt,
         },
       });
     },
   );
-  const service = new CalendarService(testRuntime.runtime);
-  const feed = await service.getCalendarFeed(INTERNAL_URL, {
-    ...WINDOW,
-    grantId,
-    calendarId,
-    includeHiddenCalendars: true,
+  return new CalendarService(runtime);
+}
+function readManagedCache(
+  service: CalendarService,
+  entry: CacheSource,
+  signal?: AbortSignal,
+) {
+  return service.getCalendarFeed(
+    INTERNAL_URL,
+    {
+      ...WINDOW,
+      grantId: entry.grantId,
+      calendarId: entry.calendarId,
+      includeHiddenCalendars: true,
+    },
+    new Date(),
+    signal,
+  );
+}
+function removeManagedCache(service: CalendarService, entry: CacheSource) {
+  return service.purgeImportedCalendarData({
+    provider: "google",
+    side: "owner",
+    grantId: entry.grantId,
+    connectorAccountId: entry.grantId,
+    confirmAction: true,
   });
+}
+function heldBroker() {
+  let begin!: () => void;
+  const started = new Promise<void>((resolve) => {
+    begin = resolve;
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    started,
+    release,
+    hold: async () => {
+      begin();
+      await held;
+    },
+  };
+}
+
+it("keeps a managed feed event in the canonical store for selected-event reads", async () => {
+  const entry = managedCacheSource("c");
+  const service = managedCacheService([entry]);
+  const feed = await readManagedCache(service, entry);
   expect(feed.state).toBe("complete");
   expect(feed.events).toHaveLength(1);
-  expect(await service.getCalendarEventById(event.id)).toMatchObject({
-    id: event.id,
-    metadata: event.metadata,
+  expect(await service.getCalendarEventById(entry.event.id)).toMatchObject({
+    id: entry.event.id,
+    metadata: entry.event.metadata,
+  });
+});
+
+it("does not retain a managed read that finishes after imported-data removal", async () => {
+  const entry = managedCacheSource("d");
+  const held = heldBroker();
+  const service = managedCacheService([entry], held.hold);
+  const reading = readManagedCache(service, entry);
+  await held.started;
+  let removed = false;
+  const removing = removeManagedCache(service, entry).then((receipt) => {
+    removed = true;
+    return receipt;
+  });
+  // Let actual store work settle while the admitted broker read remains held.
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    expect(removed).toBe(false);
+  } finally {
+    held.release();
+    await reading;
+    await removing;
+  }
+  expect(await service.getCalendarEventById(entry.event.id)).toBeNull();
+  // Purging a projection is not revoking the source. A fresh enabled read can import.
+  await readManagedCache(service, entry);
+  expect(await service.getCalendarEventById(entry.event.id)).toMatchObject({
+    id: entry.event.id,
+  });
+});
+
+it("keeps an unrelated managed grant concurrent while a removal drains its own read", async () => {
+  const entry = managedCacheSource("e");
+  const other = managedCacheSource("f");
+  const held = heldBroker();
+  const service = managedCacheService([entry, other], async (source) => {
+    if (source === entry) await held.hold();
+  });
+  const reading = readManagedCache(service, entry);
+  await held.started;
+  const removing = removeManagedCache(service, entry);
+  try {
+    const feed = await readManagedCache(service, other);
+    expect(feed.state).toBe("complete");
+    expect(await service.getCalendarEventById(other.event.id)).toMatchObject({
+      id: other.event.id,
+    });
+  } finally {
+    held.release();
+    await reading;
+    await removing;
+  }
+  expect(await service.getCalendarEventById(entry.event.id)).toBeNull();
+  expect(await service.getCalendarEventById(other.event.id)).not.toBeNull();
+});
+
+it("does not cache a cancelled managed broker read or report it as a successful feed", async () => {
+  const entry = managedCacheSource("a");
+  const held = heldBroker();
+  const service = managedCacheService([entry], held.hold);
+  const cancel = new AbortController();
+  const reading = readManagedCache(service, entry, cancel.signal);
+  const rejectedRead = expect(reading).rejects.toMatchObject({
+    name: "AbortError",
+  });
+  await held.started;
+  cancel.abort();
+  held.release();
+  await rejectedRead;
+  await removeManagedCache(service, entry);
+  expect(await service.getCalendarEventById(entry.event.id)).toBeNull();
+});
+
+it("rejects a partial managed feed before it can enter the canonical store", async () => {
+  const entry = managedCacheSource("b");
+  const service = managedCacheService([entry], undefined, "partial");
+  const feed = await readManagedCache(service, entry);
+  expect(feed.state).toBe("unavailable");
+  expect(feed.events).toEqual([]);
+  expect(await service.getCalendarEventById(entry.event.id)).toBeNull();
+});
+
+it("drains a cancelled managed cache write before acknowledging imported-data removal", async () => {
+  const entry = managedCacheSource("9");
+  const service = managedCacheService([entry]);
+  const held = heldBroker();
+  const cancel = new AbortController();
+  const original = CalendarRepository.prototype.upsertCalendarEvent;
+  const write = vi
+    .spyOn(CalendarRepository.prototype, "upsertCalendarEvent")
+    .mockImplementation(async function (event, side) {
+      if (event.id === entry.event.id) await held.hold();
+      await original.call(this, event, side);
+    });
+  const reading = readManagedCache(service, entry, cancel.signal);
+  const rejectedRead = expect(reading).rejects.toMatchObject({
+    name: "AbortError",
+  });
+  await held.started;
+  cancel.abort();
+  let removed = false;
+  const removing = removeManagedCache(service, entry).then(() => {
+    removed = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    expect(removed).toBe(false);
+  } finally {
+    held.release();
+    await rejectedRead;
+    await removing;
+    write.mockRestore();
+  }
+  expect(await service.getCalendarEventById(entry.event.id)).toBeNull();
+});
+
+it("rejects a failed managed removal and permits a real-store retry without a false receipt", async () => {
+  const entry = managedCacheSource("8");
+  const service = managedCacheService([entry]);
+  await readManagedCache(service, entry);
+  const failure = new ElizaError("Fixture removal failure", {
+    code: "CALENDAR_EVENT_PERSISTENCE_FAILED",
+  });
+  const remove = vi
+    .spyOn(CalendarRepository.prototype, "purgeImportedCalendarProjection")
+    .mockRejectedValueOnce(failure);
+  try {
+    await expect(removeManagedCache(service, entry)).rejects.toBe(failure);
+    expect(await service.getCalendarEventById(entry.event.id)).not.toBeNull();
+    await removeManagedCache(service, entry);
+    expect(await service.getCalendarEventById(entry.event.id)).toBeNull();
+  } finally {
+    remove.mockRestore();
+  }
+});
+
+it("keeps a managed cache row unchanged when another agent reads the same host identity", async () => {
+  const entry = managedCacheSource("7");
+  const first = managedCacheService([entry]);
+  await readManagedCache(first, entry);
+  const stored = await first.getCalendarEventById(entry.event.id);
+  expect(stored).not.toBeNull();
+  const otherRuntime = Object.create(testRuntime.runtime) as IAgentRuntime;
+  Object.defineProperty(otherRuntime, "agentId", {
+    value: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  });
+  entry.event.title = "Another agent read";
+  entry.event.metadata.etag = '"other-agent-v2"';
+  const second = managedCacheService(
+    [entry],
+    undefined,
+    "complete",
+    otherRuntime,
+  );
+  const refused = await readManagedCache(second, entry);
+  expect(refused.state).toBe("unavailable");
+  expect(refused.events).toEqual([]);
+  expect(refused.sources[0]?.error?.code).toBe(
+    "CALENDAR_EVENT_PERSISTENCE_FAILED",
+  );
+  expect(await second.getCalendarEventById(entry.event.id)).toBeNull();
+  expect(await first.getCalendarEventById(entry.event.id)).toEqual(stored);
+  entry.event.title = "Fresh matching owner payload";
+  entry.event.metadata.etag = '"same-owner-v3"';
+  expect((await readManagedCache(first, entry)).state).toBe("complete");
+  expect(await first.getCalendarEventById(entry.event.id)).toMatchObject({
+    title: entry.event.title,
+    metadata: entry.event.metadata,
+  });
+});
+
+it("keeps a managed cache row unchanged when another calendar returns the same host identity", async () => {
+  const entry = managedCacheSource("6");
+  const other = managedCacheSource("6");
+  other.calendarId = "other-calendar-with-same-external-event-id";
+  other.source.calendarId = other.calendarId;
+  other.event.calendarId = other.calendarId;
+  other.event.title = "Another calendar read";
+  other.event.metadata.etag = '"other-calendar-v2"';
+  const service = managedCacheService([entry, other]);
+  await readManagedCache(service, entry);
+  const stored = await service.getCalendarEventById(entry.event.id);
+  expect(stored).not.toBeNull();
+  const refused = await readManagedCache(service, other);
+  expect(refused.state).toBe("unavailable");
+  expect(refused.events).toEqual([]);
+  expect(refused.sources[0]?.error?.code).toBe(
+    "CALENDAR_EVENT_PERSISTENCE_FAILED",
+  );
+  expect(await service.getCalendarEventById(entry.event.id)).toEqual(stored);
+  entry.event.title = "Fresh matching source payload";
+  entry.event.metadata.etag = '"same-source-v3"';
+  expect((await readManagedCache(service, entry)).state).toBe("complete");
+  expect(await service.getCalendarEventById(entry.event.id)).toMatchObject({
+    title: entry.event.title,
+    metadata: entry.event.metadata,
   });
 });
