@@ -25,6 +25,41 @@ const ABBREVIATIONS = new Set([
 	...TIME_ABBREVIATIONS,
 ]);
 
+/**
+ * Dotted country and place abbreviations. Unlike titles ("Dr.", "Mr."),
+ * these commonly end a sentence ("She lives in D.C."), so a period after
+ * one is a boundary when the sentence does not continue.
+ */
+const COUNTRY_ABBREVIATIONS = new Set(["u.s", "u.k", "u.s.a", "d.c"]);
+
+/**
+ * Words that open a new sentence. A dotted country abbreviation modifies a
+ * noun ("U.S. Army"), so a following pronoun or demonstrative means the
+ * abbreviation ended the sentence instead.
+ */
+const SENTENCE_START_WORDS = new Set([
+	"i",
+	"it",
+	"he",
+	"she",
+	"they",
+	"we",
+	"you",
+	"this",
+	"that",
+	"these",
+	"those",
+	"there",
+	"here",
+	"my",
+	"his",
+	"her",
+	"their",
+	"our",
+	"your",
+	"its",
+]);
+
 const UNSPACED_SENTENCE_END = new Set(["。", "？", "！"]);
 const SENTENCE_END = new Set([".", "?", "!", ...UNSPACED_SENTENCE_END]);
 const BOUNDARY_FOLLOWERS = new Set([
@@ -55,6 +90,62 @@ function isAsciiWordChar(ch: string): boolean {
 
 function isBoundaryFollower(ch: string | undefined): boolean {
 	return ch === undefined || /\s/.test(ch) || BOUNDARY_FOLLOWERS.has(ch);
+}
+
+/**
+ * Looks past the whitespace and closers after a candidate boundary.
+ * `nextWord` is the word that follows, when one is present in `text`.
+ * `boundaryEnd` is the offset just after the last closer, so a boundary
+ * here still includes trailing closers. `gapEnd` is the offset where the
+ * gap ends: when it is short of `text.length`, a non-word character
+ * follows instead of a word.
+ */
+function peekAfterBoundary(
+	text: string,
+	start: number,
+): { nextWord: string | undefined; boundaryEnd: number; gapEnd: number } {
+	let index = start;
+	let boundaryEnd = start;
+	while (
+		index < text.length &&
+		(/\s/.test(text[index]) || TRAILING_CLOSERS.includes(text[index]))
+	) {
+		if (TRAILING_CLOSERS.includes(text[index])) {
+			boundaryEnd = index + 1;
+		}
+		index += 1;
+	}
+	let nextWord: string | undefined;
+	if (index < text.length && isAsciiWordChar(text[index])) {
+		let end = index;
+		while (end < text.length && isAsciiWordChar(text[end])) {
+			end += 1;
+		}
+		nextWord = text.slice(index, end);
+	}
+	return { nextWord, boundaryEnd, gapEnd: index };
+}
+
+/**
+ * Decides whether a period after a dotted country abbreviation ends the
+ * sentence. A following sentence-start word ends it; any other word
+ * continues it. With no word left, only end of input ends it. A non-word
+ * character after the gap is left for the scanner to handle.
+ */
+function decideCountryBoundary(
+	peeked: { nextWord: string | undefined; gapEnd: number },
+	textLength: number,
+	endOfInput: boolean,
+): "boundary" | "continue" | "wait" {
+	if (peeked.nextWord !== undefined) {
+		return SENTENCE_START_WORDS.has(peeked.nextWord.toLowerCase())
+			? "boundary"
+			: "continue";
+	}
+	if (peeked.gapEnd === textLength) {
+		return endOfInput ? "boundary" : "wait";
+	}
+	return "continue";
 }
 
 export interface FirstSentenceScanner {
@@ -98,7 +189,30 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 		push(chunk: string, endOfInput = false): number | undefined {
 			if (completeAt !== undefined) return completeAt;
 			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
-				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
+				if (COUNTRY_ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
+					const peeked = peekAfterBoundary(chunk, 0);
+					const decision = decideCountryBoundary(
+						peeked,
+						chunk.length,
+						endOfInput,
+					);
+					if (decision === "boundary") {
+						completeAt =
+							peeked.boundaryEnd > 0
+								? scanned + peeked.boundaryEnd
+								: pendingBoundary.boundary;
+						return completeAt;
+					}
+					if (decision === "wait") {
+						if (peeked.boundaryEnd > 0) {
+							pendingBoundary.boundary = scanned + peeked.boundaryEnd;
+						}
+						scanned += chunk.length;
+						return undefined;
+					}
+					// "continue": the abbreviation does not end the sentence.
+					// Drop the pending boundary and scan the chunk normally.
+				} else if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
 					let closerOffset = 0;
 					if (pendingBoundary.unspaced && !pendingBoundary.sawCloser) {
 						while (
@@ -179,7 +293,14 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 					const word = lastWord.endsWith(".")
 						? lastWord.slice(0, -1)
 						: lastWord;
-					if (char !== "." || !ABBREVIATIONS.has(word.toLowerCase())) {
+					const normalizedWord = word.toLowerCase();
+					const isCountryAbbreviation =
+						char === "." && COUNTRY_ABBREVIATIONS.has(normalizedWord);
+					const isPlainAbbreviation =
+						char === "." &&
+						ABBREVIATIONS.has(normalizedWord) &&
+						!isCountryAbbreviation;
+					if (!isPlainAbbreviation) {
 						let boundary = offset + 1;
 						if (UNSPACED_SENTENCE_END.has(char)) {
 							while (
@@ -196,17 +317,42 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						) {
 							boundary += 1;
 						}
-						if (boundary === chunk.length && !endOfInput) {
+						const sawCloser = boundary > terminatorBoundary;
+						const unspaced = UNSPACED_SENTENCE_END.has(char);
+						if (isCountryAbbreviation) {
+							const peeked = peekAfterBoundary(chunk, boundary);
+							const decision = decideCountryBoundary(
+								peeked,
+								chunk.length,
+								endOfInput,
+							);
+							if (decision === "boundary") {
+								completeAt = scanned + peeked.boundaryEnd;
+								return completeAt;
+							}
+							if (decision === "wait") {
+								pendingBoundary = {
+									boundary: scanned + peeked.boundaryEnd,
+									normalizedWord,
+									sawCloser: peeked.boundaryEnd > offset + 1,
+									unspaced,
+								};
+								break;
+							}
+							// "continue": the abbreviation does not end the
+							// sentence. Keep scanning.
+						} else if (boundary === chunk.length && !endOfInput) {
 							pendingBoundary = {
 								boundary: scanned + boundary,
-								normalizedWord: char === "." ? word.toLowerCase() : "",
-								sawCloser: boundary > terminatorBoundary,
-								unspaced: UNSPACED_SENTENCE_END.has(char),
+								normalizedWord: char === "." ? normalizedWord : "",
+								sawCloser,
+								unspaced,
 							};
 							break;
+						} else {
+							completeAt = scanned + boundary;
+							return completeAt;
 						}
-						completeAt = scanned + boundary;
-						return completeAt;
 					}
 				}
 				if (isAsciiWordChar(char) || char === ".") {

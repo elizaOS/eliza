@@ -31,6 +31,10 @@ const asciiSentences = [
 	['He said "The reminder is set."', " Next step."],
 	["Wait...", " Next step."],
 	["The appointment is at 9 p.m.", ""],
+	["The U.S. Army rules.", ""],
+	["I moved to the U.S.", " It was great."],
+	["from the U.K.", ""],
+	["She lives in D.C.", ""],
 ] as const;
 
 describe("first-sentence boundaries", () => {
