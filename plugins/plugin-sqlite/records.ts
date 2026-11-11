@@ -2539,6 +2539,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           memory.id,
         );
         if (!existing) continue;
+        // A shared SQLite file can hold another agent's rows. The read
+        // paths hide those rows, and deleteAllMemories skips them, so an
+        // update must not rewrite them either.
+        if (!this.memoryIsVisibleToOwner(existing)) continue;
         const updated: StoredMemory = {
           ...existing,
           ...persistableMemory(memory),
@@ -2565,6 +2569,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           COLLECTIONS.MEMORIES,
           id,
         );
+        // An upsert without an agentId merges over the stored row. A stored
+        // row that belongs to another agent must not be rewritten.
+        if (existing && !this.memoryIsVisibleToOwner(existing)) continue;
         const stored: StoredMemory = {
           ...(existing ?? {}),
           ...persistableMemory(memory),
@@ -2601,20 +2608,39 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       // deleteDocumentWithSnapshot already removes chunks; this path did not,
       // so a pruned document stayed searchable through its fragments.
       const roots = new Set(memoryIds);
+      // A shared SQLite file can hold another agent's rows. Only this
+      // agent's roots (and rows stored without an agentId) are deletable.
+      // A requested id with no stored row is not blocked, so orphaned
+      // fragments of a missing parent are still collected, as before.
+      const storedRoots = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) => memory.id !== undefined && roots.has(memory.id as UUID),
+      );
+      const blockedRoots = new Set(
+        storedRoots
+          .filter((memory) => !this.memoryIsVisibleToOwner(memory))
+          .map((memory) => memory.id as UUID),
+      );
+      const allowedRoots = new Set(
+        [...roots].filter((id) => !blockedRoots.has(id)),
+      );
       const fragments = await this.storage.getWhere<StoredMemory>(
         COLLECTIONS.MEMORIES,
         (memory) => {
           if (!memory.id || roots.has(memory.id as UUID)) return false;
+          // A fragment row that belongs to another agent stays put, even
+          // when its parent is this agent's row.
+          if (!this.memoryIsVisibleToOwner(memory)) return false;
           const metadata = memory.metadata as
             | Record<string, unknown>
             | undefined;
           // A segmented message keeps its text in segment rows; deleting the
           // message must not leave that text behind (plugin-sql parity).
-          if (isMessageContentSegmentOf(memory, roots)) return true;
+          if (isMessageContentSegmentOf(memory, allowedRoots)) return true;
           const documentId = metadata?.documentId;
           if (
             typeof documentId !== "string" ||
-            !roots.has(documentId as UUID)
+            !allowedRoots.has(documentId as UUID)
           ) {
             return false;
           }
@@ -2625,7 +2651,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         },
       );
       const ids = [
-        ...memoryIds,
+        ...allowedRoots,
         ...fragments.flatMap((memory) =>
           memory.id ? [memory.id as UUID] : [],
         ),
