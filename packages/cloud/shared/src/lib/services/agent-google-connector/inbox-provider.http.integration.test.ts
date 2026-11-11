@@ -857,6 +857,14 @@ test("read-state migration widens only the kind allowlist and keeps existing rec
     await insert("mark-read");
     await insert("mark-unread");
     await expect(insert("star")).rejects.toThrow();
+    const journal = JSON.parse(
+      readFileSync(new URL("../../../db/migrations/meta/_journal.json", import.meta.url), "utf8"),
+    );
+    expect(
+      journal.entries.filter(
+        (entry: { tag: string }) => entry.tag === "0571_managed_gmail_star_operations",
+      ).length,
+    ).toBe(1);
     await migration("0571_managed_gmail_star_operations.sql");
     await insert("star");
     await insert("unstar");
