@@ -24,7 +24,14 @@ export function inflectionTermKeys(term: string): string[] {
 		if (base.length < suffix.length + 2 || !base.endsWith(suffix)) continue;
 		const stem = base.slice(0, -suffix.length);
 		keys.add(stem);
-		keys.add(`${stem}e`);
+		if (suffix === "ing" && stem.length === 2 && stem.endsWith("y")) {
+			// Verbs that end in "ie" form "-ing" from a two-letter "y" stem:
+			// "dying" is "die", not "dye". The plain stem + "e" rule would
+			// add the wrong word ("dye") and miss the base form ("die").
+			keys.add(`${stem.slice(0, -1)}ie`);
+		} else {
+			keys.add(`${stem}e`);
+		}
 		if (suffix === "ed" && stem.length >= 3 && stem.endsWith("i")) {
 			keys.add(`${stem.slice(0, -1)}y`);
 		}
