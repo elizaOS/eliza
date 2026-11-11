@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createVoiceTurnTiming,
   VOICE_TIMING_MARKS,
@@ -39,6 +39,11 @@ const flush = async () => {
 beforeEach(() => {
   store = new Map();
   now = 10_000;
+});
+
+// Each fixture owns its deferred writes; settle them before replacing the store.
+afterEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
 });
 
 describe("voice turn timing", () => {
@@ -324,7 +329,7 @@ describe("voice turn timing", () => {
     expect(timing.nativeTurnId()).toBeUndefined();
   });
 
-  it("survives absent or failing storage and clears its own key", () => {
+  it("survives absent or failing storage and clears its own key", async () => {
     const broken = createVoiceTurnTiming({
       storageKey: KEY,
       format: "f",
@@ -346,5 +351,8 @@ describe("voice turn timing", () => {
     expect(store.has(KEY)).toBe(false);
     expect(store.get("other")).toBe("kept");
     expect(timing.active()).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.has(KEY)).toBe(false);
+    expect(store.get("other")).toBe("kept");
   });
 });
