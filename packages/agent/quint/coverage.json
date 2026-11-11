@@ -400,6 +400,23 @@
     ]
   },
   {
+    "id": "AgentProcessSignalDrain",
+    "model": "packages/agent/quint/process-signal-drain.qnt",
+    "sources": [
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/test/fixtures/process-lifecycle-child.ts",
+      "packages/agent/test/process-lifecycle-exit.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One installed process adapter, two graceful signal deliveries, four ordered cleanup callbacks and one error report. Real Bun and Node child processes record callback entry to disk and expose exit status to their parent.",
+      "Fair cleanup and exit continuation settle with success or failure unless the external owner sends SIGKILL. A separate forced outcome permits an incomplete cleanup receipt.",
+      "Process startup, signal-handler removal, natural exit on an empty event loop, competing signal owners, native signal scheduling, callback internals and external supervisor timing remain outside the model."
+    ]
+  },
+  {
     "id": "AgentRuntimeOperationRecovery",
     "model": "packages/agent/quint/runtime-operation-recovery.qnt",
     "sources": [
