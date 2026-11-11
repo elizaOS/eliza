@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from benchmarks.orchestrator.result_store import result_store_root
 
+import errno
 import json
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -185,6 +188,80 @@ def test_smoke_process_retains_fixed_wall_timeout(tmp_path: Path) -> None:
     assert result.returncode == 124
     assert result.timeout_error == "Command exceeded wall timeout after 0.1s"
     assert events[-1]["event"] == "deadline_exceeded"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX symlink and child-reaping fixture")
+@pytest.mark.parametrize("failure_stage", ["initial", "poll", "cleanup-refused"])
+def test_observation_failure_reaps_the_owned_child_before_returning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    original_popen = subprocess.Popen
+    children: list[subprocess.Popen[str]] = []
+    unrelated = original_popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        cwd=tmp_path,
+        env={},
+        start_new_session=True,
+    )
+
+    def observe_spawn(*args, **kwargs):
+        child = original_popen(*args, **kwargs)
+        children.append(child)
+        if failure_stage != "poll":
+            output = tmp_path / "output"
+            output.rename(tmp_path / "retained-output")
+            output.symlink_to(output.name, target_is_directory=True)
+        return child
+
+    monkeypatch.setattr(runner.subprocess, "Popen", observe_spawn)
+    cleanup_refusal = OSError(errno.EPERM, "controlled child cleanup refusal")
+    if failure_stage == "cleanup-refused":
+        def refuse_cleanup(_process):
+            raise cleanup_refusal
+
+        monkeypatch.setattr(runner, "_terminate_benchmark_process", refuse_cleanup)
+    script = "import time; time.sleep(30)"
+    if failure_stage == "poll":
+        script = (
+            "from pathlib import Path\n"
+            "import time\n"
+            "output = Path('output')\n"
+            "output.rename('retained-output')\n"
+            "output.symlink_to(output.name, target_is_directory=True)\n"
+            "time.sleep(30)\n"
+        )
+    try:
+        expected = BaseExceptionGroup if failure_stage == "cleanup-refused" else OSError
+        with pytest.raises(expected) as raised:
+            _execute(
+                tmp_path,
+                script=script,
+                policy=runner.ProcessDeadlinePolicy(
+                    wall_timeout_seconds=10,
+                    silent_timeout_seconds=None,
+                    poll_interval_seconds=0.01,
+                ),
+            )
+        assert len(children) == 1
+        if failure_stage == "cleanup-refused":
+            assert raised.value.exceptions[0].errno == errno.ELOOP
+            assert raised.value.exceptions[1] is cleanup_refusal
+            assert children[0].poll() is None
+        else:
+            assert raised.value.errno == errno.ELOOP
+            assert children[0].returncode is not None, "monitor returned with a live child"
+            with pytest.raises(ChildProcessError):
+                os.waitpid(children[0].pid, os.WNOHANG)
+        assert unrelated.poll() is None
+    finally:
+        for child in children:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGKILL)
+                child.wait(timeout=5)
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
 
 
 def test_cohort_cancellation_stops_three_process_groups_only(
