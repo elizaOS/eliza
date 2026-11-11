@@ -1,0 +1,58 @@
+{
+  "cases": [
+    {
+      "name": "post-open-operation-and-close",
+      "main": "SqlCipherOperationGuard",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "RefusalMatchesEffect",
+        "ReplyRequiresSettlement",
+        "ClosedHandleRefusesUse"
+      ],
+      "temporal": [
+        "OperationAuthorityAndReceipts",
+        "FairOperationSettlement",
+        "OperationEventuallySettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "OperationAuthorityAndReceipts",
+          "expect": "holds",
+          "assumptions": [
+            "One serial operation and its later close attempts. A successful native write represents one committed statement. No fairness is assumed."
+          ]
+        },
+        {
+          "property": "FairOperationSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "The existing synchronous owner checks and dispatched native call eventually return or throw. Each continuously enabled continuation is weakly fair. Success, an owner approval, and confirmed close are not required."
+          ]
+        },
+        {
+          "property": "OperationEventuallySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. A host callback or native operation can remain unsettled."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ],
+  "sources": [
+    "packages/host/native-host/task-sqlcipher.mjs",
+    "packages/host/native-host/errors.mjs",
+    "packages/host/native-host/task-sqlcipher.test.mjs",
+    "packages/host/quint/check-sqlcipher-operation-guard.mjs"
+  ],
+  "bounds": {
+    "domain": "One already admitted handle, one synchronous read or autocommitted write, two owner checks, up to two serial close attempts and one closed-handle use. The host supplies each owner decision. Account admission and reentrant callbacks are outside this model.",
+    "effects": "A refusal before native dispatch cannot execute the operation. A refusal after an acknowledged native result suppresses the return. A committed write remains durable. A native exception has an unknown effect, and the model does not infer rollback.",
+    "close": "Close remains available after a refused operation. A successful native close marks the adapter closed and further operations fail before the owner check. An unsuccessful close provides no physical closure receipt and may be retried. Cleanup progress is not guaranteed on close failure.",
+    "conformance": "The exact adapter runs with a controlled native loader and real local SQLite queries and persistence. It verifies original refusal causes, no dispatch on a refused read or write, durable write despite the post-check refusal, unconfirmed close retry, and refusal after acknowledged close. This fixture does not qualify encryption or native leases."
+  },
+  "conformance": "packages/host/quint/check-sqlcipher-operation-guard.mjs"
+}
