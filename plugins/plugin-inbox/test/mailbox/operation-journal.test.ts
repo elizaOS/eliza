@@ -183,18 +183,43 @@ describe("InboxOperation", () => {
     expect(fixture.calls.dispatch).toBe(1);
   });
 
-  it("keeps an unknown outcome uncertain and refuses to clear it", async () => {
-    const fixture = provider({ outcome: "outcome-unknown" });
-    const operation = journal(fixture);
-    await operation.prepare(send(), { draftId: "draft-1" });
-    const record = await operation.confirm({
-      draftId: "draft-1",
-      proposal: send(),
-    });
-    expect(record?.receipt?.state).toBe("outcome-unknown");
-    await expect(operation.clear()).rejects.toThrow("Outcome is unresolved");
-    expect(fixture.calls.dispatch).toBe(1);
-  });
+  it.each(["dispatched", "outcome-unknown"] as const)(
+    "keeps an observed %s receipt when a later read returns prepared",
+    async (outcome) => {
+      const fixture = provider({ outcome });
+      const operation = journal(fixture);
+      const email = { draftId: "draft-1", proposal: send() };
+      const prepared = await operation.prepare(email.proposal, {
+        draftId: email.draftId,
+      });
+      const observed = await operation.confirm(email);
+      if (!prepared?.receipt || !observed?.receipt)
+        throw new Error("The fixture did not produce both exact receipts");
+      expect(observed.receipt.state).toBe(outcome);
+      await expect(operation.clear()).rejects.toThrow("Outcome is unresolved");
+
+      // The server reads from an older replica, then catches up. Neither a
+      // restart nor an older receipt may permit the same request to send again.
+      fixture.receipts.set(prepared.requestId, prepared.receipt);
+      const reloaded = journal(fixture);
+      expect(await reloaded.load()).toEqual(observed);
+      expect(await reloaded.refresh()).toEqual(observed);
+      await expect(reloaded.confirm(email)).rejects.toThrow(
+        "A fresh exact review is required",
+      );
+      await expect(reloaded.clear()).rejects.toThrow("Outcome is unresolved");
+      expect(fixture.calls.dispatch).toBe(1);
+
+      const settled = {
+        ...observed.receipt,
+        state: "succeeded" as const,
+        providerResult: { messageId: "sent-1" },
+      };
+      fixture.receipts.set(settled.requestId, settled);
+      expect((await reloaded.refresh())?.receipt).toEqual(settled);
+      expect(fixture.calls.dispatch).toBe(1);
+    },
+  );
 
   it("refuses a server review that changed recipients or attachments", async () => {
     const changed = provider({
