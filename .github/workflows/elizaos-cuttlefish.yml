@@ -28,16 +28,6 @@ on:
         required: false
         default: true
         type: boolean
-      bun-riscv64-url:
-        description: "HTTPS URL for the pinned Bun riscv64-musl zip (required by riscv64 brands)"
-        required: false
-        default: ""
-        type: string
-      bun-riscv64-sha256:
-        description: "SHA-256 for bun-riscv64-url (required by riscv64 brands)"
-        required: false
-        default: ""
-        type: string
   workflow_call:
     inputs:
       brand-config:
@@ -64,16 +54,6 @@ on:
         required: false
         type: boolean
         default: true
-      bun-riscv64-url:
-        description: "HTTPS URL for the pinned Bun riscv64-musl zip (required by riscv64 brands)."
-        required: false
-        type: string
-        default: ""
-      bun-riscv64-sha256:
-        description: "SHA-256 for bun-riscv64-url (required by riscv64 brands)."
-        required: false
-        type: string
-        default: ""
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -166,9 +146,8 @@ jobs:
           import { loadBrandConfig } from "./scripts/android/brand-config.ts";
           const brand = loadBrandConfig(process.env.BRAND_CONFIG);
           const product = brand.productName;
-          const target = product.includes("riscv64") ? "android-riscv64-cpu-fused" : product.includes("x86_64") ? "android-x86_64-cpu-fused" : null;
+          const target = product.includes("x86_64") ? "android-x86_64-cpu-fused" : null;
           const outputs = {
-            "requires-riscv64": String(product.includes("riscv64")),
             "inference-targets": ["android-arm64-cpu-fused", target].filter(Boolean).join(" "),
             "distro-name": brand.distroName,
           };
@@ -215,7 +194,6 @@ jobs:
             ~/.cache/eliza-android-agent
             packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
             packages/app/platforms/android/app/src/main/assets/agent/x86_64
-            packages/app/platforms/android/app/src/main/assets/agent/riscv64
           key: cuttlefish-native-${{ runner.os }}-${{ steps.native-inference-fingerprint.outputs.hash }}
 
       - name: Build fused Android inference libraries
@@ -249,20 +227,9 @@ jobs:
       - name: Build image APK (${{ steps.brand.outputs.distro-name }})
         env:
           ELIZAOS_OS_REPO_ROOT: ${{ github.workspace }}/packages/os
-          ELIZA_BUN_RISCV64_URL: ${{ inputs.bun-riscv64-url }}
-          ELIZA_BUN_RISCV64_SHA256: ${{ inputs.bun-riscv64-sha256 }}
           ELIZA_MTP_ANDROID_LIBDIR: ${{ github.workspace }}/packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
           ELIZA_MTP_ANDROID_LIBDIR_X86_64: ${{ github.workspace }}/packages/app/platforms/android/app/src/main/assets/agent/x86_64
-          ELIZA_MTP_ANDROID_LIBDIR_RISCV64: ${{ github.workspace }}/packages/app/platforms/android/app/src/main/assets/agent/riscv64
         run: |
-          if [ "${{ steps.brand.outputs.requires-riscv64 }}" = "true" ]; then
-            if [ -z "$ELIZA_BUN_RISCV64_URL" ] || [ -z "$ELIZA_BUN_RISCV64_SHA256" ]; then
-              echo "::error::riscv64 brands require bun-riscv64-url and bun-riscv64-sha256 inputs"
-              exit 1
-            fi
-          else
-            export ELIZA_BUN_RISCV64_OPTIONAL=1
-          fi
           node --input-type=module <<'NODE'
           import { loadBrandConfig } from "./scripts/android/brand-config.ts";
           import { rebuildLauncherApk } from "./scripts/android/build-aosp.ts";

@@ -292,8 +292,7 @@ export function validateProductLayer(vendorDir, brand) {
   );
   // The product makefile must inherit from a device tree. By default we
   // assume the compatibility Cuttlefish base (`aosp_cf.mk`); brand configs for
-  // non-Cuttlefish products (e.g. real-hardware SoC fusions like the
-  // OpenAgent E1) MUST declare `aospDeviceTreePaths` listing the device
+  // non-Cuttlefish products MUST declare `aospDeviceTreePaths` listing the device
   // tree files they expect to find in the imported AOSP checkout. The
   // first entry is treated as the primary inherit target the product
   // makefile must reference; any additional entries are existence-checked

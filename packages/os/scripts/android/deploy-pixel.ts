@@ -54,10 +54,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadAospLock } from "./bootstrap-aosp.ts";
-import {
-  DEFAULT_BRAND_CONFIG,
-  loadBrandConfig,
-} from "./brand-config.ts";
+import { DEFAULT_BRAND_CONFIG, loadBrandConfig } from "./brand-config.ts";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -111,7 +108,7 @@ export function parseArgs(argv) {
     else if (a === "--help" || a === "-h") {
       console.log(
         "Usage: node scripts/android/deploy-pixel.ts " +
-          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64|riscv64] [--device <serial>] " +
+          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64] [--device <serial>] " +
           "[--brand-config <PATH>] [--skip-libllama] [--skip-aosp-build] " +
           "[--launcher-apk <SIGNED_APK> (--launcher-descriptor <JSON> | --development-launcher)] " +
           "[--voice|--voice-only] [--jobs N] [--dry-run]",
@@ -121,14 +118,8 @@ export function parseArgs(argv) {
       throw new Error(`Unknown argument: ${a} (see --help)`);
     }
   }
-  if (
-    args.abi !== "arm64-v8a" &&
-    args.abi !== "x86_64" &&
-    args.abi !== "riscv64"
-  ) {
-    throw new Error(
-      `--abi must be arm64-v8a, x86_64, or riscv64 (got "${args.abi}")`,
-    );
+  if (args.abi !== "arm64-v8a" && args.abi !== "x86_64") {
+    throw new Error(`--abi must be arm64-v8a or x86_64 (got "${args.abi}")`);
   }
   if (
     args.jobs !== null &&
@@ -136,24 +127,11 @@ export function parseArgs(argv) {
   ) {
     throw new Error("--jobs must be an integer from 1 through 256");
   }
-  // Pixel hardware is arm64-only. x86_64 lands on a running cvd. riscv64
-  // has no shipping Pixel device — refuse the no-device case so we don't
-  // silently try to push a riscv64 APK at an arm64 phone. If the operator
-  // really has a riscv64 dev board, they pass --device <serial> and we
-  // trust them.
-  if (args.abi === "riscv64" && !args.device) {
-    throw new Error(
-      `[deploy-pixel] --abi riscv64 needs an explicit --device <serial> (Pixel is arm64; ` +
-        `there is no shipping Google riscv64 phone). For Cuttlefish cf_riscv64_phone, ` +
-        `use \`make -C android sim ARCH=riscv64\` instead.`,
-    );
-  }
   return args;
 }
 
 // The AOSP product output directory is out/target/product/<PRODUCT_DEVICE>,
-// not <PRODUCT_NAME>: eliza_cf_arm64_phone builds into vsoc_arm64 and
-// eliza_grizzly_phone into grizzly. Derive the device dir from the brand's
+// not <PRODUCT_NAME>: eliza_cf_arm64_phone builds into vsoc_arm64. Derive the device dir from the brand's
 // device tree paths (vsoc_* for Cuttlefish, the vendor device segment for
 // generated Pixel trees) so the APK is resolved where the build put it.
 export function deriveProductOutDir(brand) {
@@ -287,10 +265,10 @@ async function main(argv = process.argv.slice(2)) {
   // Android CPU-fused is the only backend whose compiler and staging contract
   // is complete. The upstream compiler deliberately fails closed for Android
   // Vulkan until shader-tool and backend artifact staging are fully wired.
-  let target;
-  if (args.abi === "x86_64") target = "android-x86_64-cpu-fused";
-  else if (args.abi === "riscv64") target = "android-riscv64-cpu-fused";
-  else target = "android-arm64-cpu-fused";
+  const target =
+    args.abi === "x86_64"
+      ? "android-x86_64-cpu-fused"
+      : "android-arm64-cpu-fused";
 
   console.log(
     `[deploy-pixel] target=${target} device=${args.device ?? "(auto)"} ` +
@@ -371,9 +349,7 @@ async function main(argv = process.argv.slice(2)) {
         `[deploy-pixel] (dry-run) would run: node ${aospArgs.join(" ")}`,
       );
     } else {
-      run("node", aospArgs, {
-        env: args.abi === "riscv64" ? {} : { ELIZA_BUN_RISCV64_OPTIONAL: "1" },
-      });
+      run("node", aospArgs);
     }
   } else {
     console.log("[deploy-pixel] step 2/5: --skip-aosp-build → reuse last APK");
