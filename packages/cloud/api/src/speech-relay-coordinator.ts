@@ -525,6 +525,15 @@ export class SpeechRelayCoordinator {
           error?: unknown,
           code: "unavailable" | "unauthorized" = "unavailable",
         ) => {
+          if (error instanceof InsufficientCreditsError) {
+            logger.error("[SpeechRelay] credit admission refused", {
+              organizationId: ledger.caller.user.organization_id,
+              sessionId: ledger.sessionId,
+              requiredUsd: error.required,
+              availableUsd: error.available,
+              reason: error.reason,
+            });
+          }
           try {
             server.send(
               JSON.stringify({
