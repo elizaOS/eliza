@@ -257,6 +257,7 @@ public final class LiveCaptureControllerTest {
    // Exceed the old bounded stop. Its 1500ms join was not a release acknowledgement.
    check(!draftStarted.await(1700,TimeUnit.MILLISECONDS),"draft waits beyond bounded stop for source release");
    original.allowClose.countDown();await(draftStarted);
+   check(host.events.stream().filter(e->e.equals("ended:"+A+":capture-replaced")).count()==1,"handoff reports the replacement reason exactly once");
    check(refusals.get()==0&&host.draftActive.get(),"draft admitted after release");
    int opened=host.captures.get();Result auto=new Result();
    controller.start(controller.reserve(B,2),false,null,null,true,auto);await(auto.done);

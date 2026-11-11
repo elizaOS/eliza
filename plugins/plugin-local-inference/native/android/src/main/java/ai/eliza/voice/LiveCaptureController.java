@@ -225,7 +225,7 @@ public final class LiveCaptureController {
   interrupt(reason);
   submit(worker,()->{
    try{
-    if(live!=null){live.stopAndWait();live=null;current=null;}
+    if(live!=null){live.interrupt(reason);live.stopAndWait();live=null;current=null;}
     for(String id:pipes.keySet())closePipe(id,true,now());
    }catch(RuntimeException unconfirmed){refused.run();return;}
    drained.run();
