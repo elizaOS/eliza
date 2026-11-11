@@ -11,6 +11,18 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
   override async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     const stats = ((globalThis as any).__speechStats ??= {});
+    if (path === "/test-bootstrap-state") {
+      const storage = (this as unknown as { state: DurableObjectState }).state
+        .storage;
+      const record = await storage.get<{ phase: string; expiresAt: number }>(
+        "session",
+      );
+      return Response.json({
+        phase: record?.phase ?? null,
+        expiresAt: record?.expiresAt ?? null,
+        alarmAt: await storage.getAlarm(),
+      });
+    }
     if (path === "/test-lock-bootstrap") {
       stats.locked = true;
       return Response.json(stats);
