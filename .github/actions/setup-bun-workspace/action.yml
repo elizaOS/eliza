@@ -204,8 +204,6 @@ runs:
     - name: Configure hosted Ubuntu package archive
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      env:
-        RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: bash packages/scripts/github/configure-hosted-apt.sh
 
     # unattended-upgrades runs continuously on the persistent self-hosted

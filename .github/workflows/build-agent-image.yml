@@ -115,8 +115,6 @@ jobs:
           sudo docker image prune -a -f || true
 
       - name: Configure hosted Ubuntu package archive
-        env:
-          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: bash packages/scripts/github/configure-hosted-apt.sh
 
       - name: Install jq
