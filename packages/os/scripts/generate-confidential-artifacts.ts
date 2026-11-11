@@ -14,7 +14,7 @@
 // check-confidential-artifacts.ts gate fails closed if the artifacts drift.
 //
 // Runner: plain `node` (no third-party deps).
-//   node scripts/generate-confidential-artifacts.ts
+//   bun scripts/generate-confidential-artifacts.ts
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {

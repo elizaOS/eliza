@@ -93,7 +93,7 @@ function hasFinding(report, fragment) {
 // A manual command needs a valid target, not a namespace or a textual caller.
 {
   const report = runAudit({
-    root: { "maintenance:repair": "node scripts/repair.mjs" },
+    root: { "maintenance:repair": "bun scripts/repair.mjs" },
     files: { "scripts/repair.mjs": "export function main() {}\n" },
   });
   assert(
@@ -148,7 +148,7 @@ function hasFinding(report, fragment) {
 // 7. A node/bun pointing at a missing repo file fails.
 {
   const report = runAudit({
-    root: { build: "node packages/scripts/missing.mjs" },
+    root: { build: "bun packages/scripts/missing.mjs" },
   });
   assert(!report.ok, "broken file path should fail");
   assert(
@@ -160,7 +160,7 @@ function hasFinding(report, fragment) {
 // 8. A present file path passes.
 {
   const report = runAudit({
-    root: { build: "node packages/scripts/real.mjs" },
+    root: { build: "bun packages/scripts/real.mjs" },
     files: { "packages/scripts/real.mjs": "// real" },
   });
   assert(
@@ -335,7 +335,7 @@ function hasFinding(report, fragment) {
 // A self mention or documentation does not make a missing executable valid.
 {
   const report = runAudit({
-    root: { "maintenance:repair": "node scripts/missing.mjs" },
+    root: { "maintenance:repair": "bun scripts/missing.mjs" },
     files: { "README.md": "Run scripts/missing.mjs for maintenance.\n" },
   });
   assert(

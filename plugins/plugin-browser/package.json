@@ -63,7 +63,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run && bun run test:remote-control",
     "build": "bun run build:js && bun run build:types",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "test:remote-control": "bun test --conditions=eliza-source test/remote-control"

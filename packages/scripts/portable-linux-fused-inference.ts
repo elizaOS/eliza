@@ -6,7 +6,7 @@
  *
  * The expensive path is deliberately opt-in and transactional:
  *
- *   node packages/scripts/portable-linux-fused-inference.ts --out /absolute/output
+ *   bun packages/scripts/portable-linux-fused-inference.ts --out /absolute/output
  *
  * `--print-plan` and `--preflight-only` do not download or build anything.
  */
@@ -622,7 +622,7 @@ export function mmdebstrapArguments({
   const buildCommand =
     "cd /work && " +
     "env SOURCE_DATE_EPOCH=1785393370 TZ=UTC LC_ALL=C " +
-    "node packages/app/scripts/stage-desktop-fused-lib.ts " +
+    "bun packages/app/scripts/stage-desktop-fused-lib.ts " +
     `--variant vulkan --portable-cpu --jobs ${jobs} --out /out --force`;
   const configureChrootGitTrust =
     "git config --system --add safe.directory " +
@@ -864,7 +864,7 @@ function safeRemoveBuilderWorkspace(workRoot, keepTemp) {
 
 function printHelp() {
   process.stdout.write(
-    `Usage:\n  node packages/scripts/portable-linux-fused-inference.ts --out /absolute/output [options]\n\nOptions:\n  --out PATH         New output directory (required; must not exist)\n  --jobs N           Build parallelism, 1-64 (default: host CPUs, capped at 32)\n  --temp-root PATH   Builder workspace parent (default: system temporary dir)\n  --keep-temp        Retain the builder workspace for diagnosis\n  --preflight-only   Verify tools, capacity, namespace, and repository pins only\n  --print-plan       Print the immutable build plan as JSON; do no work\n`,
+    `Usage:\n  bun packages/scripts/portable-linux-fused-inference.ts --out /absolute/output [options]\n\nOptions:\n  --out PATH         New output directory (required; must not exist)\n  --jobs N           Build parallelism, 1-64 (default: host CPUs, capped at 32)\n  --temp-root PATH   Builder workspace parent (default: system temporary dir)\n  --keep-temp        Retain the builder workspace for diagnosis\n  --preflight-only   Verify tools, capacity, namespace, and repository pins only\n  --print-plan       Print the immutable build plan as JSON; do no work\n`,
   );
 }
 

@@ -1849,7 +1849,7 @@ function runDesktopBuild() {
 }
 
 function printUsage() {
-  console.log(`Usage: node eliza/packages/app/scripts/desktop-build.ts <command> [options]
+  console.log(`Usage: bun eliza/packages/app/scripts/desktop-build.ts <command> [options]
 
 Commands:
   preflight Run desktop preflight checks (Bun + electrobun/view resolution)

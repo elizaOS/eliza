@@ -15,7 +15,7 @@
  * well-formed `.xcframework` bundle.
  *
  * Invocation:
- *   node build-xcframework.ts --output <dir>
+ *   bun build-xcframework.ts --output <dir>
  *     [--device-archive-dir   <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-metal
  *     [--sim-archive-dir      <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-simulator-metal
  *     [--build-if-missing]              run build-llama-cpp-mtp.ts first

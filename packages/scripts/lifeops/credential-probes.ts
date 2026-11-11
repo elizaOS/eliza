@@ -11,7 +11,7 @@
  *
  * Two probe granularities coexist. PROBES/probeFamily keep the family-level
  * sweep (one verdict per connector family; CLI:
- * node packages/scripts/lifeops/credential-probes.ts [family ...]). PATH_PROBES /
+ * bun packages/scripts/lifeops/credential-probes.ts [family ...]). PATH_PROBES /
  * probeConnectorPath wire one probe per CONNECTOR_PATHS auth-path id
  * (github.pat probes the OWNER and AGENT slots separately; x.bearer-app and
  * x.oauth1-user get distinct verdicts) — this is what the v2 dashboard fires.

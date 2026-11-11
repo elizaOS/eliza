@@ -15,10 +15,10 @@
  * Seeker pass rather than faked headless.
  *
  * Usage:
- *   node packages/scripts/hitl/run-hitl.ts                # plan + report from existing recordings
- *   node packages/scripts/hitl/run-hitl.ts --record       # also (re)run the frame suites first
- *   node packages/scripts/hitl/run-hitl.ts --groups=onboarding,login
- *   node packages/scripts/hitl/run-hitl.ts --out=<dir>
+ *   bun packages/scripts/hitl/run-hitl.ts                # plan + report from existing recordings
+ *   bun packages/scripts/hitl/run-hitl.ts --record       # also (re)run the frame suites first
+ *   bun packages/scripts/hitl/run-hitl.ts --groups=onboarding,login
+ *   bun packages/scripts/hitl/run-hitl.ts --out=<dir>
  *
  * Honesty: the packages/ui e2e env is known-flaky. `--record` best-efforts the
  * suites and reports which ran / skipped / failed; the report is still emitted
@@ -164,7 +164,7 @@ lines.push("");
 lines.push(`Generated: ${report.generatedAt}`);
 lines.push(`Groups: ${groups.join(", ")}`);
 lines.push(
-  `Contact sheets: ${haveContactSheets ? "present (open e2e-recordings/viewer)" : "NOT present — run `node packages/scripts/hitl/run-hitl.ts --record`"}`,
+  `Contact sheets: ${haveContactSheets ? "present (open e2e-recordings/viewer)" : "NOT present — run `bun packages/scripts/hitl/run-hitl.ts --record`"}`,
 );
 lines.push("");
 lines.push("| # | Group | Decision point | Mark | Result (fill in) | State |");

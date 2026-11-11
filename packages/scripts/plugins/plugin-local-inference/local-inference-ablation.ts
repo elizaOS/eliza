@@ -232,7 +232,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node packages/scripts/plugins/plugin-local-inference/local-inference-ablation.ts [options]
+  console.log(`Usage: bun packages/scripts/plugins/plugin-local-inference/local-inference-ablation.ts [options]
 
 Options:
   --backend metal|cuda|rocm|cpu

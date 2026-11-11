@@ -231,7 +231,7 @@ describe("Android mobile build target table", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
     expect(packageJson.scripts["build:android:launcher"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-launcher",
+      "bun ../../packages/app/scripts/run-mobile-build.ts android-launcher",
     );
     expect(runMobileBuildSource).toContain('target !== "android-launcher"');
     expect(runMobileBuildSource).toContain(
@@ -243,7 +243,7 @@ describe("Android mobile build target table", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
     expect(packageJson.scripts["build:android:cloud-hybrid"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-cloud-hybrid",
+      "bun ../../packages/app/scripts/run-mobile-build.ts android-cloud-hybrid",
     );
     expect(runMobileBuildSource).toContain('target !== "android-cloud-hybrid"');
     expect(runMobileBuildSource).toContain(
@@ -289,7 +289,7 @@ describe("Android mobile build target table", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
     expect(packageJson.scripts["build:android:host-e2e"]).toBe(
-      "node ../../packages/app/scripts/run-mobile-build.ts android-host-e2e",
+      "bun ../../packages/app/scripts/run-mobile-build.ts android-host-e2e",
     );
     expect(runMobileBuildSource).toContain('target !== "android-host-e2e"');
     expect(runMobileBuildSource).toContain(

@@ -17,9 +17,9 @@ import { fileURLToPath } from "node:url";
 
 function usage() {
   return `Usage:
-  node packages/scripts/gh-check-run-triage.ts --pr <number> [--repo owner/repo]
-  node packages/scripts/gh-check-run-triage.ts --ref <sha-or-ref> [--repo owner/repo]
-  node packages/scripts/gh-check-run-triage.ts --input <check-runs.json>
+  bun packages/scripts/gh-check-run-triage.ts --pr <number> [--repo owner/repo]
+  bun packages/scripts/gh-check-run-triage.ts --ref <sha-or-ref> [--repo owner/repo]
+  bun packages/scripts/gh-check-run-triage.ts --input <check-runs.json>
 
 Options:
   --json   Print machine-readable summary.

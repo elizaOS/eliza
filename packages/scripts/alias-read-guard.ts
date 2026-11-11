@@ -87,7 +87,7 @@ const SELF_TEST = args.has("--self-test");
 const REPORT = args.has("--report");
 
 function usage() {
-  console.log(`Usage: node packages/scripts/alias-read-guard.ts [options]
+  console.log(`Usage: bun packages/scripts/alias-read-guard.ts [options]
 
 Diff-scoped: fails only when a source file the branch touches under
 packages/**/src or plugins/**/src increases its own count of raw

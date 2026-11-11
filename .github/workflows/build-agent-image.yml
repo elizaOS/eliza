@@ -170,7 +170,7 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          node packages/app/scripts/ensure-type-package-aliases.ts
+          bun packages/app/scripts/ensure-type-package-aliases.ts
 
       - name: Build Docker workspace artifacts
         # Let Turbo derive the build order and reuse task cache instead of
@@ -182,8 +182,8 @@ jobs:
           NODE_ENV: production
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          node packages/scripts/run-turbo.ts run build:dist --filter=@elizaos/app --concurrency=8
-          node packages/scripts/run-turbo.ts run build --concurrency=8 \
+          bun packages/scripts/run-turbo.ts run build:dist --filter=@elizaos/app --concurrency=8
+          bun packages/scripts/run-turbo.ts run build --concurrency=8 \
             --filter=@elizaos/agent \
             --filter=@elizaos/plugin-sql \
             --filter=@elizaos/plugin-video \
@@ -221,7 +221,7 @@ jobs:
           shopt -s nullglob
           for dist in plugins/*/dist; do
             pkg="$(dirname "$dist")"
-            node packages/scripts/rewrite-dist-relative-imports-node-esm.ts "$pkg" || true
+            bun packages/scripts/rewrite-dist-relative-imports-node-esm.ts "$pkg" || true
           done
 
       - name: Prepare CI dockerignore
@@ -419,7 +419,7 @@ jobs:
               exit 1
             fi
             if [ "$GITHUB_REF_NAME" = main ]; then
-              node packages/cloud/scripts/production-effect-certification.ts "$GITHUB_SHA"
+              bun packages/cloud/scripts/production-effect-certification.ts "$GITHUB_SHA"
             fi
             docker push "$tag"
           done <<< "$TAGS"
@@ -533,7 +533,7 @@ jobs:
         # after bounded propagation retries instead of trusting the historical
         # unsupported package-visibility request.
         run: |
-          node packages/scripts/verify-ghcr-anonymous-manifest.ts \
+          bun packages/scripts/verify-ghcr-anonymous-manifest.ts \
             --repository "$GHCR_REPOSITORY" \
             --digest "$EXPECTED_DIGEST" \
             --image-id "$EXPECTED_IMAGE_ID"
@@ -545,7 +545,7 @@ jobs:
           EXPECTED_IMAGE_ID: ${{ steps.push.outputs.image_id }}
           GHCR_REPOSITORY: elizaos/eliza-demo
         run: |
-          node packages/scripts/verify-ghcr-anonymous-manifest.ts \
+          bun packages/scripts/verify-ghcr-anonymous-manifest.ts \
             --repository "$GHCR_REPOSITORY" \
             --digest "$EXPECTED_DIGEST" \
             --image-id "$EXPECTED_IMAGE_ID"

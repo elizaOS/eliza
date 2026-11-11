@@ -14,7 +14,7 @@
  * that order fails `codesign --verify --deep --strict`.
  *
  * Usage:
- *   node codesign-mas.ts --app=path/to/Built.app
+ *   bun codesign-mas.ts --app=path/to/Built.app
  *                         --identity="3rd Party Mac Developer Application: Acme (TEAMID)"
  *                         [--installer-identity="3rd Party Mac Developer Installer: Acme (TEAMID)"]
  *                         [--team-id=TEAMID]

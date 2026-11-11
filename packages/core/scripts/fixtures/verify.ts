@@ -426,8 +426,11 @@ try {
 		"media/mime",
 		"media/mime-sniffer",
 	]) {
+		// Bun reports a subpath outside the exports map as a missing module.
 		await assert.rejects(import(`@elizaos/core/${subpath}`), {
-			code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
+			code: process.versions.bun
+				? "ERR_MODULE_NOT_FOUND"
+				: "ERR_PACKAGE_PATH_NOT_EXPORTED",
 		});
 	}
 } finally {

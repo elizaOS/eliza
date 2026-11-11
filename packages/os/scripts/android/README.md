@@ -83,7 +83,7 @@ admission checks build evidence, not installed native-channel behavior.
 The owned package starts a new profile; retain the upstream app for
 rollback and select the new profile explicitly rather than copying profile grants.
 
-Use `node packages/os/scripts/android/sim.ts --aosp-root /path/to/aosp`
+Use `bun packages/os/scripts/android/sim.ts --aosp-root /path/to/aosp`
 from the repository root to launch and validate Cuttlefish. It shares the image
 builder's GPU configuration and `OUT_DIR`/`OUT_DIR_COMMON_BASE` resolution, and writes evidence to `test-results/os-aosp-sim/`.
 An existing instance must be stopped explicitly before launching another;

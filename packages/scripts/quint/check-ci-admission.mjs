@@ -109,7 +109,7 @@ assert.equal(
   shardGate.steps.find(
     (step) => step.name === "Verify complete disjoint model coverage",
   ).run,
-  "node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4",
+  "bun packages/scripts/check-quint-shards.ts test-results/quint-manifests 4",
 );
 const output = testOutputPath("quint-ci-admission");
 await mkdir(output, { recursive: true });

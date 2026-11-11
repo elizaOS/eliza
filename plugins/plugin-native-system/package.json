@@ -56,8 +56,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-system -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-system -- bun run build:unlocked",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -65,7 +65,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "node --test test/*.test.mjs"
+    "test": "bun test --timeout=120000 ./test/*.test.mjs"
   },
   "license": "MIT",
   "capacitor": {

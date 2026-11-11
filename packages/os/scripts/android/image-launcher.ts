@@ -22,7 +22,7 @@
  * The output is staging evidence only. It is not an image build, an image
  * boot, or proof that Android applied the defaults.
  *
- *   node scripts/android/image-launcher.ts [--brand-config PATH] --apk SIGNED_APK
+ *   bun scripts/android/image-launcher.ts [--brand-config PATH] --apk SIGNED_APK
  *     (--descriptor REVIEWED_JSON | --development) [--output NEW_DIR]
  *     [--source-commit COMMIT] [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android]
  *     [--aapt PATH] [--apksigner PATH]
@@ -551,7 +551,7 @@ export function main(argv = process.argv.slice(2)) {
     }
     if (flag === "-h" || flag === "--help") {
       console.log(
-        "Usage: node scripts/android/image-launcher.ts [--brand-config PATH] --apk SIGNED_APK (--descriptor REVIEWED_JSON | --development) [--output NEW_DIR] [--source-commit COMMIT] [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--aapt PATH] [--apksigner PATH]",
+        "Usage: bun scripts/android/image-launcher.ts [--brand-config PATH] --apk SIGNED_APK (--descriptor REVIEWED_JSON | --development) [--output NEW_DIR] [--source-commit COMMIT] [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--aapt PATH] [--apksigner PATH]",
       );
       return null;
     }

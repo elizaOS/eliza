@@ -15,7 +15,7 @@
  * via the same analyzer the ui-smoke suite uses. Writes contact-sheet.md +
  * report.json.
  *
- * Run:  node packages/app/test/view-screenshots/run.mjs
+ * Run:  bun packages/app/test/view-screenshots/run.mjs
  */
 
 import { spawnSync } from "node:child_process";

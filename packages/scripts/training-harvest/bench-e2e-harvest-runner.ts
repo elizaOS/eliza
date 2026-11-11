@@ -43,8 +43,8 @@
  *              harvestable-vs-env-gated classification + the build precondition: BENCHMARK_E2E_README.md.
  *
  * Usage:
- *   node bench-e2e-harvest-runner.ts --family e2e --provider-env s1.json --lane <substr>
- *   node bench-e2e-harvest-runner.ts --family e2e --deterministic --dry-run   # self-test
+ *   bun bench-e2e-harvest-runner.ts --family e2e --provider-env s1.json --lane <substr>
+ *   bun bench-e2e-harvest-runner.ts --family e2e --deterministic --dry-run   # self-test
  */
 import { spawnSync } from "node:child_process";
 import {

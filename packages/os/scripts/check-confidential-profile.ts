@@ -35,7 +35,7 @@
 // aggregate, because that is fixable locally.
 //
 // Runner: plain `node` (no third-party deps).
-//   node scripts/check-confidential-profile.ts [--release]
+//   bun scripts/check-confidential-profile.ts [--release]
 
 // Gates blocked on an external build host / hardware, not on local config.
 const FLOOR_GATES = new Set(["confidential-image-reproducibility"]);

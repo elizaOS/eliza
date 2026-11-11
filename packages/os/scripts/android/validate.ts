@@ -90,7 +90,7 @@ export function parseSubArgs(argv, brand) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/validate.ts [--brand-config <PATH>] [--apk <APK>] [--vendor-dir <VENDOR_DIR>] [--aosp-root <AOSP_ROOT>]",
+        "Usage: bun scripts/android/validate.ts [--brand-config <PATH>] [--apk <APK>] [--vendor-dir <VENDOR_DIR>] [--aosp-root <AOSP_ROOT>]",
       );
       process.exit(0);
     } else {

@@ -560,12 +560,12 @@ export async function assertReleaseBundlesEqual(expectedRoot, observedRoot) {
 
 function usage() {
   process.stdout.write(`Usage:
-  node scripts/release-asset-inventory.ts capture --repository <owner/repo> --release <release.json> --assets <assets.json> --output <inventory.json>
-  node scripts/release-asset-inventory.ts plan --inventory <inventory.json>
-  node scripts/release-asset-inventory.ts verify --inventory <inventory.json> --artifact-root <dir> --receipt <receipt.json> --markdown <receipt.md>
-  node scripts/release-asset-inventory.ts compare --expected <inventory.json> --observed <inventory.json>
-  node scripts/release-asset-inventory.ts compare-bundles --expected <dir> --observed <dir>
-  node scripts/release-asset-inventory.ts render-pr --inventory <inventory.json> --receipt <receipt.json> --base-sha <sha> --tag-sha <sha> --tag <tag> --manifest <path> --run-url <url> --log <log> --output <body.md>
+  bun scripts/release-asset-inventory.ts capture --repository <owner/repo> --release <release.json> --assets <assets.json> --output <inventory.json>
+  bun scripts/release-asset-inventory.ts plan --inventory <inventory.json>
+  bun scripts/release-asset-inventory.ts verify --inventory <inventory.json> --artifact-root <dir> --receipt <receipt.json> --markdown <receipt.md>
+  bun scripts/release-asset-inventory.ts compare --expected <inventory.json> --observed <inventory.json>
+  bun scripts/release-asset-inventory.ts compare-bundles --expected <dir> --observed <dir>
+  bun scripts/release-asset-inventory.ts render-pr --inventory <inventory.json> --receipt <receipt.json> --base-sha <sha> --tag-sha <sha> --tag <tag> --manifest <path> --run-url <url> --log <log> --output <body.md>
 `);
 }
 

@@ -206,7 +206,7 @@ function parseStagingArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node eliza/packages/app/scripts/aosp/stage-default-models.ts " +
+        "Usage: bun eliza/packages/app/scripts/aosp/stage-default-models.ts " +
           "[--source-label <STR>] [--app-config <PATH>] [--skip-bundled-models]",
       );
       process.exit(0);

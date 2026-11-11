@@ -8,7 +8,7 @@
  * narrowly privileged Sense listener. No install, role change, alarm or runtime
  * request is made. A pass is image evidence for these facts only.
  *
- *   node verify-launcher-image.mjs --target cuttlefish|pixel10a --serial SERIAL --user N
+ *   bun verify-launcher-image.mjs --target cuttlefish|pixel10a --serial SERIAL --user N
  *     --descriptor LAUNCHER_JSON --fingerprint EXACT --apk-path /product/app/M/M.apk
  *     (/product/priv-app/M/M.apk with privilegedPermissions)
  *     --out NEW_REPORT [--listener] [--adb PATH]

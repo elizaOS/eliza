@@ -289,7 +289,7 @@ With `spanish.enabled` (the default) it also converts and bundles the Spanish
 voice, which needs the `onnx` package; `--models-only` (desktop) never does.
 
 ```sh
-ANDROID_HOME=~/Library/Android/sdk node packages/app/scripts/paradee-voice/build-native.ts \
+ANDROID_HOME=~/Library/Android/sdk bun packages/app/scripts/paradee-voice/build-native.ts \
   --workspace /path/to/build/paradee-voice [--model-cache /path/to/models] [--python python3]
 ```
 

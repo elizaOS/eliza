@@ -9,11 +9,11 @@
  * `eliza1-hf-push.sh` with `HF_TOKEN` and `--yes-i-will-pay`.
  *
  * Usage:
- *   node packages/training/scripts/publish/eliza1-hf-stage.ts
- *   node packages/training/scripts/publish/eliza1-hf-stage.ts --dry-run
- *   node packages/training/scripts/publish/eliza1-hf-stage.ts --bundles-root ~/staging
- *   node packages/training/scripts/publish/eliza1-hf-stage.ts --report /tmp/plan.json
- *   node packages/training/scripts/publish/eliza1-hf-stage.ts --tier 2b --tier 4b
+ *   bun packages/training/scripts/publish/eliza1-hf-stage.ts
+ *   bun packages/training/scripts/publish/eliza1-hf-stage.ts --dry-run
+ *   bun packages/training/scripts/publish/eliza1-hf-stage.ts --bundles-root ~/staging
+ *   bun packages/training/scripts/publish/eliza1-hf-stage.ts --report /tmp/plan.json
+ *   bun packages/training/scripts/publish/eliza1-hf-stage.ts --tier 2b --tier 4b
  *
  * Exit codes mirror the Python publisher:
  *   0 - every tier uploadable
@@ -61,7 +61,7 @@ function parseArgs(argv) {
       out.strictVoicePolicy = true;
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(
-        `Usage: node eliza1-hf-stage.ts [--dry-run] [--bundles-root DIR] ` +
+        `Usage: bun eliza1-hf-stage.ts [--dry-run] [--bundles-root DIR] ` +
           `[--tier TIER]... [--report PATH] [--strict-voice-policy]\n`,
       );
       process.exit(0);

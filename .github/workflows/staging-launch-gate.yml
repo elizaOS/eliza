@@ -296,7 +296,7 @@ jobs:
           fi
           for args_name in first_turn_args reload_args; do
             declare -n lane_args="$args_name"
-            node packages/scripts/launch-gate-receipt.ts lane \
+            bun packages/scripts/launch-gate-receipt.ts lane \
               "${lane_args[@]}" \
               --source-sha "$SOURCE_SHA" \
               --deployed-sha "$EXPECTED_DEPLOY_SHA" \

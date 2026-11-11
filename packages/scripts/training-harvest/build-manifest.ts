@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
  *                + ELIZA_TRAJECTORY_DIR then native-export conversion (see notes).
  *
  * Usage:
- *   node packages/scripts/training-harvest/build-manifest.ts [--out <path>]
+ *   bun packages/scripts/training-harvest/build-manifest.ts [--out <path>]
  */
 import {
   discoverScenarios,

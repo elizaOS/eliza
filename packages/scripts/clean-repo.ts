@@ -3,8 +3,8 @@
  * Remove build outputs and tool caches so the next `bun run build` / dev run is cold.
  *
  * Usage:
- *   node packages/scripts/clean-repo.ts           # standard clean (dist, Vite, plugins, turbo, forge test artifacts, …)
- *   node packages/scripts/clean-repo.ts --deep    # also Electrobun local build outputs + generated preload
+ *   bun packages/scripts/clean-repo.ts           # standard clean (dist, Vite, plugins, turbo, forge test artifacts, …)
+ *   bun packages/scripts/clean-repo.ts --deep    # also Electrobun local build outputs + generated preload
  *
  * Does not remove node_modules or global Bun/npm caches (set ELIZA_CLEAN_GLOBAL_TOOL_CACHE=1 to also run
  * `bun pm cache rm` — destructive to all Bun projects on the machine).

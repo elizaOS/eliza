@@ -130,7 +130,7 @@ test("canonical OS CI runs browser checks", () => {
     .flatMap((job) => (job.steps ?? []).map((step) => step.run ?? ""))
     .join("\n");
   for (const match of commands.matchAll(
-    /\b(?:node|bash) ([\w/-]+\.(?:mjs|sh))/g,
+    /\b(?:node|bun|bash) ([\w/-]+\.(?:mjs|sh))/g,
   ))
     assert.ok(existsSync(resolve(root, "packages/os", match[1])), match[1]);
   assert.match(commands, /assert-canonical-linux-release\.ts/);

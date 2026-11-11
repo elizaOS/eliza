@@ -24,8 +24,8 @@ import { fileURLToPath } from "node:url";
 
 function usage() {
   return `Usage:
-  node packages/scripts/ci-capacity-dashboard.ts [--repo owner/repo]
-  node packages/scripts/ci-capacity-dashboard.ts --input <bundle.json>
+  bun packages/scripts/ci-capacity-dashboard.ts [--repo owner/repo]
+  bun packages/scripts/ci-capacity-dashboard.ts --input <bundle.json>
 
 Reads the self-hosted fleet's live load and prints online/idle runners, queue
 depth, in-flight runs, and the oversubscription ratio (active runs / online

@@ -43,7 +43,7 @@ python3 packages/os/scripts/linux/assemble-browser-payload.py \
   --source-commit "$SOURCE_COMMIT" --architecture x86_64 \
   --chromium-revision "$CHROMIUM_REVISION" --chromium-version "$CHROMIUM_VERSION" \
   --output "$STAGE/browser"
-node packages/app/scripts/package-linux-gtk-artifact.ts produce \
+bun packages/app/scripts/package-linux-gtk-artifact.ts produce \
   --stage="$STAGE" --out="$ARTIFACT_OUT" --key="$DESKTOP_SIGNING_KEY" \
   --version="$VERSION" --arch=x86_64 --source-commit="$SOURCE_COMMIT"
 ```

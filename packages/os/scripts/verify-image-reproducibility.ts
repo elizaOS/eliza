@@ -33,8 +33,8 @@
 // backing transcript is exactly what the repo's status discipline forbids.
 //
 // Runner: plain `node` (no third-party deps). node --test for the tests.
-//   node scripts/verify-image-reproducibility.ts --input <manifest>
-//   node scripts/verify-image-reproducibility.ts --build-a A --build-b B
+//   bun scripts/verify-image-reproducibility.ts --input <manifest>
+//   bun scripts/verify-image-reproducibility.ts --build-a A --build-b B
 import path from "node:path";
 import {
   fileExists,

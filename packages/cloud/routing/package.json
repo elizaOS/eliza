@@ -10,7 +10,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc6 --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.ts packages/cloud/routing",
+    "build": "tsc6 --noCheck -p tsconfig.build.json && bun ../../scripts/prepare-package-dist.ts packages/cloud/routing",
     "clean": "rm -rf dist",
     "prepack": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",

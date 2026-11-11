@@ -121,7 +121,7 @@ const DEFAULTS = {
   outDir: "vast-certification-output",
 };
 
-const USAGE = `Usage: node packages/scripts/vast/run-certification.ts --sha <commit> [options]
+const USAGE = `Usage: bun packages/scripts/vast/run-certification.ts --sha <commit> [options]
 
 Required:
   --sha <commit>              Full commit sha to certify (cloned on the instance)
@@ -398,7 +398,7 @@ export function buildOnstart(opts) {
     // half-starting.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: bash env expansion, not a JS template
     'if command -v llama-server >/dev/null 2>&1 && [ -n "${ELIZA_GPU_VISION_CACHE:-}" ]; then',
-    "  node packages/scripts/gpu-vision/serve.ts --vlm --verify || fail gpu-vision-serve",
+    "  bun packages/scripts/gpu-vision/serve.ts --vlm --verify || fail gpu-vision-serve",
     "else",
     '  echo "[cert-run] gpu-vision service unavailable in this image; vision lanes will record as absent"',
     "fi",

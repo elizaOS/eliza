@@ -170,7 +170,7 @@ jobs:
 
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
-        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: bun packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Upload Bun runtime resolution inventory
         if: steps.affected.outputs.source == 'true'
@@ -188,7 +188,7 @@ jobs:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
         run: |
           if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
-            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
+            bun packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
           else
             echo "Candidate predates scoped bootstrap; retaining the full core build."
             echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
@@ -251,7 +251,7 @@ jobs:
               --build-output-directory web-dist
             test -s "$artifact_root/functions/index.js"
             install -m 0644 "$artifact_root/functions/index.js" web-dist/_worker.js
-            node --check web-dist/_worker.js
+            bun --check web-dist/_worker.js
           )
           test -s packages/app/web-dist/index.html
           test -s "$artifact_root/api/index.js"
@@ -308,7 +308,7 @@ jobs:
         env:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
-        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
+        run: bun packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
       - name: Verify native direct inference and Google service admission
         if: >-
@@ -353,7 +353,7 @@ jobs:
           fi
           (
             cd packages/app
-            node ../scripts/run-vitest.ts run --config vitest.host.config.ts \
+            bun ../scripts/run-vitest.ts run --config vitest.host.config.ts \
               src/runtime/native-runtime-profile.test.ts \
               src/runtime/native-managed-google-host.test.ts \
               src/runtime/native-direct-routing.test.ts \
@@ -363,7 +363,7 @@ jobs:
           )
           (
             cd packages/agent
-            node ../scripts/run-vitest.ts run --config vitest.config.ts \
+            bun ../scripts/run-vitest.ts run --config vitest.config.ts \
               test/managed-google-env-process-only.test.ts \
               --maxWorkers=1 --no-file-parallelism \
               --execArgv=--max-old-space-size=2048
@@ -392,7 +392,7 @@ jobs:
           if [ "$calendar_diff_status" -ne 1 ]; then
             exit "$calendar_diff_status"
           fi
-          node packages/scripts/with-test-runtime.ts \
+          bun packages/scripts/with-test-runtime.ts \
             bun run --cwd plugins/plugin-calendar test \
             --maxWorkers=1 --no-file-parallelism
 
@@ -417,7 +417,7 @@ jobs:
           if [ "$assistant_diff_status" -ne 1 ]; then
             exit "$assistant_diff_status"
           fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
             src/runtime/calendar-read-coverage.test.ts \
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
@@ -455,7 +455,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/__tests__/request-effect.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -471,7 +471,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/runtime/planner-finish-grounding.test.ts
           src/runtime/__tests__/planner-native-scope-repair.test.ts
           src/runtime/__tests__/planner-scope-failure-copy.test.ts
@@ -494,7 +494,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../scripts/run-vitest.ts run --config vitest.config.ts
           test/async-context.node-esm.test.ts
           test/context-renderer-runtime-events.test.ts
           test/mode-action-authority.test.ts
@@ -533,7 +533,7 @@ jobs:
           if [ "$reminder_diff_status" -ne 1 ]; then
             exit "$reminder_diff_status"
           fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
             src/actions/life.update-reminder-delay.pglite.integration.test.ts \
             src/actions/life.cancel-reminder.pglite.integration.test.ts \
             --maxWorkers=1 --no-file-parallelism \
@@ -592,7 +592,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
           DEBUG: "vite:resolve*"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/actions/lib/reminder-create-contract.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -608,7 +608,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
           DEBUG: "vite:resolve*"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts
           src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts
           src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts
           src/lifeops/reminder-wake.pglite.integration.test.ts
@@ -654,7 +654,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun packages/scripts/run-vitest.ts run --config vitest.config.ts
           packages/contracts/src/browser-request-grounding.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -670,7 +670,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/services/device-actions/browser-open-routing.test.ts
           src/services/device-actions/client-coordinator.test.ts
           --maxWorkers=1 --no-file-parallelism
@@ -689,7 +689,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
           test/browser-request-grounding.pglite.test.ts
           test/device-actions.e2e.test.ts
           --maxWorkers=1 --no-file-parallelism
@@ -706,7 +706,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: >-
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          bun ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/actions/browser-availability.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
@@ -777,7 +777,7 @@ jobs:
         if: steps.affected.outputs.app == 'true'
         timeout-minutes: 1
         run: >-
-          node node_modules/vitest/vitest.mjs run --config vitest.config.ts
+          bun node_modules/vitest/vitest.mjs run --config vitest.config.ts
           packages/ui/src/cloud/join/lib/run-join-flow.test.ts
           --maxWorkers=1 --no-file-parallelism --testTimeout=10000 --hookTimeout=10000
 
@@ -854,9 +854,9 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: |
           set -euo pipefail
-          NODE_OPTIONS=--max-old-space-size=2048 node packages/scripts/run-turbo.ts run lint:check --concurrency=1 &
+          NODE_OPTIONS=--max-old-space-size=2048 bun packages/scripts/run-turbo.ts run lint:check --concurrency=1 &
           lint_pid=$!
-          node packages/scripts/run-turbo.ts run typecheck --concurrency=1 &
+          bun packages/scripts/run-turbo.ts run typecheck --concurrency=1 &
           types_pid=$!
           status=0
           wait "$lint_pid" || status=$?
@@ -1057,7 +1057,7 @@ jobs:
           path: test-results/quint-manifests
       - name: Verify complete disjoint model coverage
         if: needs.quint-models.outputs.run == 'true'
-        run: node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4
+        run: bun packages/scripts/check-quint-shards.ts test-results/quint-manifests 4
       - name: Upload complete Quint evidence summary
         if: always() && needs.quint-models.outputs.run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -1137,7 +1137,7 @@ jobs:
       - name: Build real owning dependency closure
         if: steps.owning-diff.outputs.run == 'true'
         run: >-
-          node packages/scripts/run-turbo.ts run build
+          bun packages/scripts/run-turbo.ts run build
           --filter=@elizaos/plugin-calendar... --filter=@elizaos/agent...
           --filter=@elizaos/plugin-assistant... --filter=@elizaos/host...
           --filter=@elizaos/core... --filter=@elizaos/plugin-notes...
@@ -1186,7 +1186,7 @@ jobs:
         working-directory: packages/host
         run: |
           set -euo pipefail
-          node ../scripts/run-vitest.ts run --config vitest.config.ts src/voice 2>&1 | tee "$RUNNER_TEMP/host-voice-typescript-owning.log"
+          bun ../scripts/run-vitest.ts run --config vitest.config.ts src/voice 2>&1 | tee "$RUNNER_TEMP/host-voice-typescript-owning.log"
       - name: Run full host voice JavaScript suite
         if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
         timeout-minutes: 10
@@ -1201,7 +1201,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
           set -euo pipefail
-          node ../scripts/run-vitest.ts run --config vitest.config.ts \
+          bun ../scripts/run-vitest.ts run --config vitest.config.ts \
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048 \
             2>&1 | tee "$RUNNER_TEMP/portable-voice-owning.log"

@@ -2,7 +2,7 @@
 // Updates a release manifest artifact entry with real build-time values.
 //
 // Usage:
-//   node update-release-manifest.ts \
+//   bun update-release-manifest.ts \
 //     --manifest  release/v0.1.0-beta.1/manifest.json \
 //     --artifact  linux-live-iso-amd64 \
 //     --sha256    <hex> \
@@ -34,7 +34,7 @@ if (missing.length > 0) {
     `error: missing required arguments: ${missing.map((k) => `--${k}`).join(", ")}`,
   );
   console.error(
-    "Usage: node update-release-manifest.ts --manifest PATH --artifact ID [--sha256 HASH] [--size BYTES] [--url URL]",
+    "Usage: bun update-release-manifest.ts --manifest PATH --artifact ID [--sha256 HASH] [--size BYTES] [--url URL]",
   );
   process.exit(1);
 }

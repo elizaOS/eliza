@@ -28,7 +28,7 @@ distribution tooling lives in [`packages/os`](packages/os/README.md).
 ## Run Eliza from source
 
 The repository pins Bun and Node versions in [`package.json`](package.json).
-Install those versions, then:
+Install Bun, then:
 
 ```bash
 git clone --filter=blob:none https://github.com/elizaos/eliza.git
@@ -58,6 +58,26 @@ bun run cloud:mock  # local Eliza Cloud stack with mocks
 
 Package build/test commands are in each package's README. Use
 `bun run --cwd <package> <script>` to scope a command.
+
+### Runtimes
+
+Bun 1.4.2 (`packageManager`) runs the product, the build, `bun run verify`, and
+the repository scripts: run a script with `bun <script>.ts`. Node 24.15.0
+(`engines.node`) is needed only for the lanes below. They fail on Bun 1.4.2, or
+could not be shown to pass on it:
+
+- Vitest. `packages/scripts/run-vitest.ts` always starts Vitest on Node. Bun
+  fails suites that Node passes (`fetch` of an uppercase `DATA:` URL,
+  `http.Server.closeAllConnections`, child Node ESM probes).
+- Quint conformance replays (`check-quint.ts` without `--inventory`), because
+  they run Vitest.
+- `node --test` suites that use `module.stripTypeScriptTypes`, built-in module
+  mocks, or a nested Wrangler. Their package scripts still start with `node`.
+- Wrangler (`wrangler dev --local` accepts no request on Bun).
+- `packages/app` launchers that load `tsx` (`run-node-tsx.ts`,
+  `run-release-check.ts`) and the `node:test` half of `run-script-tests.ts`.
+- CI: the Bun download in `.github/actions/setup-bun-workspace`, and workflow
+  jobs that install no Bun.
 
 ## Benchmark
 

@@ -171,12 +171,12 @@ jobs:
             # them a fresh, non-production trust root so the mandatory package
             # gate is exercised without exposing or silently substituting the
             # protected release identity.
-            release_key="$(node -e 'const {generateKeyPairSync}=require("node:crypto"); const {publicKey}=generateKeyPairSync("ed25519"); process.stdout.write(publicKey.export({format:"der",type:"spki"}).toString("base64"))')"
-            release_key_fingerprint="$(RELEASE_KEY="$release_key" node -e 'const {createHash}=require("node:crypto"); process.stdout.write(createHash("sha256").update(Buffer.from(process.env.RELEASE_KEY,"base64")).digest("hex"))')"
+            release_key="$(bun -e 'const {generateKeyPairSync}=require("node:crypto"); const {publicKey}=generateKeyPairSync("ed25519"); process.stdout.write(publicKey.export({format:"der",type:"spki"}).toString("base64"))')"
+            release_key_fingerprint="$(RELEASE_KEY="$release_key" bun -e 'const {createHash}=require("node:crypto"); process.stdout.write(createHash("sha256").update(Buffer.from(process.env.RELEASE_KEY,"base64")).digest("hex"))')"
             revoked_release_keys=""
             echo "::notice::Using an ephemeral validation-only release trust root"
           fi
-          RELEASE_KEY="$release_key" RELEASE_KEY_FINGERPRINT="$release_key_fingerprint" RELEASE_REVOKED_KEYS="$revoked_release_keys" node -e '
+          RELEASE_KEY="$release_key" RELEASE_KEY_FINGERPRINT="$release_key_fingerprint" RELEASE_REVOKED_KEYS="$revoked_release_keys" bun -e '
             const {createHash,createPublicKey}=require("node:crypto");
             const encoded=process.env.RELEASE_KEY ?? "";
             if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Error("release public key is not canonical base64");
@@ -294,7 +294,7 @@ jobs:
           if [ '${{ inputs.require_signing }}' = true ] && [ '${{ matrix.platform }}' = win32 ]; then
             evidence="${evidence},authenticode"
           fi
-          node scripts/create-release-evidence.ts \
+          bun scripts/create-release-evidence.ts \
             --artifact-id '${{ matrix.release-id }}' \
             --source-artifact '${{ matrix.artifact }}' \
             --subject "${payloads[0]}" \

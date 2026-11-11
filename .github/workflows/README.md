@@ -43,5 +43,5 @@ Validate workflow syntax and executable references from the repository root:
 
 ```bash
 actionlint -config-file .github/actionlint.yaml
-node packages/scripts/audit-scripts.ts
+bun packages/scripts/audit-scripts.ts
 ```

@@ -11,7 +11,7 @@
  * bootloader silently falls back to the other slot after repeated failures).
  *
  * Usage:
- *   node scripts/android/grizzly-evidence.ts [--device SERIAL] [--out DIR]
+ *   bun scripts/android/grizzly-evidence.ts [--device SERIAL] [--out DIR]
  *
  * Every command's stdout/stderr is written verbatim, including failures —
  * "this surface did not respond" is itself evidence and is never fabricated.

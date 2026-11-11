@@ -31,17 +31,17 @@
     "url": "https://github.com/elizaOS/eliza.git"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-secure-store -- bun run build:unlocked",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-secure-store -- bun run build:unlocked",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-session": "node --test test/native-host/credential-access.node.mjs",
-    "test:native-passwords": "node --test test/native-host/password-custody.node.mjs",
-    "test:native-identity": "node --test test/native-host/owner-identity.node.mjs"
+    "test:native-session": "bun test --timeout=120000 ./test/native-host/credential-access.node.mjs",
+    "test:native-passwords": "bun test --timeout=120000 ./test/native-host/password-custody.node.mjs",
+    "test:native-identity": "bun test --timeout=120000 ./test/native-host/owner-identity.node.mjs"
   },
   "capacitor": {
     "android": {

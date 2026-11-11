@@ -107,7 +107,7 @@ jobs:
       - name: Run deterministic Story Gate shard
         timeout-minutes: 20
         run: >-
-          node packages/ui/test/story-gate/run-story-gate.mjs
+          bun packages/ui/test/story-gate/run-story-gate.mjs
           --static-dir packages/ui/storybook-static
           --shard ${{ matrix.shard }}/${{ env.STORY_SHARDS }}
           --concurrency 6

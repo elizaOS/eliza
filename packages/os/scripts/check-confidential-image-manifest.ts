@@ -14,7 +14,7 @@
 // shape only and prints the BLOCKED status for the real build.
 //
 // Runner: plain `node` (no third-party deps).
-//   node scripts/check-confidential-image-manifest.ts
+//   bun scripts/check-confidential-image-manifest.ts
 import path from "node:path";
 import { validateAgainstSchema } from "./json-schema-lite.ts";
 import { parseArgs, readJson, repoRoot } from "./os-release-lib.ts";

@@ -133,7 +133,7 @@ test("mismatched content never replaces a staged browser", (t) => {
   );
 });
 
-test("an unqualified architecture cannot inherit the x86 browser", (t) => {
+test("an unsupported architecture cannot inherit the x86 browser", (t) => {
   const options = fixture(t);
   assert.throws(
     () =>
@@ -142,7 +142,7 @@ test("an unqualified architecture cannot inherit the x86 browser", (t) => {
         arch: "riscv64",
         allowDevelopmentBrowser: true,
       }),
-    /No verified chromium artifact/,
+    /explicit supported APK architecture is required/,
   );
 });
 

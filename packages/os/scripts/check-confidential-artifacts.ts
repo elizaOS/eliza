@@ -15,7 +15,7 @@
 // enforcement form exactly.
 //
 // Runner: plain `node` (no third-party deps).
-//   node scripts/check-confidential-artifacts.ts
+//   bun scripts/check-confidential-artifacts.ts
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {

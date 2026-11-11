@@ -14,9 +14,9 @@
  * environment values fail closed rather than silently selecting a default.
  *
  * Usage:
- *   node packages/scripts/dev-health-check.ts
- *   node packages/scripts/dev-health-check.ts --seconds=120
- *   node packages/scripts/dev-health-check.ts --ui-port=2138 --api-port=31337
+ *   bun packages/scripts/dev-health-check.ts
+ *   bun packages/scripts/dev-health-check.ts --seconds=120
+ *   bun packages/scripts/dev-health-check.ts --ui-port=2138 --api-port=31337
  */
 import { execFile, spawn } from "node:child_process";
 import {
@@ -219,7 +219,7 @@ function resolveExecutable(command, env) {
 }
 
 function printHelp() {
-  console.log(`Usage: node packages/scripts/dev-health-check.ts [options]
+  console.log(`Usage: bun packages/scripts/dev-health-check.ts [options]
 
 Options:
   --seconds=N       Observation window in seconds, default ${DEFAULT_SECONDS}

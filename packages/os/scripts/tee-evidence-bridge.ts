@@ -101,7 +101,7 @@ async function main() {
       "error: real quote collection is BLOCKED (gate tdx-cvm-boot-smoke / " +
         "confidential-gpu-attest). Needs a TDX host (and CC-GPU host for " +
         "gpuFirmware). Proving command once a host exists:\n" +
-        "  node scripts/tee-evidence-bridge.ts --quote-source tappd " +
+        "  bun scripts/tee-evidence-bridge.ts --quote-source tappd " +
         "--socket /var/run/dstack.sock",
     );
     process.exit(2);
