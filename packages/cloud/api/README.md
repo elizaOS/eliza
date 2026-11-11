@@ -281,6 +281,30 @@ same step:
    key.
 4. `POST /api/v1/app-auth/mobile/ack` (as today) activates the key.
 
+A phone replaces its own key before it expires, without a browser:
+
+1. `POST /api/v1/app-auth/mobile/renew`, authenticated with the current
+   acknowledged, unexpired `eliza_mobile_` key (`Authorization: Bearer` or
+   `X-API-Key`), with the strict JSON body `{clientId, environment,
+   redirectUri, state, codeChallenge, codeChallengeMethod: "S256",
+   deviceName?}` under the same field rules as the `mobile_pkce` approval. It
+   answers `{success: true, code: "emac_…", codeType, expiresAt, expiresIn}`.
+2. `POST /api/v1/app-auth/mobile/token` and `POST /api/v1/app-auth/mobile/ack`
+   exchange and activate the new key exactly as after a sign-in.
+3. `DELETE /api/v1/api-keys/current` with the old key revokes it. Until then
+   both keys are valid.
+
+The new grant copies the sign-in time (`mobile_app_auth_grants.session_started_at`;
+a grant without it counts from `created_at`). Refusals use the Cloud API error
+shape `{success: false, error, code}`: 401 `authentication_required` (key
+invalid, expired or revoked; client disabled or registered differently), 403
+`access_denied` (owner inactive, or the key is no longer in the owner's open
+organization), 409 `renewal_window_closed` (the sign-in is older than 180 days;
+sign in again), 429 `rate_limit_exceeded`, 503 `service_unavailable`
+(retryable), and 400 `validation_error` for a malformed body. A renewed key has
+a full lifetime from its renewal, so a sign-in's last key can outlive the
+180-day cap by at most one key lifetime.
+
 This needs no new setting beyond those above: `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` on the API Worker and, on Steward,
 `STEWARD_GOOGLE_NATIVE_CLIENT_IDS` mapping the Steward app client to the

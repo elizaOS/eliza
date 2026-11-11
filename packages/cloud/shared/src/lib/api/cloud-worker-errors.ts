@@ -22,6 +22,7 @@ export type ApiErrorCode =
   | "session_not_ready"
   | "account_not_ready"
   | "identity_conflict"
+  | "renewal_window_closed"
   | "agent_quota_exceeded"
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"

@@ -48,6 +48,23 @@ export type MobileAppAuthExchangeClaim =
   | { kind: "existing"; state: MobileAppAuthGrantState }
   | { kind: "invalid"; reason: "client_inactive" | "grant_invalid" };
 
+/**
+ * Everything key renewal decides on, read in one primary statement: the
+ * presented credential, the acknowledged grant that activated it, and the
+ * current owner, organization and client app rows.
+ */
+export interface MobileAppAuthRenewalAuthority {
+  credential: ApiKey;
+  grant: MobileAppAuthGrant;
+  owner: { isActive: boolean; organizationId: string | null } | null;
+  organization: {
+    isActive: boolean;
+    lifecycleState: string;
+    deletionRequestId: string | null;
+  } | null;
+  app: { isActive: boolean; isApproved: boolean } | null;
+}
+
 export type MobileAppAuthRevealConfirmation =
   | { kind: "confirmed"; state: MobileAppAuthGrantState }
   | { kind: "invalid"; reason: "client_inactive" | "grant_invalid" };
@@ -125,6 +142,50 @@ export class MobileAppAuthGrantsRepository {
     });
   }
 
+  /**
+   * Creates the successor grant of a key renewal. The predecessor credential
+   * row is locked and re-read in the same transaction, so a revocation that
+   * commits first leaves no code behind, and one that commits later was not
+   * yet in effect when the code was issued.
+   */
+  async createRenewal(
+    input: NewMobileAppAuthGrant,
+    predecessor: { credentialId: string; keyHash: string },
+    now: Date,
+  ): Promise<
+    | { kind: "created"; grant: MobileAppAuthGrant }
+    | { kind: "invalid"; reason: "client_inactive" | "credential_invalid" }
+  > {
+    return await dbWrite.transaction(async (tx) => {
+      const [activeApp] = await tx
+        .select({ id: apps.id })
+        .from(apps)
+        .where(and(eq(apps.id, input.app_id), eq(apps.is_active, true), eq(apps.is_approved, true)))
+        .for("update");
+      if (!activeApp) return { kind: "invalid", reason: "client_inactive" };
+      const [credential] = await tx
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(
+          and(
+            eq(apiKeys.id, predecessor.credentialId),
+            eq(apiKeys.key_hash, predecessor.keyHash),
+            eq(apiKeys.user_id, input.user_id),
+            eq(apiKeys.organization_id, input.organization_id),
+            eq(apiKeys.source_app_id, input.app_id),
+            eq(apiKeys.is_active, true),
+            isNull(apiKeys.deleted_at),
+            gt(apiKeys.expires_at, now),
+          ),
+        )
+        .for("update");
+      if (!credential) return { kind: "invalid", reason: "credential_invalid" };
+      const [created] = await tx.insert(mobileAppAuthGrants).values(input).returning();
+      if (!created) throw grantIntegrityError("Failed to create mobile App Auth renewal grant");
+      return { kind: "created", grant: created };
+    });
+  }
+
   async findActiveState(
     binding: MobileAppAuthGrantBinding,
     now: Date,
@@ -153,6 +214,68 @@ export class MobileAppAuthGrantsRepository {
       )
       .limit(1);
     return grant ?? null;
+  }
+
+  /**
+   * The renewal authority of the credential with this secret hash, or null when
+   * no credential has it or no acknowledged grant activated it. Reads the
+   * primary only; a mobile secret never enters an auth cache.
+   */
+  async findRenewalAuthorityByKeyHash(
+    keyHash: string,
+  ): Promise<MobileAppAuthRenewalAuthority | null> {
+    const [row] = await dbWrite
+      .select({
+        credential: apiKeys,
+        grant: mobileAppAuthGrants,
+        ownerId: users.id,
+        ownerActive: users.is_active,
+        ownerOrganizationId: users.organization_id,
+        organizationId: organizations.id,
+        organizationActive: organizations.is_active,
+        organizationLifecycleState: organizations.account_lifecycle_state,
+        organizationDeletionRequestId: organizations.account_deletion_request_id,
+        appId: apps.id,
+        appActive: apps.is_active,
+        appApproved: apps.is_approved,
+      })
+      .from(apiKeys)
+      .innerJoin(
+        mobileAppAuthGrants,
+        and(
+          eq(mobileAppAuthGrants.credential_id, apiKeys.id),
+          eq(mobileAppAuthGrants.status, "acknowledged"),
+        ),
+      )
+      .leftJoin(users, eq(users.id, apiKeys.user_id))
+      .leftJoin(organizations, eq(organizations.id, apiKeys.organization_id))
+      .leftJoin(apps, eq(apps.id, mobileAppAuthGrants.app_id))
+      .where(eq(apiKeys.key_hash, keyHash))
+      .limit(1);
+    if (!row) return null;
+    return {
+      credential: row.credential,
+      grant: row.grant,
+      owner: row.ownerId
+        ? {
+            isActive: row.ownerActive === true,
+            organizationId: row.ownerOrganizationId,
+          }
+        : null,
+      organization: row.organizationId
+        ? {
+            isActive: row.organizationActive === true,
+            lifecycleState: String(row.organizationLifecycleState),
+            deletionRequestId: row.organizationDeletionRequestId,
+          }
+        : null,
+      app: row.appId
+        ? {
+            isActive: row.appActive === true,
+            isApproved: row.appApproved === true,
+          }
+        : null,
+    };
   }
 
   async findStateByCodeHash(codeHash: string): Promise<MobileAppAuthGrantState | null> {
@@ -220,7 +343,10 @@ export class MobileAppAuthGrantsRepository {
     now: Date,
   ): Promise<MobileAppAuthExchangeClaim> {
     return await withInferencePolicyMutation(
-      { organizationIds: [credential.organization_id], userLockIds: [credential.user_id] },
+      {
+        organizationIds: [credential.organization_id],
+        userLockIds: [credential.user_id],
+      },
       async (tx) => {
         const [activeApp] = await tx
           .select({ id: apps.id })
@@ -308,7 +434,10 @@ export class MobileAppAuthGrantsRepository {
       .limit(1);
     if (!planned) return null;
     return await withInferencePolicyMutation(
-      { organizationIds: [planned.organizationId], userLockIds: [planned.userId] },
+      {
+        organizationIds: [planned.organizationId],
+        userLockIds: [planned.userId],
+      },
       async (tx) => {
         const [activeApp] = await tx
           .select({ id: apps.id })
@@ -343,7 +472,10 @@ export class MobileAppAuthGrantsRepository {
 
         if (claimedGrant) {
           const [owner] = await tx
-            .select({ organizationId: users.organization_id, isActive: users.is_active })
+            .select({
+              organizationId: users.organization_id,
+              isActive: users.is_active,
+            })
             .from(users)
             .where(eq(users.id, claimedGrant.user_id))
             .for("update");
@@ -499,7 +631,11 @@ export class MobileAppAuthGrantsRepository {
     // starts at the beginning and retries grants still held by another writer.
     const lastPlanned = planned[planned.length - 1];
     const nextCursor: MobileAppAuthCleanupCursor | null = lastPlanned
-      ? { expiresAt: lastPlanned.expiresAt, createdAt: lastPlanned.createdAt, id: lastPlanned.id }
+      ? {
+          expiresAt: lastPlanned.expiresAt,
+          createdAt: lastPlanned.createdAt,
+          id: lastPlanned.id,
+        }
       : null;
     return await withInferencePolicyMutation(
       {
@@ -597,7 +733,10 @@ export class MobileAppAuthGrantsRepository {
               entry.credentialId ? [[entry.credentialId, Number(entry.value)]] : [],
             ),
           );
-          const inactiveTombstoneCandidates: Array<{ credentialId: string; grantId: string }> = [];
+          const inactiveTombstoneCandidates: Array<{
+            credentialId: string;
+            grantId: string;
+          }> = [];
           const acknowledgedTombstoneCandidates: Array<{
             credentialId: string;
             grantId: string;
@@ -665,7 +804,10 @@ export class MobileAppAuthGrantsRepository {
                 integrityViolations++;
                 continue;
               }
-              inactiveTombstoneCandidates.push({ credentialId, grantId: grant.id });
+              inactiveTombstoneCandidates.push({
+                credentialId,
+                grantId: grant.id,
+              });
               continue;
             }
 
@@ -677,7 +819,10 @@ export class MobileAppAuthGrantsRepository {
               integrityViolations++;
               continue;
             }
-            acknowledgedTombstoneCandidates.push({ credentialId, grantId: grant.id });
+            acknowledgedTombstoneCandidates.push({
+              credentialId,
+              grantId: grant.id,
+            });
           }
 
           if (inactiveTombstoneCandidates.length > 0) {

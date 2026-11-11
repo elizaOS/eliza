@@ -57,6 +57,13 @@ export const mobileAppAuthGrants = pgTable(
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     exchanged_at: timestamp("exchanged_at", { withTimezone: true }),
     acknowledged_at: timestamp("acknowledged_at", { withTimezone: true }),
+    /**
+     * When the owner's interactive sign-in that this grant descends from was
+     * approved. Set on a sign-in grant and copied forward by key renewal, so a
+     * renewed credential can never outlive the sign-in's absolute cap. A grant
+     * without it (issued before the column existed) counts from `created_at`.
+     */
+    session_started_at: timestamp("session_started_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
