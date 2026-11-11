@@ -1,0 +1,31 @@
+{
+  "sources": [
+    "plugins/plugin-notes/src/routes.ts",
+    "plugins/plugin-notes/src/service.ts",
+    "plugins/plugin-notes/src/store.ts",
+    "plugins/plugin-notes/src/trash-retention.ts",
+    "plugins/plugin-notes/src/types.ts",
+    "plugins/plugin-notes/src/validation.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-notes/src/__tests__/trash-retention.test.ts"
+  ],
+  "bounds": "One note and optional recording, one additional shared recording reference, one reviewed deletion, eight clock values and eight collection revisions. A successful commit publishes the note erase and its recording receipt together.",
+  "fairness": "Safety needs no fairness. Progress requires an opted-in host to read or initialize the store and a successful commit. Retiring recording work requires a trusted device receipt.",
+  "limitations": [
+    "The source tests use real Notes documents and exact millisecond cutoffs. The model abstracts time to days, the owner check to the authenticated role, and storage and native results to success or refusal.",
+    "Empty is serialized against the complete collection revision in the source tests. The model covers one note, not arbitrary collection sizes, native recording bytes, or process scheduling."
+  ],
+  "cases": [
+    {
+      "name": "canonical-notes-trash",
+      "main": "CanonicalNotesTrash",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 20,
+      "samples": 500
+    }
+  ]
+}
