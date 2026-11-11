@@ -55,7 +55,7 @@ for (const [index, suite] of models[model].entries()) {
             "bun",
             "--conditions=eliza-source",
             "test",
-            file,
+            `./${file}`,
             "--timeout=120000",
             "--reporter=junit",
             `--reporter-outfile=${report}`,
