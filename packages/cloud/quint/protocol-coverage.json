@@ -850,21 +850,50 @@
   },
   {
     "id": "cloud-flow-agent-backup-and-restore",
-    "model": null,
+    "model": "packages/cloud/quint/agent_backup_capture_handoff.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/eliza-sandbox.ts",
       "packages/cloud/shared/src/lib/storage/agent-backup-object-store.ts",
-      "packages/cloud/api/v1/cron/agent-backups/route.ts"
+      "packages/cloud/api/v1/cron/agent-backups/route.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v2-pipeline.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v2-spool.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "ExactCaptureReceipt",
+      "PublicationNeedsCaptureReceipt",
+      "CompletePublicationReceipts",
+      "OwnedSourceNeedsCaptureReceipt"
+    ],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite restore/activation model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Restore source identity is immutable | Activation belongs to the selected generation | Cleanup cannot remove the active replacement",
-      "Abstract states: admitted, capturing, sealed, restoring, activating, ready, retired, failed"
+      "The capture-only model starts at one sealed manifest-v3 spool and covers missing local catalogue acknowledgement, exact exclusive reopen, durable chunk receipts and publication completion.",
+      "The maintained local-filesystem suite exercises the pipeline and resolver with a local key provider. Catalogue claims and remote upload receipts are fixture inputs. Lease issuance and renewal, process-death reclamation, failed filesystem writes and inline upload are separate.",
+      "RestoreLease, RestorePublication, exact_restore_recovery and restore_cleanup_rotation cover separate bounded restore obligations. They do not establish the complete backup and restore lifecycle.",
+      "Scheduled admission, remote object publication and verification, retention, full restore-source and activation identity, cleanup authority and end-to-end failure recovery remain open."
+    ]
+  },
+  {
+    "id": "cloud-agent-backup-spool-cleanup",
+    "model": "packages/cloud/quint/agent_backup_spool_cleanup.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v2-spool.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-spool-cleanup.ts",
+      "packages/cloud/shared/src/db/repositories/agent-backup-publication.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-publication-source.test.ts"
+    ],
+    "invariants": [
+      "IntentOwnsAttempt",
+      "LockMatchesExecution",
+      "PartialSpoolNeedsIntent",
+      "ConfirmedAbsence"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One local protected or terminal cleanup intent, one operation, two executions and one active attempt. Covers fresh catalogue proof, exclusive open, partial unlink, cancellation, release, retained intent, absence confirmation and fair restart.",
+      "Real filesystem conformance supplies catalogue and process-identity observations as fixtures. Database and remote receipt issuance, terminal candidate promotion, filesystem crash recovery, and unresolved lock release remain outside the progress proof.",
+      "The separate backup and restore lifecycle still needs remote object, scheduling, retention and activation conformance."
     ]
   },
   {
@@ -949,17 +978,21 @@
       "StopRequiresQuiescence",
       "MarkerRequiresObservedAcceptance",
       "RetainedMarkerSkipsProvider",
-      "RetryRetainsBothCopies",
+      "NoOverlappingRetryCopies",
       "AcceptedClaimWithoutMarkerSurvives",
       "AcceptedDeliveryHasNoRetryCopy",
       "RemovalRequiresDurableReplacement",
-      "MarkerPreventsRecoverySend"
+      "RetryRetiresOriginal",
+      "NoDuplicateRetry",
+      "MarkerPreventsRecoverySend",
+      "LegacyWorkerCannotAdmit"
     ],
     "status": "partial",
     "limitations": [
-      "One managed owner, one symbolic valid job, at most two starts and one original processing row. Startup recovery and an admitted drain stay owned until stop settles. A transient retry writes a pending copy before acknowledging processing. Retained markers skip provider sends.",
+      "One managed owner, one symbolic valid job, at most two starts and one original processing row. Startup recovery and an admitted drain stay owned until stop settles. A transient retry replaces the exact processing member in one storage operation. Retained markers skip provider sends.",
       "Real Workerd SQLite exercises startup/stop, claim retention, recovery after restart, stable retry identity and marker replay, with controlled provider responses. Import, FIFO among several jobs and public request boundaries are named tests outside the finite model.",
-      "A second bounded case separates SQLite commits from missing marker, removal and retry publication replies. A retained marker skips provider work after restart. Without a marker, storage failure preserves the original processing row and reports the error without consuming a provider attempt. A retry publication can leave two durable copies, with later selection and stale backoff bypass outside the case.",
+      "A second bounded case separates durable commits from missing marker, removal and retry replacement replies. A retry that committed leaves only the delayed row. Repeating the original command observes the claim absent and creates no second row. Workerd checks the exact payload, replay and deadline behavior. Existing duplicate rows and old writers remain outside the proof.",
+      "A third case checks that an older Worker without the marker-read capability cannot admit a welcome send. The original processing claim remains available to the same poller after upgrade once pending empties. Release order is manual. Protocol stability from the accepted marker read through the drain is assumed. Worker rollback during that interval remains open.",
       "Progress assumes admitted operations settle and recovery uses the same storage. Cross-pod leadership, overlapping live owners, marker expiry, repeated storage failures, actual provider nonce guarantees, retry deadlines/budgets and recovery past the bounded duplicate-copy window remain open."
     ]
   },
@@ -1034,6 +1067,29 @@
       "One app, two generations, one parent job, two insert attempts, and three queue attempts. The real PGlite checks cover admission, known failures, interrupted handoff, app-link recovery, lost child insert responses, and deletion inventory.",
       "An exact durable child identifies the container for parent handoff and READY publication. A live child can link the container after its parent has completed. Missing or conflicting evidence retains an unresolved parent for operator reconciliation.",
       "Historical deployments with both jobs terminal and a missing link require separate reconciliation. Coverage gaps include live image builds, Docker, tenant databases, ingress, and provider behavior before the child can publish READY."
+    ]
+  },
+  {
+    "id": "cloud-app-deploy-ready-writeback",
+    "model": "packages/cloud/quint/app_deploy_ready_writeback.qnt",
+    "sources": [
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/lib/services/container-executor-deps.ts",
+      "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+      "packages/cloud/shared/src/lib/services/app-deployments.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts"
+    ],
+    "invariants": [
+      "ReadyMatchesReceipt",
+      "FailedAppNeedsFailedJob",
+      "SupersededAppRemainsBuilding"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One app provision child at terminal exhaustion and one replacement generation. Models tenant, generation, job and pre-READY app status authority. A committed app READY result survives a lost job acknowledgement while the original job error remains durable.",
+      "Direct pre-READY failure and loss after READY use actual PGlite worker settlement. The model abstracts eligibility for stale recovery. Provider reachability, repair, cache acknowledgement and retry composition remain outside this proof."
     ]
   },
   {
@@ -2036,6 +2092,59 @@
       "A failed finalizer rolls back its draft. A current unexpired lease may release for retry. After expiry only a fresh claim can finalize, and the original applied receipt stays historical after authority replacement.",
       "The finite model compresses revision capture into the claim and abstracts the post-lock checks. It covers stale source and projection revisions and expiry during the draft. PostgreSQL isolation, physical lock waits, provider object validation, live notices and handler delivery retries are outside this proof.",
       "The conformance suites use real PGlite transactions, inject failures into SQL writes, and check durable billing admission. A loopback Stripe HTTP fixture exercises the actual SDK and queue handler. Live Stripe is outside the evidence."
+    ]
+  },
+  {
+    "id": "cloud-shared-history-hydration",
+    "model": "packages/cloud/quint/SharedHistoryHydration.qnt",
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/shared/src/lib/services/shared-runtime/bounded-hydration.ts",
+      "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts"
+    ],
+    "invariants": ["OneWaitingRequest", "ReadyRetainsHistory"],
+    "status": "partial",
+    "limitations": [
+      "One legacy room, three serialized requests, two background lookups and an exact ordered history pair. A caller warming deadline retains the existing lookup. A read failure before publication permits a fresh lookup.",
+      "Real Workerd storage and request handling check delayed lookup, retry after failure and subsequent reuse. PostgreSQL, snapshot write and acknowledgement failures, arbitrary history, object eviction and personal identity remain separate."
+    ]
+  },
+  {
+    "id": "cloud-shared-deferred-prewarm",
+    "model": "packages/cloud/quint/SharedHistoryHydration.qnt",
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/api/__tests__/shared-runtime-first-turn-warming.miniflare.test.ts"
+    ],
+    "invariants": [
+      "OneWarmupOwner",
+      "SharedGenerationAndFreshRetry",
+      "BodyCompletionUsesItsWarmup"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One hydrated legacy room. Two initial responses join one module warmup. One may cancel while its peer waits. One history request can complete during that warmup. A failed module call can be followed by one successful retry and one ready reuse.",
+      "The Workerd HTTP fixture checks pending bodies, the live room queue, actual body cancellation and body rejection. The real Durable Object and SQLite storage keep the history while the fixture controls module completion.",
+      "The case abstracts history persistence and assumes successful owner lookup. More than two concurrent bodies, cancellation of all callers, additional retries, deployment eviction and owner lookup failure remain outside the bound."
+    ]
+  },
+  {
+    "id": "cloud-flow-shared-conversation-mirror-retirement",
+    "model": "packages/cloud/quint/SharedInterruptedTurn.qnt",
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/shared/src/db/repositories/shared-runtime-history.ts",
+      "packages/cloud/api/__tests__/shared-runtime-cutover-reminder.miniflare.test.ts"
+    ],
+    "invariants": [
+      "RetiresMirrorConfirmedSnapshot",
+      "RetiresSelectedVersion",
+      "RetiresCurrentDueDeadline"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One non-Personal conversation, two snapshot versions and one mirror failure. A stale alarm cannot retire a renewed or replaced snapshot. A due snapshot and its replay claims retire together after mirror acknowledgement.",
+      "Real Workerd alarms and SQLite storage exercise two save interleavings and a failure followed by a successful retry. The test controls repository outcomes and deadline advancement. Applied-but-unacknowledged Postgres writes, tombstone cleanup, active claims without a saved snapshot and independent workers remain outside this bound."
     ]
   },
   {

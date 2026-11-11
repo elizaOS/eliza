@@ -73,3 +73,100 @@ module SharedInterruptedTurn {
   run FailedCheckpointKeepsRoomClosedTest = init.then(cancelStream).then(checkpointReply(false))
     .then(finalizeReply(true)).expect(FailureHoldsRoom and s.phase == "closed")
 }
+
+// The same Durable Object retires non-Personal snapshots after idle expiry.
+// The alarm captures a deadline before external mirror I/O. The transaction
+// rechecks that deadline and the selected version before dropping the snapshot
+// and its replay claims together.
+module SharedMirrorRetirement {
+  var s: {
+    latest: int, mirrored: int, deadline: int, due: bool,
+    phase: str, captured: int, candidate: int, mayReject: bool
+  }
+
+  action initial(mirrored: int): bool = s' = {
+    latest: 1, mirrored: mirrored, deadline: 1, due: true,
+    phase: "waiting", captured: 0, candidate: 0, mayReject: true
+  }
+
+  action init = any { initial(0), initial(1) }
+
+  action save(refresh: bool): bool = all {
+    s.phase != "retired", s.latest == 1,
+    refresh or Set("mirroring", "committing").contains(s.phase),
+    s' = if (refresh)
+      s.with("latest", 2).with("deadline", s.deadline + 1).with("due", false)
+    else s.with("latest", 2)
+  }
+
+  action due = all {
+    s.phase != "retired", not(s.due),
+    s' = s.with("due", true)
+  }
+
+  action wake = all {
+    s.phase == "waiting", s.due,
+    s' = s.with("phase", "checking").with("captured", s.deadline)
+  }
+
+  action selectSnapshot = all {
+    s.phase == "checking",
+    s' = if (s.captured != s.deadline) s.with("phase", "waiting")
+      else s.with("candidate", s.latest)
+        .with("phase", if (s.mirrored == s.latest) "committing" else "mirroring")
+  }
+
+  action mirror(success: bool): bool = all {
+    s.phase == "mirroring", success or s.mayReject,
+    s' = if (success)
+      s.with("mirrored", s.candidate).with("phase", "committing")
+    else s.with("mayReject", false).with("phase", "committing")
+  }
+
+  action mirrorReply = any { mirror(true), mirror(false) }
+
+  action acknowledgeQueuedMirror = all {
+    Set("waiting", "checking", "committing").contains(s.phase),
+    s.mirrored < s.latest,
+    s' = s.with("mirrored", s.latest)
+  }
+
+  action settle = all {
+    s.phase == "committing",
+    s' = if (s.captured != s.deadline) s.with("phase", "waiting")
+      else if (s.candidate != s.latest or s.mirrored != s.latest)
+        s.with("phase", "waiting").with("deadline", s.deadline + 1).with("due", false)
+      else s.with("phase", "retired")
+  }
+
+  action step = any {
+    save(true), save(false), due, wake, selectSnapshot, mirrorReply,
+    acknowledgeQueuedMirror, settle, s' = s
+  }
+
+  // In the terminal phase, these tokens are the transaction's historical
+  // inputs. The local snapshot, replay claims and expiry are all absent.
+  val RetiresMirrorConfirmedSnapshot = s.phase == "retired" implies s.latest == s.mirrored
+  val RetiresSelectedVersion = s.phase == "retired" implies s.latest == s.candidate
+  val RetiresCurrentDueDeadline = s.phase == "retired" implies
+    (s.captured == s.deadline and s.due)
+
+  temporal RetiresEventually = eventually(s.phase == "retired")
+  temporal FairRetirement =
+    (due.weakFair(s) and wake.weakFair(s) and selectSnapshot.weakFair(s)
+      and mirrorReply.weakFair(s) and settle.weakFair(s)) implies RetiresEventually
+
+  run RenewalDuringEarlierMirrorTest = initial(0).then(wake).then(save(true))
+    .then(selectSnapshot).expect(s.phase == "waiting" and not(s.due) and s.latest == 2)
+  run RenewalDuringExpiryMirrorTest = initial(0).then(wake).then(selectSnapshot)
+    .then(save(true)).then(mirror(false)).then(acknowledgeQueuedMirror).then(settle)
+    .expect(s.phase == "waiting" and not(s.due) and s.latest == 2 and s.mirrored == 2)
+  run ReplacedSnapshotBeforeDeadlineRefreshTest = initial(1).then(wake).then(selectSnapshot)
+    .then(save(false)).then(acknowledgeQueuedMirror).then(settle)
+    .expect(s.phase == "waiting" and not(s.due) and s.latest == 2)
+  run FailedMirrorRearmsExpiryTest = initial(0).then(wake).then(selectSnapshot).then(mirror(false))
+    .then(settle).expect(s.phase == "waiting" and s.mirrored == 0 and s.deadline == 2)
+    .then(due).then(wake).then(selectSnapshot).then(mirror(true)).then(settle)
+    .expect(s.phase == "retired" and RetiresMirrorConfirmedSnapshot
+      and RetiresSelectedVersion and RetiresCurrentDueDeadline)
+}
