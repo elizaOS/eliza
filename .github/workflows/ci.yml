@@ -40,20 +40,6 @@ jobs:
     if: needs.preflight.outputs.source == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    services:
-      quint-postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: qa_quint
-          POSTGRES_DB: quint_protocol
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - "127.0.0.1:5432:5432"
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
