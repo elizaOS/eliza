@@ -13,6 +13,12 @@ export interface IcsAttendee {
 export interface IcsParsedEvent {
   uid: string;
   recurrenceId: string | null;
+  /**
+   * RFC 5545 §3.8.4.4 RANGE of the RECURRENCE-ID. `THISANDFUTURE` replaces
+   * the named instance and every following one; any other value is stored
+   * as null, so the override replaces only its named instance.
+   */
+  recurrenceIdRange: "THISANDFUTURE" | null;
   sequence: number;
   revisionAt: string | null;
   title: string;

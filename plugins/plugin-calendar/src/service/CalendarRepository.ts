@@ -659,7 +659,10 @@ export class CalendarRepository {
    * Reads one bounded ICS expansion input: rows already in the window,
    * repeating masters (RRULE or RDATE) that start before the window ends, and
    * overrides whose original recurrence instant is in the window even when the
-   * override moved out. The window is [timeMin, timeMax) for a timed row and
+   * override moved out. A RANGE=THISANDFUTURE override also loads when its
+   * split predates the window end: its series can reach into the window even
+   * though the split itself is behind it, and the master needs the split to
+   * know where it ends. The window is [timeMin, timeMax) for a timed row and
    * the wider [allDayTimeMin, allDayTimeMax) for an all-day row, which is a
    * civil date that the caller places on local days. An override can be timed
    * while the occurrence it replaces is all-day, so every original recurrence
@@ -710,6 +713,10 @@ export class CalendarRepository {
             )
             OR (
               ${metadata} ->> 'icsRecurrenceId' >= ${sqlQuote(args.allDayTimeMin)}
+              AND ${metadata} ->> 'icsRecurrenceId' < ${sqlQuote(args.allDayTimeMax)}
+            )
+            OR (
+              ${metadata} ->> 'icsRecurrenceIdRange' = 'THISANDFUTURE'
               AND ${metadata} ->> 'icsRecurrenceId' < ${sqlQuote(args.allDayTimeMax)}
             )
           )

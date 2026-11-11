@@ -68,10 +68,15 @@ export function icsCalendarSummary(
 }
 
 export function icsEventIdentity(event: IcsParsedEvent): string {
+  // A THISANDFUTURE override and a plain override can share a UID and
+  // RECURRENCE-ID while replacing different spans; the range keeps them
+  // distinct so the newer copy does not erase the other.
   return createHash("sha256")
     .update(event.uid)
     .update("\0")
     .update(event.recurrenceId ?? "")
+    .update("\0")
+    .update(event.recurrenceIdRange ?? "")
     .digest("hex");
 }
 
@@ -146,6 +151,7 @@ export function lifeOpsCalendarEventFromIcs(args: {
       untrustedSource: true,
       icsUid: args.event.uid,
       icsRecurrenceId: args.event.recurrenceId,
+      icsRecurrenceIdRange: args.event.recurrenceIdRange,
       icsSequence: args.event.sequence,
       icsRevisionAt: args.event.revisionAt,
       icsDuration: args.event.duration,
@@ -162,7 +168,10 @@ export function lifeOpsCalendarEventFromIcs(args: {
 /**
  * A subscribed feed stores each recurring VEVENT once, at DTSTART. Expand
  * every series into its occurrences inside [timeMin, timeMax), minus EXDATEs
- * and instances replaced by a RECURRENCE-ID override. An all-day event is a
+ * and instances replaced by a RECURRENCE-ID override. A
+ * RECURRENCE-ID;RANGE=THISANDFUTURE override replaces the named instance and
+ * every following one: the earlier series ends at the split instant and the
+ * override expands as its own series from there. An all-day event is a
  * civil date that the caller places on local days, so its window is the wider
  * [allDayTimeMin, allDayTimeMax). A series this module
  * cannot expand exactly (RDATE, rule parts outside the local subset, the
@@ -196,6 +205,44 @@ export function expandIcsCalendarEvents(args: {
       overridden.add(`${event.metadata.icsUid}\0${Date.parse(recurrenceId)}`);
     }
   }
+  // RFC 5545 §3.8.4.4: a RECURRENCE-ID;RANGE=THISANDFUTURE override replaces
+  // the named instance and every following one. Each split ends the series
+  // that was running before it: the master, and any earlier split series a
+  // later split supersedes. The split instants are collected per UID so the
+  // expansion below can cut each series at the first split at or after its
+  // own start (its own split does not cut it).
+  const splitPoints = new Map<string, number[]>();
+  for (const event of args.events) {
+    if (event.metadata.icsRecurrenceIdRange !== "THISANDFUTURE") continue;
+    const recurrenceId = event.metadata.icsRecurrenceId;
+    const uid = event.metadata.icsUid;
+    if (typeof recurrenceId !== "string" || typeof uid !== "string") continue;
+    const splitMs = Date.parse(recurrenceId);
+    if (!Number.isFinite(splitMs)) continue;
+    const points = splitPoints.get(uid) ?? [];
+    points.push(splitMs);
+    splitPoints.set(uid, points);
+  }
+  const seriesCutoffMs = (
+    event: LifeOpsCalendarEvent,
+    startMs: number,
+  ): number | null => {
+    const uid = event.metadata.icsUid;
+    if (typeof uid !== "string") return null;
+    const points = splitPoints.get(uid);
+    if (!points) return null;
+    const ownSplitMs =
+      event.metadata.icsRecurrenceIdRange === "THISANDFUTURE" &&
+      typeof event.metadata.icsRecurrenceId === "string"
+        ? Date.parse(event.metadata.icsRecurrenceId)
+        : null;
+    let cutoff: number | null = null;
+    for (const splitMs of points) {
+      if (splitMs < startMs || splitMs === ownSplitMs) continue;
+      if (cutoff === null || splitMs < cutoff) cutoff = splitMs;
+    }
+    return cutoff;
+  };
   let complete = true;
   const diagnostics = new Set<
     "CALENDAR_ICS_EXDATE_INVALID" | "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE"
@@ -215,9 +262,19 @@ export function expandIcsCalendarEvents(args: {
       /^RRULE[:;]/i.test(line),
     ).length;
     const hasRdate = recurrence.some((line) => /^RDATE[:;]/i.test(line));
+    // A THISANDFUTURE override that carries its own RRULE is a new series
+    // from its DTSTART, not a single moved instance: it expands below. Any
+    // other override stays a single occurrence.
+    const isSplitSeries =
+      event.metadata.icsRecurrenceIdRange === "THISANDFUTURE" &&
+      typeof event.metadata.icsRecurrenceId === "string" &&
+      ruleLineCount === 1 &&
+      !hasRdate;
     if (
-      typeof event.metadata.icsRecurrenceId === "string" ||
-      (ruleLineCount === 0 && !hasRdate)
+      (typeof event.metadata.icsRecurrenceId === "string" && !isSplitSeries) ||
+      (typeof event.metadata.icsRecurrenceId !== "string" &&
+        ruleLineCount === 0 &&
+        !hasRdate)
     ) {
       if (overlaps(startMs, endMs)) expanded.push(event);
       continue;
@@ -247,6 +304,9 @@ export function expandIcsCalendarEvents(args: {
       typeof event.metadata.icsDuration === "string"
         ? event.metadata.icsDuration
         : null;
+    // A split at or after this series' start ends it: its occurrences from
+    // the split on belong to the override series, not this one.
+    const cutoffMs = seriesCutoffMs(event, startMs);
     const excluded = readIcsExceptionDates(recurrence, event.timezone);
     if (excluded.invalidValueCount > 0) {
       complete = false;
@@ -303,6 +363,7 @@ export function expandIcsCalendarEvents(args: {
         : new Date(occurrenceMs + durationMs).toISOString();
       const occurrenceEndMs = Date.parse(occurrenceEndAt);
       if (!overlaps(occurrenceMs, occurrenceEndMs)) continue;
+      if (cutoffMs !== null && occurrenceMs >= cutoffMs) continue;
       if (excluded.instants.has(occurrenceMs)) continue;
       // A DATE EXDATE names a day. It excludes the occurrence that starts on
       // that day in the series time zone (UTC for an all-day series).

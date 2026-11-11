@@ -1313,6 +1313,213 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     ]);
   });
 
+  it("moves a recurring series from a THISANDFUTURE override instead of duplicating it", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "DTSTART;TZID=America/New_York:20260302T090000",
+          "DTEND;TZID=America/New_York:20260302T100000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "RECURRENCE-ID;RANGE=THISANDFUTURE;TZID=America/New_York:20260316T090000",
+          "DTSTART;TZID=America/New_York:20260316T110000",
+          "DTEND;TZID=America/New_York:20260316T120000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup (moved)",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-03-01T00:00:00.000Z",
+        timeMax: "2026-04-15T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 09:00 New York on Mar 2 (EST) and Mar 9 (EDT), then 11:00 New York
+    // every Monday from Mar 16. The old 09:00 series must end at the split.
+    expect(
+      feed.events.map((event) => [event.title, event.startAt, event.endAt]),
+    ).toEqual([
+      ["Team standup", "2026-03-02T14:00:00.000Z", "2026-03-02T15:00:00.000Z"],
+      ["Team standup", "2026-03-09T13:00:00.000Z", "2026-03-09T14:00:00.000Z"],
+      [
+        "Team standup (moved)",
+        "2026-03-16T15:00:00.000Z",
+        "2026-03-16T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved)",
+        "2026-03-23T15:00:00.000Z",
+        "2026-03-23T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved)",
+        "2026-03-30T15:00:00.000Z",
+        "2026-03-30T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved)",
+        "2026-04-06T15:00:00.000Z",
+        "2026-04-06T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved)",
+        "2026-04-13T15:00:00.000Z",
+        "2026-04-13T16:00:00.000Z",
+      ],
+    ]);
+  });
+
+  it("keeps the moved series in a window that starts after the split", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "DTSTART;TZID=America/New_York:20260302T090000",
+          "DTEND;TZID=America/New_York:20260302T100000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "RECURRENCE-ID;RANGE=THISANDFUTURE;TZID=America/New_York:20260316T090000",
+          "DTSTART;TZID=America/New_York:20260316T110000",
+          "DTEND;TZID=America/New_York:20260316T120000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup (moved)",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-04-01T00:00:00.000Z",
+        timeMax: "2026-04-15T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // The split is behind this window, but the moved series still reaches
+    // into it and the old 09:00 series must stay ended.
+    expect(
+      feed.events.map((event) => [event.title, event.startAt, event.endAt]),
+    ).toEqual([
+      [
+        "Team standup (moved)",
+        "2026-04-06T15:00:00.000Z",
+        "2026-04-06T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved)",
+        "2026-04-13T15:00:00.000Z",
+        "2026-04-13T16:00:00.000Z",
+      ],
+    ]);
+  });
+
+  it("ends the first moved series at a second THISANDFUTURE split", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(
+        [
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "DTSTART;TZID=America/New_York:20260302T090000",
+          "DTEND;TZID=America/New_York:20260302T100000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "RECURRENCE-ID;RANGE=THISANDFUTURE;TZID=America/New_York:20260316T090000",
+          "DTSTART;TZID=America/New_York:20260316T110000",
+          "DTEND;TZID=America/New_York:20260316T120000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup (moved)",
+          "END:VEVENT",
+          "BEGIN:VEVENT",
+          "UID:standup",
+          "DTSTAMP:20260301T000000Z",
+          "RECURRENCE-ID;RANGE=THISANDFUTURE;TZID=America/New_York:20260330T110000",
+          "DTSTART;TZID=America/New_York:20260330T140000",
+          "DTEND;TZID=America/New_York:20260330T150000",
+          "RRULE:FREQ=WEEKLY;BYDAY=MO",
+          "SUMMARY:Team standup (moved again)",
+          "END:VEVENT",
+        ].join("\r\n"),
+      ),
+    );
+    const feed = await service.getCalendarFeed(
+      new URL("http://internal.test/api/calendar"),
+      {
+        grantId: source.id,
+        timeMin: "2026-03-01T00:00:00.000Z",
+        timeMax: "2026-04-15T00:00:00.000Z",
+      },
+      new Date(),
+    );
+
+    expect(feed.state).toBe("complete");
+    // 09:00 Mar 2/9, 11:00 Mar 16/23, then 14:00 from Mar 30.
+    expect(
+      feed.events.map((event) => [event.title, event.startAt, event.endAt]),
+    ).toEqual([
+      ["Team standup", "2026-03-02T14:00:00.000Z", "2026-03-02T15:00:00.000Z"],
+      ["Team standup", "2026-03-09T13:00:00.000Z", "2026-03-09T14:00:00.000Z"],
+      [
+        "Team standup (moved)",
+        "2026-03-16T15:00:00.000Z",
+        "2026-03-16T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved)",
+        "2026-03-23T15:00:00.000Z",
+        "2026-03-23T16:00:00.000Z",
+      ],
+      [
+        "Team standup (moved again)",
+        "2026-03-30T18:00:00.000Z",
+        "2026-03-30T19:00:00.000Z",
+      ],
+      [
+        "Team standup (moved again)",
+        "2026-04-06T18:00:00.000Z",
+        "2026-04-06T19:00:00.000Z",
+      ],
+      [
+        "Team standup (moved again)",
+        "2026-04-13T18:00:00.000Z",
+        "2026-04-13T19:00:00.000Z",
+      ],
+    ]);
+  });
+
   it("ends a timed series with a DATE UNTIL on that day in the event time zone", async () => {
     const source = await createSource();
     await syncBody(

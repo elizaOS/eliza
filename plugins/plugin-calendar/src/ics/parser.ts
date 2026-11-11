@@ -848,6 +848,14 @@ function parseEvent(
     ? parseDateProperty(recurrenceIdProperty, calendarTimezone, "RECURRENCE-ID")
         .instant
     : null;
+  // RFC 5545 §3.8.4.4: RANGE=THISANDFUTURE replaces the named instance and
+  // every following one. Any other RANGE value keeps the single-instance
+  // override the expansion already handles.
+  const recurrenceIdRange =
+    recurrenceIdProperty?.params.get("RANGE")?.[0]?.toUpperCase() ===
+    "THISANDFUTURE"
+      ? "THISANDFUTURE"
+      : null;
   const rawSequence = propertyValue(component, "SEQUENCE") ?? "0";
   if (!/^\d+$/.test(rawSequence)) {
     throw new Error("VEVENT SEQUENCE must be a non-negative integer.");
@@ -863,6 +871,7 @@ function parseEvent(
   return {
     uid,
     recurrenceId,
+    recurrenceIdRange,
     sequence: Number(rawSequence),
     revisionAt: parseRevisionAt(component),
     title: decodeIcsText(propertyValue(component, "SUMMARY") ?? ""),
