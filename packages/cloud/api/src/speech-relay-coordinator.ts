@@ -192,8 +192,11 @@ export class SpeechRelayCoordinator {
     this.closeFailed = false;
     const attempt = runWithCloudBindingsAsync(
       this.env as Record<string, unknown>,
-      () =>
-        runWithDbCacheAsync(async () => {
+      async () => {
+        const { runWithDbCacheAsync } = await import(
+          "@elizaos/cloud-shared/db/client"
+        );
+        return runWithDbCacheAsync(async () => {
           let admitted = true;
           const started = await this.update((record) => {
             if (!record) throw Error("Speech session missing");
@@ -327,7 +330,8 @@ export class SpeechRelayCoordinator {
             await this.state.storage.setAlarm(Date.now() + 1000);
           } else await this.state.storage.deleteAlarm();
           if (failure) throw failure;
-        }),
+        });
+      },
     );
     this.closeTask = attempt;
     void attempt.then(
