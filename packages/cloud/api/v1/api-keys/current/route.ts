@@ -2,10 +2,18 @@
  * Revokes only the credential proven by the secret in this request.
  * The presented mobile-prefixed secret and authenticated database row must
  * agree on one exact identity; a response-loss retry can recover only that
- * credential's durable tombstone.
+ * credential's durable tombstone. The key may be sent in `Authorization:
+ * Bearer`, in `X-API-Key`, or in both when they are the same key.
+ *
+ * A mobile key that revokes itself after its renewal successor was
+ * acknowledged ends only itself (the last step of a renewal). Without such a
+ * successor the revocation is a sign-out and ends every key of its sign-in.
  */
 
-import { requireApiKeyCredential } from "@elizaos/cloud-shared/auth";
+import {
+  readPresentedApiKey,
+  requireApiKeyCredential,
+} from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   AuthenticationError,
@@ -30,14 +38,10 @@ import { createTransactionalAudit } from "@/api-app/services/audit-transactional
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
+/** The presented key, or null when none or two different ones were sent. */
 function readSinglePresentedApiKey(c: AppContext): string | null {
-  const headerKey =
-    (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
-  const authorization = c.req.header("authorization")?.trim() ?? null;
-  const bearerKey =
-    authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
-  if (headerKey && bearerKey) return null;
-  return headerKey ?? bearerKey;
+  const presented = readPresentedApiKey(c);
+  return presented === "conflict" ? null : presented;
 }
 
 type SelfRevocationResult = NonNullable<

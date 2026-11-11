@@ -14,9 +14,9 @@
   "limitations": [
     "One dispatched organization checkout, one provider session, clock 0..12 in ticks of the first read-back age, backoff cap 4, provider retry horizon 10 and a one-tick create-settle margin. The production values are 2 minutes, 30 minutes, 23 hours and 5 minutes.",
     "Each sweep step is one atomic observation and settlement. Command compare-and-swap, revision history and entitlement publication are refined by PlatformSubscriptionCommand and SubscriptionTerminalReceipt. Composition is not mechanically established.",
-    "Lane budgets, ordering among several checkouts and the one provider account read per sweep are outside this single-checkout instance. The repository tests cover them.",
+    "Lane budgets, ordering among several checkouts and the provider account read (one successful read serves a whole sweep, settlement included; a failed read is not remembered) are outside this single-checkout instance. The repository tests cover them.",
     "The provider is trusted to report open, complete, expired or missing truthfully for the command's own customer and session. A session that expires on its own before the horizon is observed, never forced.",
-    "An unavailable provider read rotates the checkout like an open one and is counted as a read-back. A prepared command that never dispatched is outside the read-back lane and this instance.",
+    "An unavailable read of the checkout's own session rotates the checkout like an open one and is counted as a read-back. A failed provider account read is not a read-back: the checkout is not rotated and stays due, which the repository tests cover. A prepared command that never dispatched is outside the read-back lane and this instance.",
     "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised."
   ],
   "sourceMapping": {

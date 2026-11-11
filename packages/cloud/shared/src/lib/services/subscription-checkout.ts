@@ -491,7 +491,11 @@ async function settlePendingCheckout(
   }
   if (parsed.status === "expired") return classify(await retireCommand(command, errorCode));
   if (parsed.status === "complete") {
-    await reconcileSubscriptionCheckout(session.id, command.organization_id);
+    await reconcileSubscriptionCheckout(
+      session.id,
+      command.organization_id,
+      options.providerAccountId,
+    );
     return "completed";
   }
   return "pending";
@@ -647,6 +651,8 @@ export async function submitSubscriptionCheckout(
 export async function reconcileSubscriptionCheckout(
   sessionId: string,
   expectedOrganizationId?: string,
+  /** The recovery sweep's shared provider account read; read here when absent. */
+  providerAccountId?: () => Promise<string>,
 ) {
   const stripe = requireStripe();
   const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -666,8 +672,10 @@ export async function reconcileSubscriptionCheckout(
     command.status === "APPLIED" && command.checkout_contract === null
       ? null
       : readCheckoutContract(command);
-  const account = await stripe.accounts.retrieve(null);
-  if (contract) assertCheckoutProviderAuthority(contract, account.id, getCloudAwareEnv());
+  const accountId = providerAccountId
+    ? await providerAccountId()
+    : (await stripe.accounts.retrieve(null)).id;
+  if (contract) assertCheckoutProviderAuthority(contract, accountId, getCloudAwareEnv());
   if (
     parsed.status !== "complete" ||
     parsed.payment_status !== "paid" ||
@@ -685,7 +693,7 @@ export async function reconcileSubscriptionCheckout(
   ]);
   try {
     return await finalizeSubscriptionCheckout({
-      providerAccountId: account.id,
+      providerAccountId: accountId,
       session,
       invoice,
       subscription,
@@ -761,7 +769,10 @@ export async function expirePendingSubscriptionCheckoutsForOrganization(
  *    This lane only observes: an open session is left payable and rotated.
  *
  * Completed sessions are reconciled (idempotently with the webhook and `checkout/confirm`),
- * never discarded. The provider account is read at most once per sweep.
+ * never discarded. One successful provider account read serves the whole sweep, the
+ * settlement of completed sessions included. A failed read is not remembered: the next
+ * candidate reads again, and the candidate it failed for is left exactly as due as it was,
+ * because that failure says nothing about the checkout and must not advance its backoff.
  */
 export async function recoverStaleSubscriptionCheckouts(
   limit = 10,
@@ -792,8 +803,18 @@ export async function recoverStaleSubscriptionCheckouts(
   const stripe = requireStripe();
   const env = getCloudAwareEnv();
   let account: Promise<string> | undefined;
+  const accountReadFailures = new Set<unknown>();
   const providerAccountId = () => {
-    account ??= stripe.accounts.retrieve(null).then((value) => value.id);
+    account ??= stripe.accounts
+      .retrieve(null)
+      .then((value) => value.id)
+      .catch((error: unknown) => {
+        // error-policy:J2 Forget the failed read so the next candidate tries again, and mark
+        // the failure so the loop below can tell it from a failure of the checkout itself.
+        account = undefined;
+        if (error && typeof error === "object") accountReadFailures.add(error);
+        throw error;
+      });
     return account;
   };
   for (const { command, organizationFenced } of candidates) {
@@ -808,14 +829,21 @@ export async function recoverStaleSubscriptionCheckouts(
       if (outcome === "pending") await recovery.rotateCheckoutRecovery(command);
     } catch (error) {
       // error-policy:J4 One unverifiable checkout must not starve the others; it is rotated.
+      // A failed provider account read is not about this checkout: its session was never
+      // read, so it keeps its place and its backoff and is due again on the next sweep.
+      const accountReadFailed = accountReadFailures.has(error);
       logger.warn("[SubscriptionCheckout] Stale checkout recovery unavailable", {
         organizationId: command.organization_id,
         commandId: command.id,
-        code: error instanceof ElizaError ? error.code : "SUBSCRIPTION_CHECKOUT_RECOVERY_FAILED",
+        code: accountReadFailed
+          ? "SUBSCRIPTION_CHECKOUT_PROVIDER_ACCOUNT_UNAVAILABLE"
+          : error instanceof ElizaError
+            ? error.code
+            : "SUBSCRIPTION_CHECKOUT_RECOVERY_FAILED",
         reason: error instanceof ElizaError ? error.context?.reason : undefined,
       });
       result.unavailable++;
-      await recovery.rotateCheckoutRecovery(command);
+      if (!accountReadFailed) await recovery.rotateCheckoutRecovery(command);
     }
   }
   return result;

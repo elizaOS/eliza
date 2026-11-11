@@ -45,6 +45,8 @@ let configurations: Row[] = [];
 const configurationsByKey = new Map<string, string>();
 let portalUrl = "https://billing.stripe.com/p/session/test_portal";
 let sequence = 0;
+/** The next this-many provider account reads answer 429. */
+let accountReadFailures = 0;
 
 function priceObject(id: string) {
   const plus = id === "price_plus";
@@ -147,8 +149,15 @@ const server = createServer((request, response) => {
       send(status, { error: { type: "invalid_request_error", message } });
     const { method } = recorded;
     const path = url.pathname;
-    if (method === "GET" && path === "/v1/account")
+    if (method === "GET" && path === "/v1/account") {
+      if (accountReadFailures > 0) {
+        accountReadFailures -= 1;
+        return send(429, {
+          error: { type: "rate_limit_error", message: "Too many requests" },
+        });
+      }
       return send(200, { id: ACCOUNT_ID, object: "account" });
+    }
     if (method === "GET" && path.startsWith("/v1/prices/"))
       return send(200, priceObject(path.split("/").at(-1) ?? ""));
     if (method === "GET" && path.startsWith("/v1/products/"))
@@ -1050,6 +1059,59 @@ test("a still-open checkout is read back with a doubling, capped backoff", async
   expect(requests.filter((request) => request.path === "/v1/account")).toHaveLength(1);
   expect(providerWrites()).toEqual([]);
   for (const { sessionId } of seeded) expect(sessions.get(sessionId)?.status).toBe("open");
+});
+
+test("a failed provider account read costs no checkout its place or its backoff", async () => {
+  const lastInspection = async (commandId: string) =>
+    new Date(
+      (
+        await query<{ updated_at: string }>(
+          "SELECT updated_at::text AS updated_at FROM billing_subscription_commands WHERE id=$1",
+          [commandId],
+        )
+      )[0]!.updated_at,
+    ).getTime();
+  // Closure and expiry left over from other tests are not this test's subject.
+  await checkout.recoverStaleSubscriptionCheckouts(50, 0);
+  const seeded = [await dueOpenCheckout(16), await dueOpenCheckout(16), await dueOpenCheckout(16)];
+  const before = await Promise.all(seeded.map(({ pending }) => lastInspection(pending.command.id)));
+  const accountReads = () => requests.filter((request) => request.path === "/v1/account").length;
+
+  try {
+    // The account read fails for the whole sweep: nothing is read, and nothing is rotated.
+    accountReadFailures = 50;
+    requests.length = 0;
+    const outage = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(outage.unavailable).toBe(3);
+    expect(outage.pending).toBe(0);
+    // The failure is not remembered: every candidate asked again.
+    expect(accountReads()).toBe(3);
+    expect(seeded.some(({ org }) => customerListed(org))).toBe(false);
+    expect(
+      await Promise.all(seeded.map(({ pending }) => lastInspection(pending.command.id))),
+    ).toEqual(before);
+
+    // One transient failure costs only the candidate it happened for, and that one stays due.
+    accountReadFailures = 1;
+    requests.length = 0;
+    const transient = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(transient.unavailable).toBe(1);
+    expect(transient.pending).toBe(2);
+    expect(accountReads()).toBe(2);
+    const skipped = seeded.filter(({ org }) => !customerListed(org));
+    expect(skipped).toHaveLength(1);
+    expect(await lastInspection(skipped[0]!.pending.command.id)).toBe(
+      before[seeded.indexOf(skipped[0]!)],
+    );
+
+    // The next sweep reads exactly the one that was skipped; the others wait out their backoff.
+    requests.length = 0;
+    const next = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(next.pending).toBe(1);
+    expect(seeded.filter(({ org }) => customerListed(org))).toEqual(skipped);
+  } finally {
+    accountReadFailures = 0;
+  }
 });
 
 test("abandoned open checkouts cannot crowd out fenced or provider-expired ones, or each other's lane", async () => {

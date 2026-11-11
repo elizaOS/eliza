@@ -2,22 +2,26 @@
   "sources": [
     "packages/cloud/api/v1/app-auth/mobile/renew/route.ts",
     "packages/cloud/api/v1/app-auth/mobile/_rate-limit.ts",
+    "packages/cloud/api/v1/api-keys/current/route.ts",
     "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+    "packages/cloud/shared/src/lib/services/api-keys.ts",
     "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
     "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
     "packages/cloud/shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
+    "packages/cloud/shared/src/db/migrations/0573_mobile_app_auth_renewal_lineage.sql",
     "packages/cloud/api/__tests__/mobile-app-auth-renewal.pglite.test.ts"
   ],
   "conformance": "packages/cloud/quint/check-mobile-key-renewal.mjs",
-  "bounds": "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 2, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance.",
-  "fairness": "An authorized renewal settles under weak fairness of its issuing transaction. Starting a renewal, redeeming a code and revoking the predecessor are not promised.",
+  "bounds": "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 4, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance, so a revocation that ends the sign-in is every credential of the instance.",
+  "fairness": "An authorized renewal settles under weak fairness of its issuing transaction. Starting a renewal, redeeming a code and any revocation are not promised.",
   "limitations": [
-    "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 2, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance.",
-    "Exchange and acknowledgement of a renewal code are one atomic redemption. MobileAppCredential models them for one code. Composition is not mechanically established.",
+    "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 4, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance, so a revocation that ends the sign-in is every credential of the instance.",
+    "Exchange and acknowledgement of a renewal code are one atomic redemption, so the inactive credential of an exchanged code and its tombstone are not modeled. MobileAppCredential models the two steps for one code. Composition is not mechanically established.",
     "Owner eligibility groups the inactive user, changed organization and closed or deletion-fenced organization into one flag, and client availability groups the registry entry and the app row. Both only ever turn off.",
-    "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes and secret hashes are not modeled.",
-    "A grant issued before the session_started_at column counts from created_at. The model starts every lineage at the sign-in time.",
-    "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised."
+    "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes, credential headers and secret hashes are not modeled.",
+    "A grant issued before the session_started_at and session_id columns counts from created_at and is its own session. The model starts every lineage at the sign-in time with one session.",
+    "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised. A self-revocation by a credential whose successor was acknowledged ends only that credential, so a copy that renewed first survives the phone signing out with the older key until the phone renews, the owner revokes the device, or the cap.",
+    "Session retirement is one atomic step. The inference revocation boundary, auth-cache eviction and the audit record around it are outside the model."
   ],
   "cases": [
     {

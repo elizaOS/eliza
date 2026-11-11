@@ -28,12 +28,17 @@ assert.equal(result.status, 0);
 const xml = readFileSync(report, "utf8");
 const summary = parseJunitSummary(xml);
 assert.equal(summary.failures + summary.errors, 0);
-assert.equal(summary.executedTests, 12);
+assert.equal(summary.executedTests, 17);
 for (const name of [
   "an acknowledged key renews into a successor that keeps the sign-in time",
-  "renewal stops with 409 once the sign-in is older than the 180-day cap",
-  "a grant from before the column counts the cap from its creation",
-  "a replayed renewal cannot extend the cap, and a revoked predecessor cannot renew again",
+  "both credential headers are accepted only when they carry the same key, on renewal and on self-revocation",
+  "renewal stops with 409 at the 180-day cap, and no key outlives it",
+  "the credential expiry rule never passes the sign-in&apos;s cap",
+  "a grant from before the columns counts the cap from its creation and becomes its own session",
+  "a repeated renewal supersedes the code still in flight, and a revoked predecessor cannot renew again",
+  "a code issued before its key was revoked mints and activates nothing",
+  "a key that renews after its successor was acknowledged ends the whole sign-in",
+  "revoking a device ends its sign-in, while a renewal&apos;s last step ends only the old key",
   "a key revoked or a client deactivated after authorization issues no code",
 ]) {
   assert(xml.includes(`name="${name}"`), `Missing renewal check: ${name}`);

@@ -2,12 +2,15 @@
  * Mobile key renewal against real SQL in PGlite: the real renew route, the
  * real renewal, issuance and acknowledgement services and the real grants
  * repository. Tables are built from the Drizzle schemas, then the real 0572
- * migration adds `session_started_at`.
+ * and 0573 migrations add `session_started_at`, `session_id` and
+ * `renewed_from_credential_id`. Revocation goes through the real credential
+ * service, and the renewal's last step through the real
+ * DELETE /api/v1/api-keys/current route.
  *
  * Synthetic parts: the credential row is published by the repository's
- * exchange with a locally generated secret (no KMS), the old key's revocation
- * is a direct tombstone (DELETE /api/v1/api-keys/current has its own suite),
- * and the shared limiter runs against an in-memory Redis stand-in.
+ * exchange with a locally generated secret (no KMS) and the service's own
+ * expiry rule, the inference revocation boundary is not bound (the service
+ * skips it), and the shared limiter runs against an in-memory Redis stand-in.
  */
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -16,6 +19,7 @@ import { PGlite } from "@electric-sql/pglite";
 import * as realDb from "@elizaos/cloud-shared/db/client";
 import { apiKeys } from "@elizaos/cloud-shared/db/schemas/api-keys";
 import { apps } from "@elizaos/cloud-shared/db/schemas/apps";
+import { authEvents } from "@elizaos/cloud-shared/db/schemas/auth-events";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -36,8 +40,10 @@ const CLIENT = {
 const DAY = 86_400_000;
 const T0 = new Date("2026-01-01T00:00:00.000Z");
 
+process.env.MOCK_REDIS = "1";
+
 const pg = new PGlite();
-const database = drizzle(pg);
+const database = drizzle(pg, { schema: { apiKeys } });
 const originalDb = { ...realDb };
 mock.module("@elizaos/cloud-shared/db/client", () => ({
   ...originalDb,
@@ -53,6 +59,7 @@ const {
   MobileAppAuthRenewalError,
   issueMobileAppAuthCode,
   MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS,
+  mobileCredentialExpiry,
   resolveMobileAppAuthRegistration,
   sha256Hex,
 } = await import("@elizaos/cloud-shared/lib/services/mobile-app-auth");
@@ -64,6 +71,12 @@ const { buildMobileAppAuthCredentialProvenance } = await import(
 );
 const { createMobileAppAuthRenewRoute } = await import(
   "../v1/app-auth/mobile/renew/route"
+);
+const { apiKeysService } = await import(
+  "@elizaos/cloud-shared/lib/services/api-keys"
+);
+const { default: currentKeyRoute } = await import(
+  "../v1/api-keys/current/route"
 );
 const { MOBILE_APP_AUTH_RENEW_CREDENTIAL_MAX } = await import(
   "../v1/app-auth/mobile/_rate-limit"
@@ -177,11 +190,8 @@ interface Held {
   grantId: string;
 }
 
-/** Exchange and acknowledge a code the way the phone does after either flow. */
-async function redeem(
-  code: string,
-  attempt: ReturnType<typeof pkce>,
-): Promise<Held> {
+/** Exchange a code for an inactive credential, as `mobile/token` does. */
+async function exchange(code: string, attempt: ReturnType<typeof pkce>) {
   const registration = resolveMobileAppAuthRegistration(env(), CLIENT.clientId);
   const state = await mobileAppAuthGrantsRepository.findStateByCodeHash(
     sha256Hex(code),
@@ -189,7 +199,7 @@ async function redeem(
   if (!state) throw new Error("issued grant is missing");
   const secret = `eliza_mobile_${randomBytes(32).toString("hex")}`;
   const credentialId = randomUUID();
-  const exchanged = await mobileAppAuthGrantsRepository.exchange(
+  const claim = await mobileAppAuthGrantsRepository.exchange(
     {
       codeHash: sha256Hex(code),
       appId: APP,
@@ -214,15 +224,26 @@ async function redeem(
       key_hash: sha256Hex(secret),
       key_prefix: secret.slice(0, 20),
       is_active: false,
-      expires_at: new Date(
-        clock.getTime() + registration.credentialTtlSeconds * 1000,
+      // The service's own expiry rule, as `mobile/token` applies it.
+      expires_at: mobileCredentialExpiry(
+        state.grant,
+        clock,
+        registration.credentialTtlSeconds,
       ),
     },
     clock,
   );
-  expect(exchanged.kind).toBe("created");
-  const acknowledged = await acknowledgeMobileAppAuthCredential({
-    registration,
+  return { claim, held: { secret, credentialId, grantId: state.grant.id } };
+}
+
+/** Acknowledge an exchanged credential, as `mobile/ack` does. */
+async function acknowledge(
+  code: string,
+  attempt: ReturnType<typeof pkce>,
+  held: Held,
+) {
+  return await acknowledgeMobileAppAuthCredential({
+    registration: resolveMobileAppAuthRegistration(env(), CLIENT.clientId),
     binding: {
       clientId: CLIENT.clientId,
       environment: "production",
@@ -231,12 +252,67 @@ async function redeem(
     },
     code,
     codeVerifier: attempt.verifier,
-    credentialId,
-    secret,
+    credentialId: held.credentialId,
+    secret: held.secret,
     now: clock,
   });
-  expect(acknowledged.status).toBe("acknowledged");
-  return { secret, credentialId, grantId: state.grant.id };
+}
+
+/** Exchange and acknowledge a code the way the phone does after either flow. */
+async function redeem(
+  code: string,
+  attempt: ReturnType<typeof pkce>,
+): Promise<Held> {
+  const { claim, held } = await exchange(code, attempt);
+  expect(claim.kind).toBe("created");
+  expect((await acknowledge(code, attempt, held)).status).toBe("acknowledged");
+  return held;
+}
+
+/** The protocol refusal of an exchange or acknowledgement, or "accepted". */
+async function protocolRefusal(run: () => Promise<unknown>): Promise<string> {
+  try {
+    await run();
+  } catch (error) {
+    const code = (error as { protocolCode?: unknown }).protocolCode;
+    if (typeof code === "string") return code;
+    throw error;
+  }
+  return "accepted";
+}
+
+/** Which of these credentials are usable keys right now. */
+async function live(...held: Held[]): Promise<boolean[]> {
+  const { rows } = await pg.query<{ id: string }>(
+    "SELECT id FROM api_keys WHERE is_active AND deleted_at IS NULL AND expires_at > $1",
+    [clock],
+  );
+  const ids = new Set(rows.map((row) => row.id));
+  return held.map((key) => ids.has(key.credentialId));
+}
+
+/** DELETE /api/v1/api-keys/current through the real route. */
+async function revokeCurrent(headers: Record<string, string>) {
+  const response = await currentKeyRoute.fetch(
+    new Request("https://fixture.example.test/", {
+      method: "DELETE",
+      headers: { "cf-connecting-ip": "198.51.100.7", ...headers },
+    }),
+    env(),
+    { props: {}, waitUntil() {}, passThroughOnException() {} } as never,
+  );
+  return {
+    status: response.status,
+    body: (await response.json()) as Record<string, unknown>,
+  };
+}
+
+/** A renewal from request to acknowledged successor. */
+async function renewInto(from: Held): Promise<Held> {
+  const attempt = pkce();
+  const answer = await renew(from.secret, attempt.binding);
+  expect(answer.status).toBe(200);
+  return await redeem(String(answer.body.code), attempt);
 }
 
 /** A browser-approved sign-in that ends with an acknowledged key. */
@@ -272,13 +348,22 @@ async function grantCount(): Promise<number> {
 }
 
 const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
-const migration = readFileSync(
-  new URL(
-    "../../shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
-    import.meta.url,
-  ),
-  "utf8",
-);
+const migration = [
+  "0572_mobile_app_auth_session_start",
+  "0573_mobile_app_auth_renewal_lineage",
+]
+  .map((tag) =>
+    readFileSync(
+      new URL(`../../shared/src/db/migrations/${tag}.sql`, import.meta.url),
+      "utf8",
+    ),
+  )
+  .join("\n");
+const MIGRATED_COLUMNS = new Set([
+  "session_started_at",
+  "session_id",
+  "renewed_from_credential_id",
+]);
 
 beforeAll(async () => {
   const enums = new Set<string>();
@@ -287,6 +372,7 @@ beforeAll(async () => {
     users,
     apiKeys,
     apps,
+    authEvents,
     mobileAppAuthGrants,
   ]) {
     const config = getTableConfig(table);
@@ -305,7 +391,10 @@ beforeAll(async () => {
     }
     await pg.exec(
       `CREATE TABLE ${quote(config.name)} (${config.columns
-        .filter((column) => column.name !== "session_started_at")
+        .filter(
+          (column) =>
+            table !== mobileAppAuthGrants || !MIGRATED_COLUMNS.has(column.name),
+        )
         .map(
           (c) =>
             `${quote(c.name)} ${c.getSQLType()}${c.primary ? " PRIMARY KEY" : ""}`,
@@ -327,7 +416,7 @@ beforeEach(async () => {
   limiter = "disabled";
   counters.clear();
   await pg.exec(
-    "TRUNCATE mobile_app_auth_grants, apps, api_keys, users, organizations",
+    "TRUNCATE mobile_app_auth_grants, apps, api_keys, users, organizations, auth_events",
   );
   for (const id of [ORG, OTHER_ORG]) {
     await pg.query(
@@ -351,13 +440,28 @@ afterAll(async () => {
   await pg.close();
 });
 
-test("the real migration adds a nullable sign-in time and can be applied again", async () => {
+test("the real migrations add nullable lineage columns and can be applied again", async () => {
   await pg.exec(migration);
-  const { rows } = await pg.query<{ data_type: string; is_nullable: string }>(
-    "SELECT data_type,is_nullable FROM information_schema.columns WHERE table_name='mobile_app_auth_grants' AND column_name='session_started_at'",
+  const { rows } = await pg.query<{
+    column_name: string;
+    data_type: string;
+    is_nullable: string;
+  }>(
+    "SELECT column_name,data_type,is_nullable FROM information_schema.columns WHERE table_name='mobile_app_auth_grants' AND column_name = ANY($1) ORDER BY column_name",
+    [[...MIGRATED_COLUMNS]],
   );
   expect(rows).toEqual([
-    { data_type: "timestamp with time zone", is_nullable: "YES" },
+    {
+      column_name: "renewed_from_credential_id",
+      data_type: "uuid",
+      is_nullable: "YES",
+    },
+    { column_name: "session_id", data_type: "uuid", is_nullable: "YES" },
+    {
+      column_name: "session_started_at",
+      data_type: "timestamp with time zone",
+      is_nullable: "YES",
+    },
   ]);
 });
 
@@ -387,6 +491,22 @@ test("an acknowledged key renews into a successor that keeps the sign-in time", 
     session_started_at: T0,
     status: "acknowledged",
     credential_id: second.credentialId,
+  });
+  // The successor joins the sign-in's session and names the key that asked.
+  const lineage = await pg.query<{
+    id: string;
+    session_id: string | null;
+    renewed_from_credential_id: string | null;
+  }>(
+    "SELECT id,session_id,renewed_from_credential_id FROM mobile_app_auth_grants ORDER BY created_at,id",
+  );
+  const sessionOf = (grantId: string) =>
+    lineage.rows.find((row) => row.id === grantId);
+  expect(sessionOf(first.grantId)?.session_id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(sessionOf(first.grantId)?.renewed_from_credential_id).toBeNull();
+  expect(sessionOf(second.grantId)).toMatchObject({
+    session_id: sessionOf(first.grantId)?.session_id,
+    renewed_from_credential_id: first.credentialId,
   });
   const { rows } = await pg.query<{
     id: string;
@@ -419,21 +539,61 @@ test("an acknowledged key renews into a successor that keeps the sign-in time", 
   expect((await grantRow(held.grantId)).session_started_at).toEqual(T0);
 });
 
-test("both credential headers are accepted only when they carry the same key", async () => {
+test("both credential headers are accepted only when they carry the same key, on renewal and on self-revocation", async () => {
   const first = await signIn();
   const other = `eliza_mobile_${"a".repeat(64)}`;
-  expect(
-    (
-      await renew(first.secret, pkce().binding, {
-        headers: { "x-api-key": first.secret },
-      })
-    ).status,
-  ).toBe(200);
+  const before = await grantCount();
+  // Two different keys are ambiguous on both routes.
   const mixed = await renew(first.secret, pkce().binding, {
     headers: { "x-api-key": other },
   });
   expect(mixed.status).toBe(401);
   expect(mixed.body.code).toBe("authentication_required");
+  expect(await grantCount()).toBe(before);
+  const mixedRevoke = await revokeCurrent({
+    authorization: `Bearer ${first.secret}`,
+    "x-api-key": other,
+  });
+  expect(mixedRevoke.status).toBe(401);
+  expect(await live(first)).toEqual([true]);
+
+  // The same key in both headers is what the Cloud SDK sends. A whole
+  // renewal, its last step included, works that way.
+  const both = (held: Held) => ({
+    authorization: `Bearer ${held.secret}`,
+    "x-api-key": held.secret,
+  });
+  const attempt = pkce();
+  const answer = await renew(first.secret, attempt.binding, {
+    headers: both(first),
+  });
+  expect(answer.status).toBe(200);
+  const successor = await redeem(String(answer.body.code), attempt);
+  const revoked = await revokeCurrent(both(first));
+  expect(revoked.status).toBe(200);
+  expect(revoked.body).toMatchObject({
+    success: true,
+    credentialId: first.credentialId,
+    status: "revoked",
+  });
+  expect(await live(first, successor)).toEqual([false, true]);
+  // A lost reply is retried with the same headers and gets the same receipt.
+  expect((await revokeCurrent(both(first))).body).toMatchObject({
+    credentialId: first.credentialId,
+    status: "revoked",
+  });
+
+  // Either header alone works on both routes too.
+  const next = pkce();
+  const viaHeader = await renew(null, next.binding, {
+    headers: { "x-api-key": successor.secret },
+  });
+  expect(viaHeader.status).toBe(200);
+  const third = await redeem(String(viaHeader.body.code), next);
+  expect((await revokeCurrent({ "x-api-key": successor.secret })).status).toBe(
+    200,
+  );
+  expect(await live(successor, third)).toEqual([false, true]);
 });
 
 test("an expired, unacknowledged, revoked, unknown or non-mobile key is refused with 401", async () => {
@@ -584,24 +744,34 @@ test("a key whose owner moved organization, was deactivated or whose organizatio
   expect((await renew(first.secret, pkce().binding)).status).toBe(200);
 });
 
-test("renewal stops with 409 once the sign-in is older than the 180-day cap", async () => {
+// Changed on purpose: a renewed key used to get a full lifetime, so the last
+// key of a sign-in lived until day 205. No key now outlives the 180-day cap.
+test("renewal stops with 409 at the 180-day cap, and no key outlives it", async () => {
   expect(MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS).toBe(180 * 86_400);
+  const expiry = async (held: Held) =>
+    (
+      await pg.query<{ expires_at: Date }>(
+        "SELECT expires_at FROM api_keys WHERE id=$1",
+        [held.credentialId],
+      )
+    ).rows[0].expires_at;
   let held = await signIn();
-  // Renew every 25 days; each successor lives 30 days from its renewal.
-  for (let day = 25; day <= 175; day += 25) {
+  // Renew every 20 days; each successor lives 30 days from its renewal.
+  for (let day = 20; day <= 140; day += 20) {
     clock = new Date(T0.getTime() + day * DAY);
-    const attempt = pkce();
-    const answer = await renew(held.secret, attempt.binding);
-    expect(answer.status).toBe(200);
-    held = await redeem(String(answer.body.code), attempt);
+    held = await renewInto(held);
     expect((await grantRow(held.grantId)).session_started_at).toEqual(T0);
+    expect(await expiry(held)).toEqual(new Date(clock.getTime() + 30 * DAY));
   }
 
-  // The last instant of the cap still renews; one millisecond later does not.
-  clock = new Date(T0.getTime() + 180 * DAY);
-  expect((await renew(held.secret, pkce().binding)).status).toBe(200);
+  // Day 160: the successor would live to day 190 and is cut at day 180.
+  clock = new Date(T0.getTime() + 160 * DAY);
+  held = await renewInto(held);
+  expect(await expiry(held)).toEqual(new Date(T0.getTime() + 180 * DAY));
+
+  // That key already lives to the cap: a further renewal could not extend it.
   const before = await grantCount();
-  clock = new Date(T0.getTime() + 180 * DAY + 1);
+  clock = new Date(T0.getTime() + 171 * DAY);
   const closed = await renew(held.secret, pkce().binding);
   expect(closed.status).toBe(409);
   expect(closed.body).toMatchObject({
@@ -609,88 +779,358 @@ test("renewal stops with 409 once the sign-in is older than the 180-day cap", as
     code: "renewal_window_closed",
   });
   expect(await grantCount()).toBe(before);
-
-  // The key itself is still valid until it expires (day 205); only renewal is closed.
-  const { rows } = await pg.query<{ expires_at: Date }>(
-    "SELECT expires_at FROM api_keys WHERE id=$1",
-    [held.credentialId],
-  );
-  expect(rows[0].expires_at).toEqual(new Date(T0.getTime() + 205 * DAY));
+  // It stays a valid key until the cap, and is an expired one from then on.
+  clock = new Date(T0.getTime() + 180 * DAY - 1);
+  expect(await live(held)).toEqual([true]);
+  expect((await renew(held.secret, pkce().binding)).status).toBe(409);
+  clock = new Date(T0.getTime() + 180 * DAY);
+  expect(await live(held)).toEqual([false]);
+  expect((await renew(held.secret, pkce().binding)).status).toBe(401);
 });
 
-test("a grant from before the column counts the cap from its creation", async () => {
+test("the credential expiry rule never passes the sign-in's cap", () => {
+  const ttl = 30 * 86_400;
+  const at = (day: number) => new Date(T0.getTime() + day * DAY);
+  const grant = { session_started_at: T0, created_at: at(170) };
+  expect(mobileCredentialExpiry(grant, at(0), ttl)).toEqual(at(30));
+  expect(mobileCredentialExpiry(grant, at(150), ttl)).toEqual(at(180));
+  expect(mobileCredentialExpiry(grant, at(179.9), ttl)).toEqual(at(180));
+  // A client registered with the longest lifetime is cut the same way.
+  expect(mobileCredentialExpiry(grant, at(179.9), 90 * 86_400)).toEqual(
+    at(180),
+  );
+  // Past the cap nothing is left, which the exchange refuses.
+  expect(mobileCredentialExpiry(grant, at(181), ttl) <= at(181)).toBe(true);
+  // A grant from before the column counts from its creation.
+  expect(
+    mobileCredentialExpiry(
+      { session_started_at: null, created_at: T0 },
+      at(170),
+      ttl,
+    ),
+  ).toEqual(at(180));
+});
+
+test("a key issued before the clamp that outlives the cap is refused with 409 once the cap passes", async () => {
+  const first = await signIn();
+  await pg.query("UPDATE api_keys SET expires_at=$2 WHERE id=$1", [
+    first.credentialId,
+    new Date(T0.getTime() + 205 * DAY),
+  ]);
+  for (const day of [170, 180, 181]) {
+    clock = new Date(T0.getTime() + day * DAY);
+    const closed = await renew(first.secret, pkce().binding);
+    expect(closed.status).toBe(409);
+    expect(closed.body.code).toBe("renewal_window_closed");
+  }
+  expect(await grantCount()).toBe(1);
+});
+
+test("a grant from before the columns counts the cap from its creation and becomes its own session", async () => {
   const first = await signIn();
   await pg.query(
-    "UPDATE mobile_app_auth_grants SET session_started_at=NULL,created_at=$2 WHERE id=$1",
+    "UPDATE mobile_app_auth_grants SET session_started_at=NULL,session_id=NULL,created_at=$2 WHERE id=$1",
     [first.grantId, new Date(T0.getTime() - 170 * DAY)],
   );
-  clock = new Date(T0.getTime() + 10 * DAY);
-  const attempt = pkce();
-  const answer = await renew(first.secret, attempt.binding);
-  expect(answer.status).toBe(200);
-  const successor = await redeem(String(answer.body.code), attempt);
+  // Day 175 of the sign-in: the key (valid to day 200, issued before the
+  // clamp) still gains nothing from a successor that would end at day 180.
+  clock = new Date(T0.getTime() + 5 * DAY);
+  expect((await renew(first.secret, pkce().binding)).status).toBe(409);
+
+  // The same sign-in with a key that ends before the cap renews, counts from
+  // the grant's creation, and stamps the old grant as the session's first.
+  await pg.query("UPDATE api_keys SET expires_at=$2 WHERE id=$1", [
+    first.credentialId,
+    new Date(T0.getTime() + 8 * DAY),
+  ]);
+  const successor = await renewInto(first);
   expect((await grantRow(successor.grantId)).session_started_at).toEqual(
     new Date(T0.getTime() - 170 * DAY),
   );
-
-  clock = new Date(T0.getTime() + 10 * DAY + 1);
-  expect((await renew(first.secret, pkce().binding)).status).toBe(409);
-  expect((await renew(successor.secret, pkce().binding)).status).toBe(409);
-});
-
-test("a replayed renewal cannot extend the cap, and a revoked predecessor cannot renew again", async () => {
-  const first = await signIn();
-  clock = new Date(T0.getTime() + 21 * DAY);
-  const attempt = pkce();
-
-  // The same request twice (a lost reply) yields two independent codes that
-  // both carry the original sign-in time.
-  const one = await renew(first.secret, attempt.binding);
-  const two = await renew(first.secret, attempt.binding);
-  expect([one.status, two.status]).toEqual([200, 200]);
-  expect(one.body.code).not.toBe(two.body.code);
-  const { rows } = await pg.query<{ session_started_at: Date; status: string }>(
-    "SELECT session_started_at,status FROM mobile_app_auth_grants WHERE id<>$1",
-    [first.grantId],
+  const { rows } = await pg.query<{ id: string; session_id: string }>(
+    "SELECT id,session_id FROM mobile_app_auth_grants ORDER BY created_at",
   );
   expect(rows).toEqual([
-    { session_started_at: T0, status: "pending" },
-    { session_started_at: T0, status: "pending" },
+    { id: first.grantId, session_id: first.grantId },
+    { id: successor.grantId, session_id: first.grantId },
   ]);
+  const expires = await pg.query<{ expires_at: Date }>(
+    "SELECT expires_at FROM api_keys WHERE id=$1",
+    [successor.credentialId],
+  );
+  expect(expires.rows[0].expires_at).toEqual(new Date(T0.getTime() + 10 * DAY));
+
+  // Revoking the old device row ends the session it started.
+  expect(
+    (
+      await apiKeysService.revokeMobileCredentialForAccount(
+        first.credentialId,
+        OWNER,
+        ORG,
+      )
+    )?.revokedNow,
+  ).toBe(true);
+  expect(await live(first, successor)).toEqual([false, false]);
+});
+
+// Changed on purpose: two renewals by one key used to leave two redeemable
+// codes. A key now has one live successor, so the newer request supersedes
+// the older code.
+test("a repeated renewal supersedes the code still in flight, and a revoked predecessor cannot renew again", async () => {
+  const first = await signIn();
+  clock = new Date(T0.getTime() + 21 * DAY);
+  const lost = pkce();
+  const kept = pkce();
+
+  // The reply to the first request is lost and the phone asks again.
+  const one = await renew(first.secret, lost.binding);
+  const two = await renew(first.secret, kept.binding);
+  expect([one.status, two.status]).toEqual([200, 200]);
+  expect(one.body.code).not.toBe(two.body.code);
+  const { rows } = await pg.query<{
+    session_started_at: Date;
+    status: string;
+    redeemable: boolean;
+  }>(
+    "SELECT session_started_at,status,expires_at > $2 AS redeemable FROM mobile_app_auth_grants WHERE id<>$1 ORDER BY created_at,expires_at",
+    [first.grantId, clock],
+  );
+  expect(rows.map((row) => row.redeemable).sort()).toEqual([false, true]);
+  expect(rows.every((row) => row.status === "pending")).toBe(true);
+  expect(
+    rows.every((row) => row.session_started_at.getTime() === T0.getTime()),
+  ).toBe(true);
+
+  // The superseded code mints nothing; the newest one is the successor.
+  const superseded = await exchange(String(one.body.code), lost);
+  expect(superseded.claim).toEqual({
+    kind: "invalid",
+    reason: "grant_invalid",
+  });
+  const successor = await redeem(String(two.body.code), kept);
+
+  // A superseded code that was already exchanged loses its inactive credential.
+  const third = pkce();
+  const fourth = pkce();
+  const exchangedThenSuperseded = await renew(successor.secret, third.binding);
+  const pendingKey = await exchange(
+    String(exchangedThenSuperseded.body.code),
+    third,
+  );
+  expect(pendingKey.claim.kind).toBe("created");
+  expect((await renew(successor.secret, fourth.binding)).status).toBe(200);
+  expect(
+    await protocolRefusal(() =>
+      acknowledge(
+        String(exchangedThenSuperseded.body.code),
+        third,
+        pendingKey.held,
+      ),
+    ),
+  ).toBe("authorization_code_expired");
+  const stranded = await pg.query<{ is_active: boolean; revoked: boolean }>(
+    "SELECT is_active,deleted_at IS NOT NULL AS revoked FROM api_keys WHERE id=$1",
+    [pendingKey.held.credentialId],
+  );
+  expect(stranded.rows).toEqual([{ is_active: false, revoked: true }]);
 
   // A renewal code is single-credential like any other: acknowledging it
   // twice returns the same receipt and mints nothing new.
-  const successor = await redeem(String(one.body.code), attempt);
-  const registration = resolveMobileAppAuthRegistration(env(), CLIENT.clientId);
-  const again = await acknowledgeMobileAppAuthCredential({
-    registration,
-    binding: {
-      clientId: CLIENT.clientId,
-      environment: "production",
-      redirectUri: CLIENT.redirectUri,
-      state: attempt.binding.state,
-    },
-    code: String(one.body.code),
-    codeVerifier: attempt.verifier,
-    credentialId: successor.credentialId,
-    secret: successor.secret,
-    now: clock,
-  });
+  const again = await acknowledge(String(two.body.code), kept, successor);
   expect(again.credentialId).toBe(successor.credentialId);
-  const keys = await pg.query<{ n: number }>(
-    "SELECT count(*)::int AS n FROM api_keys",
-  );
-  expect(keys.rows[0].n).toBe(2);
 
-  // The phone revokes the predecessor; replaying its renewal is now a 401.
-  await pg.query(
-    "UPDATE api_keys SET is_active=false,deleted_at=$2 WHERE id=$1",
-    [first.credentialId, clock],
-  );
-  const replay = await renew(first.secret, attempt.binding);
+  // The phone revokes the predecessor through the real route; replaying its
+  // renewal is now a 401, and acknowledging the successor again still works.
+  const revoked = await revokeCurrent({
+    authorization: `Bearer ${first.secret}`,
+  });
+  expect(revoked.status).toBe(200);
+  expect(revoked.body).toMatchObject({
+    success: true,
+    credentialId: first.credentialId,
+    status: "revoked",
+  });
+  expect(await live(first, successor)).toEqual([false, true]);
+  const replay = await renew(first.secret, lost.binding);
   expect(replay.status).toBe(401);
   expect(replay.body.code).toBe("authentication_required");
-  expect((await renew(successor.secret, pkce().binding)).status).toBe(200);
+  expect(
+    (await acknowledge(String(two.body.code), kept, successor)).credentialId,
+  ).toBe(successor.credentialId);
+  expect(await live(successor)).toEqual([true]);
+});
+
+test("a code issued before its key was revoked mints and activates nothing", async () => {
+  // The holder of a copied key asks for a code, then the owner revokes the
+  // device from the account before the code is exchanged.
+  const stolen = await signIn();
+  const early = pkce();
+  const code = String((await renew(stolen.secret, early.binding)).body.code);
+  expect(
+    (
+      await apiKeysService.revokeMobileCredentialForAccount(
+        stolen.credentialId,
+        OWNER,
+        ORG,
+      )
+    )?.revokedNow,
+  ).toBe(true);
+  expect((await exchange(code, early)).claim).toEqual({
+    kind: "invalid",
+    reason: "grant_invalid",
+  });
+  expect(
+    (await pg.query("SELECT 1 FROM api_keys WHERE deleted_at IS NULL")).rows,
+  ).toEqual([]);
+
+  // The same when the code was already exchanged: the inactive successor is
+  // tombstoned with the device and can never be acknowledged.
+  const copied = await signIn();
+  const late = pkce();
+  const lateCode = String((await renew(copied.secret, late.binding)).body.code);
+  const minted = await exchange(lateCode, late);
+  expect(minted.claim.kind).toBe("created");
+  await apiKeysService.revokeMobileCredentialForAccount(
+    copied.credentialId,
+    OWNER,
+    ORG,
+  );
+  expect(
+    await protocolRefusal(() => acknowledge(lateCode, late, minted.held)),
+  ).toBe("credential_proof_invalid");
+  expect(await live(copied, minted.held)).toEqual([false, false]);
+  expect(
+    (await pg.query("SELECT 1 FROM api_keys WHERE deleted_at IS NULL")).rows,
+  ).toEqual([]);
+
+  // And when the key signs itself out instead of being revoked by the owner.
+  const signedOut = await signIn();
+  const pendingAttempt = pkce();
+  const pendingCode = String(
+    (await renew(signedOut.secret, pendingAttempt.binding)).body.code,
+  );
+  expect((await revokeCurrent({ "x-api-key": signedOut.secret })).status).toBe(
+    200,
+  );
+  expect((await exchange(pendingCode, pendingAttempt)).claim).toEqual({
+    kind: "invalid",
+    reason: "grant_invalid",
+  });
+
+  // A natural expiry of the predecessor closes the code the same way.
+  const expiring = await signIn();
+  clock = new Date(T0.getTime() + 30 * DAY - 60_000);
+  const lastMinute = pkce();
+  const lastCode = String(
+    (await renew(expiring.secret, lastMinute.binding)).body.code,
+  );
+  clock = new Date(T0.getTime() + 30 * DAY);
+  expect((await exchange(lastCode, lastMinute)).claim).toEqual({
+    kind: "invalid",
+    reason: "grant_invalid",
+  });
+});
+
+test("a key that renews after its successor was acknowledged ends the whole sign-in", async () => {
+  // A copy of the phone's key renews first and keeps renewing.
+  const phone = await signIn();
+  clock = new Date(T0.getTime() + 5 * DAY);
+  const copy = await renewInto(phone);
+  clock = new Date(T0.getTime() + 10 * DAY);
+  const copyNext = await renewInto(copy);
+  // An unrelated sign-in of the same owner on another device.
+  const otherDevice = await signIn();
+  expect(await live(phone, copy, copyNext, otherDevice)).toEqual([
+    true,
+    true,
+    true,
+    true,
+  ]);
+
+  // The phone, still holding the first key, renews when it nears expiry.
+  clock = new Date(T0.getTime() + 22 * DAY);
+  const before = await grantCount();
+  const reuse = await renew(phone.secret, pkce().binding);
+  expect(reuse.status).toBe(401);
+  expect(reuse.body).toMatchObject({
+    success: false,
+    code: "authentication_required",
+  });
+  expect(await grantCount()).toBe(before);
+  // Every key of that sign-in is revoked, the copy's chain included; the
+  // other device's sign-in is untouched.
+  expect(await live(phone, copy, copyNext, otherDevice)).toEqual([
+    false,
+    false,
+    false,
+    true,
+  ]);
+  for (const dead of [phone, copy, copyNext]) {
+    expect((await renew(dead.secret, pkce().binding)).status).toBe(401);
+  }
+  expect((await renew(otherDevice.secret, pkce().binding)).status).toBe(200);
+});
+
+test("revoking a device ends its sign-in, while a renewal's last step ends only the old key", async () => {
+  // Renewal's last step: the old key revokes itself and the successor stays.
+  const first = await signIn();
+  clock = new Date(T0.getTime() + 21 * DAY);
+  const second = await renewInto(first);
+  expect(
+    (await revokeCurrent({ authorization: `Bearer ${first.secret}` })).status,
+  ).toBe(200);
+  expect(await live(first, second)).toEqual([false, true]);
+  // The same request again (a lost reply) returns the same receipt and still
+  // leaves the successor alone.
+  expect(
+    (await revokeCurrent({ authorization: `Bearer ${first.secret}` })).status,
+  ).toBe(200);
+  expect(await live(second)).toEqual([true]);
+
+  // The old key was never revoked (its DELETE was lost), and the phone signs
+  // out with the key it holds: the forgotten predecessor goes with it.
+  clock = new Date(T0.getTime() + 40 * DAY);
+  const third = await renewInto(second);
+  expect(await live(second, third)).toEqual([true, true]);
+  expect(
+    (await revokeCurrent({ authorization: `Bearer ${third.secret}` })).status,
+  ).toBe(200);
+  expect(await live(second, third)).toEqual([false, false]);
+
+  // The owner revokes a device row that was already superseded: the key the
+  // phone holds now belongs to the same sign-in and ends with it, and a code
+  // that key had asked for is worth nothing.
+  clock = T0;
+  const old = await signIn();
+  const current = await renewInto(old);
+  const pending = pkce();
+  const pendingCode = String(
+    (await renew(current.secret, pending.binding)).body.code,
+  );
+  const otherDevice = await signIn();
+  const receipt = await apiKeysService.revokeMobileCredentialForAccount(
+    old.credentialId,
+    OWNER,
+    ORG,
+  );
+  expect(receipt).toMatchObject({
+    revokedNow: true,
+    receipt: { credentialId: old.credentialId, status: "revoked" },
+  });
+  expect(await live(old, current, otherDevice)).toEqual([false, false, true]);
+  expect((await exchange(pendingCode, pending)).claim).toEqual({
+    kind: "invalid",
+    reason: "grant_invalid",
+  });
+  // A retry of the owner's revocation is the same receipt.
+  expect(
+    await apiKeysService.revokeMobileCredentialForAccount(
+      old.credentialId,
+      OWNER,
+      ORG,
+    ),
+  ).toMatchObject({ revokedNow: false });
+  expect(await live(otherDevice)).toEqual([true]);
 });
 
 test("a key revoked or a client deactivated after authorization issues no code", async () => {
@@ -743,6 +1183,10 @@ test("a key revoked or a client deactivated after authorization issues no code",
   clock = new Date(T0.getTime() + 180 * DAY + 1);
   expect(await issue()).toBe("renewal_window_closed");
   clock = T0;
+  await pg.query("UPDATE api_keys SET expires_at=$2 WHERE id=$1", [
+    first.credentialId,
+    new Date(T0.getTime() + 30 * DAY),
+  ]);
 
   expect(await grantCount()).toBe(before);
   expect(await (await refusal())()).toBe("issued");

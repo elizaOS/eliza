@@ -384,8 +384,9 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       { plan_key: "plus_monthly", source_subscription_id: outcome.command?.result_subscription_id },
     ]);
     expect(outcome.allowances).toBe(1);
-    // One provider account read serves the whole sweep and nothing was written to the provider.
-    expect(requests.filter((request) => request === "GET /v1/account")).toHaveLength(2);
+    // One provider account read serves the whole sweep, the settlement of the paid session
+    // included, and nothing was written to the provider.
+    expect(requests.filter((request) => request === "GET /v1/account")).toHaveLength(1);
     expect(writes).toBe(0);
 
     // The settled checkout leaves the sweep; a later run reads nothing for it.

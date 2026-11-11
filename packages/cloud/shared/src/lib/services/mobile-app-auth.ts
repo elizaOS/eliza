@@ -10,10 +10,14 @@
  * of finer route-level permission enforcement.
  *
  * Renewal lets an acknowledged, unexpired credential obtain a fresh code for
- * its own client without a browser: the new grant copies the sign-in time
- * forward, and no code is issued once that sign-in is older than the absolute
- * renewal cap. The successor goes through the same exchange and
- * acknowledgement; the client revokes the predecessor afterwards.
+ * its own client without a browser: the new grant copies the sign-in time and
+ * session forward and names the credential that asked. No code is issued once
+ * that sign-in is older than the absolute renewal cap, and no credential of
+ * the sign-in expires later than that cap. The successor goes through the
+ * same exchange and acknowledgement, both of which require the predecessor to
+ * still be active; the client revokes the predecessor afterwards. A
+ * predecessor has one live successor: a second renewal by a credential whose
+ * successor was already acknowledged ends the whole sign-in.
  */
 import crypto from "node:crypto";
 import { ElizaError } from "@elizaos/core";
@@ -28,6 +32,7 @@ import {
 } from "../../db/repositories/mobile-app-auth-grants";
 import type { ApiKey, NewApiKey } from "../../db/schemas/api-keys";
 import type { MobileAppAuthEnvironment } from "../../db/schemas/mobile-app-auth-grants";
+import { logger } from "../utils/logger";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
 import { selectRegisteredMobileClient } from "./mobile-client-registry";
 import { MOBILE_CHECKOUT_RETURN_SUFFIX } from "./subscription-checkout-contract";
@@ -371,9 +376,29 @@ export async function issueMobileAppAuthCode(input: {
     status: "pending",
     expires_at: expiresAt,
     session_started_at: input.renewal?.sessionStartedAt ?? now,
+    // A sign-in starts its own session; a renewal joins its predecessor's,
+    // which the repository reads under the session lock.
+    session_id: input.renewal ? undefined : crypto.randomUUID(),
   } satisfies Parameters<typeof mobileAppAuthGrantsRepository.create>[0];
   if (input.renewal) {
     const renewed = await mobileAppAuthGrantsRepository.createRenewal(grant, input.renewal, now);
+    if (renewed.kind === "reused") {
+      // The successor of this credential was already acknowledged, so the
+      // secret has two holders. End the sign-in for both; the owner signs in
+      // again. Fencing or tombstone failures propagate as a retryable outage.
+      const retired = await apiKeysService.revokeMobileSessionForReuse(
+        input.renewal.credentialId,
+        input.organizationId,
+      );
+      logger.warn("[MobileAppAuth] Renewal by a superseded credential ended its sign-in", {
+        alert: "mobile_credential_renewal_reuse",
+        credentialId: input.renewal.credentialId,
+        userId: input.userId,
+        organizationId: input.organizationId,
+        retiredCredentialIds: retired,
+      });
+      return refuseRenewal("credential_invalid", "Invalid or expired mobile credential");
+    }
     if (renewed.kind === "invalid") {
       return renewed.reason === "client_inactive"
         ? refuseRenewal("client_unavailable", "Mobile client is no longer active")
@@ -512,7 +537,9 @@ export async function authorizeMobileAppAuthRenewal(input: {
   const renewableUntil = new Date(
     sessionStartedAt.getTime() + MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS * 1000,
   );
-  if (now > renewableUntil) {
+  // No credential of a sign-in expires after its cap, so a credential that
+  // already lives to the cap has nothing left to gain from a successor.
+  if (now > renewableUntil || credential.expires_at >= renewableUntil) {
     return refuseRenewal("renewal_window_closed", "This sign-in can no longer be renewed");
   }
   return {
@@ -530,7 +557,9 @@ export async function authorizeMobileAppAuthRenewal(input: {
  * Issues the successor's code for an authorized renewal. The request binding
  * follows the sign-in rules and must name the credential's own client. The
  * predecessor is re-read under a row lock in the issuing transaction, so a
- * credential revoked after authorization issues nothing.
+ * credential revoked after authorization issues nothing. A renewal still in
+ * flight for the same credential is superseded, and a credential whose
+ * successor was already acknowledged ends its sign-in instead of renewing.
  */
 export async function issueMobileAppAuthRenewalCode(input: {
   authorization: MobileAppAuthRenewalAuthorization;
@@ -557,6 +586,25 @@ export async function issueMobileAppAuthRenewalCode(input: {
   });
 }
 
+/**
+ * When a credential minted for this grant at `now` expires: one credential
+ * lifetime from now, and never later than the absolute cap of the sign-in the
+ * grant descends from. A grant without a sign-in time counts from its creation.
+ */
+export function mobileCredentialExpiry(
+  grant: { session_started_at: Date | null; created_at: Date },
+  now: Date,
+  credentialTtlSeconds: number,
+): Date {
+  const sessionStartedAt = grant.session_started_at ?? grant.created_at;
+  return new Date(
+    Math.min(
+      now.getTime() + credentialTtlSeconds * 1000,
+      sessionStartedAt.getTime() + MOBILE_APP_AUTH_RENEWAL_CAP_SECONDS * 1000,
+    ),
+  );
+}
+
 async function prepareInactiveCredential(input: {
   state: MobileAppAuthGrantState;
   now: Date;
@@ -565,7 +613,11 @@ async function prepareInactiveCredential(input: {
   const { key, hash, prefix } = apiKeysService.generateMobileApiKey();
   const id = crypto.randomUUID();
   const encrypted = await encryptApiKey(input.state.grant.organization_id, id, key);
-  const expiresAt = new Date(input.now.getTime() + input.credentialTtlSeconds * 1000);
+  const expiresAt = mobileCredentialExpiry(
+    input.state.grant,
+    input.now,
+    input.credentialTtlSeconds,
+  );
   const provenance = buildMobileAppAuthCredentialProvenance({
     grantId: input.state.grant.id,
     environment: input.state.grant.environment,
@@ -740,6 +792,10 @@ export async function exchangeMobileAppAuthCode(input: {
     return invalid("authorization_complete", "Authorization code has already been acknowledged");
   }
 
+  if (mobileCredentialExpiry(existing.grant, now, input.registration.credentialTtlSeconds) <= now) {
+    // The sign-in reached its absolute cap between the code and this exchange.
+    return invalid("authorization_code_expired", "This sign-in can no longer be renewed");
+  }
   const candidate = await prepareInactiveCredential({
     state: existing,
     now,

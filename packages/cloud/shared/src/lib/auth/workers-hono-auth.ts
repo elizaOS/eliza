@@ -161,20 +161,31 @@ async function validateApiKeyOrServiceUnavailable(
 }
 
 /**
+ * The one API key this request presents in `Authorization: Bearer` or
+ * `X-API-Key`. Both headers may be sent when they carry the same key, which is
+ * what the Cloud SDK does; two different keys are ambiguous and yield
+ * `conflict`. Routes that act on the presented key itself (self-revocation,
+ * mobile key renewal) all read it through here, so a client that can call one
+ * can call the others with the same headers.
+ */
+export function readPresentedApiKey(c: AppContext): string | "conflict" | null {
+  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const authorization = c.req.header("authorization")?.trim() ?? null;
+  const bearerKey = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
+  if (headerKey && bearerKey && headerKey !== bearerKey) return "conflict";
+  return headerKey ?? bearerKey;
+}
+
+/**
  * Resolves one explicitly presented API key and records its exact database ID.
- * Session cookies and JWTs are excluded, while two credential headers are
+ * Session cookies and JWTs are excluded, while two different credentials are
  * rejected so self-revocation can never select an ambiguous credential.
  */
 export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
-  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
-  const authorization = c.req.header("authorization")?.trim() ?? null;
-  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
-  const bearerKey = bearerMatch?.[1]?.trim() || null;
-
-  if (headerKey && bearerKey) {
+  const presented = readPresentedApiKey(c);
+  if (presented === "conflict") {
     throw AuthenticationError("Present exactly one API key credential");
   }
-  const presented = headerKey ?? bearerKey;
   if (!presented?.startsWith("eliza_")) {
     throw AuthenticationError("An API key credential is required");
   }
@@ -382,27 +393,33 @@ export function classifyStewardSyncFailure(error: unknown): "conflict" | "unavai
   return unavailable ? "unavailable" : null;
 }
 
+/**
+ * The answer for a request whose Steward session is valid but whose account
+ * could not be provisioned on this request: a retryable 503 for an outage, a
+ * 409 for an identity conflict, or null when the request simply has no user.
+ * `requireUser` and the global auth middleware both answer through this, so a
+ * protected route never reports a provisioning failure as a revoked session.
+ */
+export function stewardAccountSyncFailureError(c: AppContext): ApiError | null {
+  const failure = c.get("stewardAccountSyncFailure");
+  if (failure === "unavailable") {
+    return new ApiError(503, "account_not_ready", "Your account could not be prepared. Try again.", {
+      retryAfterSeconds: 5,
+    });
+  }
+  if (failure === "conflict") {
+    return new ApiError(
+      409,
+      "identity_conflict",
+      "This sign-in cannot be linked to an account automatically.",
+    );
+  }
+  return null;
+}
+
 export async function requireUser(c: AppContext): Promise<AuthedUser> {
   const user = await getCurrentUser(c);
-  if (!user) {
-    const failure = c.get("stewardAccountSyncFailure");
-    if (failure === "unavailable") {
-      throw new ApiError(
-        503,
-        "account_not_ready",
-        "Your account could not be prepared. Try again.",
-        { retryAfterSeconds: 5 },
-      );
-    }
-    if (failure === "conflict") {
-      throw new ApiError(
-        409,
-        "identity_conflict",
-        "This sign-in cannot be linked to an account automatically.",
-      );
-    }
-    throw AuthenticationError();
-  }
+  if (!user) throw stewardAccountSyncFailureError(c) ?? AuthenticationError();
   if (user.is_active === false) throw ForbiddenError("User account is inactive");
   return user;
 }

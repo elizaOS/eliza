@@ -2,20 +2,25 @@
  * POST /api/v1/app-auth/mobile/renew
  *
  * Lets a first-party phone replace its own credential without a browser. The
- * caller presents its acknowledged, unexpired `eliza_mobile_` key and a fresh
- * PKCE binding for its own client. The answer is an authorization code of the
+ * caller presents its acknowledged, unexpired `eliza_mobile_` key in
+ * `Authorization: Bearer`, in `X-API-Key`, or in both when they are the same
+ * key, and a fresh PKCE binding for its own client. The answer is an authorization code of the
  * same shape the sign-in approval returns; the phone then exchanges and
  * acknowledges it on the existing token and ack routes and revokes the old
  * key with DELETE /api/v1/api-keys/current.
  *
  * Refusals use the canonical Cloud API error shape:
- *   401 authentication_required  key invalid or expired, client disabled or re-registered
+ *   401 authentication_required  key invalid or expired, two different keys sent,
+ *                                client disabled or re-registered, or the key already has
+ *                                an acknowledged successor (which ends the whole sign-in)
  *   403 access_denied            owner inactive, or the key left the owner's organization
- *   409 renewal_window_closed    the sign-in is older than the absolute cap
+ *   409 renewal_window_closed    the sign-in is older than the absolute cap, or the key
+ *                                already lives until that cap
  *   429 rate_limit_exceeded
  *   503 service_unavailable      retryable
  */
 
+import { readPresentedApiKey } from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   AuthenticationError,
@@ -51,17 +56,13 @@ export interface MobileAppAuthRenewRouteDependencies {
 }
 
 /**
- * The one credential this request presents. `Authorization: Bearer` and
- * `X-API-Key` are both accepted; when both are sent they must be the same key.
+ * The one credential this request presents, under the rule every route that
+ * acts on the presented key shares (DELETE /api/v1/api-keys/current included):
+ * either header, or both when they carry the same key.
  */
 function readPresentedCredential(c: AppContext): string | null {
-  const headerKey =
-    (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
-  const authorization = c.req.header("authorization")?.trim() ?? null;
-  const bearerKey =
-    authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
-  if (headerKey && bearerKey && headerKey !== bearerKey) return null;
-  return headerKey ?? bearerKey;
+  const presented = readPresentedApiKey(c);
+  return presented === "conflict" ? null : presented;
 }
 
 function renewalFailure(error: unknown): ApiError {
