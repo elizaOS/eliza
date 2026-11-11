@@ -127,7 +127,7 @@ assert.equal(selection.run, 'echo "run=true" >> "$GITHUB_OUTPUT"');
 assert.equal(
   shardJob.steps.find((step) => step.name === "Checkout candidate source").with
     .ref,
-  "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}",
+  `\${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}`,
 );
 assert.equal(
   shardGate.steps.find((step) => step.name === "Checkout verified source").with
@@ -142,14 +142,14 @@ const canonical = parse(
 assert.equal(canonical.jobs.quint.if, "github.ref == 'refs/heads/main'");
 assert.equal(
   canonical.jobs["quint-result"].if,
-  "${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}",
+  `\${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}`,
 );
 assert.deepEqual(canonical.jobs.quint.strategy.matrix.shard, [1, 2, 3, 4]);
 assert.equal(
   canonical.jobs.quint.steps.find(
     (step) => step.name === "Quint application state models",
   ).run,
-  "bun run test:quint --shard=${{ matrix.shard }}/4",
+  `bun run test:quint --shard=\${{ matrix.shard }}/4`,
 );
 assert.equal(
   canonical.jobs["quint-result"].steps.find(
@@ -163,7 +163,7 @@ const canonicalGate = canonical.jobs.required.steps.find(
 );
 assert(
   canonicalGate.env.RESULTS.includes(
-    "quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main' }}",
+    `quint-result=\${{ needs.quint-result.result }}:\${{ github.ref == 'refs/heads/main' }}`,
   ),
 );
 const eventMatrix = [];
@@ -177,7 +177,12 @@ for (const event of [
     const github = {
       event_name: event,
       base_ref: event === "pull_request" ? branch : "",
-      ref: `refs/heads/${branch}`,
+      ref:
+        event === "pull_request"
+          ? "refs/pull/1/merge"
+          : event === "merge_group"
+            ? `refs/heads/gh-readonly-queue/${branch}/pr-1`
+            : `refs/heads/${branch}`,
       event: {
         merge_group: {
           base_ref: event === "merge_group" ? `refs/heads/${branch}` : "",
@@ -198,7 +203,8 @@ for (const event of [
     assert.equal(evaluate(shardGate.if), prExpected);
     assert.equal(evaluate(gate.env.PROMOTION), prExpected);
     // Reusable CI inherits the push/manual caller's ref; it has no independent push trigger.
-    const canonicalExpected = branch === "main";
+    const canonicalExpected =
+      branch === "main" && ["push", "workflow_dispatch"].includes(event);
     assert.equal(evaluate(canonical.jobs.quint.if), canonicalExpected);
     assert.equal(
       evaluate(canonical.jobs["quint-result"].if),
@@ -389,7 +395,7 @@ const proofTests = spawnSync(
     cwd: root,
     env: process.env,
     encoding: "utf8",
-    timeout: 180_000,
+    timeout: 360_000,
     maxBuffer: 8 * 1024 * 1024,
   },
 );

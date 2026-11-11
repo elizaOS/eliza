@@ -19,8 +19,10 @@ import {
   verifyCompleteManifest,
 } from "../../scripts/develop-impact-evidence.ts";
 import {
+  assertProductionCertificationFresh,
   readValidationArchive,
   requireMainValidation,
+  requireProductionCertification,
   verifyMainValidation,
 } from "./production-effect-certification.ts";
 
@@ -535,10 +537,11 @@ describe("exact-source main Full admission", () => {
       run: {
         id: 701,
         run_attempt: 2,
+        run_started_at: "2026-08-17T11:00:00Z",
+        head_branch: "main",
         status: "completed",
         conclusion: "success",
         event: "push",
-        head_branch: "main",
         head_sha: sourceSha,
         path: ".github/workflows/develop-full.yml",
         repository: { full_name: "elizaOS/eliza" },
@@ -683,32 +686,135 @@ describe("exact-source main Full admission", () => {
       "missing",
       "failed",
       "old attempt",
+      "older ID active",
+      "older ID queued",
+      "older ID failure",
+      "older ID cancelled",
+      "older ID success",
+      "fresh recovery",
+      "cross-ID rerun during download",
+      "tied failure",
+      "missing start",
     ]) {
       const input = main();
-      if (variant === "old attempt") input.archive.results.runAttempt = "1";
+      input.run.run_attempt = 1;
+      input.archive.results.runAttempt = variant === "old attempt" ? "0" : "1";
+      let other = {
+        ...input.run,
+        id: 700,
+        run_attempt: 2,
+        run_started_at: "2026-08-17T11:30:00Z",
+      };
+      const fresh = {
+        ...input.run,
+        id: 702,
+        run_started_at: "2026-08-17T11:45:00Z",
+      };
+      if (variant === "older ID active")
+        other = { ...other, status: "in_progress", conclusion: null };
+      if (variant === "older ID queued")
+        other = {
+          ...other,
+          status: "queued",
+          conclusion: null,
+          run_started_at: undefined,
+        };
+      if (
+        ["older ID failure", "fresh recovery", "tied failure"].includes(variant)
+      )
+        other.conclusion = "failure";
+      if (variant === "older ID cancelled") other.conclusion = "cancelled";
+      if (variant === "tied failure")
+        other.run_started_at = "2026-08-17T11:00:00.000Z";
+      if (variant === "missing start") delete input.run.run_started_at;
+      if (variant === "cross-ID rerun during download")
+        other = {
+          ...other,
+          run_attempt: 1,
+          run_started_at: "2026-08-17T10:00:00Z",
+        };
+      const selected =
+        variant === "older ID success"
+          ? other
+          : variant === "fresh recovery"
+            ? fresh
+            : input.run;
+      input.archive.results.runId = String(selected.id);
+      input.archive.results.runAttempt =
+        variant === "old attempt" ? "0" : String(selected.run_attempt);
+      input.artifact.workflow_run.id = selected.id;
       const bytes = archiveBytes(input);
       input.artifact.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-      let lists = 0;
+      let downloaded = false;
       const calls = [];
+      const inventory = () => {
+        if (
+          variant.startsWith("older ID") ||
+          [
+            "fresh recovery",
+            "tied failure",
+            "cross-ID rerun during download",
+          ].includes(variant)
+        )
+          return [
+            input.run,
+            other,
+            ...(variant === "fresh recovery" ? [fresh] : []),
+          ];
+        return variant === "newer" && downloaded
+          ? [input.run, fresh]
+          : [input.run];
+      };
       const api = {
         async request(method, endpoint, _body, mode) {
           calls.push({ method, endpoint, mode });
           expect(method).toBe("GET");
           if (endpoint.includes("/workflows/")) {
-            lists++;
-            const run = structuredClone(input.run);
-            if (variant === "newer" && lists > 1) run.id++;
-            if (variant === "failed") run.conclusion = "failure";
-            return { total_count: 1, workflow_runs: [run] };
+            const runs = structuredClone(inventory());
+            if (variant === "failed") runs[0].conclusion = "failure";
+            return { total_count: runs.length, workflow_runs: runs };
           }
-          if (endpoint.endsWith("/zip")) return bytes;
+          if (endpoint.endsWith("/zip")) {
+            downloaded = true;
+            if (variant === "cross-ID rerun during download")
+              other = {
+                ...other,
+                run_attempt: 2,
+                status: "in_progress",
+                conclusion: null,
+                run_started_at: "2026-08-17T11:30:00Z",
+              };
+            return bytes;
+          }
           if (endpoint.includes("/artifacts?"))
             return {
               total_count: variant === "missing" ? 0 : 1,
               artifacts: variant === "missing" ? [] : [input.artifact],
             };
-          if (endpoint === "/actions/runs/701")
-            return { ...input.run, run_attempt: variant === "rerun" ? 3 : 2 };
+          const attempt = endpoint.match(
+            /^\/actions\/runs\/(\d+)\/attempts\/(\d+)$/,
+          );
+          if (attempt) {
+            const run = inventory().find(
+              (run) => run.id === Number(attempt[1]),
+            );
+            expect(run.run_attempt).toBe(Number(attempt[2]));
+            return structuredClone(run);
+          }
+          const detail = endpoint.match(/^\/actions\/runs\/(\d+)$/);
+          if (detail) {
+            const run = structuredClone(
+              inventory().find((run) => run.id === Number(detail[1])),
+            );
+            if (variant === "rerun")
+              return {
+                ...run,
+                run_attempt: 2,
+                status: "in_progress",
+                conclusion: null,
+              };
+            return run;
+          }
           throw new Error(`Unexpected read ${endpoint}`);
         },
       };
@@ -719,11 +825,151 @@ describe("exact-source main Full admission", () => {
         repoRoot,
         now,
       });
-      if (variant === "valid") expect((await admission).runAttempt).toBe(2);
-      else await expect(admission).rejects.toThrow();
+      if (["valid", "older ID success", "fresh recovery"].includes(variant)) {
+        const proof = await admission;
+        expect(proof.runId).toBe(selected.id);
+        expect(proof.runAttempt).toBe(selected.run_attempt);
+      } else await expect(admission).rejects.toThrow();
       expect(calls.every((call) => call.method === "GET")).toBe(true);
+      console.log(
+        `[main-proof-fixture] ${variant}: ${["valid", "older ID success", "fresh recovery"].includes(variant) ? "admitted current proof" : "refused"}; read-only calls=${calls.length}`,
+      );
     }
-  }, 120_000);
+
+    // Exercise the combined exported entrypoint with real staging+main ZIPs.
+    // A main rerun starting during the staging read must be seen before return.
+    const stageDirectory = mkdtempSync(
+      resolve(tmpdir(), "combined-main-stage-"),
+    );
+    try {
+      const stageSource = "c".repeat(40);
+      const certification = createStagingReleaseCertification({
+        repository: "elizaOS/eliza",
+        runId: "901",
+        runAttempt: "1",
+        sourceSha: stageSource,
+        treeSha,
+        workflowSha256: createHash("sha256")
+          .update(readFileSync(workflowPath))
+          .digest("hex"),
+        issuedAt: now,
+        expiresAt: new Date(Date.parse(now) + 3_600_000).toISOString(),
+      });
+      writeFileSync(
+        resolve(stageDirectory, CERTIFICATION_FILENAME),
+        JSON.stringify(certification),
+      );
+      const zip = resolve(stageDirectory, "stage.zip");
+      expect(
+        spawnSync("zip", ["-q", zip, CERTIFICATION_FILENAME], {
+          cwd: stageDirectory,
+        }).status,
+      ).toBe(0);
+      const stageBytes = readFileSync(zip);
+      const stageArtifact = {
+        id: 902,
+        name: artifactNameForTree(treeSha),
+        expired: false,
+        digest: `sha256:${createHash("sha256").update(stageBytes).digest("hex")}`,
+        workflow_run: {
+          id: 901,
+          head_sha: stageSource,
+          head_branch: "staging",
+        },
+      };
+      const stageRun = {
+        id: 901,
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "success",
+        event: "push",
+        head_branch: "staging",
+        head_sha: stageSource,
+        path: CERTIFICATION_WORKFLOW,
+        repository: { full_name: "elizaOS/eliza" },
+      };
+      for (const variant of [
+        "both valid",
+        "main starts during staging read",
+        "stage only",
+        "main only",
+      ]) {
+        const input = main();
+        input.run.run_attempt = 1;
+        input.archive.results.runAttempt = "1";
+        const bytes = archiveBytes(input);
+        input.artifact.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+        let run = structuredClone(input.run);
+        const calls = [];
+        const api = {
+          async request(method, endpoint) {
+            expect(method).toBe("GET");
+            calls.push(endpoint);
+            if (endpoint.startsWith("/actions/artifacts?"))
+              return {
+                artifacts: variant === "main only" ? [] : [stageArtifact],
+              };
+            if (endpoint === "/actions/runs/901") return stageRun;
+            if (endpoint === "/actions/artifacts/902/zip") {
+              if (variant === "main starts during staging read")
+                run = {
+                  ...run,
+                  run_attempt: 2,
+                  status: "in_progress",
+                  conclusion: null,
+                };
+              return stageBytes;
+            }
+            if (endpoint.includes("/workflows/"))
+              return {
+                total_count: variant === "stage only" ? 0 : 1,
+                workflow_runs: variant === "stage only" ? [] : [run],
+              };
+            if (endpoint.includes("/artifacts?"))
+              return { total_count: 1, artifacts: [input.artifact] };
+            if (endpoint === "/actions/artifacts/801/zip") return bytes;
+            if (endpoint === "/actions/runs/701") return run;
+            throw new Error(`Unexpected combined read ${endpoint}`);
+          },
+        };
+        const admission = requireProductionCertification({
+          api,
+          repository: input.repository,
+          sourceSha,
+          treeSha,
+          repoRoot,
+          now,
+        });
+        if (variant === "both valid") {
+          const proof = await admission;
+          expect(proof.mainValidation.runAttempt).toBe(1);
+          expect(proof.expiresAt).toBe(
+            new Date(
+              Math.min(
+                Date.parse(certification.expires_at),
+                Date.parse(proof.mainValidation.expiresAt),
+              ),
+            ).toISOString(),
+          );
+          // Returned earliest expiry is checked again at every actual mutation boundary.
+          expect(() =>
+            assertProductionCertificationFresh(
+              proof.expiresAt,
+              Date.parse(proof.expiresAt),
+            ),
+          ).toThrow(/expired/);
+          expect(calls.indexOf("/actions/artifacts/902/zip")).toBeLessThan(
+            calls.findIndex((endpoint) => endpoint.includes("/workflows/")),
+          );
+        } else await expect(admission).rejects.toThrow();
+        console.log(
+          `[combined-proof-fixture] ${variant}: ${variant === "both valid" ? "admitted both current proofs" : "refused"}; mutations=0`,
+        );
+      }
+    } finally {
+      rmSync(stageDirectory, { recursive: true, force: true });
+    }
+  }, 300_000);
   test("all three production effect consumers require main proof before their first mutation", () => {
     const image = readFileSync(
       resolve(repoRoot, ".github/workflows/build-agent-image.yml"),
@@ -755,7 +1001,7 @@ describe("exact-source main Full admission", () => {
         const step = release.jobs[job].steps.find(
           (step) => step.name === label,
         );
-        expect(step.env.GITHUB_TOKEN).toBe("${{ github.token }}");
+        expect(step.env.GITHUB_TOKEN).toBe(`\${{ github.token }}`);
         expect(step.run).toContain(
           'production-effect-certification.ts main-validation "$GITHUB_SHA"',
         );

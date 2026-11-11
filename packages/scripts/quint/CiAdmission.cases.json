@@ -27,12 +27,13 @@
     "packages/cloud/scripts/staging-release-certification.ts",
     "packages/cloud/scripts/staging-release-certification.test.ts",
     "packages/scripts/lib/spawn-sync-captured.ts",
-    "packages/scripts/lib/junit-summary.ts"
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "packages/scripts/quint/check-ci-admission.mjs",
   "bounds": {
-    "domain": "Seven PR admission lanes, four mandatory Quint partitions on main PR/merge-queue contexts, and one production main Full admission with two attempts and three independent predicates (exact GitHub identity, complete current-source rows, staging certification). Other PR branches require Quint skipped. Actual canonical CI also requires the four-shard aggregate on main push/manual/reusable contexts regardless of changed paths.",
-    "assumptions": "GitHub supplies trustworthy run/artifact metadata for the requested repository and protects workflow source at its exact SHA. The hook executes real YAML result shell gates, all event/branch classifiers, source-bound shard validation, actual Git manifest/ZIP consumers and existing ledger/staging tests with controlled API fixtures. Production gates run at migration/image/Worker/Pages mutation boundaries. Admission linearizes at final metadata recheck; a future rerun after admission does not retroactively revoke an already-started effect.",
+    "domain": "Seven PR admission lanes, four mandatory Quint partitions on main PR/merge-queue contexts, and one production main Full admission with two logical validation epochs (including a rerun of an older run ID) and three independent predicates (exact GitHub identity, complete current-source rows, staging certification). Other PR branches require Quint skipped. Actual canonical CI also requires the four-shard aggregate on main push/manual/reusable contexts regardless of changed paths.",
+    "assumptions": "GitHub supplies trustworthy run/artifact metadata for the requested repository and protects workflow source at its exact SHA. The hook executes real YAML result shell gates, all event/branch classifiers, source-bound shard validation, actual Git manifest/ZIP consumers and existing ledger/staging tests with controlled API fixtures. Production gates run at migration/image/Worker/Pages mutation boundaries. Admission linearizes at final metadata recheck; a future rerun after admission does not retroactively revoke an already-started effect. Completed reruns are bound to their per-attempt metadata; any active exact-source run or ambiguous start ordering blocks admission. Staging is verified before the final main snapshot, and returned expiry is the earlier proof expiry, checked again immediately before mutation.",
     "limitations": "Finite boolean identity/row/staging projection and at most one concurrent rerun; file bytes/hashes, arbitrary API histories, network failure timing and provider effects are outside the model. Tests exercise real Git/ZIP/current manifest code with synthetic GitHub responses; no actual GitHub dispatch/deployment, branch protection deployment, physical device or service availability claim. Current expected manifest is recomputed from the trusted exact-source checkout. Fair completion assumes reads/decisions return; unavailable GitHub remains fail closed."
   },
   "cases": [

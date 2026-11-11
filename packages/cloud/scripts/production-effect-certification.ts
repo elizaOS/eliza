@@ -100,7 +100,7 @@ function validationInputs(manifest) {
   };
 }
 
-function assertMainRun(run, repository, sourceSha) {
+function assertMainRunIdentity(run, repository, sourceSha) {
   if (
     run.repository?.full_name !== repository ||
     run.path !== MAIN_VALIDATION_WORKFLOW ||
@@ -110,10 +110,14 @@ function assertMainRun(run, repository, sourceSha) {
     !Number.isSafeInteger(run.id) ||
     run.id <= 0 ||
     !Number.isSafeInteger(run.run_attempt) ||
-    run.run_attempt <= 0 ||
-    run.status !== "completed" ||
-    run.conclusion !== "success"
+    run.run_attempt <= 0
   )
+    throw new Error("Main validation run identity mismatch");
+}
+
+function assertMainRun(run, repository, sourceSha) {
+  assertMainRunIdentity(run, repository, sourceSha);
+  if (run.status !== "completed" || run.conclusion !== "success")
     throw new Error(
       "Production requires successful exact-source main Full validation",
     );
@@ -199,7 +203,44 @@ export async function requireMainValidation({
       response.total_count !== response.workflow_runs.length
     )
       throw new Error("Main validation run inventory is missing or ambiguous");
-    return [...response.workflow_runs].sort((a, b) => b.id - a.id)[0];
+    const attempts = [];
+    for (const listed of response.workflow_runs) {
+      assertMainRunIdentity(listed, repository, sourceSha);
+      // A completed newer run cannot hide an older-ID run that is being rerun.
+      if (listed.status !== "completed")
+        throw new Error("An exact-source main Full validation is still active");
+      const attempt =
+        listed.run_attempt > 1
+          ? await api.request(
+              "GET",
+              `/actions/runs/${listed.id}/attempts/${listed.run_attempt}`,
+            )
+          : listed;
+      assertMainRunIdentity(attempt, repository, sourceSha);
+      if (
+        attempt.id !== listed.id ||
+        attempt.run_attempt !== listed.run_attempt ||
+        attempt.status !== "completed" ||
+        attempt.conclusion !== listed.conclusion ||
+        typeof attempt.run_started_at !== "string" ||
+        !Number.isFinite(Date.parse(attempt.run_started_at)) ||
+        attempt.run_started_at !== listed.run_started_at
+      )
+        throw new Error(
+          "Main validation current-attempt ordering is missing or ambiguous",
+        );
+      attempts.push(attempt);
+    }
+    attempts.sort(
+      (a, b) => Date.parse(b.run_started_at) - Date.parse(a.run_started_at),
+    );
+    if (
+      attempts.length > 1 &&
+      Date.parse(attempts[0].run_started_at) ===
+        Date.parse(attempts[1].run_started_at)
+    )
+      throw new Error("Main validation latest-attempt ordering is ambiguous");
+    return attempts[0];
   };
   const run = await latest();
   assertMainRun(run, repository, sourceSha);
@@ -242,8 +283,10 @@ export async function requireMainValidation({
   assertMainRun(newest, repository, sourceSha);
   if (
     current.run_attempt !== run.run_attempt ||
+    current.run_started_at !== run.run_started_at ||
     newest.id !== run.id ||
-    newest.run_attempt !== run.run_attempt
+    newest.run_attempt !== run.run_attempt ||
+    newest.run_started_at !== run.run_started_at
   )
     throw new Error("Main validation changed during production admission");
   return proof;
@@ -258,13 +301,6 @@ export async function requireProductionCertification({
   repoRoot,
   now,
 }) {
-  const mainValidation = await requireMainValidation({
-    api,
-    repository,
-    sourceSha,
-    repoRoot,
-    now,
-  });
   const name = artifactNameForTree(treeSha);
   const response = await api.request(
     "GET",
@@ -318,6 +354,13 @@ export async function requireProductionCertification({
       expectedTreeSha: treeSha,
       expectedWorkflowSha256: workflowSha256,
       ...(now === undefined ? {} : { now }),
+    });
+    const mainValidation = await requireMainValidation({
+      api,
+      repository,
+      sourceSha,
+      repoRoot,
+      now,
     });
     return {
       ...staging,
