@@ -95,6 +95,8 @@ export interface FfiStreamingGenerateResult {
 	text: string;
 	slotId: number;
 	firstTokenMs: number | null;
+	/** Text-model tokens the stream committed (every `step.tokens`). */
+	outputTokens: number;
 	drafted: number;
 	accepted: number;
 }
@@ -286,6 +288,7 @@ export class FfiStreamingRunner {
 		args: FfiStreamingGenerateArgs,
 	): Promise<FfiStreamingGenerateResult> {
 		const aggregated: string[] = [];
+		let outputTokens = 0;
 		let totalDrafted = 0;
 		let totalAccepted = 0;
 		let firstTokenMs: number | null = null;
@@ -296,6 +299,7 @@ export class FfiStreamingRunner {
 				firstTokenMs = performance.now() - startedAt;
 			}
 			aggregated.push(step.text);
+			outputTokens += step.tokens.length;
 			totalDrafted += step.drafterDrafted;
 			totalAccepted += step.drafterAccepted;
 		});
@@ -304,6 +308,7 @@ export class FfiStreamingRunner {
 			text: aggregated.join(""),
 			slotId: args.slotId,
 			firstTokenMs,
+			outputTokens,
 			drafted: totalDrafted,
 			accepted: totalAccepted,
 		};

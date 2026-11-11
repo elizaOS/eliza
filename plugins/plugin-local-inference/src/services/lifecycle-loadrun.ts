@@ -107,10 +107,9 @@ export async function collectLifecycleLoadRunChecks(
 				};
 				continue;
 			}
-			// The fused backend's usage block reports `completion_tokens` from the
-			// MTP acceptance counter, which is 0 when no drafter is hosted — fall
-			// back to the engine's own decode estimate (ceil(len/4), the same
-			// convention `recordDecodeThroughput` uses) and say so in the detail.
+			// When the backend reports no output tokens, fall back to the engine's
+			// own decode estimate (ceil(len/4), the same convention
+			// `recordDecodeThroughput` uses) and say so in the detail.
 			const exactTokens = result.usage.output_tokens;
 			const decodeTokens =
 				exactTokens > 0

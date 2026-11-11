@@ -365,12 +365,12 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		} finally {
 			this.generations.delete(generation);
 		}
-		if (result.accepted >= maxTokens) {
+		if (result.outputTokens >= maxTokens) {
 			throw new ElizaError(
 				"Local model output reached the decode boundary before a stop condition",
 				{
 					code: "MODEL_OUTPUT_INCOMPLETE",
-					context: { maxTokens, outputTokens: result.accepted },
+					context: { maxTokens, outputTokens: result.outputTokens },
 				},
 			);
 		}
@@ -382,7 +382,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			slotId: result.slotId,
 			firstTokenMs: result.firstTokenMs,
 			usage: {
-				completion_tokens: result.accepted,
+				completion_tokens: result.outputTokens,
 			},
 			mtpStats: {
 				drafted: result.drafted,

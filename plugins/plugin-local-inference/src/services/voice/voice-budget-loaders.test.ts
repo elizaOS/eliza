@@ -635,3 +635,91 @@ describe("FfiStreamingBackend generation lifecycle", () => {
 		await backend.unload();
 	});
 });
+
+describe("FfiStreamingBackend output token count", () => {
+	// Fake native stream: each step commits one target token plus the drafts
+	// the MTP verifier accepted. The last step is `done` at the end of the
+	// reply or when the stream has committed `maxTokens` tokens.
+	function replyBinding(
+		words: string[],
+		drafter: { drafted: number; accepted: number },
+	) {
+		let maxTokens = 0;
+		let committed = 0;
+		return {
+			llmStreamSupported: () => true,
+			llmStreamOpen: ({ config }: { config: { maxTokens: number } }) => {
+				maxTokens = config.maxTokens;
+				committed = 0;
+				return {} as never;
+			},
+			llmStreamPrefill: () => {},
+			llmStreamNext: () => {
+				const step = words.slice(committed, committed + 1 + drafter.accepted);
+				const tokens = step.map((_, i) => committed + i);
+				committed += step.length;
+				return {
+					text: step.join(""),
+					tokens,
+					done: committed >= Math.min(words.length, maxTokens),
+					drafterDrafted: drafter.drafted,
+					drafterAccepted: drafter.accepted,
+				};
+			},
+			llmStreamCancel: () => {},
+			llmStreamClose: () => {},
+		};
+	}
+
+	async function loadedBackend(binding: ReturnType<typeof replyBinding>) {
+		const runner = new FfiStreamingRunner(binding as never, {} as never);
+		const backend = new FfiStreamingBackend(
+			{
+				supported: () => true,
+				async acquire(): Promise<FfiBackendSession> {
+					return {
+						binding: {} as FfiBackendSession["binding"],
+						ctx: {} as FfiBackendSession["ctx"],
+						runner,
+						tokenize: () => new Int32Array([1]),
+						mtp: null,
+						draftModelPath: null,
+						mmprojPath: null,
+					};
+				},
+				async release(): Promise<void> {},
+			},
+			{},
+		);
+		await backend.load({ modelPath: "/model.gguf" } as unknown as BackendPlan);
+		return backend;
+	}
+
+	it("rejects a reply that the stream ended at maxTokens", async () => {
+		const words = ["The", " answer", " is", " forty", "-two."];
+		for (const drafter of [
+			{ drafted: 0, accepted: 0 },
+			{ drafted: 3, accepted: 1 },
+		]) {
+			const backend = await loadedBackend(replyBinding(words, drafter));
+			await expect(
+				backend.generateWithUsage({ prompt: "hi", maxTokens: 4 } as never),
+			).rejects.toMatchObject({
+				code: "MODEL_OUTPUT_INCOMPLETE",
+				context: { maxTokens: 4, outputTokens: 4 },
+			});
+		}
+	});
+
+	it("reports the committed tokens as completion_tokens", async () => {
+		const backend = await loadedBackend(
+			replyBinding(["one", " two", " three"], { drafted: 0, accepted: 0 }),
+		);
+		const result = await backend.generateWithUsage({
+			prompt: "hi",
+			maxTokens: 10,
+		} as never);
+		expect(result.text).toBe("one two three");
+		expect(result.usage?.completion_tokens).toBe(3);
+	});
+});
