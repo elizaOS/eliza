@@ -626,7 +626,16 @@ export class MapPlane {
   private showPins(pins: readonly MapPin[]) {
     const padding =
       this.options.selectionPadding?.() ?? this.options.routePadding;
-    const longitudes = pins.map((pin) => pin.coordinate.longitude),
+    // Longitudes wrap at the antimeridian: shift each pin into the ±180°
+    // window around the first pin, so places a few kilometres apart across
+    // the date line fit their short span instead of the whole world.
+    const anchor = pins[0].coordinate.longitude;
+    const longitudes = pins.map((pin) => {
+      let longitude = pin.coordinate.longitude;
+      while (longitude - anchor > 180) longitude -= 360;
+      while (longitude - anchor < -180) longitude += 360;
+      return longitude;
+    }),
       latitudes = pins.map((pin) => pin.coordinate.latitude);
     this.map.fitBounds(
       [

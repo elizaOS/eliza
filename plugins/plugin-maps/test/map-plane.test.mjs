@@ -431,6 +431,35 @@ test("new result pins are brought into view once; selection, routes and followin
   r.plane.update(undefined, null, { pins: [pin("e", 7.42, 43.73)] });
   assert.equal(r.map.fit, undefined);
 });
+test("result pins across the antimeridian fit their short span, not the whole world", () => {
+  const f = fixture(global, {
+    selectionPadding: () => ({ top: 10, bottom: 300, left: 20, right: 20 }),
+  });
+  const pin = (id, longitude, latitude) => ({
+    id,
+    label: id,
+    coordinate: { longitude, latitude },
+  });
+  // Two places a few kilometres apart across the date line (Fiji).
+  f.plane.update(undefined, null, {
+    pins: [pin("a", 179.9, -17.7), pin("b", -179.9, -17.6)],
+  });
+  const bounds = JSON.parse(JSON.stringify(f.map.fit.bounds));
+  assert.ok(
+    bounds[1][0] - bounds[0][0] < 1,
+    `pins across the date line must fit a narrow span, got ${JSON.stringify(bounds)}`,
+  );
+  f.map.fit = undefined;
+  // The same pair in the opposite order fits the same short span.
+  f.plane.update(undefined, null, {
+    pins: [pin("c", -179.9, -17.7), pin("d", 179.9, -17.6)],
+  });
+  const flipped = JSON.parse(JSON.stringify(f.map.fit.bounds));
+  assert.ok(
+    flipped[1][0] - flipped[0][0] < 1,
+    `pins across the date line must fit a narrow span, got ${JSON.stringify(flipped)}`,
+  );
+});
 test("global style resources stay on the selected public origin; no arbitrary or credential-bearing target", () => {
   const f = fixture(global),
     request = f.map.options.transformRequest;
