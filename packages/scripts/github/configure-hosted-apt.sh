@@ -21,5 +21,6 @@ fi
 sudo -n sed -i \
   -e 's#mirror+file:/etc/apt/apt-mirrors\.txt#https://mirrors.kernel.org/ubuntu/#g' \
   -e 's#http[s]*://azure\.archive\.ubuntu\.com/ubuntu/#https://mirrors.kernel.org/ubuntu/#g' \
+  -e 's#http[s]*://archive\.ubuntu\.com/ubuntu/#https://mirrors.kernel.org/ubuntu/#g' \
   /etc/apt/sources.list.d/ubuntu.sources
 echo "GitHub-hosted Ubuntu packages use the Kernel Archives mirror with Ubuntu's signing key"
