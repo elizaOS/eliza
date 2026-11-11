@@ -419,7 +419,14 @@
         "a new host cannot revoke an old legacy session; the retained namespace can settle it once",
         "revoke during deferred upgrade import refuses late public socket allocation",
         "revoke joins a claimed opening across deferred imports before confirming no dispatch",
-        "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade"
+        "failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade",
+        "prepared UUIDv5 consent refuses missing before provider admission",
+        "prepared UUIDv5 consent refuses foreign owner before provider admission",
+        "prepared UUIDv5 consent refuses foreign organization before provider admission",
+        "prepared UUIDv5 consent refuses wrong nonce before provider admission",
+        "prepared UUIDv5 consent refuses expired before provider admission",
+        "prepared UUIDv5 consent revocation rejects a delayed mint and replays the same retirement",
+        "prepared UUIDv5 consent has one atomic mint winner and no replay"
       ]
     }
   ],
