@@ -91,6 +91,10 @@ export interface ApprovalResult {
  */
 interface PendingApproval {
 	taskId: UUID;
+	/** A receipt-bearing cancellation exclusively owns this request until storage settles. */
+	cancelling?: boolean;
+	/** The admitted public result is the synchronous caller's settlement boundary. */
+	result?: Promise<ApprovalResult>;
 	request: ApprovalRequest;
 	createdAt: number;
 	expiresAt?: number;
@@ -179,6 +183,8 @@ export class ApprovalService extends Service {
 		this.stopped = true;
 		// Resolve all pending approvals with cancelled before clearing
 		for (const pending of this.pendingApprovals.values()) {
+			// Its admitted cancellation owns settlement through the delete acknowledgement.
+			if (pending.cancelling) continue;
 			if (pending.timeoutHandle) {
 				clearTimeout(pending.timeoutHandle);
 			}
@@ -224,44 +230,50 @@ export class ApprovalService extends Service {
 	 * }
 	 * ```
 	 */
-	async requestApproval(request: ApprovalRequest): Promise<ApprovalResult> {
-		return this.withAdmission(async () => {
-			const taskId = await this.createApprovalTask(request, false);
-			if (this.stopped) {
-				await this.runtime.deleteTask(taskId);
-				this.requireRunning();
-			}
+	requestApproval(request: ApprovalRequest): Promise<ApprovalResult> {
+		try {
+			const result: Promise<ApprovalResult> = this.withAdmission(async () => {
+				const taskId = await this.createApprovalTask(request, false);
+				if (this.stopped) {
+					await this.runtime.deleteTask(taskId);
+					this.requireRunning();
+				}
 
-			const result = new Promise<ApprovalResult>((resolve, reject) => {
-				const pending: PendingApproval = {
-					taskId,
-					request,
-					createdAt: Date.now(),
-					resolve,
-					reject,
-				};
-				// error-policy:J1 Timer callbacks are an asynchronous process
-				// boundary; reject the waiting caller and report the failure.
-				this.armTimeout(pending, "ApprovalService.timeout", (error) =>
-					pending.reject(
-						error instanceof Error ? error : new Error(String(error)),
-					),
+				const decision = new Promise<ApprovalResult>((resolve, reject) => {
+					const pending: PendingApproval = {
+						result,
+						taskId,
+						request,
+						createdAt: Date.now(),
+						resolve,
+						reject,
+					};
+					// error-policy:J1 Timer callbacks are an asynchronous process
+					// boundary; reject the waiting caller and report the failure.
+					this.armTimeout(pending, "ApprovalService.timeout", (error) =>
+						pending.reject(
+							error instanceof Error ? error : new Error(String(error)),
+						),
+					);
+					this.pendingApprovals.set(taskId, pending);
+				});
+				logger.info(
+					{
+						src: "service:approval",
+						taskId,
+						name: request.name,
+						roomId: request.roomId,
+						options: request.options.map((o) => o.name),
+						timeoutMs: request.timeoutMs,
+					},
+					"Approval request created",
 				);
-				this.pendingApprovals.set(taskId, pending);
+				return decision;
 			});
-			logger.info(
-				{
-					src: "service:approval",
-					taskId,
-					name: request.name,
-					roomId: request.roomId,
-					options: request.options.map((o) => o.name),
-					timeoutMs: request.timeoutMs,
-				},
-				"Approval request created",
-			);
 			return result;
-		});
+		} catch (error) {
+			return Promise.reject(error);
+		}
 	}
 
 	/**
@@ -343,19 +355,24 @@ export class ApprovalService extends Service {
 		onError?: (error: unknown) => void,
 	): void {
 		const { timeoutMs } = pending.request;
-		if (!timeoutMs || timeoutMs <= 0) return;
+		if (pending.expiresAt === undefined) {
+			if (!timeoutMs || timeoutMs <= 0) return;
+			pending.expiresAt = pending.createdAt + timeoutMs;
+		}
 		const { taskId } = pending;
-		pending.expiresAt = pending.createdAt + timeoutMs;
-		pending.timeoutHandle = setTimeout(() => {
-			if (this.stopped) return;
-			void this.operations.run(() =>
-				this.handleTimeout(taskId).catch((error) => {
-					this.runtime.reportError(scope, error, { taskId });
-					this.pendingApprovals.delete(taskId);
-					onError?.(error);
-				}),
-			);
-		}, timeoutMs);
+		pending.timeoutHandle = setTimeout(
+			() => {
+				if (this.stopped) return;
+				void this.operations.run(() =>
+					this.handleTimeout(taskId).catch((error) => {
+						this.runtime.reportError(scope, error, { taskId });
+						this.pendingApprovals.delete(taskId);
+						onError?.(error);
+					}),
+				);
+			},
+			Math.max(0, pending.expiresAt - Date.now()),
+		);
 	}
 
 	/**
@@ -364,6 +381,13 @@ export class ApprovalService extends Service {
 	async cancelApproval(taskId: UUID): Promise<void> {
 		return this.withAdmission(async () => {
 			const pending = this.pendingApprovals.get(taskId);
+			// A receipt-bearing cancellation already owns this exact request.
+			if (pending?.cancelling) {
+				throw new ElizaError("Approval cancellation is already in progress", {
+					code: "APPROVAL_CALLBACK_UNAVAILABLE",
+					context: { taskId },
+				});
+			}
 			if (pending) {
 				if (pending.timeoutHandle) {
 					clearTimeout(pending.timeoutHandle);
@@ -385,6 +409,62 @@ export class ApprovalService extends Service {
 			await this.runtime.deleteTask(taskId);
 
 			logger.info({ src: "service:approval", taskId }, "Approval cancelled");
+		});
+	}
+
+	/** Cancel only a live, unclaimed approval, acknowledging its durable removal
+	 * before settling the caller. Claimed or unavailable owners fail closed; the
+	 * legacy cancelApproval method remains available for orphan-row cleanup. */
+	async cancelPendingApproval(taskId: UUID): Promise<void> {
+		return this.withAdmission(async () => {
+			const pending = this.pendingApprovals.get(taskId);
+			if (!pending || pending.cancelling) {
+				throw new ElizaError("Approval callback is no longer available", {
+					code: "APPROVAL_CALLBACK_UNAVAILABLE",
+					context: { taskId },
+				});
+			}
+			// Keep the exclusive claim on the existing owner. Removing it would
+			// allow callback-free persisted selection to bypass the missing owner.
+			pending.cancelling = true;
+			if (pending.timeoutHandle) clearTimeout(pending.timeoutHandle);
+			try {
+				await this.runtime.deleteTask(taskId);
+			} catch (error) {
+				// error-policy:J2 Failed deletion is not a cancellation receipt.
+				// Restore the original caller and absolute deadline for a retry.
+				pending.cancelling = false;
+				if (this.stopped) {
+					pending.reject(
+						error instanceof Error ? error : new Error(String(error)),
+					);
+				} else {
+					this.pendingApprovals.set(taskId, pending);
+					this.armTimeout(
+						pending,
+						"ApprovalService.cancelRetryTimeout",
+						(cause) =>
+							pending.reject(
+								cause instanceof Error ? cause : new Error(String(cause)),
+							),
+					);
+				}
+				throw error;
+			}
+			this.pendingApprovals.delete(taskId);
+			pending.resolve({
+				selectedOption: "cancel",
+				success: false,
+				timedOut: false,
+				cancelled: true,
+				taskId,
+				resolvedAt: Date.now(),
+			});
+			await pending.result;
+			logger.info(
+				{ src: "service:approval", taskId },
+				"Approval cancellation confirmed",
+			);
 		});
 	}
 
@@ -455,7 +535,7 @@ export class ApprovalService extends Service {
 	 */
 	private async handleTimeout(taskId: UUID): Promise<void> {
 		const pending = this.pendingApprovals.get(taskId);
-		if (!pending) return;
+		if (!pending || pending.cancelling) return;
 		// Take the approval before the first await, so a racing selection or
 		// cancel cannot also settle it (quint/ApprovalService.qnt, AtMostOneCallback).
 		this.pendingApprovals.delete(taskId);
@@ -469,7 +549,13 @@ export class ApprovalService extends Service {
 
 		// Call timeout callback if provided
 		const task = await this.runtime.getTask(taskId);
-		if (task && request.onTimeout) {
+		if (!task) {
+			throw new ElizaError("Approval task is no longer available for timeout", {
+				code: "APPROVAL_TASK_UNAVAILABLE",
+				context: { taskId },
+			});
+		}
+		if (request.onTimeout) {
 			await request.onTimeout(task, this.runtime);
 		}
 
@@ -521,7 +607,7 @@ export class ApprovalService extends Service {
 				task.metadata?.onTimeoutCallback === false;
 			// Functions are not durable task data. Never acknowledge an orphaned or
 			// already-claimed callback task as if its required effect had completed.
-			if (!pending && !callbackFreeAsync) {
+			if (pending?.cancelling || (!pending && !callbackFreeAsync)) {
 				throw new ElizaError("Approval callback is no longer available", {
 					code: "APPROVAL_CALLBACK_UNAVAILABLE",
 					context: { taskId },

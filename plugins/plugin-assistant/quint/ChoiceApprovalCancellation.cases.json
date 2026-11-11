@@ -5,11 +5,11 @@
     "plugins/plugin-assistant/src/integration/choice-schedule.test.ts"
   ],
   "conformance": "plugins/plugin-assistant/quint/check-choice-approval-cancellation.mjs",
-  "bounds": "One already-authorized ABORT action and one task. The owned case has one pending caller and one registered Core ApprovalService; the generic case has no approval caller. Deletion and confirmation can fail. Retained rows can be explicitly retried without an attempt counter.",
+  "bounds": "One already-authorized ABORT action and one task. The owned case has one pending caller with an original deadline and one registered Core ApprovalService; the generic case has no approval caller. Claimed or unavailable owners are refused. Deletion and confirmation can fail. Retained rows keep their owner and original deadline for explicit retry without an attempt counter.",
   "limitations": [
-    "One unclaimed approval with a stable registered Core owner, or one generic task. Concurrent selection, timeout, service replacement, lost storage acknowledgements and callback execution already claimed by another path are outside this cancellation projection.",
+    "One pending approval with a stable registered Core owner, one generic task, or a fixed claimed/missing owner at admission. The production cancellation API refuses claimed and unknown owners before effects. Callback execution, timeout expiry, stop/service replacement and admission races during deletion are covered by Core implementation tests rather than this action projection.",
     "The model starts after action authorization and choice validation. Real conformance resolves the canonical runtime OWNER role, checks the production action gate and precondition, then invokes the registered action handler. It does not prove arbitrary role policies or the complete planner/message pipeline.",
-    "Deletion and confirmation may fail. Progress means the attempt reports an outcome; it does not require provider success, automatic retry, eventual row removal or delivery to an external client."
+    "Deletion and confirmation may fail. A failed deletion retains the pending owner and its original deadline; active/paused/cleared abstract deadline ownership rather than elapsed time. Lost storage acknowledgements, provider success, automatic retry, eventual row removal and external delivery are not proved. Progress means an admitted attempt reports an outcome."
   ],
   "cases": [
     {
@@ -19,10 +19,13 @@
       "step": "step",
       "invariants": [
         "TypeOK",
-        "OwnerSettledBeforeDelete",
+        "OwnerSettlesAfterDeletion",
+        "FailedDeleteRetainsOwner",
+        "DeadlineRetained",
         "AckRequiresDeletion",
         "AckSettlesOwner",
-        "GenericHasNoApprovalCaller"
+        "GenericHasNoApprovalCaller",
+        "RefusedHasNoEffects"
       ],
       "temporal": [
         "CancellationStays",
@@ -37,7 +40,7 @@
           "property": "CancellationStays",
           "expect": "holds",
           "assumptions": [
-            "No fairness is assumed. Cancelling the unclaimed approval settles its waiting caller once, including a failed deletion and explicit retry."
+            "No fairness is assumed. Successful deletion settles the waiting caller once; a failed deletion keeps its owner and original deadline for an explicit retry."
           ]
         },
         {
@@ -70,10 +73,13 @@
       "step": "step",
       "invariants": [
         "TypeOK",
-        "OwnerSettledBeforeDelete",
+        "OwnerSettlesAfterDeletion",
+        "FailedDeleteRetainsOwner",
+        "DeadlineRetained",
         "AckRequiresDeletion",
         "AckSettlesOwner",
-        "GenericHasNoApprovalCaller"
+        "GenericHasNoApprovalCaller",
+        "RefusedHasNoEffects"
       ],
       "temporal": [
         "CancellationStays",
@@ -88,7 +94,7 @@
           "property": "CancellationStays",
           "expect": "holds",
           "assumptions": [
-            "No fairness is assumed. Cancelling the unclaimed approval settles its waiting caller once, including a failed deletion and explicit retry."
+            "No fairness is assumed. Successful deletion settles the waiting caller once; a failed deletion keeps its owner and original deadline for an explicit retry."
           ]
         },
         {
@@ -110,6 +116,76 @@
           "expect": "counterexample",
           "assumptions": [
             "No fairness is assumed. An admitted deletion or confirmation may remain pending forever."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "claimed-approval",
+      "main": "ChoiceApprovalCancellation_claimed",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OwnerSettlesAfterDeletion",
+        "FailedDeleteRetainsOwner",
+        "DeadlineRetained",
+        "AckRequiresDeletion",
+        "AckSettlesOwner",
+        "GenericHasNoApprovalCaller",
+        "RefusedHasNoEffects"
+      ],
+      "temporal": ["CancellationStays", "DeletedStaysDeleted"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CancellationStays",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is assumed. Refused cancellation cannot change the pre-existing owner or settle a caller."
+          ]
+        },
+        {
+          "property": "DeletedStaysDeleted",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is assumed. Refused cancellation cannot delete or recreate the task."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unavailable-owner",
+      "main": "ChoiceApprovalCancellation_missing",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OwnerSettlesAfterDeletion",
+        "FailedDeleteRetainsOwner",
+        "DeadlineRetained",
+        "AckRequiresDeletion",
+        "AckSettlesOwner",
+        "GenericHasNoApprovalCaller",
+        "RefusedHasNoEffects"
+      ],
+      "temporal": ["CancellationStays", "DeletedStaysDeleted"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CancellationStays",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is assumed. Refused cancellation cannot change the pre-existing owner or settle a caller."
+          ]
+        },
+        {
+          "property": "DeletedStaysDeleted",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is assumed. Refused cancellation cannot delete or recreate the task."
           ]
         }
       ]
