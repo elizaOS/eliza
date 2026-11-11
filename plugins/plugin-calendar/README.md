@@ -43,7 +43,7 @@ separately owned production service, so it stays off unless the host sets
 with `CALENDAR_MANAGED_DELETE_UNAVAILABLE` before an owner review is queued, and
 the mutation port refuses it again before any host call.
 
-Managed feed refreshes reconcile changed or deleted mapped events into the existing local record before returning the combined feed. Unlinked Google events are not imported by this step.
+Managed reads cache verified Google events in the canonical imported-event store for selected reads. Only mapped changes reconcile existing Eliza records; reading an unlinked Google event does not create an Eliza event. Removing imported data drains admitted reads for that managed grant. A later read can import again while the source remains enabled. A shared wire ID that conflicts with a stored owner or source fails closed; selected and wire IDs are not renamed.
 
 ## Phone and browser Calendar controllers
 

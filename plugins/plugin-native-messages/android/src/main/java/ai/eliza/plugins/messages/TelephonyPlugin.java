@@ -89,13 +89,17 @@ public abstract class TelephonyPlugin extends Plugin {
   @Override public void onReceive(android.content.Context context, Intent intent) { invalidateReads(); }
  };
  private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
- private final SmsTelephony.Listener sendListener = operationId -> main.post(() -> {
-  if (!admitted() || !unlockedForeground()) return;
-  boolean mms = false;
-  try { SmsSendJournal.Record record = SmsTelephony.journal(getContext(), config).get(operationId); mms = record != null && record.group; }
+ /** Called on {@link SmsTelephony#WORK}. The journal is read there, and only the notice goes to the UI thread. */
+ private final SmsTelephony.Listener sendListener = operationId -> {
+  boolean group = false;
+  try { SmsSendJournal.Record record = SmsTelephony.journal(getContext(), config).get(operationId); group = record != null && record.group; }
   catch (Exception unreadable) { /* The notice still goes out; the renderer reads the result by ID. */ }
-  JSObject value = new JSObject(); value.put("operationId", operationId); notifyListeners(mms ? "mmsSendUpdated" : "smsSendUpdated", value);
- });
+  final boolean mms = group;
+  main.post(() -> {
+   if (!admitted() || !unlockedForeground()) return;
+   JSObject value = new JSObject(); value.put("operationId", operationId); notifyListeners(mms ? "mmsSendUpdated" : "smsSendUpdated", value);
+  });
+ };
 
  @Override public void load() {
   CapacitorPlugin annotation = getClass().getAnnotation(CapacitorPlugin.class);
@@ -120,7 +124,7 @@ public abstract class TelephonyPlugin extends Plugin {
   return !closed && foreground && lock != null && !lock.isDeviceLocked() && users != null && users.isUserUnlocked()
    && (android.os.Build.VERSION.SDK_INT < 31 || users.isUserForeground()) && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed();
  }
- private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); stopObserving(); stopObservingVoicemail(); cancelReview(); }
+ private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); for (ReviewCall pending : pendingReviews) pending.cancelled = true; stopObserving(); stopObservingVoicemail(); cancelReview(); }
  @Override protected void handleOnPause() { foreground = false; invalidateReads(); super.handleOnPause(); }
  @Override protected void handleOnResume() { foreground = true; invalidateReads(); resumeObserving(); resumeObservingVoicemail(); super.handleOnResume(); }
  /** Rejects the call unless the profile admits this install and the phone is unlocked with the host in front. */
@@ -725,6 +729,20 @@ public abstract class TelephonyPlugin extends Plugin {
  private android.app.AlertDialog review;
  private PluginCall reviewCall;
  private Runnable reviewCancelled;
+ /** Every queued review keeps its own cancellation owner until its original bridge call settles. */
+ private final java.util.Set<ReviewCall> pendingReviews = java.util.concurrent.ConcurrentHashMap.newKeySet();
+ private final class ReviewCall extends PluginCall {
+  private final PluginCall original;
+  private volatile boolean cancelled;
+  ReviewCall(PluginCall original) {
+   super(null, original.getPluginId(), original.getCallbackId(), original.getMethodName(), original.getData());
+   this.original = original;
+   pendingReviews.add(this);
+  }
+  @Override public void resolve() { pendingReviews.remove(this); original.resolve(); }
+  @Override public void resolve(JSObject value) { pendingReviews.remove(this); original.resolve(value); }
+  @Override public void reject(String message, String code, Exception cause, JSObject data) { pendingReviews.remove(this); original.reject(message, code, cause, data); }
+ }
  private void cancelReview() {
   if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) { main.post(this::cancelReview); return; }
   android.app.AlertDialog open = review; Runnable cancelled = reviewCancelled;
@@ -757,30 +775,38 @@ public abstract class TelephonyPlugin extends Plugin {
   * returns its journaled result and never sends again. The owner confirms the exact recipients, text,
   * SIM and part count in the host's native dialog on the unlocked phone; declining records "cancelled".
   * The result is the shared `SmsSendResult`; "submitted" proves only that Android accepted the request.
+  * The journal is read and written on {@link SmsTelephony#WORK}, and the platform send calls run there.
+  * The UI thread shows only the review.
   */
  @PluginMethod public void sendSms(PluginCall call) {
   if (refused(call)) return;
-  main.post(() -> reviewSmsOnMain(call));
+  startSms(new ReviewCall(call));
  }
- private void reviewSmsOnMain(PluginCall call) {
-  if (refused(call)) return;
+ private void startSms(ReviewCall call) {
   String operationId = call.getString("operationId"), body = call.getString("body");
   String[] recipients = numbers(call.getArray("recipients"));
   Object rawSubscription = call.getData().opt("subscriptionId");
   int subscriptionId = rawSubscription instanceof Integer ? (Integer) rawSubscription : -1;
   try { SmsSendJournal.validate(operationId, recipients, body, subscriptionId); }
   catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
-  final SmsSendJournal journal;
-  final SmsSendJournal.Record existing;
-  final String binding;
-  try {
-   journal = SmsTelephony.journal(getContext(), config);
-   binding = SmsSendJournal.sha256(SmsSendJournal.bindingText(recipients, body, subscriptionId));
-   existing = journal.existing(operationId, binding);
-  } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
-  catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
-  catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
-  if (existing != null) { call.resolve(SmsTelephony.result(existing)); return; }
+  SmsTelephony.WORK.execute(() -> {
+   final SmsSendJournal journal;
+   final SmsSendJournal.Record existing;
+   final String binding;
+   try {
+    journal = SmsTelephony.journal(getContext(), config);
+    binding = SmsSendJournal.sha256(SmsSendJournal.bindingText(recipients, body, subscriptionId));
+    existing = journal.existing(operationId, binding);
+   } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+   catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+   catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
+   if (existing != null) { call.resolve(SmsTelephony.result(existing)); return; }
+   main.post(() -> reviewSmsOnMain(call, journal, binding, operationId, recipients, body, subscriptionId));
+  });
+ }
+ private void reviewSmsOnMain(ReviewCall call, SmsSendJournal journal, String binding, String operationId, String[] recipients, String body, int subscriptionId) {
+  if (call.cancelled) { decide(call, journal, operationId, recipients, body, subscriptionId, "cancelled", System.currentTimeMillis(), SmsTelephony.boot(getContext())); return; }
+  if (refused(call)) return;
   if (review != null) { notAttempted(call, operationId, "busy"); return; }
   final long now = System.currentTimeMillis(), boot = SmsTelephony.boot(getContext());
   String blocked = sendBlocker(subscriptionId);
@@ -812,20 +838,22 @@ public abstract class TelephonyPlugin extends Plugin {
      review = null; reviewCall = null; reviewCancelled = null;
      // Recheck everything at the moment of the owner's decision.
      if (!admitted() || !unlockedForeground() || sendBlocker(sub) != null) { decide(call, journal, operationId, to, body, sub, "denied", now, boot); return; }
-     try { call.resolve(SmsTelephony.result(SmsTelephony.dispatch(getContext(), config, journal, operationId, to, body, sub, parts, () -> {
-      SubscriptionInfo current = activeSubscription(sub);
-      if (!admitted() || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
-     }))); }
-     catch (Exception unrecorded) {
-      final SmsSendJournal.Record record;
-      try { record = journal.existing(operationId, binding); }
-      catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
-      catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
-      if (record != null) call.resolve(SmsTelephony.result(record));
-      // Nothing reached Android (access or the reviewed SIM changed, or the journal refused it):
-      // close the ID as denied so it is never sent later; decide() rejects if even that cannot be recorded.
-      else decide(call, journal, operationId, to, body, sub, "denied", now, boot);
-     }
+     SmsTelephony.WORK.execute(() -> {
+      try { call.resolve(SmsTelephony.result(SmsTelephony.dispatch(getContext(), config, journal, operationId, to, body, sub, parts, () -> {
+       SubscriptionInfo current = activeSubscription(sub);
+       if (call.cancelled || !admitted() || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+      }))); }
+      catch (Exception unrecorded) {
+       final SmsSendJournal.Record record;
+       try { record = journal.existing(operationId, binding); }
+       catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+       catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+       if (record != null) call.resolve(SmsTelephony.result(record));
+       // Nothing reached Android (access or the reviewed SIM changed, or the journal refused it):
+       // close the ID as denied so it is never sent later; decide() rejects if even that cannot be recorded.
+       else decide(call, journal, operationId, to, body, sub, call.cancelled ? "cancelled" : "denied", now, boot);
+      }
+     });
     })
     .create();
    review.setOnDismissListener(dialog -> { if (reviewCall == call) cancelReview(); });
@@ -848,8 +876,10 @@ public abstract class TelephonyPlugin extends Plugin {
   call.resolve(result);
  }
  private void decide(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, String decision, long now, long boot) {
-  try { call.resolve(SmsTelephony.result(journal.decide(operationId, recipients, body, subscriptionId, decision, now, boot))); }
-  catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+  SmsTelephony.WORK.execute(() -> {
+   try { call.resolve(SmsTelephony.result(journal.decide(operationId, recipients, body, subscriptionId, decision, now, boot))); }
+   catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+  });
  }
 
  /** An invalidated agent approval can cancel only its own outstanding native dialog. */
@@ -857,6 +887,7 @@ public abstract class TelephonyPlugin extends Plugin {
   if (refused(call)) return;
   final String operationId = call.getString("operationId", "");
   main.post(() -> {
+   for (ReviewCall pending : pendingReviews) if (operationId.equals(pending.getString("operationId"))) pending.cancelled = true;
    if (reviewCall != null && operationId.equals(reviewCall.getString("operationId"))) cancelReview();
    call.resolve();
   });
@@ -935,13 +966,13 @@ public abstract class TelephonyPlugin extends Plugin {
   * text and image attachments the native dialog shows again. The operation ID is the caller's
   * idempotency key: a repeat returns its journaled `MmsSendResult` and never sends again. Declining
   * records "cancelled". "sent" is the carrier's send confirmation; MMS delivery is never claimed.
+  * As for {@link #sendSms}, the journal and the platform send call stay off the UI thread.
   */
  @PluginMethod public void sendMms(PluginCall call) {
   if (refused(call)) return;
-  main.post(() -> reviewMmsOnMain(call));
+  startMms(new ReviewCall(call));
  }
- private void reviewMmsOnMain(PluginCall call) {
-  if (refused(call)) return;
+ private void startMms(ReviewCall call) {
   String operationId = call.getString("operationId"), body = call.getString("body");
   String[] recipients = numbers(call.getArray("recipients"));
   Object rawSubscription = call.getData().opt("subscriptionId");
@@ -952,18 +983,25 @@ public abstract class TelephonyPlugin extends Plugin {
   final byte[][] data = (byte[][]) bound[1];
   try { SmsSendJournal.validateMms(operationId, recipients, body, attachments, subscriptionId); }
   catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
-  final SmsSendJournal journal;
-  final SmsSendJournal.Record existing;
-  final String binding;
-  try {
-   journal = SmsTelephony.journal(getContext(), config);
-   binding = SmsSendJournal.sha256(SmsSendJournal.mmsBindingText(recipients, body, attachments, subscriptionId));
-   existing = journal.existing(operationId, binding);
-   if (existing != null && !existing.group) throw new IllegalStateException("operation reused");
-  } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
-  catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
-  catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
-  if (existing != null) { call.resolve(SmsTelephony.result(existing)); return; }
+  SmsTelephony.WORK.execute(() -> {
+   final SmsSendJournal journal;
+   final SmsSendJournal.Record existing;
+   final String binding;
+   try {
+    journal = SmsTelephony.journal(getContext(), config);
+    binding = SmsSendJournal.sha256(SmsSendJournal.mmsBindingText(recipients, body, attachments, subscriptionId));
+    existing = journal.existing(operationId, binding);
+    if (existing != null && !existing.group) throw new IllegalStateException("operation reused");
+   } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+   catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+   catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
+   if (existing != null) { call.resolve(SmsTelephony.result(existing)); return; }
+   main.post(() -> reviewMmsOnMain(call, journal, binding, operationId, recipients, body, attachments, data, subscriptionId));
+  });
+ }
+ private void reviewMmsOnMain(ReviewCall call, SmsSendJournal journal, String binding, String operationId, String[] recipients, String body, SmsSendJournal.Attachment[] attachments, byte[][] data, int subscriptionId) {
+  if (call.cancelled) { decideMms(call, journal, operationId, recipients, body, attachments, subscriptionId, "cancelled", System.currentTimeMillis(), SmsTelephony.boot(getContext())); return; }
+  if (refused(call)) return;
   if (review != null) { call.reject("Another message is waiting for review", "busy"); return; }
   final long now = System.currentTimeMillis(), boot = SmsTelephony.boot(getContext());
   final String[] to = recipients; final int sub = subscriptionId;
@@ -1015,19 +1053,21 @@ public abstract class TelephonyPlugin extends Plugin {
      if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
      final SmsTelephony.DispatchGuard guard = () -> {
       SubscriptionInfo current = activeSubscription(sub);
-      if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+      if (call.cancelled || !admitted() || !unlockedForeground() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
      };
-     try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
-     catch (Exception unrecorded) {
-      final SmsSendJournal.Record record;
-      try {
-       record = journal.existing(operationId, binding);
-       if (record != null && !record.group) throw new IllegalStateException("operation reused");
-      } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
-      catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
-      if (record != null) call.resolve(SmsTelephony.result(record));
-      else decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);
-     }
+     SmsTelephony.WORK.execute(() -> {
+      try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
+      catch (Exception unrecorded) {
+       final SmsSendJournal.Record record;
+       try {
+        record = journal.existing(operationId, binding);
+        if (record != null && !record.group) throw new IllegalStateException("operation reused");
+       } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+       catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+       if (record != null) call.resolve(SmsTelephony.result(record));
+       else decideMms(call, journal, operationId, to, body, attachments, sub, call.cancelled ? "cancelled" : "denied", now, boot);
+      }
+     });
     });
    if (previews.getChildCount() > 0) builder.setView(previews);
    review = builder.create();
@@ -1039,8 +1079,10 @@ public abstract class TelephonyPlugin extends Plugin {
   } catch (RuntimeException gone) { review = null; reviewCall = null; reviewCancelled = null; call.reject(CLOSED); }
  }
  private void decideMms(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, SmsSendJournal.Attachment[] attachments, int subscriptionId, String decision, long now, long boot) {
-  try { call.resolve(SmsTelephony.result(journal.decideMms(operationId, recipients, body, attachments, subscriptionId, decision, now, boot))); }
-  catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+  SmsTelephony.WORK.execute(() -> {
+   try { call.resolve(SmsTelephony.result(journal.decideMms(operationId, recipients, body, attachments, subscriptionId, decision, now, boot))); }
+   catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+  });
  }
 
  /** The journaled result of a reviewed MMS. Reading never sends. */

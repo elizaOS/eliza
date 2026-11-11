@@ -123,7 +123,9 @@ export async function reviewOpaqueAttachment(file: {
   } catch {
     throw new AttachmentRefusedError("Invalid attachment name or encoding");
   }
-  if (btoa(raw) !== file.dataBase64 || raw.length > 5 * 1024 * 1024)
+  if (btoa(raw) !== file.dataBase64)
+    throw new AttachmentRefusedError("Invalid attachment name or encoding");
+  if (raw.length > 5 * 1024 * 1024)
     throw new AttachmentRefusedError("Attachment exceeds 5 MiB");
   const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
   const sha256 = hex(await crypto.subtle.digest("SHA-256", bytes));

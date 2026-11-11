@@ -15,9 +15,9 @@ module SystemUpdateStaging {
     implies eventually(s.published)
   val safety = not(s.enabled) and (s.staged implies (s.selected and s.admitted and not(s.collision)))
     and (s.published implies s.staged)
-  run explicitSelectionStaysInactive = init.then(includeClient).then(admit).then(stage).then(publish)
+  run explicitSelectionStaysInactiveTest = init.then(includeClient).then(admit).then(stage).then(publish)
     .expect(s.published and not(s.enabled) and safety)
-  run absenceDoesNotInstall = init.expect(not(s.staged) and not(s.published) and safety)
-  run collisionPreservesExisting = init.then(includeClient).then(collide).then(admit)
+  run absenceDoesNotInstallTest = init.expect(not(s.staged) and not(s.published) and safety)
+  run collisionPreservesExistingTest = init.then(includeClient).then(collide).then(admit)
     .expect(not(s.staged) and not(s.published) and safety)
 }

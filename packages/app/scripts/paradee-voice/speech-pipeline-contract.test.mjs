@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 // Shared native speech pipeline (ai.eliza.voice): bounded streamed playback, audio focus, VAD
 // segmentation, capture admission/ownership, latency trials and the serial speech owner. Host-JVM
@@ -23,24 +25,74 @@ const fixtures = path.join(here, "speech-pipeline");
 const java = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 
-// org.json for the JSON-carrying classes: ELIZA_JSON_JAR, else the Gradle cache's pinned jar.
-// A missing jar skips locally and fails on CI.
-const jsonCache = path.join(
-  os.homedir(),
-  ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
+// Resolve only the declared compile artifacts. Cold shards need no ambient Gradle cache.
+const dependencyManifest = JSON.parse(
+  fs.readFileSync(
+    new URL("./speech-compile-dependencies.json", import.meta.url),
+    "utf8",
+  ),
 );
-const jsonJar =
-  process.env.ELIZA_JSON_JAR ||
-  (fs.existsSync(jsonCache)
-    ? fs
-        .readdirSync(jsonCache)
-        .map((hash) => path.join(jsonCache, hash, "json-20250517.jar"))
-        .find((jar) => fs.existsSync(jar))
-    : undefined);
-const skipUnlessJsonJarInstalled =
-  jsonJar || process.env.CI
-    ? false
-    : "Set ELIZA_JSON_JAR or install the pinned Gradle org.json dependency";
+const dependencyDirectory = path.resolve(
+  process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR ??
+    testOutputPath("speech-pipeline-dependencies"),
+);
+const artifact = (id) => {
+  const entry = dependencyManifest.artifacts.find(
+    (candidate) => candidate.id === id,
+  );
+  assert.ok(entry, `Undeclared speech compile dependency: ${id}`);
+  return entry;
+};
+function verifyDependency(entry, bytes) {
+  assert.equal(
+    bytes.length,
+    entry.bytes,
+    `${entry.file}: compile dependency size mismatch`,
+  );
+  assert.equal(
+    createHash("sha256").update(bytes).digest("hex"),
+    entry.sha256,
+    `${entry.file}: compile dependency SHA-256 mismatch`,
+  );
+}
+async function dependency(id) {
+  const entry = artifact(id);
+  const destination = path.join(dependencyDirectory, entry.file);
+  if (fs.existsSync(destination)) {
+    verifyDependency(entry, fs.readFileSync(destination));
+    return destination;
+  }
+  fs.mkdirSync(dependencyDirectory, { recursive: true });
+  let bytes;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(
+        new URL(entry.path, dependencyManifest.repository),
+        { redirect: "error", signal: AbortSignal.timeout(30000) },
+      );
+      assert.ok(
+        response.ok,
+        `${entry.file}: dependency download HTTP ${response.status}`,
+      );
+      bytes = Buffer.from(await response.arrayBuffer());
+      verifyDependency(entry, bytes);
+      break;
+    } catch (error) {
+      if (attempt === 3) throw error;
+    }
+  }
+  const temporary = `${destination}.${randomUUID()}.partial`;
+  try {
+    fs.writeFileSync(temporary, bytes, { flag: "wx" });
+    fs.renameSync(temporary, destination);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+  return destination;
+}
+// The explicit CI jar uses the same pin; otherwise resolve it into this test's cache.
+const jsonJar = process.env.ELIZA_JSON_JAR ?? (await dependency("json"));
+verifyDependency(artifact("json"), fs.readFileSync(jsonJar));
 
 // Host-JVM doubles of the Android types OnDeviceRecognizer uses (speech-pipeline/android-api).
 const androidApi = path.join(fixtures, "android-api");
@@ -122,25 +174,17 @@ test("capture admission fences permission, blocked start, pause and stale stop",
     "LiveCaptureAdmissionTest",
     /^PASS live capture admission/,
   ));
-test(
-  "live segment pipe bounds queued audio and fences cutoff, cancellation and re-enrollment",
-  { skip: skipUnlessJsonJarInstalled },
-  () =>
-    run(["LiveSegmentPipe"], "LiveSegmentPipeTest", /^PASS live segment pipe/, {
-      json: true,
-    }),
-);
-test(
-  "buffered stream exchange has its own deadline, response bound and enrollment fence",
-  { skip: skipUnlessJsonJarInstalled },
-  () =>
-    run(
-      ["BufferedStreamExchange"],
-      "BufferedStreamExchangeTest",
-      /^PASS buffered stream exchange/,
-      { json: true },
-    ),
-);
+test("live segment pipe bounds queued audio and fences cutoff, cancellation and re-enrollment", () =>
+  run(["LiveSegmentPipe"], "LiveSegmentPipeTest", /^PASS live segment pipe/, {
+    json: true,
+  }));
+test("buffered stream exchange has its own deadline, response bound and enrollment fence", () =>
+  run(
+    ["BufferedStreamExchange"],
+    "BufferedStreamExchangeTest",
+    /^PASS buffered stream exchange/,
+    { json: true },
+  ));
 test("speech request gate admits one request, drains cancellation and refuses after destroy", () =>
   run(
     ["SpeechRequestGate"],
@@ -234,9 +278,7 @@ test("validated speech over the shared session: bounds, silence, streamed chunks
   }
 });
 
-test("live capture controller orders the agent session, microphone, cancellation and teardown", {
-  skip: skipUnlessJsonJarInstalled,
-}, () => {
+test("live capture controller orders the agent session, microphone, cancellation and teardown", () => {
   const sdk = path.join(
     process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
     "platforms/android-36/android.jar",
@@ -445,7 +487,7 @@ test("live capture uses the shared session's VAD and never a platform recognizer
   );
 });
 
-test("the product-subclassable speech bridge compiles with the library against Android 36", () => {
+test("the product-subclassable speech bridge compiles with the library against Android 36", async () => {
   const sdk = path.join(
     process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
     "platforms/android-36/android.jar",
@@ -455,67 +497,27 @@ test("the product-subclassable speech bridge compiles with the library against A
   const capacitor = path.join(fixtures, "capacitor-api");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-bridge-"));
   try {
-    // The Cloud bridge uses the same pinned HTTP dependencies as consumer.gradle.
-    const dependency = (group, artifact, version, file) => {
-      if (process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR) {
-        const candidate = path.join(
-          process.env.ELIZA_SPEECH_COMPILE_DEPS_DIR,
-          file,
-        );
-        assert.ok(
-          fs.existsSync(candidate),
-          `Missing speech compile dependency ${candidate}`,
-        );
-        return candidate;
-      }
-      const directory = path.join(
-        os.homedir(),
-        ".gradle/caches/modules-2/files-2.1",
-        group,
-        artifact,
-        version,
-      );
-      const found = fs.existsSync(directory)
-        ? fs
-            .readdirSync(directory)
-            .map((hash) => path.join(directory, hash, file))
-            .find((candidate) => fs.existsSync(candidate))
-        : undefined;
-      assert.ok(
-        found,
-        `Install the native speech dependency ${group}:${artifact}:${version}`,
-      );
-      return found;
-    };
+    // Refuse pin drift from the actual native consumer, then resolve its compile closure.
+    const consumer = fs.readFileSync(
+      path.resolve(here, "../../../..", dependencyManifest.consumer),
+      "utf8",
+    );
+    assert.ok(
+      consumer.includes(
+        `implementation '${dependencyManifest.consumerDependency}'`,
+      ),
+      "Update speech compile pins with consumer.gradle",
+    );
     const okhttp = path.join(temp, "okhttp.jar");
     fs.writeFileSync(
       okhttp,
-      execFileSync("unzip", [
-        "-p",
-        dependency(
-          "com.squareup.okhttp3",
-          "okhttp-android",
-          "5.3.2",
-          "okhttp-release.aar",
-        ),
-        "classes.jar",
-      ]),
+      execFileSync("unzip", ["-p", await dependency("okhttp"), "classes.jar"]),
     );
     const dependencies = [
       sdk,
       okhttp,
-      dependency(
-        "com.squareup.okio",
-        "okio-jvm",
-        "3.16.4",
-        "okio-jvm-3.16.4.jar",
-      ),
-      dependency(
-        "org.jetbrains.kotlin",
-        "kotlin-stdlib",
-        "2.2.21",
-        "kotlin-stdlib-2.2.21.jar",
-      ),
+      await dependency("okio"),
+      await dependency("kotlin"),
     ].join(path.delimiter);
     execFileSync(
       java("javac"),
@@ -576,6 +578,17 @@ test("the product-subclassable speech bridge compiles with the library against A
   assert.match(
     source,
     /LiveCaptureController\.Route route=Boolean\.TRUE\.equals\(call\.getBoolean\("nativeAsr",false\)\)\?residentRoute\(owner\):null;/,
+  );
+  // Compile the actual bridge, then qualify its ownership wiring with the real
+  // controller JVM lifecycle above. Platform MediaRecorder remains a device boundary.
+  assert.match(source, /live\.interruptAndDrain\(CAPTURE_REPLACED,\(\)->\{/);
+  assert.match(
+    source,
+    /public void beforeCapture\(long admitted,boolean reopen\)\{\s*if\(!reopen&&capture!=null\)capture\.finishBeforeCapture\(\);/,
+  );
+  assert.doesNotMatch(
+    source,
+    /JSONObject started=capture\.start\(limit\);\s*live\.interrupt/,
   );
   // Recognition reads only the selected private draft; no URL, path or provider reaches it.
   assert.match(

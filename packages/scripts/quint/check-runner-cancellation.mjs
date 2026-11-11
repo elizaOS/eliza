@@ -39,7 +39,7 @@ writeFileSync(report, output);
 // Keep their exact skip reason visible elsewhere, and require both on CI.
 const nestedSuffix =
   process.platform === "linux" ? "$" : " # SKIP Linux process-group schedule$";
-const expectedPasses = process.platform === "linux" ? 27 : 25;
+const expectedPasses = process.platform === "linux" ? 28 : 26;
 const expectedSkips = process.platform === "linux" ? 0 : 2;
 if (
   result.error ||
@@ -65,7 +65,10 @@ if (
   !/^ok \d+ - an implementation conformance failure fails the shared run$/m.test(
     output,
   ) ||
-  !/^# tests 27$/m.test(output) ||
+  !/^ok \d+ - the shared runner rejects a failing scenario without the Test suffix$/m.test(
+    output,
+  ) ||
+  !/^# tests 28$/m.test(output) ||
   !new RegExp(`^# pass ${expectedPasses}$`, "m").test(output) ||
   !/^# fail 0$/m.test(output) ||
   !new RegExp(`^# skipped ${expectedSkips}$`, "m").test(output) ||

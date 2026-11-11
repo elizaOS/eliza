@@ -71,6 +71,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Bounded streamed PCM per utterance: 30 s at 24 kHz (about 2.9 MB of floats), never more. */
  public static final int STREAM_CAPACITY=LocalSpeechEngine.STREAM_RATE*30;
  public static final String CALL_MESSAGE="Speech is paused while a phone call is active";
+ /** The end reason of a live capture that a draft recording replaced. */
+ public static final String CAPTURE_REPLACED="capture-replaced";
  /** Fixed answer when the activity can no longer show a prompt. It names no cause as certain. */
  public static final String LAUNCH_CLOSED="Android could not show this request; the app may have closed. Reopen it and try again.";
  private static final int REQUEST_TIMEOUT_MS=120000;
@@ -259,7 +261,30 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Capacitor's own permission request launches through the activity; see {@link #launch}. */
  @Override @PluginMethod public void requestPermissions(PluginCall call){launch(call,()->super.requestPermissions(call));}
  @PermissionCallback private void microphonePermission(PluginCall call){Long admitted=permissionEpochs.remove(call.getCallbackId());if(admitted==null||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startRecording(call,admitted);}
- private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(focus!=null&&focus.callActive()){call.reject(CALL_MESSAGE,SpeechAudioFocusPolicy.CALL_ACTIVE);return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
+ private boolean refuseRecording(PluginCall call,long admitted){
+  if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return true;}
+  if(focus!=null&&focus.callActive()){call.reject(CALL_MESSAGE,SpeechAudioFocusPolicy.CALL_ACTIVE);return true;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return true;}
+  return false;
+ }
+ private void startRecording(PluginCall call,long admitted){main.post(()->{
+  if(refuseRecording(call,admitted))return;
+  final int limit;
+  try{limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);capture.checkStart(limit);}
+  catch(Exception error){call.reject("Microphone could not start");return;}
+  // Use the live controller's serial worker for both microphone modes. Its
+  // interruption fence is immediate; draft acquisition waits for actual release.
+  live.interruptAndDrain(CAPTURE_REPLACED,()->{
+   if(refuseRecording(call,admitted))return;
+   try{
+    JSONObject started=capture.start(limit);
+    if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()||getPermissionState("microphone")!=PermissionState.GRANTED||(focus!=null&&focus.callActive())){
+     capture.interrupt(LiveCaptureController.CANCELLED);call.reject("Recording cancelled");return;
+    }
+    call.resolve(js(started));
+   }catch(Exception error){call.reject("Microphone could not start");}
+  },()->call.reject("Voice unavailable"));
+ });}
  @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(js(capture.metrics(call.getString("recordingId"))));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(js(capture.stop()));}catch(Exception error){call.reject("Recording could not be saved");}});}
  private void finishDrain(boolean complete,String error){
@@ -605,6 +630,9 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private final LiveCaptureController live=new LiveCaptureController(new LiveCaptureController.Host(){
   public boolean open(long admitted){return !destroyed&&speechForeground&&admitted==epoch.get();}
   public boolean canStart(long admitted){return open(admitted)&&!sensitiveSurfaceActive()&&(focus==null||!focus.callActive());}
+  public void beforeCapture(long admitted,boolean reopen){
+   if(!reopen&&capture!=null)capture.finishBeforeCapture();
+  }
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel)throws Exception{return capture(id,sink,LiveCaptureOptions.of(echoCancel));}
   public LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,LiveCaptureOptions options)throws Exception{return new LiveVoiceCapture(getContext(),VoiceAssets.sharedInference(getContext()),id,sink,options);}
   // Only while the streamed reply is audible; the renderer decides whether it is the user or the reply's echo. Nothing stops here.
@@ -660,6 +688,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;
   // startMs/endHangoverMs: the VAD start run and end hangover in whole 32 ms windows; bargeIn/bargeInMs: liveCaptureBargeIn reports.
   final LiveCaptureOptions options=LiveCaptureOptions.of(Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),call.getInt("startMs"),call.getInt("endHangoverMs"),Boolean.TRUE.equals(call.getBoolean("bargeIn",false)),call.getInt("bargeInMs"));
+  // The serial controller calls Host.beforeCapture immediately before native
+  // acquisition. A user start finalizes a draft there; an automatic reopen never does.
   live.start(ticket,options,route,call.getString("roomId",null),Boolean.TRUE.equals(call.getBoolean("reopen",false)),new LiveCaptureController.Started(){
    public void started(String id,int sampleRate,boolean echoCancelled,boolean piped){call.resolve(new JSObject().put("captureId",id).put("sampleRate",sampleRate).put("echoCancelled",echoCancelled).put("nativeAsr",piped).put("startMs",options.startMs()).put("endHangoverMs",options.endHangoverMs()).put("bargeInMs",options.bargeIn?options.bargeInMs():0));}
    public void refused(String message,String code){if(code==null)call.reject(message);else call.reject(message,code);}

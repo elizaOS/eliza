@@ -221,6 +221,33 @@ describe("InboxOperation", () => {
     },
   );
 
+  it("discards an attempted operation only while the provider reports it as prepared", async () => {
+    const unsent = provider({ outcome: "prepared" });
+    const operation = journal(unsent);
+    await operation.prepare(send(), { draftId: "draft-1" });
+    const record = await operation.confirm({
+      draftId: "draft-1",
+      proposal: send(),
+    });
+    expect(record?.phase).toBe("dispatching");
+    await expect(operation.clear()).rejects.toThrow("Outcome is unresolved");
+    expect(await operation.abandon()).toBeNull();
+    expect(unsent.store.slots.size).toBe(0);
+    expect(unsent.calls.dispatch).toBe(1);
+
+    // The provider started this one, so the record stays with its receipt.
+    const lost = provider({ outcome: "lost" });
+    const uncertain = journal(lost);
+    await uncertain.prepare(send(), { draftId: "draft-1" });
+    await expect(
+      uncertain.confirm({ draftId: "draft-1", proposal: send() }),
+    ).rejects.toThrow("Failed to fetch");
+    const kept = await uncertain.abandon();
+    expect(kept?.phase).toBe("observed");
+    expect(kept?.receipt?.state).toBe("succeeded");
+    expect(lost.store.slots.size).toBe(1);
+  });
+
   it("refuses a server review that changed recipients or attachments", async () => {
     const changed = provider({
       tamper: (review) => ({ ...review, to: ["other@example.invalid"] }),
@@ -319,4 +346,40 @@ describe("InboxOperation", () => {
     expect(loaded?.receipt?.state).toBe("succeeded");
     expect(loaded?.source).toBeUndefined();
   });
+});
+
+it("retains an attempted operation when its owner retires during the discard receipt read", async () => {
+  const f = provider({ outcome: "prepared" });
+  let active = true;
+  const operation = journal(f, () => active);
+  await operation.prepare(send(), { draftId: "draft-1" });
+  await operation.confirm({ draftId: "draft-1", proposal: send() });
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const read = f.client.gmailOperation;
+  f.client.gmailOperation = async (grant, requestId) => {
+    entered.resolve();
+    await release.promise;
+    return read(grant, requestId);
+  };
+  const abandoning = operation.abandon();
+  const outcome = abandoning.catch((error: unknown) => error);
+  await entered.promise;
+  active = false;
+  release.resolve();
+  await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
+  expect(f.store.slots.size).toBe(1);
+  expect(f.calls.dispatch).toBe(1);
+});
+
+it("retains an attempted operation when its discard write conflicts", async () => {
+  const f = provider({ outcome: "prepared" });
+  const operation = journal(f);
+  await operation.prepare(send(), { draftId: "draft-1" });
+  await operation.confirm({ draftId: "draft-1", proposal: send() });
+  f.store.compareExchange = async () => ({ status: "conflict" });
+  await expect(operation.abandon()).rejects.toThrow("Inbox operation changed");
+  expect(operation.snapshot()?.phase).toBe("dispatching");
+  expect(f.store.slots.size).toBe(1);
+  expect(f.calls.dispatch).toBe(1);
 });

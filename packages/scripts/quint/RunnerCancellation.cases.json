@@ -11,7 +11,7 @@
   "fairness": "CleanupProgress assumes fair signal forwarding, expiry of the finite grace timer, kernel delivery of forced termination and process reaping. Uncatchable termination of the supervisor is outside the model.",
   "limitations": [
     "The model projects a process group to one checker. Independently daemonized process groups are outside this ownership boundary.",
-    "The implementation conformance runs all 27 runner checks on Linux, including real Node parent/child/grandchild cancellation, inventory receipt retention and source-change rejection. Other platforms run 25 checks and explicitly skip the two Linux process-group schedules. Compiler semantic correctness remains in each source model.",
+    "The implementation conformance runs all 28 runner checks on Linux, including real Node parent/child/grandchild cancellation, inventory receipt retention, source-change rejection and scenario selection through parameterized imports. Other platforms run 26 checks and explicitly skip the two Linux process-group schedules. Compiler semantic correctness remains in each source model.",
     "Operating-system process and Job Object semantics are platform assumptions. Linux conformance is exercised in this repository's Quint CI job.",
     "Nested cancellation models one managed worker group, a pending child spawn, and a worker exiting before its checker. The Linux real-process tests delay the owned controller group by 500 ms and exercise SIGINT/SIGTERM for both existing and late checker descendants."
   ],

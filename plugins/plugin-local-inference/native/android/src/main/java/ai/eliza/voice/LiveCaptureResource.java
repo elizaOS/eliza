@@ -5,6 +5,7 @@ public final class LiveCaptureResource {
  public interface Source { void requestStop(); void close(); }
  private Source active;
  private volatile boolean stopped;
+ private boolean releaseFailed;
  public void cancel(){stopped=true;}
  public boolean stopped(){return stopped;}
  public synchronized boolean attach(Source source){
@@ -18,7 +19,9 @@ public final class LiveCaptureResource {
  }
  /** Called only by the capture worker (or the opener when no worker was started). */
  public synchronized void release(Source source){
-  if(active==source)active=null;
-  source.close();
+  try{source.close();if(active==source)active=null;}
+  catch(RuntimeException|Error failure){releaseFailed=true;throw failure;}
  }
+ /** A failed physical close is never a receipt permitting a replacement. */
+ public synchronized boolean released(){return active==null&&!releaseFailed;}
 }
