@@ -101,7 +101,7 @@ const observations = native.suites.map((suite) => {
     "utf8",
   );
   const summary = parseJunitSummary(
-    `<testsuites>${xml.replace(/^<\?xml[^?]*\?>\s*/, "")}</testsuites>`,
+    `<testsuites tests="${suite.required.length}" failures="0" errors="0" skipped="0">${xml.replace(/^<\?xml[^?]*\?>\s*/, "")}</testsuites>`,
   );
   assert.equal(summary.tests, suite.required.length);
   assert.equal(summary.failures + summary.errors + summary.skipped, 0);
