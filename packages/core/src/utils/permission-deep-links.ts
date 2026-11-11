@@ -75,6 +75,10 @@ function detectPlatform(): Platform {
 		typeof navigator.userAgent === "string"
 	) {
 		const ua = navigator.userAgent;
+		// iPhone and iPad user agents contain "like Mac OS X", so they must
+		// be excluded before the Mac check: iOS has no
+		// x-apple.systempreferences settings panes.
+		if (/iPhone|iPad|iPod/.test(ua)) return "unknown";
 		if (/Mac/.test(ua)) return "darwin";
 		if (/Win/.test(ua)) return "win32";
 		if (/Linux/.test(ua)) return "linux";
