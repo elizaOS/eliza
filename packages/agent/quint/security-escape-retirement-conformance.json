@@ -1,0 +1,38 @@
+{
+  "suites": [
+    {
+      "package": "packages/core",
+      "file": "packages/core/test/runtime-settings.test.ts",
+      "requiredNames": [
+        "AgentRuntime.getSetting keeps runtime setting writes local (secret=false)",
+        "AgentRuntime.getSetting keeps runtime setting writes local (secret=true)",
+        "AgentRuntime.getSetting owns a mutable copy of caller-provided constructor settings",
+        "AgentRuntime.getSetting reads primitive character env values as runtime settings",
+        "AgentRuntime.getSetting reads primitive values from character env vars",
+        "AgentRuntime.getSetting falls back to env vars when direct env values are not primitive",
+        "AgentRuntime.getSetting keeps character settings ahead of constructor settings",
+        "AgentRuntime.getSetting clears secrets and settings when setSetting receives null",
+        "AgentRuntime.getSetting updates and clears a boot-loaded secret through a non-secret write",
+        "AgentRuntime.getSetting excludes legacy public Cloud settings from top-level secret catalogs",
+        "AgentRuntime.getSetting excludes legacy public Cloud settings from nested secret catalogs",
+        "AgentRuntime.getSetting replaces and revokes a boot-copied nested secret",
+        "AgentRuntime.getSetting keeps secrets written after initialize() in the secret maps",
+        "AgentRuntime.getSetting uses fresh constructor settings over DB-persisted agent settings on restart",
+        "retired default-salt override through runtime settings refuses production unset salt despite the retired override",
+        "retired default-salt override through runtime settings refuses production historical salt despite the retired override",
+        "retired default-salt override through runtime settings keeps configured encrypted SQLite settings readable after runtime and adapter restart",
+        "retired default-salt override through runtime settings keeps one process-local development key for unset salt despite the retired override and cache clears",
+        "retired default-salt override through runtime settings keeps one process-local development key for historical salt despite the retired override and cache clears"
+      ]
+    },
+    {
+      "package": "packages/agent",
+      "file": "packages/agent/test/security-escape-hatches-http.test.ts",
+      "requiredNames": [
+        "serves pre-auth dashboard HTML without introducing the full API token despite the retired flag",
+        "refuses both tokenless loopback stdio configuration surfaces despite the retired flag without changing disk state",
+        "retains explicit terminal-token authorization and never persists the request credential"
+      ]
+    }
+  ]
+}
