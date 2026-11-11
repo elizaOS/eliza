@@ -259,7 +259,9 @@ export function createReminderCreationJournal(
     async discardUnconfirmed(id: string): Promise<boolean> {
       if ((await check(id)) === "found") return false;
       const row = (await all())[id];
-      if (!row) return false;
+      // A concurrent readback may have confirmed this creation while the
+      // first check was reading an older native snapshot.
+      if (!row || row.state === "found") return false;
       await edit(id, row, null);
       return true;
     },

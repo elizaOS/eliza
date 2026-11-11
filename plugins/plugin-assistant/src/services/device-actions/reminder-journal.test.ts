@@ -101,6 +101,30 @@ describe("reminder creation journal", () => {
     expect(await journal.discardUnconfirmed("r2")).toBe(false);
     expect((await journal.all()).r2.state).toBe("found");
     expect(await journal.discardUnconfirmed("r1")).toBe(false);
+
+    // A stale absent read must not remove a creation confirmed by another
+    // readback before the discard continuation resumes.
+    let entered!: () => void, release!: (rows: ReminderJournalRow[]) => void;
+    const reading = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const delayed = new Promise<ReminderJournalRow[]>((resolve) => {
+      release = resolve;
+    });
+    const concurrent = createReminderCreationJournal({
+      store: mem.store,
+      list: () => {
+        entered();
+        return delayed;
+      },
+    });
+    await concurrent.retain(creation("r3"));
+    const discarding = concurrent.discardUnconfirmed("r3");
+    await reading;
+    expect(await concurrent.check("r3", [saved({ id: "r3" })])).toBe("found");
+    release([]);
+    expect(await discarding).toBe(false);
+    expect((await concurrent.all()).r3.state).toBe("found");
   });
 
   it("refuses to overwrite a changed creation and to discard a different one", async () => {
