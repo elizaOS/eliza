@@ -1884,7 +1884,7 @@ export class DeviceActionService {
   async register(
     c: DeviceCredential,
     label: string,
-    workflowProtocol: 0 | 1 | 2 = 0,
+    workflowProtocol: number = 0,
     workflowOwnerId: string = c.subjectUserId,
   ): Promise<{
     installationId: string;
@@ -2621,13 +2621,12 @@ export class DeviceActionService {
           );
       } else if (operation.type === "read_calendar_range") {
         // A relative step range must name the run's current local days.
+        if (step.kind !== "Read" || step.operation !== "calendar_range")
+          throw new DeviceActionError("Workflow Calendar scope changed");
+        const range = validatePhoneCalendarRange(step.range);
         if (
-          step.kind !== "Read" ||
-          step.operation !== "calendar_range" ||
-          !workflowCalendarReadMatches(
-            validatePhoneCalendarRange(step.range),
-            operation,
-          )
+          ("days" in range && Number(rows[0]?.workflow_protocol) < 4) ||
+          !workflowCalendarReadMatches(range, operation)
         )
           throw new DeviceActionError("Workflow Calendar scope changed");
       } else if (operation.type === "post_notification") {

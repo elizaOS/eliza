@@ -1,0 +1,26 @@
+[
+  {
+    "id": "DeviceExecutorRefusal",
+    "model": "plugins/plugin-assistant/quint/DeviceExecutorRefusal.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/services/device-actions/client-coordinator.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-sql/src/schema/approvalRequests.ts",
+      "plugins/plugin-assistant/src/services/device-actions/client-coordinator.test.ts",
+      "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "NoFalseNoEffectReceipt",
+      "EffectHadInvocation",
+      "SuccessHasEffect"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One reserved and claimed reviewed proposal, one trusted host executor, one native invocation, one effect, one retirement and a terminal receipt retry.",
+      "Only the local typed DeviceActionNotStarted refusal promises no effect. Other thrown failures retain unknown status. Retirement after an accepted effect does not discard the result. History synchronization repeats the saved receipt and never the effect.",
+      "All named coordinator cases execute the actual shared coordinator and controlled journal/transport/executor ports. A separate actual PGlite workflow-owner integration claims a real proposal, durably settles DEVICE_NOT_DISPATCHED, admits an identical receipt, and refuses another claim or conflicting outcome. These are two component checks, not a joined native/server test.",
+      "The no-effect assertion is a trusted executor premise. Error names or external strings do not establish it. No physical native/provider effect, durable host journal, arbitrary restart, unbounded concurrent coordinator or HTTP transport proof is claimed. An uncertain server claim can remain unknown even before host invocation."
+    ]
+  }
+]

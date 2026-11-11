@@ -288,7 +288,7 @@ export async function handleDeviceActionRoutes(
     if (method === "POST" && pathname === "/api/client-devices/register") {
       const body = await ctx.readJsonBody<{
         label: string;
-        workflowProtocol?: 0 | 1 | 2;
+        workflowProtocol?: number;
       }>(req, res);
       if (body)
         json(

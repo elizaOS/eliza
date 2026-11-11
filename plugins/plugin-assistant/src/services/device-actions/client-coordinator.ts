@@ -639,7 +639,6 @@ export function validateReviewableDeviceOperation(
 // ── Screen binding ──────────────────────────────────────────────────────────
 
 export const CAMERA_CONTEXT_NOTICE = "Open Camera to take the requested photo.";
-/** A pending proposal that does not fit the current screen. Its message is shown to the owner. */
 /**
  * Thrown by a device executor that refused before it started any effect, with
  * a reason the owner can read. The attempt closes as failed with that reason.
@@ -648,6 +647,7 @@ export const CAMERA_CONTEXT_NOTICE = "Open Camera to take the requested photo.";
 export class DeviceActionNotStarted extends Error {
   override readonly name = "DeviceActionNotStarted";
 }
+/** A pending proposal that does not fit the current screen. Its message is shown to the owner. */
 export class ContextNotice extends Error {
   override readonly name = "ContextNotice";
 }

@@ -31,7 +31,7 @@ export const PHONE_WORKFLOW_PRESENTATION_OPERATIONS: readonly string[] =
 export const PHONE_WORKFLOW_REMINDER_OPERATIONS: readonly string[] =
   Object.freeze(["selected_reminders"]);
 /** Highest workflow device protocol a phone may register. */
-export const PHONE_WORKFLOW_DEVICE_PROTOCOL = 3 as const;
+export const PHONE_WORKFLOW_DEVICE_PROTOCOL = 4 as const;
 /** Minimum workflow device protocol an enrolled phone needs for one typed step operation. */
 export function phoneWorkflowOperationProtocol(operation: string): 1 | 2 | 3 {
   if (PHONE_WORKFLOW_REMINDER_OPERATIONS.includes(operation)) return 3;
@@ -40,12 +40,19 @@ export function phoneWorkflowOperationProtocol(operation: string): 1 | 2 | 3 {
 }
 /** Minimum workflow device protocol for every step of a specification. */
 export function phoneWorkflowRequiredProtocol(spec: {
-  steps: ReadonlyArray<{ operation: string }>;
-}): 1 | 2 | 3 {
+  steps: ReadonlyArray<{ operation: string; range?: unknown }>;
+}): 1 | 2 | 3 | 4 {
   return Math.max(
     1,
-    ...spec.steps.map((step) => phoneWorkflowOperationProtocol(step.operation)),
-  ) as 1 | 2 | 3;
+    ...spec.steps.map((step) =>
+      step.operation === "calendar_range" &&
+      typeof step.range === "object" &&
+      step.range !== null &&
+      "days" in step.range
+        ? 4
+        : phoneWorkflowOperationProtocol(step.operation),
+    ),
+  ) as 1 | 2 | 3 | 4;
 }
 /**
  * The reviewed reminder window: open reminders due by the end of the owner's

@@ -1,5 +1,8 @@
 import { setTimeout as wait } from "node:timers/promises";
-import { resolvePhoneCalendarRange } from "@elizaos/contracts";
+import {
+  resolvePhoneCalendarRange,
+  validatePhoneCalendarRange,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { DeviceActionError, object } from "./contract.ts";
 import { DeviceActionService } from "./service.ts";
@@ -34,16 +37,17 @@ export class WorkflowDeviceBridgeService extends Service {
     // A range relative to the run becomes absolute once, here, so each poll
     // proposes the same read and the phone reviews exact start and end times.
     const { operation } = request;
-    const dispatch =
-      operation.type === "read_calendar_range" && "days" in operation
-        ? {
-            ...request,
-            operation: {
-              type: operation.type,
-              ...resolvePhoneCalendarRange(operation),
-            },
-          }
-        : request;
+    let dispatch = request;
+    if (operation.type === "read_calendar_range" && "days" in operation) {
+      const { type, ...range } = operation;
+      dispatch = {
+        ...request,
+        operation: {
+          type,
+          ...resolvePhoneCalendarRange(validatePhoneCalendarRange(range)),
+        },
+      };
+    }
     const deadline = Date.now() + 10 * 60_000;
     while (Date.now() < deadline) {
       signal.throwIfAborted();

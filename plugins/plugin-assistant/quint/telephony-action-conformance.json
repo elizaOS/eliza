@@ -5,6 +5,7 @@
       "DeviceActionCoordinator reserves the journal before dispatch and uploads the exact receipt",
       "DeviceActionCoordinator refuses a second effect when the journal already holds the proposal",
       "DeviceActionCoordinator records an unconfirmed outcome as unknown and never repeats it",
+      "DeviceActionCoordinator closes an executor refusal before any effect as failed with its reason",
       "DeviceActionCoordinator recovers a journaled result after a receipt outage without re-executing",
       "DeviceActionCoordinator keeps the owner's reconciled outcome instead of replaying a stale receipt",
       "DeviceActionCoordinator uploads later receipts when an earlier upload is refused",
@@ -45,11 +46,11 @@
       "shared phone and reminder-read parity does not leave a note write unresolved",
       "shared phone and reminder-read parity does not reconcile an unknown dial handoff from the owner's guess",
       "shared phone and reminder-read parity negotiates { type: 'phone_call', target: [Object] } and journals/replays its exact result without acting twice",
-      "shared phone and reminder-read parity negotiates { type: 'contact_create', …(1) } and journals/replays its exact result without acting twice",
-      "shared phone and reminder-read parity negotiates { type: 'contact_update', …(2) } and journals/replays its exact result without acting twice",
+      "shared phone and reminder-read parity negotiates { type: 'contact_create', \u2026(1) } and journals/replays its exact result without acting twice",
+      "shared phone and reminder-read parity negotiates { type: 'contact_update', \u2026(2) } and journals/replays its exact result without acting twice",
       "shared phone and reminder-read parity negotiates { type: 'contact_delete', query: 'Ada' } and journals/replays its exact result without acting twice",
-      "shared phone and reminder-read parity negotiates { type: 'sms_compose', …(2) } and journals/replays its exact result without acting twice",
-      "shared phone and reminder-read parity negotiates { type: 'sms_reply_selected', …(1) } and journals/replays its exact result without acting twice",
+      "shared phone and reminder-read parity negotiates { type: 'sms_compose', \u2026(2) } and journals/replays its exact result without acting twice",
+      "shared phone and reminder-read parity negotiates { type: 'sms_reply_selected', \u2026(1) } and journals/replays its exact result without acting twice",
       "shared phone and reminder-read parity negotiates { type: 'messages_read_selected' } and journals/replays its exact result without acting twice",
       "shared phone and reminder-read parity negotiates { type: 'voicemail_read_selected' } and journals/replays its exact result without acting twice",
       "shared phone and reminder-read parity negotiates { type: 'voicemail_delete_selected' } and journals/replays its exact result without acting twice",
@@ -57,6 +58,7 @@
       "shared phone and reminder-read parity uploads a settled telephony refusal with its typed result",
       "shared phone and reminder-read parity places a reply draft without a review only for the requesting message",
       "shared phone and reminder-read parity leaves a contact SMS with an unknown outcome unresolved and never sends it again",
+      "shared phone and reminder-read parity retains uncertain contact writes across receipt recovery without repeating or guessing",
       "shared phone and reminder-read parity does not reconcile a lost call result from the owner's guess",
       "shared phone and reminder-read parity requires a workflow and validates/replays selected reminder reads without rereading",
       "notes organize operations refuses organize proposals the phone did not negotiate",
@@ -71,8 +73,7 @@
       "opt-in current telephony request policy keeps messages_read_selected bound to the first reviewed selection and screen revision",
       "opt-in current telephony request policy keeps sms_reply_selected bound to the first reviewed selection and screen revision",
       "opt-in current telephony request policy keeps voicemail_read_selected bound to the first reviewed selection and screen revision",
-      "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision",
-      "shared phone and reminder-read parity retains uncertain contact writes across receipt recovery without repeating or guessing"
+      "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision"
     ]
   },
   "contracts": {

@@ -669,6 +669,11 @@ test("a relative Calendar step reads the days of the run, and a stored absolute 
       true,
     );
   const specDigest = await workflowSha(canonical);
+  assert.equal(phoneWorkflowRequiredProtocol(canonical), 4);
+  assert.equal(
+    phoneWorkflowRequiredProtocol({ steps: [canonical.steps[1]] }),
+    1,
+  );
   const expected = { id: "run-1", workflowId: "wf-1", versionId: "ver-1" };
   const review = await parseWorkflowPhoneReview(
     {

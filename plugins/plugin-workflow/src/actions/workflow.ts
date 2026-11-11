@@ -296,6 +296,12 @@ export const workflowAction: Action = {
       if (op === 'activate' || op === 'deactivate') {
         // A supplied version binds the change to the exact version that was reviewed.
         const expectedVersionId = text(params.versionId);
+        if (params.versionId !== undefined && !expectedVersionId) {
+          throw new WorkflowApiError(
+            'Select a valid workflow version before changing activation.',
+            400
+          );
+        }
         const workflow =
           op === 'activate'
             ? await service.activateWorkflow(workflowId as string, ownerId, expectedVersionId)
