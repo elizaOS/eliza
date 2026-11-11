@@ -61,6 +61,13 @@ export function calendarReadPromptProjection(
       Number.isFinite(Date.parse(record.endAt))
       ? {
           ...record,
+          displayDate: new Intl.DateTimeFormat("en-US", {
+            timeZone: record.isAllDay ? "UTC" : displayZone,
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }).format(new Date(record.startAt)),
           displayTime: formatCalendarEventTimeRange(
             record as unknown as LifeOpsCalendarEvent,
             {
@@ -106,7 +113,7 @@ export function calendarReadPromptProjection(
                   : undefined,
             })),
           presentation:
-            "This is one canonical Calendar with optional connected sync. Describe its events and read coverage, not separate provider calendars. Event IDs and provenance fields are internal routing evidence, not additional user calendars. Preserve partial/unavailable status and the requested time-window boundary; never claim an incomplete view is empty.",
+            "This is one canonical Calendar with optional connected sync. Use each event’s computed displayDate and displayTime for weekday, date and local time. Describe its events and read coverage, not separate provider calendars. Event IDs and provenance fields are internal routing evidence, not additional user calendars. Preserve partial/unavailable status and the requested time-window boundary; never claim an incomplete view is empty.",
         },
       }
     : data;

@@ -145,6 +145,24 @@ describe("current selected canonical Calendar read", () => {
       timeMax: "2026-11-02T23:00:01.000Z",
     });
   });
+  it("supplies the computed weekday for an all-day selected event", async () => {
+    const f = fixture("google");
+    Object.assign(f.event, {
+      startAt: "2026-11-11T00:00:00Z",
+      endAt: "2026-11-12T00:00:00Z",
+      isAllDay: true,
+      timezone: "UTC",
+    });
+    Object.assign(f.context, { timeZone: "America/Los_Angeles" });
+    const result = await run(f);
+    expect(result.promptData?.event).toMatchObject({
+      displayDate: "Wednesday, November 11, 2026",
+      displayTime: "all day",
+      startAt: f.event.startAt,
+      endAt: f.event.endAt,
+    });
+    expect(result.promptData?.event).not.toHaveProperty("accountEmail");
+  });
   it.each([
     "wrong-owner",
     "wrong-view",
