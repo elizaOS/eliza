@@ -17,7 +17,7 @@ import {
 	request as requestHttp,
 } from "node:http";
 import { request as requestHttps } from "node:https";
-import type { LookupFunction } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
 import type { PinnedLookupFetchLike } from "./fetch-guard.js";
 import type { LookupFn } from "./ssrf.js";
@@ -110,15 +110,22 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 	}
 
 	const requestFn = url.protocol === "https:" ? requestHttps : requestHttp;
+	// WHATWG URL keeps an IPv6 literal in brackets; node:http expects the bare
+	// address, or it sends "[::1]" to DNS and as the TLS server name.
+	const hostname = url.hostname.replace(/^\[|\]$/g, "");
 	const requestOptions: HttpRequestOptions = {
 		protocol: url.protocol,
-		hostname: url.hostname,
+		hostname,
 		port: url.port ? Number(url.port) : undefined,
 		method,
 		path: `${url.pathname}${url.search}`,
 		headers: toRequestHeaders(headers),
 		lookup: lookup as HttpRequestOptions["lookup"],
-		...(url.protocol === "https:" ? { servername: url.hostname } : undefined),
+		// SNI carries DNS names only (RFC 6066); node checks an IP literal
+		// against the certificate's IP addresses by itself.
+		...(url.protocol === "https:" && isIP(hostname) === 0
+			? { servername: hostname }
+			: undefined),
 	};
 
 	return new Promise<Response>((resolve, reject) => {
