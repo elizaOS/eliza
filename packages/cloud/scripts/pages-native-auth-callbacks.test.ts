@@ -423,6 +423,42 @@ describe("Pages native callback deployment", () => {
     );
   });
 
+  test("a product deployment's callbacks are checked against its own origins", () => {
+    const deployment = {
+      CLOUD_DEPLOYMENT_ID: "alpha",
+      CLOUD_WEB_ORIGIN: "https://alpha.example",
+      NEXT_PUBLIC_APP_URL: "https://cloud.alpha.example",
+      NEXT_PUBLIC_API_URL: "https://api.alpha.example",
+      STEWARD_TENANT_ID: "alphacloud",
+      CLOUD_PUBLIC_SERVICE_NAME: "Alpha Cloud",
+      R2_PUBLIC_HOST: "blob.alpha.example",
+      NEXT_PUBLIC_ASSETS_CDN_URL: "https://assets.alpha.example",
+      SENDGRID_FROM_EMAIL: "noreply@alpha.example",
+      CLOUD_BILLING_URL: "https://cloud.alpha.example/billing",
+    };
+    const own = {
+      ...stage,
+      redirectUri: "https://cloud.alpha.example/auth/example/callback",
+    };
+    expect(callbacks(JSON.stringify([own]), "production", deployment)).toEqual([
+      own,
+    ]);
+    // An Eliza callback is foreign to a product deployment, and a product
+    // callback is foreign to Eliza.
+    expect(() =>
+      callbacks(JSON.stringify([production]), "production", deployment),
+    ).toThrow("native_callback_environment_mismatch");
+    expect(() => callbacks(JSON.stringify([own]), "production", {})).toThrow(
+      "native_callback_environment_mismatch",
+    );
+    // An incomplete product deployment is never checked against Eliza's origins.
+    expect(() =>
+      callbacks(JSON.stringify([production]), "production", {
+        CLOUD_DEPLOYMENT_ID: "alpha",
+      }),
+    ).toThrow(/requires CLOUD_WEB_ORIGIN/);
+  });
+
   test("invalid config, cross-environment callbacks and duplicates fail before deployment", () => {
     for (const value of [
       "no-json",

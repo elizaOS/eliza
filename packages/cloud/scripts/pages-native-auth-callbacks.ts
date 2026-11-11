@@ -10,7 +10,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  type CloudDeploymentEnv,
+  resolveCloudCallbackOrigins,
+} from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   type NativeAuthCallback,
   nativeSignInCallbackFallback,
@@ -38,22 +41,22 @@ function selectedConfig(config: Config, environment: Environment): Config {
 export function callbacks(
   raw: unknown,
   environment: Environment,
+  deploymentEnv: CloudDeploymentEnv = process.env,
 ): NativeAuthCallback[] {
   if (raw === undefined || raw === "") return [];
+  // Callbacks may only name this deployment's own origins. An incomplete
+  // product deployment throws here rather than being checked against Eliza's.
+  const deployment = resolveCloudCallbackOrigins(deploymentEnv, environment);
   // The serving boundary validates the entire list even when no entry matches.
-  selectNativeAuthCallback(
-    raw,
-    new URL(ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin),
-  );
+  selectNativeAuthCallback(raw, new URL(deployment.appOrigin));
   const entries = JSON.parse(raw as string) as NativeAuthCallback[];
-  const contract = ELIZA_DOMAIN_CONTRACTS[environment];
-  const origins = new Set([contract.cloudAppOrigin, contract.marketingOrigin]);
+  const origins = new Set([deployment.appOrigin, deployment.webOrigin]);
   if (
     entries.some(
       (entry) =>
         !origins.has(new URL(entry.redirectUri).origin) ||
         (entry.browserSignIn !== undefined &&
-          entry.browserSignIn.apiOrigin !== contract.cloudApiOrigin),
+          entry.browserSignIn.apiOrigin !== deployment.apiOrigin),
     )
   ) {
     throw new Error("native_callback_environment_mismatch");
@@ -189,7 +192,7 @@ export async function verifyCallbacks(
         (key === "content-security-policy"
           ? actualCsp
           : response.headers.get(key)) !==
-          (key === "content-security-policy" ? expectedCsp : value)
+        (key === "content-security-policy" ? expectedCsp : value)
       )
         throw new Error("native_callback_headers_mismatch");
     }
