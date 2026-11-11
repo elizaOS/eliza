@@ -8,7 +8,7 @@ export function replaceNameTokens(text: string, name: string): string {
 /**
  * Resolve indexed example-participant tokens (`{{name1}}` / `{{user1}}` …) in
  * example-conversation templates against a positional `names` array (slot 1 ->
- * `names[0]`). Whitespace inside the braces (`{{ name1 }}`) is tolerated, and an
+ * `names[0]`). Whitespace inside the braces (`{{ name1 }}`, `{{name 1}}`) is tolerated, and an
  * out-of-range index is left untouched so a partial name pool never blanks a
  * token.
  *
@@ -24,7 +24,7 @@ export function replaceIndexedNameTokens(
 ): string {
 	if (!text) return text;
 	return text.replace(
-		/\{\{\s*(?:name|user)(\d+)\s*\}\}/g,
+		/\{\{\s*(?:name|user)\s*(\d+)\s*\}\}/g,
 		(match, slot: string) => {
 			const name = names[Number(slot) - 1];
 			return name === undefined ? match : name;
