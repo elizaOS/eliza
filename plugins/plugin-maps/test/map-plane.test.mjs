@@ -885,3 +885,57 @@ test("Cloud copyright replies retire on movement and map disposal", async () => 
   assert.equal(f.container.dataset.mapCopyright, undefined);
   assert.equal(f.errors, 0);
 });
+
+test("a settled map reports its centre and zoom; only a direct gesture is an interaction", () => {
+  const viewports = [];
+  let interactions = 0;
+  const f = fixture(global);
+  f.map.getCenter = () => ({
+    lat: 37.77,
+    lng: -122.42,
+    wrap: () => ({ lat: 37.77, lng: -122.42 }),
+  });
+  f.map.events.idle();
+  assert.deepEqual(viewports, [], "a host without the port is not called");
+  const plane = f.create({
+    onViewport: (center, zoom) => viewports.push([center, zoom]),
+    onInteraction: () => interactions++,
+  });
+  const map = f.maps.at(-1);
+  map.getCenter = () => ({
+    lat: 37.77,
+    lng: -122.42,
+    wrap: () => ({ lat: 37.77, lng: -122.42 }),
+  });
+  map.options.zoom = 13;
+  map.events.movestart({});
+  assert.equal(interactions, 0, "a camera move by the plane is not a gesture");
+  map.events.movestart({ originalEvent: {} });
+  assert.equal(interactions, 1);
+  map.events.idle();
+  assert.equal(
+    JSON.stringify(viewports),
+    JSON.stringify([[{ latitude: 37.77, longitude: -122.42 }, 13]]),
+  );
+  plane.destroy();
+});
+
+test("a settled world-copy viewport reports a valid wrapped search coordinate", () => {
+  const f = fixture(global);
+  const areas = [];
+  const plane = f.create({ onViewport: (center) => areas.push(center) });
+  const map = f.maps.at(-1);
+  map.options.zoom = 14;
+  // MapLibre LngLat explicitly permits an unwrapped longitude at world copies.
+  map.getCenter = () => ({
+    lat: 0,
+    lng: 181,
+    wrap: () => ({ lat: 0, lng: -179 }),
+  });
+  map.events.idle();
+  assert.equal(
+    JSON.stringify(areas),
+    JSON.stringify([{ latitude: 0, longitude: -179 }]),
+  );
+  plane.destroy();
+});
