@@ -12,13 +12,13 @@ import type {
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import type { PricingCacheReadOptions } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/credits";
 import type { GenerativeOperationContext } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import type {
   InferenceAdmissionSnapshot,
   InferenceAuthRejectionReason,
 } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
-  assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
@@ -333,6 +333,26 @@ export function asGenerativeCacheApiError(
   return null;
 }
 
+/**
+ * Typed fields for a funding refusal decided from the cached admission
+ * snapshot. A plan subscriber that used its period allowance is told when it
+ * resets; the snapshot names that without a primary read.
+ */
+export function fundingRefusalFields(
+  error: unknown,
+  admissionSnapshot: InferenceAdmissionSnapshot | undefined,
+): { code: string; resetsAt?: string } {
+  if (error instanceof BillingHoldActiveError) return { code: error.code };
+  if (!admissionSnapshot?.subscriptionFunded) {
+    return { code: "insufficient_credits" };
+  }
+  const resetsAt = admissionSnapshot.authority.effectiveUntil;
+  return {
+    code: "allowance_exhausted",
+    ...(resetsAt && { resetsAt: new Date(resetsAt).toISOString() }),
+  };
+}
+
 export async function admitFlatGenerativeOperation(params: {
   c: AppContext;
   context: BillingContext;
@@ -553,7 +573,7 @@ export async function requireGenerativeRouteCaller(
       id: resolution.ctx.userId,
       organization_id: resolution.ctx.orgId,
     };
-    try {
+    {
       c.set("user", user);
       c.set("authMethod", resolution.ctx.apiKeyId ? "api_key" : "session");
       if (resolution.ctx.apiKeyId) {
@@ -562,11 +582,7 @@ export async function requireGenerativeRouteCaller(
       const rateLimitEndpoint = options.rateLimitEndpoint;
       if (rateLimitEndpoint) {
         const [
-          {
-            enforceOrgRateLimit,
-            inferenceRatePolicyProof,
-            OrgRateLimitCacheNotReadyError,
-          },
+          { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError },
           { inferenceRateLimitConfig },
         ] = await timeSpeechPhase(c, "limiter_module_load", () =>
           Promise.all([
@@ -578,11 +594,9 @@ export async function requireGenerativeRouteCaller(
         );
         const limited = await timeSpeechPhase(c, "org_limiter", () =>
           enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
-            // Same limiter as chat completions: a shared policy lock and one
-            // Durable Object decision. Without a snapshot the locked primary
-            // policy supplies the limit. The compatibility path took the
-            // exclusive policy lock across Redis REST round trips that fail
-            // open, and every origin-authorized key had no snapshot.
+            // Same limiter as chat completions: decided in the isolate from
+            // the cached snapshot. Without a snapshot the locked primary
+            // policy supplies the limit once, inline.
             cacheOnly: true,
             executionCtx,
             config: inferenceRateLimitConfig(
@@ -594,11 +608,6 @@ export async function requireGenerativeRouteCaller(
             apiKeyRateLimit:
               "apiKeyRateLimit" in resolution.ctx
                 ? resolution.ctx.apiKeyRateLimit
-                : undefined,
-            // Only an API-key context carries a key cap read with its epoch.
-            ratePolicy:
-              "keyHash" in resolution.ctx
-                ? inferenceRatePolicyProof(resolution.ctx)
                 : undefined,
           }).catch((error: unknown) => {
             if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
@@ -633,17 +642,6 @@ export async function requireGenerativeRouteCaller(
           );
         }
       }
-    } catch (error) {
-      // A deferred credential may leave this helper only through its admission
-      // consumer. If a post-resolution boundary fails first, consume the same
-      // proof with the standalone strong check before exposing that failure.
-      if (resolution.credential) {
-        await assertInferenceCredentialActive(
-          resolution.ctx.orgId,
-          resolution.credential,
-        );
-      }
-      throw error;
     }
     return {
       user,

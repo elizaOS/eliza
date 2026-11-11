@@ -3,8 +3,8 @@
  * request from the cached proof with one Durable Object call and no primary
  * query. Anything other than an allow or a counter denial falls back to the
  * cached-policy lane: the tier and key cap carried by the combined auth
- * decision, decided by the organization's rate window object, still with no
- * primary query (the Worker hot path never reads Postgres). The Durable Object
+ * decision, counted in this isolate's request windows, with no store call and
+ * no primary query (the Worker hot path never reads Postgres). The Durable Object
  * side of the fence is covered by
  * api/__tests__/inference-rate-policy.miniflare.test.ts.
  */
@@ -171,6 +171,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterEach(() => {
+  rateLimit.__clearIsolateRateWindows();
   calls = [];
   primaryArmed = false;
   primaryTouches = 0;
@@ -216,7 +217,7 @@ describe("warm rate-policy admission", () => {
 });
 
 describe("fallback to the cached-policy lane", () => {
-  // The cached lane's counter call; it receives the cached tier and key cap.
+  // The cached lane counts in the isolate; only the refused proof reaches the gate.
   const primaryCounter: GateReply = (call) =>
     call.path === "/rate-policy/rate"
       ? Response.json({ error: "Credential policy proof is stale" }, { status: 503 })
@@ -243,28 +244,20 @@ describe("fallback to the cached-policy lane", () => {
       primaryArmed = true;
       expect(await enforce(reply)).toBeNull();
       expect(primaryTouches).toBe(0);
-      expect(calls.map((call) => call.path)).toEqual(["/rate-policy/rate", "/rate-limit"]);
-      // Embeddings tier and the 100/min key cap come from the cached auth
-      // decision, not from the refused proof.
-      expect(calls[1]).toMatchObject({
-        name: `rate-limit:v2:${ORG}`,
-        body: {
-          endpointType: "embeddings",
-          maxRequests: 100,
-          apiKey: { id: KEY, maxRequests: 100 },
-        },
-      });
+      expect(calls.map((call) => call.path)).toEqual(["/rate-policy/rate"]);
     });
   }
 
   test("a cached-lane denial after fallback still denies", async () => {
     primaryArmed = true;
-    const response = await enforce((call) =>
-      call.path === "/rate-policy/rate"
-        ? Response.json({ error: "pending" }, { status: 503 })
-        : denied(),
-    );
+    const pending: GateReply = () => Response.json({ error: "pending" }, { status: 503 });
+    // Embeddings tier and the 100/min key cap come from the cached auth
+    // decision, not from the refused proof.
+    for (let sent = 1; sent <= 100; sent += 1) expect(await enforce(pending)).toBeNull();
+    const response = await enforce(pending);
     expect(response?.status).toBe(429);
+    expect(response?.headers.get("X-RateLimit-Limit")).toBe("100");
+    expect(response?.headers.get("X-RateLimit-Policy")).toBe("in-memory");
     expect(primaryTouches).toBe(0);
   });
 
@@ -284,7 +277,7 @@ describe("fallback to the cached-policy lane", () => {
       // A different presenting key is still capped by the cached decision's
       // own cap; revocation is the auth decision's job, not the limiter's.
       expect(response).toBeNull();
-      expect(calls.map((call) => call.path)).toEqual(["/rate-limit"]);
+      expect(calls).toEqual([]);
     });
   }
 });

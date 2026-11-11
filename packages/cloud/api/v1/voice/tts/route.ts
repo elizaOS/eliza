@@ -18,7 +18,6 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import {
   elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderStatus,
@@ -48,6 +47,7 @@ import { z } from "zod";
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
+  fundingRefusalFields,
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
@@ -301,10 +301,6 @@ async function __hono_POST(c: AppContext) {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: willAdmit,
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     settlementOrganizationId = user.organization_id;
     settlementUserId = user.id;
     timings.authMs = Date.now() - requestStart;
@@ -715,7 +711,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
+        credential,
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
       });
@@ -728,6 +724,7 @@ async function __hono_POST(c: AppContext) {
           {
             error: "Insufficient credits for text-to-speech",
             required: error.required,
+            ...fundingRefusalFields(error, admissionSnapshot),
           },
           { status: 402 },
         );

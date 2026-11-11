@@ -1,9 +1,9 @@
 /**
- * The inference hot path is decided by one combined-cache read plus the
- * organization Durable Objects, and never queries Postgres: not on a warm
- * hit, not on a stale entry, not on a first-ever miss. Suspension and
- * revocation are found by the off-response refresh, which rewrites the entry
- * so the NEXT request fails (one stale allow is accepted).
+ * The inference hot path is decided by one combined-cache read. A warm hit
+ * and a stale entry never query Postgres and never call the organization
+ * Durable Object before the request returns. Suspension, revocation and
+ * exhausted funding are found by off-response work, which rewrites the entry
+ * so the NEXT request fails (stale allows are accepted until then).
  *
  * Every "zero queries" claim runs with a primary tripwire armed: any PGlite
  * statement throws and is counted. A control test proves the tripwire fires.
@@ -89,7 +89,11 @@ async function createTable(table: PgTable): Promise<void> {
 }
 
 let sequence = 0;
-async function seedKey(): Promise<{ rawKey: string; keyHash: string; id: string }> {
+async function seedKey(): Promise<{
+  rawKey: string;
+  keyHash: string;
+  id: string;
+}> {
   sequence += 1;
   const rawKey = `eliza_hot_path_key_${sequence}_${Date.now()}`;
   const keyHash = createHash("sha256").update(rawKey).digest("hex");
@@ -453,54 +457,32 @@ describe("Worker inference auth never queries Postgres", () => {
   });
 });
 
-describe("Worker credential checks include cold gate routing", () => {
-  for (const allowed of [true, false]) {
-    test(`a cold gate reply remains authoritative when allowed=${allowed}`, async () => {
-      const key = await seedKey();
-      await seedPositiveEntry(key);
-      const bindings = {
-        INFERENCE_ADMISSION_GATES: {
-          getByName() {
-            return {
-              async fetch(request: Request) {
-                expect(new URL(request.url).pathname).toBe("/credential/check");
-                // Production routing took about two seconds before the gate
-                // handler ran; the authorization reply still decides the result.
-                await new Promise<void>((resolve, reject) => {
-                  const abort = () => {
-                    clearTimeout(timer);
-                    reject(request.signal.reason);
-                  };
-                  const timer = setTimeout(() => {
-                    request.signal.removeEventListener("abort", abort);
-                    resolve();
-                  }, 2_000);
-                  request.signal.addEventListener("abort", abort, { once: true });
-                  if (request.signal.aborted) abort();
-                });
-                return allowed
-                  ? Response.json({ allowed: true })
-                  : Response.json(
-                      { allowed: false, reason: "credential_revoked" },
-                      { status: 403 },
-                    );
-              },
-            };
+describe("a warm entry is decided without the organization gate", () => {
+  test("no gate call precedes the decision, whatever the gate would answer", async () => {
+    const key = await seedKey();
+    await seedPositiveEntry(key);
+    let gateCalls = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: () => ({
+          async fetch() {
+            gateCalls += 1;
+            return Response.json({ allowed: false, reason: "credential_revoked" }, { status: 403 });
           },
-        },
-      };
-      const result = await workerRequest(key.rawKey, bindings);
-      expect(result.touches).toBe(0);
-      expect(result.resolution).toMatchObject(
-        allowed
-          ? { kind: "authorized" }
-          : { kind: "rejected", status: 401, reason: "credential_inactive" },
-      );
-      await settle(result);
+        }),
+      },
+    };
+    const result = await workerRequest(key.rawKey, bindings);
+    expect(result.touches).toBe(0);
+    expect(gateCalls).toBe(0);
+    expect(result.resolution).toMatchObject({
+      kind: "authorized",
+      source: "cache",
     });
-  }
+    await settle(result);
+  });
 
-  test("an unresponsive gate still fails closed without a primary fallback", async () => {
+  test("an unresponsive gate neither delays nor fails a warm request", async () => {
     const key = await seedKey();
     await seedPositiveEntry(key);
     const bindings = {
@@ -515,15 +497,17 @@ describe("Worker credential checks include cold gate routing", () => {
         }),
       },
     };
-    await expect(workerRequest(key.rawKey, bindings)).rejects.toMatchObject({
-      name: "InferenceCredentialRevocationUnavailableError",
-      statusCode: 503,
+    const result = await workerRequest(key.rawKey, bindings);
+    expect(result.resolution).toMatchObject({
+      kind: "authorized",
+      source: "cache",
     });
-    expect(primaryTouches).toBe(0);
+    expect(result.touches).toBe(0);
+    await settle(result);
   }, 10_000);
 });
 
-describe("Worker billing admits from the snapshot and the organization gate only", () => {
+describe("Worker billing admits from the snapshot alone", () => {
   const admit = async (
     snapshot: InferenceAdmissionSnapshot,
     gate: (path: string) => Response,
@@ -578,7 +562,7 @@ describe("Worker billing admits from the snapshot and the organization gate only
     }
   });
 
-  test("a cached clear hold is admitted by the gate lease without a primary read", async () => {
+  test("a funded snapshot is admitted with no gate call and no primary read", async () => {
     primaryArmed = true;
     primaryTouches = 0;
     const paths: string[] = [];
@@ -588,11 +572,56 @@ describe("Worker billing admits from the snapshot and the organization gate only
         return Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 });
       });
       expect(result.mode).toBe("durable_object_debit");
-      expect(paths[0]).toMatch(/^\/lease/);
+      // The provider boundary awaits nothing: the lease is post-response work.
+      await result.markProviderDispatched?.();
+      expect(paths).toEqual([]);
       expect(primaryTouches).toBe(0);
     } finally {
       primaryArmed = false;
     }
+  });
+
+  test("a snapshot with no credit refuses without a gate call or a primary read", async () => {
+    const { InsufficientCreditsError } = await import("./credits");
+    primaryArmed = true;
+    primaryTouches = 0;
+    const paths: string[] = [];
+    try {
+      await expect(
+        admit(
+          {
+            ...admission(),
+            balance: {
+              balanceUsd: 0,
+              balanceAt: Date.now(),
+              balanceRevision: "1",
+            },
+          },
+          (path) => {
+            paths.push(path);
+            return Response.json({ admitted: true });
+          },
+        ),
+      ).rejects.toThrow(InsufficientCreditsError);
+      expect(paths).toEqual([]);
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
+
+  test("an exhausted subscriber allowance refuses from the snapshot", async () => {
+    const { InsufficientCreditsError } = await import("./credits");
+    await expect(
+      admit(
+        {
+          ...admission(),
+          subscriptionFunded: true,
+          funding: { balanceUsd: 0, balanceRevision: "1" },
+        },
+        () => Response.json({ admitted: true }),
+      ),
+    ).rejects.toThrow(InsufficientCreditsError);
   });
 
   /** A snapshot far older than the shared projection lifetime. */
@@ -677,7 +706,7 @@ describe("Worker billing admits from the snapshot and the organization gate only
 
 describe("mobile lifecycle cache fences", () => {
   for (const method of ["presented", "account", "exact"] as const) {
-    test(`${method} revocation rejects a retained positive entry without a primary read in the qualified cache lane`, async () => {
+    test(`${method} revocation reaches a retained positive entry through its off-response refresh`, async () => {
       const rawKey = `eliza_mobile_${crypto.randomUUID().replaceAll("-", "").repeat(2)}`;
       const key = {
         rawKey,
@@ -694,7 +723,6 @@ describe("mobile lifecycle cache fences", () => {
       await seedPositiveEntry(key);
       const revoked = new Set<string>();
       const calls: string[] = [];
-      let unavailable = false;
       const bindings = {
         VOICE_SPEECH_RELAY_ENABLED: "false",
         INFERENCE_ADMISSION_GATES: {
@@ -702,7 +730,6 @@ describe("mobile lifecycle cache fences", () => {
             expect(organizationId).toBe(ORG);
             return {
               async fetch(request: Request) {
-                if (unavailable) throw new Error("fixture boundary unavailable");
                 const body = (await request.json()) as { credentialId: string };
                 const path = new URL(request.url).pathname;
                 calls.push(path);
@@ -742,14 +769,21 @@ describe("mobile lifecycle cache fences", () => {
         }>("SELECT is_active,deleted_at FROM api_keys WHERE id=$1", [key.id]);
         expect(rows.rows[0]?.is_active).toBe(false);
         expect(rows.rows[0]?.deleted_at).not.toBeNull();
-        // An independent location can retain a positive cache value after deletion
-        // or an earlier hydration can refill it. Neither may override the fence.
-        await seedPositiveEntry(key);
+        // An independent location can retain a positive cache value after
+        // deletion, or an earlier hydration can refill it. That entry still
+        // decides its request (the accepted stale allow); its aged refresh
+        // rewrites it from the primary, so the next request is refused.
+        await seedPositiveEntry(key, {
+          cachedAt: Date.now() - AUTH_CONTEXT_REFRESH_AFTER_MS * 2,
+        });
+        const stale = await workerRequest(rawKey, bindings);
+        expect(stale.resolution.kind).toBe("authorized");
+        expect(stale.touches).toBe(0);
+        await settle(stale);
         const after = await workerRequest(rawKey, bindings);
         expect(after.resolution).toMatchObject({
           kind: "rejected",
           status: 401,
-          reason: "credential_inactive",
         });
         expect(after.touches).toBe(0);
         await settle(after);
@@ -757,12 +791,6 @@ describe("mobile lifecycle cache fences", () => {
         expect(retry?.revokedNow).toBe(false);
         expect(retry?.receipt).toEqual(first?.receipt);
         expect(calls.filter((path) => path === "/credential/revoke")).toHaveLength(2);
-        await seedPositiveEntry(key);
-        unavailable = true;
-        await expect(workerRequest(rawKey, bindings)).rejects.toThrow(
-          "revocation boundary is unavailable",
-        );
-        expect(primaryTouches).toBe(0);
       });
     });
   }

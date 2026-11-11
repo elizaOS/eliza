@@ -58,7 +58,6 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
@@ -66,6 +65,7 @@ import { parseBuffer } from "music-metadata";
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
+  fundingRefusalFields,
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
@@ -541,10 +541,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           durationMs: performance.now() - authStartedAt,
         });
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -699,7 +695,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
+          credential,
           atomicProviderBoundary: true,
         });
       } catch (error) {
@@ -708,6 +704,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
             {
               error: "Insufficient credits for speech-to-text",
               required: error.required,
+              ...fundingRefusalFields(error, admissionSnapshot),
             },
             { status: 402 },
           );
@@ -1296,7 +1293,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
     if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
-      await credentialGuard[Symbol.asyncDispose]();
       const started = performance.now();
       const payload = await transcribeCloudflareAudio(
         env.AI,

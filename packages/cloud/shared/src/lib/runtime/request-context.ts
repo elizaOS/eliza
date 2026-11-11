@@ -29,6 +29,12 @@ export interface RequestContext {
    * shared services must await the same task before returning.
    */
   defer?: RequestTaskDefer;
+  /**
+   * Rewrite this request's cached inference auth entry from the primary, off
+   * the response. Registered by inference authentication; post-response
+   * accounting calls it when the entry's funding standing is no longer true.
+   */
+  refreshInferenceAuthEntry?: () => void;
 }
 
 const als = new AsyncLocalStorage<RequestContext>();
@@ -48,6 +54,17 @@ export function getClientIp(): string | undefined {
 /** The stable per-request idempotency key for the current request, or `undefined`. */
 export function getRequestIdempotencyKey(): string | undefined {
   return als.getStore()?.idempotencyKey;
+}
+
+/** Register the cached-auth-entry refresh for the current request. */
+export function setRequestInferenceAuthEntryRefresh(refresh: () => void): void {
+  const store = als.getStore();
+  if (store) store.refreshInferenceAuthEntry = refresh;
+}
+
+/** Refresh the current request's cached auth entry; a no-op outside a request. */
+export function refreshRequestInferenceAuthEntry(): void {
+  als.getStore()?.refreshInferenceAuthEntry?.();
 }
 
 /** Runtime-owned post-response task registrar for the current async chain. */

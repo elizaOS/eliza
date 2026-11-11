@@ -1,6 +1,5 @@
 /** Prepare the current account's inference caches without dispatch or billing. */
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { warmInferenceRateLimitGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { publishInferenceAdmissionSnapshotToGate } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import { getCachedMergedModelCatalog } from "@elizaos/cloud-shared/lib/services/model-catalog";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -45,7 +44,6 @@ app.post("/", async (c) => {
     // the authenticated snapshot, cached catalog and existing coalesced gate
     // calls. No model request, quota lease, credit reservation or polling loop.
     const warm = Promise.allSettled([
-      warmInferenceRateLimitGate(orgId),
       admission
         ? publishInferenceAdmissionSnapshotToGate(orgId, admission)
         : Promise.resolve(),

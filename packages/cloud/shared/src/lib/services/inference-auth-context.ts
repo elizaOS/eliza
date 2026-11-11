@@ -35,6 +35,7 @@ import { dbWrite } from "../../db/helpers";
 import { AuthenticationError, ForbiddenError, getErrorStatusCode } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { setRequestInferenceAuthEntryRefresh } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
 import { apiKeysService } from "./api-keys";
@@ -639,8 +640,8 @@ export async function resolveInferenceAuthContext(
 
   try {
     // The positive authorization cache exists only where the organization gate
-    // can revoke it within one request (every Worker); other hosts read the
-    // primary.
+    // is bound (every Worker): writers invalidate the entry and its aged
+    // refresh checks the gate off the response. Other hosts read the primary.
     const authCacheEnabled = hasInferenceRevocationBoundary();
     const deferStrongCredentialCheck =
       authCacheEnabled && options.deferStrongCredentialCheck === true;
@@ -723,6 +724,15 @@ export async function resolveInferenceAuthContext(
         const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
         observeHydrationProjection(hydration, hydrationOptions, false);
       };
+      // Post-response accounting rewrites this entry when it finds the
+      // organization can no longer fund a request. A refresh already in flight
+      // may predate that accounting, so the rewrite starts after it.
+      setRequestInferenceAuthEntryRefresh(() => {
+        const executionCtx = options.executionCtx;
+        if (!executionCtx) return;
+        const inFlight = apiKeyHydrations.get(keyHash)?.projection ?? Promise.resolve();
+        executionCtx.waitUntil(inFlight.then(() => scheduleRefresh(0, true)));
+      });
       if (cached.kind === "hit" && isExpiredApiKeyContext(cached.ctx)) {
         // The cached key expiry is part of the decision: deny locally and let
         // the refresh persist the authoritative denial.
@@ -739,49 +749,22 @@ export async function resolveInferenceAuthContext(
           rateLimit: cached.ctx.apiKeyRateLimit,
           expiresAt: cached.ctx.apiKeyExpiresAt,
         };
-        const scheduleAgedRefresh = () => scheduleRefresh(cached.ctx.cachedAt);
-        if (deferStrongCredentialCheck) {
-          observeInferenceApiKeyUsage(
-            { kind: "authorized", ctx: cached.ctx, source: "cache" },
-            options.executionCtx,
-          );
-          scheduleAgedRefresh();
-          trace.result = "authorized_cache";
-          return {
-            kind: "authorized",
-            ctx: cached.ctx,
-            source: "cache",
-            credential,
-          };
-        }
-        try {
-          await assertInferenceCredentialActive(cached.ctx.orgId, credential);
-        } catch (error) {
-          if (error instanceof InferenceCredentialRevokedError) {
-            trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
-            const reason = inferenceCredentialRevocationReason(error.reason);
-            logStandingDenial({
-              status: error.reason === "credential_revoked" ? 401 : 403,
-              reason,
-              source: "authoritative",
-            });
-            return error.reason === "credential_revoked"
-              ? { kind: "rejected", status: 401, reason }
-              : { kind: "suspended", userId: cached.ctx.userId, reason };
-          }
-          throw error;
-        }
+        // The cached entry is the whole decision: this read is the request's
+        // only store call. Revocation reaches it through writer invalidation
+        // and the aged refresh below, which checks the gate off the response.
         observeInferenceApiKeyUsage(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
           options.executionCtx,
         );
-        scheduleAgedRefresh();
+        scheduleRefresh(cached.ctx.cachedAt);
         trace.result = "authorized_cache";
         return {
           kind: "authorized",
           ctx: cached.ctx,
           source: "cache",
-          ...(options.includeVerifiedCredential === true ? { credential } : {}),
+          ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
+            ? { credential }
+            : {}),
         };
       }
       if (cached.kind === "rejected") {

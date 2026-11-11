@@ -16,7 +16,6 @@ import { cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import {
   consumeAuthorizedInferenceRateLimit,
-  consumeInferenceRateLimit,
   InferenceAdmissionGateUnavailableError,
 } from "../services/inference-admission-gate";
 import {
@@ -580,50 +579,79 @@ async function consumeBudgetRateWindow(
   }
 }
 
-/** One exact Durable Object window decision from an already-resolved policy. */
-async function consumeDurableRateWindow(
+/**
+ * In-isolate fixed-window request counts for the Worker hot path. The request
+ * limit is decided without a store call, so each isolate counts on its own:
+ * an organization served by N isolates can reach N times its per-minute tier
+ * before every isolate refuses. The pre-authentication ingress limiter and the
+ * provider's own limits bound that.
+ */
+const ISOLATE_RATE_WINDOW_MS = 60_000;
+const ISOLATE_RATE_MAX_KEYS = 4_096;
+const isolateRateWindows = new Map<string, { count: number; resetAt: number }>();
+
+function isolateRateWindow(key: string, now: number): { count: number; resetAt: number } {
+  const current = isolateRateWindows.get(key);
+  if (current && current.resetAt > now) return current;
+  if (!current && isolateRateWindows.size >= ISOLATE_RATE_MAX_KEYS) {
+    for (const [staleKey, window] of isolateRateWindows) {
+      if (window.resetAt <= now) isolateRateWindows.delete(staleKey);
+    }
+    if (isolateRateWindows.size >= ISOLATE_RATE_MAX_KEYS) {
+      const oldest = isolateRateWindows.keys().next().value;
+      if (oldest !== undefined) isolateRateWindows.delete(oldest);
+    }
+  }
+  const window = { count: 0, resetAt: now + ISOLATE_RATE_WINDOW_MS };
+  isolateRateWindows.set(key, window);
+  return window;
+}
+
+/** Test hook: reset the in-isolate request windows between tests. */
+export function __clearIsolateRateWindows(): void {
+  isolateRateWindows.clear();
+}
+
+/** Count one request against the organization tier and the key cap, in memory. */
+function consumeIsolateRateWindow(
   organizationId: string,
   endpointType: EndpointType,
   maxRequests: number,
   apiKeyCap: { id: string; maxRequests: number } | null,
-): Promise<Response | null> {
-  const windowMs = 60_000;
-  try {
-    const result = await consumeInferenceRateLimit({
-      organizationId,
-      endpointType,
-      windowMs,
-      maxRequests,
-      ...(apiKeyCap && { apiKey: apiKeyCap }),
-    });
-    if (result.allowed) return null;
+): Response | null {
+  const now = Date.now();
+  const orgWindow = isolateRateWindow(`org:${organizationId}:${endpointType}`, now);
+  const keyWindow = apiKeyCap ? isolateRateWindow(`apikey:${apiKeyCap.id}`, now) : null;
+  const denied =
+    orgWindow.count >= maxRequests
+      ? { window: orgWindow, limit: maxRequests }
+      : keyWindow && apiKeyCap && keyWindow.count >= apiKeyCap.maxRequests
+        ? { window: keyWindow, limit: apiKeyCap.maxRequests }
+        : null;
+  if (denied) {
     return rateLimitExceededResponse(
-      result,
-      apiKeyCap ? Math.min(maxRequests, apiKeyCap.maxRequests) : maxRequests,
-      windowMs,
-      "durable-object",
+      {
+        allowed: false,
+        remaining: 0,
+        resetAt: denied.window.resetAt,
+        retryAfter: Math.max(1, Math.ceil((denied.window.resetAt - now) / 1_000)),
+      },
+      denied.limit,
+      ISOLATE_RATE_WINDOW_MS,
+      "in-memory",
     );
-  } catch (error) {
-    // error-policy:J4 inference requests fail closed with a distinct
-    // retryable response when the authoritative Worker limiter is down.
-    if (error instanceof InferenceAdmissionGateUnavailableError) {
-      logger.warn("[RateLimit] Inference admission gate unavailable", {
-        organizationId,
-        endpointType,
-        error: error.message,
-      });
-      return rateLimitUnavailableResponse();
-    }
-    throw error;
   }
+  orgWindow.count += 1;
+  if (keyWindow) keyWindow.count += 1;
+  return null;
 }
 
 /**
  * Worker hot path: decide from the cached admission snapshot (tier RPM, key
- * cap, funded-budget epoch) and the organization Durable Object only. A warm
- * request never reads Postgres. A missing snapshot, or a carried policy the
- * snapshot cannot prove, is filled from the primary once, inline, so a cold
- * or superseded cache never fails the request.
+ * cap) and this isolate's request windows. A warm request makes no store
+ * call. A missing snapshot, or a carried policy the snapshot cannot prove, is
+ * filled from the primary once, inline, so a cold or superseded cache never
+ * fails the request.
  */
 async function admitFromCachedPolicy(
   organizationId: string,
@@ -666,7 +694,7 @@ async function admitFromCachedPolicy(
       snapshot.fundedBudget,
       apiKeyCap,
     );
-  return await consumeDurableRateWindow(
+  return consumeIsolateRateWindow(
     organizationId,
     endpointType,
     (config as OrgRateLimitConfig).maxRequests,

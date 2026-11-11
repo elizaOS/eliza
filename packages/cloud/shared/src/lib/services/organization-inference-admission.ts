@@ -3,22 +3,23 @@ import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
  * Admission for organization-funded inference.
  *
  * Worker requests are admitted from the cached organization admission
- * snapshot (policy, billing hold, balance or subscriber funding capacity) and
- * the organization Durable Object. No Postgres read or transaction runs before
- * provider dispatch: the Durable Object lease is the only pre-provider write,
- * and post-provider accounting replays one deterministic debit or funding
- * identity under `waitUntil`, with the lease alarm as the durable backstop.
+ * snapshot alone (billing hold, balance or subscriber funding capacity). That
+ * snapshot arrives with the request's single auth-cache read, so no Durable
+ * Object call and no Postgres read runs before provider dispatch.
  *
- * Exactness of the cached decision comes from the standing fence in
- * `inference-policy-fence.ts`: every policy or billing-hold mutation closes the
- * organization gate before it writes and advances the policy generation the
- * snapshot carries, so a snapshot read before that mutation can never lease or
- * dispatch after it. Every other committed balance change (top-ups, refunds,
- * non-inference debits) republishes the projection to the gate, and the gate
- * keeps the newest balance revision, so affordability is decided against the
- * committed balance rather than the snapshot's. An aged snapshot still decides
- * its request and is refreshed under `waitUntil`; only a request with no
- * snapshot, or one refused for a superseded policy generation, refills inline.
+ * Accounting runs after the response under `waitUntil`: the organization
+ * Durable Object lease is committed, the deterministic debit or funding
+ * identity is written, and the lease is settled. When that accounting shows
+ * the organization can no longer fund a request (zero capacity, a refused
+ * lease, a billing hold), the projection and the request's cached auth entry
+ * are refreshed from the primary so the next request is refused from its own
+ * cache read.
+ *
+ * The cached decision is eventually consistent by design. A revoked key, a
+ * new hold or an exhausted allowance keeps admitting until the rewritten
+ * entry is readable (shared-cache propagation), and spend can exceed the
+ * balance by the requests in flight during that window. Only a request with
+ * no snapshot refills inline from the primary.
  *
  * Hosts without a Worker lifetime keep a synchronous reservation because they
  * have no Durable Object to fence a deferred charge.
@@ -31,6 +32,7 @@ import { lockOrganizationPolicy } from "../../db/repositories/organization-polic
 import { inferenceFundingBudgetGrants } from "../../db/schemas/inference-funding-budgets";
 import { CacheTTL } from "../cache/keys";
 import { calculateCost, normalizeModelName } from "../pricing";
+import { refreshRequestInferenceAuthEntry } from "../runtime/request-context";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
@@ -139,13 +141,16 @@ export interface OrganizationInferenceAdmissionParams {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   /** Combined auth-cache projection; skips the separate balance KV read. */
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Strong standing proof consumed atomically by the primary admission gate. */
+  /** Strong standing proof for the funded-budget lane; the snapshot lane ignores it. */
   credential?: InferenceCredentialCheck;
-  /**
-   * Prepare the lease locally and commit it with dispatch at an audited
-   * provider boundary. Limited to callers whose dispatch callback is required.
-   */
+  /** Read by app-funded admission only; organization admission always defers its lease. */
   atomicProviderBoundary?: boolean;
+  /**
+   * Commit the gate lease when the caller marks provider dispatch, instead of
+   * after the response. For long-lived sessions (the speech relay) whose
+   * settlement may never run; request routes leave it unset.
+   */
+  commitLeaseAtDispatch?: boolean;
   /** Await primary persistence and gate acknowledgment for funded settlement. */
   requireTerminalSettlementReceipt?: boolean;
 }
@@ -284,7 +289,8 @@ function attachInferenceAdmissionLease(
     return error;
   };
   let stalePolicyRepairUsed = false;
-  const markProviderDispatched = async (): Promise<void> => {
+  // The lease is committed after the response, as the first settlement step.
+  const commitLease = async (): Promise<void> => {
     try {
       await markInferenceAdmissionLeaseDispatched(lease);
       return;
@@ -347,28 +353,57 @@ function attachInferenceAdmissionLease(
             }
           : null;
       }
+      // The provider has already been invoked, so the charge is owed whatever
+      // the gate answers. A refused or unreachable lease skips the gate steps
+      // and the deterministic debit below still runs.
+      let leaseCommitted = false;
+      let standingRefused = false;
       if (selected.kind === "unknown" || selected.actualCostUsd > 0) {
-        await markProviderDispatched();
-        await fenceInferenceAdmissionLeaseForSettlement(
-          lease,
-          selected.kind === "actual" ? selected.actualCostUsd : lease.estimatedCostUsd,
-        );
+        try {
+          await commitLease();
+          await fenceInferenceAdmissionLeaseForSettlement(
+            lease,
+            selected.kind === "actual" ? selected.actualCostUsd : lease.estimatedCostUsd,
+          );
+          leaseCommitted = true;
+        } catch (error) {
+          standingRefused = isStandingRefusal(error);
+          logger.warn(
+            "[OrganizationInferenceAdmission] post-response lease was not committed; debiting without it",
+            {
+              organizationId: params.context.organizationId,
+              requestId: params.context.requestId,
+              standingRefused,
+              errorName: error instanceof Error ? error.name : "UnknownError",
+            },
+          );
+        }
       }
       const reconciliation =
         selected.kind === "actual"
           ? await settleAuthoritatively(selected.actualCostUsd)
           : await settleUnknownAuthoritatively();
-      const actualCostUsd =
-        selected.kind === "actual"
-          ? selected.actualCostUsd
-          : Math.max(lease.estimatedCostUsd, reconciliation?.actualCost ?? 0);
-      const amounts = inferenceSettlementAmounts(lease, actualCostUsd, reconciliation);
-      await settleInferenceAdmissionLease(
-        lease,
-        amounts.balanceBackedUsd,
-        amounts.gateConsumedUsd,
-        settledBalance?.(),
-      );
+      if (leaseCommitted) {
+        const actualCostUsd =
+          selected.kind === "actual"
+            ? selected.actualCostUsd
+            : Math.max(lease.estimatedCostUsd, reconciliation?.actualCost ?? 0);
+        const amounts = inferenceSettlementAmounts(lease, actualCostUsd, reconciliation);
+        await settleInferenceAdmissionLease(
+          lease,
+          amounts.balanceBackedUsd,
+          amounts.gateConsumedUsd,
+          settledBalance?.(),
+        );
+      }
+      const remaining = settledBalance?.();
+      if (
+        standingRefused ||
+        reconciliation?.adjustmentType === "uncollected_overage" ||
+        (remaining !== undefined && !(remaining.balanceUsd > 0))
+      ) {
+        refreshStandingOffResponse(params);
+      }
       return reconciliation;
     })();
     settlement = current;
@@ -393,8 +428,28 @@ function attachInferenceAdmissionLease(
     ...admission,
     settle,
     settleUnknown,
-    markProviderDispatched,
+    // Request routes mark the provider boundary and await nothing there. A
+    // long-lived session commits its lease here instead, so the gate alarm
+    // still recovers the charge if the session dies before it settles.
+    markProviderDispatched: params.commitLeaseAtDispatch ? commitLease : () => Promise.resolve(),
   };
+}
+
+/**
+ * Settlement found the organization unable to fund another request. Refill
+ * the projection from the primary and rewrite this request's cached auth
+ * entry, both off the response, so the next request is refused from its own
+ * cache read.
+ */
+function refreshStandingOffResponse(params: OrganizationInferenceAdmissionParams): void {
+  if (params.executionCtx) {
+    refreshInferenceAdmissionSnapshotOffResponse(
+      params.context.organizationId,
+      params.executionCtx,
+      { force: true },
+    );
+  }
+  refreshRequestInferenceAuthEntry();
 }
 
 /**
@@ -544,7 +599,9 @@ async function workerAdmissionSnapshot(
   if (isInferenceAdmissionSnapshot(carried)) {
     const local = peekInferenceAdmissionSnapshotInIsolate(organizationId);
     snapshot = local && local.balance.balanceAt > carried.balance.balanceAt ? local : carried;
-    if (snapshot.billingHold === true) {
+    // Only a snapshot that would refuse costs a second cache read: a top-up or
+    // hold release republishes the projection before the auth entry is rewritten.
+    if (snapshotRefusal(organizationId, snapshot)) {
       const published = await peekInferenceAdmissionSnapshot(organizationId);
       if (published && published.balance.balanceAt > snapshot.balance.balanceAt) {
         snapshot = published;
@@ -602,9 +659,8 @@ async function admitFromSnapshot(
   snapshot: InferenceAdmissionSnapshot,
 ): Promise<OrganizationInferenceAdmission> {
   const admitOnce = (current: InferenceAdmissionSnapshot) => {
-    if (current.billingHold === true) {
-      throw new BillingHoldActiveError(params.context.organizationId, "0.000000");
-    }
+    const refusal = snapshotRefusal(params.context.organizationId, current);
+    if (refusal) throw refusal;
     const policyGeneration = current.authority.generation;
     return current.subscriptionFunded && current.funding
       ? admitSubscriberViaDurableObject(params, current.funding, policyGeneration)
@@ -617,32 +673,36 @@ async function admitFromSnapshot(
   try {
     return await admitOnce(snapshot);
   } catch (error) {
-    if (isStalePolicyRefusal(error)) {
-      return await admitOnce(await refreshAfterStalePolicy(params));
-    }
     if (!isStandingRefusal(error) || snapshotAgeMs(snapshot) < REFUSAL_REFILL_MIN_AGE_MS) {
       throw error;
     }
-    if (params.executionCtx) {
-      refreshInferenceAdmissionSnapshotOffResponse(
-        params.context.organizationId,
-        params.executionCtx,
-        { force: true },
-      );
-    }
+    refreshStandingOffResponse(params);
     throw error;
   }
 }
 
-function isStandingRefusal(error: unknown): boolean {
-  return error instanceof InsufficientCreditsError || error instanceof BillingHoldActiveError;
+/**
+ * The funding decision, made from the snapshot alone: a billing hold, or no
+ * remaining subscriber capacity or credit, refuses the request.
+ */
+function snapshotRefusal(
+  organizationId: string,
+  snapshot: InferenceAdmissionSnapshot,
+): InsufficientCreditsError | undefined {
+  if (snapshot.billingHold === true) {
+    return new BillingHoldActiveError(organizationId, "0.000000");
+  }
+  const availableUsd =
+    snapshot.subscriptionFunded && snapshot.funding
+      ? snapshot.funding.balanceUsd
+      : snapshot.balance.balanceUsd;
+  return availableUsd > 0
+    ? undefined
+    : new InsufficientCreditsError(MIN_RESERVATION, 0, "cached_admission_snapshot");
 }
 
-function isStalePolicyRefusal(error: unknown): boolean {
-  return (
-    error instanceof InferenceAdmissionUnavailableError &&
-    isInferenceAdmissionPolicyStaleError(error.cause)
-  );
+function isStandingRefusal(error: unknown): boolean {
+  return error instanceof InsufficientCreditsError || error instanceof BillingHoldActiveError;
 }
 
 async function refreshAfterStalePolicy(
@@ -743,9 +803,8 @@ async function admitSubscriberViaDurableObject(
             }
           : { kind: "subscription_funding" },
       },
-      credential: params.credential,
       executionCtx,
-      deferCommitUntilDispatch: params.atomicProviderBoundary === true,
+      deferCommitUntilDispatch: true,
       policyGeneration,
     });
   } catch (error) {
@@ -901,9 +960,8 @@ async function admitCreditsViaDurableObject(
             }
           : { kind: "direct_debit" },
       },
-      credential: params.credential,
       executionCtx,
-      deferCommitUntilDispatch: params.atomicProviderBoundary === true,
+      deferCommitUntilDispatch: true,
       policyGeneration: observation.policyGeneration,
     });
   } catch (error) {
