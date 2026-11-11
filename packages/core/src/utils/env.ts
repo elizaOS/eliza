@@ -59,10 +59,15 @@ export function resolveEnvAlias(
 	env: Record<string, string | undefined> | null,
 ): string | undefined {
 	if (!env) return undefined;
-	if (env[key]?.trim()) return env[key];
+	// Return the trimmed value: the check above already treats a
+	// whitespace-only value as unset, but the old code returned the raw
+	// value, so surrounding spaces leaked into config values.
+	const direct = env[key]?.trim();
+	if (direct) return direct;
 	for (const [left, right] of aliases ?? []) {
 		const partner = left === key ? right : right === key ? left : undefined;
-		if (partner !== undefined && env[partner]?.trim()) return env[partner];
+		const partnerValue = partner !== undefined ? env[partner]?.trim() : undefined;
+		if (partnerValue) return partnerValue;
 	}
 	return undefined;
 }
