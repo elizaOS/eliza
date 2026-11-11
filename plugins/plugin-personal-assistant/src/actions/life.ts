@@ -5418,6 +5418,9 @@ async function runLifeOperationHandlerInner(
             }
           : params.createPlan;
       const nativeCreatePlan = parseNativeTaskCreatePlan(suppliedCreatePlan);
+      const verifyReminderIntent =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        !deferredDefinitionDraft;
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -5498,9 +5501,9 @@ async function runLifeOperationHandlerInner(
           : deferredDefinitionDraft?.request.title) ?? params.title,
       );
 
-      // Parameter enhancement fills gaps when structured planner input is partial.
-      // Skip when options.parameters already contain the complete
-      // definition-create shape, or when reusing a confirmed deferred draft.
+      // Recheck reminder intent against the owner message before accepting a
+      // planner-supplied create plan. Other surfaces only fill missing fields;
+      // confirmed deferred drafts retain their existing authority.
       let llmPlan: Awaited<
         ReturnType<typeof extractTaskCreatePlanWithLlm>
       > | null = null;
@@ -5509,7 +5512,8 @@ async function runLifeOperationHandlerInner(
       let llmRequestKind: NativeAppleReminderLikeKind | null = null;
       if (
         (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
-        (nativeCreatePlan ||
+        (verifyReminderIntent ||
+          nativeCreatePlan ||
           !hasCompleteNativeDefinitionCreatePlan ||
           (ownerSurfaceActionName === "OWNER_REMINDERS" &&
             explicitNoAlert === undefined &&
@@ -5517,10 +5521,10 @@ async function runLifeOperationHandlerInner(
       ) {
         try {
           llmPlan =
-            nativeCreatePlan ??
+            (verifyReminderIntent ? null : nativeCreatePlan) ??
             (await extractTaskCreatePlanWithLlm({
               runtime,
-              intent,
+              intent: verifyReminderIntent ? currentText : intent,
               state: state ?? undefined,
               message: message,
               timeZone:
@@ -5539,15 +5543,31 @@ async function runLifeOperationHandlerInner(
         }
         const plannerResponse =
           llmPlan?.mode === "respond" ? llmPlan.response : undefined;
+        if (
+          verifyReminderIntent &&
+          llmPlan?.requestKind !== "reminder" &&
+          llmPlan?.requestKind !== "alarm"
+        ) {
+          return {
+            success: false as const,
+            text: "A reminder request could not be verified from the original owner message. Use the action that matches that request. No reminder was created.",
+            data: {
+              actionName: ownerSurfaceActionName,
+              error: "OWNER_REMINDER_INTENT_MISMATCH",
+              coachingFailure: true,
+            },
+          };
+        }
         const shouldHonorPlannerResponse =
           Boolean(plannerResponse) &&
           !editingDeferredDefinitionDraft &&
-          !params.title &&
-          !explicitCadenceDetail &&
-          !detailString(details, "description") &&
-          !detailString(details, "goalId") &&
-          !detailString(details, "goalTitle") &&
-          !detailString(details, "kind");
+          (verifyReminderIntent ||
+            (!params.title &&
+              !explicitCadenceDetail &&
+              !detailString(details, "description") &&
+              !detailString(details, "goalId") &&
+              !detailString(details, "goalTitle") &&
+              !detailString(details, "kind")));
         if (shouldHonorPlannerResponse && plannerResponse) {
           const text = plannerResponse;
           return {
