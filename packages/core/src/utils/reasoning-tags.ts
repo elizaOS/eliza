@@ -143,19 +143,29 @@ export function stripPairedTagBlocks(
 /**
  * Removes a trailing unmatched OPEN tag and everything after it (an
  * unclosed reasoning/machine-syntax block runs to the end of the model's
- * turn). A no-terminator candidate reports no match at all (see
- * `findNextOpenTag`), so this is a no-op for genuinely malformed markup —
- * intentional: the actual leak-prevention gate is `hasReasoningResidue`,
- * which denies on the tag *prefix* alone regardless of termination. This
- * cleanup pass only needs to match the well-formed shapes its callers'
- * characterization tests pin.
+ * turn). Opens are paired with their nearest later close first, in the same
+ * non-greedy order as {@link stripPairedTagBlocks}, so a closed block
+ * earlier in the text (and the visible text after it) is kept: only the
+ * first open with no later close is stripped. A no-terminator candidate
+ * reports no match at all (see `findNextOpenTag`), so this is a no-op for
+ * genuinely malformed markup — intentional: the actual leak-prevention
+ * gate is `hasReasoningResidue`, which denies on the tag *prefix* alone
+ * regardless of termination. This cleanup pass only needs to match the
+ * well-formed shapes its callers' characterization tests pin.
  */
 export function stripUnclosedTagSuffix(
 	text: string,
 	tagAlternation: string,
 ): string {
-	const open = findNextOpenTag(text, 0, tagAlternation);
-	return open ? text.slice(0, open.start) : text;
+	let pos = 0;
+	while (pos < text.length) {
+		const open = findNextOpenTag(text, pos, tagAlternation);
+		if (!open) return text;
+		const close = findNextCloseTag(text, open.end, tagAlternation);
+		if (!close) return text.slice(0, open.start);
+		pos = close.end;
+	}
+	return text;
 }
 
 const REASONING_OPEN_PREFIX_SOURCE = `<\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s/>])`;
