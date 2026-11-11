@@ -5959,18 +5959,35 @@ export class CalendarService extends Service {
               acquired = true;
               signal.throwIfAborted();
               return {
-                feed: await timeInferenceSpan(
-                  "calendar:feed:managed-source",
-                  () =>
-                    managed.feed(
-                      calendar,
-                      timeMin,
-                      timeMax,
-                      timeZone,
-                      this.agentId(),
-                      signal,
-                    ),
-                  { provider: calendar.provider },
+                feed: await this.withGoogleSyncLock(
+                  JSON.stringify([
+                    "managed",
+                    calendar.grantId,
+                    calendar.calendarId,
+                  ]),
+                  async () => {
+                    signal.throwIfAborted();
+                    const feed = await timeInferenceSpan(
+                      "calendar:feed:managed-source",
+                      () =>
+                        managed.feed(
+                          calendar,
+                          timeMin,
+                          timeMax,
+                          timeZone,
+                          this.agentId(),
+                          signal,
+                        ),
+                      { provider: calendar.provider },
+                    );
+                    // Use the same canonical cache as ordinary provider reads.
+                    // Selected-event actions still verify the live revision.
+                    for (const event of feed.events) {
+                      signal.throwIfAborted();
+                      await this.repo.upsertCalendarEvent(event, calendar.side);
+                    }
+                    return feed;
+                  },
                 ),
               };
             } catch (error) {
