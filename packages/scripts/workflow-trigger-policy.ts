@@ -76,7 +76,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     for (const [eventName, config] of entries) {
       if (FORBIDDEN_AUTOMATION_EVENTS.has(eventName)) {
         failures.push(
-          `${name}: ${eventName} is forbidden; Develop Full owns automatic post-merge validation`,
+          `${name}: ${eventName} is forbidden; Develop Full owns automatic promotion validation`,
         );
       }
       if (FORBIDDEN_EVENTS.has(eventName)) {

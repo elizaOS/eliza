@@ -7,14 +7,21 @@ PR admission includes mock-backed payment replay Playwright proof. Device
 qualification is available through `workflow_dispatch` or `workflow_call` from
 authorized callers. Android packaging runs on demand through `android-build.yml`.
 Full validation runs on pushes to `staging` and `main`, the promotion steps, and
-retains affected integration and browser lanes. Pushes to `develop` do not run
-it. The shared selector compares against the last successfully validated ancestor and follows
+retains affected integration and browser lanes. The shared selector compares against the last successfully validated ancestor and follows
 reverse workspace dependencies; shared tooling, unknown paths,
 and unavailable history require full validation. Unit-test fan-out and platform,
 RISC-V, and live smoke workflows are retired. Cloud browser/database jobs run in
 parallel with static checks. Manual certification and protected release workflows
 remain available for target-specific qualification.
 Live deployment requires the protected environment gates.
+
+The `develop` to `staging` promotion pull request is opened by hand and merged
+with a merge commit whose tree is identical to the promoted `develop` head.
+Staging effects are admitted on the green Develop Full run for the `staging`
+head plus that merged pull request; a direct push, fast-forward, or squash to
+`staging` fails reconciliation and deploys nothing. The agent image build on
+`staging` publishes the moving `:staging` tag, which is the default staging
+sandbox image.
 
 Apps deployment is paused because the feature is unused. The Apps worker workflow
 is disabled in GitHub Actions and is absent from the staging and main effect
