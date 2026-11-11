@@ -7,6 +7,20 @@
   "bin": {
     "cloud-deploy": "src/cli.ts"
   },
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "README.md",
+    "src",
+    "!src/**/*.test.ts",
+    "deployments",
+    "examples"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "bun test src",
     "typecheck": "tsc --noEmit -p tsconfig.json",

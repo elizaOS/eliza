@@ -29,6 +29,11 @@ export interface CheckOptions {
   readonly wrangler?: string;
   /** Keep the bundle in this directory instead of a deleted temporary one. */
   readonly keepDir?: string;
+  /**
+   * Write the bundler's metafile (every input file of a Worker bundle) here.
+   * Not available for a Pages configuration.
+   */
+  readonly metafile?: string;
 }
 
 export interface CheckResult {
@@ -46,6 +51,8 @@ export interface CheckResult {
   readonly bundleBytes: number;
   /** Wrangler's own "Total Upload" line, when it printed one. */
   readonly totalUpload: string | null;
+  /** The metafile written, when one was asked for and the bundle built. */
+  readonly metafile: string | null;
   readonly output: string;
 }
 
@@ -129,6 +136,7 @@ function finish(
   outDir: string,
   run: ReturnType<typeof spawnSync>,
   result: Pick<CheckResult, "kind" | "wrangler" | "entry" | "notValidated">,
+  metafile: string | null = null,
 ): CheckResult {
   const output = `${run.stdout ?? ""}${run.stderr ?? ""}${run.error ? `\n${run.error.message}` : ""}`;
   const files = existsSync(outDir)
@@ -142,6 +150,7 @@ function finish(
     files,
     bundleBytes: files.reduce((sum, file) => sum + file.bytes, 0),
     totalUpload: output.match(/Total Upload:[^\n]*/)?.[0].trim() ?? null,
+    metafile: metafile && existsSync(metafile) ? metafile : null,
     output,
   };
   if (!options.keepDir) rmSync(outDir, { recursive: true, force: true });
@@ -224,8 +233,11 @@ function checkPagesConfig(
 export function checkRenderedConfig(options: CheckOptions): CheckResult {
   const configFile = resolve(options.configFile);
   const config = parseRenderedConfig(readFileSync(configFile, "utf8"));
-  if (typeof config.pages_build_output_dir === "string")
+  if (typeof config.pages_build_output_dir === "string") {
+    if (options.metafile)
+      throw new Error("a Pages configuration has no bundle metafile");
     return checkPagesConfig(options, configFile, config);
+  }
   if (typeof config.main !== "string")
     throw new Error(`${configFile} has no main entry`);
   const entry = resolve(dirname(configFile), config.main);
@@ -236,6 +248,9 @@ export function checkRenderedConfig(options: CheckOptions): CheckResult {
   const outDir = options.keepDir
     ? resolve(options.keepDir)
     : mkdtempSync(join(tmpdir(), "cloud-deploy-check-"));
+
+  const metafile = options.metafile ? resolve(options.metafile) : null;
+  if (metafile) mkdirSync(dirname(metafile), { recursive: true });
 
   // A dry run otherwise builds the container image, which needs a Docker
   // daemon and base images. The Worker and its bindings are checked without.
@@ -250,6 +265,7 @@ export function checkRenderedConfig(options: CheckOptions): CheckResult {
       "--dry-run",
       "--outdir",
       outDir,
+      ...(metafile ? ["--metafile", metafile] : []),
       ...(hasContainers ? ["--containers-rollout=none"] : []),
     ],
     {
@@ -259,16 +275,22 @@ export function checkRenderedConfig(options: CheckOptions): CheckResult {
       maxBuffer: 64 * 1024 * 1024,
     },
   );
-  return finish(options, outDir, run, {
-    kind: "worker",
-    wrangler,
-    entry,
-    notValidated: [
-      ...(hasContainers
-        ? ["the container image (not built; --containers-rollout=none)"]
-        : []),
-      "bindings, routes and resource ids against a Cloudflare account",
-      "a deploy",
-    ],
-  });
+  return finish(
+    options,
+    outDir,
+    run,
+    {
+      kind: "worker",
+      wrangler,
+      entry,
+      notValidated: [
+        ...(hasContainers
+          ? ["the container image (not built; --containers-rollout=none)"]
+          : []),
+        "bindings, routes and resource ids against a Cloudflare account",
+        "a deploy",
+      ],
+    },
+    metafile,
+  );
 }

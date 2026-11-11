@@ -5,7 +5,8 @@ from a deployment file: the API Worker, the Steward login Worker, the speech
 and admission Workers, and the Pages front end. A product deploys its own
 Cloud from upstream code without editing any upstream `wrangler.toml`.
 
-Private and unpublished. Run it with Bun from an upstream checkout; it has no
+Private and unpublished. Run it with Bun, from an upstream checkout or from
+an install of the packed packages (see Consuming from npm); it has no
 dependencies. It is not yet a workspace member.
 
 ## Product directory
@@ -145,8 +146,18 @@ bun packages/cloud/deploy/src/cli.ts render \
   --upstream path/to/eliza --out cloud \
   [--component api|login|speech|admission|web|all]
 
-bun packages/cloud/deploy/src/cli.ts check --config cloud/wrangler.staging.jsonc
+bun packages/cloud/deploy/src/cli.ts render \
+  --deployment cloud/deployment.json --environment staging \
+  --packages . --out cloud [--main cloud/worker.ts]
+
+bun packages/cloud/deploy/src/cli.ts check --config cloud/wrangler.staging.jsonc \
+  [--metafile <file>]
 ```
+
+`--packages <dir>` replaces `--upstream`: the API Worker is rendered from
+`@elizaos/cloud-api` installed in `<dir>/node_modules`, and no rendered path
+leaves that directory. It renders the API Worker only. `--main` names the
+product's own entry in place of the package's.
 
 `render` writes one component's configuration and secret names into `--out`.
 `--component` defaults to `api`, whose files keep the names
@@ -158,7 +169,8 @@ refused. Exit 0 on success, 1 on an invalid deployment or render, 2 on a
 usage error.
 
 `check` prints a JSON report (`kind`, `ok`, `notValidated`, `bundleBytes`,
-Wrangler's upload size, files). It uploads nothing and passes no Cloudflare
+Wrangler's upload size, files). `--metafile` also writes the bundler's list
+of every input file of a Worker bundle. It uploads nothing and passes no Cloudflare
 credential to Wrangler. It uses the `wrangler` installed in the upstream tree
 the config points at (the component's own, else the API package's), so that
 tree must be installed and its workspace packages built; `--wrangler <bin>`
@@ -177,6 +189,101 @@ overrides, `--keep <dir>` keeps the bundle. Exit 0 when the bundle builds.
   not exist.
 
 `bun test packages/cloud/deploy/src` runs the tests.
+
+## Consuming from npm
+
+A product can build the API Worker from packages, with no upstream checkout:
+
+```
+package.json     depends on @elizaos/cloud-api and @elizaos/cloud-deploy
+worker.ts        export * from "@elizaos/cloud-api/worker";
+                 export { default } from "@elizaos/cloud-api/worker";
+deployment.json
+```
+
+```
+bun install
+bunx cloud-deploy render --deployment deployment.json --environment staging \
+  --packages . --main worker.ts --out .
+bunx cloud-deploy check --config wrangler.staging.jsonc
+```
+
+`@elizaos/cloud-api/worker` is the Worker module: the default export with the
+`fetch` and `scheduled` handlers, and the Durable Object classes the rendered
+configuration binds. `worker.ts` must re-export all of it.
+
+Packaging, as it stands in this checkout:
+
+- `@elizaos/cloud-api`, `@elizaos/cloud-shared`,
+  `@elizaos/cloud-services-common` and `@elizaos/plugin-network` ship their
+  TypeScript sources (`files` excludes tests, fixtures and test support); the
+  Worker bundler compiles them. `@elizaos/cloud-api` also ships its
+  `wrangler.toml`, which is what the renderer reads. `@elizaos/cloud-deploy`
+  ships its sources and runs under Bun.
+- The API sources import each other by relative path and other packages by
+  name. They do not use the `@/api`, `@/api-app` or `@/api-queue` tsconfig
+  paths (tests still may): a bundler ignores tsconfig paths under
+  `node_modules`.
+- Upstream aliases that point into a sibling workspace's sources
+  (`@elizaos/cloud-shared`, `@elizaos/cloud-sdk`, and two more) are left out
+  of a `--packages` render and named in its output. Those specifiers resolve
+  through `node_modules`: to sources for the source-shipped packages, to
+  `dist` for the built ones. A checkout build compiles `@elizaos/cloud-sdk`,
+  `@elizaos/plugin-elizacloud` and `@elizaos/core/protocol` from sources
+  instead (aliases and tsconfig paths), so the two bundles are not
+  byte-identical.
+- Wrangler is whatever the product's install resolves for
+  `@elizaos/cloud-api`'s `wrangler` range, not the checkout's locked version.
+
+`scripts/pack-check.ts` proves this end to end without publishing:
+
+```
+bun packages/cloud/deploy/scripts/pack-check.ts --work <dir outside the repo> \
+  [--built <tree with built dist>] [--public workspace|registry]
+```
+
+It stages a copy of each package, replaces `workspace:` ranges with the
+workspaces' current versions, runs `npm pack`, installs the tarballs into an
+empty product directory (`bun install --ignore-scripts`, third-party
+dependencies from the public registry), renders with the installed
+`cloud-deploy`, and bundles the product's `worker.ts`. It fails when a source
+tarball carries a test, fixture or secret file or lacks an `exports` target,
+when a rendered path or any bundle input resolves outside the product
+directory, and when the bundle takes code of an `@elizaos` package the run did
+not pack. With `--public workspace` (the default) the already-published
+packages the bundle draws from are packed too, from `--built`, a tree whose
+`dist` directories are built and whose sources equal this checkout's; the run
+refuses a built tree that differs. `--public registry` takes them from npm at
+the versions the manifests name.
+
+## To publish
+
+Nothing here is published, and none of this is done. For a maintainer:
+
+1. Remove `"private": true` from `packages/cloud/api`, `packages/cloud/shared`,
+   `packages/cloud/services/_common`, `plugins/plugin-network` and
+   `packages/cloud/deploy`, together: `verify-publish-graph.ts` refuses a
+   public package that depends on a private one. `files`, `exports` and
+   `publishConfig.access` are already set.
+2. Add the five names to `packages/scripts/release-cohort.json`.
+3. Align versions with the cohort (2.0.5 today): `@elizaos/cloud-api` is
+   2.0.3-beta.0, `cloud-shared` and `plugin-network` 0.1.0,
+   `cloud-services-common` 1.0.0, `cloud-deploy` 0.0.0. `lerna.json` versions
+   `packages/*`, `plugins/*` and `packages/cloud/sdk` only; add
+   `packages/cloud/api`, `packages/cloud/shared`, `packages/cloud/services/*`
+   and `packages/cloud/deploy` so fixed versioning covers them.
+4. Add `packages/cloud/deploy` to the root `workspaces` and refresh
+   `bun.lock`. The others are members already.
+5. Publish all of them in one release with the packages they depend on.
+   `@elizaos/cloud-shared` depends on `@elizaos/auth`, `cloud-routing`,
+   `cloud-sdk`, `contracts`, `core`, `host` and twelve plugins at exact
+   versions, so a Cloud package is only installable beside the cohort
+   release it was packed with.
+6. Run `pack-check` with `--public workspace` on the release commit, after
+   the workspace build, and again with `--public registry` once published.
+7. Decide what a consumer installs. `@elizaos/cloud-shared`'s dependencies
+   include every plugin and SDK the full Cloud uses (about 2.8 GB installed);
+   optional per-feature dependencies are not done.
 
 ## The eliza deployment
 
@@ -244,3 +351,7 @@ unchanged and still authoritative.
 - Provisioning Cloudflare resources (Hyperdrive, KV, R2, rate-limit
   namespaces, routes, DNS, the Pages project) and setting secrets.
 - An actual deploy, and npm publication of this package or the Workers'.
+- Packages for the login, speech and admission Workers and the Pages front
+  end. They have no `package.json`; a product renders them with `--upstream`.
+- Type declarations and a JavaScript build of the source-shipped packages. A
+  consumer that type-checks against them needs their TypeScript settings.

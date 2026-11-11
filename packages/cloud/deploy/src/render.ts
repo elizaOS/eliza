@@ -8,6 +8,10 @@
  * (Worker name, account, routes, variables, buckets, database, cache,
  * rate-limit namespaces, placement) come only from the deployment file. No
  * `[vars]` value is copied from upstream.
+ *
+ * The structure is read either from an upstream checkout (`upstreamRoot`) or
+ * from `@elizaos/cloud-api` installed in a product's `node_modules`
+ * (`packagesRoot`), which ships the same `wrangler.toml`.
  */
 
 import { readFileSync } from "node:fs";
@@ -23,6 +27,73 @@ import {
 
 export const UPSTREAM_API_DIR = join("packages", "cloud", "api");
 export const UPSTREAM_WRANGLER_TOML = join(UPSTREAM_API_DIR, "wrangler.toml");
+
+/** Package that ships the API Worker's sources and `wrangler.toml`. */
+export const CLOUD_API_PACKAGE = "@elizaos/cloud-api";
+
+/** Where a product's install puts the API Worker package. */
+export function installedApiDir(packagesRoot: string): string {
+  return join(packagesRoot, "node_modules", ...CLOUD_API_PACKAGE.split("/"));
+}
+
+/** Whether `path`, written relative to `dir`, stays inside `dir`. */
+function staysInside(dir: string, path: string): boolean {
+  const moved = relative(resolve(dir), resolve(dir, path));
+  return moved !== ".." && !moved.startsWith(`..${sep}`) && !isAbsolute(moved);
+}
+
+/**
+ * The API Worker's directory and parsed `wrangler.toml`, from whichever of
+ * an upstream checkout and an installed package the caller named.
+ */
+function readApiSource(options: RenderOptions): {
+  apiDir: string;
+  upstream: Table;
+  packaged: boolean;
+} {
+  const { upstreamRoot, packagesRoot } = options;
+  if ((upstreamRoot === undefined) === (packagesRoot === undefined)) {
+    throw new RenderError("give exactly one of upstreamRoot and packagesRoot");
+  }
+  if (!isAbsolute(options.outDir)) {
+    throw new RenderError("outDir must be an absolute path");
+  }
+  if (options.main !== undefined) {
+    if (packagesRoot === undefined) {
+      throw new RenderError(
+        "main names a product's own entry and needs packagesRoot",
+      );
+    }
+    if (!isAbsolute(options.main)) {
+      throw new RenderError("main must be an absolute path");
+    }
+  }
+  if (upstreamRoot !== undefined) {
+    if (!isAbsolute(upstreamRoot)) {
+      throw new RenderError("upstreamRoot must be an absolute path");
+    }
+    return {
+      apiDir: join(upstreamRoot, UPSTREAM_API_DIR),
+      upstream: readUpstreamWranglerToml(upstreamRoot),
+      packaged: false,
+    };
+  }
+  const root = packagesRoot as string;
+  if (!isAbsolute(root)) {
+    throw new RenderError("packagesRoot must be an absolute path");
+  }
+  const apiDir = installedApiDir(root);
+  const file = join(apiDir, "wrangler.toml");
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    throw new RenderError(
+      `${CLOUD_API_PACKAGE} is not installed under ${root} (looked for ${file})`,
+    );
+  }
+  return { apiDir, upstream: parseToml(text), packaged: true };
+}
 
 type Table = Record<string, unknown>;
 
@@ -158,6 +229,12 @@ export function rebase(path: string, apiDir: string, outDir: string): string {
   return moved.startsWith(".") ? moved : `./${moved}`;
 }
 
+/** An absolute file path as written from `outDir`. */
+function fromDirectory(outDir: string, file: string): string {
+  const moved = relative(resolve(outDir), resolve(file)).split(sep).join("/");
+  return moved.startsWith(".") ? moved : `./${moved}`;
+}
+
 export function isRelativePath(value: string): boolean {
   return value.startsWith("./") || value.startsWith("../");
 }
@@ -165,8 +242,22 @@ export function isRelativePath(value: string): boolean {
 export interface RenderOptions {
   readonly deployment: Deployment;
   readonly environment: DeploymentEnvironmentName;
-  /** Root of the upstream checkout the Worker is built from. */
-  readonly upstreamRoot: string;
+  /**
+   * Root of the upstream checkout the Worker is built from. Exactly one of
+   * this and `packagesRoot` is given.
+   */
+  readonly upstreamRoot?: string;
+  /**
+   * Directory whose `node_modules` holds the installed Cloud packages. The
+   * API Worker is then built from `@elizaos/cloud-api` there, and no rendered
+   * path leaves that `node_modules`. Only the API Worker renders this way.
+   */
+  readonly packagesRoot?: string;
+  /**
+   * The product's own Worker entry, re-exporting `@elizaos/cloud-api/worker`.
+   * Only with `packagesRoot`; the package's entry is used when omitted.
+   */
+  readonly main?: string;
   /** Directory the rendered file will live in; relative paths are written from it. */
   readonly outDir: string;
 }
@@ -181,6 +272,12 @@ export interface RenderedConfig {
   /** `secrets.<environment>.txt` contents: one required secret name per line. */
   readonly secretsText: string;
   readonly secretsFileName: string;
+  /**
+   * Upstream aliases left out of a render from installed packages: each
+   * pointed at a sibling workspace's sources, which a package install does
+   * not have. Those specifiers resolve through `node_modules` instead.
+   */
+  readonly droppedAliases: readonly string[];
 }
 
 /** The variables `resolveCloudDeployment` reads, from the typed fields. */
@@ -316,18 +413,15 @@ export function findElizaIdentity(
 }
 
 export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
-  const { deployment, environment, upstreamRoot, outDir } = options;
+  const { deployment, environment, outDir } = options;
   const env = deployment.environments[environment];
   if (!env) {
     throw new RenderError(
       `deployment "${deployment.id}" has no ${environment} environment`,
     );
   }
-  if (!isAbsolute(upstreamRoot) || !isAbsolute(outDir)) {
-    throw new RenderError("upstreamRoot and outDir must be absolute paths");
-  }
 
-  const upstream = readUpstreamWranglerToml(upstreamRoot);
+  const { apiDir, upstream, packaged } = readApiSource(options);
   assertKnownKeys(upstream, "the top level");
   const template = table(
     table(upstream.env, "env")[TEMPLATE_ENVIRONMENT],
@@ -337,7 +431,6 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
 
   // Wrangler inherits these from the top level when an environment omits them.
   const inherited = (key: string): unknown => template[key] ?? upstream[key];
-  const apiDir = join(upstreamRoot, UPSTREAM_API_DIR);
 
   for (const key of ["build", "rules", "migrations"]) {
     if (inherited(key) !== undefined) {
@@ -353,15 +446,26 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
   if (typeof main !== "string")
     throw new RenderError("upstream wrangler.toml has no main");
 
+  if (isRelativePath(main) && !staysInside(apiDir, main)) {
+    throw new RenderError(`upstream main leaves the API package: ${main}`);
+  }
+
   const alias: Record<string, string> = {};
+  const droppedAliases: string[] = [];
   for (const [name, target] of Object.entries(
     table(inherited("alias") ?? {}, "alias"),
   )) {
     if (typeof target !== "string")
       throw new RenderError(`alias ${name} is not a string`);
-    alias[name] = isRelativePath(target)
-      ? rebase(target, apiDir, outDir)
-      : target;
+    if (!isRelativePath(target)) {
+      alias[name] = target;
+    } else if (packaged && !staysInside(apiDir, target)) {
+      // A shortcut into a sibling workspace's sources. An install has the
+      // sibling as a package, so the specifier resolves without the alias.
+      droppedAliases.push(name);
+    } else {
+      alias[name] = rebase(target, apiDir, outDir);
+    }
   }
 
   const transfers = env.durableObjectTransfers ?? {};
@@ -438,7 +542,9 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
 
   const config: Table = {
     name: env.workerName,
-    main: rebase(main, apiDir, outDir),
+    main: options.main
+      ? fromDirectory(outDir, options.main)
+      : rebase(main, apiDir, outDir),
     compatibility_date: inherited("compatibility_date"),
     compatibility_flags: inherited("compatibility_flags"),
     account_id: env.accountId,
@@ -492,6 +598,7 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
     identity: upstreamIdentityStrings(upstream),
     owner: `${env.workerName} Worker`,
     secrets: env.secrets,
+    droppedAliases,
   });
 }
 
@@ -518,6 +625,7 @@ export function finishRender(input: {
   /** What the secrets belong to, for the secrets file header. */
   readonly owner: string;
   readonly secrets: readonly string[];
+  readonly droppedAliases?: readonly string[];
 }): RenderedConfig {
   const { component, deployment, environment, config } = input;
   for (const key of Object.keys(config)) {
@@ -556,7 +664,15 @@ export function finishRender(input: {
           "",
         ].join("\n");
 
-  return { component, config, text, fileName, secretsText, secretsFileName };
+  return {
+    component,
+    config,
+    text,
+    fileName,
+    secretsText,
+    secretsFileName,
+    droppedAliases: input.droppedAliases ?? [],
+  };
 }
 
 /** Parse a rendered `wrangler.<environment>.jsonc` (leading `//` lines, then JSON). */

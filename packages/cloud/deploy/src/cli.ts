@@ -7,7 +7,10 @@
  *   render --deployment <file> --environment <staging|production>
  *          --upstream <repo root> --out <dir>
  *          [--component <api|login|speech|admission|web|all>]
+ *   render --deployment <file> --environment <staging|production>
+ *          --packages <dir with node_modules> --out <dir> [--main <entry>]
  *   check  --config <rendered file> [--wrangler <bin>] [--keep <dir>]
+ *          [--metafile <file>]
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -26,7 +29,8 @@ import {
 
 const USAGE = `Usage:
   cloud-deploy render --deployment <file> --environment <staging|production> --upstream <repo root> --out <dir> [--component <${DEPLOYMENT_COMPONENTS.join("|")}|all>]
-  cloud-deploy check --config <rendered file> [--wrangler <bin>] [--keep <dir>]`;
+  cloud-deploy render --deployment <file> --environment <staging|production> --packages <dir with node_modules> --out <dir> [--main <entry>]
+  cloud-deploy check --config <rendered file> [--wrangler <bin>] [--keep <dir>] [--metafile <file>]`;
 
 class UsageError extends Error {}
 
@@ -60,6 +64,8 @@ function render(args: readonly string[]): number {
     "deployment",
     "environment",
     "upstream",
+    "packages",
+    "main",
     "out",
     "component",
   ]);
@@ -79,7 +85,20 @@ function render(args: readonly string[]): number {
       `--component must be one of ${DEPLOYMENT_COMPONENTS.join(", ")}, all`,
     );
   }
-  const upstreamRoot = resolve(required(flags, "upstream"));
+  if ((flags.upstream === undefined) === (flags.packages === undefined)) {
+    throw new UsageError("give exactly one of --upstream and --packages");
+  }
+  if (flags.packages !== undefined && component !== "api") {
+    throw new UsageError(
+      "--packages renders the API Worker only; the other components need --upstream",
+    );
+  }
+  if (flags.main !== undefined && flags.packages === undefined) {
+    throw new UsageError("--main needs --packages");
+  }
+  const upstreamRoot = flags.upstream ? resolve(flags.upstream) : undefined;
+  const packagesRoot = flags.packages ? resolve(flags.packages) : undefined;
+  const main = flags.main ? resolve(flags.main) : undefined;
   const outDir = resolve(required(flags, "out"));
 
   let parsed: unknown;
@@ -103,6 +122,8 @@ function render(args: readonly string[]): number {
       deployment,
       environment: environment as DeploymentEnvironmentName,
       upstreamRoot,
+      packagesRoot,
+      main,
       outDir,
       component: name,
     }),
@@ -116,16 +137,22 @@ function render(args: readonly string[]): number {
     writeFileSync(secretsFile, entry.secretsText);
     console.log(`wrote ${configFile}`);
     console.log(`wrote ${secretsFile}`);
+    if (entry.droppedAliases.length > 0) {
+      console.log(
+        `resolved from node_modules instead of an upstream alias: ${entry.droppedAliases.join(", ")}`,
+      );
+    }
   }
   return 0;
 }
 
 function check(args: readonly string[]): number {
-  const flags = parseFlags(args, ["config", "wrangler", "keep"]);
+  const flags = parseFlags(args, ["config", "wrangler", "keep", "metafile"]);
   const result = checkRenderedConfig({
     configFile: required(flags, "config"),
     wrangler: flags.wrangler,
     keepDir: flags.keep,
+    metafile: flags.metafile,
   });
   if (!result.ok) console.error(result.output);
   console.log(
@@ -141,6 +168,7 @@ function check(args: readonly string[]): number {
         totalUpload: result.totalUpload,
         files: result.files,
         outDir: result.outDir,
+        metafile: result.metafile,
       },
       null,
       2,

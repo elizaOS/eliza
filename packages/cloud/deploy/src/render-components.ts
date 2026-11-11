@@ -41,6 +41,11 @@ export interface ComponentRenderOptions extends RenderOptions {
   readonly component: DeploymentComponentName;
 }
 
+/** A component other than the API Worker is rendered from a checkout. */
+type CheckoutRenderOptions = ComponentRenderOptions & {
+  readonly upstreamRoot: string;
+};
+
 /** Upstream environment whose structure the login render follows. */
 const LOGIN_TEMPLATE_ENVIRONMENT = "production";
 
@@ -200,7 +205,7 @@ function classOwner(
   return env.workerName;
 }
 
-function renderLogin(options: ComponentRenderOptions): RenderedConfig {
+function renderLogin(options: CheckoutRenderOptions): RenderedConfig {
   const { deployment, environment, upstreamRoot, outDir } = options;
   const env = deployment.environments[environment] as DeploymentEnvironment;
   const login = env.components?.login;
@@ -295,7 +300,7 @@ function renderLogin(options: ComponentRenderOptions): RenderedConfig {
 
 /** Shared by the speech and admission Workers, which upstream configures alike. */
 function renderLeanWorker(
-  options: ComponentRenderOptions,
+  options: CheckoutRenderOptions,
   component: "speech" | "admission",
 ): RenderedConfig {
   const { deployment, environment, upstreamRoot, outDir } = options;
@@ -407,7 +412,7 @@ function renderLeanWorker(
   });
 }
 
-function renderWeb(options: ComponentRenderOptions): RenderedConfig {
+function renderWeb(options: CheckoutRenderOptions): RenderedConfig {
   const { deployment, environment, upstreamRoot, outDir } = options;
   const env = deployment.environments[environment] as DeploymentEnvironment;
   const web = env.components?.web;
@@ -507,19 +512,26 @@ export function renderComponent(
       `deployment "${deployment.id}" has no ${environment} environment`,
     );
   }
+  if (component === "api") return renderWranglerConfig(options);
+  if (options.packagesRoot !== undefined || upstreamRoot === undefined) {
+    // Only the API Worker is published as a package. The others are a
+    // wrangler.toml beside sources in the checkout.
+    throw new RenderError(
+      `the ${component} component is rendered from an upstream checkout (upstreamRoot); only the API Worker renders from installed packages`,
+    );
+  }
   if (!isAbsolute(upstreamRoot) || !isAbsolute(outDir)) {
     throw new RenderError("upstreamRoot and outDir must be absolute paths");
   }
+  const fromCheckout: CheckoutRenderOptions = { ...options, upstreamRoot };
   switch (component) {
-    case "api":
-      return renderWranglerConfig(options);
     case "login":
-      return renderLogin(options);
+      return renderLogin(fromCheckout);
     case "speech":
     case "admission":
-      return renderLeanWorker(options, component);
+      return renderLeanWorker(fromCheckout, component);
     case "web":
-      return renderWeb(options);
+      return renderWeb(fromCheckout);
   }
 }
 
