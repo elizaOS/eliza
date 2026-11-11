@@ -192,13 +192,19 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
     const range = {
       calendarIds: ["selected-calendar"],
       days: 1,
-      timeZone: "UTC",
+      timeZone: "America/Los_Angeles",
       maximumEvents: 10,
     };
     const calendarSpec = {
       ...spec,
       steps: [
         { id: "agenda", kind: "Read", operation: "calendar_range", range },
+        {
+          id: "later-agenda",
+          kind: "Read",
+          operation: "calendar_range",
+          range,
+        },
       ],
     };
     await pg.query(
@@ -224,10 +230,27 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
       },
       operation: {
         type: "read_calendar_range",
-        ...resolvePhoneCalendarRange(range),
+        ...range,
       },
     } as const;
-    // Older peers can read absolute windows, but cannot review the new spec.
+    // A legacy run without a saved proposal cannot invent a range on restart.
+    await service.register(credential, "Synthetic device", 4, owner);
+    await expect(
+      service.proposeForWorkflow(owner, calendarDispatch),
+    ).rejects.toThrow("Workflow Calendar run time unavailable");
+    const anchor = "2026-11-01T06:55:00.000Z";
+    await pg.query(
+      "UPDATE workflow.embedded_executions SET execution=execution || $1::jsonb WHERE id=$2",
+      [
+        JSON.stringify({
+          calendarAnchorAt: anchor,
+          mode: "trigger",
+          input: { typedSchedule: { status: "ready", scheduledAt: anchor } },
+        }),
+        runId,
+      ],
+    );
+    // Older peers can read absolute windows, but cannot review an anchored relative range.
     await service.register(credential, "Synthetic device", 3, owner);
     await expect(
       service.proposeForWorkflow(owner, calendarDispatch),
@@ -236,28 +259,51 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
       (await pg.query("SELECT id FROM approval_requests")).rows,
     ).toHaveLength(1);
     await service.register(credential, "Synthetic device", 4, owner);
+    await expect(
+      service.proposeForWorkflow(owner, calendarDispatch),
+    ).rejects.toThrow();
+    await service.register(credential, "Synthetic device", 5, owner);
     const calendarProposal = await service.proposeForWorkflow(
       owner,
       calendarDispatch,
     );
     expect(calendarProposal.state).toBe("pending");
-    expect((await service.proposeForWorkflow(owner, calendarDispatch)).id).toBe(
-      calendarProposal.id,
-    );
+    const absolute = {
+      type: "read_calendar_range",
+      ...resolvePhoneCalendarRange(range, Date.parse(anchor)),
+    } as const;
+    expect(absolute.start).toBe("2026-10-31T07:00:00.000Z");
+    expect(absolute.end).toBe("2026-11-01T07:00:00.000Z");
+    expect(calendarProposal.payload).toMatchObject({ operation: absolute });
+    expect(
+      (
+        await new DeviceActionService(runtime).proposeForWorkflow(
+          owner,
+          calendarDispatch,
+        )
+      ).id,
+    ).toBe(calendarProposal.id);
+    const later = await service.proposeForWorkflow(owner, {
+      ...calendarDispatch,
+      binding: { ...calendarDispatch.binding, stepId: "later-agenda" },
+    });
+    expect(later.payload).toMatchObject({ operation: absolute });
     for (const operation of [
       { ...calendarDispatch.operation, calendarIds: ["other-calendar"] },
       { ...calendarDispatch.operation, maximumEvents: 200 },
       {
-        ...calendarDispatch.operation,
-        start: "2020-01-01T00:00:00.000Z",
-        end: "2020-01-02T00:00:00.000Z",
+        ...absolute,
+        ...resolvePhoneCalendarRange(
+          range,
+          Date.parse("2026-11-01T07:02:00.000Z"),
+        ),
       },
     ]) {
       await expect(
         service.proposeForWorkflow(owner, { ...calendarDispatch, operation }),
       ).rejects.toThrow();
     }
-    await service.register(credential, "Synthetic device", 3, owner);
+    await service.register(credential, "Synthetic device", 4, owner);
     await expect(
       service.proposeForWorkflow(owner, calendarDispatch),
     ).rejects.toThrow();
@@ -265,19 +311,32 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
     await expect(
       service.decide(credential, calendarProposal.id, calendarDigest, true),
     ).rejects.toThrow();
-    await service.register(credential, "Synthetic device", 4, owner);
+    await service.register(credential, "Synthetic device", 5, owner);
     await service.decide(credential, calendarProposal.id, calendarDigest, true);
-    await service.register(credential, "Synthetic device", 3, owner);
+    await service.register(credential, "Synthetic device", 4, owner);
     await expect(
       service.claim(credential, calendarProposal.id, calendarDigest),
     ).rejects.toThrow();
+    // A proposal enqueued before the anchor field existed retains its original
+    // absolute payload, identity and expiry after the service is recreated.
+    await pg.query(
+      "UPDATE workflow.embedded_executions SET execution=execution - 'calendarAnchorAt' WHERE id=$1",
+      [runId],
+    );
+    const legacy = await new DeviceActionService(runtime).proposeForWorkflow(
+      owner,
+      calendarDispatch,
+    );
+    expect(legacy.id).toBe(calendarProposal.id);
+    expect(deviceProposalDigest(legacy)).toBe(calendarDigest);
+    expect(legacy.expiresAt).toEqual(calendarProposal.expiresAt);
     await pg.query(
       'UPDATE workflow.embedded_executions SET execution=execution || \'{"finished":true,"status":"cancelled"}\'::jsonb',
     );
     await expect(service.proposeForWorkflow(owner, dispatch)).rejects.toThrow();
     expect(
       (await pg.query("SELECT id FROM approval_requests")).rows,
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   } finally {
     await pg.close();
   }
