@@ -18,6 +18,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
   elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderStatus,
@@ -47,7 +48,6 @@ import { z } from "zod";
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
-  fundingRefusalFields,
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
@@ -295,7 +295,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection?.ok === true &&
       providerSelection.provider !== "kokoro" &&
       providerSelection.provider !== "cloudflare";
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
@@ -711,7 +711,7 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: billingCost,
         admissionSnapshot,
-        credential,
+        refreshAuthEntry,
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
       });
@@ -722,9 +722,12 @@ async function __hono_POST(c: AppContext) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {
-            error: "Insufficient credits for text-to-speech",
+            // Clients parse `error.code` and `error.resetsAt`.
+            error: inferenceFundingRefusal(error, {
+              insufficientCreditsMessage:
+                "Insufficient credits for text-to-speech",
+            }),
             required: error.required,
-            ...fundingRefusalFields(error, admissionSnapshot),
           },
           { status: 402 },
         );

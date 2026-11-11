@@ -12,7 +12,6 @@ import type {
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import type { PricingCacheReadOptions } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
-import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/credits";
 import type { GenerativeOperationContext } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import type {
   InferenceAdmissionSnapshot,
@@ -37,8 +36,10 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
+  /** Verified identity metadata for callers that bind a session to it (the speech relay). */
   credential?: InferenceCredentialCheck;
+  /** Rewrites the caller's cached auth entry off the response; handed to paid admission. */
+  refreshAuthEntry?: () => void;
   appScopeId: string | null;
 }
 
@@ -213,9 +214,6 @@ export function getGenerativeExecutionContext(
 export function getGenerativeOperationContext(
   c: AppContext,
   caller: GenerativeRouteCaller,
-  options: {
-    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
-  } = {},
 ): GenerativeOperationContext {
   return {
     organizationId: caller.user.organization_id,
@@ -223,8 +221,7 @@ export function getGenerativeOperationContext(
     apiKeyId: caller.apiKeyId,
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
-    credential: caller.credential,
-    ...options,
+    refreshAuthEntry: caller.refreshAuthEntry,
     executionCtx: getGenerativeExecutionContext(c),
   };
 }
@@ -333,26 +330,6 @@ export function asGenerativeCacheApiError(
   return null;
 }
 
-/**
- * Typed fields for a funding refusal decided from the cached admission
- * snapshot. A plan subscriber that used its period allowance is told when it
- * resets; the snapshot names that without a primary read.
- */
-export function fundingRefusalFields(
-  error: unknown,
-  admissionSnapshot: InferenceAdmissionSnapshot | undefined,
-): { code: string; resetsAt?: string } {
-  if (error instanceof BillingHoldActiveError) return { code: error.code };
-  if (!admissionSnapshot?.subscriptionFunded) {
-    return { code: "insufficient_credits" };
-  }
-  const resetsAt = admissionSnapshot.authority.effectiveUntil;
-  return {
-    code: "allowance_exhausted",
-    ...(resetsAt && { resetsAt: new Date(resetsAt).toISOString() }),
-  };
-}
-
 export async function admitFlatGenerativeOperation(params: {
   c: AppContext;
   context: BillingContext;
@@ -360,9 +337,17 @@ export async function admitFlatGenerativeOperation(params: {
   cost: FlatBillingCost;
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  credential?: InferenceCredentialCheck;
+  /** The caller's `refreshAuthEntry`; see organization admission. */
+  refreshAuthEntry?: () => void;
   /** Use only when the caller must invoke the returned dispatch marker. */
   atomicProviderBoundary?: boolean;
+  /**
+   * Commit the gate lease at the dispatch marker instead of after the
+   * response. For operations that outlive their request (a provider job that
+   * is still running when the route answers), so the gate alarm charges the
+   * estimate if the Worker never settles.
+   */
+  commitLeaseAtDispatch?: boolean;
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -415,8 +400,11 @@ export async function admitFlatGenerativeOperation(params: {
       executionCtx,
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
-      ...(params.credential ? { credential: params.credential } : {}),
+      refreshAuthEntry: params.refreshAuthEntry,
       atomicProviderBoundary: params.atomicProviderBoundary === true,
+      ...(params.commitLeaseAtDispatch === true && {
+        commitLeaseAtDispatch: true,
+      }),
     });
   } catch (error) {
     if (
@@ -649,6 +637,7 @@ export async function requireGenerativeRouteCaller(
       authSource: "combined_cache",
       admissionSnapshot: resolution.ctx.admission,
       credential: resolution.credential,
+      refreshAuthEntry: resolution.refreshEntry,
       appScopeId:
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null,
     };

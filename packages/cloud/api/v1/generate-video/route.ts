@@ -37,7 +37,6 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
 import { persistPendingVideoSettlement } from "@elizaos/cloud-shared/lib/services/pending-video-settlement";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -289,15 +288,11 @@ app.post("/", async (c) => {
         : "Video generation is not configured";
       pendingResponse = jsonError(c, 503, message, "internal_error");
     }
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     if (pendingResponse) return pendingResponse;
     if (!request) throw new Error("Validated video request was not retained");
 
@@ -385,8 +380,11 @@ app.post("/", async (c) => {
           cost: candidate.cost,
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: true,
+          // A render is polled for minutes and can outlive this request. The
+          // lease is committed before the provider call, so the gate alarm
+          // charges the estimate if the Worker dies before it settles.
+          commitLeaseAtDispatch: true,
         });
       } catch (error) {
         // error-policy:J1 the HTTP boundary translates insufficient-credit
@@ -615,19 +613,39 @@ app.post("/", async (c) => {
             },
           );
         })
-        .catch((persistError) => {
-          // error-policy:J7 the upstream job may still bill us, so a failed
-          // detached persistence must retain the admitted hold for the sweep.
+        .catch(async (persistError) => {
+          // error-policy:J7 the upstream job may still bill us and no pending
+          // record exists for the reconcile sweep. A synchronous reservation
+          // stays in the ledger for the reservation sweep. A deferred
+          // admission holds nothing there, so it is charged conservatively
+          // now. If the ledger hold was already taken and the admission
+          // released, this repeats that release and charges nothing twice.
           logger.error(
-            "[GenerateVideo] Failed to persist pending settlement — leaving hold for the reservation sweep",
+            "[GenerateVideo] Failed to persist pending settlement; charging the admitted estimate",
             {
               requestId: error.requestId,
+              admissionMode: pendingAdmission.mode,
               error:
                 persistError instanceof Error
                   ? persistError.message
                   : String(persistError),
             },
           );
+          if (pendingAdmission.mode === "synchronous_reservation") return;
+          await pendingAdmission.settleUnknown().catch((settleError) => {
+            // error-policy:J7 the lease committed at dispatch stays in the
+            // gate, whose alarm retries this same charge.
+            logger.error(
+              "[GenerateVideo] Failed to charge an unpersisted pending render",
+              {
+                requestId: error.requestId,
+                error:
+                  settleError instanceof Error
+                    ? settleError.message
+                    : String(settleError),
+              },
+            );
+          });
         });
       const executionCtx = getGenerativeExecutionContext(c);
       if (executionCtx) executionCtx.waitUntil(persistPendingSettlement);
@@ -721,7 +739,8 @@ app.post("/", async (c) => {
           );
         })
         .catch((settleError) => {
-          // error-policy:J7 the reservation sweep retains the same pinned
+          // error-policy:J7 the lease committed at dispatch (or the ledger
+          // reservation on hosts without the gate) keeps the same pinned
           // provider/model identity if immediate conservative settlement fails.
           logger.error(
             "[GenerateVideo] Failed to settle an ambiguous provider submission",
@@ -755,7 +774,8 @@ app.post("/", async (c) => {
       const executionCtx = getGenerativeExecutionContext(c);
       const observed = release.catch((reconcileError) => {
         // error-policy:J7 settlement diagnostics must not hide the original
-        // route failure; the reservation sweep remains the durable backstop.
+        // route failure; the committed lease or ledger reservation remains
+        // the durable backstop.
         logger.error("[GenerateVideo] Failed to release admission", {
           error:
             reconcileError instanceof Error

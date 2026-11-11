@@ -24,6 +24,11 @@ Worker and accounting hosts. Enroll an organization through the internal
 `withInferencePolicyMutation({organizationIds, enable: true}, ...)` transaction.
 All policy writers must use the managed mutation service; the database rejects
 an unfenced change for an enrolled organization.
+Request routes (chat, responses, messages, embeddings, speech and the other
+paid routes) never take the delegated lane or its rate window: they are admitted
+from the cached auth entry and counted per isolate whatever the flag says. The
+flag selects the delegated lane only for a session that commits its lease at
+dispatch (the speech relay) and for hosts without a Worker lifetime.
 
 Migration 0553 also rejects an unfenced policy write in a repeatable-read or
 serializable transaction with SQLSTATE `40001`. Restart that whole transaction

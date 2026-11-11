@@ -112,6 +112,7 @@ import {
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import {
   createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
@@ -1302,6 +1303,7 @@ export async function handleChatCompletionsPOST(
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let cachedApiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
+    let refreshAuthEntry: (() => void) | undefined;
     let appScopeId: string | null = null;
     // The cached auth entry is the whole pre-provider decision: identity,
     // standing and funding come from this one read.
@@ -1367,6 +1369,7 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      refreshAuthEntry = resolution.refreshEntry;
       cachedApiKeyRateLimit =
         "apiKeyRateLimit" in resolution.ctx
           ? resolution.ctx.apiKeyRateLimit
@@ -1807,6 +1810,7 @@ export async function handleChatCompletionsPOST(
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
+          refreshAuthEntry,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -1886,18 +1890,11 @@ export async function handleChatCompletionsPOST(
         // A plan subscriber (paid or grant) has spent its period allowance and
         // credit: name that state and when the allowance resets. Status and
         // type stay 402 / insufficient_quota for existing OpenAI-style clients.
-        // The Worker never reads Postgres to word a refusal: the cached
-        // admission snapshot names the plan state and its period end.
-        const exhaustion = useMonetizedAppBilling
-          ? null
-          : options.executionCtx
-            ? admissionSnapshot?.subscriptionFunded
-              ? {
-                  resetsAt: admissionSnapshot.authority.effectiveUntil
-                    ? new Date(admissionSnapshot.authority.effectiveUntil)
-                    : null,
-                }
-              : null
+        // The Worker never reads Postgres to word a refusal: the admission
+        // decision names the plan state and the end of its period.
+        const exhaustion =
+          useMonetizedAppBilling || options.executionCtx
+            ? null
             : await import(
                 "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
               )
@@ -1918,11 +1915,7 @@ export async function handleChatCompletionsPOST(
                       resetsAt: exhaustion.resetsAt.toISOString(),
                     }),
                   }
-                : {
-                    message: `Insufficient ${creditKind}. Required: $${error.required.toFixed(4)}`,
-                    type: "insufficient_quota",
-                    code: "insufficient_credits",
-                  },
+                : inferenceFundingRefusal(error, { creditKind }),
             },
             { status: 402 },
           ),

@@ -58,6 +58,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
@@ -65,7 +66,6 @@ import { parseBuffer } from "music-metadata";
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
-  fundingRefusalFields,
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
@@ -530,7 +530,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     request = sizeCheckedRequest;
 
     const authStartedAt = performance.now();
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
@@ -695,16 +695,19 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
-          credential,
+          refreshAuthEntry,
           atomicProviderBoundary: true,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return Response.json(
             {
-              error: "Insufficient credits for speech-to-text",
+              // Clients parse `error.code` and `error.resetsAt`.
+              error: inferenceFundingRefusal(error, {
+                insufficientCreditsMessage:
+                  "Insufficient credits for speech-to-text",
+              }),
               required: error.required,
-              ...fundingRefusalFields(error, admissionSnapshot),
             },
             { status: 402 },
           );

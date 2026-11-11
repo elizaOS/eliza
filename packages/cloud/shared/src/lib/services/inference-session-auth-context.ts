@@ -51,7 +51,7 @@ const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 export interface ResolveInferenceSessionAuthOptions {
   useAuthCache?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-  /** The caller will fuse this strong check into its admission lease. */
+  /** The caller wants the verified credential back; the session is still checked here. */
   deferStrongCredentialCheck?: boolean;
   /** Return verified JWT identity metadata after the normal authorization boundary. */
   includeVerifiedCredential?: boolean;
@@ -177,10 +177,15 @@ async function enforceStrongSessionBoundary(
     stewardUserId,
     issuedAt,
   };
-  if (deferStrongCredentialCheck) return { ...resolved, credential };
+  // Organization admission no longer carries the credential into a lease, so
+  // nothing after this point would check a deferred session: a revoked or
+  // superseded session is refused here. `deferStrongCredentialCheck` only
+  // asks for the verified credential to be returned.
   try {
     await assertInferenceCredentialActive(resolved.ctx.orgId, credential);
-    return includeVerifiedCredential ? { ...resolved, credential } : resolved;
+    return deferStrongCredentialCheck || includeVerifiedCredential
+      ? { ...resolved, credential }
+      : resolved;
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
       return error.reason === "session_revoked" || error.reason === "session_binding_revoked"

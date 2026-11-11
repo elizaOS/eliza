@@ -18,7 +18,6 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { getSupportedVideoModelDefinition } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -291,10 +290,6 @@ const handle: Handler<AppEnv> = async (c) => {
     } catch (error) {
       return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
     }
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     if (pendingResponse) return pendingResponse;
 
     if (pricedMutation) {
@@ -323,7 +318,6 @@ const handle: Handler<AppEnv> = async (c) => {
           apiKeyId: caller.apiKeyId,
           cost: pricedMutation.cost,
           admissionSnapshot: caller.admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: true,
         });
       } catch (error) {

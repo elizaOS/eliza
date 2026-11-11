@@ -663,24 +663,24 @@ describe("Worker billing admits from the snapshot alone", () => {
     expect(background).toHaveLength(0);
   });
 
-  test("an aged hold refusal stands for its request and is refreshed off the response", async () => {
-    const background: Promise<unknown>[] = [];
+  // A refusal is decided again from the primary before it is returned. This
+  // file's primary throws while armed, so the cached refusal stands; the
+  // refill that admits is covered by inference-admission-refusal.pglite.test.ts.
+  test("an aged hold refusal reads the primary inline and stands when that read fails", async () => {
     primaryArmed = true;
     primaryTouches = 0;
     try {
       await expect(
-        admit(aged({ billingHold: true }), () => Response.json({ admitted: true }), background),
+        admit(aged({ billingHold: true }), () => Response.json({ admitted: true })),
       ).rejects.toThrow(BillingHoldActiveError);
-      expect(background.length).toBeGreaterThan(0);
-      await Promise.allSettled(background);
       expect(primaryTouches).toBeGreaterThan(0);
     } finally {
       primaryArmed = false;
     }
   });
 
-  // The auth entry keeps carrying the held snapshot until its own refresh;
-  // the refill that the first refusal scheduled is what later requests use.
+  // The auth entry keeps carrying the held snapshot until its own refresh; a
+  // projection published since then decides the request with one cache read.
   test("a carried hold yields to the newer published snapshot without a primary read", async () => {
     const { resetInferenceAdmissionMemoryCacheForTests } = await import(
       "./inference-admission-snapshot"

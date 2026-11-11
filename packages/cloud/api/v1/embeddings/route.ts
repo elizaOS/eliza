@@ -58,6 +58,7 @@ import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import { isPassthroughEmbeddingsEnabled } from "@elizaos/cloud-shared/lib/services/inference-passthrough";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
@@ -116,6 +117,7 @@ app.post("/", async (c) => {
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
+  let refreshAuthEntry: (() => void) | undefined;
   let providerRequestId: string | undefined;
   let providerModel: string | undefined;
   try {
@@ -219,6 +221,7 @@ app.post("/", async (c) => {
           ? resolution.ctx.apiKeyRateLimit
           : undefined;
       admissionCredential = resolution.credential;
+      refreshAuthEntry = resolution.refreshEntry;
     } else {
       if (executionCtx) {
         return c.json(
@@ -462,7 +465,7 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
-          credential: admissionCredential,
+          refreshAuthEntry,
           atomicProviderBoundary: Boolean(executionCtx),
         });
         settleReservation = admission.settle;
@@ -491,16 +494,7 @@ app.post("/", async (c) => {
         );
       }
       if (error instanceof InsufficientCreditsError) {
-        return c.json(
-          {
-            error: {
-              message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-              type: "insufficient_quota",
-              code: "insufficient_balance",
-            },
-          },
-          402,
-        );
+        return c.json({ error: inferenceFundingRefusal(error) }, 402);
       }
       if (error instanceof InferenceAdmissionUnavailableError) {
         logger.error(
@@ -847,16 +841,7 @@ app.post("/", async (c) => {
     }
 
     if (error instanceof InsufficientCreditsError) {
-      return c.json(
-        {
-          error: {
-            message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-            type: "insufficient_quota",
-            code: "insufficient_balance",
-          },
-        },
-        402,
-      );
+      return c.json({ error: inferenceFundingRefusal(error) }, 402);
     }
     if (error instanceof InferenceAdmissionUnavailableError) {
       logger.error("[Embeddings] provider-boundary admission failed closed", {

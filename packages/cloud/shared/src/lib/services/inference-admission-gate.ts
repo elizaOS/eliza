@@ -29,15 +29,12 @@ import {
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
 import { INFERENCE_RATE_LIMIT_GATE_PREFIX } from "./inference-policy-contract";
-import type { EndpointType } from "./org-rate-limits";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
 
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
-// One bounded readiness window avoids canceling a rate actor before it can run.
-const RATE_LIMIT_GATE_TIMEOUT_MS = 5_000;
 const LEASE_GATE_MAX_ATTEMPTS = 2;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
 const DISPATCH_GATE_TOTAL_BUDGET_MS = 4_500;
@@ -45,8 +42,6 @@ const SETTLEMENT_FENCE_GATE_TOTAL_BUDGET_MS = 4_500;
 const SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS = 3;
 const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
 const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
-// Below the ~10 s after which Cloudflare may evict an idle Durable Object.
-const GATE_WAKE_IDLE_MS = 5_000;
 
 interface LeaseResponse {
   admitted: boolean;
@@ -79,13 +74,6 @@ interface HydrateResponse {
 
 interface RateLimitWarmResponse {
   warmed: boolean;
-}
-
-export interface InferenceRateLimitDecision {
-  allowed: boolean;
-  remaining: number;
-  resetAt: number;
-  retryAfter?: number;
 }
 
 /** Authoritative balance observation published to the gate at settlement. */
@@ -434,36 +422,6 @@ async function parseRateLimitWarmResponse(response: Response): Promise<RateLimit
   }
 }
 
-async function parseRateLimitResponse(response: Response): Promise<InferenceRateLimitDecision> {
-  try {
-    const value = await response.json();
-    if (typeof value !== "object" || value === null) {
-      throw new TypeError("response does not match the rate-limit schema");
-    }
-    const record = value as Record<string, unknown>;
-    if (
-      typeof record.allowed !== "boolean" ||
-      !Number.isSafeInteger(record.remaining) ||
-      (record.remaining as number) < 0 ||
-      !Number.isSafeInteger(record.resetAt) ||
-      (record.resetAt as number) <= 0 ||
-      (record.retryAfter !== undefined &&
-        (!Number.isSafeInteger(record.retryAfter) || (record.retryAfter as number) <= 0))
-    ) {
-      throw new TypeError("response does not match the rate-limit schema");
-    }
-    return value as InferenceRateLimitDecision;
-  } catch (error) {
-    // error-policy:J3 malformed responses never become an allowed request.
-    throw new InferenceAdmissionGateUnavailableError(
-      `Inference admission gate returned invalid rate-limit JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    );
-  }
-}
-
 async function readGateErrorCode(response: Response): Promise<string | undefined> {
   try {
     const value = await response.json();
@@ -576,23 +534,6 @@ export async function publishInferenceAdmissionPolicy(params: {
 
 const rateLimitWarms = new Map<string, { expiresAt: number; promise: Promise<void> }>();
 
-function activeRateLimitGate(
-  organizationId: string,
-  windowMs: number,
-): {
-  stub: RuntimeDurableObjectStub;
-  windowStartedAt: number;
-} {
-  // Capture the fixed-window identity before the request can wait behind the
-  // Durable Object input gate. This keeps delayed arrivals charged to the
-  // window in which the Worker admitted them.
-  const now = Date.now();
-  return {
-    stub: rateLimitGateStub(organizationId),
-    windowStartedAt: Math.floor(now / windowMs) * windowMs,
-  };
-}
-
 /** Warm only the strongly ordered rate-limit window, without reading the balance database. */
 export async function warmInferenceRateLimitGate(
   organizationId: string,
@@ -634,53 +575,6 @@ export async function warmInferenceRateLimitGate(
   await warm;
 }
 
-// Last request this isolate saw per organization, oldest first.
-const gateWakes = new Map<string, number>();
-
-/**
- * Start the organization's billing gate while the caller's rate decision runs.
- *
- * An evicted Durable Object pays activation on its next request. Dispatch
- * reaches this gate only after the rate decision and reserve, so after idle
- * that activation ran in series (1.4-2.5 s of gateway_setup). `/rate-limit-warm`
- * runs on the gate's rate queue and only reads its rate windows: no lease,
- * quota, balance or durable write. One wake per organization per isolate after
- * GATE_WAKE_IDLE_MS without a request; a failed wake never fails the request.
- */
-export function wakeInferenceAdmissionGate(
-  organizationId: string,
-  executionCtx: { waitUntil(promise: Promise<unknown>): void },
-): void {
-  const now = Date.now();
-  const lastRequestAt = gateWakes.get(organizationId);
-  gateWakes.delete(organizationId);
-  gateWakes.set(organizationId, now);
-  if (lastRequestAt !== undefined && now - lastRequestAt < GATE_WAKE_IDLE_MS) return;
-  if (gateWakes.size > RATE_LIMIT_WARM_MAX_ENTRIES) {
-    const oldest = gateWakes.keys().next().value;
-    if (oldest !== undefined) gateWakes.delete(oldest);
-  }
-  executionCtx.waitUntil(
-    (async () => {
-      const response = await gateFetch(
-        organizationId,
-        "/rate-limit-warm",
-        {},
-        gateStub(organizationId),
-        AbortSignal.timeout(HYDRATION_GATE_TIMEOUT_MS),
-      );
-      await response.body?.cancel();
-    })().catch((error) => {
-      // error-policy:J7 the wake only moves activation earlier; dispatch keeps
-      // its own deadline and fails closed on its own.
-      logger.warn("[InferenceAdmissionGate] wake failed", {
-        organizationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }),
-  );
-}
-
 function scheduleGateHydration(
   organizationId: string,
   stub: RuntimeDurableObjectStub,
@@ -695,116 +589,6 @@ function scheduleGateHydration(
     });
   });
   executionCtx.waitUntil(observed);
-}
-
-/**
- * Atomically consume one request from an organization's endpoint window.
- * The Durable Object response is the only authoritative Worker-side decision.
- */
-export async function consumeInferenceRateLimit(params: {
-  organizationId: string;
-  endpointType: EndpointType;
-  windowMs: number;
-  maxRequests: number;
-  /** Per-key cap (`api_keys.rate_limit`) checked in the same decision. */
-  apiKey?: { id: string; maxRequests: number };
-}): Promise<InferenceRateLimitDecision> {
-  if (
-    !params.organizationId ||
-    params.organizationId.length > 256 ||
-    !Number.isSafeInteger(params.windowMs) ||
-    params.windowMs <= 0 ||
-    !Number.isSafeInteger(params.maxRequests) ||
-    params.maxRequests <= 0
-  ) {
-    throw new InferenceAdmissionGateUnavailableError(
-      "Inference rate-limit identity and positive policy are required",
-    );
-  }
-
-  const activeGate = activeRateLimitGate(params.organizationId, params.windowMs);
-  const operationStartedAt = Date.now();
-  const body = {
-    operationId: crypto.randomUUID(),
-    operationDeadlineAt: operationStartedAt + RATE_LIMIT_GATE_TIMEOUT_MS,
-    endpointType: params.endpointType,
-    windowMs: params.windowMs,
-    maxRequests: params.maxRequests,
-    windowStartedAt: activeGate.windowStartedAt,
-    ...(params.apiKey && { apiKey: params.apiKey }),
-  };
-  const response = await gateFetch(
-    params.organizationId,
-    "/rate-limit",
-    body,
-    activeGate.stub,
-    AbortSignal.timeout(RATE_LIMIT_GATE_TIMEOUT_MS),
-  );
-  if (response.status !== 200 && response.status !== 429) {
-    throw new InferenceAdmissionGateUnavailableError(
-      `Inference admission gate rate limit failed with status ${response.status}`,
-    );
-  }
-  const decision = await parseRateLimitResponse(response);
-  if (
-    (response.status === 200 && !decision.allowed) ||
-    (response.status === 429 && decision.allowed)
-  ) {
-    throw new InferenceAdmissionGateUnavailableError(
-      "Inference admission gate returned an inconsistent rate-limit decision",
-    );
-  }
-  return decision;
-}
-
-/**
- * Consume the primary path's `rate-limit:v2` windows after the organization
- * object accepts the cached (epoch, generation, key cap) proof. Every outcome
- * other than an allow or a denial (stale epoch, pending mutation, revoked
- * credential, cold object, transport failure) throws, and the caller decides
- * on the primary path instead.
- */
-export async function consumeAuthorizedInferenceRateLimit(params: {
-  organizationId: string;
-  endpointType: EndpointType;
-  policyEpoch: string;
-  policyGeneration: string;
-  credential: {
-    kind: "api_key";
-    credentialId: string;
-    userId: string;
-    rateLimit: number;
-    expiresAt: number | null;
-  };
-}): Promise<InferenceRateLimitDecision> {
-  const operationStartedAt = Date.now();
-  const response = await gateFetch(
-    params.organizationId,
-    "/rate-policy/rate",
-    {
-      organizationId: params.organizationId,
-      endpointType: params.endpointType,
-      policyEpoch: params.policyEpoch,
-      policyGeneration: params.policyGeneration,
-      credential: params.credential,
-      operationId: crypto.randomUUID(),
-      operationDeadlineAt: operationStartedAt + RATE_LIMIT_GATE_TIMEOUT_MS,
-      // Captured before any queue so a delayed arrival keeps its window.
-      windowStartedAt: Math.floor(operationStartedAt / 60_000) * 60_000,
-    },
-    gateStub(params.organizationId),
-    AbortSignal.timeout(RATE_LIMIT_GATE_TIMEOUT_MS),
-  );
-  if (response.status !== 200 && response.status !== 429)
-    throw new InferenceAdmissionGateUnavailableError(
-      `Inference rate policy refused with status ${response.status}`,
-    );
-  const decision = await parseRateLimitResponse(response);
-  if ((response.status === 200) !== decision.allowed)
-    throw new InferenceAdmissionGateUnavailableError(
-      "Inference rate policy returned an inconsistent decision",
-    );
-  return decision;
 }
 
 /**

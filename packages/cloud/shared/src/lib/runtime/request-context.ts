@@ -31,8 +31,9 @@ export interface RequestContext {
   defer?: RequestTaskDefer;
   /**
    * Rewrite this request's cached inference auth entry from the primary, off
-   * the response. Registered by inference authentication; post-response
-   * accounting calls it when the entry's funding standing is no longer true.
+   * the response. Registered by inference authentication and bound to the
+   * request's admission, which calls it when the entry's funding standing is
+   * no longer true.
    */
   refreshInferenceAuthEntry?: () => void;
 }
@@ -62,9 +63,9 @@ export function setRequestInferenceAuthEntryRefresh(refresh: () => void): void {
   if (store) store.refreshInferenceAuthEntry = refresh;
 }
 
-/** Refresh the current request's cached auth entry; a no-op outside a request. */
-export function refreshRequestInferenceAuthEntry(): void {
-  als.getStore()?.refreshInferenceAuthEntry?.();
+/** The current request's cached-auth-entry refresh, when authentication registered one. */
+export function getRequestInferenceAuthEntryRefresh(): (() => void) | undefined {
+  return als.getStore()?.refreshInferenceAuthEntry;
 }
 
 /** Runtime-owned post-response task registrar for the current async chain. */

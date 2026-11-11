@@ -15,7 +15,6 @@ import { InsufficientCreditsError } from "../credits";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
 import { InferenceBillingUnavailableError } from "../inference-billing-fast-path";
 import {
-  type InferenceCredentialCheck,
   InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
@@ -63,8 +62,8 @@ export type ProxyCombinedAdmission =
       /** Absent when the caller was authorized authoritatively; admission then reads the primary. */
       admissionSnapshot?: InferenceAdmissionSnapshot;
       executionCtx: { waitUntil(promise: Promise<unknown>): void };
-      credential?: InferenceCredentialCheck;
-      credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+      /** Rewrites the caller's cached auth entry off the response (see admission). */
+      refreshAuthEntry?: () => void;
     })
   | (ProxyResolvedAuth & {
       mode: "compatibility";
@@ -280,12 +279,7 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
-          ...(() => {
-            const credential = combinedAdmission.credentialForAdmission
-              ? combinedAdmission.credentialForAdmission()
-              : combinedAdmission.credential;
-            return credential ? { credential } : {};
-          })(),
+          refreshAuthEntry: combinedAdmission.refreshAuthEntry,
           atomicProviderBoundary: true,
         });
       } else {
