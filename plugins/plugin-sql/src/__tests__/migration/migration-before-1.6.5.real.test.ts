@@ -56,8 +56,28 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
 
   describe("Flow 1: Fresh install (no tables)", () => {
     it("should return early when rooms table does not exist", async () => {
-      // No tables created - should return early without error
-      await migrateToEntityRLS(mockAdapter);
+      // No tables created - should return early without error, after the
+      // database-type probe and the empty-public probe, without the
+      // information_schema walk of the conversion.
+      const statements: unknown[] = [];
+      const execute = db.execute.bind(db);
+      const countingDb = new Proxy(db, {
+        get(target, property, receiver) {
+          if (property === "execute") {
+            return (query: Parameters<typeof execute>[0]) => {
+              statements.push(query);
+              return execute(query);
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      const countingAdapter: MockDatabaseAdapter = {
+        db: countingDb,
+        getDatabase: () => countingDb,
+      };
+      await migrateToEntityRLS(countingAdapter);
+      expect(statements.length).toBe(2);
 
       // Verify no tables were created (migration returned early)
       const tablesResult = await db.execute(sql`

@@ -126,6 +126,7 @@ export interface DurableDraftState {
    * sent (it was marked as sending by a send that did not settle here).
    */
   unsettled: boolean;
+  /** Recovery text may be retained only in memory after a failed consume. */
   savedText: string;
   /** {@link DurableDraftController.consume} is in progress. */
   consuming: boolean;
@@ -141,9 +142,10 @@ export type DurableDraftSendOutcome =
   | "unknown";
 
 /**
- * Replace the editor's text. A host that applies the change asynchronously
- * (a queued UI update) returns a promise that settles once it is applied;
- * writes stay paused until then. When `expectedText` is given the host must
+ * Replace the editor's text. A synchronous host returns void after applying it.
+ * A host that applies the change asynchronously (a queued UI update) returns
+ * a promise that settles once it is applied.
+ * Writes stay paused until then. When `expectedText` is given the host must
  * apply the change only if the editor still shows exactly that text, and
  * only while `current()` still returns true.
  */
@@ -162,6 +164,8 @@ interface Binding<Recovery> {
   ready: boolean;
   failed: boolean;
   queue: Promise<void>;
+  writeSerial: number;
+  savedWriteSerial: number;
 }
 
 /** A send in flight: the saved copy keeps its text until dispatch is known. */
@@ -170,6 +174,8 @@ interface Held<Recovery> {
   text: string;
   /** The same conversation reopened while the send was in flight. */
   peer?: Binding<Recovery>;
+  /** A known non-dispatch still owns its queued editor restoration. */
+  releasing?: Promise<void>;
 }
 
 const OPEN_RETRY_DELAYS_MS = [150, 600] as const;
@@ -198,6 +204,11 @@ export class DurableDraftController<Recovery = unknown> {
   private active?: Binding<Recovery>;
   private opening?: Promise<void>;
   private held?: Held<Recovery>;
+  /** Pending or unconfirmed writes remain owned after the editor changes binding. */
+  private readonly pendingWrites = new Set<Binding<Recovery>>();
+  /** Host editor updates remain owned until their completion settles. */
+  private readonly restoring = new Map<Binding<Recovery>, Promise<void>>();
+  private writeSerial = 0;
   private readonly messages: DurableDraftMessages;
   state: DurableDraftState = initialState();
 
@@ -223,6 +234,45 @@ export class DurableDraftController<Recovery = unknown> {
   private publish(patch: Partial<DurableDraftState>): void {
     this.state = { ...this.state, ...patch };
     this.changed();
+  }
+
+  private restoreEditor(
+    binding: Binding<Recovery>,
+    text: string,
+    expectedText: string,
+    current: () => boolean = () => true,
+  ): boolean | Promise<boolean> {
+    let complete!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    this.restoring.set(binding, completion);
+    let active = true;
+    const admitted = () => active && this.active === binding && current();
+    const retire = () => {
+      active = false;
+      if (this.restoring.get(binding) === completion)
+        this.restoring.delete(binding);
+      complete();
+    };
+    const finish = () => {
+      try {
+        return admitted() && this.text() === text;
+      } finally {
+        retire();
+      }
+    };
+    try {
+      const result = this.restore(text, expectedText, admitted);
+      if (!result) return finish();
+      return result.then(finish, (error: unknown) => {
+        retire();
+        throw error;
+      });
+    } catch (error) {
+      retire();
+      throw error;
+    }
   }
 
   /** The active binding, or undefined while none is open. */
@@ -272,6 +322,8 @@ export class DurableDraftController<Recovery = unknown> {
       ready: false,
       failed: false,
       queue: Promise.resolve(),
+      writeSerial: 0,
+      savedWriteSerial: 0,
     };
     this.active = binding;
     this.publish({
@@ -308,6 +360,36 @@ export class DurableDraftController<Recovery = unknown> {
       // or another window) may already have been delivered: it is offered for
       // review and never restored as an ordinary draft.
       const unsettled = !sending && isSendingDurableDraft(binding.record);
+      let retained: Binding<Recovery> | undefined;
+      for (const owner of this.pendingWrites) {
+        if (
+          owner !== binding &&
+          owner.key === key &&
+          owner.failed &&
+          owner.last &&
+          (!retained || owner.writeSerial > retained.writeSerial)
+        )
+          retained = owner;
+      }
+      if (
+        retained &&
+        (retained.last !== this.text() ||
+          retained.last === (binding.record?.text ?? "")) &&
+        !sending &&
+        !unsettled
+      ) {
+        binding.ready = true;
+        binding.failed = true;
+        this.publish({
+          opening: false,
+          conflict: true,
+          unsettled: false,
+          error: true,
+          savedText: retained.last,
+          message: this.messages.saveFailed,
+        });
+        return;
+      }
       if (this.text() !== initial || initial !== "") {
         // Text typed before (or while) the draft opened always wins the
         // editor; a different saved copy is offered for review instead.
@@ -344,7 +426,7 @@ export class DurableDraftController<Recovery = unknown> {
       if (sending && held) held.peer = binding;
       // The UI may queue its update: keep writes paused until it applies, and
       // let it check the original text and binding again when it does.
-      await this.restore(restored, initial, () => this.active === binding);
+      await this.restoreEditor(binding, restored, initial);
       if (this.active !== binding) return;
       binding.ready = true;
       const current = this.text();
@@ -404,8 +486,10 @@ export class DurableDraftController<Recovery = unknown> {
     if (
       !binding.ready ||
       binding.failed ||
+      this.restoring.has(binding) ||
       this.state.consuming ||
-      this.held?.binding === binding
+      this.held?.binding === binding ||
+      (this.held?.releasing && this.held.peer === binding)
     )
       return;
     this.publish({ message: "" });
@@ -423,7 +507,10 @@ export class DurableDraftController<Recovery = unknown> {
     text: () => string | undefined,
     clearStatus = false,
   ): void {
-    binding.queue = binding.queue.then(async () => {
+    this.pendingWrites.add(binding);
+    const serial = ++this.writeSerial;
+    binding.writeSerial = serial;
+    const task = binding.queue.then(async () => {
       if (binding.failed) return;
       const value = text();
       if (value === undefined) return;
@@ -432,6 +519,18 @@ export class DurableDraftController<Recovery = unknown> {
           binding.record,
           value,
         );
+        binding.savedWriteSerial = serial;
+        // A confirmed newer edit is the same supersession authority used by
+        // flush. Keep failed owners until that exact CAS has succeeded.
+        for (const owner of this.pendingWrites) {
+          if (
+            owner !== binding &&
+            owner.key === binding.key &&
+            owner.failed &&
+            owner.writeSerial < serial
+          )
+            this.pendingWrites.delete(owner);
+        }
         if (clearStatus && this.active === binding && binding.last === value)
           this.publish({ message: "" });
       } catch (error) {
@@ -445,6 +544,21 @@ export class DurableDraftController<Recovery = unknown> {
         if (this.active === binding) await this.reviewConflict(binding);
       }
     });
+    binding.queue = task;
+    void task.then(
+      () => {
+        if (
+          binding.queue === task &&
+          !binding.failed &&
+          (binding.record?.text ?? "") === binding.last &&
+          !isSendingDurableDraft(binding.record)
+        )
+          this.pendingWrites.delete(binding);
+      },
+      () => {
+        /* An unconfirmed write must still prevent the handoff. */
+      },
+    );
   }
 
   /**
@@ -472,56 +586,125 @@ export class DurableDraftController<Recovery = unknown> {
     return binding.store;
   }
 
-  private async reviewConflict(binding: Binding<Recovery>): Promise<void> {
+  private async reviewConflict(
+    binding: Binding<Recovery>,
+    retainedText?: string,
+  ): Promise<void> {
     try {
       const latest = await this.requireStore(binding).read();
       if (this.active !== binding) return;
       binding.record = latest;
+      const recovery =
+        this.text() === "" && retainedText !== (latest?.text ?? "")
+          ? retainedText
+          : undefined;
       const unsettled =
-        isSendingDurableDraft(latest) && !this.sendingHere(binding);
+        !recovery &&
+        isSendingDurableDraft(latest) &&
+        !this.sendingHere(binding);
       this.publish({
         opening: false,
         conflict: true,
         unsettled,
-        error: false,
-        savedText: latest?.text ?? "",
-        message: unsettled
-          ? this.messages.unsettled
-          : this.messages.saveConflict,
+        error: !!recovery,
+        savedText: recovery || latest?.text || "",
+        message: recovery
+          ? this.messages.saveFailed
+          : unsettled
+            ? this.messages.unsettled
+            : this.messages.saveConflict,
       });
     } catch {
-      if (this.active === binding)
+      if (this.active === binding) {
+        const recovery = this.text() === "" ? retainedText : undefined;
         this.publish({
           opening: false,
-          conflict: false,
+          conflict: !!recovery,
           unsettled: false,
           error: true,
+          ...(recovery ? { savedText: recovery } : {}),
           message: this.messages.saveFailed,
         });
+      }
     }
   }
 
   /** Resolve a conflict by putting the saved copy in the editor. */
-  restoreSaved(): void {
+  restoreSaved(): void | Promise<void> {
     const binding = this.active;
-    if (!binding?.ready || !this.state.conflict) return;
-    binding.failed = false;
-    binding.last = binding.record?.text ?? "";
-    void this.restore(binding.last);
-    this.publish({
-      conflict: false,
-      unsettled: false,
-      message: binding.last ? this.messages.savedRestored : "",
-    });
-    // The person chose to edit that text again: it is an ordinary draft now.
-    if (isSendingDurableDraft(binding.record) && !this.sendingHere(binding))
-      this.unmark(binding);
+    if (!binding?.ready || !this.state.conflict || this.restoring.has(binding))
+      return;
+    const saved = this.state.savedText;
+    const requiresConfirmation =
+      this.state.error ||
+      [...this.pendingWrites].some(
+        (owner) => owner.key === binding.key && owner.failed,
+      );
+    const finish = (applied: boolean) => {
+      if (this.active !== binding) return;
+      if (!applied || this.text() !== saved) {
+        this.offerBoth(binding, saved, isSendingDurableDraft(binding.record));
+        return;
+      }
+      const stored = binding.record?.text ?? "";
+      binding.last = saved;
+      if (saved !== stored && stored) {
+        // Restoring a retained local copy must not replace a different stored
+        // copy without offering that copy for its own review.
+        this.offerBoth(binding, stored, isSendingDurableDraft(binding.record));
+        return;
+      }
+      binding.failed = false;
+      this.publish({
+        conflict: false,
+        unsettled: false,
+        error: false,
+        message: saved ? this.messages.savedRestored : "",
+      });
+      if (saved !== stored || requiresConfirmation)
+        this.queueSave(binding, () => saved);
+      // The person chose to edit that text again: it is an ordinary draft now.
+      else if (
+        isSendingDurableDraft(binding.record) &&
+        !this.sendingHere(binding)
+      )
+        this.unmark(binding);
+    };
+    const failed = (error: unknown): never => {
+      if (this.active === binding) {
+        binding.failed = true;
+        this.publish({ error: true, message: this.messages.readFailed });
+      }
+      throw error;
+    };
+    try {
+      const restoring = this.restoreEditor(binding, saved, this.text());
+      if (typeof restoring === "boolean") return finish(restoring);
+      const completion = restoring.then(finish, failed);
+      // Legacy callers may ignore the returned completion; state still reports failure.
+      void completion.catch(() => {});
+      return completion;
+    } catch (error) {
+      failed(error);
+    }
   }
 
   /** Resolve a conflict by saving the editor's text over the saved copy. */
   keepCurrent(): void {
     const binding = this.active;
-    if (!binding?.ready || !this.state.conflict) return;
+    if (!binding?.ready || !this.state.conflict || this.restoring.has(binding))
+      return;
+    const stored = binding.record?.text ?? "";
+    const requiresConfirmation =
+      this.state.error ||
+      this.state.savedText !== stored ||
+      [...this.pendingWrites].some(
+        (owner) => owner.key === binding.key && owner.failed,
+      );
+    if (this.state.savedText !== stored && stored) {
+      this.offerBoth(binding, stored, isSendingDurableDraft(binding.record));
+      return;
+    }
     binding.failed = false;
     const text = this.text();
     binding.last = binding.record?.text ?? "";
@@ -532,7 +715,8 @@ export class DurableDraftController<Recovery = unknown> {
       message: "",
     });
     // The same text is saved again only to drop a sending mark.
-    if (text === binding.last) this.unmark(binding);
+    if (requiresConfirmation) this.queueSave(binding, () => text);
+    else if (text === binding.last) this.unmark(binding);
     else this.edit(text);
   }
 
@@ -542,6 +726,77 @@ export class DurableDraftController<Recovery = unknown> {
     if (!key) return;
     this.retire();
     await this.open(key);
+  }
+
+  /**
+   * Persist and read back the current editor without claiming a send, clearing
+   * text, resolving a conflict, or restoring a different copy. The host must
+   * prevent further edits before using this result to stop its process.
+   * Pending writes from retired bindings must also settle and read back.
+   * A changed binding, queued edit or in-flight send refuses that handoff.
+   */
+  async flush(current: () => boolean = () => true): Promise<void> {
+    const binding = this.active;
+    await this.opening;
+    if (this.active !== binding) throw new Error(this.messages.changed);
+    if (!binding) {
+      if (!current() || this.text() || this.held)
+        throw new Error(this.messages.storageUnavailable);
+    } else if (
+      !binding.ready ||
+      binding.failed ||
+      this.restoring.size > 0 ||
+      this.state.consuming ||
+      this.held
+    )
+      throw new Error(this.messages.storageUnavailable);
+    const text = this.text();
+    if (binding) this.edit(text);
+    const writes = new Set(this.pendingWrites);
+    if (binding) writes.add(binding);
+    const snapshots = [...writes].map((owner) => ({
+      owner,
+      queue: owner.queue,
+      text: owner.last,
+    }));
+    await Promise.all(snapshots.map((row) => row.queue));
+    // A later edit saved by a reopened editor can resolve its own earlier
+    // failed write. A read-only reopen cannot discard that unconfirmed text.
+    const superseded = (owner: Binding<Recovery>) =>
+      binding !== undefined &&
+      owner !== binding &&
+      owner.key === binding.key &&
+      binding.savedWriteSerial > owner.writeSerial;
+    const unchanged = () =>
+      current() &&
+      this.active === binding &&
+      !this.state.consuming &&
+      !this.held &&
+      this.restoring.size === 0 &&
+      this.text() === text &&
+      [...this.pendingWrites].every((owner) => writes.has(owner)) &&
+      snapshots.every(
+        (row) =>
+          row.owner.ready &&
+          (!row.owner.failed || superseded(row.owner)) &&
+          row.owner.queue === row.queue &&
+          row.owner.last === row.text,
+      );
+    if (!unchanged()) throw new Error(this.messages.changed);
+    for (const row of snapshots) {
+      if (superseded(row.owner)) continue;
+      const saved = await this.requireStore(row.owner).read();
+      if (!unchanged()) throw new Error(this.messages.changed);
+      if (
+        (saved?.text ?? "") !== row.text ||
+        isSendingDurableDraft(saved) ||
+        (saved?.revision ?? null) !== (row.owner.record?.revision ?? null) ||
+        (saved?.binding ?? null) !== (row.owner.record?.binding ?? null)
+      )
+        throw new Error(this.messages.storageUnavailable);
+    }
+    for (const row of snapshots)
+      if (superseded(row.owner)) this.pendingWrites.delete(row.owner);
   }
 
   /**
@@ -555,7 +810,13 @@ export class DurableDraftController<Recovery = unknown> {
     current: () => boolean = () => true,
   ): Promise<void> {
     const binding = this.active;
-    if (!binding?.ready || binding.failed || this.state.consuming || this.held)
+    if (
+      !binding?.ready ||
+      binding.failed ||
+      this.restoring.has(binding) ||
+      this.state.consuming ||
+      this.held
+    )
       throw new Error(
         this.state.unsettled
           ? this.messages.reviewUnsettled
@@ -566,6 +827,8 @@ export class DurableDraftController<Recovery = unknown> {
     if (
       this.active !== binding ||
       binding.failed ||
+      this.restoring.has(binding) ||
+      this.state.consuming ||
       !current() ||
       this.text() !== expectedText
     )
@@ -630,37 +893,113 @@ export class DurableDraftController<Recovery = unknown> {
   }
 
   /** Dispatch did not happen: put the text back; newer typing follows it. */
-  release(): void {
+  release(): Promise<void> {
     const held = this.held;
-    if (!held) return;
-    this.held = undefined;
-    const binding =
-      this.active === held.binding
-        ? held.binding
-        : this.active && this.active === held.peer
-          ? held.peer
-          : undefined;
-    if (!binding) {
-      // The editor moved to another binding (or none) before dispatch. The
-      // text stays saved with its own conversation, unmarked, and is restored
-      // when that binding reopens. It is never put in this editor: the next
-      // binding would adopt it as its own draft, and a binding is an owner,
-      // agent and conversation identity.
-      this.unmark(held.binding);
-      this.publish({ message: this.messages.notSentKept });
-      return;
+    if (!held) return Promise.resolve();
+    if (held.releasing) return held.releasing;
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const completion = new Promise<void>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    held.releasing = completion;
+    const confirmSaved = async (binding: Binding<Recovery>, text: string) => {
+      await binding.queue;
+      if (
+        binding.failed ||
+        (binding.record?.text ?? "") !== text ||
+        isSendingDurableDraft(binding.record)
+      )
+        throw new Error(this.messages.storageUnavailable);
+    };
+    const begin = (): void | Promise<void> => {
+      if (this.held !== held) return;
+      const binding =
+        this.active === held.binding
+          ? held.binding
+          : this.active && this.active === held.peer
+            ? held.peer
+            : undefined;
+      if (!binding) {
+        this.held = undefined;
+        this.unmark(held.binding);
+        this.publish({ message: this.messages.notSentKept });
+        return confirmSaved(held.binding, held.text);
+      }
+      const now = this.text();
+      const restored = now.trim() ? `${held.text}\n${now}` : held.text;
+      binding.last = held.text;
+      const finish = (
+        applied: boolean,
+        failure?: unknown,
+      ): void | Promise<void> => {
+        if (this.held !== held) return;
+        if (this.active !== binding) {
+          this.held = undefined;
+          this.unmark(held.binding);
+          this.publish({ message: this.messages.notSentKept });
+          return confirmSaved(held.binding, held.text);
+        }
+        if (applied && this.text() === restored) {
+          this.held = undefined;
+          if (!binding.failed) {
+            if (restored === held.text) this.unmark(binding);
+            else this.edit(restored);
+          }
+          this.publish({ message: this.messages.notSent });
+          return confirmSaved(binding, restored);
+        }
+        // A skipped or failed host update cannot discard the unsent message.
+        // Keep both copies durably and require review instead of rewriting the
+        // newer editor text a second time.
+        const current = this.text();
+        const retained =
+          current === restored
+            ? restored
+            : current.trim()
+              ? `${held.text}\n${current}`
+              : held.text;
+        this.queueSave(binding, () => retained);
+        return binding.queue.then(() => {
+          if (this.held === held) this.held = undefined;
+          if (this.active === binding && !binding.failed)
+            this.offerBoth(
+              binding,
+              binding.record?.text ?? retained,
+              isSendingDurableDraft(binding.record),
+            );
+          throw failure ?? new Error(this.messages.changed);
+        });
+      };
+      try {
+        const restoring = this.restoreEditor(
+          binding,
+          restored,
+          now,
+          () => this.held === held,
+        );
+        if (typeof restoring === "boolean") return finish(restoring);
+        return restoring.then(
+          (applied) => finish(applied),
+          (error: unknown) => finish(false, error),
+        );
+      } catch (error) {
+        return finish(false, error);
+      }
+    };
+    try {
+      const pendingRestore = this.active && this.restoring.get(this.active);
+      const operation = pendingRestore
+        ? Promise.all([pendingRestore, this.opening]).then(begin)
+        : begin();
+      void Promise.resolve(operation).then(resolve, reject);
+    } catch (error) {
+      reject(error);
     }
-    const now = this.text();
-    const restored = now.trim() ? `${held.text}\n${now}` : held.text;
-    // The saved copy was never cleared; it is saved again without the
-    // sending mark, with any newer typing after it.
-    binding.last = held.text;
-    void this.restore(restored);
-    if (!binding.failed) {
-      if (restored === held.text) this.unmark(binding);
-      else this.edit(restored);
-    }
-    this.publish({ message: this.messages.notSent });
+    // Legacy callers may ignore release; its editor/storage state still settles.
+    void completion.catch(() => {});
+    return completion;
   }
 
   /** Dispatch happened, or may have: clear the saved copy of the sent text. */
@@ -713,8 +1052,7 @@ export class DurableDraftController<Recovery = unknown> {
    */
   settle(outcome: DurableDraftSendOutcome): Promise<void> {
     if (outcome === "not-dispatched") {
-      this.release();
-      return Promise.resolve();
+      return this.release();
     }
     return this.commit();
   }
@@ -732,55 +1070,118 @@ export class DurableDraftController<Recovery = unknown> {
 
   /**
    * Clear the saved copy for a form whose own save is the effect, only while
-   * the editor still holds `expectedText` (compared trimmed).
+   * the editor still holds `expectedText` (compared trimmed). A held send for
+   * this binding prevents a form clear until the send settles.
    */
   async consume(
     expectedText: string,
     current: () => boolean = () => true,
   ): Promise<void> {
     const binding = this.active;
-    if (!binding?.ready || binding.failed || this.state.consuming)
+    if (
+      !binding?.ready ||
+      binding.failed ||
+      this.held?.binding.key === binding.key ||
+      this.restoring.has(binding) ||
+      this.state.consuming
+    )
       throw new Error(this.messages.storageUnavailable);
     this.edit(this.text());
     await binding.queue;
     if (
       this.active !== binding ||
       binding.failed ||
+      this.held?.binding.key === binding.key ||
+      this.restoring.has(binding) ||
+      this.state.consuming ||
       !current() ||
       this.text().trim() !== expectedText.trim()
     )
       throw new Error(this.messages.changed);
     const original = binding.record?.text ?? this.text();
+    const serial = ++this.writeSerial;
+    binding.writeSerial = serial;
+    this.pendingWrites.add(binding);
     this.publish({ consuming: true, message: this.messages.preparing });
-    try {
-      const store = this.requireStore(binding);
-      binding.record = await store.save(binding.record, "");
-      if (
-        this.active !== binding ||
-        !current() ||
-        this.text().trim() !== expectedText.trim()
-      ) {
-        // Undo only this clear. A newer edit wins if this receipt is stale.
-        try {
-          binding.record = await store.save(
-            binding.record,
-            this.active === binding ? this.text() : original,
-          );
-        } catch {
-          // The conflict review below reads the saved copy.
+    const operation = (async () => {
+      try {
+        const store = this.requireStore(binding);
+        const rollback = async (text: string) => {
+          try {
+            binding.record = await store.save(binding.record, text);
+          } catch {
+            // Only this clear's receipt may be undone. Review reads the winner.
+          }
+        };
+        binding.record = await store.save(binding.record, "");
+        if (
+          this.active !== binding ||
+          !current() ||
+          this.text().trim() !== expectedText.trim()
+        ) {
+          await rollback(this.active === binding ? this.text() : binding.last);
+          throw new Error(this.messages.changedNothingSent);
         }
-        throw new Error(this.messages.changedNothingSent);
-      }
-      binding.last = "";
-      void this.restore("");
-      this.publish({ consuming: false, message: "" });
-    } catch (error) {
-      if (this.active === binding) {
+        let restored = false;
+        try {
+          restored = await this.restoreEditor(
+            binding,
+            "",
+            this.text(),
+            current,
+          );
+        } catch (error) {
+          // A host may reject after applying its update. Retain the reviewed copy
+          // when that failure left an empty editor; no form effect was admitted.
+          await rollback(
+            this.active === binding ? this.text() || original : binding.last,
+          );
+          throw error;
+        }
+        if (!restored || this.active !== binding || !current() || this.text()) {
+          await rollback(
+            this.active === binding ? this.text() || original : binding.last,
+          );
+          throw new Error(this.messages.changedNothingSent);
+        }
+        binding.last = "";
+        binding.savedWriteSerial = serial;
+        this.publish({ consuming: false, message: "" });
+      } catch (error) {
+        // A host clear may report through edit("") before it fails. Keep the
+        // reviewed copy reachable when no newer editor text remains.
+        if (!binding.last) binding.last = original;
         binding.failed = true;
-        this.publish({ consuming: false });
-        await this.reviewConflict(binding);
+        if (this.active === binding) {
+          this.publish({ consuming: false });
+          await this.reviewConflict(binding, binding.last);
+        } else {
+          const active = this.active;
+          if (active?.key === binding.key && active.writeSerial <= serial) {
+            await this.opening;
+            if (this.active === active && active.writeSerial <= serial) {
+              active.failed = true;
+              await this.reviewConflict(active, binding.last);
+            }
+          }
+          // A later same-key write may already have won before this failure.
+          if (active?.key === binding.key && active.savedWriteSerial > serial)
+            this.pendingWrites.delete(binding);
+        }
+        throw error;
       }
-      throw error;
-    }
+    })();
+    // A retired consume still owns its pending clear/rollback. Handoff must wait
+    // for the receipt and retain failures until a newer same-key write supersedes.
+    const queue = operation.catch(() => {});
+    binding.queue = queue;
+    await operation;
+    if (
+      binding.queue === queue &&
+      !binding.failed &&
+      (binding.record?.text ?? "") === binding.last &&
+      !isSendingDurableDraft(binding.record)
+    )
+      this.pendingWrites.delete(binding);
   }
 }

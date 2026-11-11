@@ -1,0 +1,443 @@
+[
+  {
+    "id": "DraftTranscript",
+    "model": "packages/ui/quint/DraftTranscript.qnt",
+    "sources": ["packages/ui/src/voice/draft-transcript-guard.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Symbolic composed text abstracts the injected compose function. Models generation/revision admission, not text composition correctness.",
+      "Two retained callbacks and three text values.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Three generations, three user edit revisions, two retained callback slots, text values 0/1/2. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "WakeListenWindow",
+    "model": "packages/ui/quint/WakeListenWindow.qnt",
+    "sources": ["packages/ui/src/voice/wake-listen-window.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Timeouts compressed to 3/8 ticks. Clock input includes backward jumps. Unconditional eventual closure requires fair future ticks and no repeated wake events.",
+      "The React/native microphone adapter is outside this pure reducer model.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Time inputs 0..12, idle timeout 3, safety cap 8, backward ticks allowed. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "VoiceSessionProjection",
+    "model": "packages/ui/quint/VoiceSessionProjection.qnt",
+    "sources": ["packages/ui/src/voice/voice-session-state.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Projects textual payloads to empty/nonempty. Session IDs, error text and interruption reasons are stored values omitted from this control-state model.",
+      "The source accepts authoritative server events without universally rejecting stale traces. Matching guards are modeled only where present. PCM playback ownership and server session state require separate models.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Two trace IDs; transcripts projected to empty/nonempty; complete modeled event vocabulary. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "DurableDraftCAS",
+    "model": "packages/ui/quint/DurableDraftCAS.qnt",
+    "sources": ["packages/ui/src/state/durable-draft.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models the exact pure row replacement contract, including clear-as-new-revision, send mark changes, stale receipts and binding mismatch. Two slots, two writers, two revisions and three symbolic text values.",
+      "Storage adapter atomicity remains outside the row helper. BrowserDraftStorage covers the IndexedDB adapter. DraftSendRecovery, DraftMarkRace and DraftQueuedHandoff separately cover bounded controller protocols.",
+      "Two separate finite instances. Contention has two writers and one binding. Isolation has one writer and two bindings. Each permits two revisions and three text values. The combined two-writer/two-binding graph remains unchecked.",
+      "Both finite instances have real implementation trace replay."
+    ]
+  },
+  {
+    "id": "BrowserDraftStorage",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "ExactReceiptAtCommit",
+      "StagedTransactionIsExclusive",
+      "SavedReceiptRequiresCommit",
+      "OnlyCommittedBytesVisible",
+      "ReopenReadsCommittedBytes"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One key, two writers, one external reset and one reopened reader. Browser readwrite transaction ordering and fresh document receipts are assumptions. The draft caller can receive AbortError after the raw write commits.",
+      "The mandatory Chromium hook runs 12 real draft and IndexedDB adapter groups across tabs. It checks exact receipt replacement, staged abort, retry, late cancellation and reload. The same hook runs five mixed controller groups and two Chromium restart groups. Firefox and WebKit remain available through the direct browser command.",
+      "Disk crash and eviction, upgrades, Web Locks editing, raw byte restoration outside the draft protocol and generated trace replay are separate. Native and transactional JSON draft adapters need independent persistence coverage."
+    ]
+  },
+  {
+    "id": "BrowserDraftHoldConsume",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "HeldSendOwnsReceipt",
+      "SameKeyConsumeIsRefused",
+      "FreshControllerOffersMarkForReview",
+      "PendingRestoreBlocksRelease",
+      "ReleasePreservesDrafts"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One held send and one consume over at most two keys. Includes a consume after the send mark, a consume queued behind the hold claim, a fresh second-tab read and a non-dispatch release waiting for a separate form restore.",
+      "The mandatory Chromium hook drives the exported controller and real IndexedDB adapter. The tests check exact marked bytes and receipt identity, fresh-controller review and the distinct durable outcomes of release and consume.",
+      "The model assumes successful writes and a host that honors the restore predicate. Longer mixed histories, same-key peer autosave, crashes during restore, external writes and host binding authorization remain outside this case."
+    ]
+  },
+  {
+    "id": "BrowserDraftCrossTabClaims",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "InitialReceiptHasOneWinner",
+      "StaleConsumePreservesMarkedReceipt",
+      "StaleHoldPreservesClearReceipt",
+      "RecoveryRequiresConfirmation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two real Chromium tabs open one draft before either writes. The bounded case checks both initial receipt winners. A stale consume preserves a held send mark. A stale hold preserves a clear awaiting host acknowledgement.",
+      "After non-dispatch release, a read-only retry retains the losing consume for review. Explicit keep-current confirmation and flush preserve the exact draft bytes under a new IndexedDB document receipt.",
+      "The case assumes fresh storage writes succeed. It excludes more than two controllers, competing review choices, third-party writes, concurrent retries, process crashes and the host's binding authorization."
+    ]
+  },
+  {
+    "id": "BrowserDraftReleaseReload",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "UnconfirmedReleaseRetainsMark",
+      "MarkedReloadOffersReview",
+      "ConfirmedReleaseSurvivesReload",
+      "ReviewedCopyHasNewReceipt"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One held send and one non-dispatch release. The cut is after host apply before acknowledgement or after a confirmed release. The reopened controller reads the prior exact receipt. A marked row requires explicit review; a confirmed release restores the merged draft directly.",
+      "Chromium closes the original tab and browser, then opens a new process with the same isolated profile and origin. The test checks exact IndexedDB receipt and bytes, an explicit restore and a subsequent page reload.",
+      "Unconfirmed typing is volatile. Power loss, shutdown during a queued write, consume rollback, competing writers and host binding authorization remain outside this case."
+    ]
+  },
+  {
+    "id": "DraftSendRecovery",
+    "model": "packages/ui/quint/DraftSendRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One send, one optional binding reopen, one newer edit, one restart and one review choice. Storage failure is before or after durable writes, with a separate too-large result.",
+      "Public calls settle between actions. Pending mark interleavings are covered separately by DraftMarkRace.",
+      "The model does not assert external message delivery. An unknown outcome is handled through the stored send mark and explicit review.",
+      "Quint traces are replayed through the shipped controller and row-CAS implementation by check-draft-controller.mjs. This does not establish real filesystem durability or unbounded refinement.",
+      "Recovery assumes the storage adapter preserves the sending marker. Compatibility hosts that drop write.sending retain weaker restart protection and are outside these cases."
+    ]
+  },
+  {
+    "id": "DraftMarkRace",
+    "model": "packages/ui/quint/DraftMarkRace.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One hold paused at the mark write, one intervening editor/owner/authority/external-store change, and one optional edit through a reopened peer.",
+      "Two binding instances and four write outcomes. Arbitrary longer queues and repeated account changes remain outside this instance.",
+      "Quint traces are replayed through the shipped controller and row-CAS implementation by check-draft-controller.mjs. This does not establish real filesystem durability or unbounded refinement.",
+      "Recovery assumes the storage adapter preserves the sending marker. Compatibility hosts that drop write.sending retain weaker restart protection and are outside these cases."
+    ]
+  },
+  {
+    "id": "DraftQueuedHandoff",
+    "model": "packages/ui/quint/DraftQueuedHandoff.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Two pending binding writes, both completion orders, shared/separate stores, one flush and one mutation before either readback.",
+      "Covers stale queue/owner snapshots, failed retired writes, same-key successful-write supersession, foreign revisions, marked readback and I/O failures. Longer queues and repeated retries remain outside this instance.",
+      "Quint traces are replayed through the shipped controller and row-CAS implementation by check-draft-controller.mjs. This does not establish real filesystem durability or unbounded refinement.",
+      "Recovery assumes the storage adapter preserves the sending marker. Compatibility hosts that drop write.sending retain weaker restart protection and are outside these cases."
+    ]
+  },
+  {
+    "id": "DraftOpenRecovery",
+    "model": "packages/ui/quint/DraftOpenRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One open operation with all three factory/read attempts, exact 150ms and 600ms retry gates, one same-key open join, one edit and one retirement. Real controller replay drives each deferred factory/read and retry callback.",
+      "Host promises and timers must eventually settle for progress. Temporal verification assumes weak fairness of store completion and retry actions. Scheduling within the delay is abstracted to before/at its deadline.",
+      "Asynchronous host restoration is modeled separately by DraftRestoreOwnership. Repeated failure/retry sessions and crash recovery are outside this finite instance."
+    ]
+  },
+  {
+    "id": "DraftRestoreOwnership",
+    "model": "packages/ui/quint/DraftRestoreOwnership.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One open, saved-copy review, non-dispatch release or consume operation. The host applies and acknowledges separately, including acknowledgement before application, rejection after application, one edit, one retirement and consume-authority revocation.",
+      "Real controller replay checks every generated intermediate editor, store and status state. Synchronous and void-returning host behavior also has direct controller regressions.",
+      "Release persistence includes failures before writing and lost acknowledgements after writing. Consume store failures and receipt races have separate cases. Host completion needs weak fairness for progress. It does not establish authenticated binding provenance or arbitrary overlapping host callbacks."
+    ]
+  },
+  {
+    "id": "DraftConsumeRollback",
+    "model": "packages/ui/quint/DraftConsumeRollback.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One consume clear and optional rollback. Includes pre/post-write failures, competing CAS writes, one edit/retirement/authority change, and failed conflict readback. Revisions are bounded to 0..3.",
+      "Real controller and row CAS replay all generated traces. A lost clear acknowledgement can leave only the editor copy; a failed rollback can retain different editor and saved copies for explicit review.",
+      "Host clear is synchronous here. Crash durability, retries after every failure and composition with multiple concurrent callers remain outside this finite case."
+    ]
+  },
+  {
+    "id": "DraftRepeatedSend",
+    "model": "packages/ui/quint/DraftRepeatedSend.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Two sequential send rounds, each with two concurrent hold calls. Each pauses one mark, admits at most one caller, includes edit or authority loss and four mark outcomes, then dispatch/non-dispatch/unknown settlement.",
+      "Between rounds, the real controller reopens the current receipt, resolves any marked-copy review, and writes the next draft. Model traces replay through the real controller and row CAS.",
+      "One binding and synchronous host restoration. More than two rounds, unbounded concurrent callers, external delivery and arbitrary overlapping settlement calls remain outside this instance."
+    ]
+  },
+  {
+    "id": "DraftConsumeHandoff",
+    "model": "packages/ui/quint/DraftConsumeHandoff.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One pending consume clear and rollback across one same/different-key retirement, two flush attempts, one retry and one replacement write. The old failed receipt can be superseded only by a newer successful same-key write.",
+      "Real controller replay checks that flush remains pending through the old write and rejects after its failure. Direct regression also checks subsequent explicit retry and write recovery.",
+      "Rollback faults are before or after its durable write. Storage crash durability and arbitrary longer chains of retired binding operations remain outside this finite instance."
+    ]
+  },
+  {
+    "id": "DraftConsumeRetention",
+    "model": "packages/ui/quint/DraftConsumeRetention.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Composes a host rejection after applying the clear with rollback failure before/after writing or a foreign CAS winner, failed/successful readback and two explicit review choices. Three symbolic text values and at most four storage mutations.",
+      "The original must remain in the editor, persisted store or offered recovery copy until explicit discard. A different stored winner needs a separate reviewed choice before overwrite. Generated traces replay through the real controller and row CAS.",
+      "Later review host updates complete synchronously. Concurrent review choices, retirement before backup recovery, process crashes and longer retry histories remain outside this finite instance."
+    ]
+  },
+  {
+    "id": "DraftRetiredConsumeRecovery",
+    "model": "packages/ui/quint/DraftRetiredConsumeRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One retired consume and optional newer edit, rollback failure before/after writing, reopen before/after failure, competing same-key write in both completion orders, one recovery choice, two flushes and a repeated reopen. Four text values and at most four durable mutations.",
+      "Real controller/CAS replay checks the retained copy remains reviewable, and failed owners remain until a newer successful CAS receipt exists. Read-only reopens do not discard that obligation.",
+      "Reads and later host updates succeed in this finite case. More than two failed owners, overlapping review choices after host completion, crashes and arbitrary mixed histories remain outside the instance."
+    ]
+  },
+  {
+    "id": "DurableDraftControllerRemaining",
+    "model": null,
+    "sources": ["packages/ui/src/state/durable-draft-controller.ts"],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "The finite controller cases include one pending keep-current attempt, retired consume recovery, bounded hold/consume interactions and Chromium profile restart during an unacknowledged or confirmed release. Residual obligations include longer mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and loss during other pending host restoration or consume rollback paths.",
+      "Other storage adapters, storage failure during abrupt process or system loss, and the host-owned authenticated owner/agent/conversation binding contract require independent implementation evidence. The controller accepts an opaque binding string."
+    ]
+  },
+  {
+    "id": "NavigateViewClaims",
+    "model": "packages/ui/quint/NavigateViewClaims.qnt",
+    "sources": [
+      "packages/ui/src/events/index.ts",
+      "packages/ui/src/events/__e2e__/navigate-view-claims.test.ts"
+    ],
+    "invariants": [
+      "invariant",
+      "queueBound",
+      "oneResolution",
+      "queuedClaimsLive",
+      "distinctQueue"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two requests, two listeners and two callback attempts for lifecycle. A separate no-listener case checks seventeen admissions against the actual capacity sixteen. Identities and dispatch epochs do not wrap.",
+      "Callback invocation and return are separate actions. This over-approximates ordinary synchronous DOM dispatch and includes explicit reentrant dispatch with the retained event identity, which the real suite reproduces.",
+      "Expected negative temporal checks preserve the observed retired-promise hang and repeated partial effect. They are detected defects or missing callback contracts, not successful progress or exactly-once proofs.",
+      "Generic callback effects are opaque. Selection, loader, anchor and notification-receipt composition remain partial. No unconditional unmount replay is implemented.",
+      "Conformance runs ten named actual event-helper checks. It does not replay all Quint transitions through the implementation."
+    ]
+  },
+  {
+    "id": "ConversationSelection",
+    "model": "packages/ui/quint/ConversationSelection.qnt",
+    "sources": [
+      "packages/ui/src/state/useChatCallbacks.ts",
+      "packages/ui/src/state/useDataLoaders.ts",
+      "packages/ui/src/components/shell/ChatOverlay.tsx",
+      "packages/ui/src/state/ChatComposerContext.hooks.ts",
+      "packages/ui/src/state/__e2e__/conversation-selection.test.tsx"
+    ],
+    "invariants": [
+      "invariant",
+      "finiteBounds",
+      "knownOwner",
+      "terminalCallsStayFinite"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two calls, three conversation identities plus null and five symbolic text values. No active or queued send, images or concurrent composer edits. Cold no-cache loader success is represented by one user row. Epochs and counters never wrap.",
+      "Models outer selection admission, draft persistence success/failure, owned-empty-draft removal, shared epoch checks, forbidden/transient rollback, missing-target list fallback and recovery notices. It is not full loader refinement.",
+      "useDataLoaders cache/overlay reconciliation, independent visible-request fences and loader-owned nested 404 list/fallback effects remain unmodeled. Missing outcomes isolate the outer callback interface and must not be read as a composed 404 proof.",
+      "Per-call retirement over-approximates one overlay lifetime retiring multiple calls. The real one-call retirement probe demonstrates the missing mounted guard. Expected negative temporal check records that behavior.",
+      "Eight named checks mount the actual assembled React hook and actual send interruption with controlled host loaders, including real hook unmount. Actual HTTP/SQL loads, full anchor rendering and final notification receipt are outside these checks.",
+      "Queue claim retirement cannot be fixed safely until partial selection effects and the existing loader ownership fence have a shared completion contract."
+    ]
+  },
+  {
+    "id": "ConversationMessageLoad",
+    "model": "packages/ui/quint/ConversationMessageLoad.qnt",
+    "sources": [
+      "packages/ui/src/state/useDataLoaders.ts",
+      "packages/ui/src/state/__e2e__/conversation-message-load.test.tsx"
+    ],
+    "invariants": ["invariant", "NoStalePublication", "Finite"],
+    "status": "partial",
+    "limitations": [
+      "Two request identities, two explicit owner claims, four symbolic room identities including null. Newest and centered loads share request/owner generations and exact active fence identity. Callback reentrancy may change ownership before commit.",
+      "Real mounted useDataLoaders checks cover eight source paths with controlled HTTP replies. They preserve the actual cache, visible store, abort and owner machinery. This is scenario conformance, not generated-trace refinement.",
+      "Message values, overlay lineage/retirement arithmetic, cache eviction and prefetch tokens, active sends, runtime reset, pagination, arbitrary callback exceptions and anchor rendering are outside this instance.",
+      "The outer useChatCallbacks selection/fallback and final ChatOverlay anchor/notification settlement still need a composed model. This model covers the loader-owned nested 404 list boundary only."
+    ]
+  },
+  {
+    "id": "NativeSignInController",
+    "model": "packages/ui/quint/NativeSignInController.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/AndroidNativeCloudSignInView.tsx",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "DispatchOwnsRequest",
+      "CancellationKeepsItsFence",
+      "ScopedReceiptPreservesForeignAttempt",
+      "AuthenticationUsesDispatchedRequest",
+      "VerificationUsesDisplayedAttempt",
+      "ActivationOwnsStoredOutcome"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The retirement case covers two controller mounts, two unique dispatch IDs and one native slot. It covers delayed host admission, scoped cancellation, lost acknowledgement, explicit cleanup retry and successor isolation.",
+      "The outcome case covers one dispatch, distinct native and credential identities, legacy direct replies, correlated retained outcomes and one retry of the stored account activation.",
+      "Sixteen named checks exercise the controller and canonical broker handoff with controlled native ports. The Android Java bridge and generated model traces require separate conformance.",
+      "The separate NativeSignInResend model covers the bounded resend and admission boundary. Asynchronous MFA resume interleavings, readiness and listener setup, startup recovery, native credential persistence and composed or unbounded histories remain open."
+    ]
+  },
+  {
+    "id": "NativeSignInResend",
+    "model": "packages/ui/quint/NativeSignInResend.qnt",
+    "sources": [
+      "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-resend.test.ts",
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "RetirementRequiresReceipts",
+      "ScopedReceiptPreservesOtherAttempt",
+      "VerificationUsesDisplayedOwner",
+      "RetiredOwnsNoNativeAttempt",
+      "NoLateAdmission"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One original code attempt, one replacement dispatch, one native attempt slot and one foreign scope. The model distinguishes admission, lost replies, positive code receipts and partial cancellation receipts.",
+      "The ordered case relies on same-scope start admission preceding cancellation acknowledgement. The reordered case shows an expected looping late-admission counterexample without that condition.",
+      "Six named checks exercise the real controller with controlled native ports. Native device scheduling, transport restart, credential storage, asynchronous MFA and more than two uncertain dispatches remain open."
+    ]
+  },
+  {
+    "id": "CloudSessionProjection",
+    "model": "packages/ui/quint/CloudSessionProjection.qnt",
+    "sources": [
+      "packages/ui/src/state/useCloudState.ts",
+      "packages/ui/src/app/native-cloud-session.ts",
+      "packages/ui/src/components/settings/CloudOverviewSection.tsx",
+      "packages/ui/src/state/__e2e__/native-cloud-session.test.tsx"
+    ],
+    "invariants": [
+      "NoStaleReadPublication",
+      "NoStaleSignOutPublication",
+      "SuppressedAccountIsCleared"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two port identities, two replacements, two reads, two serial sign-out attempts and one teardown. The proof covers current read success or failure, late replies, sign-out refusal and acknowledgement, and the gap between host acknowledgement and renderer publication.",
+      "The mounted implementation suite controls the native port and runs the actual account hook. A delayed read error and an owner replacement queued between the sign-out ownership check and publication reproduce the before-fix regressions.",
+      "Web and remote verification, explicit activation and event delivery, native credential persistence, poll interval scheduling and unbounded histories remain separate."
+    ]
+  }
+]

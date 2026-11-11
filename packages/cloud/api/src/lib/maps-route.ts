@@ -6,6 +6,7 @@
  * is passed only to the provider and is never logged.
  */
 
+import { Buffer } from "node:buffer";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
@@ -18,15 +19,20 @@ import {
   type MapsOperation,
   type MapsProviderAdapter,
   MapsServiceError,
+  type MapsTile,
+  type MapsTileRequest,
   mapsPlaceDetailsRequestSchema,
   mapsReverseRequestSchema,
   mapsRoutesRequestSchema,
   mapsTextSearchRequestSchema,
+  mapsTileRequestSchema,
+  mapsViewportRequestSchema,
 } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import {
   MAPS_PROVIDER_SETTINGS,
   mapsProviderFromEnv,
 } from "@elizaos/cloud-shared/lib/services/maps/provider-registry";
+import { simplifyRouteGeometry } from "@elizaos/cloud-shared/lib/services/maps/route-geometry";
 import {
   consumePlanRequest,
   readPlanRequestLimitConfig,
@@ -178,8 +184,22 @@ function parsed<T>(
   return result.data;
 }
 
+function tileRequest(c: AppContext): MapsTileRequest {
+  const value = (name: string) => {
+    const raw = c.req.param(name);
+    return raw !== undefined && /^\d{1,7}$/.test(raw)
+      ? Number(raw)
+      : Number.NaN;
+  };
+  return parsed(mapsTileRequestSchema, {
+    z: value("z"),
+    x: value("x"),
+    y: value("y"),
+  });
+}
+
 async function dispatch(
-  operation: MapsOperation,
+  operation: Exclude<MapsOperation, "tiles">,
   provider: MapsProviderAdapter,
   c: AppContext,
   body: unknown,
@@ -229,15 +249,33 @@ async function dispatch(
       return {
         providerId,
         attribution,
-        routes: await provider.routes(
-          parsed(mapsRoutesRequestSchema, body),
-          signal,
-        ),
+        // Every provider's geometry is bounded here, before the response.
+        routes: (
+          await provider.routes(parsed(mapsRoutesRequestSchema, body), signal)
+        ).map((route) => ({
+          ...route,
+          geometry: simplifyRouteGeometry(route.geometry, route.steps),
+        })),
       };
+    case "viewport": {
+      const viewport = provider.viewport;
+      if (!viewport) throw new Error("Viewport provider disappeared");
+      return {
+        ...(await viewport.call(
+          provider,
+          parsed(mapsViewportRequestSchema, body),
+          signal,
+        )),
+      };
+    }
   }
 }
 
-/** One Maps route: GET for coverage, POST for every operation that carries a query or location. */
+/**
+ * One Maps route: GET for coverage and tiles (the tile address is in the path,
+ * like any map client's), POST for every operation that carries a query or
+ * location.
+ */
 export function createMapsRoute(
   operation: MapsOperation,
   dependencies: MapsRouteDependencies = defaultMapsRouteDependencies,
@@ -275,10 +313,28 @@ export function createMapsRoute(
           "Eliza Cloud Maps is not configured.",
         ),
       );
+    if (
+      (operation === "tiles" && !provider.tile) ||
+      (operation === "viewport" && !provider.viewport) ||
+      ((operation === "tiles" || operation === "viewport") &&
+        !provider.coverage().tiles)
+    )
+      return failure(
+        c,
+        new MapsServiceError(
+          "maps_not_configured",
+          "The configured Maps provider serves no map tiles.",
+        ),
+      );
     let body: unknown;
+    let tile: MapsTileRequest | undefined;
     try {
-      body = operation === "coverage" ? undefined : await readBody(c);
-      if (operation !== "coverage")
+      if (operation === "tiles") tile = tileRequest(c);
+      body =
+        operation === "coverage" || operation === "tiles"
+          ? undefined
+          : await readBody(c);
+      if (operation !== "coverage" && operation !== "tiles")
         parsed<unknown>(
           operation === "search" || operation === "geocode"
             ? mapsTextSearchRequestSchema
@@ -286,7 +342,9 @@ export function createMapsRoute(
               ? mapsReverseRequestSchema
               : operation === "details"
                 ? mapsPlaceDetailsRequestSchema
-                : mapsRoutesRequestSchema,
+                : operation === "viewport"
+                  ? mapsViewportRequestSchema
+                  : mapsRoutesRequestSchema,
           body,
         );
     } catch (error) {
@@ -298,18 +356,28 @@ export function createMapsRoute(
       try {
         completion = await dependencies.admitRequest(c, user, operation);
       } catch (error) {
-        if (error instanceof ApiError || error instanceof MapsAdmissionError)
+        if (error instanceof ApiError || error instanceof MapsAdmissionError) {
+          const retryAfterSeconds = error.details?.retryAfterSeconds;
+          const retry =
+            typeof retryAfterSeconds === "number" &&
+            Number.isFinite(retryAfterSeconds) &&
+            retryAfterSeconds > 0
+              ? Math.ceil(retryAfterSeconds)
+              : undefined;
+          // Like failure(): the header for HTTP clients, the body for native ones.
           return c.json(
             {
               error: error.message,
               code: error.code,
-              ...(error.details?.retryAfterSeconds
-                ? { retryAfterSeconds: error.details.retryAfterSeconds }
-                : {}),
+              ...(retry !== undefined ? { retryAfterSeconds: retry } : {}),
             },
             error.status as 400 | 403 | 408 | 409 | 429 | 503,
-            NO_STORE,
+            {
+              ...NO_STORE,
+              ...(retry !== undefined ? { "Retry-After": String(retry) } : {}),
+            },
           );
+        }
         throw error;
       }
     } else {
@@ -378,7 +446,36 @@ export function createMapsRoute(
           NO_STORE,
         );
       }
-      const result = await dispatch(operation, provider, c, body);
+      let result: Record<string, unknown> | MapsTile;
+      let tileJson:
+        | { encoding: "base64"; contentType: string; data: string }
+        | undefined;
+      if (operation === "tiles") {
+        const tileFor = provider.tile;
+        if (!tileFor || !tile) throw new Error("Tile provider disappeared");
+        result = await tileFor.call(provider, tile, c.req.raw.signal);
+        if (c.req.header("accept") === "application/json") {
+          const image = result as MapsTile;
+          if (
+            image.body.byteLength === 0 ||
+            image.body.byteLength > 1024 * 1024 ||
+            !["image/png", "image/jpeg", "image/webp"].includes(
+              image.contentType,
+            )
+          )
+            throw new MapsServiceError(
+              "provider_invalid_response",
+              "The map tile response is invalid.",
+            );
+          // The native managed-service bridge transports JSON, not arbitrary binary.
+          // Keep the same authenticated route and allowance; never expose Google's key.
+          tileJson = {
+            encoding: "base64",
+            contentType: image.contentType,
+            data: Buffer.from(image.body).toString("base64"),
+          };
+        }
+      } else result = await dispatch(operation, provider, c, body);
       if (c.req.raw.signal.aborted) {
         await record("cancelled");
         return c.json(
@@ -389,7 +486,20 @@ export function createMapsRoute(
       }
       const outcome = record("succeeded");
       if (!getGenerativeExecutionContext(c)) await outcome;
-      return c.json(result, 200, NO_STORE);
+      if (operation === "tiles") {
+        if (tileJson)
+          return c.json(tileJson, 200, { ...NO_STORE, Vary: "Accept" });
+        const image = result as MapsTile;
+        return new Response(image.body, {
+          status: 200,
+          headers: {
+            "Content-Type": image.contentType,
+            ...NO_STORE,
+            Vary: "Accept",
+          },
+        });
+      }
+      return c.json(result as Record<string, unknown>, 200, NO_STORE);
     } catch (error) {
       // Every admitted request gets an outcome. A failure the provider raises
       // after admission (an id the geocoder cannot use, a misconfigured
@@ -405,7 +515,7 @@ export function createMapsRoute(
       return failure(c, error);
     }
   };
-  if (operation === "coverage") app.get("/", handler);
+  if (operation === "coverage" || operation === "tiles") app.get("/", handler);
   else app.post("/", handler);
   return app;
 }

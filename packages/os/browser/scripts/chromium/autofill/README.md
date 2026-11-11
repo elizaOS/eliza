@@ -10,5 +10,6 @@ same integrity report as the native messaging and embedding changes.
 actual transformed Java with Android test doubles. JDK 21 must be on PATH or in
 JAVA_HOME. It checks full origins, ports, per-field origins and missing top-origin
 metadata. This is transport evidence, not a complete Chromium build or Autofill
-service acceptance. Versioned `ai.elizaresearch.autofill.*` wire keys remain
-unchanged for existing consumers; they convey browser-process data, not DOM data.
+service acceptance. Versioned `ai.alphacompute.autofill.*` wire keys convey
+browser-process data, not DOM data. Deploy the browser and password service
+together so both use the same namespace.

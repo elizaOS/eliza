@@ -1,0 +1,33 @@
+{
+  "sources": [
+    "packages/app/functions/_middleware.ts",
+    "packages/app/functions/_browser-sign-in.ts",
+    "packages/cloud/scripts/pages-browser-sign-in.test.ts"
+  ],
+  "conformance": "packages/app/quint/check-browser-sign-in.mjs",
+  "bounds": {
+    "domain": "Registered Pages browser sign-in launch and one-use return admission.",
+    "limitations": [
+      "Two consumers, one launch per consumer, three logical clock values and no storage failures. Protected configuration is represented by an admitted set, including an empty set. Real parsing and collision checks are exercised by maintained middleware tests.",
+      "The implementation check executes actual middleware responses and their scripts in isolated browser VM contexts. It checks exact callback binding, expiry, state, replay, origin refusal and two independent registrations. It is scenario conformance, not generated-trace equivalence.",
+      "PKCE exchange, OAuth provider correctness, DNS/TLS, browser process death, storage durability, deployment binding transfer and Android App Link verification remain separate contracts. Navigation can fail or never run; no unconditional progress is claimed."
+    ]
+  },
+  "cases": [
+    {
+      "name": "registered-consumer-return",
+      "main": "BrowserSignInReturn",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ExactLiveConsumer",
+        "ConsumedOnce",
+        "IndependentConsumers"
+      ],
+      "maxSteps": 16,
+      "samples": 1000,
+      "temporal": []
+    }
+  ]
+}

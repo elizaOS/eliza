@@ -105,6 +105,12 @@ Web subscription settings select a registered product with `VITE_ELIZA_APPLICATI
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
 
+Managed Google hosts return complete Gmail bodies by default. A consumer may set
+`gmailReadBodyMaxCharacters` on `ManagedGoogleAgentHostOptions`, including the
+native host, to a positive safe integer in UTF-16 code units. Limited reads mark
+`truncated: true` and keep surrogate pairs intact. The existing 256 KiB complete
+response bound still refuses oversized results; a body limit does not waive it.
+
 Independent Android consumer profiles may use `main`, `androidTest`, `debug`,
 `release`, and their declared flavor names in `sourceSets`. Keep test trust and
 other debug-only resources in `debug`; they must not enter release artifacts.
@@ -360,7 +366,7 @@ Android directory, beside its standard `app/src` layout: an existing unmarked
 directory is admitted, but no authored file is ever replaced. The profile can also
 declare, as data:
 
-- `signing`: the four environment variable *names* for the release key store,
+- `signing`: the four environment variable _names_ for the release key store,
   password, alias and key password. Gradle signs releases only when all four are
   set, fails on a partial set by name, and never prints a value. `versionOverride`
   names the release version code/name variables, validated like the identity.
@@ -408,13 +414,18 @@ optional. Run
 Android classes (`RESIDENT_HOST_CLASSES`) into a host's own application package so
 `R`, `BuildConfig` and installed component names keep that host's identity. The
 host supplies data: abstract socket names for the agent, inference and secure-store
-routes, the notification small icon, an optional `0xAARRGGBB` accent and string
-resources for the runtime notifications, an optional static environment hook, and
+routes, the notification small icon, the ongoing notification's action
+(`notification.primaryAction`: `stop`, `restart` or `none`; required), an optional
+`0xAARRGGBB` accent and string resources for every runtime notification text, an
+optional static environment hook, and
 the shared helpers it compiles beside them: main Java sources of native plugins
 (`plugins/plugin-native-*/android/src/main/java/...`), which keep their packages. A
 helper reviewed in `RESIDENT_HOST_HELPERS` as reading the host's `BuildConfig` gains
 that import; every other helper is staged verbatim (`residentHelperKind`), so a host
-adopts a new shared helper without an edit here. The rewrite anchors live here and
+adopts a new shared helper without an edit here. A helper that compiles only
+beside others names them in `RESIDENT_HELPER_DEPENDENCIES` (`ChromiumBrowserConnection`
+needs `ChromiumBindingDemand` and `ChromiumBrowserIdentity`), and a helper list that
+leaves one out is refused before anything is written. The rewrite anchors live here and
 fail closed when the upstream source changes; each staged file reports source and
 generated digests for the host's provenance receipt. Run
 `node --test packages/app/scripts/mobile/android/resident-host-sources.test.mjs`.

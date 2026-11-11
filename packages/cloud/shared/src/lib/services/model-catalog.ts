@@ -19,7 +19,6 @@ import {
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
-import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
 import { ModelCatalogCache, type ModelCatalogRefreshFailure } from "./model-catalog-cache";
 
 async function fetchConfiguredBitRouterModelCatalog(): Promise<CatalogModel[]> {
@@ -191,9 +190,7 @@ export async function getCachedBitRouterModelById(modelId: string): Promise<Cata
 }
 
 /**
- * #9899 Tier-3: in-isolate memo of the per-model gateway lookup, gated behind
- * `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical to the
- * un-memoized lookup, so "rollback = flip the flag" holds). The lookup
+ * #9899 Tier-3: in-isolate memo of the per-model gateway lookup. The lookup
  * runs on the inference pre-forward path (reasoning-parameter detection) and,
  * warm, still costs a shared-cache read of the FULL catalog per request. The
  * result only ever ADDS reasoning capability (modelUsesReasoningTokens ORs it
@@ -272,20 +269,17 @@ export async function getGatewayModelByIdCacheOnly(
 }
 
 export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
-  const memoEnabled = isHotPathCachesEnabled();
-  if (memoEnabled) {
-    const memoized = gatewayModelMemo.get(modelId);
-    if (memoized) return memoized.model;
-  }
+  const memoized = gatewayModelMemo.get(modelId);
+  if (memoized) return memoized.model;
 
   if (isGroqNativeModel(modelId)) {
     const groqModel = getGroqCatalogModel(modelId);
-    if (memoEnabled) gatewayModelMemo.set(modelId, { model: groqModel });
+    gatewayModelMemo.set(modelId, { model: groqModel });
     return groqModel;
   }
 
   const models = await getCachedMergedModelCatalog();
   const model = findBitRouterCatalogModelById(models, modelId);
-  if (memoEnabled) gatewayModelMemo.set(modelId, { model });
+  gatewayModelMemo.set(modelId, { model });
   return model;
 }

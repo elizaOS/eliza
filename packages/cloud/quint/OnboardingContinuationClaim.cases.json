@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/cloud/api/src/onboarding-session-coordinator.ts",
+    "packages/cloud/api/eliza-app/auth/telegram/route.ts",
+    "packages/cloud/shared/src/lib/services/eliza-app/onboarding-chat.ts",
+    "packages/cloud/api/__tests__/onboarding-coordinator-errors.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/onboarding-route-worker.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-onboarding-coordinator.mjs",
+  "bounds": "One continuation token with a stable platform redirect, one exact Telegram session, two phones, two lineages and two account pairs. Age 2 represents expiry. The token shard serializes decisions. Session inspection and claim publication are projected as a single decision over an authoritative observed session. Trusted external account redemption is modeled as one publication compatible with the admitted claim, including a completion in flight across expiry. Identity cryptography, redirect collision or mutation, cross-shard inspection races, storage write failures, account linking and transcript migration are separate.",
+  "cases": [
+    {
+      "name": "continuation-owner-and-recovery",
+      "main": "OnboardingContinuationClaim",
+      "init": "init",
+      "step": "step",
+      "invariants": ["SingleBoundAuthority"],
+      "maxSteps": 35,
+      "samples": 1000,
+      "temporal": [
+        "ClaimRequiresAuthority",
+        "CompletionRequiresExactBinding",
+        "FairRetirement",
+        "RetiresBoundClaim"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ClaimRequiresAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduling fairness. An admitted request uses the observed trusted session and keeps the original lineage and pinned account."
+          ]
+        },
+        {
+          "property": "CompletionRequiresExactBinding",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduling fairness. The account binding comes from authorized external redemption and completion reads that binding."
+          ]
+        },
+        {
+          "property": "FairRetirement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of exactCleanup. When a claim remains after a matching durable account bind, a caller eventually presents the exact completion and its deletion succeeds."
+          ]
+        },
+        {
+          "property": "RetiresBoundClaim",
+          "expect": "counterexample",
+          "assumptions": [
+            "No scheduling fairness. A crash or missing completion call can retain a bound claim indefinitely."
+          ]
+        }
+      ]
+    }
+  ]
+}

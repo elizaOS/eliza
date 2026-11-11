@@ -13,11 +13,7 @@ import type {
 /** Clients request delta framing with this exact protocol literal. Without it, the server emits full-text snapshots. */
 export const DELTA_STREAM_PROTOCOL = "delta-v2" as const;
 
-export type DeltaStreamProtocol = typeof DELTA_STREAM_PROTOCOL;
-
-// ── Agent automation mode ────────────────────────────────────────────────────
 export type AgentAutomationMode = "connectors-only" | "full";
-// ── Stream event types ────────────────────────────────────────────────────────
 export type StreamEventType = "agent_event" | "heartbeat_event";
 export interface StreamEventEnvelope {
 	type: StreamEventType;
@@ -35,7 +31,6 @@ export interface StreamEventEnvelope {
 	roomId?: string | UUID;
 	payload: unknown;
 }
-// ── Trigger API types ────────────────────────────────────────────────────────
 export interface TriggerTaskMetadata {
 	updatedAt?: number;
 	updateInterval?: number;
@@ -54,6 +49,10 @@ export interface TriggerTaskMetadata {
 		| TriggerRunRecord[];
 }
 export interface TriggerSummary {
+	/** Present while the saved automation is in Recently deleted. */
+	removedAt?: number;
+	/** Digest of the complete saved task for conditional mutations. */
+	revision?: string;
 	id: UUID;
 	taskId: UUID;
 	displayName: string;
@@ -125,7 +124,6 @@ export interface UpdateTriggerRequest {
 	workflowId?: string;
 	workflowName?: string;
 }
-// ── Plugin param types ────────────────────────────────────────────────────────
 export interface PluginParamDef {
 	key: string;
 	type: string;
@@ -140,7 +138,6 @@ export interface PluginParamDef {
 	/** Whether a value is currently set in the environment. */
 	isSet: boolean;
 }
-// ── Database status types ─────────────────────────────────────────────────────
 export interface DatabaseStatus {
 	provider: string;
 	connected: boolean;
@@ -174,7 +171,6 @@ export interface QueryResult {
 	rowCount: number;
 	durationMs: number;
 }
-// ── Runtime order types ───────────────────────────────────────────────────────
 export interface RuntimeOrderItem {
 	index: number;
 	name: string;
@@ -187,7 +183,6 @@ export interface RuntimeServiceOrderItem {
 	count: number;
 	instances: RuntimeOrderItem[];
 }
-// ── Log entry ────────────────────────────────────────────────────────────────
 /** A single log line captured by the API server log buffer. */
 export interface LogEntry {
 	timestamp: number;
@@ -196,7 +191,6 @@ export interface LogEntry {
 	source: string;
 	tags: string[];
 }
-// ── Skill entry ───────────────────────────────────────────────────────────────
 /** A skill surfaced by the skills API. */
 export interface SkillEntry {
 	id: string;
@@ -206,7 +200,6 @@ export interface SkillEntry {
 	/** Set automatically when a scan report exists for this skill. */
 	scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
 }
-// ── Agent startup diagnostics ─────────────────────────────────────────────────
 /** Tracks agent restart / startup state surfaced by the status endpoint. */
 export interface AgentStartupDiagnostics {
 	phase: string;
@@ -215,7 +208,6 @@ export interface AgentStartupDiagnostics {
 	lastErrorAt?: number;
 	nextRetryAt?: number;
 }
-// ── Chat image attachment ─────────────────────────────────────────────────────
 /** An image attachment sent with a chat message. */
 export interface ChatImageAttachment {
 	/** Base64-encoded image data (no data URL prefix). */

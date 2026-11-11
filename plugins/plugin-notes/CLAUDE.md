@@ -69,7 +69,6 @@ NOTES_LIST may combine title/topic lookup with an explicit createdAt/updatedAt d
 
 NAMED_NOTES supplies complete current records only for titles explicitly named in the request, including every same-title match. Planning and explicit context reads admit it with the existing OWNER gate. Unrelated messages receive no named-note text; source failures do not authorize claims from historical contents.
 
-
 Individual field and full-note replacements require `expectedRevision` from the
 complete note snapshot used to prepare the edit. `NOTES_GET` / `NOTES_LIST` and
 full `SAVED_NOTES` / `NAMED_NOTES` content expose `notesRevision`; capability reads

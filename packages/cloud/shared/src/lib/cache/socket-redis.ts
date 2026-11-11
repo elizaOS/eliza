@@ -163,6 +163,11 @@ const decoder = new TextDecoder("utf-8");
 // CacheClient falls back to revalidate/DB — the cache degrades, never hangs.
 const SOCKET_OP_TIMEOUT_MS = 1000;
 const SOCKET_CLOSE_TIMEOUT_MS = 50;
+// Callers allowed to wait behind the running operation. Past this a burst is
+// rejected instead of piling up behind one socket.
+const SOCKET_MAX_QUEUED_OPERATIONS = 256;
+// Scheduling slack on top of op + close timeouts before a holder counts as stuck.
+const SOCKET_STALL_SLACK_MS = 100;
 
 type SocketReader = Pick<ReadableStreamDefaultReader<Uint8Array>, "read" | "cancel">;
 type SocketWriter = Pick<WritableStreamDefaultWriter<Uint8Array>, "write" | "abort">;
@@ -313,10 +318,21 @@ class StaleConnectionOperationError extends Error {
   }
 }
 
+/** Too many operations are already waiting for this connection. */
+export class SocketRedisQueueFullError extends Error {
+  constructor() {
+    super(`SocketRedis queue full (${SOCKET_MAX_QUEUED_OPERATIONS} operations waiting)`);
+    this.name = "SocketRedisQueueFullError";
+  }
+}
+
 class Connection {
   private state: ConnectionState | null = null;
   private inflight: Promise<unknown> = Promise.resolve();
   private ownershipEpoch = 0;
+  private queued = 0;
+  // Last time an operation started or finished on this connection.
+  private lastProgressAt = Date.now();
 
   constructor(
     private readonly opts: ParsedUrl,
@@ -379,6 +395,9 @@ class Connection {
 
   /** Serialize one batch of commands at a time. */
   async send(commands: ReadonlyArray<ReadonlyArray<string | number>>): Promise<RespValue[]> {
+    if (this.queued >= SOCKET_MAX_QUEUED_OPERATIONS) {
+      throw new SocketRedisQueueFullError();
+    }
     const previous = this.inflight;
     let release!: () => void;
     this.inflight = new Promise<void>((r) => {
@@ -393,18 +412,18 @@ class Connection {
       // before waiting, so the chain structurally recovers once we stop
       // waiting on the orphan — but the socket's RESP framing state is
       // unknown mid-op, so drop it and reconnect fresh.
-      let queueTimer: ReturnType<typeof setTimeout> | undefined;
-      const queueWait = await Promise.race([
-        previous.then(() => "released" as const),
-        new Promise<"orphaned">((resolve) => {
-          queueTimer = setTimeout(() => resolve("orphaned"), this.runtime.operationTimeoutMs);
-        }),
-      ]);
-      if (queueTimer) clearTimeout(queueTimer);
+      this.queued += 1;
+      let queueWait: "released" | "orphaned";
+      try {
+        queueWait = await this.waitForTurn(previous);
+      } finally {
+        this.queued -= 1;
+      }
 
       // Claim only after the serialization wait. This invalidates any losing
       // predecessor before a queue-orphan teardown or a fresh open can begin.
       const epoch = this.claimOwnership();
+      this.lastProgressAt = Date.now();
       if (queueWait === "orphaned") {
         await this.detachAndCloseCurrent();
       }
@@ -453,8 +472,37 @@ class Connection {
         throw error;
       }
     } finally {
+      this.lastProgressAt = Date.now();
       release();
     }
+  }
+
+  /**
+   * Wait for the predecessor to release. It is treated as orphaned only when
+   * the connection itself made no progress (no operation started or finished)
+   * for longer than one operation can take, so a long but moving queue is never
+   * mistaken for a dead socket. The first waiter to see the stall marks
+   * progress, so the others keep waiting behind it instead of all tearing down.
+   */
+  private waitForTurn(previous: Promise<unknown>): Promise<"released" | "orphaned"> {
+    const stallMs =
+      this.runtime.operationTimeoutMs + this.runtime.closeTimeoutMs + SOCKET_STALL_SLACK_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<"orphaned">((resolve) => {
+      const check = () => {
+        const idleMs = Date.now() - this.lastProgressAt;
+        if (idleMs >= stallMs) {
+          this.lastProgressAt = Date.now();
+          resolve("orphaned");
+          return;
+        }
+        timer = setTimeout(check, stallMs - idleMs);
+      };
+      timer = setTimeout(check, stallMs);
+    });
+    return Promise.race([previous.then(() => "released" as const), stalled]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
   }
 
   /**

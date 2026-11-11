@@ -1,5 +1,5 @@
 android_app {
-    name: "AlphaPixelConfig",
+    name: "PixelConfig",
     manifest: "AndroidManifest.xml",
     srcs: ["src/**/*.java"],
     sdk_version: "current",

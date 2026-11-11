@@ -43,6 +43,7 @@ import {
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
 import { refreshCodexToken } from "./openai-codex.ts";
+import { OAUTH_REFRESH_HTTP_ERROR } from "./refresh-http-error.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
 import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
 import { getSubscriptionAuthProvider } from "./subscription-auth/registry.ts";
@@ -83,6 +84,22 @@ export type AccessTokenOutcome =
       expiresAt?: number;
       minRemainingMs?: number;
     };
+interface AccessTokenCredentialReceipt {
+  readonly provider: AccountCredentialProvider;
+  readonly accountId: string;
+  readonly credentialGeneration: string;
+  readonly organizationId?: string;
+}
+const accessTokenCredentialReceipts = new WeakMap<
+  AccessTokenOutcome,
+  AccessTokenCredentialReceipt
+>();
+/** Host-only identity of the credential used by this exact resolution. */
+export function getAccessTokenCredentialReceipt(
+  outcome: AccessTokenOutcome,
+): AccessTokenCredentialReceipt | undefined {
+  return accessTokenCredentialReceipts.get(outcome);
+}
 /** Freshness requested by a token consumer before it starts work. */
 export interface GetAccessTokenOptions {
   minRemainingMs?: number;
@@ -117,6 +134,16 @@ function tokenFailure(
   };
 }
 function classifyRefreshError(err: unknown): AccessTokenFailureKind {
+  if (err instanceof ElizaError && err.code === OAUTH_REFRESH_HTTP_ERROR) {
+    const status = err.context?.status;
+    const oauthError = err.context?.oauthError;
+    return status === 401 ||
+      status === 403 ||
+      (status === 400 &&
+        (oauthError === "invalid_grant" || oauthError === "invalid_token"))
+      ? "auth"
+      : "transient";
+  }
   const message = err instanceof Error ? err.message : String(err);
   if (
     /\b(?:401|403|invalid[_ ]?grant|invalid[_ ]?token|unauthor|forbidden|re-?auth|revoked|(?:access |refresh |oauth |jwt |session |credential )?token (?:has |is )?expired|expired[_ ]?(?:access[_ ]?|refresh[_ ]?|oauth[_ ]?|jwt[_ ]?)?token|(?:credential|jwt|session) (?:has |is )?expired)\b/i.test(
@@ -278,8 +305,26 @@ export async function getAccessToken(
     (opts as GetAccessTokenOutcomeOptions | undefined)?.outcome === true;
   const finish = (
     outcome: AccessTokenOutcome,
-  ): string | null | AccessTokenOutcome =>
-    returnOutcome ? outcome : outcome.ok ? outcome.accessToken : null;
+    credential?: Pick<
+      LoadedAccountCredentialRecord,
+      "credentialGeneration" | "organizationId"
+    >,
+  ): string | null | AccessTokenOutcome => {
+    if (credential !== undefined) {
+      accessTokenCredentialReceipts.set(
+        outcome,
+        Object.freeze({
+          provider,
+          accountId,
+          credentialGeneration: credential.credentialGeneration,
+          ...(credential.organizationId
+            ? { organizationId: credential.organizationId }
+            : {}),
+        }),
+      );
+    }
+    return returnOutcome ? outcome : outcome.ok ? outcome.accessToken : null;
+  };
   // The token must have at least this much life left to be returned without a
   // refresh. Never below the historical buffer; a non-positive/NaN override is
   // ignored (fail-safe: a bad value can't disable the refresh).
@@ -301,35 +346,45 @@ export async function getAccessToken(
         tokenFailure("auth", "Stored credential is expired", {
           expiresAt: direct.credentials.expires,
         }),
+        direct,
       );
     }
-    return finish({
-      ok: true,
-      accessToken: direct.credentials.access,
-      expiresAt: direct.credentials.expires,
-      refreshed: false,
-    });
+    return finish(
+      {
+        ok: true,
+        accessToken: direct.credentials.access,
+        expiresAt: direct.credentials.expires,
+        refreshed: false,
+      },
+      direct,
+    );
   }
-  const initial = loadCredentials(provider, accountId, opts?.storagePolicy);
+  const initial = loadAccount(provider, accountId, opts?.storagePolicy);
   if (!initial) {
     return finish(tokenFailure("auth", "No credential is stored"));
   }
   if (initial.credentials.expires > Date.now() + effectiveBufferMs) {
-    return finish({
-      ok: true,
-      accessToken: initial.credentials.access,
-      expiresAt: initial.credentials.expires,
-      refreshed: false,
-    });
-  }
-  if (isCodingPlanKeySubscriptionProvider(provider)) {
-    if (initial.credentials.expires > Date.now() && !requestedWidenedLifetime) {
-      return finish({
+    return finish(
+      {
         ok: true,
         accessToken: initial.credentials.access,
         expiresAt: initial.credentials.expires,
         refreshed: false,
-      });
+      },
+      initial,
+    );
+  }
+  if (isCodingPlanKeySubscriptionProvider(provider)) {
+    if (initial.credentials.expires > Date.now() && !requestedWidenedLifetime) {
+      return finish(
+        {
+          ok: true,
+          accessToken: initial.credentials.access,
+          expiresAt: initial.credentials.expires,
+          refreshed: false,
+        },
+        initial,
+      );
     }
     return finish(
       initial.credentials.expires > Date.now()
@@ -344,6 +399,7 @@ export async function getAccessToken(
         : tokenFailure("auth", "Stored credential is expired", {
             expiresAt: initial.credentials.expires,
           }),
+      initial,
     );
   }
   if (
@@ -358,6 +414,7 @@ export async function getAccessToken(
         "auth",
         `${provider} cannot provide importable OAuth tokens`,
       ),
+      initial,
     );
   }
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
@@ -369,12 +426,15 @@ export async function getAccessToken(
     }
     const { credentials } = stored;
     if (credentials.expires > Date.now() + effectiveBufferMs) {
-      return finish({
-        ok: true,
-        accessToken: credentials.access,
-        expiresAt: credentials.expires,
-        refreshed: false,
-      });
+      return finish(
+        {
+          ok: true,
+          accessToken: credentials.access,
+          expiresAt: credentials.expires,
+          refreshed: false,
+        },
+        stored,
+      );
     }
     // Refused BEFORE the grant is spent, not after. Anthropic and Codex rotate
     // refresh tokens on use (one-time-use), so throwing after the refresh would
@@ -404,11 +464,13 @@ export async function getAccessToken(
         logger.error(`[auth] Unknown provider: ${provider}`);
         return finish(
           tokenFailure("auth", `Unknown credential provider: ${provider}`),
+          stored,
         );
       } else {
         logger.error(`[auth] Refresh unsupported for provider: ${provider}`);
         return finish(
           tokenFailure("auth", `Refresh unsupported for provider: ${provider}`),
+          stored,
         );
       }
     } catch (err) {
@@ -422,6 +484,7 @@ export async function getAccessToken(
           classifyRefreshError(err),
           err instanceof Error ? err.message : String(err),
         ),
+        stored,
       );
     }
     // The grant was spent outside the storage lock. Commit only if the record
@@ -443,6 +506,7 @@ export async function getAccessToken(
           "auth",
           "Credential was removed while the refresh was in flight",
         ),
+        stored,
       );
     }
     if (commit.kind === "changed") {
@@ -451,12 +515,15 @@ export async function getAccessToken(
       );
       const current = commit.record.credentials;
       if (current.expires > Date.now() + effectiveBufferMs) {
-        return finish({
-          ok: true,
-          accessToken: current.access,
-          expiresAt: current.expires,
-          refreshed: false,
-        });
+        return finish(
+          {
+            ok: true,
+            accessToken: current.access,
+            expiresAt: current.expires,
+            refreshed: false,
+          },
+          commit.record,
+        );
       }
       return finish(
         current.expires > Date.now()
@@ -468,6 +535,7 @@ export async function getAccessToken(
           : tokenFailure("auth", "Replacement credential is expired", {
               expiresAt: current.expires,
             }),
+        commit.record,
       );
     }
     if (refreshed.expires <= Date.now() + effectiveBufferMs) {
@@ -477,14 +545,18 @@ export async function getAccessToken(
           "Refreshed token does not satisfy the requested lifetime",
           { expiresAt: refreshed.expires, minRemainingMs: effectiveBufferMs },
         ),
+        commit.record,
       );
     }
-    return finish({
-      ok: true,
-      accessToken: refreshed.access,
-      expiresAt: refreshed.expires,
-      refreshed: true,
-    });
+    return finish(
+      {
+        ok: true,
+        accessToken: refreshed.access,
+        expiresAt: refreshed.expires,
+        refreshed: true,
+      },
+      commit.record,
+    );
   });
 }
 function readConfiguredAnthropicSetupToken(): string | null {

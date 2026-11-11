@@ -32,10 +32,13 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   CheckDecision beginStagingInterval(String directory,long lower,long upper,long generation)throws Exception;
   CheckDecision finishStagingInterval(String directory,String token,long lower,long upper,boolean success,long retryAfter)throws Exception;
   String evaluateRememberedReleaseInterval(String directory,byte[] descriptor,byte[] device,byte[] policy)throws Exception;
+  String evaluatePreparedForCommit(String prepared,String admission,String id,byte[] policy)throws Exception;
+  String evaluatePreparedRecovery(String prepared,String admission,String id,String candidate,long candidateVersion,String recovery,long recoveryVersion,String signer,long securityFloor)throws Exception;
  }
  public interface EnrolledDiscovery extends AutoCloseable {
   @Override void close();
   DiscoveryResult runWithTimeSource(String schedule,String trust,String admission,String prepared,byte[] device,long floor,long generation)throws Exception;
+  DiscoveryResult refreshWithTimeSource(String schedule,String trust,String admission,byte[] device,long floor,long generation)throws Exception;
  }
  public interface PreparedStager extends AutoCloseable {
   @Override void close();
@@ -46,9 +49,17 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   public Enrollment {config=config.clone();root=root.clone();}
   public byte[] getConfig(){return config.clone();}public byte[] getRoot(){return root.clone();}public String getCohortID(){return cohortID;}
  }
- public record DiscoveryResult(String status,boolean hasAdmission,long generation,byte[] descriptor,String authorizationID) {
+ /** failure is "trust-cache" when the local trust cache cannot be read, "fetch"
+  * for any other failed attempt, and empty otherwise. */
+ public record DiscoveryResult(String status,boolean hasAdmission,long generation,byte[] descriptor,String authorizationID,String failure) {
   public String getStatus(){return status;}public Object getAdmission(){return hasAdmission?Boolean.TRUE:null;}
   public long getGeneration(){return generation;}public byte[] getDescriptor(){return descriptor;}public String getAuthorizationID(){return authorizationID;}
+  public String getFailure(){return failure;}
+ }
+ /** The trust cache cannot be read, so no discovery can succeed until it is
+  * repaired. It is reported, never read as an ordinary scheduling deferral. */
+ public static final class TrustCacheUnreadable extends IOException {
+  TrustCacheUnreadable(){super("OTA trust cache unreadable");}
  }
  public record StagedPair(long generation,byte[] descriptor,String authorizationID,String candidatePath,String recoveryPath) {
   public long getGeneration(){return generation;}public byte[] getDescriptor(){return descriptor;}public String getAuthorizationID(){return authorizationID;}
@@ -91,9 +102,26 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
  }
  @Override public PreparationFlow.Fence capture()throws Exception {
   UpdateJournal.Snapshot state=journal.read();
-  boolean busy=state.phase!=UpdateJournal.Phase.IDLE&&state.phase!=UpdateJournal.Phase.STAGING&&state.phase!=UpdateJournal.Phase.HEALTHY&&state.phase!=UpdateJournal.Phase.RECOVERED&&state.phase!=UpdateJournal.Phase.QUARANTINED;
-  return new PreparationFlow.Fence(state.channel,state.channelGeneration,PackageInstallCoordinator.installed(context,targetPackage),busy);
+  return new PreparationFlow.Fence(state.channel,state.channelGeneration,PackageInstallCoordinator.installed(context,targetPackage),state.phase,state.plan==null?null:state.plan.id);
  }
+ private String trustDirectory(PreparationFlow.Fence fence)throws Exception {return working("ota-trust-"+fence.channel+"-"+config.getString("distribution"));}
+ @Override public void refresh(PreparationFlow.Fence fence)throws Exception {
+  Observed observed=observe(fence);EnrolledDiscovery session=trust.newEnrolledDiscoveryWithTimeSource(path("ota-enrollment"),inputs);resources.attach(session::close);
+  try {
+   // A schedule of its own, so a refresh does not wait out discovery's backoff.
+   DiscoveryResult result=session.refreshWithTimeSource(working("ota-refresh-schedule"),trustDirectory(fence),path("ota-admission"),observed.device,observed.input.securityFloor,fence.generation);
+   if("trust-cache".equals(result.getFailure()))throw new TrustCacheUnreadable();
+  }finally{resources.release();}
+ }
+ @Override public String commitDecision(PreparationFlow.Fence fence)throws Exception {
+  return trust.evaluatePreparedForCommit(path("ota-prepared"),path("ota-admission"),fence.planId,PackageInstallCoordinator.commitFreshnessPolicy(currentTime(),inputs.read().securityFloor,CommitFreshness.UNBOUNDED));
+ }
+ @Override public void discardVerified(PreparationFlow.Fence fence,String reason)throws Exception {journal.discardVerified(fence.planId,fence.generation,reason);}
+ @Override public String recoveryDecision(PreparationFlow.Fence fence)throws Exception {
+  UpdateJournal.Plan plan=journal.read().plan;if(plan==null||!plan.id.equals(fence.planId))throw new IOException("Recovery plan changed");
+  return trust.evaluatePreparedRecovery(path("ota-prepared"),path("ota-admission"),plan.id,plan.candidate.digest,plan.candidate.code,plan.recovery.digest,plan.recovery.code,config.getString("signerSha256"),inputs.read().securityFloor);
+ }
+ @Override public void recoveryUnavailable(PreparationFlow.Fence fence,String reason)throws Exception {journal.recoveryUnavailable(fence.planId,reason);}
  @Override public void prune()throws Exception {working("ota-prepared");new PreparedAuthorizationStore(journal,new File(root,"ota-prepared"),trust).prune();}
  private static final class Observed {
   final Inputs input;final byte[] device;final String abi;
@@ -123,7 +151,8 @@ public final class NativePreparation implements PreparationFlow.Ports,AutoClosea
   if(queued.phase==UpdateJournal.Phase.STAGING&&!queued.plan.baseline.matches(fence.installed))journal.discardStaging(queued.plan.id,fence.generation);
   Observed observed=observe(fence);EnrolledDiscovery session=trust.newEnrolledDiscoveryWithTimeSource(path("ota-enrollment"),inputs);resources.attach(session::close);
   try {
-   DiscoveryResult result=session.runWithTimeSource(working("ota-schedule"),working("ota-trust-"+fence.channel+"-"+config.getString("distribution")),path("ota-admission"),path("ota-prepared"),observed.device,observed.input.securityFloor,fence.generation);
+   DiscoveryResult result=session.runWithTimeSource(working("ota-schedule"),trustDirectory(fence),path("ota-admission"),path("ota-prepared"),observed.device,observed.input.securityFloor,fence.generation);
+   if("trust-cache".equals(result.getFailure()))throw new TrustCacheUnreadable();
    queued=journal.read();
    if(!"admitted".equals(result.getStatus())) {
     // A scheduling deferral has no admission result. Continue the previously

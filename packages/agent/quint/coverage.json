@@ -1,0 +1,929 @@
+[
+  {
+    "id": "AgentApiApprovals",
+    "model": "packages/agent/quint/api-approvals.qnt",
+    "sources": [
+      "packages/agent/src/api/device-action-routes.ts",
+      "packages/agent/src/api/approval-routes.ts",
+      "plugins/plugin-assistant/src/services/approval/store.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-assistant/test/device-actions.e2e.test.ts",
+      "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts",
+      "plugins/plugin-assistant/test/photos-filter.e2e.test.ts"
+    ],
+    "invariants": [
+      "AtMostOneClaim",
+      "DispatchPrecedesReceipt",
+      "PermitRequiresCommittedDispatch"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One device proposal and one claim. Receipt identity and approval expiry are symbolic.",
+      "Real HTTP and SQL checks bind the atomic dispatch and reconciliation boundary. Device effects, enrollment revocation, multiple proposals and arbitrary receipt payloads remain outside this scope.",
+      "The generic list hides device records. Non-device approvals have separate execution authorities."
+    ]
+  },
+  {
+    "id": "AgentApiBoundaries",
+    "model": "packages/agent/quint/api-boundaries.qnt",
+    "sources": [
+      "packages/agent/src/api/attachment-knowledge-ingest.ts",
+      "packages/agent/src/api/runtime-mode/runtime-mode.ts",
+      "packages/agent/src/api/config-routes.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Owner/other, private/public room and one config commit.",
+      "Role resolution, cryptography, SSRF, concurrent configuration changes and cross-tenant noninterference are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiBudgets",
+    "model": "packages/agent/quint/api-budgets.qnt",
+    "sources": [
+      "packages/agent/src/api/rate-limiter.ts",
+      "packages/agent/src/api/request-storm-cap.ts",
+      "packages/agent/src/api/world-metadata-retry.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two tokens and three CAS attempts.",
+      "Concrete sliding time windows, distinct principals and refill arithmetic are abstracted.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiConnections",
+    "model": "packages/agent/quint/api-connections.qnt",
+    "sources": [
+      "packages/agent/src/api/conversation-connection-readiness.ts",
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/character-routes.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One room lifecycle and runtime, two proof identities with a shared observer, two raw queue slots and generations 0 through 2. A separate projection checks one create response.",
+      "Independent caller and room lifecycles, deletion retries while raw I/O is stalled, room-generation eviction, request fences, and process restart are outside the projections.",
+      "Database failures and observer deadlines are abstracted. Drain assumes weakly fair raw I/O settlement. Real HTTP and SQLite check matching observers, a production deadline, queued cancellation, quarantine and fresh retry across two room IDs. These scenarios do not establish implementation refinement."
+    ]
+  },
+  {
+    "id": "AgentApiDeviceRelay",
+    "model": "packages/agent/quint/api-device-relay.qnt",
+    "sources": [
+      "packages/agent/src/api/maps-navigation-relay.ts",
+      "packages/agent/src/api/device-action-routes.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One offer, one device scope and one delivery.",
+      "Device transport, consent authority, multiple devices and cryptographic enrollment are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiLifecycle",
+    "model": "packages/agent/quint/api-lifecycle.qnt",
+    "sources": [
+      "packages/agent/src/api/agent-lifecycle-routes.ts",
+      "packages/agent/src/api/agent-admin-routes.ts",
+      "packages/agent/src/api/runtime-replacement-ownership.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "plugins/plugin-wallet/src/api/wallet-routes.ts",
+      "packages/agent/src/config/feature-flags.ts",
+      "packages/agent/test/agent-lifecycle-stop-start.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One initial boot/restart owner, two admitted turns and one persisted wallet-primary update while Start is held. The replacement projection includes distinct runtimes, running/paused rollback, up to three build attempts and one room's two FIFO callbacks sharing an abort signal.",
+      "Five maintained cases include authenticated HTTP/PGlite wallet reload admission with ENABLE_CLOUD_WALLET on, actual configuration persistence and pending-restart status, paused build rollback, queued cancellation, closed admissions and active commit before replacement. The saved-config and API replacement-publication abstraction does not assert final activation, wallet readiness or that a returned runtime applied the configuration.",
+      "Initial boot and replacement drain progress assume fair factory or callback success/failure settlement and continuation; expected unfair witnesses preserve pending work. Idle runtime-less automatic boots, arbitrary config/body-read races, post-publication activation, authentication and multi-process coordination remain partial. Restore pre-disposal and adapter retirement are separate runtime-lifecycle projections. No wall-clock or unbounded refinement proof is claimed."
+    ]
+  },
+  {
+    "id": "AgentApiMedia",
+    "model": "packages/agent/quint/api-media.qnt",
+    "sources": [
+      "packages/agent/src/api/media-store.ts",
+      "packages/agent/src/api/audio-redaction.ts",
+      "packages/agent/src/api/audio-redaction-store.ts",
+      "packages/agent/src/api/audio-redaction-verify.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two chunks, one original and one redacted variant.",
+      "Hash and MIME validation, filesystem durability and byte-level redaction correctness are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiNativeEvidence",
+    "model": "packages/agent/quint/api-native-evidence.qnt",
+    "sources": ["packages/agent/native-host/task-evidence-store.mjs"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two evidence records, one owner and bounded epoch.",
+      "SQLite transaction semantics, task authorization and cross-connection contention are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiNativeGateway",
+    "model": "packages/agent/quint/api-native-gateway.qnt",
+    "sources": ["packages/agent/native-host/gateway.mjs"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two owners, bounded epoch and three output frames.",
+      "HTTP transport, arbitrary text, storage failures and multi-client scheduling are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentNativeAccountMigration",
+    "model": "packages/agent/quint/NativeAccountMigration.qnt",
+    "sources": ["packages/agent/native-host/account-state.mjs"],
+    "invariants": [
+      "TypeOK",
+      "CompletedPrefixIsClean",
+      "OnlyDirtyFilesAreStaged",
+      "SuccessHasNoSelectedCredential"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One serialized host, three selected configuration files, one credential and two calls. Real disk cases cover namespace/profile selection, nested scrub, malformed-file repair/retry, unsafe-file rejection and idempotency; the existing real child-process case covers prepared account storage.",
+      "Per-file atomic rename is assumed and settles with its acknowledgement. Multiple writers/processes, applied-but-unacknowledged effects, crash/fsync durability, temporary-file cleanup, hostile parent paths and arbitrary JSON roots/nesting remain open.",
+      "Progress assumes admitted filesystem calls settle and continuation is fair; neither success nor retry is guaranteed. The model excludes namespace creation/chmod failures. The documented downstream source API has no in-tree migration caller, so this does not prove downstream invocation, credential verification or broader account authorization."
+    ]
+  },
+  {
+    "id": "AgentApiNativeSupervisor",
+    "model": "packages/agent/quint/api-native-supervisor.qnt",
+    "sources": [
+      "packages/agent/native-host/runtime-supervisor.mjs",
+      "packages/agent/native-host/private-runtime-launch.mjs",
+      "packages/agent/native-host/gateway.e2e.test.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two owner identities and one child. Repeated arbitrary rotations, stop failures and hung host callbacks require separate state refinements.",
+      "Seven real-process tests cover startup account rotation, close while spawning, failed launch receipts, missing executables, signal escalation and private launch configuration.",
+      "Close progress assumes settling host callbacks, successful child termination and fair continuation. Operating-system and filesystem semantics remain external."
+    ]
+  },
+  {
+    "id": "AgentApiNativeSurface",
+    "model": "packages/agent/quint/api-native-surface.qnt",
+    "sources": [
+      "packages/agent/native-host/surface-channel.mjs",
+      "packages/agent/native-host/surface-client.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One session, one pending command and one delivery.",
+      "Native actuator authorization, transport payload validation and multiple pending commands are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiNative",
+    "model": "packages/agent/quint/api-native.qnt",
+    "sources": [
+      "packages/agent/src/api/native-view-renderer.ts",
+      "packages/agent/src/api/native-inference-timing.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two hosts/revisions and two overlapping turns.",
+      "Host identity authenticity, concurrent owner stores and elapsed-time measurements remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiProposals",
+    "model": "packages/agent/quint/api-proposals.qnt",
+    "sources": ["packages/agent/src/api/runtime-management-proposal-store.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One proposal and two consumers.",
+      "Atomic rename and filesystem identity checks are trusted; UUID reuse and cross-process crashes need separate validation.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiResources",
+    "model": "packages/agent/quint/api-resources.qnt",
+    "sources": ["packages/agent/src/api/server-resources.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One resource with one synchronous reentrant close.",
+      "Asynchronous disposal failures, multiple-resource ordering and callbacks awaiting their own close are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiRestoration",
+    "model": "packages/agent/quint/api-restoration.qnt",
+    "sources": [
+      "packages/agent/src/api/conversation-restore.ts",
+      "packages/agent/src/api/connector-health.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One room with two versions and one probe generation.",
+      "Multiple rooms, metadata merge details and callback reentrancy are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiStreams",
+    "model": "packages/agent/quint/api-streams.qnt",
+    "sources": [
+      "packages/agent/src/api/backup-v2-stream-response.ts",
+      "packages/agent/src/api/chat-stream-writer.ts",
+      "packages/agent/src/api/ws-event-replay.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two data frames, one terminal frame and bounded event cursor.",
+      "Text/content encoding, arbitrary event histories and network backpressure behavior require real transport tests.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiTransport",
+    "model": "packages/agent/quint/api-transport.qnt",
+    "sources": [
+      "packages/agent/src/api/pending-request-map.ts",
+      "packages/agent/src/api/pty-ws-bridge.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two request generations and one reconnect timer.",
+      "Transport authentication, OS PTY ownership and unbounded reconnects are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiViews",
+    "model": "packages/agent/quint/api-views.qnt",
+    "sources": [
+      "packages/agent/src/api/view-installations.ts",
+      "packages/agent/src/api/native-view-renderer.ts",
+      "packages/agent/src/api/view-interaction-host.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two installation generations and one renderer claim.",
+      "Independent owners, capability authenticity, renderer crash recovery and arbitrary histories are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiWalletKeys",
+    "model": "packages/agent/quint/api-wallet-keys.qnt",
+    "sources": [
+      "packages/agent/src/api/wallet-key-store.ts",
+      "packages/agent/src/api/wallet-keygen.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two opaque key values and one serialized vault write.",
+      "Cryptography, secret storage security and concurrent vault writers remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeCache",
+    "model": "packages/agent/quint/runtime-cache.qnt",
+    "sources": [
+      "packages/agent/src/runtime/tool-call-cache/cache.ts",
+      "packages/agent/src/runtime/tool-call-cache/disk-store.ts",
+      "packages/agent/src/runtime/tool-call-cache/lru.ts",
+      "packages/agent/src/runtime/tool-call-cache/key.ts",
+      "packages/agent/src/runtime/tool-call-cache/redact.ts",
+      "packages/agent/src/runtime/tool-call-cache/registry.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two descriptor versions, two executions and TTL classes.",
+      "Hash collisions, atomic disk replacement, arbitrary cache keys and concrete LRU eviction are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeConfig",
+    "model": "packages/agent/quint/runtime-config.qnt",
+    "sources": [
+      "packages/agent/src/config/config.ts",
+      "packages/agent/src/config/includes.ts",
+      "packages/agent/src/config/env-vars.ts",
+      "packages/agent/src/config/dev-cloud-env-authority.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two complete documents and include depth two.",
+      "Filesystem fsync/rename semantics, complete schema validation and concrete configured depth are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeHooksWatchdog",
+    "model": "packages/agent/quint/runtime-hooks-watchdog.qnt",
+    "sources": [
+      "packages/agent/src/hooks/registry.ts",
+      "packages/agent/src/hooks/loader.ts",
+      "packages/agent/src/hooks/discovery.ts",
+      "packages/agent/src/hooks/eligibility.ts",
+      "packages/agent/src/runtime/memory-watchdog.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two hooks and two high-memory observations.",
+      "Concurrent reloads, arbitrary handler failures and real process memory sampling are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeLifecycle",
+    "model": "packages/agent/quint/runtime-lifecycle.qnt",
+    "sources": [
+      "packages/agent/src/runtime/boot-pipeline.ts",
+      "packages/agent/src/runtime/deferred-boot-owner.ts",
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/src/runtime/eliza-plugin.ts",
+      "packages/agent/src/runtime/memory-retention-service.ts",
+      "packages/agent/src/runtime/retention-task.ts",
+      "packages/core/src/runtime.ts",
+      "packages/core/src/runtime/retirement.ts",
+      "packages/core/src/runtime/service-lifecycle.ts",
+      "packages/core/src/services/task.ts",
+      "packages/agent/test/hot-reload-shared-database.test.ts",
+      "packages/core/src/services/task-scheduler.ts",
+      "packages/agent/src/runtime/restore-generation.boot.test.ts",
+      "packages/agent/src/api/agent-lifecycle-routes.ts",
+      "packages/agent/src/api/agent-admin-routes.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-runtime-generation.ts",
+      "packages/core/src/runtime/room-handler-queue.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/agent/src/api/runtime-replacement-ownership.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Eight boot phases and two deferred task identities. Adapter retirement has one outgoing/replacement pair, shared or distinct adapters, one active write or none, and two stop callbacks. Restore replacement has three runtime identities, four build calls, one initially admitted owner and authority closure only between requests. Shared-query handoff has four initialization modes, three handles for one physical connection, one unrelated handle, two queries, at most two handoffs, and one final close. Shared callback retirement has one outgoing admitted write, one or two published replacements, and strict or fast final stop.",
+      "Twelve hot-reload cases cover shared/distinct PGlite, actual HTTP/SQLite retention callbacks, and detached queries outside the outgoing runtime dirty snapshot. Four of these test live, identical, chained and unrelated scheduler handles. Three use authenticated HTTP with held PGlite retention writes, including failed completion and durable readback. Four additional restored-host cases cover actual startEliza evaluator retention past the fast cap, stop/start, closed and invalid authority, and durable persona/database readback.",
+      "Progress assumes fair owner, callback, storage, factory and host settlement, without requiring successful effects. Published handoff assumes outgoing rooms are drained before activation. Factory-internal cleanup, other activation errors, mid-request authority revocation, arbitrary callback internals, late starts, reopen and physical close failures, hard signal exit, cyclic adoption and self-awaiting hooks remain partial."
+    ]
+  },
+  {
+    "id": "AgentProcessSignalDrain",
+    "model": "packages/agent/quint/process-signal-drain.qnt",
+    "sources": [
+      "packages/agent/src/runtime/process-lifecycle.ts",
+      "packages/agent/src/runtime/eliza.ts",
+      "packages/agent/test/fixtures/process-lifecycle-child.ts",
+      "packages/agent/test/process-lifecycle-exit.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One installed process adapter, two graceful signal deliveries, four ordered cleanup callbacks and one error report. Real Bun and Node child processes record callback entry to disk and expose exit status to their parent.",
+      "Fair cleanup and exit continuation settle with success or failure unless the external owner sends SIGKILL. A separate forced outcome permits an incomplete cleanup receipt.",
+      "Process startup, signal-handler removal, natural exit on an empty event loop, competing signal owners, native signal scheduling, callback internals and external supervisor timing remain outside the model."
+    ]
+  },
+  {
+    "id": "AgentRuntimeOperationRecovery",
+    "model": "packages/agent/quint/runtime-operation-recovery.qnt",
+    "sources": [
+      "packages/agent/src/runtime/operations/repository.ts",
+      "packages/agent/src/runtime/operations/types.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One record with current/previous/dead/remote/legacy owner classes.",
+      "Executor identity proof, process liveness and filesystem persistence are trusted boundaries.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeOperationTiers",
+    "model": "packages/agent/quint/runtime-operation-tiers.qnt",
+    "sources": [
+      "packages/agent/src/runtime/operations/manager.ts",
+      "packages/agent/src/runtime/operations/classifier.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Hot/warm/cold tiers and all subsets of three strategies.",
+      "Configuration contents and replacement during a request are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeOperations",
+    "model": "packages/agent/quint/runtime-operations.qnt",
+    "sources": [
+      "packages/agent/src/runtime/operations/manager.ts",
+      "packages/agent/src/runtime/operations/repository.ts",
+      "packages/agent/src/runtime/operations/classifier.ts",
+      "packages/agent/src/runtime/operations/health.ts",
+      "packages/agent/src/runtime/operations/cold-strategy.ts",
+      "packages/agent/src/runtime/operations/reload-hot.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One operation lane and two request keys.",
+      "Filesystem repository is not modeled as a distributed lock; strategy side effects and health transport are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimePlugins",
+    "model": "packages/agent/quint/runtime-plugins.qnt",
+    "sources": [
+      "packages/agent/src/runtime/plugin-lifecycle.ts",
+      "packages/agent/src/runtime/blocking-core-boot.ts",
+      "packages/agent/src/runtime/plugin-resolver.ts",
+      "packages/agent/src/runtime/load-plugin-from-directory.ts",
+      "packages/agent/src/runtime/load-plugin-from-vfs.ts",
+      "packages/agent/src/runtime/view-scoped-actions.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One plugin lane and one migration.",
+      "Schema migration serialization, plugin code effects and inter-plugin dependencies are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeRegistry",
+    "model": "packages/agent/quint/runtime-registry.qnt",
+    "sources": ["packages/agent/src/sandbox-registry.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two container generations and one Redis routing identity.",
+      "Lua atomicity, transport failure, actual TTL time and multiple routing identities remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeRetention",
+    "model": "packages/agent/quint/runtime-retention.qnt",
+    "sources": ["packages/agent/src/runtime/retention-task.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One install, one worker and one active sweep.",
+      "Storage atomicity, multiple workers, retained record contents and scheduler fairness are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeRoleBootstrap",
+    "model": "packages/agent/quint/runtime-role-bootstrap.qnt",
+    "sources": ["packages/agent/src/runtime/roles.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One owner, one connector and three attempts.",
+      "Role-store isolation, multiple connectors and immutable owner identity proofs remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentRuntimeTrajectories",
+    "model": "packages/agent/quint/runtime-trajectories.qnt",
+    "sources": [
+      "packages/agent/src/runtime/trajectory-storage.ts",
+      "packages/agent/src/runtime/trajectory-internals.ts",
+      "packages/agent/src/runtime/trajectory-steps-writer.ts",
+      "packages/agent/src/runtime/trajectory-steps-reader.ts",
+      "packages/agent/src/runtime/dev-trajectory-recovery.ts",
+      "packages/agent/src/runtime/dev-trajectory-recovery-protocol.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two captures and two execution identities.",
+      "Database transactions, CAS, supervisor exit proof and arbitrary capture payloads are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesBackup",
+    "model": "packages/agent/quint/services-backup.qnt",
+    "sources": [
+      "packages/agent/src/services/agent-backup-authority.ts",
+      "packages/agent/src/services/agent-backup.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two frames and generations 0..2.",
+      "Archive correctness, durability, multi-process generation authority and provider storage are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesEffectPipeline",
+    "model": "packages/agent/quint/services-effect-pipeline.qnt",
+    "sources": [
+      "packages/agent/src/services/shell-execution-router.ts",
+      "packages/agent/src/services/media-generation.ts",
+      "packages/agent/src/services/audio-redaction-service.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One validated dispatch and one result/persistence cycle.",
+      "Provider algorithms, authorization, transport outcomes and concrete effect receipts are external predicates.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesEscalation",
+    "model": "packages/agent/quint/services-escalation.qnt",
+    "sources": ["packages/agent/src/services/escalation.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One agent with two escalation steps.",
+      "Delivery transport, concrete retry timing and many-agent isolation remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesFsLease",
+    "model": "packages/agent/quint/services-fs-lease.qnt",
+    "sources": [
+      "packages/agent/src/services/agent-backup-restore-v3-candidate-fs-control.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One lease and two active use identities.",
+      "Kernel lock enforcement, process crashes and filesystem cleanup are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesIdempotency",
+    "model": "packages/agent/quint/services-idempotency.qnt",
+    "sources": ["packages/agent/src/services/chat-idempotency-service.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One scoped key, two owners/fingerprints/waiters and generations 0..2.",
+      "Multiple scopes, actual expiration time, storage persistence and unbounded generations are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesInteraction",
+    "model": "packages/agent/quint/services-interaction.qnt",
+    "sources": [
+      "packages/agent/src/services/message-interaction-host.ts",
+      "packages/agent/src/services/message-interaction-session-store.ts",
+      "packages/agent/src/services/sqlite-message-interaction-session-store.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One interaction, two lock owners and one external effect.",
+      "Core authorization/claim semantics, database transactions and actual reconciliation evidence are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesInteractiveTask",
+    "model": "packages/agent/quint/services-interactive-task.qnt",
+    "sources": [
+      "packages/agent/src/services/interactive-task-runtime.ts",
+      "packages/agent/src/services/interactive-task-store.ts",
+      "packages/agent/src/services/interactive-task-http.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One task, epochs 0..2 and revisions 0..8.",
+      "Actuator authorization, cleanup side effects, arbitrary journals and cross-owner noninterference remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesOwnerPairing",
+    "model": "packages/agent/quint/services-owner-pairing.qnt",
+    "sources": ["packages/agent/src/services/owner-binding.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One connector code, two owners and two attempts.",
+      "Code entropy, identity-store atomicity and multiple concurrent pairing scopes are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesPermissions",
+    "model": "packages/agent/quint/services-permissions.qnt",
+    "sources": ["packages/agent/src/services/permissions-registry.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One permission, one queued probe and revisions 0..2.",
+      "OS permission state, multiple permissions, callback reentrancy and disk durability remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesPluginInstall",
+    "model": "packages/agent/quint/services-plugin-install.qnt",
+    "sources": [
+      "packages/agent/src/services/plugin-installer.ts",
+      "packages/agent/src/services/remote-plugin-adapter.ts",
+      "packages/agent/src/services/self-updater.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One install and two approved/resolved identities.",
+      "Package integrity, executable plugin effects and rollback across filesystem failure are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesProactive",
+    "model": "packages/agent/quint/services-proactive.qnt",
+    "sources": ["packages/agent/src/services/proactive-interaction-gate.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two surfaces, two daily emissions and abstract timer classes.",
+      "Concrete debounce/cooldown time, calendar rollover and multiple-agent isolation are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesPush",
+    "model": "packages/agent/quint/services-push.qnt",
+    "sources": [
+      "packages/agent/src/services/push/notification-push-service.ts",
+      "packages/agent/src/services/push/push-token-registry.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two attachments, epochs 0..2, one token and two delivery attempts.",
+      "APNs/FCM transport, in-flight notification draining and multi-token/account isolation remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesRemoteRunner",
+    "model": "packages/agent/quint/services-remote-runner.qnt",
+    "sources": ["packages/agent/src/services/remote-coding-runner.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One runner, two users and two effects.",
+      "Provider resource creation/destruction, keep-alive policy, retry timing and arbitrary command streams remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesRestoreGeneration",
+    "model": "packages/agent/quint/services-restore-generation.qnt",
+    "sources": [
+      "packages/agent/src/services/agent-backup-restore-v3-generation.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-generation-commit.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-generation-promotion.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-serving-controller.ts",
+      "packages/agent/src/services/agent-backup-restore-v3-restored-runtime.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One generation publication and one boot grant.",
+      "Both parent fsyncs, process recovery, multi-generation contention and provider storage are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesSandbox",
+    "model": "packages/agent/quint/services-sandbox.qnt",
+    "sources": [
+      "packages/agent/src/services/sandbox-manager.ts",
+      "packages/agent/src/services/sandbox-engine.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One main and one browser container in serialized standard/max mode.",
+      "Off/light modes, restart directly from degraded, OS process behavior and orphan inventory completeness are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesSigning",
+    "model": "packages/agent/quint/services-signing.qnt",
+    "sources": [
+      "packages/agent/src/services/signing-policy.ts",
+      "packages/agent/src/services/remote-signing-service.ts",
+      "packages/agent/test/sandbox-audit-durability.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One in-flight request, two payload values, one policy epoch change and a bounded approval clock. Models submission audit, policy invalidation, detached input/listing snapshots, signer failure and final evidence.",
+      "Concrete policy evaluation, multiple simultaneous requests/principal budgets, external signer unknown outcomes and signer cryptography remain separate obligations. Dispatch linearizes authority; later policy change does not retract it.",
+      "Real SQLite/ethers scenario conformance is automatic. It does not establish equivalence for every abstract schedule. Progress assumes weakly fair dependency settlement and human decision."
+    ]
+  },
+  {
+    "id": "AgentServicesTeeRelease",
+    "model": "packages/agent/quint/services-tee-release.qnt",
+    "sources": [
+      "packages/agent/src/services/tee-boot-gate.ts",
+      "packages/agent/src/services/tee-key-release.ts",
+      "packages/agent/src/services/tee-revocation.ts",
+      "packages/agent/src/services/tee-confidential-inference.ts",
+      "packages/agent/src/services/tee-sealed-volume.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One attestation/policy/key lifecycle.",
+      "Cryptographic evidence, concrete freshness, confidential-compute isolation and key erasure are external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentServicesVfs",
+    "model": "packages/agent/quint/services-vfs.qnt",
+    "sources": ["packages/agent/src/services/virtual-filesystem.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two tree versions and one rollback journal.",
+      "Filesystem transaction/durability semantics, byte content and concurrent writers remain external.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentToolingBatches",
+    "model": "packages/agent/quint/tooling-batches.qnt",
+    "sources": ["packages/agent/scripts/run-vitest-batches.ts"],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two batches and two subprocess slots.",
+      "OS signaling, suite discovery and XML parsing are external; liveness requires children to settle.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentToolingMobileBuild",
+    "model": "packages/agent/quint/tooling-mobile-build.qnt",
+    "sources": [
+      "packages/agent/scripts/build-mobile-bundle.ts",
+      "packages/agent/scripts/mobile-bundle-dependencies.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One build, one manifest and a boolean smoke gate.",
+      "Compiler/bundler correctness, platform loaders, artifact hashes and external file mutation are excluded.",
+      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+    ]
+  },
+  {
+    "id": "AgentApiHttpBody",
+    "model": "packages/agent/quint/api-http-body.qnt",
+    "sources": [
+      "packages/agent/src/api/hono-mount.ts",
+      "packages/agent/src/api/hono-adapter.ts",
+      "packages/agent/src/api/hono-adapter.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One bounded request is projected through accumulated byte increments. Arbitrary byte/chunk boundaries, dynamic route caps and multi-request sequencing are outside this instance.",
+      "Normal server close follows request drain and local response flush. HTTP deadlines, handler failures, peer receipt and other transport close policies are excluded.",
+      "The real HTTP test checks oversized chunked rejection followed by a valid keep-alive request. Authentication and route-selection authority remain external guards."
+    ]
+  },
+  {
+    "id": "AgentAuditOutbox",
+    "model": "packages/agent/quint/AuditOutbox.qnt",
+    "sources": [
+      "packages/agent/src/security/audit-log.ts",
+      "packages/agent/test/sandbox-audit-durability.test.ts"
+    ],
+    "invariants": [
+      "CapturedFactsStayOwned",
+      "ResolvedMeetsRequirements",
+      "CommittedRowsWereRecorded",
+      "SinkOrderIsRecordOrder",
+      "CrashPreservesCommittedRows",
+      "OneDeliveryAtATime"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two one-shot entries and two sinks with all durable/required flag combinations, one process restart and separate pre/post-commit append failure. Models serial delivery, attachment, outbox drain and private snapshot ownership.",
+      "Real file-backed SQLite tests check queue/drain/failure/fallback, committed-row restart and caller/observer mutation. The tests are scenario conformance, not an all-schedule implementation refinement.",
+      "Backend atomicity and trusted sink configuration are assumptions. More records/sinks, retries/idempotency, power loss, storage corruption, arbitrary sink internals and bounded feed and runtime-log retention are outside this instance.",
+      "Progress assumes available durable sink attachment when required plus weak fairness of append and delivery settlement. Without a possible durable sink, queued entries can remain waiting."
+    ]
+  },
+  {
+    "id": "ApiLogRetention",
+    "model": "packages/agent/quint/ApiLogRetention.qnt",
+    "sources": [
+      "packages/agent/src/api/server-state.ts",
+      "packages/agent/src/api/chat-routes.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "Bounded",
+      "NewestRetained",
+      "RecentCreditRetained",
+      "FallbackPreserved"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Five ordered entries, two newest retained entries, a three-entry batch threshold, two symbolic log classes, three monotone clock epochs and one fallback response.",
+      "The clock abstracts a warning within or outside the existing 60-second lookback. Entry classification, appending and eviction are synchronous. The real HTTP/logging hook checks the production warning classifier and actual chat fallback.",
+      "ReplySettles assumes weak fairness of reply once a request exists. ReplyWithoutFairness intentionally has a stuttering counterexample. This does not prove HTTP scheduling, elapsed-time accuracy, disk-log retention or implementation refinement."
+    ],
+    "implementationTests": [
+      "packages/agent/test/api-log-buffer-retention-http.test.ts"
+    ]
+  },
+  {
+    "id": "PromptDeliveryConversation",
+    "model": "packages/agent/quint/prompt-delivery.qnt",
+    "sources": [
+      "packages/agent/src/api/conversation-routes.ts",
+      "packages/agent/src/api/server.ts",
+      "plugins/plugin-workflow/src/trigger-routes.ts",
+      "packages/agent/src/triggers/runtime.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two owner conversations, one selection/persistence attempt and one host replacement. Explicit missing or non-owner selection never falls back; a host change after the room read rejects persistence.",
+      "Four terminal prompt outcomes with or without prior reply delivery. HTTP/SQL tests cover cancelled, denied and failed turns, retained delivered replies and completed turns without chat text.",
+      "Room reads are atomic snapshots. Concurrent deletion after the read, in-flight database commits, real model/provider output, native packaging and unbounded concurrency remain outside this scope. No liveness claim."
+    ]
+  },
+  {
+    "id": "TriggerRecovery",
+    "model": "packages/agent/quint/TriggerRecovery.qnt",
+    "sources": [
+      "packages/agent/src/triggers/activity.ts",
+      "packages/agent/src/triggers/runtime.ts",
+      "packages/agent/src/api/server.ts",
+      "plugins/plugin-workflow/src/trigger-routes.ts",
+      "plugins/plugin-workflow/src/lib/automations-builder.ts",
+      "plugins/plugin-workflow/src/lib/automations-types.ts",
+      "packages/agent/test/automations-owner-principal-http.test.ts"
+    ],
+    "invariants": [
+      "Safety"
+    ],
+    "status": "partial",
+    "limitations": [
+      "No cross-process writer fence is proved. Task runtime ownership remains a host responsibility. Legacy direct database mutation and permanent DELETE are outside this recovery API model.",
+      "HTTP scenario conformance checks ownership, stale snapshots, real stored task preservation and refusing removal during execution. Recovery returns an inactive task."
+    ]
+  }
+]

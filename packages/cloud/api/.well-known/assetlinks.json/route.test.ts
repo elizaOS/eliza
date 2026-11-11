@@ -21,7 +21,7 @@ describe("GET /.well-known/assetlinks.json", () => {
     const { response, body } = await fetchDocument(
       JSON.stringify([
         {
-          package_name: "ai.elizaresearch.alphaphone",
+          package_name: "ai.alphacompute.alphaphone",
           sha256_cert_fingerprints: [RELEASE, DEBUG],
         },
       ]),
@@ -35,7 +35,7 @@ describe("GET /.well-known/assetlinks.json", () => {
         relation: ["delegate_permission/common.handle_all_urls"],
         target: {
           namespace: "android_app",
-          package_name: "ai.elizaresearch.alphaphone",
+          package_name: "ai.alphacompute.alphaphone",
           sha256_cert_fingerprints: [RELEASE, DEBUG],
         },
       },
@@ -46,7 +46,7 @@ describe("GET /.well-known/assetlinks.json", () => {
     const { response, body } = await fetchDocument(
       JSON.stringify([
         {
-          package_name: "ai.elizaresearch.alphaphone",
+          package_name: "ai.alphacompute.alphaphone",
           sha256_cert_fingerprints: [RELEASE],
         },
         {
@@ -65,7 +65,7 @@ describe("GET /.well-known/assetlinks.json", () => {
         relation: ["delegate_permission/common.handle_all_urls"],
         target: {
           namespace: "android_app",
-          package_name: "ai.elizaresearch.alphaphone",
+          package_name: "ai.alphacompute.alphaphone",
           sha256_cert_fingerprints: [RELEASE],
         },
       },
@@ -95,7 +95,7 @@ describe("GET /.well-known/assetlinks.json", () => {
       "{}",
       JSON.stringify([
         {
-          package_name: "ai.elizaresearch.alphaphone",
+          package_name: "ai.alphacompute.alphaphone",
           sha256_cert_fingerprints: [RELEASE],
         },
         // One bad entry must not leave a partial list behind.
@@ -113,7 +113,7 @@ describe("parseAndroidAssetLinksConfig", () => {
   const entry = (overrides: Record<string, unknown>) =>
     JSON.stringify([
       {
-        package_name: "ai.elizaresearch.alphaphone",
+        package_name: "ai.alphacompute.alphaphone",
         sha256_cert_fingerprints: [RELEASE],
         ...overrides,
       },
@@ -181,7 +181,7 @@ describe("parseAndroidAssetLinksConfig", () => {
 
   test("rejects duplicate packages and oversized or non-array config", () => {
     const one = {
-      package_name: "ai.elizaresearch.alphaphone",
+      package_name: "ai.alphacompute.alphaphone",
       sha256_cert_fingerprints: [RELEASE],
     };
     expect(parseAndroidAssetLinksConfig(JSON.stringify([one, one]))).toEqual({

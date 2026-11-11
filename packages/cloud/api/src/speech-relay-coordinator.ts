@@ -1,9 +1,6 @@
 /** Speech-only Durable Object. The caller's agent, history and tools stay on its device. */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
-import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { createDurableVoiceUsageStore } from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -19,6 +16,7 @@ import {
   parseSpeechRelayJson,
   readConfirmedSpeechRetirement,
 } from "@elizaos/host/voice/speech-relay-wire";
+import { v5 as uuidv5 } from "uuid";
 import {
   createWorkerCartesiaFactory,
   createWorkerCartesiaInkFactory,
@@ -26,8 +24,6 @@ import {
 import { parseCartesiaUsdPerCredit } from "../v1/voice/stt/cartesia-pricing";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
-import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
-import { speechRelayInkFactory } from "./speech-relay-ink";
 import {
   beginSpeechRetirement,
   claimSpeechOpening,
@@ -85,6 +81,35 @@ export function speechRelayMaxWindows(
 }
 export function speechTokenDigest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+/**
+ * The session object name for one consent. /consent warms this object while
+ * the client asks for /session, so the first-touch wait of a new object in
+ * this Worker overlaps the client round trip instead of following it. The
+ * nonce is single-use and secret to its user, and the token still gates the
+ * socket, so a predictable name grants nothing. A replayed nonce reaches the
+ * existing ledger, whose identity check refuses a second initialization.
+ */
+export function speechSessionIdForConsent(
+  userId: string,
+  consentNonce: string,
+): string {
+  const hex = createHash("sha256")
+    .update(`speech-session:v1:${userId}:${consentNonce}`)
+    .digest("hex");
+  // RFC 9562 version 8 (custom) with the RFC variant bits.
+  const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+/** Stable recovery identity with a UUID version supported by existing speech clients. */
+export function preparedSpeechSessionIdForConsent(
+  userId: string,
+  consentNonce: string,
+): string {
+  return uuidv5(
+    `https://api.eliza.app/voice/consent/${userId}/${consentNonce}`,
+    uuidv5.URL,
+  );
 }
 const response = (status: number, code: string) =>
   Response.json({ error: code }, { status });
@@ -159,8 +184,11 @@ export class SpeechRelayCoordinator {
     this.closeFailed = false;
     const attempt = runWithCloudBindingsAsync(
       this.env as Record<string, unknown>,
-      () =>
-        runWithDbCacheAsync(async () => {
+      async () => {
+        const { runWithDbCacheAsync } = await import(
+          "@elizaos/cloud-shared/db/client"
+        );
+        return runWithDbCacheAsync(async () => {
           let admitted = true;
           const started = await this.update((record) => {
             if (!record) throw Error("Speech session missing");
@@ -294,7 +322,8 @@ export class SpeechRelayCoordinator {
             await this.state.storage.setAlarm(Date.now() + 1000);
           } else await this.state.storage.deleteAlarm();
           if (failure) throw failure;
-        }),
+        });
+      },
     );
     this.closeTask = attempt;
     void attempt.then(
@@ -330,6 +359,9 @@ export class SpeechRelayCoordinator {
           !(url.pathname === "/revoke" && request.method === "POST")
         )
           return response(404, "speech_unavailable");
+        // Instantiates this object ahead of /initialize. It reads and stores nothing.
+        if (url.pathname === "/warm" && request.method === "POST")
+          return new Response(null, { status: 200 });
         if (
           (url.pathname === "/prepare" || url.pathname === "/initialize") &&
           request.method === "POST"
@@ -462,7 +494,11 @@ export class SpeechRelayCoordinator {
           request.headers.get("Upgrade")?.toLowerCase() !== "websocket"
         )
           return response(400, "websocket_required");
+        const { InsufficientCreditsError } = await import(
+          "@elizaos/cloud-shared/lib/services/credits"
+        );
         if (
+          this.stopped ||
           Date.now() >= ledger.expiresAt ||
           ledger.phase !== "minted" ||
           this.pendingSocket
@@ -701,6 +737,15 @@ export class SpeechRelayCoordinator {
     this.openingOwner = openingOwner;
     try {
       phases.claimMs = elapsed(startedAt);
+      const [
+        { runWithDbCacheAsync },
+        { createDurableVoiceUsageStore },
+        { reserveSpeechRelayAdmission },
+      ] = await Promise.all([
+        import("@elizaos/cloud-shared/db/client"),
+        import("@elizaos/cloud-shared/lib/services/voice-usage-meter"),
+        import("./speech-relay-admission"),
+      ]);
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
         runWithDbCacheAsync(async () => {
           const key = this.env.CARTESIA_API_KEY?.trim(),
@@ -907,10 +952,7 @@ export class SpeechRelayCoordinator {
               openStt: (onEvent) =>
                 createCartesiaInkRealtimeSession({
                   cartesiaApiKey: key,
-                  webSocketFactory: speechRelayInkFactory(
-                    createWorkerCartesiaInkFactory(),
-                    this.env.VOICE_SPEECH_END_TIMEOUT_MS,
-                  ),
+                  webSocketFactory: createWorkerCartesiaInkFactory(),
                   onEvent,
                 }),
               openTts: (id, callbacks) =>

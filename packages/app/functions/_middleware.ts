@@ -34,6 +34,11 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  type BrowserSignInConfiguration,
+  browserReturnScript,
+  browserSignInStart,
+} from "./_browser-sign-in";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
@@ -226,6 +231,7 @@ export interface NativeAuthCallback {
   redirectUri: string;
   androidPackage: string;
   appName: string;
+  browserSignIn?: BrowserSignInConfiguration;
 }
 
 class NativeAuthCallbackConfigurationError extends Error {
@@ -239,6 +245,7 @@ class NativeAuthCallbackConfigurationError extends Error {
 export function selectNativeAuthCallback(
   raw: unknown,
   url: URL,
+  kind: "callback" | "browser-start" = "callback",
 ): NativeAuthCallback | null {
   if (raw === undefined || raw === "") return null;
   let entries: unknown;
@@ -249,7 +256,8 @@ export function selectNativeAuthCallback(
     throw new NativeAuthCallbackConfigurationError();
   }
   if (!Array.isArray(entries)) throw new NativeAuthCallbackConfigurationError();
-  const redirects = new Set<string>();
+  const routes = new Set<string>();
+  const storageKeys = new Set<string>();
   let selected: NativeAuthCallback | null = null;
   for (const entry of entries) {
     if (
@@ -257,7 +265,13 @@ export function selectNativeAuthCallback(
       typeof entry !== "object" ||
       Array.isArray(entry) ||
       Object.keys(entry).some(
-        (key) => !["redirectUri", "androidPackage", "appName"].includes(key),
+        (key) =>
+          ![
+            "redirectUri",
+            "androidPackage",
+            "appName",
+            "browserSignIn",
+          ].includes(key),
       ) ||
       typeof entry.redirectUri !== "string" ||
       typeof entry.androidPackage !== "string" ||
@@ -286,15 +300,73 @@ export function selectNativeAuthCallback(
       /[%;*\\]/.test(callback.pathname) ||
       isProtocolPath(callback.pathname) ||
       callback.pathname.startsWith(ASSETS_PREFIX) ||
-      redirects.has(callback.href)
+      routes.has(callback.href)
     ) {
       throw new NativeAuthCallbackConfigurationError();
     }
-    redirects.add(callback.href);
+    routes.add(callback.href);
+    if (entry.browserSignIn !== undefined) {
+      const configuration = entry.browserSignIn;
+      if (
+        !configuration ||
+        typeof configuration !== "object" ||
+        Array.isArray(configuration) ||
+        Object.keys(configuration).some(
+          (key) =>
+            ![
+              "startPath",
+              "returnPath",
+              "storageKey",
+              "apiOrigin",
+              "tenant",
+            ].includes(key),
+        ) ||
+        typeof configuration.storageKey !== "string" ||
+        !/^[A-Za-z0-9:._-]{1,128}$/.test(configuration.storageKey) ||
+        typeof configuration.tenant !== "string" ||
+        !/^[A-Za-z0-9_-]{1,64}$/.test(configuration.tenant)
+      )
+        throw new NativeAuthCallbackConfigurationError();
+      for (const key of ["startPath", "returnPath"] as const) {
+        const value = configuration[key];
+        if (
+          typeof value !== "string" ||
+          !/^\/[A-Za-z0-9/_~.-]+$/.test(value) ||
+          value.startsWith("//") ||
+          new URL(value, callback.origin).pathname !== value ||
+          isProtocolPath(value) ||
+          value.startsWith(ASSETS_PREFIX)
+        )
+          throw new NativeAuthCallbackConfigurationError();
+      }
+      let api: URL;
+      try {
+        api = new URL(configuration.apiOrigin);
+      } catch {
+        // error-policy:J3 Invalid operator input cannot define an auth authority.
+        throw new NativeAuthCallbackConfigurationError();
+      }
+      const start = callback.origin + configuration.startPath;
+      const storageKey = `${callback.origin}:${configuration.storageKey}`;
+      if (
+        api.protocol !== "https:" ||
+        api.username ||
+        api.password ||
+        api.origin !== configuration.apiOrigin ||
+        routes.has(start) ||
+        storageKeys.has(storageKey)
+      )
+        throw new NativeAuthCallbackConfigurationError();
+      routes.add(start);
+      storageKeys.add(storageKey);
+    }
     if (
       url.protocol === "https:" &&
       url.origin === callback.origin &&
-      url.pathname === callback.pathname
+      url.pathname ===
+        (kind === "callback"
+          ? callback.pathname
+          : entry.browserSignIn?.startPath)
     )
       selected = entry;
   }
@@ -306,7 +378,6 @@ export const NATIVE_CALLBACK_SCRUB_SCRIPT =
 // sha256 of NATIVE_CALLBACK_SCRUB_SCRIPT; the test recomputes it.
 const NATIVE_CALLBACK_SCRIPT_HASH =
   "sha256-fNxHkHlQFHRiRhxEEUudIprPl4u12pkFQlEahycnH88=";
-const NATIVE_CALLBACK_CSP = `default-src 'none'; script-src '${NATIVE_CALLBACK_SCRIPT_HASH}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
 const escapeHtml = (value: string): string =>
   value
@@ -336,6 +407,11 @@ export function nativeSignInCallbackFallback(
 ): Response {
   const href = escapeHtml(buildNativeSignInIntentUrl(url, callback));
   const appName = escapeHtml(callback.appName);
+  const browserSignIn = callback.browserSignIn;
+  const nonce = browserSignIn ? crypto.randomUUID() : null;
+  const scriptHashes = browserSignIn
+    ? `'${NATIVE_CALLBACK_SCRIPT_HASH}' 'nonce-${nonce}'`
+    : `'${NATIVE_CALLBACK_SCRIPT_HASH}'`;
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -358,6 +434,7 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
 <p>${appName} did not open automatically, so this sign-in was not completed. Return to ${appName} and start sign-in again.</p>
 <p>If this keeps happening, open Android Settings, then Apps, ${appName}, Open by default, and allow it to open its supported links.</p>
 <a id="open" href="${href}">Return to ${appName}</a>
+${browserSignIn ? `<script nonce="${nonce}">${browserReturnScript(callback.redirectUri, browserSignIn)}</script>` : ""}
 <script>${NATIVE_CALLBACK_SCRUB_SCRIPT}</script>
 </main>
 </body>
@@ -366,7 +443,7 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
     status: 200,
     headers: {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": NATIVE_CALLBACK_CSP,
+      "Content-Security-Policy": `default-src 'none'; script-src ${scriptHashes}; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
@@ -393,10 +470,16 @@ export const onRequest = async (
     return serveAsset(context);
   }
   let callback: NativeAuthCallback | null;
+  let browserStart: NativeAuthCallback | null;
   try {
     callback = selectNativeAuthCallback(
       context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
       url,
+    );
+    browserStart = selectNativeAuthCallback(
+      context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+      url,
+      "browser-start",
     );
   } catch (error) {
     if (!(error instanceof NativeAuthCallbackConfigurationError)) throw error;
@@ -405,6 +488,13 @@ export const onRequest = async (
       status: 503,
       headers: { "Cache-Control": "no-store" },
     });
+  }
+  if (browserStart?.browserSignIn) {
+    return browserSignInStart(
+      context.request,
+      new URL(browserStart.redirectUri),
+      browserStart.browserSignIn,
+    );
   }
   if (callback) return nativeSignInCallbackFallback(url, callback);
   // A single lookup decides both that this is a crawl asset and what type it

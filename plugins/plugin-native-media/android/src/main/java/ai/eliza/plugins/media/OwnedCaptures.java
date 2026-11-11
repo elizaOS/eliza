@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
 import android.provider.MediaStore;
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,18 +64,37 @@ public final class OwnedCaptures {
     return new Result(true, id, null);
   }
 
+  /** The capture of one operation, in the current capture folder or an earlier one of this host. */
   private Cursor lookup(String operation) throws IOException {
-    Cursor row = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        new String[] {"_id", "is_pending"},
-        "owner_package_name=? AND _display_name=? AND relative_path=?",
-        new String[] {owner, config.captureName(operation), config.captureRelativePath}, null);
+    java.util.List<String> paths = new java.util.ArrayList<>();
+    paths.add(config.captureRelativePath);
+    paths.addAll(config.legacyCaptureRelativePaths);
+    java.util.List<String> args = new java.util.ArrayList<>();
+    args.add(owner);
+    args.add(config.captureName(operation));
+    args.addAll(paths);
+    String placeholders = String.join(",", java.util.Collections.nCopies(paths.size(), "?"));
+    String selection = "owner_package_name=? AND _display_name=? AND relative_path IN (" + placeholders + ")";
+    String[] values = args.toArray(new String[0]);
+    String[] projection = {"_id", "is_pending"};
+    Uri images = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+    Cursor row;
+    if (Build.VERSION.SDK_INT >= 30) {
+      Bundle query = new Bundle();
+      query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection);
+      query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, values);
+      query.putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE);
+      row = resolver.query(images, projection, query, null);
+    } else {
+      row = resolver.query(MediaStore.setIncludePending(images), projection, selection, values, null);
+    }
     if (row == null)
       throw new IOException("Capture lookup is unavailable");
     return row;
   }
 
   /** Never inserts a second row for an operation whose first attempt was reserved. */
-  private Result recover(String operation, JSONObject receipt, byte[] bytes) throws Exception {
+  private Result recover(String operation, JSONObject receipt, byte[] bytes, boolean recordedReservation) throws Exception {
     if (receipt.getString("status").equals("saved"))
       return new Result(true, receipt.getString("id"), null);
     if (receipt.getString("status").equals("failed"))
@@ -88,6 +109,7 @@ public final class OwnedCaptures {
       if (row.moveToNext())
         throw new IOException("Ambiguous capture identity");
       if (pending) {
+        if (!recordedReservation) throw new IOException("Pending capture has no recorded reservation");
         if (resolver.delete(uri, "is_pending=1 AND owner_package_name=?", new String[] {owner})
             != 1)
           throw new IOException("Capture cleanup was not confirmed");
@@ -116,6 +138,7 @@ public final class OwnedCaptures {
       return new Result(false, null, invalid.getMessage());
     }
     JSONObject receipt = null;
+    boolean recordedReservation = false;
     try {
       String digest =
           Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes));
@@ -124,15 +147,17 @@ public final class OwnedCaptures {
         if (!receipt.getString("sha256").equals(digest))
           return new Result(
               false, null, "This capture identity already belongs to different image bytes.");
-        return recover(operation, receipt, bytes);
+        recordedReservation = true;
+        return recover(operation, receipt, bytes, recordedReservation);
       }
       receipt = new JSONObject().put("status", "reserved").put("sha256", digest);
       // Also recover copies made by hosts that only recorded an identity after publication.
       try (Cursor row = lookup(operation)) {
         if (row.moveToFirst())
-          return recover(operation, receipt, bytes);
+          return recover(operation, receipt, bytes, false);
       }
       persist(operation, receipt);
+      recordedReservation = true;
       ContentValues values = new ContentValues();
       values.put(MediaStore.Images.Media.DISPLAY_NAME, config.captureName(operation));
       values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
@@ -159,7 +184,7 @@ public final class OwnedCaptures {
       // Resolve the reserved identity; never delete a published row or insert a replacement.
       if (receipt != null) {
         try {
-          return recover(operation, receipt, bytes);
+          return recover(operation, receipt, bytes, recordedReservation);
         } catch (Exception unresolved) { /* Keep the reservation for a later explicit retry. */
         }
       }

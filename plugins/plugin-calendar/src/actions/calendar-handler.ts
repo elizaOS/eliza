@@ -1,4 +1,5 @@
 import { parseClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
+import { getStreamingContext } from "@elizaos/core";
 import {
   type CalendarFields,
   type CalendarWindow,
@@ -18,6 +19,7 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
+import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
 import {
   calendarCreateAuthorityProperties,
   calendarCreateUserSources,
@@ -95,6 +97,7 @@ import {
   CALENDAR_DETAIL_ALIASES,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
 } from "../calendar-action-schema.js";
+import { calendarReadPromptProjection } from "../calendar-read-result.js";
 import { calendarRecordPolicyFailure } from "../internal/calendar-record-policy.js";
 import {
   CALENDAR_TIME_ZONE_ALIASES,
@@ -4735,6 +4738,7 @@ export function formatCalendarSearchResults(
   events: LifeOpsCalendarEvent[],
   query: string,
   label: string,
+  reference?: { asOf: Date; timeZone: string },
 ): string {
   const queryEcho = describeUserReference(query, "that request");
   if (events.length === 0) {
@@ -4747,7 +4751,7 @@ export function formatCalendarSearchResults(
     }
     // Keep the internal event label generic. The existing planner evaluator
     // uses these facts and receipts to choose the final natural phrasing.
-    return `Your matching calendar event is **${event.title}** (${formatCalendarMoment(event)}).`;
+    return `Your matching calendar event is **${event.title}** (${reference ? formatCalendarEventTimeRange(event, reference) : formatCalendarMoment(event)}).`;
   }
   const lines = [
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
@@ -4755,7 +4759,9 @@ export function formatCalendarSearchResults(
   for (const event of events) {
     const when = event.isAllDay
       ? "all day"
-      : formatCalendarEventDateTime(event);
+      : reference
+        ? formatCalendarEventTimeRange(event, reference)
+        : formatCalendarEventDateTime(event);
     lines.push(`- **${event.title}** (${when})`);
     if (event.location) {
       lines.push(`  Location: ${event.location}`);
@@ -5347,9 +5353,15 @@ export function createCalendarActionRunner(
         normalizedDetails,
         sourceSelection,
       );
-      // Connected provider source IDs retain the canonical strict merge below.
+      const nativeGrantId = nativeCalendarFailure
+        ? connectorGrantIdDetail(details)
+        : undefined;
+      // The native preparation ports own local Calendar writes. An explicit
+      // connected grant must reach its own source checks and never fall into
+      // the phone-only interpretation path.
       if (
         nativeCalendarFailure &&
+        !nativeGrantId &&
         normalizeCalendarSubaction(params.subaction) === "create_event" &&
         hostDeps.requestLocalCreate
       ) {
@@ -5358,6 +5370,7 @@ export function createCalendarActionRunner(
       }
       if (
         nativeCalendarFailure &&
+        !nativeGrantId &&
         normalizeCalendarSubaction(params.subaction) === "update_event" &&
         hostDeps.requestLocalUpdate
       ) {
@@ -5375,9 +5388,6 @@ export function createCalendarActionRunner(
           if (named) return named;
         }
       }
-      const nativeGrantId = nativeCalendarFailure
-        ? connectorGrantIdDetail(details)
-        : undefined;
       const localAgendaCandidate =
         Boolean(hostDeps.requestLocalAgenda) &&
         (normalizeCalendarSubaction(params.subaction) === "feed" ||
@@ -5444,9 +5454,19 @@ export function createCalendarActionRunner(
         runtime,
         new Date(),
       );
+      // The current client's clock owns an unqualified conversational date.
+      // A remote host's default zone must not move its day boundary; explicit
+      // requested zones still win below. Invalid client hints grant nothing.
+      const metadata = message.content.metadata;
+      const clientZone =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>).uiTimeZone
+          : undefined;
       const planningTimeZone = resolveCalendarTimeZone(
         details,
-        calendarZone.timeZone,
+        typeof clientZone === "string" && isValidTimeZone(clientZone)
+          ? clientZone
+          : calendarZone.timeZone,
       );
       const explicitSubaction = normalizeCalendarSubaction(params.subaction);
       // A promoted CALENDAR_* tool call is already the action planner's typed
@@ -5638,6 +5658,7 @@ export function createCalendarActionRunner(
               }
             : scenario === "search_results"
               ? {
+                  timeZone: planningTimeZone,
                   selection: "filtered_search",
                   contentFilterApplied: true,
                   nextEventLookupPerformed: false,
@@ -5659,7 +5680,7 @@ export function createCalendarActionRunner(
       }): Promise<ActionResult> => {
         const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
         if (!payload.interaction || typeof payload.text !== "string") {
-          return {
+          const result: ActionResult = {
             success: payload.success,
             transcriptVisibility: "internal",
             turnComplete: false,
@@ -5693,6 +5714,13 @@ export function createCalendarActionRunner(
               ),
             },
           };
+          // Every host, including the full personal assistant, receives the
+          // same local-time facts. Do not depend on one registration wrapper.
+          return subaction === "feed" ||
+            subaction === "search_events" ||
+            subaction === "next_event"
+            ? { ...result, ...calendarReadPromptProjection(result.data) }
+            : result;
         }
         // Approval choices and permission cards are explicit interaction
         // protocols. Preserve their exact text and binding, without synthesis.
@@ -7247,6 +7275,22 @@ export function createCalendarActionRunner(
         const request = baseResolved.request;
         const label = baseResolved.label;
         const hasExplicitWindow = baseResolved.explicitWindow;
+        if (
+          subaction === "search_events" &&
+          !calendarSearchFiltersAreBound(
+            getStreamingContext()?.actionConstraints,
+            message,
+            String(runtime.agentId),
+            searchQueries,
+            normalizeCalendarSearchQueryValue,
+          )
+        ) {
+          throw new CalendarServiceError(
+            400,
+            "Calendar search filters are not bound to this request's verified current or same-room referent evidence. No Calendar event read occurred. Use the requested unfiltered feed or a source-bound content lookup; do not invent a query.",
+            "CALENDAR_SEARCH_FILTER_UNBOUND",
+          );
+        }
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
           includeHiddenCalendars:
             detailBoolean(details, "includeHiddenCalendars") ??
@@ -7296,6 +7340,7 @@ export function createCalendarActionRunner(
                   filteredEvents,
                   queryFallback,
                   label,
+                  { asOf: new Date(), timeZone: planningTimeZone },
                 );
                 return respond({
                   success: true,
@@ -7341,7 +7386,10 @@ export function createCalendarActionRunner(
                   hostDeps,
                 );
               if (recoveredReadPlan?.subaction === "feed") {
-                const fallback = formatCalendarFeed(feed, label);
+                const fallback = formatCalendarFeed(feed, label, {
+                  asOf: new Date(),
+                  timeZone: planningTimeZone,
+                });
                 return respond({
                   success: true,
                   text: await renderReply("feed_results", fallback, {
@@ -7361,7 +7409,10 @@ export function createCalendarActionRunner(
           const query = queriesForSearch[0];
           if (!query || queriesForSearch.length === 0) {
             if (hasExplicitWindow) {
-              const fallback = formatCalendarFeed(feed, label);
+              const fallback = formatCalendarFeed(feed, label, {
+                asOf: new Date(),
+                timeZone: planningTimeZone,
+              });
               return respond({
                 success: true,
                 text: await renderReply("feed_results", fallback, {
@@ -7467,6 +7518,7 @@ export function createCalendarActionRunner(
             filteredEvents,
             query,
             label,
+            { asOf: new Date(), timeZone: planningTimeZone },
           );
           // queriesForSearch values are LLM-extracted and can be blobs; clamp
           // every machine-facing render while matching above kept the raw values.
@@ -7493,7 +7545,10 @@ export function createCalendarActionRunner(
           });
         }
 
-        const fallback = formatCalendarFeed(feed, label);
+        const fallback = formatCalendarFeed(feed, label, {
+          asOf: new Date(),
+          timeZone: planningTimeZone,
+        });
         return respond({
           success: true,
           text: await renderReply("feed_results", fallback, {
@@ -7504,7 +7559,19 @@ export function createCalendarActionRunner(
             operation: "calendar.feed.read",
             discriminator: label,
           }),
-          data: toActionData(feed),
+          data: toActionData({
+            ...feed,
+            requestWindow: {
+              kind: "calendar.request-window.v1",
+              sourceMessageId: message.id,
+              roomId: message.roomId,
+              actorId: message.entityId,
+              requestedAt: Date.parse(calendarMessageObservedAt(message)),
+              timeZone: planningTimeZone,
+              timeMin: request.timeMin,
+              timeMax: request.timeMax,
+            },
+          }),
         });
       } catch (error) {
         // error-policy:J1 Source and local-time rejections require user input before dispatch.
@@ -7567,6 +7634,7 @@ export function createCalendarActionRunner(
           // swallowed "mode must be one of ..." surfaced only as
           // CALENDAR_SERVICE_400).
           const coachingFailure =
+            error.code === "CALENDAR_SEARCH_FILTER_UNBOUND" ||
             error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
             error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
             error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||

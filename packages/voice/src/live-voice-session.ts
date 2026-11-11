@@ -648,6 +648,13 @@ export interface LiveCaptureOpenOptions {
   signal: AbortSignal;
   /** Platform echo cancellation for full-duplex use (the assistant listens while it speaks). */
   echoCancel: boolean;
+  /**
+   * Silence that closes a VAD segment, when the host's gate can set it. A short value turns a
+   * pause into a segment end early (for speculative turns); the host clamps it.
+   */
+  endHangoverMs?: number;
+  /** An automatic reopen after a busy hold: refused, never prompted, after a call, pause or permission loss. */
+  reopen?: true;
   roomId?: string;
   onSpeechStart?(atMs: number): void;
   onSpeechEnd?(atMs: number): void;
@@ -671,6 +678,7 @@ export function liveAssistantListener(
     roomId?: string;
     onInterim?: (text: string) => void;
     onLatency?: (latency: LiveVoiceLatency) => void;
+    endHangoverMs?: number;
   } = {},
 ) {
   return async (
@@ -679,6 +687,10 @@ export function liveAssistantListener(
     const capture = await open({
       signal: handlers.signal,
       echoCancel: true,
+      ...(options.endHangoverMs !== undefined
+        ? { endHangoverMs: options.endHangoverMs }
+        : {}),
+      ...(handlers.reopen ? { reopen: true } : {}),
       ...(options.roomId ? { roomId: options.roomId } : {}),
       onSpeechStart: handlers.onSpeechStart,
       onSpeechEnd: handlers.onSpeechEnd,

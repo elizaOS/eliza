@@ -1,0 +1,110 @@
+{
+	"sources": [
+		"packages/core/src/services/pii-scrub.ts",
+		"packages/core/src/utils/batch-queue.ts",
+		"packages/core/src/utils/task-scheduling.ts",
+		"packages/core/test/pii-scrub.lazy-drain.pglite.test.ts",
+		"packages/core/quint/check-lazy-pii-drain.ts"
+	],
+	"bounds": {
+		"domain": "Three request handlers, two stop callers, at most three accepted normal-priority items, one drain owner, one repeat task and at most one storage startup failure. Marker checks, startup settlement and queue retirement are separate actions.",
+		"assumptions": [
+			"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+			"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+			"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+		]
+	},
+	"limitations": [
+		"Three request handlers, two stop callers, at most three accepted normal-priority items, one drain owner, one repeat task and at most one storage startup failure. Marker checks, startup settlement and queue retirement are separate actions.",
+		"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+		"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+		"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+	],
+	"cases": [
+		{
+			"name": "LazyPiiDrain",
+			"main": "LazyPiiDrain",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"WorkConserved",
+				"StartupOwned",
+				"StoppedReleased",
+				"StopReturnOwned"
+			],
+			"temporal": [
+				"StartSettles",
+				"RetryRestoresDrain",
+				"ReadyWorkSettles",
+				"StopSettles",
+				"StopCallersReturn",
+				"RetryWithoutFairness",
+				"QueuedWorkWithoutFutureRequest"
+			],
+			"temporalChecks": [
+				{
+					"property": "StartSettles",
+					"expect": "holds",
+					"assumptions": [
+						"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+						"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+						"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+					]
+				},
+				{
+					"property": "RetryRestoresDrain",
+					"expect": "holds",
+					"assumptions": [
+						"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+						"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+						"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+					]
+				},
+				{
+					"property": "ReadyWorkSettles",
+					"expect": "holds",
+					"assumptions": [
+						"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+						"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+						"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+					]
+				},
+				{
+					"property": "StopSettles",
+					"expect": "holds",
+					"assumptions": [
+						"A failed startup clears both cached owners. Only a later accepted request triggers another start; no autonomous retry is assumed or claimed. RetryRestoresDrain applies only after that later request actually starts the retry.",
+						"Fairness assumes enabled marker checks and storage-start attempts settle, a second storage attempt succeeds after the one allowed failure, the existing scheduler serves ready drain work, and disposal completes. Without that fairness, RetryWithoutFairness must produce a loop counterexample.",
+						"Stop retires admission before awaiting startup and repeated stop joins the existing cleanup. Successful disposal is assumed for StopSettles; failed cleanup, partial high-priority flush and failed durable task-row deletion are outside this projection. Already-accepted normal-priority work may be explicitly discarded during fast shutdown. Processing represents a terminal queue outcome, not proof of correct PII redaction, model completion, high-priority flush behavior or unbounded queue progress. The real PGlite hook checks task startup failure/retry and stop ownership; it does not enumerate every model schedule."
+					]
+				},
+				{
+					"property": "StopCallersReturn",
+					"expect": "holds",
+					"assumptions": [
+						"Fairness assumes enabled startup settles, disposal completes successfully, and each waiting stop caller observes its shared cleanup completion. A second stop joins the existing operation and cannot return success before queue cleanup completes. Cleanup failure and partial disposal remain outside this projection."
+					]
+				},
+				{
+					"property": "RetryWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness is assumed. An enabled response, storage settlement, drain or polling action may stutter forever; a temporal loop counterexample is required."
+					]
+				},
+				{
+					"property": "QueuedWorkWithoutFutureRequest",
+					"expect": "counterexample",
+					"assumptions": [
+						"Storage settlement, ready drain, marker-check and disposal actions are weakly fair, as in Fairness. No later request is assumed. After a failed start, queued work can remain with no task; fairness alone does not trigger another start. A temporal loop counterexample is required."
+					]
+				}
+			],
+			"maxSteps": 30,
+			"samples": 1000,
+			"deadlock": false
+		}
+	],
+	"conformance": "packages/core/quint/check-lazy-pii-drain.ts"
+}

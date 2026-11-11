@@ -3,6 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
+  CONSENT_NONCE_TTL_SECONDS,
   consumeConsentNonce,
   issueConsentNonce,
 } from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
@@ -18,7 +19,9 @@ import {
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
 import {
+  preparedSpeechSessionIdForConsent,
   speechRelayMaxWindows,
+  speechSessionIdForConsent,
   speechTokenDigest,
 } from "../../../src/speech-relay-coordinator";
 
@@ -88,13 +91,26 @@ app.post("/consent", async (c) => {
   const caller = await timer.time("speech_identity_rate", () =>
     requireGenerativeRouteCaller(c, { rateLimitEndpoint: "standard" }),
   );
-  const consent = await timer.time("speech_consent_write", () =>
-    issueConsentNonce(caller.user.id),
-  );
+  const recovering = c.req.header(SPEECH_RECOVERY_HEADER) === "1";
+  // Prepared sessions already hold an atomic, expiring consent record. Their
+  // deterministic name also fences legacy mint routes against a second use.
+  const consent = recovering
+    ? {
+        nonce: crypto.randomUUID(),
+        expiresAt: new Date(
+          Date.now() + CONSENT_NONCE_TTL_SECONDS * 1000,
+        ).toISOString(),
+      }
+    : await timer.time("speech_consent_write", () =>
+        issueConsentNonce(caller.user.id),
+      );
   if (!consent) return c.json({ error: "speech_consent_unavailable" }, 503);
   let recoverySessionId: string | undefined;
-  if (c.req.header(SPEECH_RECOVERY_HEADER) === "1") {
-    recoverySessionId = crypto.randomUUID();
+  if (recovering) {
+    recoverySessionId = preparedSpeechSessionIdForConsent(
+      caller.user.id,
+      consent.nonce,
+    );
     const sessionId = recoverySessionId;
     const prepared = await timer.time("speech_recovery_prepare", () =>
       c.env
@@ -114,6 +130,21 @@ app.post("/consent", async (c) => {
     if (!prepared.ok)
       return c.json({ error: "speech_recovery_unavailable" }, 503);
     c.header("Cache-Control", "no-store");
+  } else {
+    // Start the new session object's first-touch wait now; /session reuses it.
+    // Never awaited: consent latency and its result do not depend on it.
+    const warm = c.env
+      .SPEECH_RELAY_SESSIONS!.getByName(
+        speechSessionIdForConsent(caller.user.id, consent.nonce),
+      )
+      .fetch("https://speech-relay.internal/warm", { method: "POST" })
+      .then((warmed) => warmed.body?.cancel())
+      .catch(() => {});
+    try {
+      c.executionCtx.waitUntil(warm);
+    } catch {
+      // No execution context outside Workers; the promise still settles.
+    }
   }
   return timer.apply(
     c.json({
@@ -162,7 +193,9 @@ app.post("/session", async (c) => {
   if (recovering && (typeof recoveryId !== "string" || !UUID.test(recoveryId)))
     return c.json({ error: "invalid_speech_session" }, 400);
   const sessionId =
-      typeof recoveryId === "string" ? recoveryId : crypto.randomUUID(),
+      typeof recoveryId === "string"
+        ? recoveryId
+        : speechSessionIdForConsent(caller.user.id, consentNonce),
     token = randomBytes(32).toString("base64url"),
     expiresAt = Math.min(
       Date.now() + 60000,
@@ -171,9 +204,17 @@ app.post("/session", async (c) => {
         ? caller.credential.expiresAt
         : Number.POSITIVE_INFINITY,
     );
-  const consuming = timer.time("speech_consent_consume", () =>
-    consumeConsentNonce(caller.user.id, consentNonce),
-  );
+  const preparedConsent =
+    recovering &&
+    recoveryId ===
+      preparedSpeechSessionIdForConsent(caller.user.id, consentNonce);
+  // Old random recovery IDs keep their Redis precondition. A new deterministic
+  // ID can mint only by consuming its exact prepared Durable Object record.
+  const consuming = preparedConsent
+    ? Promise.resolve(true)
+    : timer.time("speech_consent_consume", () =>
+        consumeConsentNonce(caller.user.id, consentNonce),
+      );
   const initialize = () =>
     timer.time("speech_directory_write", () =>
       c.env
@@ -227,6 +268,65 @@ app.post("/session", async (c) => {
       expiresAt: new Date(expiresAt).toISOString(),
       wsUrl: url.href,
     }),
+  );
+});
+/**
+ * Staging-only measurement of first-touch cost by hosting script. Each new
+ * object answers one read-only request and stores nothing: a gate object in the
+ * lean admission Worker and a session object wherever SPEECH_RELAY_SESSIONS is
+ * hosted (the lean speech Worker on staging once its binding uses script_name;
+ * the API Worker otherwise). The `api*` keys keep their names for comparison
+ * across runs. Durations are I/O waits in this Worker, so they include any wait
+ * before the object runs.
+ */
+app.post("/hosting-probe", async (c) => {
+  if (c.env.ENVIRONMENT !== "staging")
+    return c.json({ error: "speech_unavailable" }, 404);
+  await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "standard" });
+  const gate = c.env.INFERENCE_ADMISSION_GATES?.getByName(
+    `hosting-probe:${crypto.randomUUID()}`,
+  );
+  if (!gate) return c.json({ error: "speech_unavailable" }, 503);
+  const session = c.env.SPEECH_RELAY_SESSIONS!.getByName(crypto.randomUUID());
+  const touch = async (call: () => Promise<Response>) => {
+    const started = performance.now();
+    const response = await call();
+    await response.body?.cancel();
+    return Math.round(performance.now() - started);
+  };
+  const lean = () =>
+    touch(() =>
+      gate.fetch(
+        new Request("https://inference-admission.internal/rate-limit-warm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }),
+      ),
+    );
+  const api = () =>
+    touch(() => session.fetch("https://speech-relay.internal/hosting-probe"));
+  const leanFirst = c.req.query("first") === "lean";
+  const [one, two] = leanFirst ? [lean, api] : [api, lean];
+  const first = await one();
+  const second = await two();
+  const repeatFirst = await one();
+  const repeatSecond = await two();
+  c.header("Cache-Control", "no-store");
+  return c.json(
+    leanFirst
+      ? {
+          leanNewMs: first,
+          apiNewMs: second,
+          leanLiveMs: repeatFirst,
+          apiLiveMs: repeatSecond,
+        }
+      : {
+          apiNewMs: first,
+          leanNewMs: second,
+          apiLiveMs: repeatFirst,
+          leanLiveMs: repeatSecond,
+        },
   );
 });
 app.get("/ws", async (c) => {

@@ -82,10 +82,7 @@ import {
   type recordUsageAnalytics,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { recordSettledInferenceBilling } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
@@ -105,20 +102,19 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
 } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
 import {
@@ -142,9 +138,7 @@ import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
   InferenceAffiliateCacheUnavailableError,
-  InferenceAffiliateCacheWarmingError,
   InferencePricingCacheUnavailableError,
-  InferencePricingCacheWarmingError,
 } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import {
@@ -169,6 +163,11 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
+import {
+  ClientClosedBeforeDispatchError,
+  joinProviderBoundary,
+  OrgRateLimitedBeforeDispatchError,
+} from "./provider-boundary";
 import {
   type CallerLlmPurpose,
   getSafeCallerLlmPurpose,
@@ -220,10 +219,6 @@ interface PooledInferenceCredential extends PooledLanguageModelCredential {
   credentialId: string;
   label: string;
 }
-
-type PooledInferenceCredentialResolution =
-  | { kind: "ready"; credential: PooledInferenceCredential | null }
-  | { kind: "warming" | "unavailable" };
 
 function buildProviderReconciliationMetadata(
   provider: string,
@@ -958,6 +953,27 @@ function getObjectValue(value: unknown, key: string): unknown {
   return (value as Record<string, unknown>)[key];
 }
 
+/** The SDK retains OpenAI refusal text in its raw response, not result.text. */
+class ChatCompletionRepresentationError extends Error {
+  constructor() {
+    super("Provider response has invalid or incomplete completion metadata");
+    this.name = "ChatCompletionRepresentationError";
+  }
+}
+function readProviderRefusal(body: unknown): string | undefined {
+  const choices = getObjectValue(body, "choices");
+  if (!Array.isArray(choices) || choices.length !== 1) return undefined;
+  const message = getObjectValue(choices[0], "message");
+  const refusal = getObjectValue(message, "refusal");
+  if (refusal === undefined || refusal === null) return undefined;
+  if (
+    getObjectValue(message, "role") !== "assistant" ||
+    typeof refusal !== "string"
+  )
+    throw new ChatCompletionRepresentationError();
+  return refusal.length > 0 ? refusal : undefined;
+}
+
 function parseJsonObject(value: string | undefined): unknown {
   if (!value) {
     return undefined;
@@ -1107,9 +1123,9 @@ async function selectPooledInferenceCredential(params: {
   sessionKey: string;
   requirePooledCredential: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-}): Promise<PooledInferenceCredentialResolution> {
+}): Promise<PooledInferenceCredential | null> {
   const providerId = resolvePooledDirectProviderForModel(params.model);
-  if (!providerId) return { kind: "ready", credential: null };
+  if (!providerId) return null;
   const selectionParams = {
     organizationId: params.organizationId,
     providerId,
@@ -1121,36 +1137,27 @@ async function selectPooledInferenceCredential(params: {
       : {}),
   };
   if (params.executionCtx) {
+    // Pooled credentials are additive. A cold optional pool hydrates under
+    // waitUntil while this request uses the configured platform credential;
+    // only deployments with no platform fallback wait for the pool inline.
     const resolution = await getTeamPoolRegistry().selectCredentialCacheOnly(
       selectionParams,
-      { executionCtx: params.executionCtx },
+      {
+        executionCtx: params.executionCtx,
+        awaitCold: params.requirePooledCredential,
+      },
     );
-    if (resolution.kind !== "ready") {
-      // Pooled credentials are additive. A cold optional pool hydrates under
-      // waitUntil while this request uses the configured platform credential;
-      // only deployments with no platform fallback must wait for the pool.
-      return params.requirePooledCredential
-        ? resolution
-        : { kind: "ready", credential: null };
-    }
-    return {
-      kind: "ready",
-      credential: resolution.credential
-        ? toPooledInferenceCredential(
-            params.organizationId,
-            resolution.credential,
-          )
-        : null,
-    };
+    if (resolution.kind !== "ready" || !resolution.credential) return null;
+    return toPooledInferenceCredential(
+      params.organizationId,
+      resolution.credential,
+    );
   }
   const selected =
     await getTeamPoolRegistry().selectCredential(selectionParams);
-  return {
-    kind: "ready",
-    credential: selected
-      ? toPooledInferenceCredential(params.organizationId, selected)
-      : null,
-  };
+  return selected
+    ? toPooledInferenceCredential(params.organizationId, selected)
+    : null;
 }
 
 async function recordPooledInferenceSuccess(
@@ -1332,10 +1339,9 @@ export async function handleChatCompletionsPOST(
         )
       : undefined;
 
-    // 1. Authenticate (+ moderation). API-key and Steward-session requests
-    // resolve auth + org + moderation from a combined cache decision. On one
-    // true cold miss, Workers may consume the retained authoritative decision
-    // under a bounded deadline; its cache projection remains off-path.
+    // 1. Authenticate. API-key and Steward-session requests resolve auth, org
+    // and account standing from a combined cache decision. A true cold miss is
+    // decided by the primary once; its cache projection remains off-path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
@@ -1351,32 +1357,15 @@ export async function handleChatCompletionsPOST(
     const deferStrongCredentialCheck =
       requestIsValid &&
       Boolean(options.executionCtx) &&
-      isInferenceStrongRevocationEnabled();
+      hasInferenceRevocationBoundary();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
-      cacheOnly: Boolean(options.executionCtx),
       deferStrongCredentialCheck,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
-    if (resolution.kind === "warming") {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: "Authorization cache is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "auth_cache_warming",
-              },
-            },
-            { status: 503, headers: { "Retry-After": "1" } },
-          ),
-        ),
-      );
-    }
     if (resolution.kind === "suspended") {
       const denial = resolveInferenceAuthStandingDenial(resolution, {
         route: "chat_completions",
@@ -1504,14 +1493,17 @@ export async function handleChatCompletionsPOST(
           }
         : undefined;
 
-    // 1b. Per-org tier rate limit. Start the authoritative decision now, then
-    // overlap it with the independent cache-only preparation below. We still
-    // inspect and return this result first, preserving the existing denial
-    // precedence without serializing an unrelated Durable Object round trip
-    // ahead of every dependency read. The billing gate wakes at the same time
-    // so dispatch does not pay its activation in series after idle.
-    if (options.executionCtx && user.organization_id)
-      wakeInferenceAdmissionGate(user.organization_id, options.executionCtx);
+    // 1b. Per-org tier rate limit. Start the authoritative decision now and
+    // overlap it with the cache-only preparation below. On a Worker the
+    // verdict is joined with the lease commit at the provider boundary (see
+    // `markProviderDispatched` below), so the rate object and the billing gate
+    // cost one Durable Object round trip of wall time. The rate windows live
+    // in their own object (`rate-limit:v2:<org>`), shared with every other
+    // inference route, so they are not folded into the lease operation. A
+    // funded-budget request still decides here: its admission consumes the
+    // rate receipt.
+    const rateVerdictJoinsDispatch =
+      Boolean(options.executionCtx) && !fundedBudget;
     const orgRateLimitPromise = observeConcurrentPromise(
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
@@ -1537,10 +1529,9 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message:
-                    "Rate-limit authorization cache is warming. Retry shortly.",
+                  message: "Rate limiter is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "rate_limit_cache_warming",
+                  code: "rate_limit_unavailable",
                 },
               },
               { status: 503, headers: { "Retry-After": "1" } },
@@ -1664,24 +1655,15 @@ export async function handleChatCompletionsPOST(
     // hot-path cache is no longer flag-gated); pinned to the name-pattern set.
     const skipCatalogLookup = modelUsesReasoningTokens(model) && !fundedBudget;
     const monetizedAppPromise = requestedAppId
-      ? options.executionCtx
-        ? options.requiredAppId
-          ? appsService.getByIdCacheOnly(requestedAppId, {
+      ? (options.requiredAppId
+          ? appsService.getById(requestedAppId, {
               executionCtx: options.executionCtx,
             })
-          : appsService.getAuthorizedMonetizedAppForUserCacheOnly(
-              requestedAppId,
-              user,
-              { executionCtx: options.executionCtx },
-            )
-        : options.requiredAppId
-          ? appsService
-              .getById(requestedAppId)
-              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
-          : appsService
-              .getAuthorizedMonetizedAppForUser(requestedAppId, user)
-              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
-      : Promise.resolve({ kind: "ready" as const, app: null });
+          : appsService.getAuthorizedMonetizedAppForUser(requestedAppId, user, {
+              executionCtx: options.executionCtx,
+            })
+        ).then((app) => app ?? null)
+      : Promise.resolve(null);
     const platformCredentialConfigured =
       hasLanguageModelProviderConfigured(model);
     const pooledCredentialPromise = selectPooledInferenceCredential({
@@ -1734,35 +1716,20 @@ export async function handleChatCompletionsPOST(
       ]),
     );
 
-    const orgRateLimited = await resolveOrgRateLimit();
-    if (orgRateLimited) {
-      captureEarlyPreforwardTiming();
-      return attachPreforwardTelemetry(orgRateLimited);
+    if (rateVerdictJoinsDispatch) {
+      // A response returned before dispatch must not cancel the window count.
+      options.executionCtx?.waitUntil(orgRateLimitPromise);
+    } else {
+      const orgRateLimited = await resolveOrgRateLimit();
+      if (orgRateLimited) {
+        captureEarlyPreforwardTiming();
+        return attachPreforwardTelemetry(orgRateLimited);
+      }
     }
 
-    const [appResolution, pooledCredentialResolution, modelCatalogResolution] =
+    const [resolvedApp, pooledCredential, modelCatalogResolution] =
       unwrapConcurrentPromise(await dependencyResolutionsPromise);
-    if (
-      appResolution.kind !== "ready" ||
-      pooledCredentialResolution.kind !== "ready"
-    ) {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message:
-                  "Inference dependency cache is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "inference_dependency_cache_warming",
-              },
-            },
-            { status: 503, headers: { "Retry-After": "1" } },
-          ),
-        ),
-      );
-    }
-    monetizedApp = appResolution.app;
+    monetizedApp = resolvedApp;
     if (
       options.requiredAppId &&
       (!monetizedApp ||
@@ -1786,7 +1753,6 @@ export async function handleChatCompletionsPOST(
     }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp);
-    const pooledCredential = pooledCredentialResolution.credential;
     const modelSupportedParameters =
       modelCatalogResolution.kind === "ready"
         ? modelCatalogResolution.model?.supported_parameters
@@ -2202,18 +2168,14 @@ export async function handleChatCompletionsPOST(
         );
       }
       if (
-        error instanceof InferenceBalanceCacheWarmingError ||
-        error instanceof AiPricingCacheWarmingError ||
+        error instanceof InferenceBillingUnavailableError ||
         error instanceof AiPricingCacheUnavailableError
       ) {
         const dependency =
-          error instanceof InferencePricingCacheWarmingError ||
           error instanceof InferencePricingCacheUnavailableError ||
-          error instanceof AiPricingCacheWarmingError ||
           error instanceof AiPricingCacheUnavailableError
             ? "pricing"
-            : error instanceof InferenceAffiliateCacheWarmingError ||
-                error instanceof InferenceAffiliateCacheUnavailableError
+            : error instanceof InferenceAffiliateCacheUnavailableError
               ? "affiliate_policy"
               : "balance";
         logger.warn("[Chat Completions] billing dependency failed closed", {
@@ -2234,9 +2196,10 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message: "Billing authorization is warming. Retry shortly.",
+                  message:
+                    "Billing authorization is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "billing_cache_warming",
+                  code: "billing_unavailable",
                   details: { dependency },
                 },
               },
@@ -2254,15 +2217,23 @@ export async function handleChatCompletionsPOST(
     }
     const tAfterReserve = performance.now();
 
-    // 7. Convert messages for AI SDK
-    const systemMessage = request.messages.find((m) => m.role === "system");
-    const systemPrompt = systemMessage
-      ? getMessageContent(systemMessage)
-      : undefined;
-    const nonSystemMessages = request.messages.filter(
-      (m) => m.role !== "system",
-    );
-    const modelMessages = convertToModelMessagesFromOpenAI(nonSystemMessages);
+    // The provider boundary. The lease commit and the rate verdict started
+    // after auth settle together, and both must allow before the provider is
+    // invoked. A rate denial keeps its precedence over a balance or standing
+    // refusal. A client that left before or during the commit never reaches
+    // the provider. Each refusal is thrown to the catch below, which settles
+    // the reservation at zero because the provider was not invoked.
+    markProviderDispatched = joinProviderBoundary({
+      signal: req.signal,
+      rateVerdict: rateVerdictJoinsDispatch ? resolveOrgRateLimit : undefined,
+      commit: markProviderDispatched,
+      onRateDenied: captureEarlyPreforwardTiming,
+    });
+
+    // 7. Keep all instruction messages in their original transcript positions.
+    // Selecting one system message and filtering the rest silently loses context.
+    const systemPrompt = undefined;
+    const modelMessages = convertToModelMessagesFromOpenAI(request.messages);
 
     logger.info("[Chat Completions] Request", {
       traceId,
@@ -2384,6 +2355,24 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    if (error instanceof OrgRateLimitedBeforeDispatchError)
+      return attachPreforwardTelemetry(error.response);
+    if (error instanceof ClientClosedBeforeDispatchError) {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: error.message,
+                type: "api_error",
+                code: "client_closed_request",
+              },
+            },
+            { status: 499 },
+          ),
+        ),
+      );
+    }
     const appFundingFailure = appInferenceErrorResponse(error);
     if (appFundingFailure) return addCorsHeaders(appFundingFailure);
     const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
@@ -2409,7 +2398,7 @@ export async function handleChatCompletionsPOST(
     }
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       logger.error(
         "[Chat Completions] provider-boundary admission failed closed",
@@ -3353,6 +3342,7 @@ async function handleStreamingRequest(
     ...(sdkTiming ? { includeRawChunks: true } : {}),
     model: languageModel,
     system: systemPrompt,
+    allowSystemInMessages: true,
     messages,
     ...webSearchOptions,
     abortSignal,
@@ -3375,8 +3365,10 @@ async function handleStreamingRequest(
     // returns, so the idempotent first-call-wins guarantee against a racing
     // onAbort/onError is unchanged — and without an executionCtx (tests,
     // non-Worker callers) the chain is awaited inline exactly as before.
-    onFinish: async ({ text, usage }) => {
+    onFinish: async ({ text, usage, finishReason }) => {
       const settlement = settleStreamingOnce(async () => {
+        if (!isRepresentableFinishReason(finishReason))
+          return await settleUnknown();
         // A finished stream whose provider reported NO usage cannot prove its
         // cost — billing the empty record would settle delivered output at $0,
         // reading "not reported" as "free". Retain the admitted estimate
@@ -3523,7 +3515,7 @@ async function handleStreamingRequest(
         controller.enqueue(bytes);
         sdkTiming?.enqueue();
       };
-      const responseId = `chatcmpl-${Date.now()}`;
+      const responseId = `chatcmpl-${crypto.randomUUID()}`;
       const toolCallIndexes = new Map<string, number>();
       // Argument chars already delivered per tool call id via
       // `tool-input-delta` fragments. OpenAI streaming clients concatenate
@@ -3533,7 +3525,8 @@ async function handleStreamingRequest(
       // downstream (hermes/openclaw agents hard-fail the tool call).
       const toolCallArgsDelivered = new Map<string, number>();
       let nextToolCallIndex = 0;
-      let finishReason = "stop";
+      let finishReason: string | undefined;
+      let receivedFinish = false;
       let finishUsage: unknown;
 
       let streamCompleted = false;
@@ -3681,6 +3674,7 @@ async function handleStreamingRequest(
           }
 
           if (part.type === "finish") {
+            receivedFinish = true;
             finishReason =
               part.finishReason === "tool-calls"
                 ? "tool_calls"
@@ -3692,6 +3686,9 @@ async function handleStreamingRequest(
             throw part.error;
           }
         }
+
+        if (!receivedFinish) throw new ChatCompletionRepresentationError();
+        toOpenAiFinishReason(finishReason);
 
         // A low explicit max_tokens can be consumed entirely by hidden
         // reasoning. Match the non-streaming contract: an empty-but-billed
@@ -3932,6 +3929,7 @@ async function handleNonStreamingRequest(
     const result = await invokeGenerateText({
       model: languageModel,
       system: systemPrompt,
+      allowSystemInMessages: true,
       messages,
       ...webSearchOptions,
       abortSignal,
@@ -3945,6 +3943,8 @@ async function handleNonStreamingRequest(
       }),
       ...combineProviderOptions(modelProviderOptions, reasoningProviderOptions),
     } as Parameters<typeof generateText>[0]);
+    const refusal = readProviderRefusal(result.response.body);
+    const providerFinishReason = toOpenAiFinishReason(result.finishReason);
     // Token counts for the OpenAI-compat response come straight from the
     // model's reported usage, so the entire billing/settlement chain below can
     // run off the response path without changing the bytes the client receives.
@@ -3987,7 +3987,12 @@ async function handleNonStreamingRequest(
           idempotencyKey: idempotencyKey,
           analytics: {
             type: "chat",
-            content: result.text,
+            content:
+              refusal === undefined
+                ? result.text
+                : [result.text, refusal]
+                    .filter((part) => part.length > 0)
+                    .join("\n"),
             systemPrompt,
             prompt: billingPrompt,
             latencyMs: responseLatencyMs,
@@ -4034,18 +4039,20 @@ async function handleNonStreamingRequest(
     // max_tokens) instead of a misleading "stop" with null content.
     const hasToolCalls = Boolean(result.toolCalls?.length);
     const visibleText = result.text || "";
-    const emptyButBilled = isEmptyButBilled(
-      visibleText,
-      hasToolCalls,
-      result.usage,
-      result.finishReason,
-    );
+    const emptyButBilled =
+      refusal === undefined &&
+      isEmptyButBilled(
+        visibleText,
+        hasToolCalls,
+        result.usage,
+        result.finishReason,
+      );
     const finishReason: "tool_calls" | "length" | "content_filter" | "stop" =
-      hasToolCalls || result.finishReason === "tool-calls"
+      hasToolCalls || providerFinishReason === "tool_calls"
         ? "tool_calls"
-        : result.finishReason === "length" || emptyButBilled
+        : providerFinishReason === "length" || emptyButBilled
           ? "length"
-          : result.finishReason === "content-filter"
+          : providerFinishReason === "content_filter"
             ? "content_filter"
             : "stop";
     if (emptyButBilled) {
@@ -4062,7 +4069,7 @@ async function handleNonStreamingRequest(
     // Return OpenAI-compatible response
     return addCorsHeaders(
       Response.json({
-        id: `chatcmpl-${Date.now()}`,
+        id: `chatcmpl-${crypto.randomUUID()}`,
         object: "chat.completion",
         created: Math.floor(Date.now() / 1000),
         model,
@@ -4072,6 +4079,7 @@ async function handleNonStreamingRequest(
             message: {
               role: "assistant",
               content: result.text || null,
+              ...(refusal === undefined ? {} : { refusal }),
               ...(hasToolCalls
                 ? {
                     tool_calls: result.toolCalls.map((toolCall) => ({
@@ -4145,14 +4153,21 @@ export default honoRouter;
  * shape conversion helpers without spinning up the Hono router or hitting
  * any model provider.
  */
-/**
- * Normalize an AI-SDK finish reason to an OpenAI `finish_reason` enum value.
- * The streaming path previously emitted the raw SDK value verbatim, leaking
- * non-OpenAI tokens like `content-filter` (hyphen), `error`, and `unknown`
- * into the wire field — strict OpenAI-compatible clients reject or mishandle
- * them. The non-streaming path already maps these; this keeps the two paths in
- * agreement.
- */
+/** Only explicit provider terminal outcomes can become OpenAI completion states. */
+function isRepresentableFinishReason(reason: string | undefined): boolean {
+  return (
+    reason !== undefined &&
+    [
+      "stop",
+      "length",
+      "tool-calls",
+      "tool_calls",
+      "content-filter",
+      "content_filter",
+    ].includes(reason)
+  );
+}
+
 function toOpenAiFinishReason(
   raw: string | undefined,
 ): "stop" | "length" | "tool_calls" | "content_filter" {
@@ -4165,9 +4180,10 @@ function toOpenAiFinishReason(
     case "content-filter":
     case "content_filter":
       return "content_filter";
-    // "stop" / "error" / "other" / "unknown" / undefined → the OpenAI default.
-    default:
+    case "stop":
       return "stop";
+    default:
+      throw new ChatCompletionRepresentationError();
   }
 }
 

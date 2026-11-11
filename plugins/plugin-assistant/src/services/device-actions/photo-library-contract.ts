@@ -780,13 +780,12 @@ export function describeLibraryOperation(
   if (op.type === "photo_library_select")
     return {
       title: `Select ${op.ids.length === 1 ? "1 item" : `${op.ids.length} items`} in Photos`,
-      description:
-        "Mark these items as selected in Photos > Device library on this phone. Nothing is changed or shared.",
+      description: "",
     };
   const text = reviewText(op.action, op.items.length, appName);
   return {
     title: text.title,
-    description: `Open this review in Photos > Device library. You confirm it there and then in Android's own dialog or share sheet before anything changes or leaves the phone. ${text.detail}`,
+    description: text.detail,
   };
 }
 

@@ -1,6 +1,6 @@
 // Persists ad campaigns records for cloud services through the shared DB boundary.
 import { and, count, desc, eq, ne, sql, sum } from "drizzle-orm";
-import { db } from "../client";
+import { type DbTransaction, db } from "../client";
 import { type AdPlatform, adAccounts } from "../schemas/ad-accounts";
 import {
   type AdCampaign,
@@ -346,8 +346,12 @@ export class AdCampaignsRepository {
    * delete (or a retry after a mid-op failure) gets `undefined`. Gates the
    * unused-budget refund so a delete can't double-refund (#11292).
    */
-  async claimDelete(id: string, organizationId: string): Promise<AdCampaign | undefined> {
-    const [deleted] = await db
+  async claimDelete(
+    id: string,
+    organizationId: string,
+    tx?: DbTransaction,
+  ): Promise<AdCampaign | undefined> {
+    const [deleted] = await (tx ?? db)
       .delete(adCampaigns)
       .where(and(eq(adCampaigns.id, id), eq(adCampaigns.organization_id, organizationId)))
       .returning();

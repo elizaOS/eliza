@@ -12,6 +12,7 @@ import {
 	AgentRuntime,
 	ChannelType,
 	type Character,
+	type HandlerCallback,
 	type Memory,
 	type Plugin,
 	type UUID,
@@ -41,78 +42,25 @@ const TEST_CHARACTER: Character = {
 	secrets: {},
 	settings: {},
 };
-/**
- * Resolve the correct model-provider plugin.
- *
- * IMPORTANT: this runs from `packages/core` inside a nested workspace
- * (`eliza/eliza/...`). Bun's bare-specifier resolution can pick the published
- * `@elizaos/plugin-openai` hoisted at `eliza/node_modules` instead of the
- * local workspace copy under `eliza/plugins/plugin-openai/`. The published
- * 2.0.0-alpha.537 build only forwards `params.prompt`, while the local source
- * also forwards `params.messages` (which the v5 planner relies on). So we
- * resolve the workspace plugins via explicit relative file imports first and
- * fall back to bare-specifier resolution when no local source exists.
- */
-async function importWorkspacePlugin(
-	relativeFromHere: string,
-	bareSpecifier: string,
-): Promise<Record<string, unknown> | null> {
-	try {
-		const mod = (await import(relativeFromHere)) as Record<string, unknown>;
-		console.log(
-			`[e2e] loaded ${bareSpecifier} from workspace: ${relativeFromHere}`,
-		);
-		return mod;
-	} catch (err) {
-		console.warn(
-			`[e2e] workspace import failed for ${relativeFromHere}: ${(err as Error).message}; falling back to bare specifier`,
-		);
-		try {
-			const mod = (await import(bareSpecifier)) as Record<string, unknown>;
-			console.log(
-				`[e2e] loaded ${bareSpecifier} via bare specifier (likely published copy)`,
-			);
-			return mod;
-		} catch {
-			return null;
-		}
-	}
-}
+/** Loads the workspace source of the detected provider's model plugin. */
 async function resolveProviderPlugin(
 	providerName: string,
 ): Promise<Plugin | null> {
 	switch (providerName) {
-		case "openai": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-openai/index.ts",
-				"@elizaos/plugin-openai",
-			);
-			if (!mod) return null;
-			return ((mod.openaiPlugin ?? mod.default) as Plugin | undefined) ?? null;
-		}
-		case "anthropic": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-anthropic/index.ts",
-				"@elizaos/plugin-anthropic",
-			);
-			if (!mod) return null;
-			return (
-				((mod.anthropicPlugin ?? mod.default) as Plugin | undefined) ?? null
-			);
-		}
-		case "groq": {
-			const mod = await importWorkspacePlugin(
-				"../../../../plugins/plugin-groq/index.ts",
-				"@elizaos/plugin-groq",
-			);
-			if (!mod) return null;
-			return ((mod.groqPlugin ?? mod.default) as Plugin | undefined) ?? null;
-		}
-		default:
+		case "openai":
+			return (await import("../../../../plugins/plugin-openai/index.ts"))
+				.openaiPlugin;
+		case "anthropic":
+			return (await import("../../../../plugins/plugin-anthropic/index.ts"))
+				.anthropicPlugin;
+		case "ollama":
 			return null;
+		default:
+			throw new Error(
+				`[e2e] No workspace model plugin for provider "${providerName}"`,
+			);
 	}
 }
-/** Tiny JSON body parser. */
 function readBody(req: http.IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = [];
@@ -152,7 +100,6 @@ function applyProviderSettings(
 					"https://api.cerebras.ai/v1",
 					true,
 				);
-				runtime.setSetting("ELIZA_PROVIDER", "cerebras", true);
 			}
 			if (explicitElizaProvider) {
 				runtime.setSetting("ELIZA_PROVIDER", explicitElizaProvider, true);
@@ -196,17 +143,6 @@ function applyProviderSettings(
 				true,
 			);
 			break;
-		case "groq":
-			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
-			runtime.setSetting(
-				"GROQ_SMALL_MODEL",
-				process.env.GROQ_SMALL_MODEL ?? "openai/gpt-oss-120b",
-			);
-			runtime.setSetting(
-				"GROQ_LARGE_MODEL",
-				process.env.GROQ_LARGE_MODEL ?? "openai/gpt-oss-120b",
-			);
-			break;
 	}
 }
 export default async function globalSetup(): Promise<void> {
@@ -245,17 +181,14 @@ export default async function globalSetup(): Promise<void> {
 		logLevel: "warn",
 	});
 	applyProviderSettings(runtime, provider.name);
-	// For Ollama without a plugin package, register model handlers directly.
-	if (provider.name === "ollama" && !providerPlugin) {
+	// Ollama has no workspace plugin; register its model handlers directly.
+	if (provider.name === "ollama") {
 		const handlers = createOllamaModelHandlers();
 		for (const [modelType, handler] of Object.entries(handlers)) {
 			if (handler) {
 				runtime.registerModel(
 					modelType,
-					handler as (
-						rt: AgentRuntime,
-						p: Record<string, unknown>,
-					) => Promise<unknown>,
+					handler as Parameters<AgentRuntime["registerModel"]>[1],
 					"ollama",
 				);
 			}
@@ -321,10 +254,8 @@ export default async function globalSetup(): Promise<void> {
 					createdAt: Date.now(),
 				};
 				let responseText = "";
-				const callback = async (content: { text: string }) => {
-					if (typeof content?.text === "string") {
-						responseText += content.text;
-					}
+				const callback: HandlerCallback = async (content) => {
+					if (typeof content.text === "string") responseText += content.text;
 					return [];
 				};
 				await runtime.messageService.handleMessage(runtime, message, callback);

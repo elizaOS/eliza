@@ -132,9 +132,6 @@ function flattenTextValuesWithAncestors(
 				? [Date.prototype.toString.call(value)]
 				: [Date.prototype.toISOString.call(value)];
 		}
-	}
-
-	if (typeof value === "object") {
 		if (ctx.ancestors.has(value)) {
 			return [];
 		}

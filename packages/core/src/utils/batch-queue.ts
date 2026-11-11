@@ -114,10 +114,6 @@ export class BatchQueue<T> {
 	 * already draining) so callers and the idle-backoff worker share one count.
 	 */
 	async drain(): Promise<number> {
-		return this.drainBatch();
-	}
-
-	private async drainBatch(): Promise<number> {
 		if (this.disposed || this.isDraining) {
 			return 0;
 		}
@@ -265,7 +261,7 @@ export class BatchQueue<T> {
 		}
 		this.runtime = runtime;
 		const skip = this.options.skipRegisterWorker ?? false;
-		this.taskDrain = new TaskDrain(
+		const drain = new TaskDrain(
 			{
 				taskName: this.options.name,
 				description: this.options.taskDescription,
@@ -275,11 +271,20 @@ export class BatchQueue<T> {
 				idleIntervalMs:
 					this.options.idleDrainIntervalMs ??
 					Math.max(5_000, this.options.drainIntervalMs * 5),
-				onDrain: skip ? undefined : async () => this.drainBatch(),
+				onDrain: skip ? undefined : () => this.drain(),
 			},
 			this.options.drainIntervalMs,
 		);
-		await this.taskDrain.start(runtime);
+		this.taskDrain = drain;
+		try {
+			await drain.start(runtime);
+		} catch (error) {
+			// error-policy:J2 release failed registration before a caller retries;
+			// queued items remain owned by this queue.
+			await drain.dispose(runtime);
+			if (this.taskDrain === drain) this.taskDrain = null;
+			throw error;
+		}
 	}
 
 	async updateDrainInterval(runtime: IAgentRuntime, ms: number): Promise<void> {
@@ -574,7 +579,6 @@ function getPerItemMaxAttempts(item: unknown, fallback: number): number {
 }
 
 export class BatchProcessor<T> {
-	private readonly maxParallel: number;
 	private readonly defaultMaxAttempts: number;
 	private readonly maxAttemptsCap?: number;
 	private readonly policy: BackoffPolicy;
@@ -591,7 +595,6 @@ export class BatchProcessor<T> {
 	private readonly semaphore: Semaphore;
 
 	constructor(options: BatchProcessorOptions<T>) {
-		this.maxParallel = Math.max(1, options.maxParallel);
 		// retriesAfter + 1 total attempts: first try + N failures that may retry.
 		const retriesAfter = options.maxRetriesAfterFailure ?? 3;
 		const resolved = resolveRetryConfig(
@@ -610,7 +613,7 @@ export class BatchProcessor<T> {
 		this.process = options.process;
 		this.onExhausted = options.onExhausted;
 		this.shouldRetry = options.shouldRetry ?? defaultShouldRetry;
-		this.semaphore = new Semaphore(this.maxParallel);
+		this.semaphore = new Semaphore(options.maxParallel);
 	}
 
 	async processBatch(items: T[]): Promise<BatchItemOutcome<T>[]> {

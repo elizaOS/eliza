@@ -2,9 +2,18 @@ apply plugin: 'com.android.library'
 
 def production = new File(rootDir, '../../platforms/android/app/src/main/java/ai/elizaos/app')
 def generated = layout.buildDirectory.dir('generated/production-reminder-push')
+def customReceipt = layout.buildDirectory.dir('generated/custom-receipt')
+def stageCustomReceipt = tasks.register('stageCustomReceipt', Exec) {
+    commandLine 'node', file('stage-custom-receipt.mjs'), customReceipt.get().asFile
+    inputs.dir production
+    inputs.dir new File(rootDir, '../mobile')
+    inputs.file 'stage-custom-receipt.mjs'
+    outputs.dir customReceipt
+}
 def stage = tasks.register('stageProductionReminderPush', Copy) {
     from production
-    include 'ElizaReminderMessagingService.java', 'SafePushNotificationsPlugin.java', 'DeepLinkBufferPlugin.java', 'ReminderNotificationDismissReceiver.java'
+    include 'ElizaReminderMessagingService.java', 'SafePushNotificationsPlugin.java', 'DeepLinkBufferPlugin.java', 'ReceiptAppPlugin.java', 'ReminderNotificationDismissReceiver.java'
+    include 'NativeNotification*.java', 'ClockHostPolicy.java'
     into generated
 }
 android {
@@ -12,17 +21,22 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig { minSdk 26 }
     sourceSets.main.java.srcDir(generated)
+    sourceSets.main.java.srcDir(customReceipt.map { it.dir('java') })
+    sourceSets.main.assets.srcDir(customReceipt.map { it.dir('assets') })
     testOptions.unitTests.includeAndroidResources = true
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
 }
-tasks.named('preBuild').configure { dependsOn stage }
+tasks.named('preBuild').configure { dependsOn stage, stageCustomReceipt }
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation project(':capacitor-android')
     implementation project(':capacitor-push-notifications')
+    implementation project(':capacitor-app')
+    implementation project(':elizaos-capacitor-secure-store-nativeonly')
+    implementation 'com.squareup.okhttp3:okhttp:5.3.2'
     implementation 'com.google.firebase:firebase-messaging:25.0.1'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.16.1'

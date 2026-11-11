@@ -76,9 +76,12 @@ export function linkTextMismatch(link: GmailLink): boolean {
   } catch {
     return true;
   }
+  // A host ends at a path, port, space, sentence punctuation or a closing bracket or quote.
   const named = link.text
     .toLowerCase()
-    .match(/(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,63})(?=[/:\s]|$)/);
+    .match(
+      /(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,63})(?=[/:\s.,;!?)\]'"]|$)/,
+    );
   if (!named) return false;
   const shown = (named[1] as string).replace(/^www\./, "");
   return shown !== host && !host.endsWith(`.${shown}`);

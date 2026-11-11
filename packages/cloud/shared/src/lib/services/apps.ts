@@ -5,6 +5,7 @@
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { writeTransaction } from "../../db/helpers";
+import { appDeletionOperations } from "../../db/repositories/app-deletion-operations";
 import {
   type App,
   type AppUser,
@@ -13,12 +14,14 @@ import {
   withAppCacheFences,
 } from "../../db/repositories/apps";
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
+import { type AppDeletionProgress, appDeletionProgress } from "./app-deletion-authority";
 import {
   getAppByIdHydrationGeneration,
   getInferenceAppById,
   invalidateInferenceAppByIdState,
   setInferenceAppById,
 } from "./inference-app-memory-cache";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -33,21 +36,19 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import {
+  InferenceCredentialRevocationUnavailableError,
+  revokeInferenceApiKey,
+  settlePostCommitRevocations,
+} from "./inference-credential-revocation";
 import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
-const appByIdHydrations = new Map<string, Promise<void>>();
+const appByIdLoads = new Map<string, Promise<App | undefined>>();
 
 export interface AppCacheExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
-
-export type InferenceAppCacheResolution =
-  | { kind: "ready"; app: App | null }
-  | {
-      kind: "warming" | "unavailable";
-      cacheRead: "miss" | "invalid" | "unavailable" | "error";
-    };
 
 function isCachedApp(value: unknown, expectedId: string): value is App {
   if (!value || typeof value !== "object") return false;
@@ -92,6 +93,29 @@ export class AppCreationLimitError extends Error {
 /**
  * Service for app CRUD operations and app management.
  */
+/**
+ * The rows are already inactive; live speech and the gate learn it here. A
+ * repeated deactivation or deletion selects the same keys, so a failure is
+ * raised to the caller for that retry after every key has been attempted.
+ */
+async function revokeAppKeys(keys: { id: string; organizationId: string }[]): Promise<void> {
+  const failures = await settlePostCommitRevocations(keys, (key) => [
+    revokeInferenceApiKey(key.organizationId, key.id),
+  ]);
+  for (const { item, reasons } of failures) {
+    logger.error("[Apps] App key revocation was not confirmed", {
+      apiKeyId: item.id,
+      error: reasons.map(String).join("; "),
+    });
+  }
+  if (failures.length > 0) {
+    throw new InferenceCredentialRevocationUnavailableError(
+      `App key revocation was not confirmed for ${failures.length}/${keys.length} key(s)`,
+      { cause: failures[0]?.reasons[0] },
+    );
+  }
+}
+
 export class AppsService {
   private generateSlug(name: string): string {
     return name
@@ -144,7 +168,10 @@ export class AppsService {
    *
    * Negative cache: missing apps are remembered briefly to absorb invalid IDs.
    */
-  async getById(id: string): Promise<App | undefined> {
+  async getById(
+    id: string,
+    options: { executionCtx?: AppCacheExecutionContext } = {},
+  ): Promise<App | undefined> {
     const inMemory = getInferenceAppById(id);
     if (inMemory) return structuredClone(inMemory);
     const cacheKey = CacheKeys.app.byId(id);
@@ -160,76 +187,49 @@ export class AppsService {
       }
     }
 
-    return await this.loadAndCacheAppById(id);
-  }
-
-  private async loadAndCacheAppById(id: string): Promise<App | undefined> {
-    const cacheKey = CacheKeys.app.byId(id);
-    const generation = getAppByIdHydrationGeneration(id);
-    const app = await appsRepository.findById(id);
-    if (getAppByIdHydrationGeneration(id) !== generation) {
-      return app;
-    }
-    if (app) {
-      await cache.set(cacheKey, app, CacheTTL.app.byId);
-      setInferenceAppById(id, app);
-    } else {
-      await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
-    }
-    return app;
-  }
-
-  private scheduleAppByIdHydration(id: string, executionCtx: AppCacheExecutionContext): void {
-    let hydration = appByIdHydrations.get(id);
-    if (!hydration) {
-      hydration = this.loadAndCacheAppById(id)
-        .then(() => undefined)
-        .catch((error) => {
-          // error-policy:J7 the retry observes warming until authoritative app
-          // state reaches cache; the detached DB/cache failure remains logged.
-          logger.warn("[Apps] Background inference app hydration failed", {
-            appId: id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => {
-          appByIdHydrations.delete(id);
-        });
-      appByIdHydrations.set(id, hydration);
-    }
-    executionCtx.waitUntil(hydration);
+    const app = await this.loadAppById(id, options.executionCtx);
+    return app && structuredClone(app);
   }
 
   /**
-   * Cache-only app lookup for inference. A missing or malformed cache entry
-   * never falls through to Postgres on the request promise; Worker callers
-   * retain one coalesced authoritative fill under `waitUntil`.
+   * One primary read per app id per isolate, shared by concurrent cold
+   * lookups. Worker callers publish the projection under `waitUntil`, so the
+   * request does not wait for the shared-cache write before dispatch.
    */
-  async getByIdCacheOnly(
+  private loadAppById(
     id: string,
-    options: { executionCtx?: AppCacheExecutionContext } = {},
-  ): Promise<InferenceAppCacheResolution> {
-    const inMemory = getInferenceAppById(id);
-    if (inMemory) {
-      return { kind: "ready", app: structuredClone(inMemory) };
-    }
-    const outcome = await cache.getWithOutcome<unknown>(CacheKeys.app.byId(id));
-    if (outcome.kind === "hit") {
-      if (isNoneMarker(outcome.value)) return { kind: "ready", app: null };
-      if (isCachedApp(outcome.value, id)) {
-        setInferenceAppById(id, outcome.value);
-        return { kind: "ready", app: outcome.value };
+    executionCtx: AppCacheExecutionContext | undefined,
+  ): Promise<App | undefined> {
+    const existing = appByIdLoads.get(id);
+    if (existing) return existing;
+    const load = (async () => {
+      const generation = getAppByIdHydrationGeneration(id);
+      const app = await appsRepository.findById(id);
+      if (getAppByIdHydrationGeneration(id) !== generation) return app;
+      if (app) setInferenceAppById(id, app);
+      const publish = app
+        ? cache.set(CacheKeys.app.byId(id), app, CacheTTL.app.byId)
+        : cache.set(CacheKeys.app.byId(id), { __none: true }, CacheTTL.app.none);
+      if (!executionCtx) {
+        await publish;
+        return app;
       }
-    }
-
-    const cacheRead = outcome.kind === "hit" ? ("invalid" as const) : outcome.kind;
-    if (options.executionCtx) {
-      this.scheduleAppByIdHydration(id, options.executionCtx);
-    }
-    return {
-      kind: cacheRead === "unavailable" || cacheRead === "error" ? "unavailable" : "warming",
-      cacheRead,
-    };
+      executionCtx.waitUntil(
+        publish.catch((error: unknown) => {
+          // error-policy:J7 the primary row already served this request; a
+          // failed projection write only means the next isolate reads again.
+          logger.warn("[Apps] App cache publication failed", {
+            appId: id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
+      return app;
+    })().finally(() => {
+      appByIdLoads.delete(id);
+    });
+    appByIdLoads.set(id, load);
+    return load;
   }
 
   /**
@@ -273,27 +273,14 @@ export class AppsService {
   async getAuthorizedMonetizedAppForUser(
     appId: string,
     _user: { id: string; organization_id: string },
+    options: { executionCtx?: AppCacheExecutionContext } = {},
   ): Promise<App | undefined> {
-    const app = await this.getById(appId);
+    const app = await this.getById(appId, options);
     if (!app?.monetization_enabled) {
       return undefined;
     }
 
     return app;
-  }
-
-  /** Cache-only inference variant of {@link getAuthorizedMonetizedAppForUser}. */
-  async getAuthorizedMonetizedAppForUserCacheOnly(
-    appId: string,
-    _user: { id: string; organization_id: string },
-    options: { executionCtx?: AppCacheExecutionContext } = {},
-  ): Promise<InferenceAppCacheResolution> {
-    const resolution = await this.getByIdCacheOnly(appId, options);
-    if (resolution.kind !== "ready") return resolution;
-    return {
-      kind: "ready",
-      app: resolution.app?.monetization_enabled ? resolution.app : null,
-    };
   }
 
   /**
@@ -533,6 +520,7 @@ export class AppsService {
     if (revokesMobileAuth) {
       const mutation = await appsRepository.updateWithMobileAuthRevocation(id, data);
       updated = mutation.app;
+      await revokeAppKeys(mutation.revokedKeys);
       if (mutation.revokedKeyHashes.length > 0) {
         logger.info("[Apps] Revoked mobile credentials for inactive app", {
           appId: id,
@@ -571,8 +559,12 @@ export class AppsService {
     return await appsRepository.claimDeploymentStart(id, generation, data);
   }
 
-  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
-    return await appsRepository.findByDeploymentGeneration(id, generation);
+  async findByDeploymentGeneration(
+    id: string,
+    generation: string,
+    recoveryOrganizationId?: string,
+  ): Promise<App | undefined> {
+    return await appsRepository.findByDeploymentGeneration(id, generation, recoveryOrganizationId);
   }
 
   async updateDeploymentGeneration(
@@ -580,87 +572,66 @@ export class AppsService {
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
-    return await appsRepository.updateDeploymentGeneration(id, generation, data, expectedStatuses);
+    return await appsRepository.updateDeploymentGeneration(
+      id,
+      generation,
+      data,
+      expectedStatuses,
+      executionAuthority,
+    );
   }
 
   async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {
     return await appsRepository.isDeploymentGenerationCurrent(id, generation);
   }
 
-  async delete(id: string): Promise<void> {
-    // Revocation is the deletion security boundary. External teardown can be
-    // slow or fail independently, so credentials stop working before it starts.
-    const mutation = await appsRepository.prepareDeleteWithMobileAuthRevocation(id);
-    const app = mutation.app;
-
-    // The primary transaction's row is the only safe teardown input. A replica
-    // miss must not skip the ordinary app key or external resource cleanup.
-    if (app) {
-      await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug ?? undefined);
-    }
-
-    // Deletes app database state. The service reads canonical app_databases and
-    // no-ops for shared DB apps or apps without a provisioned project.
-    if (app) {
-      try {
-        const { userDatabaseService } = await import("./user-database");
-        // Pass owning org/user so an ISOLATED tenant DB can be torn down via a
-        // daemon job (the DROP needs `pg`; this delete runs on the Worker) — #8342.
-        await userDatabaseService.cleanupDatabase(id, {
-          organizationId: app.organization_id,
-          userId: app.created_by_user_id ?? undefined,
-        });
-        logger.info("Cleaned up user database for app", { appId: id });
-      } catch (error) {
-        // error-policy:J6 — app deletion remains authoritative when optional
-        // database teardown is already absent or separately recoverable.
-        // Log but don't fail deletion - database might already be gone
-        logger.warn("Failed to clean up user database (continuing with deletion)", {
-          appId: id,
-          error: error instanceof Error ? error.message : "Unknown",
-        });
-      }
-    }
-
-    // Deletes managed frontend deployment R2 artifacts BEFORE the app row is
-    // deleted — the FK cascade removes the deployment rows but never the R2
-    // bytes, so cleaning after would orphan them (#10690 review). Fail-soft.
-    if (app) {
-      try {
-        const { appFrontendDeploymentsRepository } = await import(
-          "../../db/repositories/app-frontend-deployments"
-        );
-        const { appFrontendHostingService } = await import("./app-frontend-hosting");
-        const deployments = await appFrontendDeploymentsRepository.listByApp(id, 1000);
-        for (const dep of deployments) {
-          await appFrontendHostingService.deleteArtifacts(dep);
-        }
-        if (deployments.length > 0) {
-          logger.info("Cleaned up frontend deployment artifacts for app", {
-            appId: id,
-            deployments: deployments.length,
-          });
-        }
-      } catch (error) {
-        // error-policy:J6 — artifact teardown is best-effort during deletion;
-        // the warning keeps orphan cleanup observable without hiding delete.
-        logger.warn("Failed to clean up frontend artifacts (continuing with deletion)", {
-          appId: id,
-          error: error instanceof Error ? error.message : "Unknown",
-        });
-      }
-    }
-
-    if (app?.api_key_id) {
-      await apiKeysService.delete(app.api_key_id);
-    }
-
-    await appsRepository.finalizeDelete(id);
-
-    logger.info(`Deleted app: ${id}`, {
-      mobileCredentialsRevoked: mutation.revokedKeyHashes.length,
+  async delete(
+    id: string,
+    options: { deleteGitHubRepo?: boolean } = {},
+  ): Promise<AppDeletionProgress | undefined> {
+    const app = await appsRepository.findByIdForWrite(id);
+    if (!app) return undefined;
+    return this.requestDeletion({
+      appId: id,
+      organizationId: app.organization_id,
+      userId: app.created_by_user_id ?? undefined,
+      deleteGitHubRepo: options.deleteGitHubRepo ?? false,
     });
+  }
+
+  /** Persist one irreversible deletion request before any external teardown. */
+  async requestDeletion(input: {
+    appId: string;
+    organizationId: string;
+    userId?: string;
+    deleteGitHubRepo: boolean;
+  }): Promise<AppDeletionProgress | undefined> {
+    const admission = await appDeletionOperations.admit(input);
+    if (!admission) return undefined;
+    // The original receipt already includes successful gate delivery and cache
+    // invalidation. Replaying it must not depend on current external services.
+    if (admission.job.result?.revocationsConfirmed === true) {
+      return appDeletionProgress(admission.job);
+    }
+    await revokeAppKeys(admission.revokedKeys);
+    if (admission.app) {
+      await this.invalidateCache(
+        input.appId,
+        admission.app.api_key_id ?? undefined,
+        admission.app.slug,
+      );
+    }
+    const confirmed = await appDeletionOperations.confirmRevocations(
+      admission.job.id,
+      input.organizationId,
+    );
+    return appDeletionProgress(confirmed);
+  }
+
+  async assertNotDeleting(id: string): Promise<void> {
+    return appsRepository.assertNotDeleting(id);
   }
 
   /**

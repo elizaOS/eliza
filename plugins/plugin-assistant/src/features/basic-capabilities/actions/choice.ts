@@ -3,13 +3,14 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  ApprovalService,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, ServiceType } from "@elizaos/core";
 
 function _readChoiceParameters(
   message: Memory,
@@ -237,7 +238,20 @@ export const choiceAction: Action = {
         };
       }
       if (selectedOption === "ABORT") {
-        await runtime.deleteTask(selectedTaskId);
+        if (selectedTask.tags?.includes("APPROVAL")) {
+          const approval = runtime.getService<ApprovalService>(
+            ServiceType.APPROVAL,
+          );
+          if (!approval) {
+            throw new ElizaError("Approval service is unavailable", {
+              code: "APPROVAL_SERVICE_UNAVAILABLE",
+              context: { taskId: selectedTaskId },
+            });
+          }
+          await approval.cancelPendingApproval(selectedTaskId);
+        } else {
+          await runtime.deleteTask(selectedTaskId);
+        }
         const cancelledText = `Task "${selectedTask.name}" has been cancelled.`;
         if (callback) {
           await callback({

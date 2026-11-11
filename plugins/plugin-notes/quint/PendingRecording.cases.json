@@ -1,0 +1,23 @@
+{
+  "sources": ["plugins/plugin-notes/src/client/notes-audio-store.ts"],
+  "implementationTests": [
+    "plugins/plugin-notes/test/notes-audio-store.test.mjs"
+  ],
+  "bounds": "One recording, one canonical note, originating versus foreign owner, and at most one canonical-create claim. IndexedDB writes are atomic transitions.",
+  "fairness": "Safety holds without fairness. No automatic retry or successful canonical create is promised; recovery requires an owner action and an authoritative note match.",
+  "limitations": [
+    "Blob byte equality is abstracted; concrete byte, identity and crash-recovery behavior is checked by the storage tests. Browser capture before Stop, browser storage eviction, cross-origin transport and canonical Notes server admission are outside this store model."
+  ],
+  "cases": [
+    {
+      "name": "pending-recording",
+      "main": "PendingRecording",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 500
+    }
+  ]
+}

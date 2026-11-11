@@ -47,3 +47,8 @@ export function requireRestartHandler(): RestartHandler {
 export function requestRestart(reason?: string): void | Promise<void> {
   return requireRestartHandler()(reason);
 }
+
+/** Whether a host handler is installed, so callers can refuse before admitting a restart. */
+export function hasRestartHandler(): boolean {
+  return _handler !== undefined;
+}

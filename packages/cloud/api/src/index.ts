@@ -187,6 +187,10 @@ function exactInferenceRoute(
   };
 }
 const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
+  exactInferenceRoute(
+    "/api/v1/inference/warm",
+    () => import("../v1/inference/warm/route"),
+  ),
   {
     key: "/api/v1/voice/speech",
     mountPath: "/api/v1/voice/speech",
@@ -638,11 +642,6 @@ async function getInferenceApp(
   }
   return promise;
 }
-export function isThinInferenceEnabled(
-  env: Pick<AppEnv["Bindings"], "THIN_INFERENCE_ENTRY_ENABLED">,
-): boolean {
-  return env.THIN_INFERENCE_ENTRY_ENABLED === "true";
-}
 export function isCanonicalInferencePath(pathname: string): boolean {
   return INFERENCE_ROUTES.some((route) => route.matches(pathname));
 }
@@ -651,9 +650,6 @@ async function dispatchInference(
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  if (!isThinInferenceEnabled(env)) {
-    return null;
-  }
   const pathname = new URL(request.url).pathname;
   const route = INFERENCE_ROUTES.find((candidate) =>
     candidate.matches(pathname),

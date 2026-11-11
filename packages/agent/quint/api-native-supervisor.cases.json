@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "packages/agent/native-host/runtime-supervisor.mjs",
+    "packages/agent/native-host/private-runtime-launch.mjs",
+    "packages/agent/native-host/gateway.e2e.test.mjs",
+    "packages/agent/quint/check-native-supervisor.mjs",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "bounds": {
+    "domain": "Two owner identities and one child.",
+    "scope": "Finite ownership projection with conditional close progress and real process conformance."
+  },
+  "cases": [
+    {
+      "name": "api_native_supervisor",
+      "main": "api_native_supervisor",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CloseCompletes"],
+      "maxSteps": 50,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "CloseCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in api_native_supervisor: CloseCompletes = (spawn.weakFair(s) and receipt.weakFair(s) and startComplete.weakFair(s) and launchFailure.weakFair(s) and drainStop.weakFair(s) and finishClose.weakFair(s)).implies( s.closeRequested.leadsTo(s.closed))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ],
+  "conformance": "packages/agent/quint/check-native-supervisor.mjs",
+  "fairness": "CloseCompletes assumes start/receipt callbacks settle, successful child termination, fair supervisor continuation and close-wait scheduling. A permanently hung or failed stop callback can prevent close and remains outside this progress claim."
+}

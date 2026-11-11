@@ -213,25 +213,8 @@ export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
 // ── Agent WebSocket shell events ─────────────────────────────────────────
 export const SHELL_NAVIGATE_VIEW_WS_EVENT = "shell:navigate:view" as const;
 
-export type ShellNavigateViewType = "gui" | "tui" | "xr";
-
-export interface ShellNavigateViewPayload {
-	viewId?: string;
-	viewPath?: string | null;
-	viewLabel?: string;
-	viewType?: ShellNavigateViewType;
-	source?: "agent" | "user";
-	action?: string;
-	subview?: string;
-	views?: string[];
-	layout?: string;
-	placement?: string;
-	alwaysOnTop?: boolean;
-	/** Opaque target-view deep-link state, validated by the receiving view. */
-	payload?: unknown;
-	/** Idempotency key shared by early WS and terminal chat navigation delivery. */
-	completedActionHandoffId?: string;
-}
+/** The same navigation payload, carried over the agent WebSocket. */
+export type ShellNavigateViewPayload = NavigateViewDetail;
 
 export type ShellNavigateViewWsFrame = ShellNavigateViewPayload & {
 	type: typeof SHELL_NAVIGATE_VIEW_WS_EVENT;
@@ -252,7 +235,7 @@ export function normalizeCompletedActionHandoffId(
 		: undefined;
 }
 
-function readViewType(value: unknown): ShellNavigateViewType | undefined {
+function readViewType(value: unknown): NavigateViewType | undefined {
 	return value === "gui" || value === "tui" || value === "xr"
 		? value
 		: undefined;

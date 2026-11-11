@@ -35,11 +35,7 @@ import {
 	RuntimeEmbeddings,
 } from "./runtime/embeddings.js";
 import { RuntimeModelDispatch } from "./runtime/model-dispatch.js";
-import {
-	type ResolvedModelRegistration,
-	resolveProviderModelString,
-	TEXT_GENERATION_MODEL_KEYS,
-} from "./runtime/model-policy.js";
+import { resolveProviderModelString } from "./runtime/model-policy.js";
 import { RuntimePipelineHooks } from "./runtime/pipeline-hooks.js";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import {
@@ -56,11 +52,6 @@ import {
 } from "./runtime/service-lifecycle.js";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
 import { ProviderStateComposer } from "./runtime/state-composition.js";
-import {
-	buildCanonicalSystemPrompt,
-	resolveEffectiveSystemPrompt,
-	textFromChatMessageContent,
-} from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { flattenRuntimeSettings } from "./runtime-settings.ts";
 import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
@@ -78,7 +69,6 @@ import {
 	type SecretFragmentTaintProfile,
 } from "./security/fragment-redaction.js";
 import {
-	collectPiiPromptText,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
@@ -109,9 +99,9 @@ import {
 	pendingPostDeliveryTaskCount,
 } from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
+import { stopTaskSchedulerForAdapter } from "./services/task-scheduler";
 import { decryptSecret, getSalt } from "./settings";
 import {
-	getTrajectoryContext,
 	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
@@ -148,6 +138,7 @@ import type {
 	ListConnectorAccountsParams,
 	Log,
 	LogBody,
+	LogInventoryRow,
 	MessageSearchHit,
 	OAuthFlowRecord,
 	PatchOp,
@@ -247,12 +238,7 @@ export {
 	type EmbeddingStoreIdentity,
 } from "./runtime/embeddings.js";
 
-export {
-	NoModelProviderConfiguredError,
-	readReasoningTokensFromResponse,
-} from "./runtime/model-policy.js";
-
-export { calculateProviderOverlaps } from "./runtime/provider-execution.js";
+export { NoModelProviderConfiguredError } from "./runtime/model-policy.js";
 
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
@@ -305,6 +291,36 @@ function normalizeSearchCategoryRegistration(
 	});
 }
 
+interface GetMemoriesParams {
+	entityId?: UUID;
+	authorEntityIds?: UUID[];
+	agentId?: UUID;
+	roomId?: UUID;
+	excludeRoomIds?: UUID[];
+	limit?: number;
+	count?: number;
+	offset?: number;
+	cursor?: { createdAt: number; id: UUID };
+	unique?: boolean;
+	tableName: string;
+	start?: number;
+	end?: number;
+	worldId?: UUID;
+	metadata?: Record<string, unknown>;
+	textContains?: string;
+	orderBy?: "createdAt";
+	orderDirection?: "asc" | "desc";
+	includeEmbedding?: boolean;
+	accessContext?: AccessContext;
+}
+
+function compareModeActions(a: Action, b: Action): number {
+	return (
+		(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
+		a.name.localeCompare(b.name)
+	);
+}
+
 function getServiceClassLabel(serviceClass: ServiceClass): string {
 	return (
 		(serviceClass as { name?: string }).name ||
@@ -330,12 +346,6 @@ function resolveShutdownTimeoutMs(envName: string, fallbackMs: number): number {
 	if (raw?.trim() === "0") return 0;
 	if (Number.isFinite(parsed) && parsed > 0) return parsed;
 	return fallbackMs;
-}
-
-function timeoutAfter(ms: number): Promise<"timeout"> {
-	return new Promise((resolve) => {
-		setTimeout(() => resolve("timeout"), ms);
-	});
 }
 
 async function settleBeforeTimeout(
@@ -405,8 +415,8 @@ export class AgentRuntime implements IAgentRuntime {
 		this,
 		{
 			stopRequested: () => this.stopRequested,
-			resolveServiceTypeAlias: (...args) =>
-				this.resolveServiceTypeAlias(...args),
+			initializationFailed: () => this.initializationFailed,
+			resolveServiceTypeAlias: (serviceType) => serviceType,
 			initResolver: () => this.initResolver,
 			serviceTypes: () => this.serviceTypes,
 			serviceInstancesByClass: () => this.serviceInstancesByClass,
@@ -417,40 +427,38 @@ export class AgentRuntime implements IAgentRuntime {
 			servicePromiseHandlers: () => this.servicePromiseHandlers,
 			servicePromises: () => this.servicePromises,
 			stopped: () => this.stopped,
+			runServiceStart: (key, serviceType, serviceClass) =>
+				this._runServiceStart(key, serviceType, serviceClass),
 		},
 		this.retirement,
 	);
-	private readonly embeddings = new RuntimeEmbeddings(this, {
+	private readonly embeddings: RuntimeEmbeddings = new RuntimeEmbeddings(this, {
 		resolveModelRegistrations: (...args) =>
-			this.resolveModelRegistrations(...args),
+			this.modelDispatch.resolveModelRegistrations(...args),
 	});
 	private readonly confidentialInference:
 		| ConfidentialInferenceAuthority
 		| undefined;
-	private readonly modelDispatch = new RuntimeModelDispatch(this, {
-		confidentialInference: () => this.confidentialInference,
-		processingPolicy: () => processingPolicyFor(this),
-		models: () => this.models,
-		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
-		validateEmbeddingOutput: (...args) =>
-			this.embeddings.validateProviderOutput(...args),
-		currentRoomId: () => this.currentRoomId,
-		isSecretSwapEnabled: (...args) => this.isSecretSwapEnabled(...args),
-		isPiiSwapEnabled: (...args) => this.isPiiSwapEnabled(...args),
-		hooksForPhase: (...args) => this.hooksForPhase(...args),
-		invokePipelineHooks: (...args) => this.invokePipelineHooks(...args),
-		attachEffectiveSystemPrompt: (...args) =>
-			this.attachEffectiveSystemPrompt(...args),
-		createSecretSwapSession: (...args) => this.createSecretSwapSession(...args),
-		createPiiSwapSession: (...args) => this.createPiiSwapSession(...args),
-		collectPromptText: (...args) => this.collectPromptText(...args),
-		initResolver: () => this.initResolver,
-		_ensureServiceStarted: (...args) => this._ensureServiceStarted(...args),
-		buildRuntimeSystemPrompt: (...args) =>
-			this.buildRuntimeSystemPrompt(...args),
-		getFirstUserPromptFromMessages: (...args) =>
-			this.getFirstUserPromptFromMessages(...args),
-	});
+	private readonly modelDispatch: RuntimeModelDispatch =
+		new RuntimeModelDispatch(this, {
+			confidentialInference: () => this.confidentialInference,
+			processingPolicy: () => processingPolicyFor(this),
+			models: () => this.models,
+			pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
+			validateEmbeddingOutput: (...args) =>
+				this.embeddings.validateProviderOutput(...args),
+			currentRoomId: () => this.currentRoomId,
+			isSecretSwapEnabled: (...args) => this.isSecretSwapEnabled(...args),
+			isPiiSwapEnabled: (...args) => this.isPiiSwapEnabled(...args),
+			hooksForPhase: (...args) => this.pipelineHooks.hooksForPhase(...args),
+			invokePipelineHooks: (...args) =>
+				this.pipelineHooks.invokePipelineHooks(...args),
+			createSecretSwapSession: (...args) =>
+				this.createSecretSwapSession(...args),
+			createPiiSwapSession: (...args) => this.createPiiSwapSession(...args),
+			initResolver: () => this.initResolver,
+			_ensureServiceStarted: (...args) => this._ensureServiceStarted(...args),
+		});
 	private readonly pipelineHooks = new RuntimePipelineHooks(this);
 	// Plugin lifecycle and host send-availability probes share this map.
 	private sendHandlers = new Map<string, SendHandlerFunction>();
@@ -503,7 +511,7 @@ export class AgentRuntime implements IAgentRuntime {
 	stateCache = new Map<string, State>();
 	private readonly providerState = new ProviderStateComposer(this, {
 		hasProviderSelectionHooks: () =>
-			this.hooksForPhase("compose_state_providers").length > 0,
+			this.pipelineHooks.hooksForPhase("compose_state_providers").length > 0,
 		ensureServiceStarted: (type) => this._ensureServiceStarted(type),
 		isStopping: () => this.stopRequested,
 	});
@@ -823,12 +831,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.currentRunId;
 	}
 
-	private resolveServiceTypeAlias(
-		serviceType: ServiceTypeName | string,
-	): string {
-		return serviceType;
-	}
-
 	private isSecretSwapEnabled(): boolean {
 		return (
 			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ??
@@ -920,32 +922,6 @@ export class AgentRuntime implements IAgentRuntime {
 		});
 	}
 
-	/** Flatten every string leaf of the model params plus the system prompt into
-	 * one text blob for the PII recognizer to scan. Uses the shared bounded
-	 * descriptor-safe PII walker so cyclic / over-deep / sparse / Proxy graphs
-	 * fail closed with {@link PII_PSEUDONYM_UNBOUNDED} before `learn`. */
-	private collectPromptText(
-		params: unknown,
-		systemPrompt: string | undefined,
-	): string {
-		return collectPiiPromptText(params, systemPrompt);
-	}
-
-	private hooksForPhase(
-		...args: Parameters<RuntimePipelineHooks["hooksForPhase"]>
-	): ReturnType<RuntimePipelineHooks["hooksForPhase"]> {
-		return this.pipelineHooks.hooksForPhase(...args);
-	}
-	private upsertPipelineHook(
-		...args: Parameters<RuntimePipelineHooks["upsertPipelineHook"]>
-	): ReturnType<RuntimePipelineHooks["upsertPipelineHook"]> {
-		return this.pipelineHooks.upsertPipelineHook(...args);
-	}
-	private invokePipelineHooks(
-		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
-	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]> {
-		return this.pipelineHooks.invokePipelineHooks(...args);
-	}
 	registerPipelineHook(
 		...args: Parameters<RuntimePipelineHooks["registerPipelineHook"]>
 	): ReturnType<RuntimePipelineHooks["registerPipelineHook"]> {
@@ -1167,19 +1143,15 @@ export class AgentRuntime implements IAgentRuntime {
 					this._createServiceResolver(serviceType);
 				}
 				this.serviceRegistrationStatus.set(serviceType, "pending");
-				if (!this.serviceTypes.has(serviceType)) {
-					this.serviceTypes.set(serviceType, []);
-				}
-				const services = this.serviceTypes.get(serviceType);
-				if (services) {
-					this.warnOnDuplicateServiceTypeRegistration(
-						serviceType,
-						service,
-						services,
-						pluginToRegister.name,
-					);
-					services.push(service);
-				}
+				const services = this.serviceTypes.get(serviceType) ?? [];
+				if (services.length === 0) this.serviceTypes.set(serviceType, services);
+				this.warnOnDuplicateServiceTypeRegistration(
+					serviceType,
+					service,
+					services,
+					pluginToRegister.name,
+				);
+				services.push(service);
 				serviceTypesToStart.add(serviceType);
 			}
 
@@ -1326,7 +1298,7 @@ export class AgentRuntime implements IAgentRuntime {
 		options?: RuntimeStopOptions,
 	): Promise<void> {
 		this.roomHandlerQueue.closeAdmissions("runtime-stop");
-		this.turnControllers.abortAllTurns("runtime-stop");
+		this.turnControllers.closeTurns("runtime-stop");
 		const fast = options?.fast === true;
 		const roomDrain = this.roomHandlerQueue.quiesceAll();
 		if (fast && this.roomHandlerQueue.pendingTotal() > 0) {
@@ -1427,11 +1399,11 @@ export class AgentRuntime implements IAgentRuntime {
 						"Waiting for in-flight service starts before stopping",
 					);
 					const waitStartedAt = Date.now();
-					const result = await Promise.race([
-						Promise.allSettled(inFlight).then(() => "settled" as const),
-						timeoutAfter(timeoutMs),
-					]);
-					if (result === "timeout" && this.startingServices.size > 0) {
+					const settled = await settleBeforeTimeout(
+						Promise.allSettled(inFlight).then(() => undefined),
+						timeoutMs,
+					);
+					if (!settled && this.startingServices.size > 0) {
 						this.logger.warn(
 							{
 								src: "agent",
@@ -1457,10 +1429,18 @@ export class AgentRuntime implements IAgentRuntime {
 			for (const service of services) {
 				if (fast) {
 					fastStopTasks.push(
-						this._stopServiceInstance(serviceType, service, "fast shutdown"),
+						this.serviceLifecycle._stopServiceInstance(
+							serviceType,
+							service,
+							"fast shutdown",
+						),
 					);
 				} else {
-					await this._stopServiceInstance(serviceType, service, "shutdown");
+					await this.serviceLifecycle._stopServiceInstance(
+						serviceType,
+						service,
+						"shutdown",
+					);
 				}
 			}
 		}
@@ -1475,10 +1455,10 @@ export class AgentRuntime implements IAgentRuntime {
 							DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
 						);
 			if (timeoutMs > 0) {
-				await Promise.race([
-					Promise.allSettled(fastStopTasks),
-					timeoutAfter(timeoutMs),
-				]);
+				await settleBeforeTimeout(
+					Promise.allSettled(fastStopTasks).then(() => undefined),
+					timeoutMs,
+				);
 			} else {
 				await Promise.allSettled(fastStopTasks);
 			}
@@ -1514,18 +1494,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.startingServiceClasses.clear();
 		this.serviceInstancesByClass.clear();
 		this.failedServiceClasses.clear();
-	}
-
-	private _stopServiceInstance(
-		serviceType: string,
-		service: Service | null | undefined,
-		reason: string,
-	): Promise<void> {
-		return this.serviceLifecycle._stopServiceInstance(
-			serviceType,
-			service,
-			reason,
-		);
+		this.services.clear();
 	}
 
 	/** Initializes plugins, adapter readiness, and runtime services. Hosts own provisioning and embedding setup. */
@@ -2583,35 +2552,25 @@ export class AgentRuntime implements IAgentRuntime {
 			selectedContexts?: readonly AgentContext[];
 		},
 	): Promise<Action[]> {
-		let candidates = this.actions.filter((action) => action.mode === mode);
-
-		if (
-			mode === "CONTEXT_BEFORE" ||
-			mode === "CONTEXT_DURING" ||
-			mode === "CONTEXT_AFTER"
-		) {
-			const selected = new Set(options?.selectedContexts ?? []);
-			candidates = candidates.filter((action) => {
-				const tags = action.contexts ?? [];
-				return tags.some((tag) => selected.has(tag));
-			});
-		}
-
-		candidates = candidates
-			.slice()
-			.sort(
-				(a, b) =>
-					(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
-					a.name.localeCompare(b.name),
-			);
-		if (candidates.length === 0) return [];
-
-		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
-
 		const isContextMode =
 			mode === "CONTEXT_BEFORE" ||
 			mode === "CONTEXT_DURING" ||
 			mode === "CONTEXT_AFTER";
+		const selected = isContextMode
+			? new Set(options?.selectedContexts ?? [])
+			: undefined;
+		const candidates = this.actions
+			.filter(
+				(action) =>
+					action.mode === mode &&
+					(!selected ||
+						(action.contexts ?? []).some((tag) => selected.has(tag))),
+			)
+			.sort(compareModeActions);
+		if (candidates.length === 0) return [];
+
+		setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook");
+
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
@@ -2693,11 +2652,7 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 		if (validated.length === 0) return [];
 
-		validated.sort(
-			(a, b) =>
-				(a.modePriority ?? 100) - (b.modePriority ?? 100) ||
-				a.name.localeCompare(b.name),
-		);
+		validated.sort(compareModeActions);
 
 		const composedState =
 			state ?? (await this.composeState(message, ["RECENT_MESSAGES"]));
@@ -2928,10 +2883,8 @@ export class AgentRuntime implements IAgentRuntime {
 		// Create rooms before participants.
 		const roomIds = rooms.map((r: { id: UUID }) => r.id);
 		const roomExistsCheck = await this.getRoomsByIds(roomIds);
-		const roomsIdExists = roomExistsCheck.map((r: { id: UUID }) => r.id);
-		const roomsToCreate = roomIds.filter(
-			(id: UUID) => !roomsIdExists.includes(id),
-		);
+		const existingRoomIds = new Set(roomExistsCheck.map((r) => r.id));
+		const roomsToCreate = roomIds.filter((id) => !existingRoomIds.has(id));
 
 		const rf = {
 			worldId: world.id,
@@ -2946,7 +2899,7 @@ export class AgentRuntime implements IAgentRuntime {
 				"Creating rooms",
 			);
 			const roomObjsToCreate: Room[] = rooms
-				.filter((r) => roomsToCreate.includes(r.id))
+				.filter((r) => !existingRoomIds.has(r.id))
 				.map((r) => ({ ...r, ...rf, type: r.type || ChannelType.GROUP }));
 			await this.createRooms(roomObjsToCreate);
 		}
@@ -2955,12 +2908,9 @@ export class AgentRuntime implements IAgentRuntime {
 			.map((e) => e.id)
 			.filter((id): id is UUID => id !== undefined);
 		const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
-		const entitiesToUpdate =
-			entityExistsCheck
-				.map((e) => e.id)
-				.filter((id): id is UUID => id !== undefined) || [];
+		const existingEntityIds = new Set(entityExistsCheck.map((e) => e.id));
 		const entitiesToCreate = entities.filter(
-			(e) => e.id !== undefined && !entitiesToUpdate.includes(e.id),
+			(e) => e.id !== undefined && !existingEntityIds.has(e.id),
 		);
 
 		const r = {
@@ -3001,14 +2951,11 @@ export class AgentRuntime implements IAgentRuntime {
 		await this.ensureParticipantInRoom(this.agentId, firstRoom.id);
 
 		// Add all entities to the first room
-		const entityIdsInFirstRoom = await this.getParticipantsForRoom(
-			firstRoom.id,
-		);
-		const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(
-			(id): id is UUID => id !== undefined,
+		const entityIdsInFirstRoom = new Set(
+			await this.getParticipantsForRoom(firstRoom.id),
 		);
 		const missingIdsInRoom = entityIds.filter(
-			(id: UUID) => !entityIdsInFirstRoomFiltered.includes(id),
+			(id) => !entityIdsInFirstRoom.has(id),
 		);
 
 		if (missingIdsInRoom.length) {
@@ -3089,13 +3036,9 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId, entityId },
 				"Entity not accessible, attempting to add as participant",
 			);
-		} else if (!entity && entityId === this.agentId) {
-			throw new Error(
-				`Agent entity ${entityId} not found, cannot add as participant.`,
-			);
 		} else if (!entity) {
 			throw new Error(
-				`User entity ${entityId} not found, cannot add as participant.`,
+				`Agent entity ${entityId} not found, cannot add as participant.`,
 			);
 		}
 		const participantsResult = await this.adapter.getParticipantsForRooms([
@@ -3303,7 +3246,10 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.serviceLifecycle._ensureServiceStarted(serviceType);
 	}
 
-	/** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
+	/**
+	 * RuntimeServiceLifecycle starts every service through this entry, which
+	 * plugin-lifecycle wraps to attribute start-time registrations to their plugin.
+	 */
 	private _runServiceStart(
 		key: ServiceTypeName,
 		serviceType: string,
@@ -3312,11 +3258,16 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.serviceLifecycle._runServiceStart(key, serviceType, serviceDef);
 	}
 
+	/** @internal Plugin unload stops through the same single-flight stop as shutdown. */
+	_stopServiceOnce(serviceType: string, service: Service): Promise<void> {
+		return this.serviceLifecycle.stopServiceOnce(serviceType, service);
+	}
+
 	/** Returns the service instance or null. Synchronous lookup from the services map. */
 	getService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T | null {
-		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const key = serviceName as ServiceTypeName;
 		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0] as T;
@@ -3345,7 +3296,7 @@ export class AgentRuntime implements IAgentRuntime {
 	getServicesByType<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T[] {
-		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const key = serviceName as ServiceTypeName;
 		const serviceInstances = this.services.get(key);
 		if (!serviceInstances || serviceInstances.length === 0) {
 			this.logger.debug(
@@ -3373,7 +3324,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @returns true if the service is registered
 	 */
 	hasService(serviceType: ServiceTypeName | string): boolean {
-		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const key = serviceType as ServiceTypeName;
 		const classes = this.serviceTypes.get(key);
 		return classes !== undefined && classes.length > 0;
 	}
@@ -3386,7 +3337,7 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceRegistrationStatus(
 		serviceType: ServiceTypeName | string,
 	): "pending" | "registering" | "registered" | "failed" | "unknown" {
-		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const key = serviceType as ServiceTypeName;
 		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
@@ -3480,47 +3431,26 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!this.servicePromises.has(serviceType)) {
 			this._createServiceResolver(serviceType);
 		}
-		if (!this.serviceTypes.has(serviceType)) {
-			this.serviceTypes.set(serviceType, []);
-		}
 		const serviceClassList = this.serviceTypes.get(serviceType);
-		if (!serviceClassList) {
-			throw new ElizaError("Service type registry initialization failed", {
-				code: "SERVICE_TYPE_REGISTRY_INVALID",
-				context: { serviceType },
-			});
-		}
-		serviceClassList.push(serviceDef);
+		if (serviceClassList) serviceClassList.push(serviceDef);
+		else this.serviceTypes.set(serviceType, [serviceDef]);
 	}
 
 	/// ensures servicePromises & servicePromiseHandlers for a serviceType
 	private _createServiceResolver(serviceType: ServiceTypeName | string) {
-		let resolver: ServiceResolver | undefined;
-		let rejecter: ServiceRejecter | undefined;
-		const svcPromise = new Promise<Service>((resolve, reject) => {
-			resolver = resolve;
-			rejecter = reject;
+		let resolve!: ServiceResolver;
+		let reject!: ServiceRejecter;
+		const svcPromise = new Promise<Service>((settle, fail) => {
+			resolve = settle;
+			reject = fail;
 		});
 		// error-policy:J5 unhandled-rejection suppression — callers of
 		// getServiceLoadPromise() still observe the rejection when they await;
 		// this only prevents an unhandled rejection if the service fails first.
 		svcPromise.catch(() => {});
 		this.servicePromises.set(serviceType, svcPromise);
-		if (!resolver) {
-			throw new Error(`Failed to create resolver for service ${serviceType}`);
-		}
-		if (!rejecter) {
-			throw new Error(`Failed to create rejecter for service ${serviceType}`);
-		}
-		this.servicePromiseHandlers.set(serviceType, {
-			resolve: resolver,
-			reject: rejecter,
-		});
-		const promise = this.servicePromises.get(serviceType);
-		if (!promise) {
-			throw new Error(`Service promise for ${serviceType} not found`);
-		}
-		return promise;
+		this.servicePromiseHandlers.set(serviceType, { resolve, reject });
+		return svcPromise;
 	}
 
 	/// Returns a promise that resolves once this service is loaded (starts the service on first call).
@@ -3530,7 +3460,7 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceLoadPromise(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service> {
-		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const key = serviceType as ServiceTypeName;
 		return this._ensureServiceStarted(key).then((s) => {
 			if (!s)
 				throw new Error(
@@ -3585,13 +3515,6 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.modelDispatch.getLastResolvedModelProvider(modelType);
 	}
 
-	private resolveModelRegistrations(
-		modelType: ModelTypeName | string,
-		provider?: string,
-	): ResolvedModelRegistration[] {
-		return this.modelDispatch.resolveModelRegistrations(modelType, provider);
-	}
-
 	getModel(
 		modelType: ModelTypeName | string,
 	):
@@ -3601,60 +3524,6 @@ export class AgentRuntime implements IAgentRuntime {
 		  ) => Promise<JsonValue | object>)
 		| undefined {
 		return this.modelDispatch.getModel(modelType);
-	}
-
-	private buildRuntimeSystemPrompt(): string | undefined {
-		const prompt = buildCanonicalSystemPrompt({
-			character: this.character,
-			userRole: getTrajectoryContext()?.userRole,
-		});
-		return prompt || undefined;
-	}
-
-	private attachEffectiveSystemPrompt(
-		modelKey: string,
-		params: unknown,
-	): string | undefined {
-		if (
-			!TEXT_GENERATION_MODEL_KEYS.includes(modelKey) ||
-			!isPlainObject(params)
-		) {
-			return undefined;
-		}
-		const paramsRecord = params as Record<
-			string,
-			JsonValue | object | undefined
-		>;
-		const systemPrompt = resolveEffectiveSystemPrompt({
-			params,
-			fallback: this.buildRuntimeSystemPrompt(),
-		});
-		if (systemPrompt !== undefined && !Object.hasOwn(paramsRecord, "system")) {
-			paramsRecord.system = systemPrompt;
-		}
-		return systemPrompt;
-	}
-
-	private getFirstUserPromptFromMessages(
-		messages: unknown,
-	): string | undefined {
-		if (!Array.isArray(messages)) {
-			return undefined;
-		}
-		for (const message of messages) {
-			if (!message || typeof message !== "object" || Array.isArray(message)) {
-				continue;
-			}
-			const record = message as { role?: unknown; content?: unknown };
-			if (record.role !== "user") {
-				continue;
-			}
-			const content = textFromChatMessageContent(record.content);
-			if (content) {
-				return content;
-			}
-		}
-		return undefined;
 	}
 
 	useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
@@ -3688,7 +3557,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const c = this.character;
 			const parts: string[] = [];
 
-			system = this.buildRuntimeSystemPrompt();
+			system = this.modelDispatch.buildRuntimeSystemPrompt();
 
 			// Add style directives (all + chat)
 			const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
@@ -3754,17 +3623,12 @@ export class AgentRuntime implements IAgentRuntime {
 		event: string,
 		handler: (params: EventPayload) => Promise<void>,
 	): void {
-		if (!this.events[event]) {
-			this.events[event] = [];
-		}
-		const eventHandlers = this.events[event];
-		if (eventHandlers) {
-			eventHandlers.push(
-				handler as (
-					params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
-				) => Promise<void>,
-			);
-		}
+		const typedHandler = handler as (
+			params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+		) => Promise<void>;
+		const handlers = this.events[event];
+		if (handlers) handlers.push(typedHandler);
+		else this.events[event] = [typedHandler];
 	}
 
 	unregisterEvent<T extends keyof EventPayloadMap>(
@@ -3805,32 +3669,27 @@ export class AgentRuntime implements IAgentRuntime {
 
 	async emitEvent(event: string | string[], params: JsonValue | object) {
 		const events = Array.isArray(event) ? event : [event];
+		const paramsObj =
+			typeof params === "object" && params !== null
+				? (params as Record<string, JsonValue | object>)
+				: undefined;
 		for (const eventName of events) {
 			const eventHandlers = this.events[eventName];
 			if (!eventHandlers) {
 				continue;
 			}
-			let paramsWithRuntime:
-				| EventPayloadMap[keyof EventPayloadMap]
-				| EventPayload = {
+			const payload = {
+				...paramsObj,
 				runtime: this,
-				source: "runtime",
-			};
-			if (typeof params === "object" && params && params !== null) {
-				const paramsObj = params as Record<string, JsonValue | object>;
-				paramsWithRuntime = {
-					...paramsObj,
-					runtime: this,
-					source:
-						typeof paramsObj.source === "string" ? paramsObj.source : "runtime",
-				} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
-			}
+				source:
+					typeof paramsObj?.source === "string" ? paramsObj.source : "runtime",
+			} as EventPayloadMap[keyof EventPayloadMap] | EventPayload;
 			// Each handler starts in its own async frame so a handler that throws
 			// synchronously rejects like an async one instead of aborting the map
 			// before its siblings (registered by later plugins) have been invoked.
 			await Promise.all(
 				eventHandlers.map(async (handler) =>
-					handler(paramsWithRuntime as EventPayloadMap[keyof EventPayloadMap]),
+					handler(payload as EventPayloadMap[keyof EventPayloadMap]),
 				),
 			);
 		}
@@ -4001,21 +3860,6 @@ export class AgentRuntime implements IAgentRuntime {
 	): ReturnType<RuntimeEmbeddings["isEmbeddingGenerationDisabled"]> {
 		return this.embeddings.isEmbeddingGenerationDisabled(...args);
 	}
-	private disableEmbeddingGeneration(
-		...args: Parameters<RuntimeEmbeddings["disableEmbeddingGeneration"]>
-	): ReturnType<RuntimeEmbeddings["disableEmbeddingGeneration"]> {
-		return this.embeddings.disableEmbeddingGeneration(...args);
-	}
-	private enableEmbeddingGeneration(
-		...args: Parameters<RuntimeEmbeddings["enableEmbeddingGeneration"]>
-	): ReturnType<RuntimeEmbeddings["enableEmbeddingGeneration"]> {
-		return this.embeddings.enableEmbeddingGeneration(...args);
-	}
-	private warnEmbeddingGenerationSkipped(
-		...args: Parameters<RuntimeEmbeddings["warnEmbeddingGenerationSkipped"]>
-	): ReturnType<RuntimeEmbeddings["warnEmbeddingGenerationSkipped"]> {
-		return this.embeddings.warnEmbeddingGenerationSkipped(...args);
-	}
 	ensureEmbeddingDimension(
 		...args: Parameters<RuntimeEmbeddings["ensureEmbeddingDimension"]>
 	): ReturnType<RuntimeEmbeddings["ensureEmbeddingDimension"]> {
@@ -4030,6 +3874,8 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 		this.taskWorkers.set(taskHandler.name, taskHandler);
+		// A task skipped for a missing worker can run now; wake the task timer.
+		this._markLocalTasksDirty();
 	}
 
 	getTaskWorker(name: string): TaskWorker | undefined {
@@ -4050,10 +3896,49 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
 	 */
 	async close(): Promise<void> {
-		await this.modelDispatch.drainDiagnostics();
-		if (this.adapter) {
-			await this.adapter.close();
+		if (this.adapter) await stopTaskSchedulerForAdapter(this.adapter);
+		let retirementFailure: unknown;
+		try {
+			await this.retirement.drain({ beforeCloseOnly: true });
+		} catch (error) {
+			// error-policy:J6 A settled outgoing failure must not prevent final
+			// resource release; preserve it after attempting adapter closure.
+			retirementFailure = error;
 		}
+		try {
+			await this.modelDispatch.drainDiagnostics();
+			if (this.adapter) await this.adapter.close();
+		} catch (error) {
+			if (retirementFailure) {
+				throw new ElizaError("Shared adapter retirement and closure failed", {
+					code: "RUNTIME_ADAPTER_RETIREMENT_CLOSE_FAILED",
+					cause: new AggregateError([retirementFailure, error]),
+				});
+			}
+			throw error;
+		}
+		if (retirementFailure) throw retirementFailure;
+	}
+
+	/** A host that reuses this adapter's storage retains the outgoing cleanup
+	 * before publishing its first asynchronous continuation. Only this adopted
+	 * work also gates close(); ordinary fast-stop callbacks keep their budget. */
+	retainSharedAdapterRetirement(operation: () => Promise<void>): Promise<void> {
+		return this.retirement.run(
+			async () => {
+				try {
+					await operation();
+				} catch (error) {
+					// error-policy:J2 Original callers and later close/strict-stop callers
+					// observe the same retained failure after the original work settles.
+					this.retirement.recordFailure("shared-adapter-retirement", error, {
+						beforeClose: true,
+					});
+					throw error;
+				}
+			},
+			{ beforeClose: true },
+		);
 	}
 	async getAgent(agentId: UUID): Promise<Agent | null> {
 		const agents = await this.adapter.getAgentsByIds([agentId]);
@@ -4300,38 +4185,12 @@ export class AgentRuntime implements IAgentRuntime {
 	): ReturnType<RuntimeEmbeddings["addEmbeddingToMemory"]> {
 		return this.embeddings.addEmbeddingToMemory(...args);
 	}
-	private reembedMemoriesByIds(
-		...args: Parameters<RuntimeEmbeddings["reembedMemoriesByIds"]>
-	): ReturnType<RuntimeEmbeddings["reembedMemoriesByIds"]> {
-		return this.embeddings.reembedMemoriesByIds(...args);
-	}
 	queueEmbeddingGeneration(
 		...args: Parameters<RuntimeEmbeddings["queueEmbeddingGeneration"]>
 	): ReturnType<RuntimeEmbeddings["queueEmbeddingGeneration"]> {
 		return this.embeddings.queueEmbeddingGeneration(...args);
 	}
-	async getMemories(params: {
-		entityId?: UUID;
-		authorEntityIds?: UUID[];
-		agentId?: UUID;
-		roomId?: UUID;
-		excludeRoomIds?: UUID[];
-		limit?: number;
-		count?: number;
-		offset?: number;
-		cursor?: { createdAt: number; id: UUID };
-		unique?: boolean;
-		tableName: string;
-		start?: number;
-		end?: number;
-		worldId?: UUID;
-		metadata?: Record<string, unknown>;
-		textContains?: string;
-		orderBy?: "createdAt";
-		orderDirection?: "asc" | "desc";
-		includeEmbedding?: boolean;
-		accessContext?: AccessContext;
-	}): Promise<Memory[]> {
+	async getMemories(params: GetMemoriesParams): Promise<Memory[]> {
 		const coalesced = this.coalesceRoomMessagesScan(params);
 		if (coalesced) return coalesced;
 		return this.adapter.getMemories({
@@ -4362,28 +4221,9 @@ export class AgentRuntime implements IAgentRuntime {
 	 *
 	 * Returns null when the query shape is not eligible.
 	 */
-	private coalesceRoomMessagesScan(params: {
-		entityId?: UUID;
-		authorEntityIds?: UUID[];
-		agentId?: UUID;
-		roomId?: UUID;
-		excludeRoomIds?: UUID[];
-		limit?: number;
-		count?: number;
-		offset?: number;
-		cursor?: { createdAt: number; id: UUID };
-		unique?: boolean;
-		tableName: string;
-		start?: number;
-		end?: number;
-		worldId?: UUID;
-		metadata?: Record<string, unknown>;
-		textContains?: string;
-		orderBy?: "createdAt";
-		orderDirection?: "asc" | "desc";
-		includeEmbedding?: boolean;
-		accessContext?: AccessContext;
-	}): Promise<Memory[]> | null {
+	private coalesceRoomMessagesScan(
+		params: GetMemoriesParams,
+	): Promise<Memory[]> | null {
 		if (params.tableName !== "messages" || !params.roomId) return null;
 		if (
 			params.entityId !== undefined ||
@@ -4709,6 +4549,11 @@ export class AgentRuntime implements IAgentRuntime {
 		offset?: number;
 	}): Promise<Log[]> {
 		return this.adapter.getLogs(params);
+	}
+	async getLogInventory(params: {
+		excludeTypes?: readonly string[];
+	}): Promise<LogInventoryRow[]> {
+		return this.adapter.getLogInventory(params);
 	}
 	// Batch log methods
 	async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
@@ -5394,13 +5239,9 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	on(event: string, callback: (data: EventPayload) => void): void {
-		if (!this.eventHandlers.has(event)) {
-			this.eventHandlers.set(event, []);
-		}
 		const handlers = this.eventHandlers.get(event);
-		if (handlers) {
-			handlers.push(callback);
-		}
+		if (handlers) handlers.push(callback);
+		else this.eventHandlers.set(event, [callback]);
 	}
 	off(event: string, callback: (data: EventPayload) => void): void {
 		const handlers = this.eventHandlers.get(event);

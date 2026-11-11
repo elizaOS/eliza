@@ -165,7 +165,10 @@ public final class LlamaBridge {
         let streamCallback = streamToken.flatMap { self.streamCallbacks[$0] }
 
         let queue = LlamaBridgeImpl.shared.workQueue(for: Int64(contextId)) ?? inferenceQueue
+        // Pending from now, so a llama_cancel sent while this waits is honored.
+        LlamaBridgeImpl.shared.beginGeneration(contextId: Int64(state.id))
         queue.async {
+            defer { LlamaBridgeImpl.shared.endGeneration(contextId: Int64(state.id)) }
             let started = Date()
             let result = LlamaBridgeImpl.shared.generate(
                 contextId: Int64(state.id),

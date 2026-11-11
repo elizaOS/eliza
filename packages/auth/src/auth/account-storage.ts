@@ -120,6 +120,7 @@ interface CredentialResetPlan {
 const STORAGE_LOCK_DIRECTORY = ".credential-storage.lock";
 const STORAGE_LOCK_OWNER_FILE = "owner.json";
 const STORAGE_GENERATION_FILE = ".credential-storage-generation";
+const STORAGE_RESET_FILE = ".credential-storage-reset";
 const STORAGE_LOCK_WAIT_MS = 20;
 const STORAGE_LOCK_TIMEOUT_MS = 15_000;
 const STORAGE_LOCK_STALE_MS = 120_000;
@@ -338,13 +339,81 @@ function readLockOwner(
   }
 }
 
+function quarantineStorageLock(
+  policy: AccountStoragePolicy,
+  lockDir: string,
+): string | undefined {
+  const quarantine = `${lockDir}.stale.${process.pid}.${randomUUID()}`;
+  assertContained(policy.authRoot, quarantine, "stale-lock-quarantine");
+  try {
+    fs.renameSync(lockDir, quarantine);
+    return quarantine;
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw cause;
+  }
+}
+
+function removeLockDirectory(directory: string): void {
+  try {
+    const entries = fs.readdirSync(directory);
+    if (entries.some((entry) => entry !== STORAGE_LOCK_OWNER_FILE)) {
+      throw storageError(
+        "AUTH_CREDENTIAL_STORAGE_LOCK_OWNERSHIP_LOST",
+        "Credential storage lock contains unexpected entries",
+        { directory, entries },
+      );
+    }
+    if (entries.length)
+      fs.unlinkSync(path.join(directory, STORAGE_LOCK_OWNER_FILE));
+    fs.rmdirSync(directory);
+  } catch (cause) {
+    // Unique quarantine paths are never reused. Another reaper may finish
+    // removing this released directory after its owner file was unlinked.
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+  }
+}
+
+function quarantinedLockDirectories(policy: AccountStoragePolicy): string[] {
+  return fs
+    .readdirSync(policy.authRoot)
+    .filter((entry) => entry.startsWith(`${STORAGE_LOCK_DIRECTORY}.stale.`))
+    .map((entry) => path.join(policy.authRoot, entry));
+}
+
+function retireQuarantinedLock(directory: string): boolean {
+  try {
+    const stat = fs.lstatSync(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw storageError(
+        "AUTH_CREDENTIAL_PATH_ESCAPE",
+        "Credential quarantine must be a real directory",
+        { directory },
+      );
+    }
+    const owner = readLockOwner(path.join(directory, STORAGE_LOCK_OWNER_FILE));
+    if (owner && processIsAlive(owner.pid)) return false;
+    removeLockDirectory(directory);
+    return true;
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw cause;
+  }
+}
+
+function hasLiveQuarantinedLock(policy: AccountStoragePolicy): boolean {
+  let live = false;
+  for (const directory of quarantinedLockDirectories(policy)) {
+    if (!retireQuarantinedLock(directory)) live = true;
+  }
+  return live;
+}
+
 function removeStaleLock(
   policy: AccountStoragePolicy,
   lockDir: string,
 ): boolean {
   const stat = fs.lstatSync(lockDir, { throwIfNoEntry: false });
-  // The owner can release its lock after our mkdir observed EEXIST. Retry
-  // acquisition so the generation fence runs under the newly acquired lock.
   if (!stat) return true;
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw storageError(
@@ -358,33 +427,68 @@ function removeStaleLock(
   if (owner && processIsAlive(owner.pid)) return false;
   if (!owner && !expired) return false;
 
-  const quarantine = `${lockDir}.stale.${process.pid}.${randomUUID()}`;
-  assertContained(policy.authRoot, quarantine, "stale-lock-quarantine");
-  try {
-    fs.renameSync(lockDir, quarantine);
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return true;
-    throw cause;
-  }
-  fs.rmSync(quarantine, { recursive: true, force: false });
+  const quarantine = quarantineStorageLock(policy, lockDir);
+  // The observed owner may have released and a successor may now own the
+  // renamed directory. A live successor retains ownership in quarantine.
+  if (quarantine) retireQuarantinedLock(quarantine);
   fsyncDirectory(policy.authRoot);
   return true;
+}
+
+function lockOwnerMatches(lock: StorageLock, directory: string): boolean {
+  const owner = readLockOwner(path.join(directory, STORAGE_LOCK_OWNER_FILE));
+  return owner?.pid === process.pid && owner.token === lock.token;
+}
+
+function releaseStorageLock(lock: StorageLock, unpublished = false): void {
+  assertStoragePolicy(lock.policy);
+  // Quarantine names are unique and never reused. Stage an ordinary directory
+  // before deleting it, then recheck its token to preserve a racing successor.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ownedQuarantine = quarantinedLockDirectories(lock.policy).find(
+      (directory) => lockOwnerMatches(lock, directory),
+    );
+    if (ownedQuarantine) {
+      removeLockDirectory(ownedQuarantine);
+      fsyncDirectory(lock.policy.authRoot);
+      return;
+    }
+    if (lockOwnerMatches(lock, lock.lockDir) || unpublished) {
+      const quarantine = quarantineStorageLock(lock.policy, lock.lockDir);
+      if (!quarantine) continue;
+      if (lockOwnerMatches(lock, quarantine)) {
+        removeLockDirectory(quarantine);
+        fsyncDirectory(lock.policy.authRoot);
+        return;
+      }
+      retireQuarantinedLock(quarantine);
+    }
+  }
+  if (unpublished) return;
+  throw storageError(
+    "AUTH_CREDENTIAL_STORAGE_LOCK_OWNERSHIP_LOST",
+    "Credential storage lock ownership changed before release",
+    { lockDir: lock.lockDir },
+  );
 }
 
 function acquireStorageLock(
   policy: AccountStoragePolicy,
   operation: string,
+  recoverReset = true,
 ): StorageLock {
   ensureAuthRoot(policy);
   const lockDir = path.join(policy.authRoot, STORAGE_LOCK_DIRECTORY);
   const ownerFile = path.join(lockDir, STORAGE_LOCK_OWNER_FILE);
   assertContained(policy.authRoot, lockDir, "storage-lock");
-  const startedAt = Date.now();
+  const startedAt = performance.now();
 
   while (true) {
+    let lock: StorageLock | undefined;
+    let published = false;
     try {
       fs.mkdirSync(lockDir, { mode: 0o700 });
-      const token = randomUUID();
+      lock = { lockDir, ownerFile, policy, token: randomUUID() };
       let descriptor: number | undefined;
       try {
         descriptor = fs.openSync(
@@ -397,36 +501,50 @@ function acquireStorageLock(
         );
         fs.writeFileSync(
           descriptor,
-          JSON.stringify({ operation, pid: process.pid, token }),
+          JSON.stringify({ operation, pid: process.pid, token: lock.token }),
           "utf8",
         );
         fs.fsyncSync(descriptor);
       } finally {
         if (descriptor !== undefined) fs.closeSync(descriptor);
       }
+      published = true;
       fsyncDirectory(lockDir);
       fsyncDirectory(policy.authRoot);
       assertStoragePolicy(policy);
-      const currentGeneration = readGenerationFile(policy.authRoot);
-      const policyGeneration = policy[ACCOUNT_STORAGE_ROOT_IDENTITY].generation;
-      if (currentGeneration !== policyGeneration) {
-        fs.unlinkSync(ownerFile);
-        fs.rmdirSync(lockDir);
-        fsyncDirectory(policy.authRoot);
-        throw storageError(
-          "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
-          "Credential storage policy predates the latest reset",
-          { currentGeneration, operation, policyGeneration },
-        );
+      const quarantinedOwner = hasLiveQuarantinedLock(policy);
+      if (quarantinedOwner || !lockOwnerMatches(lock, lockDir)) {
+        releaseStorageLock(lock);
+        lock = undefined;
+      } else {
+        if (recoverReset) recoverCredentialResetUnlocked(policy);
+        const currentGeneration = readGenerationFile(policy.authRoot);
+        const policyGeneration =
+          policy[ACCOUNT_STORAGE_ROOT_IDENTITY].generation;
+        if (recoverReset && currentGeneration !== policyGeneration) {
+          throw storageError(
+            "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
+            "Credential storage policy predates the latest reset",
+            { currentGeneration, operation, policyGeneration },
+          );
+        }
+        return lock;
       }
-      return { lockDir, ownerFile, policy, token };
     } catch (cause) {
+      if (lock) {
+        try {
+          releaseStorageLock(lock, !published);
+        } catch (releaseError) {
+          throw storageError(
+            "AUTH_CREDENTIAL_STORAGE_LOCK_RELEASE_FAILED",
+            "Credential lock acquisition failed and its lock could not be released",
+            { operation, releaseError: String(releaseError) },
+            cause,
+          );
+        }
+      }
       const errorCode = (cause as NodeJS.ErrnoException).code;
       if (errorCode === "ENOENT") {
-        // error-policy:J2 The auth root vanished between lock creation and
-        // the generation check — a concurrent full reset removed it. The
-        // fence held (nothing was written); surface the typed generation
-        // error the reset contract promises instead of the raw ENOENT.
         throw storageError(
           "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
           "Credential storage policy predates the latest reset",
@@ -438,42 +556,18 @@ function acquireStorageLock(
         );
       }
       if (errorCode !== "EEXIST") throw cause;
-      if (removeStaleLock(policy, lockDir)) continue;
-      if (Date.now() - startedAt >= STORAGE_LOCK_TIMEOUT_MS) {
-        throw storageError(
-          "AUTH_CREDENTIAL_STORAGE_LOCK_TIMEOUT",
-          "Timed out waiting for the credential storage lock",
-          { lockDir, operation, timeoutMs: STORAGE_LOCK_TIMEOUT_MS },
-          cause,
-        );
-      }
-      sleepSync(STORAGE_LOCK_WAIT_MS);
-      assertStoragePolicy(policy);
+      removeStaleLock(policy, lockDir);
     }
+    if (performance.now() - startedAt >= STORAGE_LOCK_TIMEOUT_MS) {
+      throw storageError(
+        "AUTH_CREDENTIAL_STORAGE_LOCK_TIMEOUT",
+        "Timed out waiting for the credential storage lock",
+        { lockDir, operation, timeoutMs: STORAGE_LOCK_TIMEOUT_MS },
+      );
+    }
+    sleepSync(STORAGE_LOCK_WAIT_MS);
+    assertStoragePolicy(policy);
   }
-}
-
-function releaseStorageLock(lock: StorageLock): void {
-  assertStoragePolicy(lock.policy);
-  const owner = readLockOwner(lock.ownerFile);
-  if (!owner || owner.pid !== process.pid || owner.token !== lock.token) {
-    throw storageError(
-      "AUTH_CREDENTIAL_STORAGE_LOCK_OWNERSHIP_LOST",
-      "Credential storage lock ownership changed before release",
-      { lockDir: lock.lockDir },
-    );
-  }
-  const entries = fs.readdirSync(lock.lockDir);
-  if (entries.length !== 1 || entries[0] !== STORAGE_LOCK_OWNER_FILE) {
-    throw storageError(
-      "AUTH_CREDENTIAL_STORAGE_LOCK_OWNERSHIP_LOST",
-      "Credential storage lock contains unexpected entries",
-      { entries, lockDir: lock.lockDir },
-    );
-  }
-  fs.unlinkSync(lock.ownerFile);
-  fs.rmdirSync(lock.lockDir);
-  fsyncDirectory(lock.policy.authRoot);
 }
 
 function withStorageLock<T>(
@@ -546,7 +640,7 @@ function createAccountStoragePolicy(
     assertRegularDirectory(authRoot, "auth");
     generation = readGenerationFile(authRoot);
   }
-  return Object.freeze({
+  const policy: AccountStoragePolicy = Object.freeze({
     stateRoot: canonicalStateRoot,
     authRoot,
     owner,
@@ -557,6 +651,24 @@ function createAccountStoragePolicy(
       ino: stateRootStat.ino,
     }),
   });
+  if (fs.existsSync(path.join(authRoot, STORAGE_RESET_FILE))) {
+    const lock = acquireStorageLock(policy, "recover-credential-reset", false);
+    try {
+      recoverCredentialResetUnlocked(policy);
+      generation = readGenerationFile(authRoot);
+    } finally {
+      releaseStorageLock(lock);
+    }
+    return Object.freeze({
+      ...policy,
+      [ACCOUNT_STORAGE_ROOT_IDENTITY]: Object.freeze({
+        dev: stateRootStat.dev,
+        generation,
+        ino: stateRootStat.ino,
+      }),
+    });
+  }
+  return policy;
 }
 
 export function createRuntimeAccountStoragePolicy(
@@ -1681,6 +1793,102 @@ function writeStorageGenerationUnlocked(
   }
 }
 
+interface CredentialResetIntent {
+  version: 1;
+  generation: number;
+  nextGeneration: number;
+}
+
+function readResetIntent(
+  policy: AccountStoragePolicy,
+): CredentialResetIntent | null {
+  const file = path.join(policy.authRoot, STORAGE_RESET_FILE);
+  if (!fs.existsSync(file)) return null;
+  const { contents } = readRegularFileNoFollow(file, policy, "reset-intent");
+  let intent: CredentialResetIntent;
+  try {
+    intent = JSON.parse(contents.toString("utf8"));
+  } catch (cause) {
+    throw storageError(
+      "AUTH_CREDENTIAL_RESET_INTENT_INVALID",
+      "Credential reset recovery intent is malformed",
+      { file },
+      cause,
+    );
+  }
+  if (
+    intent?.version !== 1 ||
+    !Number.isSafeInteger(intent.generation) ||
+    intent.generation < 0 ||
+    !Number.isSafeInteger(intent.nextGeneration) ||
+    intent.nextGeneration !== intent.generation + 1
+  ) {
+    throw storageError(
+      "AUTH_CREDENTIAL_RESET_INTENT_INVALID",
+      "Credential reset recovery intent is malformed",
+      { file },
+    );
+  }
+  return intent;
+}
+
+function writeResetIntentUnlocked(
+  policy: AccountStoragePolicy,
+  intent: CredentialResetIntent,
+): void {
+  const file = path.join(policy.authRoot, STORAGE_RESET_FILE);
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      temporary,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+    fs.writeFileSync(descriptor, JSON.stringify(intent));
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, file);
+    fsyncDirectory(policy.authRoot);
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
+}
+
+function clearResetIntentUnlocked(policy: AccountStoragePolicy): void {
+  fs.unlinkSync(path.join(policy.authRoot, STORAGE_RESET_FILE));
+  fsyncDirectory(policy.authRoot);
+}
+
+function recoverCredentialResetUnlocked(policy: AccountStoragePolicy): void {
+  const intent = readResetIntent(policy);
+  if (!intent) return;
+  const current = readGenerationFile(policy.authRoot);
+  if (current !== intent.generation && current !== intent.nextGeneration) {
+    throw storageError(
+      "AUTH_CREDENTIAL_RESET_GENERATION_CHANGED",
+      "Credential reset recovery cannot replace a different storage generation",
+      {
+        current,
+        generation: intent.generation,
+        nextGeneration: intent.nextGeneration,
+      },
+    );
+  }
+  // A crashed caller cannot roll back or repeat its host callback. Complete
+  // credential deletion before admitting any writer from the old generation.
+  if (current === intent.generation) {
+    deleteResetPlanUnlocked(preflightCredentialResetUnlocked(policy), policy);
+    writeStorageGenerationUnlocked(policy, intent.nextGeneration);
+  }
+  clearResetIntentUnlocked(policy);
+}
+
 /**
  * Serializes a non-account credential artifact mutation with account writes
  * and reset. The callback must stay inside `policy.authRoot` and must not call
@@ -1720,18 +1928,51 @@ export function resetAccountCredentialStorage(
   mutateResetState: () => void,
 ): number {
   return withStorageLock(policy, "reset-account-credential-storage", () => {
+    const generation = policy[ACCOUNT_STORAGE_ROOT_IDENTITY].generation;
+    if (!Number.isSafeInteger(generation + 1)) {
+      throw storageError(
+        "AUTH_CREDENTIAL_GENERATION_INVALID",
+        "Credential storage generation cannot advance beyond the supported range",
+        { generation },
+      );
+    }
     const plan = preflightCredentialResetUnlocked(policy);
-    deleteResetPlanUnlocked(plan, policy);
+    writeResetIntentUnlocked(policy, {
+      version: 1,
+      generation,
+      nextGeneration: generation + 1,
+    });
+    let deleted = false;
     try {
+      deleteResetPlanUnlocked(plan, policy);
+      deleted = true;
       mutateResetState();
-      const currentGeneration =
-        policy[ACCOUNT_STORAGE_ROOT_IDENTITY].generation;
-      writeStorageGenerationUnlocked(policy, currentGeneration + 1);
+      writeStorageGenerationUnlocked(policy, generation + 1);
+      clearResetIntentUnlocked(policy);
     } catch (cause) {
-      const rollbackFailures = restoreResetPlanUnlocked(plan);
+      if (readGenerationFile(policy.authRoot) !== generation) {
+        throw storageError(
+          "AUTH_CREDENTIAL_RESET_RECOVERY_REQUIRED",
+          "Credential reset advanced its generation but did not confirm completion",
+          { generation },
+          cause,
+        );
+      }
+      let rollbackFailures: unknown[];
+      if (deleted) {
+        rollbackFailures = restoreResetPlanUnlocked(plan);
+      } else if (
+        cause instanceof ElizaError &&
+        Array.isArray(cause.context?.rollbackFailures)
+      ) {
+        rollbackFailures = cause.context.rollbackFailures;
+      } else {
+        rollbackFailures = [String(cause)];
+      }
+      if (!rollbackFailures.length) clearResetIntentUnlocked(policy);
       throw storageError(
         "AUTH_CREDENTIAL_RESET_TRANSACTION_FAILED",
-        "Credential reset failed and credential artifacts were rolled back",
+        "Credential reset failed; recovery is required if rollback was incomplete",
         { rollbackFailures },
         cause,
       );
@@ -1846,10 +2087,12 @@ export function deleteAccount(
  * the one the caller started from (another writer replaced the record, even
  * when credential values are identical) and carries that current record so the caller can act on it.
  */
-export type AccountCredentialUpdateOutcome =
-  | { kind: "updated"; record: AccountCredentialRecord }
+export type AccountCredentialUpdateOutcome<
+  Record extends AccountCredentialRecord = AccountCredentialRecord,
+> =
+  | { kind: "updated"; record: Record }
   | { kind: "missing" }
-  | { kind: "changed"; record: AccountCredentialRecord };
+  | { kind: "changed"; record: Record };
 
 /**
  * Keeps the stored OIDC id_token when a token grant re-issues access and
@@ -1881,7 +2124,7 @@ export function updateAccountCredentialsIfUnchanged(
   expectedGeneration: string,
   credentials: OAuthCredentials,
   policy: AccountStoragePolicy,
-): AccountCredentialUpdateOutcome {
+): AccountCredentialUpdateOutcome<LoadedAccountCredentialRecord> {
   assertCanonicalAccountId(accountId);
   if (
     typeof expectedGeneration !== "string" ||
@@ -1901,7 +2144,7 @@ export function updateAccountCredentialsIfUnchanged(
     if (existing.credentialGeneration !== expectedGeneration) {
       return { kind: "changed", record: existing };
     }
-    const next: AccountCredentialRecord = {
+    const next: LoadedAccountCredentialRecord = {
       ...existing,
       credentials: carryForwardIdToken(existing.credentials, credentials),
       credentialGeneration: randomUUID(),
