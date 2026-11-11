@@ -72,6 +72,11 @@ export function resolveSetting(
 
 /** Node environment access with explicit cache invalidation after settings reload. */
 
+/** Decimal numbers only. `Number()` also accepts hex, binary, and octal
+ * notation, so without this an env value such as `0x10` would silently
+ * parse as 16 instead of being rejected as a non-decimal number. */
+const DECIMAL_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
 export class Environment {
 	private readonly cache = new Map<string, string | undefined>();
 	get(key: string, defaultValue?: string): string | undefined {
@@ -93,7 +98,7 @@ export class Environment {
 	}
 	getNumber(key: string, defaultValue?: number): number | undefined {
 		const value = this.get(key)?.trim();
-		if (!value) return defaultValue;
+		if (!value || !DECIMAL_NUMBER_RE.test(value)) return defaultValue;
 		const parsed = Number(value);
 		return Number.isFinite(parsed) ? parsed : defaultValue;
 	}
