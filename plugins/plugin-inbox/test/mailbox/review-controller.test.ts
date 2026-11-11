@@ -306,15 +306,20 @@ describe("createMailReviewController", () => {
     expect(f.controller.render().provider.canConfirm).toBe(false);
     expect(f.slots.has(slot)).toBe(true);
 
-    bytes[bytes.length - 1] = 0x62;
+    const retainedAttachment = { ...file };
     composer = {
       ...composer,
-      proposal: {
-        ...proposal,
-        attachments: [{ ...file, dataBase64: bytes.toString("base64") }],
-      },
+      proposal: { ...proposal, attachments: [retainedAttachment] },
     };
+    expect(f.controller.render().provider.canConfirm).toBe(true);
+    bytes[bytes.length - 1] = 0x62;
+    retainedAttachment.dataBase64 = bytes.toString("base64");
+    expect(composer.proposal.attachments[0]).toBe(retainedAttachment);
     expect(f.controller.render().provider.canConfirm).toBe(false);
+    expect(
+      JSON.parse(f.slots.get(slot) as string).proposal.attachments[0]
+        .dataBase64,
+    ).toBe(file.dataBase64);
     // A button left over from the matching render cannot dispatch the edited email.
     confirm();
     await settle();
