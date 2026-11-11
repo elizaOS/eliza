@@ -22,12 +22,8 @@
       "main": "TriggerRecovery",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "Safety"
-      ],
-      "temporal": [
-        "RepliesSettle"
-      ],
+      "invariants": ["Safety"],
+      "temporal": ["RepliesSettle"],
       "temporalChecks": [
         {
           "property": "RepliesSettle",
