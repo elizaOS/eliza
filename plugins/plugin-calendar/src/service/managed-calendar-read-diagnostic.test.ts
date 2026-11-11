@@ -1044,6 +1044,7 @@ function managedCacheService(
   entries: CacheSource[],
   beforeFeed: (entry: CacheSource) => Promise<void> = async () => {},
   feedState = "complete",
+  runtime: IAgentRuntime = testRuntime.runtime,
 ) {
   vi.stubEnv("ELIZA_MANAGED_CALENDAR_READ_BROKER", ENDPOINT);
   vi.stubEnv("ELIZA_API_TOKEN", TEST_AUTH);
@@ -1086,7 +1087,7 @@ function managedCacheService(
       });
     },
   );
-  return new CalendarService(testRuntime.runtime);
+  return new CalendarService(runtime);
 }
 function readManagedCache(
   service: CalendarService,
@@ -1276,4 +1277,67 @@ it("rejects a failed managed removal and permits a real-store retry without a fa
   } finally {
     remove.mockRestore();
   }
+});
+
+it("keeps a managed cache row unchanged when another agent reads the same host identity", async () => {
+  const entry = managedCacheSource("7");
+  const first = managedCacheService([entry]);
+  await readManagedCache(first, entry);
+  const stored = await first.getCalendarEventById(entry.event.id);
+  expect(stored).not.toBeNull();
+  const otherRuntime = Object.create(testRuntime.runtime) as IAgentRuntime;
+  Object.defineProperty(otherRuntime, "agentId", {
+    value: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  });
+  entry.event.title = "Another agent read";
+  entry.event.metadata.etag = '"other-agent-v2"';
+  const second = managedCacheService(
+    [entry],
+    undefined,
+    "complete",
+    otherRuntime,
+  );
+  const refused = await readManagedCache(second, entry);
+  expect(refused.state).toBe("unavailable");
+  expect(refused.events).toEqual([]);
+  expect(refused.sources[0]?.error?.code).toBe(
+    "CALENDAR_EVENT_PERSISTENCE_FAILED",
+  );
+  expect(await second.getCalendarEventById(entry.event.id)).toBeNull();
+  expect(await first.getCalendarEventById(entry.event.id)).toEqual(stored);
+  entry.event.title = "Fresh matching owner payload";
+  entry.event.metadata.etag = '"same-owner-v3"';
+  expect((await readManagedCache(first, entry)).state).toBe("complete");
+  expect(await first.getCalendarEventById(entry.event.id)).toMatchObject({
+    title: entry.event.title,
+    metadata: entry.event.metadata,
+  });
+});
+
+it("keeps a managed cache row unchanged when another calendar returns the same host identity", async () => {
+  const entry = managedCacheSource("6");
+  const other = managedCacheSource("6");
+  other.calendarId = "other-calendar-with-same-external-event-id";
+  other.source.calendarId = other.calendarId;
+  other.event.calendarId = other.calendarId;
+  other.event.title = "Another calendar read";
+  other.event.metadata.etag = '"other-calendar-v2"';
+  const service = managedCacheService([entry, other]);
+  await readManagedCache(service, entry);
+  const stored = await service.getCalendarEventById(entry.event.id);
+  expect(stored).not.toBeNull();
+  const refused = await readManagedCache(service, other);
+  expect(refused.state).toBe("unavailable");
+  expect(refused.events).toEqual([]);
+  expect(refused.sources[0]?.error?.code).toBe(
+    "CALENDAR_EVENT_PERSISTENCE_FAILED",
+  );
+  expect(await service.getCalendarEventById(entry.event.id)).toEqual(stored);
+  entry.event.title = "Fresh matching source payload";
+  entry.event.metadata.etag = '"same-source-v3"';
+  expect((await readManagedCache(service, entry)).state).toBe("complete");
+  expect(await service.getCalendarEventById(entry.event.id)).toMatchObject({
+    title: entry.event.title,
+    metadata: entry.event.metadata,
+  });
 });

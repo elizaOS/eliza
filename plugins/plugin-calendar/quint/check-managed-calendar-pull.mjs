@@ -74,6 +74,8 @@ const cases = [
       "rejects a partial managed feed before it can enter the canonical store",
       "drains a cancelled managed cache write before acknowledging imported-data removal",
       "rejects a failed managed removal and permits a real-store retry without a false receipt",
+      "keeps a managed cache row unchanged when another agent reads the same host identity",
+      "keeps a managed cache row unchanged when another calendar returns the same host identity",
     ],
   },
 ];
@@ -113,5 +115,5 @@ for (const { file, label, names } of cases) {
   );
 }
 console.log(
-  `54 exact managed Calendar implementation cases passed without skips. Evidence ${directory}`,
+  `56 exact managed Calendar implementation cases passed without skips. Evidence ${directory}`,
 );

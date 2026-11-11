@@ -147,3 +147,56 @@ module ManagedCalendarCacheDrain {
   run partialOrRevokedFeedNeverCachesTest = initialize(true, false, true)
     .then(feed(0)).then(requestPurge).then(remove).expect(s.cached.size() == 0)
 }
+
+// One globally keyed cache row and one incoming complete event. Equal/different
+// values abstract stable IDs; display labels do not participate in identity.
+module ManagedCalendarCacheIdentity {
+  type Identity = { agent: int, provider: int, side: int, grant: int,
+    calendar: int, external: int, account: int }
+  pure val original: Identity = { agent: 0, provider: 0, side: 0, grant: 0,
+    calendar: 0, external: 0, account: 0 }
+  type State = { hadRow: bool, present: bool, row: Identity, candidate: Identity,
+    phase: int, payload: int, result: int, retried: bool }
+  var s: State
+  action initialize(present: bool, candidate: Identity): bool = s' = {
+    hadRow: present, present: present, row: original, candidate: candidate,
+    phase: 0, payload: if (present) 11 else 0, result: 0, retried: false }
+  action init = {
+    nondet present = Bool.oneOf()
+    nondet agent = Set(0, 1).oneOf()
+    nondet provider = Set(0, 1).oneOf()
+    nondet side = Set(0, 1).oneOf()
+    nondet grant = Set(0, 1).oneOf()
+    nondet calendar = Set(0, 1).oneOf()
+    nondet external = Set(0, 1).oneOf()
+    nondet account = Set(0, 1).oneOf()
+    initialize(present, { agent: agent, provider: provider, side: side,
+      grant: grant, calendar: calendar, external: external, account: account })
+  }
+  val compatible = not(s.present) or s.row == s.candidate
+  action write = all { s.phase == 0,
+    s' = s.with("phase", 1).with("result", if (compatible) 1 else 2)
+      .with("present", if (compatible) true else s.present)
+      .with("row", if (compatible) s.candidate else s.row)
+      .with("payload", if (compatible) 17 else s.payload) }
+  // A later read of the original exact source can still update its own row.
+  action freshMatchingRead = all { s.phase == 1, s.result == 2, not(s.retried),
+    s' = s.with("phase", 0).with("result", 0).with("candidate", original)
+      .with("retried", true) }
+  action done = all { s.phase == 1, s' = s }
+  action step = any { write, freshMatchingRead, done }
+  val ExistingIdentityRetained = not(s.hadRow) or s.row == original
+  val ConflictLeavesPayloadUnchanged = s.phase != 1 or not(s.hadRow) or
+    s.candidate == original or (s.result == 2 and s.payload == 11 and s.row == original)
+  val SuccessNeedsExactSourceAndWholePayload = s.result != 1 or
+    (s.present and s.row == s.candidate and s.payload == 17)
+  val NonCollidingInsertWorks = s.hadRow or s.phase == 0 or
+    (s.result == 1 and s.row == s.candidate and s.payload == 17)
+  run anotherAgentCannotReplacePayloadTest = initialize(true, original.with("agent", 1))
+    .then(write).expect(s.result == 2 and s.payload == 11 and s.row == original)
+    .then(freshMatchingRead).then(write).expect(s.result == 1 and s.payload == 17)
+  run anotherCalendarCannotReplacePayloadTest = initialize(true, original.with("calendar", 1))
+    .then(write).expect(s.result == 2 and s.payload == 11 and s.row == original)
+  run nonCollidingInsertPreservesWholePayloadTest = initialize(false, original.with("agent", 1))
+    .then(write).expect(s.result == 1 and s.row == s.candidate and s.payload == 17)
+}
