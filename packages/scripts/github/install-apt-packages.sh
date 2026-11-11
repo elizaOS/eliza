@@ -21,8 +21,6 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
-bash "$(dirname "${BASH_SOURCE[0]}")/configure-hosted-apt.sh"
-
 if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
   echo "::error::passwordless sudo unavailable; cannot install apt packages: $*"
   exit 1
@@ -51,9 +49,14 @@ fi
 
 attempt=1
 while true; do
-  if sudo apt-get "${apt_sources[@]}" update \
-    && sudo apt-get "${apt_sources[@]}" install -y -o DPkg::Lock::Timeout="$APT_LOCK_TIMEOUT_SECONDS" "$@"; then
-    exit 0
+  # A late startup writer can restore an older source snapshot. Reassert the
+  # archive for each retry and again before install uses the downloaded indexes.
+  bash "$(dirname "${BASH_SOURCE[0]}")/configure-hosted-apt.sh"
+  if sudo apt-get "${apt_sources[@]}" update; then
+    bash "$(dirname "${BASH_SOURCE[0]}")/configure-hosted-apt.sh"
+    if sudo apt-get "${apt_sources[@]}" install -y -o DPkg::Lock::Timeout="$APT_LOCK_TIMEOUT_SECONDS" "$@"; then
+      exit 0
+    fi
   fi
   if [ "$attempt" -ge "$INSTALL_ATTEMPTS" ]; then
     echo "::error::apt package install failed after ${INSTALL_ATTEMPTS} attempts: $*"
