@@ -45,18 +45,35 @@ public final class BrowserLinkAutofillPolicyTest {
 
   public static void main(String[] args) {
     // Which links leave the browser.
-    for (String raw : Arrays.asList("mailto:a@example.test", "TEL:+15550100",
-             "market://details?id=x", "intent://x#Intent;end"))
+    for (String raw : Arrays.asList("mailto:a@example.test", "TEL:+15550100", "sms:+15550100",
+             "SMSTO:+15550100", "geo:37.42,-122.08", "market://details?id=x",
+             "intent://x#Intent;end"))
       check(BrowserExternalLinkPolicy.external(raw), "external " + raw);
     for (String raw : Arrays.asList("https://example.test/", "javascript:x", "file:///x",
-             "content://x", "sms:1", "", ":x", "1tel:2"))
+             "content://x", "mms:1", "", ":x", "1tel:2"))
       check(!BrowserExternalLinkPolicy.external(raw), "not external " + raw);
     check(!BrowserExternalLinkPolicy.external(null), "null not external");
 
     // Handoff kinds.
     equal(tap("mailto:a@example.test"), Handoff.SEND_TO, "mailto sends to");
     equal(tap("tel:+15550100"), Handoff.DIAL, "tel only dials");
+    equal(tap("sms:+15550100?body=hello"), Handoff.SEND_TO, "sms only opens compose");
+    equal(tap("smsto:+15550100"), Handoff.SEND_TO, "smsto only opens compose");
+    equal(tap("geo:37.42,-122.08?q=cafe"), Handoff.VIEW, "geo views");
     equal(tap("market://details?id=x"), Handoff.VIEW, "market views");
+    equal(BrowserExternalLinkPolicy.decide(
+              "sms:+15550100", false, null, null, null, OWN, HOST_SCHEMES),
+        Handoff.REFUSE, "script text link refused");
+
+    // Only fixed-action mail, phone, text and map links may resolve to the host's own handler.
+    for (String raw : Arrays.asList("mailto:a@example.test", "TEL:+15550100", "sms:+15550100",
+             "smsto:+15550100", "geo:0,0"))
+      check(BrowserExternalLinkPolicy.systemLink(raw), "system link " + raw);
+    for (String raw : Arrays.asList("market://details?id=x", "intent://x#Intent;end",
+             "intent:tel:+15550100#Intent;action=android.intent.action.CALL;end",
+             "https://example.test/", "examplehost://route", "", "tel"))
+      check(!BrowserExternalLinkPolicy.systemLink(raw), "not a system link " + raw);
+    check(!BrowserExternalLinkPolicy.systemLink(null), "null is not a system link");
     equal(tap("https://example.test/"), Handoff.REFUSE, "web link is not a handoff");
     equal(tap("javascript:alert(1)"), Handoff.REFUSE, "javascript refused");
     equal(BrowserExternalLinkPolicy.decide(

@@ -299,7 +299,7 @@ public abstract class TelecomCallActivity extends Activity {
         return new Caller(name, number);
     }
 
-    private static String clean(String value) {
+    static String clean(String value) {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
@@ -320,7 +320,7 @@ public abstract class TelecomCallActivity extends Activity {
         });
     }
 
-    private static String contactName(ContentResolver resolver, String number) {
+    static String contactName(ContentResolver resolver, String number) {
         Uri uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number));
         try (Cursor cursor = resolver.query(uri, new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME}, null, null, null)) {
             return cursor != null && cursor.moveToFirst() ? clean(cursor.getString(0)) : null;

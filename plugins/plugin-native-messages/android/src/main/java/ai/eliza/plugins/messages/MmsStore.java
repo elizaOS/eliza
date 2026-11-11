@@ -297,28 +297,64 @@ public final class MmsStore {
 
  /**
   * A new-message notice for the message's conversation. The lock screen sees only "New message"; the
-  * sender's contact name (or number) and the text show once unlocked.
+  * sender's contact name (or number) and the text show once unlocked, as a conversation that keeps
+  * the texts not yet read. Tapping opens the host with the conversation's thread ID
+  * ({@link SmsRoleConfiguration#EXTRA_THREAD_ID}). "Reply" opens the host's compose review for the
+  * sender (nothing is sent from the notice); "Mark as read" marks the conversation read.
   */
  static void notifyIncoming(Context context, SmsRoleConfiguration config, Uri message, String sender, String preview) {
   NotificationManager notifications = context.getSystemService(NotificationManager.class);
   if (notifications == null) return;
   NotificationChannel channel = new NotificationChannel(config.channelId, config.channelName, NotificationManager.IMPORTANCE_HIGH);
   notifications.createNotificationChannel(channel);
-  PendingIntent open = PendingIntent.getActivity(context, 0, new Intent(context, config.openActivity).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+  long thread = threadOf(context, message);
+  String tag = thread > 0 ? SmsRecords.threadId(thread) : message.toString();
+  Intent show = new Intent(context, config.openActivity).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+  if (thread > 0) show.putExtra(SmsRoleConfiguration.EXTRA_THREAD_ID, tag);
+  // One PendingIntent per conversation: extras alone do not tell two PendingIntents apart.
+  PendingIntent open = PendingIntent.getActivity(context, thread > 0 ? Long.hashCode(thread) : 0, show, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
   Notification publicVersion = new Notification.Builder(context, config.channelId).setSmallIcon(config.notificationIcon).setContentTitle("New message").build();
   String name = contactName(context, sender);
-  long thread = threadOf(context, message);
-  Notification notice = new Notification.Builder(context, config.channelId)
+  String title = name != null ? name : sender == null ? "Unknown sender" : sender;
+  long now = System.currentTimeMillis();
+  Notification.Builder notice = new Notification.Builder(context, config.channelId)
    .setSmallIcon(config.notificationIcon)
-   .setContentTitle(name != null ? name : sender == null ? "Unknown sender" : sender)
+   .setContentTitle(title)
    .setContentText(preview)
-   .setStyle(new Notification.BigTextStyle().bigText(preview))
    .setCategory(Notification.CATEGORY_MESSAGE)
    .setVisibility(Notification.VISIBILITY_PRIVATE)
    .setPublicVersion(publicVersion)
    .setAutoCancel(true)
-   .setContentIntent(open)
-   .build();
-  try { notifications.notify(thread > 0 ? SmsRecords.threadId(thread) : message.toString(), NOTICE_ID, notice); } catch (SecurityException notAllowed) { /* Notifications are off; the message is stored. */ }
+   .setContentIntent(open);
+  if (android.os.Build.VERSION.SDK_INT >= 28) {
+   Notification.MessagingStyle conversation = new Notification.MessagingStyle(new android.app.Person.Builder().setName("You").build());
+   // The conversation's notice is replaced by each new text; carry over the texts it already showed.
+   for (Notification.MessagingStyle.Message earlier : shownMessages(notifications, tag)) conversation.addMessage(earlier);
+   conversation.addMessage(preview, now, new android.app.Person.Builder().setName(title).build());
+   notice.setStyle(conversation);
+  } else notice.setStyle(new Notification.BigTextStyle().bigText(preview));
+  if (sender != null && PhoneNumberUtils.isWellFormedSmsAddress(sender)) {
+   // The reply is written and sent in the compose review, like every other send.
+   Intent reply = new Intent(context, config.composeActivity).setAction(Intent.ACTION_SENDTO).setData(Uri.fromParts("smsto", sender, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+   notice.addAction(new Notification.Action.Builder(null, "Reply", PendingIntent.getActivity(context, 0, reply, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)).build());
+  }
+  if (thread > 0) {
+   Intent read = new Intent(MmsResultReceiver.ACTION_MARK_READ).setClass(context, config.mmsResultReceiver).setPackage(context.getPackageName())
+    .setData(Uri.fromParts("eliza-sms-thread", Long.toString(thread), null))
+    .putExtra(MmsResultReceiver.EXTRA_THREAD, thread).putExtra(MmsResultReceiver.EXTRA_THROUGH, now);
+   notice.addAction(new Notification.Action.Builder(null, "Mark as read", PendingIntent.getBroadcast(context, 0, read, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)).build());
+  }
+  try { notifications.notify(tag, NOTICE_ID, notice.build()); } catch (SecurityException notAllowed) { /* Notifications are off; the message is stored. */ }
+ }
+ /** The texts the conversation's current notice shows, oldest first; empty when it shows none. */
+ private static List<Notification.MessagingStyle.Message> shownMessages(NotificationManager notifications, String tag) {
+  try {
+   for (android.service.notification.StatusBarNotification shown : notifications.getActiveNotifications()) {
+    if (shown.getId() != NOTICE_ID || !tag.equals(shown.getTag())) continue;
+    android.os.Parcelable[] messages = shown.getNotification().extras.getParcelableArray(Notification.EXTRA_MESSAGES);
+    if (messages != null) return Notification.MessagingStyle.Message.getMessagesFromBundleArray(messages);
+   }
+  } catch (RuntimeException unreadable) { /* The new text is still shown on its own. */ }
+  return java.util.Collections.emptyList();
  }
 }

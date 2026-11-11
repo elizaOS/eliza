@@ -10,10 +10,17 @@ public final class ReminderConfiguration {
  public final String remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra;
  public final Class<? extends BroadcastReceiver> receiverClass;
  public final Class<? extends Activity> activityClass;
+ /** Status-bar icon of due reminders. A presentation resource, not installed identity. */
+ public final int smallIcon;
  public ReminderConfiguration(String envelopeName,String legacyName,String tapSlot,String channelId,String channelName,String channelDescription,String publicTitle,String remindAction,String decisionAction,String openAction,String alarmUriPrefix,String decisionUriPrefix,String tapUriPrefix,String idExtra,String occurrenceExtra,String decisionExtra,String notificationTagPrefix,Class<? extends BroadcastReceiver> receiverClass,Class<? extends Activity> activityClass){
   this(envelopeName,legacyName,tapSlot,channelId,channelName,channelDescription,publicTitle,remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra,notificationTagPrefix,receiverClass,activityClass,null);
  }
  public ReminderConfiguration(String envelopeName,String legacyName,String tapSlot,String channelId,String channelName,String channelDescription,String publicTitle,String remindAction,String decisionAction,String openAction,String alarmUriPrefix,String decisionUriPrefix,String tapUriPrefix,String idExtra,String occurrenceExtra,String decisionExtra,String notificationTagPrefix,Class<? extends BroadcastReceiver> receiverClass,Class<? extends Activity> activityClass,String questionActionLabel){
+  this(envelopeName,legacyName,tapSlot,channelId,channelName,channelDescription,publicTitle,remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra,notificationTagPrefix,receiverClass,activityClass,questionActionLabel,0);
+ }
+ /** @param smallIcon the host's monochrome drawable for due reminders; 0 keeps the platform reminder glyph. */
+ public ReminderConfiguration(String envelopeName,String legacyName,String tapSlot,String channelId,String channelName,String channelDescription,String publicTitle,String remindAction,String decisionAction,String openAction,String alarmUriPrefix,String decisionUriPrefix,String tapUriPrefix,String idExtra,String occurrenceExtra,String decisionExtra,String notificationTagPrefix,Class<? extends BroadcastReceiver> receiverClass,Class<? extends Activity> activityClass,String questionActionLabel,int smallIcon){
+  this.smallIcon=smallIcon!=0?smallIcon:android.R.drawable.ic_popup_reminder;
   this.questionActionLabel=questionActionLabel==null?null:text(questionActionLabel);
   if(notificationTagPrefix==null||!notificationTagPrefix.matches("(?:[A-Za-z0-9_-]{1,100}:)?"))throw new IllegalArgumentException("Notification tag prefix must be empty or a namespace ending in colon");
   this.notificationTagPrefix=notificationTagPrefix;

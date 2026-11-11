@@ -126,6 +126,27 @@ public class TelecomCallPresentationTest {
         }
     }
 
+    public static class IconOwner extends TelecomCallService {
+        @Override protected TelecomCallConfiguration configuration() {
+            return new TelecomCallConfiguration("icon-test", "Call review", "reviewcall", Activity.class, android.R.drawable.ic_dialog_info);
+        }
+    }
+
+    @Test public void callNotificationUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne() throws Exception {
+        int[] expected = {android.R.drawable.sym_action_call, android.R.drawable.ic_dialog_info};
+        List<Class<? extends TelecomCallService>> owners = Arrays.asList(CallOwner.class, IconOwner.class);
+        for (int i = 0; i < expected.length; i++) {
+            TelecomCallService owner = Robolectric.buildService(owners.get(i)).create().get();
+            try {
+                owner.onCallAdded(activeCall());
+                Notification notice = owner.getSystemService(NotificationManager.class).getActiveNotifications()[0].getNotification();
+                assertEquals(expected[i], notice.getSmallIcon().getResId());
+                // A call with no handle names nobody.
+                assertEquals("Unknown caller", notice.extras.getCharSequence(Notification.EXTRA_TITLE).toString());
+            } finally { owner.onDestroy(); }
+        }
+    }
+
     private static Call activeCall() throws Exception {
         // API 35's actual Call constructor initializes Android's callback registry.
         for (Constructor<?> constructor : Call.class.getDeclaredConstructors()) {

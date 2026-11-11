@@ -53,7 +53,10 @@ A host that holds the Android dialer role reuses the native call surfaces in
 call-style notifications, answer/decline/end, hold, mute, audio route and DTMF),
 `TelecomCallActivity` (the call screen, shown over the lock screen) and
 `TelecomDialPadActivity` (a native dial pad for hosts without one). The host
-declares thin subclasses with its own component names, channel and title.
+declares thin subclasses with its own component names, channel and title, and
+may pass its own status-bar icon to `TelecomCallConfiguration`. A call
+notification shows the caller's contact name when the host may read contacts,
+otherwise the number.
 Removed calls and a destroyed service reject callbacks that Android already
 posted, so a retired call cannot recreate its notification.
 `TelecomDial.originate` places calls through Telecom, which owns emergency
