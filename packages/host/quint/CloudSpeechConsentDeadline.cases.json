@@ -1,0 +1,19 @@
+{
+  "sources": [
+    "packages/host/src/voice/cloud-speech-relay-client.ts",
+    "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts"
+  ],
+  "bounds": "One consent request, one owner cancellation, and 0..30 elapsed seconds. Cold consent can complete after ten seconds. Mint allocation and its separate ten-second drain budget retain their existing tests. Timers require eventual delivery. This model does not prove real transport latency or timer precision.",
+  "cases": [
+    {
+      "name": "consent-deadline",
+      "main": "CloudSpeechConsentDeadline",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 500
+    }
+  ]
+}

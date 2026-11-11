@@ -33,6 +33,8 @@ export interface GmailInboxCapabilities {
   atomicDraftReplacement: false;
   /** Reviewed mark-read/mark-unread operations. Older servers omit it: false. */
   readState: boolean;
+  /** Reviewed star/unstar label changes. Older servers omit this capability. */
+  stars?: boolean;
   /** Provider draft listing and content reads. Absent: false. */
   draftsList: boolean;
   /** Forward with the source message's attachments bound to its historyId. Absent: false. */
@@ -90,7 +92,9 @@ export type GmailInboxOperationKind =
   | "trash"
   | "untrash"
   | "mark-read"
-  | "mark-unread";
+  | "mark-unread"
+  | "star"
+  | "unstar";
 
 export type GmailInboxReceiptState =
   | "prepared"
@@ -121,6 +125,7 @@ export interface GmailMessage {
   snippet: string;
   receivedAt: string;
   unread: boolean;
+  starred?: boolean;
   /** Search hint from a multipart/mixed container; absent on older servers. */
   hasAttachments?: boolean;
 }
