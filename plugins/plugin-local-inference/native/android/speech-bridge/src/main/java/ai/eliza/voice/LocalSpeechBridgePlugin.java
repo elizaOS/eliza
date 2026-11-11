@@ -423,11 +423,18 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
    });
   }catch(Exception error){
    if(target.stopped())request.cancelled=true;
-   if(!request.resolvedEarly){target.abandon();throw error;}
+   if(!request.resolvedEarly){
+    target.abandon();
+    // It never reached the output: its id no longer names this utterance. A cancel that stopped
+    // the utterance still retires it here, so the stop is reported and the speaker is free.
+    final boolean stopped=target.stopped();
+    main.post(()->{appendedRequestIds.remove(request.id);if(stopped&&streamPlayback==target){appendEpoch++;clearPlayback();}});
+    throw error;
+   }
    main.post(()->{if(streamPlayback!=target)return;if(request.cancelled){appendEpoch++;clearPlayback();}else target.fail("synthesis-failed");});
    throw error;
   }
-  if(!request.resolvedEarly){target.abandon();throw new IllegalStateException("No speech output");}
+  if(!request.resolvedEarly){target.abandon();main.post(()->appendedRequestIds.remove(request.id));throw new IllegalStateException("No speech output");}
  }
  /**
   * Streamed local speech, on the speech worker inside localEngine.use. The utterance is published
