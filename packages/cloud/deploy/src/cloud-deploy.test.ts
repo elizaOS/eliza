@@ -327,7 +327,18 @@ describe("product render", () => {
   }
 
   test("structure comes from upstream and every path resolves from the product directory", () => {
-    const { config } = renderProduct("production");
+    // A deployment file without components or transfers, as before they existed.
+    const { config } = renderWranglerConfig({
+      deployment: validateDeployment(
+        productWith((env) => {
+          delete env.components;
+          delete env.durableObjectTransfers;
+        }),
+      ),
+      environment: "production",
+      upstreamRoot: UPSTREAM_ROOT,
+      outDir: PRODUCT_DIR,
+    });
     expect(resolve(PRODUCT_DIR, config.main as string)).toBe(
       join(API_DIR, "src/index.ts"),
     );
@@ -388,7 +399,7 @@ describe("product render", () => {
     expect(() =>
       render(
         productWith((env) =>
-          Object.assign(env, { durableObjectTransfers: { Nope: "w" } }),
+          Object.assign(env.durableObjectTransfers as Table, { Nope: "w" }),
         ),
       ),
     ).toThrow("unknown class Nope");

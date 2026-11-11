@@ -1,8 +1,9 @@
 # @elizaos/cloud-deploy
 
-Renders the Cloud API Worker's Wrangler configuration for one product from a
-deployment file, so a product deploys its own Cloud from upstream code without
-editing `packages/cloud/api/wrangler.toml`.
+Renders the Wrangler configuration of each part of a Cloud for one product
+from a deployment file: the API Worker, the Steward login Worker, the speech
+and admission Workers, and the Pages front end. A product deploys its own
+Cloud from upstream code without editing any upstream `wrangler.toml`.
 
 Private and unpublished. Run it with Bun from an upstream checkout; it has no
 dependencies. It is not yet a workspace member.
@@ -11,11 +12,11 @@ dependencies. It is not yet a workspace member.
 
 ```
 cloud/
-  deployment.json            identity and resource ids per environment; no secrets
-  wrangler.staging.jsonc     rendered; do not edit
-  wrangler.production.jsonc  rendered; do not edit
-  secrets.staging.txt        rendered; names of the secrets to set
-  secrets.production.txt
+  deployment.json                      identity and resource ids per environment; no secrets
+  wrangler.<environment>.jsonc         rendered API Worker; do not edit
+  secrets.<environment>.txt            rendered; names of the secrets to set
+  wrangler.<component>.<environment>.jsonc   rendered login, speech, admission, web
+  secrets.<component>.<environment>.txt
 ```
 
 The upstream checkout lives elsewhere (a submodule, a sibling clone). Paths in
@@ -41,6 +42,7 @@ See `examples/product.json`. Each environment has:
 | `durableObjectTransfers?` `{ ClassName: workerName }`                          | `script_name` on that class's binding and a `transferred` export                                                           |
 | `vars?`                                                                        | further non-secret variables, verbatim                                                                                     |
 | `secrets[]`                                                                    | `secrets.<environment>.txt`; names only                                                                                    |
+| `components?` `{ login?, speech?, admission?, web? }`                          | the other parts of the Cloud; see Components                                                                               |
 
 The id is rendered as `CLOUD_DEPLOYMENT_ID`, the environment name as
 `ENVIRONMENT`. Together with the fields above these are the settings
@@ -52,37 +54,127 @@ unless the id is `eliza`; any value shaped like a credential; a
 secret-named variable under `vars`; a variable that a typed field already
 sets.
 
+## Components
+
+Each is optional per environment. A file without `components` renders the API
+Worker exactly as before.
+
+```
+"components": {
+  "login": {
+    "workerName": "...",
+    "host": "login.example.org",          custom domain
+    "enabled": true,                      LOGIN_ENABLED
+    "container": { "maxInstances": 1, "instanceType": "standard-1", "image"?: "registry/.../name:tag" },
+    "vars"?: { ... },
+    "secrets": [ ... ]
+  },
+  "speech": {
+    "workerName": "...",
+    "hostsSessions"?: true,               the API binds this Worker's session class
+    "routes"?: [ { "pattern", "zone" } ],
+    "resources"?: { "hyperdriveId", "kvNamespaceId" },   the API Worker's when omitted
+    "vars"?: { ... },
+    "secrets": [ ... ]
+  },
+  "admission": { "workerName": "...", "routes"?: [...], "vars"?: { ... }, "secrets": [ ... ] },
+  "web": {
+    "projectName": "...",                 Pages project
+    "nativeAuthCallbacks"?: [ { "redirectUri", "androidPackage", "appName",
+        "browserSignIn"?: { "startPath", "returnPath", "storageKey", "apiOrigin", "tenant" } } ],
+    "vars"?: { ... }
+  }
+}
+```
+
+- **login** follows `packages/auth/cloudflare/wrangler.toml`: entry,
+  compatibility, cron, migrations, Durable Object bindings and the container
+  class. Name, account, custom domain, instance settings and variables come
+  from the file. Without `container.image` the container is built from
+  upstream's Dockerfile at deploy time. `secrets` must list the five settings
+  the Worker refuses to start without. A product must also set `APP_URL`,
+  `EMAIL_FROM`, `EMAIL_AUTH_REDIRECT_BASE_URL`, `PASSKEY_RP_ID` and
+  `PASSKEY_ORIGIN` under `vars`: the login runtime otherwise falls back to an
+  eliza host or sender for each.
+- **speech** and **admission** follow their upstream files (which exist for
+  staging only; a product may render either environment). A Durable Object
+  binding that upstream points at another Worker is pointed at this
+  deployment's Worker that owns the class: the admission Worker for
+  `InferenceAdmissionGate` when there is one, otherwise the API Worker. The
+  admission Worker's service binding is this deployment's API Worker. Both
+  are given the same identity variables as the API Worker, since they run its
+  classes. With an admission Worker,
+  `durableObjectTransfers.InferenceAdmissionGate` must name it, so the API and
+  the speech Worker use one gate. `speech.hostsSessions` adds `script_name` to
+  the API Worker's speech-session binding without a transfer.
+- **web** follows `packages/app/wrangler.toml`: build output directory,
+  compatibility date and the name of the API service binding, which is always
+  bound to this deployment's API Worker. Variables are derived:
+  `CLOUD_DEPLOYMENT_ID`, `API_UPSTREAM` (api origin), `VITE_ELIZA_CLOUD_BASE`
+  (app origin), `VITE_STEWARD_TENANT_ID`, `NEXT_PUBLIC_STEWARD_TENANT_ID`,
+  `VITE_ENVIRONMENT` and, when callbacks are listed,
+  `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`. A callback must be on the environment's
+  web or app origin and its `browserSignIn.apiOrigin` must be the api origin.
+  The rendered file is one flat Pages configuration per environment. Wrangler
+  reads a Pages configuration only as `wrangler.json`/`wrangler.toml` in the
+  project directory, so copy it there under that name to deploy, as upstream's
+  release does.
+
+Worker names must be distinct within a deployment. Validation applies the
+same host, secret and derived-variable rules to every component.
+
 ## What is taken from upstream
 
 From `packages/cloud/api/wrangler.toml` (top level plus `env.production`):
 entry, compatibility date and flags, `workers_dev`, `minify`, `keep_vars`,
 `define`, `alias`, observability, crons, AI and browser bindings, binding
 names, rate-limit shapes, Durable Object bindings and exports. Nothing else.
-No `[vars]` value is copied: a product states every variable it wants. An
-upstream key the renderer does not know stops the render, and a rendered
-non-eliza config that still contains an eliza account, Worker name, zone,
-database, cache or bucket id, or host is refused.
+No `[vars]` value is copied from any component: a product states every
+variable it wants. An upstream key the renderer does not know stops the
+render, as does an upstream login or Pages variable the renderer does not
+derive, and a service binding to a Worker it does not recognise. A rendered
+non-eliza config that still contains an eliza account, Worker or Pages project
+name, zone, database, cache or bucket id, or host is refused; component
+renders are scanned against the identity of all five upstream files.
 
 ## Commands
 
 ```
 bun packages/cloud/deploy/src/cli.ts render \
   --deployment cloud/deployment.json --environment staging \
-  --upstream path/to/eliza --out cloud
+  --upstream path/to/eliza --out cloud \
+  [--component api|login|speech|admission|web|all]
 
 bun packages/cloud/deploy/src/cli.ts check --config cloud/wrangler.staging.jsonc
 ```
 
-`render` writes `wrangler.<environment>.jsonc` and `secrets.<environment>.txt`
-into `--out`. Exit 0 on success, 1 on an invalid deployment or render, 2 on a
+`render` writes one component's configuration and secret names into `--out`.
+`--component` defaults to `api`, whose files keep the names
+`wrangler.<environment>.jsonc` and `secrets.<environment>.txt`; the others are
+`wrangler.<component>.<environment>.jsonc` and
+`secrets.<component>.<environment>.txt`. `all` renders the API Worker and
+every component the environment defines, and writes nothing if any is
+refused. Exit 0 on success, 1 on an invalid deployment or render, 2 on a
 usage error.
 
-`check` runs `wrangler deploy --dry-run` on a rendered config and prints a
-JSON report (`ok`, `bundleBytes`, Wrangler's upload size, files). It uploads
-nothing and passes no Cloudflare credential to Wrangler. It uses the
-`wrangler` installed in the upstream tree the config points at, so that tree
-must be installed and its workspace packages built; `--wrangler <bin>`
+`check` prints a JSON report (`kind`, `ok`, `notValidated`, `bundleBytes`,
+Wrangler's upload size, files). It uploads nothing and passes no Cloudflare
+credential to Wrangler. It uses the `wrangler` installed in the upstream tree
+the config points at (the component's own, else the API package's), so that
+tree must be installed and its workspace packages built; `--wrangler <bin>`
 overrides, `--keep <dir>` keeps the bundle. Exit 0 when the bundle builds.
+
+- A Worker configuration is bundled with `wrangler deploy --dry-run`.
+- The login Worker is dry-run with `--containers-rollout=none`. Without it
+  Wrangler builds the container image even in a dry run, which needs a Docker
+  daemon and network access. The Worker and its bindings are checked; the
+  image is not built.
+- A Pages configuration has no dry-run deploy. `check` copies it into a
+  scratch project as `wrangler.json` and runs `wrangler pages functions
+  build` on upstream's `packages/app/functions`. This establishes that
+  Wrangler accepts the file as a Pages project and that the Pages Functions
+  compile. It does not build the web app, and the build output directory need
+  not exist.
 
 `bun test packages/cloud/deploy/src` runs the tests.
 
@@ -100,20 +192,55 @@ compare the two and name every difference:
   Worker as a secret or dashboard variable.
 - Staging's explicit `migrations = []` is omitted (no migrations either way).
 
-Its `secrets` list mirrors the names in the comment block of `wrangler.toml`
-and has not been compared with the deployed Workers. `wrangler.toml` and the
-release workflows are unchanged and still authoritative.
+Its components are compared with their upstream files in the same way:
+
+- login, both environments: no difference.
+- speech and admission (staging; upstream has no production file): thirteen
+  added variables, the deployment identity the staging API Worker is given
+  (`CLOUD_DEPLOYMENT_ID`, `CLOUD_WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`,
+  `ELIZA_CLOUD_URL`, `STEWARD_TENANT_ID`, `NEXT_PUBLIC_STEWARD_TENANT_ID`,
+  `CLOUD_PUBLIC_SERVICE_NAME`, `R2_PUBLIC_HOST`,
+  `NEXT_PUBLIC_ASSETS_CDN_URL`, `SENDGRID_FROM_EMAIL`, `CLOUD_BILLING_URL`,
+  `ELIZA_ENTITLEMENT_ISSUER`, `ELIZA_ENTITLEMENT_AUDIENCE`). Upstream leaves
+  them unset on these Workers, where they resolve to the eliza defaults; the
+  staging tenant, blob host and API origin therefore differ from what those
+  Workers resolve today. Compare against the upstream staging contracts
+  (`verify-staging-contract.ts`) before eliza deploys either from a rendered
+  config.
+- web, both environments: `CLOUD_DEPLOYMENT_ID` added. Production is one flat
+  file instead of an `env.production` override of the preview values.
+  `ELIZA_NATIVE_AUTH_CALLBACKS_JSON` is not in upstream's file (the release
+  supplies it) and is not in `eliza.json`.
+
+The `secrets` lists mirror the comment blocks of the upstream files and, for
+login, the settings `worker.ts` reads. None has been compared with the
+deployed Workers. Every upstream `wrangler.toml` and the release workflows are
+unchanged and still authoritative.
 
 ## Not covered
 
-- The Pages front end, the Steward login Worker, and the speech and admission
-  Workers: each still has its own eliza `wrangler.toml`.
-- The top-level (unnamed, local development) environment of `wrangler.toml`.
+- Building the web app for a product. The Pages variables are rendered, but
+  the Vite build reads its own environment, and the app's sources carry eliza
+  hosts and branding.
+- The Pages Functions bundle still contains the eliza domain contract
+  (`resolveCanonicalPageRedirect`, landing hosts). It acts only on eliza
+  hostnames. The API proxy no longer falls back to eliza's API for a product:
+  with `CLOUD_DEPLOYMENT_ID` set to a product id, a missing or malformed
+  `API_UPSTREAM` is a 503.
+- `packages/cloud/scripts/pages-native-auth-callbacks.ts` reads upstream's
+  TOML and a comment-free JSON file; it does not read a rendered `.jsonc`.
+- The login container image, and the login runtime's eliza branding in mail
+  templates and default tenant configuration.
+- Whether a `transferred` export is accepted for a product whose API Worker
+  never held the admission namespace, and whether a speech host selected with
+  `hostsSessions` serves sessions. Neither has been deployed.
+- The top-level (unnamed, local development) environment of the API's
+  `wrangler.toml`.
 - Default values for upstream's operational variables: a product lists the
   ones it wants under `vars`.
-- eliza hosts compiled into the Worker bundle as defaults for the eliza
+- eliza hosts compiled into the Worker bundles as defaults for the eliza
   deployment. They are code, not configuration.
 - Database migrations and a baseline for a new database.
 - Provisioning Cloudflare resources (Hyperdrive, KV, R2, rate-limit
-  namespaces, routes, DNS) and setting secrets.
-- An actual deploy, and npm publication of this package or the Worker's.
+  namespaces, routes, DNS, the Pages project) and setting secrets.
+- An actual deploy, and npm publication of this package or the Workers'.

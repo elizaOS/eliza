@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Renders a product's Cloud API Worker configuration from a deployment file.",
+  "description": "Renders a product's Cloud configuration (API, login, speech and admission Workers, Pages) from a deployment file.",
   "bin": {
     "cloud-deploy": "src/cli.ts"
   },

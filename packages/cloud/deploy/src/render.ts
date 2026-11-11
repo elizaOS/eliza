@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   type Deployment,
+  type DeploymentComponentName,
   type DeploymentEnvironment,
   type DeploymentEnvironmentName,
   ELIZA_DEPLOYMENT_ID,
@@ -40,17 +41,34 @@ export function parseToml(text: string): Table {
   return bun.TOML.parse(text);
 }
 
-export function readUpstreamWranglerToml(upstreamRoot: string): Table {
-  const file = join(upstreamRoot, UPSTREAM_WRANGLER_TOML);
+/** Directory of each component's upstream Wrangler configuration. */
+export const UPSTREAM_COMPONENT_DIRS: Readonly<
+  Record<DeploymentComponentName, string>
+> = {
+  api: UPSTREAM_API_DIR,
+  login: join("packages", "auth", "cloudflare"),
+  speech: join("packages", "cloud", "speech-worker"),
+  admission: join("packages", "cloud", "admission-worker"),
+  web: join("packages", "app"),
+};
+
+export function readUpstreamComponentToml(
+  upstreamRoot: string,
+  component: DeploymentComponentName,
+): Table {
+  const path = join(UPSTREAM_COMPONENT_DIRS[component], "wrangler.toml");
+  const file = join(upstreamRoot, path);
   let text: string;
   try {
     text = readFileSync(file, "utf8");
   } catch {
-    throw new RenderError(
-      `--upstream has no ${UPSTREAM_WRANGLER_TOML} (looked for ${file})`,
-    );
+    throw new RenderError(`--upstream has no ${path} (looked for ${file})`);
   }
   return parseToml(text);
+}
+
+export function readUpstreamWranglerToml(upstreamRoot: string): Table {
+  return readUpstreamComponentToml(upstreamRoot, "api");
 }
 
 /**
@@ -89,17 +107,20 @@ const TOP_LEVEL_KEYS = new Set([
   "env",
 ]);
 
+/** Class whose new objects a speech Worker hosts. */
+export const SPEECH_SESSION_CLASS = "SpeechRelayCoordinator";
+
 /** Upstream environment whose structure every rendered config follows. */
 const TEMPLATE_ENVIRONMENT = "production";
 
-function table(value: unknown, what: string): Table {
+export function table(value: unknown, what: string): Table {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new RenderError(`upstream wrangler.toml: ${what} is not a table`);
   }
   return value as Table;
 }
 
-function tables(value: unknown, what: string): Table[] {
+export function tables(value: unknown, what: string): Table[] {
   if (!Array.isArray(value)) {
     throw new RenderError(
       `upstream wrangler.toml: ${what} is not an array of tables`,
@@ -108,7 +129,7 @@ function tables(value: unknown, what: string): Table[] {
   return value.map((entry, index) => table(entry, `${what}[${index}]`));
 }
 
-function single(value: unknown, what: string): Table {
+export function single(value: unknown, what: string): Table {
   const entries = tables(value, what);
   if (entries.length !== 1) {
     throw new RenderError(
@@ -128,8 +149,8 @@ function assertKnownKeys(config: Table, what: string): void {
   }
 }
 
-/** Rewrite a path written relative to upstream's API directory. */
-function rebase(path: string, apiDir: string, outDir: string): string {
+/** Rewrite a path written relative to an upstream component directory. */
+export function rebase(path: string, apiDir: string, outDir: string): string {
   if (resolve(outDir) === resolve(apiDir)) return path;
   const moved = relative(resolve(outDir), resolve(apiDir, path))
     .split(sep)
@@ -137,7 +158,7 @@ function rebase(path: string, apiDir: string, outDir: string): string {
   return moved.startsWith(".") ? moved : `./${moved}`;
 }
 
-function isRelativePath(value: string): boolean {
+export function isRelativePath(value: string): boolean {
   return value.startsWith("./") || value.startsWith("../");
 }
 
@@ -151,6 +172,7 @@ export interface RenderOptions {
 }
 
 export interface RenderedConfig {
+  readonly component: DeploymentComponentName;
   /** The Wrangler configuration object. */
   readonly config: Table;
   /** `wrangler.<environment>.jsonc` contents. */
@@ -161,7 +183,8 @@ export interface RenderedConfig {
   readonly secretsFileName: string;
 }
 
-export function deploymentVars(
+/** The variables `resolveCloudDeployment` reads, from the typed fields. */
+export function identityVars(
   id: string,
   environment: DeploymentEnvironmentName,
   env: DeploymentEnvironment,
@@ -186,8 +209,15 @@ export function deploymentVars(
     CLOUD_BILLING_URL: env.billingUrl,
     ELIZA_ENTITLEMENT_ISSUER: env.entitlement.issuer,
     ELIZA_ENTITLEMENT_AUDIENCE: env.entitlement.audience,
-    ...(env.vars ?? {}),
   };
+}
+
+export function deploymentVars(
+  id: string,
+  environment: DeploymentEnvironmentName,
+  env: DeploymentEnvironment,
+): Record<string, string> {
+  return { ...identityVars(id, environment, env), ...(env.vars ?? {}) };
 }
 
 /**
@@ -233,6 +263,9 @@ export function upstreamIdentityStrings(upstream: Table): string[] {
     )) {
       add((entry as Table).transferred_to);
     }
+    for (const entry of Array.isArray(config.services) ? config.services : []) {
+      add((entry as Table).service);
+    }
   };
   scan(upstream);
   for (const env of Object.values((upstream.env as Table | undefined) ?? {}))
@@ -240,11 +273,42 @@ export function upstreamIdentityStrings(upstream: Table): string[] {
   return [...found];
 }
 
-/** Eliza identity found in rendered text; empty when there is none. */
-export function findElizaIdentity(text: string, upstream: Table): string[] {
-  const hits = upstreamIdentityStrings(upstream).filter((value) =>
-    text.includes(value),
-  );
+/** Identity strings of every upstream component configuration that exists. */
+export function allUpstreamIdentityStrings(upstreamRoot: string): string[] {
+  const found = new Set<string>();
+  for (const component of Object.keys(
+    UPSTREAM_COMPONENT_DIRS,
+  ) as DeploymentComponentName[]) {
+    const file = join(
+      upstreamRoot,
+      UPSTREAM_COMPONENT_DIRS[component],
+      "wrangler.toml",
+    );
+    let text: string;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      // The component being rendered is read, and required, by its renderer.
+      continue;
+    }
+    for (const value of upstreamIdentityStrings(parseToml(text)))
+      found.add(value);
+  }
+  return [...found];
+}
+
+/**
+ * Eliza identity found in rendered text; empty when there is none.
+ * `upstream` is a parsed configuration or a list of identity strings.
+ */
+export function findElizaIdentity(
+  text: string,
+  upstream: Table | readonly string[],
+): string[] {
+  const identity = Array.isArray(upstream)
+    ? (upstream as readonly string[])
+    : upstreamIdentityStrings(upstream as Table);
+  const hits = identity.filter((value) => text.includes(value));
   for (const line of text.split("\n")) {
     if (mentionsElizaHost(line)) hits.push(line.trim());
   }
@@ -301,14 +365,35 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
   }
 
   const transfers = env.durableObjectTransfers ?? {};
+  // A speech host takes new sessions without a transfer: the API keeps its
+  // own export so sessions it already holds can retire there.
+  const speechHost = env.components?.speech?.hostsSessions
+    ? env.components.speech.workerName
+    : undefined;
+  if (speechHost && transfers[SPEECH_SESSION_CLASS]) {
+    throw new RenderError(
+      `${SPEECH_SESSION_CLASS} is both transferred and hosted by the speech Worker`,
+    );
+  }
+  let speechBound = false;
   const objectBindings = tables(
     table(template.durable_objects, "durable_objects").bindings,
     "durable_objects.bindings",
   ).map((binding) => {
     const { script_name: _upstreamOwner, ...rest } = binding;
-    const owner = transfers[String(binding.class_name)];
+    const className = String(binding.class_name);
+    if (speechHost && className === SPEECH_SESSION_CLASS) {
+      speechBound = true;
+      return { ...rest, script_name: speechHost };
+    }
+    const owner = transfers[className];
     return owner ? { ...rest, script_name: owner } : rest;
   });
+  if (speechHost && !speechBound) {
+    throw new RenderError(
+      `upstream's API Worker has no ${SPEECH_SESSION_CLASS} binding for the speech Worker to host`,
+    );
+  }
 
   const exportsOut: Table = {};
   const upstreamExports = table(inherited("exports") ?? {}, "exports");
@@ -399,31 +484,79 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
     if (config[key] === undefined) delete config[key];
   }
 
-  const fileName = `wrangler.${environment}.jsonc`;
+  return finishRender({
+    component: "api",
+    deployment,
+    environment,
+    config,
+    identity: upstreamIdentityStrings(upstream),
+    owner: `${env.workerName} Worker`,
+    secrets: env.secrets,
+  });
+}
+
+/** Rendered file names; the API Worker keeps its original, unprefixed names. */
+export function renderedFileNames(
+  component: DeploymentComponentName,
+  environment: DeploymentEnvironmentName,
+): { fileName: string; secretsFileName: string } {
+  const infix = component === "api" ? "" : `${component}.`;
+  return {
+    fileName: `wrangler.${infix}${environment}.jsonc`,
+    secretsFileName: `secrets.${infix}${environment}.txt`,
+  };
+}
+
+/** Serialise a configuration, refuse eliza identity, and list its secrets. */
+export function finishRender(input: {
+  readonly component: DeploymentComponentName;
+  readonly deployment: Deployment;
+  readonly environment: DeploymentEnvironmentName;
+  readonly config: Table;
+  /** Strings that identify the eliza deployment upstream. */
+  readonly identity: readonly string[];
+  /** What the secrets belong to, for the secrets file header. */
+  readonly owner: string;
+  readonly secrets: readonly string[];
+}): RenderedConfig {
+  const { component, deployment, environment, config } = input;
+  for (const key of Object.keys(config)) {
+    if (config[key] === undefined) delete config[key];
+  }
+  const { fileName, secretsFileName } = renderedFileNames(
+    component,
+    environment,
+  );
   const text = [
-    `// Generated by @elizaos/cloud-deploy from deployment "${deployment.id}" (${environment}).`,
+    `// Generated by @elizaos/cloud-deploy from deployment "${deployment.id}" (${environment}${component === "api" ? "" : `, ${component}`}).`,
     "// Do not edit: change the deployment file and render again.",
     `${JSON.stringify(config, null, 2)}\n`,
   ].join("\n");
 
   if (deployment.id !== ELIZA_DEPLOYMENT_ID) {
-    const hits = findElizaIdentity(text, upstream);
+    const hits = findElizaIdentity(text, input.identity);
     if (hits.length > 0) {
       throw new RenderError(
-        `rendered config for "${deployment.id}" carries eliza identity: ${hits.join(", ")}`,
+        `rendered ${component} config for "${deployment.id}" carries eliza identity: ${hits.join(", ")}`,
       );
     }
   }
 
-  const secretsFileName = `secrets.${environment}.txt`;
-  const secretsText = [
-    `# Secrets the ${env.workerName} Worker needs. Names only; set each with`,
-    `#   wrangler secret put <NAME> --config ${fileName}`,
-    ...env.secrets,
-    "",
-  ].join("\n");
+  const secretsText =
+    component === "web"
+      ? [
+          `# The ${input.owner} is configured without secrets.`,
+          ...input.secrets,
+          "",
+        ].join("\n")
+      : [
+          `# Secrets the ${input.owner} needs. Names only; set each with`,
+          `#   wrangler secret put <NAME> --config ${fileName}`,
+          ...input.secrets,
+          "",
+        ].join("\n");
 
-  return { config, text, fileName, secretsText, secretsFileName };
+  return { component, config, text, fileName, secretsText, secretsFileName };
 }
 
 /** Parse a rendered `wrangler.<environment>.jsonc` (leading `//` lines, then JSON). */

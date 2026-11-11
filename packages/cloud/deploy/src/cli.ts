@@ -1,26 +1,31 @@
 #!/usr/bin/env bun
 /**
- * cloud-deploy: render a product's Cloud API Worker configuration from its
- * deployment file, and check that the rendered configuration bundles.
+ * cloud-deploy: render a product's Cloud configuration (API Worker, login,
+ * speech and admission Workers, Pages front end) from its deployment file,
+ * and check that a rendered configuration bundles.
  *
  *   render --deployment <file> --environment <staging|production>
  *          --upstream <repo root> --out <dir>
+ *          [--component <api|login|speech|admission|web|all>]
  *   check  --config <rendered file> [--wrangler <bin>] [--keep <dir>]
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { checkRenderedConfig } from "./check";
-import { RenderError, renderWranglerConfig } from "./render";
+import { RenderError } from "./render";
+import { definedComponents, renderComponent } from "./render-components";
 import {
+  DEPLOYMENT_COMPONENTS,
   DEPLOYMENT_ENVIRONMENTS,
+  type DeploymentComponentName,
   type DeploymentEnvironmentName,
   DeploymentFileError,
   validateDeployment,
 } from "./schema";
 
 const USAGE = `Usage:
-  cloud-deploy render --deployment <file> --environment <staging|production> --upstream <repo root> --out <dir>
+  cloud-deploy render --deployment <file> --environment <staging|production> --upstream <repo root> --out <dir> [--component <${DEPLOYMENT_COMPONENTS.join("|")}|all>]
   cloud-deploy check --config <rendered file> [--wrangler <bin>] [--keep <dir>]`;
 
 class UsageError extends Error {}
@@ -56,12 +61,22 @@ function render(args: readonly string[]): number {
     "environment",
     "upstream",
     "out",
+    "component",
   ]);
   const deploymentFile = resolve(required(flags, "deployment"));
   const environment = required(flags, "environment");
   if (!(DEPLOYMENT_ENVIRONMENTS as readonly string[]).includes(environment)) {
     throw new UsageError(
       `--environment must be one of ${DEPLOYMENT_ENVIRONMENTS.join(", ")}`,
+    );
+  }
+  const component = flags.component ?? "api";
+  if (
+    component !== "all" &&
+    !(DEPLOYMENT_COMPONENTS as readonly string[]).includes(component)
+  ) {
+    throw new UsageError(
+      `--component must be one of ${DEPLOYMENT_COMPONENTS.join(", ")}, all`,
     );
   }
   const upstreamRoot = resolve(required(flags, "upstream"));
@@ -75,20 +90,33 @@ function render(args: readonly string[]): number {
       `cannot read ${deploymentFile}: ${(error as Error).message}`,
     );
   }
-  const rendered = renderWranglerConfig({
-    deployment: validateDeployment(parsed),
-    environment: environment as DeploymentEnvironmentName,
-    upstreamRoot,
-    outDir,
-  });
+  const deployment = validateDeployment(parsed);
+  const env = deployment.environments[environment as DeploymentEnvironmentName];
+  const components =
+    component === "all" && env
+      ? definedComponents(env)
+      : [(component === "all" ? "api" : component) as DeploymentComponentName];
+  // Render everything before writing anything: a refused component leaves
+  // the output directory as it was.
+  const rendered = components.map((name) =>
+    renderComponent({
+      deployment,
+      environment: environment as DeploymentEnvironmentName,
+      upstreamRoot,
+      outDir,
+      component: name,
+    }),
+  );
 
   mkdirSync(outDir, { recursive: true });
-  const configFile = join(outDir, rendered.fileName);
-  const secretsFile = join(outDir, rendered.secretsFileName);
-  writeFileSync(configFile, rendered.text);
-  writeFileSync(secretsFile, rendered.secretsText);
-  console.log(`wrote ${configFile}`);
-  console.log(`wrote ${secretsFile}`);
+  for (const entry of rendered) {
+    const configFile = join(outDir, entry.fileName);
+    const secretsFile = join(outDir, entry.secretsFileName);
+    writeFileSync(configFile, entry.text);
+    writeFileSync(secretsFile, entry.secretsText);
+    console.log(`wrote ${configFile}`);
+    console.log(`wrote ${secretsFile}`);
+  }
   return 0;
 }
 
@@ -103,7 +131,9 @@ function check(args: readonly string[]): number {
   console.log(
     JSON.stringify(
       {
+        kind: result.kind,
         ok: result.ok,
+        notValidated: result.notValidated,
         exitCode: result.exitCode,
         wrangler: result.wrangler,
         entry: result.entry,
