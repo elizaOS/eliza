@@ -12,7 +12,7 @@
     "@cloudflare/containers": "^0.3.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260429.1",
+    "@cloudflare/workers-types": "^5.20261108.1",
     "@types/node": "22.19.17",
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "1.4.2",
