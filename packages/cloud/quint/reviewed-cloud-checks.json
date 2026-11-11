@@ -360,6 +360,18 @@
       ]
     }
   ],
+  "held_webhook_retry.qnt": [
+    {
+      "file": "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.test.ts",
+      "required": [
+        "complete ingress snapshot preserves content and expiry and cannot reopen after serving",
+        "hold transaction fences stale owners and preserves a reopened marker during cleanup",
+        "real hold drainer renews its native lease across long redelivery and does not dispatch twice",
+        "slow redelivery retains the full retry delay after the held outcome",
+        "public ingress transport rejects imports and unrelated keyspaces"
+      ]
+    }
+  ],
   "speech_deferred_opening.qnt": [
     {
       "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",

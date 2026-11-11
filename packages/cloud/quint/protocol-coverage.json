@@ -948,6 +948,28 @@
     ]
   },
   {
+    "id": "cloud-flow-held-webhook-retry",
+    "model": "packages/cloud/quint/held_webhook_retry.qnt",
+    "sources": [
+      "packages/cloud/services/gateway-webhook/src/cutover-hold.ts",
+      "packages/cloud/services/gateway-webhook/src/cloudflare-ingress.ts",
+      "packages/cloud/services/_common/src/webhook-ingress.ts",
+      "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.ts",
+      "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.test.ts"
+    ],
+    "invariants": [
+      "RetriedDelayFollowsReply",
+      "PendingRetainsPayload",
+      "DeliveredRetiresHold"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One serial drainer, one held callback outcome and one retained retry. The next attempt cannot start before the saved delay, and one quiesced restart preserves the retry payload and score.",
+      "Real Workerd storage and gateway code check the delayed callback, a refused early poll and the eventual retried event. A controlled callback supplies the held and delivered outcomes.",
+      "Stale due snapshots from independent replicas, lease loss, repeated re-holds, hold expiry, unknown storage receipts and provider effects remain outside this projection."
+    ]
+  },
+  {
     "id": "cloud-flow-messaging-gateways",
     "model": null,
     "sources": [
@@ -960,7 +982,7 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "General message delivery remains open. The managed Discord install-welcome queue has separate partial coverage.",
+      "General message delivery remains open. The managed Discord install-welcome queue and serial webhook hold retry have separate partial coverage.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Redelivery does not duplicate an acknowledged effect | Tenant routing is retained | Provider failures are not fabricated success",
       "Abstract states: received, deduplicated, queued, dispatched, acknowledged, retrying, failed"
