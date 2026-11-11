@@ -18,7 +18,7 @@ import {
 import {
   OAuthError,
   OAuthErrorCode,
-} from "@elizaos/cloud-shared/lib/services/oauth/errors";
+} from "@elizaos/cloud-shared/lib/services/oauth";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
