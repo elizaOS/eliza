@@ -220,6 +220,15 @@ export interface SensitiveRequestDeliveryPlan {
 const SENSITIVE_REQUEST_METADATA_KEY_RE =
 	/(^|[_-])(authorization|bearer|credential|jwt|password|private|secret|signature|token)([_-]|$)|api[_-]?key/i;
 
+/** Lower-to-upper camelCase transition (`accessToken` -> `access_Token`). Case-sensitive on purpose: under `/i`, `[A-Z]` would also match lowercase and over-match words like `secretary`. */
+const CAMEL_CASE_BOUNDARY_RE = /(?<=[a-z])(?=[A-Z])/g;
+
+function isSensitiveRequestMetadataKey(key: string): boolean {
+	return SENSITIVE_REQUEST_METADATA_KEY_RE.test(
+		key.replace(CAMEL_CASE_BOUNDARY_RE, "_"),
+	);
+}
+
 export function redactSensitiveRequestMetadata(value: unknown): unknown {
 	if (Array.isArray(value)) {
 		return value.map((item) => redactSensitiveRequestMetadata(item));
@@ -231,7 +240,7 @@ export function redactSensitiveRequestMetadata(value: unknown): unknown {
 
 	const redacted: Record<string, unknown> = {};
 	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-		redacted[key] = SENSITIVE_REQUEST_METADATA_KEY_RE.test(key)
+		redacted[key] = isSensitiveRequestMetadataKey(key)
 			? "[redacted]"
 			: redactSensitiveRequestMetadata(item);
 	}
