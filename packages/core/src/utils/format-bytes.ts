@@ -34,6 +34,16 @@ export function formatByteSize(
 	if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
 		return unknownLabel;
 	}
+	// Number#toFixed accepts only 0–100 digits; clamp out-of-range
+	// precision instead of throwing a RangeError from a display formatter.
+	const clampPrecision = (value: number): number =>
+		Math.min(100, Math.max(0, value));
+	const clamped = {
+		kb: clampPrecision(kbPrecision),
+		mb: clampPrecision(mbPrecision),
+		gb: clampPrecision(gbPrecision),
+		tb: clampPrecision(tbPrecision),
+	};
 	// Largest unit first. A value just under a boundary can ROUND across it —
 	// 1024**2 - 1 bytes is 1023.999… KB, which toFixed renders as the impossible
 	// "1024.0 KB" — so when the rounded magnitude reaches 1024 the value is
@@ -41,10 +51,10 @@ export function formatByteSize(
 	// formatter below guards against). TB, having no larger unit, legitimately
 	// displays magnitudes of 1024 and above.
 	const units = [
-		{ size: 1024 ** 4, suffix: "TB", precision: tbPrecision },
-		{ size: 1024 ** 3, suffix: "GB", precision: gbPrecision },
-		{ size: 1024 ** 2, suffix: "MB", precision: mbPrecision },
-		{ size: 1024, suffix: "KB", precision: kbPrecision },
+		{ size: 1024 ** 4, suffix: "TB", precision: clamped.tb },
+		{ size: 1024 ** 3, suffix: "GB", precision: clamped.gb },
+		{ size: 1024 ** 2, suffix: "MB", precision: clamped.mb },
+		{ size: 1024, suffix: "KB", precision: clamped.kb },
 	];
 	for (const [index, unit] of units.entries()) {
 		if (bytes < unit.size) continue;
