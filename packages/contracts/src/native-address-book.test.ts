@@ -287,8 +287,11 @@ test("saves name the version that was read; a changed contact is stale, not over
   );
   assert.equal(calls.length, 2, "an invalid save never reaches native");
 
-  for (const status of ["stale", "not-found", "failed"])
+  for (const status of ["stale", "not-found", "failed", "unknown"])
     assert.deepEqual(parseContactSave({ status }, "101"), { status });
+  assert.deepEqual(parseContactSave({ status: "unknown" }), {
+    status: "unknown",
+  });
   assert.deepEqual(parseContactSave({ status: "failed" }), {
     status: "failed",
   });
@@ -325,7 +328,7 @@ test("removal names the version; refusals are typed and old hosts are unavailabl
   assert.deepEqual(calls, [["remove", { id: "101", version: VERSION }]]);
   await assert.rejects(client.remove("101", ""), RangeError);
   assert.equal(calls.length, 1);
-  for (const status of ["stale", "not-found", "failed"])
+  for (const status of ["stale", "not-found", "failed", "unknown"])
     assert.deepEqual(parseContactRemove({ status }), { status });
   assert.throws(() => parseContactRemove({ status: "saved" }), /invalid/);
   assert.throws(

@@ -224,6 +224,12 @@ test("a contact result fits the change that was reviewed", () => {
     validateContactWriteResult(update, result("saved")).status,
     "saved",
   );
+  for (const operation of [create, update, remove]) {
+    const unknown = validateContactWriteResult(operation, result("unknown"));
+    assert.equal(contactWriteReceiptOutcome(unknown), "unknown");
+    assert.match(contactWriteResultText(unknown), /could not confirm/);
+    assert.doesNotMatch(contactWriteResultText(unknown), /Nothing was changed/);
+  }
   const deleted = validateContactWriteResult(remove, result("deleted"));
   assert.equal(contactWriteReceiptOutcome(deleted), "applied");
   for (const status of ["not-found", "stale"]) {

@@ -130,4 +130,20 @@ public final class PhoneInfoReaderTest {
   JSObject many = PhoneInfoReader.read(app, Arrays.asList(sim(15, 5, "f", "", ""), sim(14, 4, "e", "", ""), sim(13, 3, "d", "", ""), sim(12, 2, "c", "", ""), home, work), null);
   require(many.getJSONArray("lines").length() == PhoneInfoReader.MAX_LINES && many.getJSONArray("lines").getJSONObject(3).getInt("slot") == 3, "bounded");
  }
+ @Test public void unavailableSubscriptionManagerNeverUsesDefaultLine() throws Exception {
+  Application app = RuntimeEnvironment.getApplication();
+  ShadowTelephonyManager defaults = Shadows.shadowOf(app.getSystemService(TelephonyManager.class));
+  defaults.setDataNetworkType(TelephonyManager.NETWORK_TYPE_LTE);
+  defaults.setIsNetworkRoaming(true);
+  defaults.setLine1Number("+15555550199");
+  defaults.setTelephonyManagerForSubscriptionId(7, null);
+  Shadows.shadowOf(app).grantPermissions(Manifest.permission.READ_PHONE_NUMBERS);
+  JSONObject row = PhoneInfoReader.read(app, Collections.singletonList(sim(7, 1, "Other SIM", "", "")), null)
+    .getJSONArray("lines").getJSONObject(0);
+  require(row.getInt("subscriptionId") == 7 && row.getInt("slot") == 1, "subscription identity retained");
+  require(row.isNull("number"), "the default line number is not this subscription's number");
+  require(row.getString("networkType").equals("unknown"), "the default line network is not this subscription's network");
+  require(row.isNull("roaming") && row.isNull("signalLevel"), "the default line radio state is not this subscription's state");
+ }
+
 }

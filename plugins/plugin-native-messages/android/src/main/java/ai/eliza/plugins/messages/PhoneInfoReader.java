@@ -119,6 +119,7 @@ public final class PhoneInfoReader {
     || granted(context, Manifest.permission.READ_SMS) || MmsStore.isDefaultSmsApp(context);
  }
  private static boolean carrierPrivileged(TelephonyManager telephony) {
+  if (telephony == null) return false;
   try { return telephony.hasCarrierPrivileges(); } catch (RuntimeException unreadable) { return false; }
  }
  /**
@@ -154,7 +155,8 @@ public final class PhoneInfoReader {
    for (SubscriptionInfo info : ordered) {
     TelephonyManager line = null;
     if (Build.VERSION.SDK_INT >= 24) try { line = telephony.createForSubscriptionId(info.getSubscriptionId()); } catch (RuntimeException unavailable) { line = null; }
-    managers.add(line == null ? telephony : line);
+    // A missing per-subscription manager must not substitute the default SIM's radio state.
+    managers.add(line);
    }
   }
   boolean numbers = numbersReadable(context);
@@ -188,6 +190,7 @@ public final class PhoneInfoReader {
 
  @android.annotation.SuppressLint("MissingPermission") // Refusals are caught; a field Android refuses reads as unknown.
  private static String network(TelephonyManager line) {
+  if (line == null) return "unknown";
   int data = TelephonyManager.NETWORK_TYPE_UNKNOWN, voice = TelephonyManager.NETWORK_TYPE_UNKNOWN;
   if (Build.VERSION.SDK_INT >= 24) {
    try { data = line.getDataNetworkType(); } catch (RuntimeException unreadable) { /* stays unknown */ }
@@ -203,10 +206,11 @@ public final class PhoneInfoReader {
   return networkType(data, voice, inService);
  }
  private static Boolean roaming(TelephonyManager line) {
+  if (line == null) return null;
   try { return line.isNetworkRoaming(); } catch (RuntimeException unreadable) { return null; }
  }
  private static Integer signal(TelephonyManager line) {
-  if (Build.VERSION.SDK_INT < 28) return null;
+  if (line == null || Build.VERSION.SDK_INT < 28) return null;
   try { SignalStrength strength = line.getSignalStrength(); return strength == null ? null : signalLevel(strength.getLevel()); }
   catch (RuntimeException unreadable) { return null; }
  }
@@ -222,12 +226,12 @@ public final class PhoneInfoReader {
    } catch (RuntimeException unreadable) { value = null; }
   }
   if (value == null) try { value = number(info.getNumber()); } catch (RuntimeException unreadable) { value = null; }
-  if (value == null) try { value = number(line.getLine1Number()); } catch (RuntimeException unreadable) { value = null; }
+  if (value == null && line != null) try { value = number(line.getLine1Number()); } catch (RuntimeException unreadable) { value = null; }
   return value;
  }
  @android.annotation.SuppressLint({ "MissingPermission", "HardwareIds" })
  private static String slotImei(TelephonyManager line, int slot) {
-  if (Build.VERSION.SDK_INT < 26) return null;
+  if (line == null || Build.VERSION.SDK_INT < 26) return null;
   try { return imei(line.getImei(slot)); } catch (RuntimeException unreadable) { return null; }
  }
 }

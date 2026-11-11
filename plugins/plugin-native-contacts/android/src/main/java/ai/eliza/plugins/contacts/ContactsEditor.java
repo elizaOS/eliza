@@ -309,7 +309,9 @@ public final class ContactsEditor {
    * Creates the contact when {@code id} is null, otherwise applies the draft to the contact read at
    * {@code version}. Answers {@code {status: "saved", id, version}}, {@code {status: "stale"}} (the
    * contact changed; nothing written), {@code {status: "not-found"}} or {@code {status: "failed"}}
-   * (the provider refused the batch; nothing written).
+   * (the provider refused the batch; nothing written), or {@code {status: "unknown"}} when the
+   * dispatched batch's reply was lost. An unknown write may have committed and must not be retried
+   * without reading the provider again.
    */
   public JSObject save(String id, String version, Draft draft) {
     offMain();
@@ -323,8 +325,10 @@ public final class ContactsEditor {
       final ContentProviderResult[] results;
       try {
         results = resolver.applyBatch(ContactsContract.AUTHORITY, ops);
-      } catch (OperationApplicationException | android.os.RemoteException | RuntimeException refused) {
+      } catch (OperationApplicationException refused) {
         return status("failed");
+      } catch (android.os.RemoteException | RuntimeException lostReply) {
+        return status("unknown");
       }
       return saved(results != null && results.length > 0 && results[0] != null ? results[0].uri : null);
     }
@@ -361,13 +365,13 @@ public final class ContactsEditor {
       resolver.applyBatch(ContactsContract.AUTHORITY, ops);
     } catch (OperationApplicationException rolledBack) {
       return status(changedSince(contact, version) ? "stale" : "failed");
-    } catch (android.os.RemoteException | RuntimeException refused) {
-      return status("failed");
+    } catch (android.os.RemoteException | RuntimeException lostReply) {
+      return status("unknown");
     }
     return saved(ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, target));
   }
 
-  /** Deletes the contact read at {@code version}: {@code {status: "deleted" | "stale" | "not-found" | "failed"}}. */
+  /** Deletes the contact read at {@code version}: an unknown reply may have committed the deletion. */
   public JSObject remove(String id, String version) {
     offMain();
     long contact = row(id);
@@ -389,8 +393,8 @@ public final class ContactsEditor {
       return status(count != null && count > 0 ? "deleted" : "not-found");
     } catch (OperationApplicationException rolledBack) {
       return status(changedSince(contact, version) ? "stale" : "failed");
-    } catch (android.os.RemoteException | RuntimeException refused) {
-      return status("failed");
+    } catch (android.os.RemoteException | RuntimeException lostReply) {
+      return status("unknown");
     }
   }
 }

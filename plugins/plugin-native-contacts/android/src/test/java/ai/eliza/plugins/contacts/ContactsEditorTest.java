@@ -49,6 +49,7 @@ public final class ContactsEditorTest {
   /** Runs once when the next batch arrives, before any of its operations: another writer getting in first. */
   static Runnable beforeBatch;
   static boolean refuseReadback;
+  static boolean loseBatchReply;
   static int writes;
 
   static long addRaw(long contact) {
@@ -141,13 +142,15 @@ public final class ContactsEditorTest {
       Runnable first = beforeBatch;
       beforeBatch = null;
       if (first != null) first.run();
-      return super.applyBatch(operations);
+      ContentProviderResult[] result = super.applyBatch(operations);
+      if (loseBatchReply) throw new android.os.DeadObjectException().rethrowAsRuntimeException();
+      return result;
     }
   }
 
   ContactsEditor editor;
   @Before public void provider() {
-    raws.clear(); data.clear(); nextRaw = 0; nextData = 0; beforeBatch = null; refuseReadback = false; writes = 0;
+    raws.clear(); data.clear(); nextRaw = 0; nextData = 0; beforeBatch = null; refuseReadback = false; loseBatchReply = false; writes = 0;
     ProviderInfo info = new ProviderInfo();
     info.authority = ContactsContract.AUTHORITY;
     Robolectric.buildContentProvider(Provider.class).create(info);
@@ -256,6 +259,24 @@ public final class ContactsEditorTest {
     JSObject edited = off(() -> editor.save("101", version, renamed));
     require(edited.getString("status").equals("saved") && edited.isNull("id") && edited.isNull("version"), "committed update with no readback");
     require(get("101").getString("displayName").equals("Ada King"), "the update was written");
+  }
+
+  @Test public void aLostBatchReplyCannotClaimThatACommittedWriteFailed() throws Exception {
+    ContactsEditor.Draft original = draft("Ada", new JSONArray(), new JSONArray());
+    loseBatchReply = true;
+    JSObject created = off(() -> editor.save(null, null, original));
+    require(raws.size() == 1, "creation committed before the reply was lost");
+    require(created.getString("status").equals("unknown"), "creation outcome is unknown, not safe to retry");
+
+    String version = get("101").getString("version");
+    JSObject edited = off(() -> editor.save("101", version, draft("Ada King", new JSONArray(), new JSONArray())));
+    require(get("101").getString("displayName").equals("Ada King"), "edit committed before the reply was lost");
+    require(edited.getString("status").equals("unknown"), "edit outcome is unknown");
+
+    String editedVersion = get("101").getString("version");
+    JSObject removed = off(() -> editor.remove("101", editedVersion));
+    require(raws.isEmpty(), "deletion committed before the reply was lost");
+    require(removed.getString("status").equals("unknown"), "deletion outcome is unknown");
   }
 
   @Test public void mergingOrReplacingRawContactsDuringDeleteMakesItStale() throws Exception {

@@ -256,7 +256,8 @@ export type ContactWriteStatus =
   | "stale"
   | "unavailable"
   | "cancelled"
-  | "failed";
+  | "failed"
+  | "unknown";
 export type ContactWriteResult = {
   kind: "contact-write";
   status: ContactWriteStatus;
@@ -269,6 +270,7 @@ const CONTACT_STATUS: readonly ContactWriteStatus[] = [
   "unavailable",
   "cancelled",
   "failed",
+  "unknown",
 ];
 const CONTACT_FIELD_KEYS = ["displayName", "phoneNumbers", "emailAddresses"];
 
@@ -343,10 +345,12 @@ export function validateContactWriteResult(
 }
 export function contactWriteReceiptOutcome(
   result: ContactWriteResult,
-): "applied" | "failed" {
+): "applied" | "failed" | "unknown" {
   return result.status === "saved" || result.status === "deleted"
     ? "applied"
-    : "failed";
+    : result.status === "unknown"
+      ? "unknown"
+      : "failed";
 }
 export function contactWriteResultText(result: ContactWriteResult): string {
   switch (result.status) {
@@ -362,6 +366,8 @@ export function contactWriteResultText(result: ContactWriteResult): string {
       return "The owner dismissed the change. Nothing was changed.";
     case "unavailable":
       return "Contacts cannot be changed on this phone right now. Nothing was changed.";
+    case "unknown":
+      return "The phone could not confirm whether the contact change completed. It will not be repeated automatically. Check Contacts before trying again.";
     case "failed":
       return "The phone could not save the change. Nothing was changed.";
   }
