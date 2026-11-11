@@ -140,8 +140,9 @@ function flattenTextValuesWithAncestors(
 		}
 		ctx.ancestors.add(value);
 		try {
-			const fragments: string[] =
-				value instanceof Error ? [formatErrorFragment(value)] : [];
+			const fragments: string[] = isErrorValue(value)
+				? [formatErrorFragment(value as Error)]
+				: [];
 			const record = value as Record<string, unknown>;
 			for (const key in record) {
 				// Count inherited enumeration too so a hostile prototype cannot evade the
@@ -187,6 +188,26 @@ function getDateTimestamp(value: object): number | undefined {
 	} catch {
 		// error-policy:J3 Reject spoofed or otherwise non-Date objects.
 		return undefined;
+	}
+}
+
+/**
+ * True for Error values from any realm. `instanceof Error` fails across
+ * realms (a `vm` context, a worker, a plugin sandbox), and the object's
+ * `name`/`message` are non-enumerable, so a cross-realm Error used to
+ * flatten to nothing. The `Object.prototype.toString` tag is
+ * `[object Error]` for every Error subclass in every realm — the same
+ * cross-realm check `getDateTimestamp` already uses for Dates.
+ */
+function isErrorValue(value: object): boolean {
+	try {
+		return (
+			value instanceof Error ||
+			Object.prototype.toString.call(value) === "[object Error]"
+		);
+	} catch {
+		// error-policy:J3 Reject spoofed or otherwise non-Error objects.
+		return false;
 	}
 }
 
