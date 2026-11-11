@@ -10,6 +10,12 @@ per storage domain and register the returned class through the host's shared
 Capacitor registry. Do not rename an existing database without a data migration.
 The factory does not register plugins, choose account authority, or mount UI.
 
+The Files agent runner can open or filter from a cold host view. Pass a callback
+that resolves after the host commits and renders Files. The open action reads
+storage permission independently of the view refresh. Leaving Files or
+cancelling the action retires its pending selection and releases any late grant.
+Changes to files still require the owner to review them in the active Files view.
+
 The `documents/*` exports provide scan correction and edge suggestions, reviewed
 text-layer validation, PDF generation, local OCR and revisioned draft persistence.
 The host supplies PDF metadata, an OCR worker/assets URL and language, and the

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "assistant-choice-approval-cancellation",
+    "model": "plugins/plugin-assistant/quint/ChoiceApprovalCancellation.qnt",
+    "sources": [
+      "plugins/plugin-assistant/src/features/basic-capabilities/actions/choice.ts",
+      "packages/core/src/services/approval.ts",
+      "plugins/plugin-assistant/src/integration/choice-schedule.test.ts"
+    ],
+    "invariants": [
+      "OwnerSettlesAfterDeletion",
+      "FailedDeleteRetainsOwner",
+      "DeadlineRetained",
+      "AckRequiresDeletion",
+      "AckSettlesOwner",
+      "GenericHasNoApprovalCaller",
+      "RefusedHasNoEffects"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One pending approval with a stable registered Core owner, one generic task, or a fixed claimed/missing owner at admission. The production cancellation API refuses claimed and unknown owners before effects. Callback execution, timeout expiry, stop/service replacement and admission races during deletion are covered by Core implementation tests rather than this action projection.",
+      "The model starts after action authorization and choice validation. Real conformance resolves the canonical runtime OWNER role, checks the production action gate and precondition, then invokes the registered action handler. It does not prove arbitrary role policies or the complete planner/message pipeline.",
+      "Deletion and confirmation may fail. A failed deletion retains the pending owner and its original deadline; active/paused/cleared abstract deadline ownership rather than elapsed time. Lost storage acknowledgements, provider success, automatic retry, eventual row removal and external delivery are not proved. Progress means an admitted attempt reports an outcome."
+    ]
+  }
+]

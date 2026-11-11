@@ -346,7 +346,9 @@ export function MapsScreen({
         element,
         () => {
           if (current) {
-            failed = true;
+            // Copyright can recover on the next viewport read. Other plane
+            // failures need an explicit retry that recreates the renderer.
+            failed ||= element.dataset.mapError !== "copyright";
             controller.setMapState("error");
           }
         },
@@ -359,7 +361,7 @@ export function MapsScreen({
     const observer = new MutationObserver(() => {
       if (current)
         controller.setMapState(
-          failed
+          failed || element.dataset.mapError
             ? "error"
             : element.dataset.mapReady === "true"
               ? "ready"
@@ -368,7 +370,7 @@ export function MapsScreen({
     });
     observer.observe(element, {
       attributes: true,
-      attributeFilter: ["data-map-ready"],
+      attributeFilter: ["data-map-ready", "data-map-error"],
     });
     return () => {
       current = false;

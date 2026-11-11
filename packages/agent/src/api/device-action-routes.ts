@@ -116,6 +116,14 @@ export function deviceRequestCredential(
     // phones advertise them only with the native telephony profile.
     "phone.dial.v1",
     "contacts.lookup.v1",
+    // Owner-approved calls, contact changes, contact SMS and open-item reads
+    // (@elizaos/contracts/telephony-actions), under the same native profile.
+    "phone.call.v1",
+    "contacts.write.v1",
+    "sms.compose.v1",
+    "messages.read.v1",
+    "voicemail.read.v1",
+    "voicemail.delete.v1",
   ]);
   if (
     capabilities.length > allowedCapabilities.size ||

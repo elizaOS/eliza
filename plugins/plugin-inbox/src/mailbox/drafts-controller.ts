@@ -1128,7 +1128,13 @@ export function createMailDraftsController(
       (!validLocalMailDraft(value, owner) ||
         new TextEncoder().encode(JSON.stringify(value)).length > DRAFT_BYTES)
     ) {
-      toast("Draft is too large or contains an invalid subject.");
+      toast(
+        [value.cc || [], value.bcc || []].some(
+          (list) => list.length > 20 || !list.every(literalMailAddress),
+        )
+          ? "Cc or Bcc contains an invalid address or more than 20 addresses."
+          : "Draft is too large or contains an invalid subject.",
+      );
       return;
     }
     const token = epoch,
@@ -1599,7 +1605,28 @@ export function createMailDraftsController(
           );
         }
       }
-      draft = {
+      const token = epoch;
+      if (
+        !draft &&
+        saved?.provider?.draftId === reference.draftId &&
+        saved.provider.providerDigest === reference.providerDigest
+      ) {
+        draft = fromSaved();
+        baseRevision = saved.revision;
+        staleBase = false;
+        open = true;
+        confirm = false;
+        toQ = "";
+        status = earlierVersion()
+          ? "Earlier version of a sent email. Sending it creates another message; nothing has been sent."
+          : "Editing the copy of this Gmail draft saved on this device.";
+        publish();
+        return true;
+      }
+
+      // Capture the selected provider draft before shelving an unrelated local
+      // copy. Shelving must succeed under the same account before replacement.
+      const next: LocalMailDraft = {
         version: 1,
         id: crypto.randomUUID(),
         revision: crypto.randomUUID(),
@@ -1610,7 +1637,7 @@ export function createMailDraftsController(
         subject: proposal.subject,
         body: proposal.bodyText,
         mode,
-        attachments: proposal.attachments || [],
+        attachments: structuredClone(proposal.attachments || []),
         provider: {
           draftId: reference.draftId,
           providerDigest: reference.providerDigest,
@@ -1620,6 +1647,13 @@ export function createMailDraftsController(
           ? { reply: { messageId: proposal.replyMessageId, threadId: "" } }
           : {}),
       };
+      if (!draft && saved) {
+        if (!(await setAside()) || token !== epoch) return false;
+        // The shelf readback publishes before this call resumes. Another
+        // composer may now own the slot in the same account.
+        if (draft || saved || busy || !ready) return false;
+      }
+      draft = next;
       baseRevision = saved?.revision || null;
       staleBase = false;
       open = true;
@@ -1628,10 +1662,7 @@ export function createMailDraftsController(
         "Editing a Gmail draft. Save locally to keep your edits. This draft may have changed in Gmail, and saving replaces it.";
       publish();
       await update();
-      return (
-        saved?.provider?.draftId === reference.draftId &&
-        saved?.provider?.providerDigest === reference.providerDigest
-      );
+      return token === epoch && saved?.id === next.id;
     },
     close() {
       if (!open) return false;

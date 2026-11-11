@@ -1,0 +1,74 @@
+{
+  "sources": [
+    "plugins/plugin-assistant/src/services/device-actions/reminder-journal.ts",
+    "plugins/plugin-assistant/src/services/device-actions/reminder-journal.test.ts",
+    "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts",
+    "plugins/plugin-assistant/quint/check-reminder-unconfirmed-discard.ts",
+    "plugins/plugin-assistant/quint/reminder-discard-conformance.json",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-reminder-unconfirmed-discard.ts",
+  "bounds": {
+    "domain": "One reminder journal ID, one explicit owner discard, one concurrent confirming readback and atomic host compare-and-set storage. The action projection has one already admitted external effect that may appear before or after forgetting.",
+    "scope": "Discard is local journal removal after a host warning, not cancellation or a receipt of an external outcome. Confirmed creations remain retained, including a stale absent read followed by a newer found row. Changes after the final read are refused by the host compare-and-set.",
+    "limits": "Host authentication, the warning UI and explicit owner consent are assumptions outside this library. Durable host store implementation, failed or lost storage acknowledgements, multiple IDs, full-journal trimming, clock and schedule behavior, process death and real native reminder delivery are outside the finite model. Implementation conformance uses the actual journal with controlled storage/readback ports; it is not physical-device qualification."
+  },
+  "cases": [
+    {
+      "name": "creation-readback-race",
+      "main": "ReminderCreationDiscard",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ConfirmedCreationRetained", "ForgotOnlyUnconfirmed"],
+      "temporal": ["FairAttemptSettles", "AttemptSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairAttemptSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the pending read, local continuation and host compare-and-set storage settling. No native effect success, cancellation or wall-clock bound is established."
+          ]
+        },
+        {
+          "property": "AttemptSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted read or storage continuation can remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500
+    },
+    {
+      "name": "owner-forgets-unknown-action",
+      "main": "ReminderActionDiscard",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DiscardNeverExecutesOrAcknowledges",
+        "ForgottenRemainsForgotten"
+      ],
+      "temporal": ["FairAttemptSettles", "AttemptSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairAttemptSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the pending read, local continuation and host compare-and-set storage settling. No native effect success, cancellation or wall-clock bound is established."
+          ]
+        },
+        {
+          "property": "AttemptSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted read or storage continuation can remain pending indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500
+    }
+  ]
+}

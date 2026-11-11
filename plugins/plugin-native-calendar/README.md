@@ -13,7 +13,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-native-calendar build  # build
 ```
 
-
 ## Android CalendarProvider adapter
 
 Android uses a separate, ESM-only `@elizaos/capacitor-calendar/android` entrypoint.

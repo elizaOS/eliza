@@ -1,0 +1,96 @@
+{
+  "sources": [
+    "packages/contracts/src/device-action-execution.ts",
+    "packages/contracts/src/telephony-actions.ts",
+    "packages/contracts/src/telephony-actions.test.ts",
+    "packages/contracts/src/native-telephony.ts",
+    "plugins/plugin-assistant/src/services/device-actions/client-coordinator.ts",
+    "plugins/plugin-assistant/src/services/device-actions/client-coordinator.test.ts",
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+    "plugins/plugin-assistant/src/services/device-actions/telephony-actions-contract.ts",
+    "plugins/plugin-assistant/quint/check-telephony-action-ownership.ts",
+    "plugins/plugin-assistant/quint/telephony-action-conformance.json",
+    "plugins/plugin-assistant/vitest.config.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-telephony-action-ownership.ts",
+  "bounds": {
+    "domain": "One reviewed telephony proposal, one fixed authenticated owner/session/device/operation/digest, one execution claim and one renderer attempt. Capability may be absent. Foreground loss, cancellation and selection/request invalidation each occur at most once; at most one native invocation and one exact result are admitted.",
+    "projection": "The TS coordinator reserves its journal before decision and claim, marks applying before invocation, and checks the renderer guard at each awaited admission boundary. Successful/failed/unknown native results are symbolic classes admitted by the production closed validators. A contradictory result is not published as success. Cancellation before dispatch fences invocation; cancellation after an admitted invocation does not undo its known result. Receipt upload can retry a terminal journal without invoking the native port again.",
+    "currentRequestBoundary": "Selection validity combines the reviewed context key and host-supplied current-request proof. The stricter selected-item binding requires an external host to enable currentRequestTelephonyPolicy and provide a valid proof. No in-tree host currently enables that option. This model does not prove native selected-item identity or foreground state from a renderer assertion.",
+    "conformance": "Mandatory tests execute the real shared DeviceActionCoordinator over controlled authenticated-transport, journal and native-executor ports, and the actual telephony operation/result validators. Every named test in both suites must execute and pass with no skipped/todo tests; receipts bind model, cases, source hashes and concrete test identities. Tests exercise per-capability denial, foreground refusal, review/claim order, one execution, contradictory results, lost uploads unresolved SMS and uncertain contact-write replay, and enabled-policy selected-item/revision refusal before journal, claim or effect. Reply-draft automatic current-message behavior is tested but is not part of the explicit-review transition system.",
+    "limits": "This is a finite TS boundary projection, not a machine-checked refinement or end-to-end native/provider proof. Concurrent independent coordinators, malformed principal/authentication handling, server durable claim atomicity, storage failures/lost commit acknowledgements, arbitrary restart and journal persistence, expiry and ledger-capacity exhaustion are outside the transition relation. Native Android permissions/roles, foreground/selected-item rechecks, native durable journals, device/carrier delivery and VVM provider availability remain separate qualification. The hook does not rebuild Gradle or claim physical-device acceptance. Read/body/transcript hard limits are rejected by the concrete validators; their byte domains are not enumerated in the model."
+  },
+  "cases": [
+    {
+      "name": "reviewed-telephony-attempt-ownership",
+      "main": "TelephonyActionOwnership",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOnce",
+        "DispatchHasOriginalOwner",
+        "AppliedNeedsExactReceipt",
+        "UnknownIsNotSuccess"
+      ],
+      "temporal": [
+        "NoDispatchAfterCancellation",
+        "NoDispatchAfterSelectionChange",
+        "NoDispatchAfterForegroundLoss",
+        "TerminalReceiptStable",
+        "FairNativeSettles",
+        "NativeSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "NoDispatchAfterCancellation",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Invalidation is observed by the renderer guard before invocation; a known result of an already admitted invocation remains recordable."
+          ]
+        },
+        {
+          "property": "NoDispatchAfterSelectionChange",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Invalidation is observed by the renderer guard before invocation; a known result of an already admitted invocation remains recordable."
+          ]
+        },
+        {
+          "property": "NoDispatchAfterForegroundLoss",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Invalidation is observed by the renderer guard before invocation; a known result of an already admitted invocation remains recordable."
+          ]
+        },
+        {
+          "property": "TerminalReceiptStable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Invalidation is observed by the renderer guard before invocation; a known result of an already admitted invocation remains recordable."
+          ]
+        },
+        {
+          "property": "FairNativeSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of native callback settlement only. Either an exact result or a contradictory/unknown result eventually returns; this does not imply receipt upload, native effect success or carrier delivery."
+          ]
+        },
+        {
+          "property": "NativeSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness: an admitted native callback may never settle, so an explicit stuttering counterexample is required."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500,
+      "deadlock": false
+    }
+  ]
+}

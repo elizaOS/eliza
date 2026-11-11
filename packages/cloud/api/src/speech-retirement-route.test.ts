@@ -9,6 +9,8 @@ import { HTTPException } from "hono/http-exception";
 
 const data = {
   generated: 0,
+  issued: 0,
+  consumed: 0,
   owner: 0,
   calls: [] as { url: unknown; body: Record<string, unknown> }[],
   authStatus: undefined as 429 | undefined,
@@ -32,13 +34,22 @@ mock.module("./lib/generative-route-auth", () => ({
   },
 }));
 mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
-  issueConsentNonce: async () => ({
-    nonce: "00000000-0000-4000-8000-000000000001",
-    expiresAt: new Date(Date.now() + 60000).toISOString(),
-  }),
-  consumeConsentNonce: async () => true,
+  CONSENT_NONCE_TTL_SECONDS: 300,
+  issueConsentNonce: async () => {
+    data.issued++;
+    return {
+      nonce: "00000000-0000-4000-8000-000000000001",
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    };
+  },
+  consumeConsentNonce: async () => {
+    data.consumed++;
+    return true;
+  },
 }));
+const coordinator = await import("./speech-relay-coordinator");
 mock.module("./speech-relay-coordinator", () => ({
+  ...coordinator,
   speechTokenDigest: () => "a".repeat(64),
   speechRelayMaxWindows: () => 2,
 }));
@@ -67,6 +78,8 @@ const env = (enabled = true, proof = true) => ({
 });
 beforeEach(() => {
   data.generated = 0;
+  data.issued = 0;
+  data.consumed = 0;
   data.owner = 0;
   data.calls = [];
   data.authStatus = undefined;
@@ -110,6 +123,8 @@ test("recovery consent returns the exact prepared ID that a later mint uses", as
   expect(consent.status).toBe(200);
   const body = await responseObject(consent);
   const recoverySessionId = body.recoverySessionId;
+  const consentNonce = body.consentNonce;
+  expect(data.issued).toBe(0);
   expect(typeof recoverySessionId).toBe("string");
   expect(data.calls[0]).toMatchObject({
     url: "https://speech-relay.internal/prepare",
@@ -120,11 +135,12 @@ test("recovery consent returns the exact prepared ID that a later mint uses", as
     {
       method: "POST",
       headers,
-      body: JSON.stringify({ consentNonce: nonce, recoverySessionId }),
+      body: JSON.stringify({ consentNonce, recoverySessionId }),
     },
     env() as never,
   );
   expect(mint.status).toBe(200);
+  expect(data.consumed).toBe(0);
   expect(mint.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER)).toBeNull();
   expect((await responseObject(mint)).sessionId).toBe(recoverySessionId);
   expect(data.calls[1]).toMatchObject({
@@ -136,6 +152,52 @@ test("recovery consent returns the exact prepared ID that a later mint uses", as
     },
   });
 });
+test("older random recovery IDs retain their Redis consent precondition", async () => {
+  const response = await app.request(
+    "/session",
+    {
+      method: "POST",
+      headers: {
+        "X-Eliza-Speech-Retirement-Version": "1",
+        [SPEECH_RECOVERY_HEADER]: "1",
+      },
+      body: JSON.stringify({
+        consentNonce: nonce,
+        recoverySessionId: "44444444-4444-4444-8444-444444444444",
+      }),
+    },
+    env() as never,
+  );
+  expect(response.status).toBe(200);
+  expect(data.consumed).toBe(1);
+});
+
+test("a deterministic recovery name still requires a valid prepared ledger", async () => {
+  const { preparedSpeechSessionIdForConsent } = await import(
+    "./speech-relay-coordinator"
+  );
+  data.initializeStatus = 409;
+  const response = await app.request(
+    "/session",
+    {
+      method: "POST",
+      headers: {
+        "X-Eliza-Speech-Retirement-Version": "1",
+        [SPEECH_RECOVERY_HEADER]: "1",
+      },
+      body: JSON.stringify({
+        consentNonce: nonce,
+        recoverySessionId: preparedSpeechSessionIdForConsent("owner", nonce),
+      }),
+    },
+    env() as never,
+  );
+  expect(response.status).toBe(503);
+  expect(data.consumed).toBe(0);
+  expect(data.calls).toHaveLength(1);
+  expect(data.calls[0].body.consentDigest).toBe("a".repeat(64));
+});
+
 test("unsupported proof is refused before admission", async () => {
   const res = await app.request(
     "/session",

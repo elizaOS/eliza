@@ -524,7 +524,11 @@ describe("Worker credential checks include cold gate routing", () => {
 });
 
 describe("Worker billing admits from the snapshot and the organization gate only", () => {
-  const admit = async (snapshot: InferenceAdmissionSnapshot, gate: (path: string) => Response) => {
+  const admit = async (
+    snapshot: InferenceAdmissionSnapshot,
+    gate: (path: string) => Response,
+    background: Promise<unknown>[] = [],
+  ) => {
     const { admitOrganizationInference } = await import("./organization-inference-admission");
     return runWithCloudBindingsAsync(
       {
@@ -551,7 +555,11 @@ describe("Worker billing admits from the snapshot and the organization gate only
           estimatedInputTokens: 0,
           estimatedOutputTokens: 0,
           flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
-          executionCtx: { waitUntil() {} },
+          executionCtx: {
+            waitUntil(task) {
+              background.push(task);
+            },
+          },
           admissionSnapshot: snapshot,
         }),
     );
@@ -584,6 +592,85 @@ describe("Worker billing admits from the snapshot and the organization gate only
       expect(primaryTouches).toBe(0);
     } finally {
       primaryArmed = false;
+    }
+  });
+
+  /** A snapshot far older than the shared projection lifetime. */
+  const aged = (overrides: Partial<InferenceAdmissionSnapshot> = {}) => ({
+    ...admission(),
+    balance: { balanceUsd: 10, balanceAt: Date.now() - 10 * 60_000, balanceRevision: "1" },
+    ...overrides,
+  });
+
+  // The tripwire stays armed through the scheduled refresh: every primary
+  // statement throws, so a request that still returns its decision did not
+  // wait for the primary, and the counted statement is the refresh's own.
+  test("an aged snapshot decides its request and is refreshed from the primary off the response", async () => {
+    const background: Promise<unknown>[] = [];
+    primaryArmed = true;
+    primaryTouches = 0;
+    try {
+      const result = await admit(
+        aged(),
+        () => Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 }),
+        background,
+      );
+      expect(result.mode).toBe("durable_object_debit");
+      expect(background).toHaveLength(1);
+      await Promise.allSettled(background);
+      expect(primaryTouches).toBeGreaterThan(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
+
+  test("a fresh snapshot schedules no refresh", async () => {
+    const background: Promise<unknown>[] = [];
+    await admit(
+      admission(),
+      () => Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 }),
+      background,
+    );
+    expect(background).toHaveLength(0);
+  });
+
+  test("an aged hold refusal stands for its request and is refreshed off the response", async () => {
+    const background: Promise<unknown>[] = [];
+    primaryArmed = true;
+    primaryTouches = 0;
+    try {
+      await expect(
+        admit(aged({ billingHold: true }), () => Response.json({ admitted: true }), background),
+      ).rejects.toThrow(BillingHoldActiveError);
+      expect(background.length).toBeGreaterThan(0);
+      await Promise.allSettled(background);
+      expect(primaryTouches).toBeGreaterThan(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
+
+  // The auth entry keeps carrying the held snapshot until its own refresh;
+  // the refill that the first refusal scheduled is what later requests use.
+  test("a carried hold yields to the newer published snapshot without a primary read", async () => {
+    const { resetInferenceAdmissionMemoryCacheForTests } = await import(
+      "./inference-admission-snapshot"
+    );
+    const key = CacheKeys.inference.orgAdmission(ORG);
+    resetInferenceAdmissionMemoryCacheForTests();
+    await cache.setWithOutcome(key, admission(), CacheTTL.inference.orgAdmission);
+    primaryArmed = true;
+    primaryTouches = 0;
+    try {
+      const result = await admit(aged({ billingHold: true }), () =>
+        Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 }),
+      );
+      expect(result.mode).toBe("durable_object_debit");
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+      await cache.del(key);
+      resetInferenceAdmissionMemoryCacheForTests();
     }
   });
 });

@@ -3,6 +3,8 @@
     "packages/cloud/api/v1/responses/compatibility.ts",
     "packages/cloud/api/v1/responses/route.ts",
     "packages/cloud/api/v1/chat/completions/route.ts",
+    "packages/cloud/api/v1/chat/completions/provider-boundary.ts",
+    "packages/cloud/shared/src/lib/services/native-application-inference.ts",
     "packages/cloud/api/v1/responses/route.test.ts",
     "packages/cloud/api/v1/responses/provider-contract.test.ts",
     "packages/cloud/quint/check-responses-adaptation.ts",
@@ -11,7 +13,7 @@
   "bounds": {
     "assumptions": [
       "One stateless request, fixed full transcript and output atoms; three supported and two rejected input classes, nine canonical outcomes. Refusal-only empty output has two billed output tokens in this case. Real strings, media bytes and parallel tool call grouping are checked by implementation tests, not symbolically proved.",
-      "Canonical authentication, billing, provider truth, native authority, HTTP delivery and cancellation implementation correctness remain outside this adapter model. Tests control those external ports; one integration case runs the actual OpenAI SDK.",
+      "The content and output projection abstracts canonical authentication, billing, provider truth, native authority, HTTP delivery and cancellation. The separate admitted-cancellation case covers the signal through the canonical dispatch gate and SDK.",
       "Unsupported items and parameters are explicitly refused before native/canonical effects. Stored responses, background operation, streaming and hosted tools are not implemented by this route.",
       "Eventual completion requires fair local steps and eventual provider completion or failure. A hung provider can remain pending; unconditional completion has a checked counterexample.",
       "Finite models and selected executable tests do not establish whole-backend coverage or TypeScript refinement.",
@@ -21,7 +23,9 @@
   },
   "limitations": [
     "One stateless request, fixed full transcript and output atoms; three supported and two rejected input classes, nine canonical outcomes. Refusal-only empty output has two billed output tokens in this case. Real strings, media bytes and parallel tool call grouping are checked by implementation tests, not symbolically proved.",
-    "Canonical authentication, billing, provider truth, native authority, HTTP delivery and cancellation implementation correctness remain outside this adapter model. Tests control those external ports; one integration case runs the actual OpenAI SDK.",
+    "The cancellation projection starts after authentication and admission. It checks one signal across the commit and SDK awaits. Successful provider output can win the race with cancellation. It does not prove server disconnect delivery, native credential selection, or upstream cancellation behavior.",
+    "Settlement is selection of an existing port, not its durable effect. The model assumes eventual acknowledgement or failure of the dispatch join and an eventual SDK outcome. Rate refusals, configuration errors, confirmed provider rejection, malformed mapping, retries and durable accounting are separate.",
+    "The real Hono and OpenAI SDK scenarios hold a controlled commit or provider fetch, deliver the original Request signal and observe the HTTP response and selected settlement. The fixture controls authority, admission and provider transport, so it proves neither live provider interruption nor actual debit settlement.",
     "Unsupported items and parameters are explicitly refused before native/canonical effects. Stored responses, background operation, streaming and hosted tools are not implemented by this route.",
     "Eventual completion requires fair local steps and eventual provider completion or failure. A hung provider can remain pending; unconditional completion has a checked counterexample.",
     "Finite models and selected executable tests do not establish whole-backend coverage or TypeScript refinement.",
@@ -82,6 +86,39 @@
           "expect": "counterexample",
           "assumptions": [
             "No fairness or provider completion assumption. An outstanding request may stutter forever."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "admitted-cancellation",
+      "main": "ResponsesCancellation",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": ["PublicationsAgree", "FairRequestSettles", "RequestSettles"],
+      "temporalChecks": [
+        {
+          "property": "PublicationsAgree",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. One accepted request has one classified terminal result. A local reply or settlement selection cannot change after publication."
+          ]
+        },
+        {
+          "property": "FairRequestSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the local continuations, dispatch join and SDK reply. The join and SDK may fail. After an outcome, the HTTP reply and settlement selection each run. No live transport deadline, provider interruption, or durable debit is guaranteed."
+          ]
+        },
+        {
+          "property": "RequestSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The commit, SDK reply or a local continuation can stay pending indefinitely."
           ]
         }
       ],

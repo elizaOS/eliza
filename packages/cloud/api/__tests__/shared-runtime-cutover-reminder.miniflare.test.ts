@@ -133,7 +133,14 @@ const RUNTIME_STUBS = {
   historyRepository: `
     export const sharedRuntimeHistoryRepository = {
       async get() { return []; },
-      async merge() {},
+      async merge(agentId, channelId, history) {
+        if (!agentId.startsWith("mirror-idle-fixture-")) return;
+        const response = await fetch("https://mirror-idle.test/" + agentId, {
+          method: "POST", body: JSON.stringify({ channelId, history }),
+        });
+        if (!response.ok) throw new Error("Controlled mirror rejection");
+        await response.body?.cancel();
+      },
       async deleteByAgent() {},
     };
   `,
@@ -149,6 +156,16 @@ const RUNTIME_STUBS = {
         return await store.load(agentId, roomId);
       },
       async bridge(agent, rpc, options) {
+        if (agent.id.startsWith("mirror-idle-fixture-")) {
+          const result = { jsonrpc: "2.0", id: rpc.id, result: { text: "saved" } };
+          const decision = await options.turnClaims.claim(rpc.id, rpc.params.text);
+          if (decision.state === "replay") return decision.result;
+          await options.historyStore.merge(agent.id, rpc.params.roomId, [
+            { id: rpc.id, role: "user", content: rpc.params.text, createdAt: Date.now() },
+          ]);
+          await options.turnClaims.complete(rpc.id, result);
+          return result;
+        }
         if (rpc.id === "network-transport-probe") {
           return { jsonrpc: "2.0", id: rpc.id, result: { observation: options.trustedNetworkContext ?? null, roomId: rpc.params.roomId } };
         }
@@ -300,6 +317,12 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
   let publicKey: string;
   let serviceReplyMode: "accepted" | "oversize" | "redirect" = "accepted";
 
+  const mirrorOutcomes = new Map<
+    string,
+    (request: Request) => Promise<Response>
+  >();
+  const mirrorAlarms = new Map<string, () => void>();
+
   let releaseFinalizationGate = () => {};
   const finalizationGate = new Promise<void>((resolve) => {
     releaseFinalizationGate = resolve;
@@ -347,6 +370,24 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
           }
 
           async fetch(request) {
+            if (new URL(request.url).pathname === "/__test/mirror-idle") {
+              const body = await request.json();
+              const storage = this.testState.storage;
+              if (body.conversation) await storage.put("conversation", body.conversation);
+              if (body.deadlines) await storage.put("alarm-deadlines", body.deadlines);
+              if (body.joinMirror) await this.mirrorQueue;
+              if (body.fire) {
+                this.mirrorAlarmName = request.headers.get("x-test-room");
+                await storage.setAlarm(Date.now());
+                return Response.json({ armed: true });
+              }
+              return Response.json({
+                conversation: await storage.get("conversation"),
+                deadlines: await storage.get("alarm-deadlines"),
+                claims: await storage.get("turn-claims"),
+                alarm: await storage.getAlarm(),
+              });
+            }
             if (new URL(request.url).pathname === "/__test/claims") {
               const body = await request.json();
               const claims = this.turnClaims();
@@ -394,6 +435,14 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               return Response.json({ success: true });
             }
             return await super.fetch(request);
+          }
+
+          async alarm() {
+            await super.alarm();
+            if (this.mirrorAlarmName) {
+              const response = await fetch("https://mirror-alarm.test/" + this.mirrorAlarmName);
+              await response.body?.cancel();
+            }
           }
         }
 
@@ -541,7 +590,17 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       modules: true,
       script: await readFile(outputPath, "utf8"),
       outboundService: async (request: Request) => {
-        if (new URL(request.url).hostname === "fallback-authority.test") {
+        const url = new URL(request.url);
+        if (url.hostname === "mirror-idle.test") {
+          const outcome = mirrorOutcomes.get(url.pathname.slice(1));
+          if (!outcome) throw new Error("Unexpected mirror request");
+          return await outcome(request);
+        }
+        if (url.hostname === "mirror-alarm.test") {
+          mirrorAlarms.get(url.pathname.slice(1))?.();
+          return new Response(null);
+        }
+        if (url.hostname === "fallback-authority.test") {
           fallbackAuthorityReads += 1;
           return Response.json(fallbackResolution);
         }
@@ -673,6 +732,214 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       body: JSON.stringify(body),
     });
   }
+
+  for (const [name, withPriorRetry] of [
+    [
+      "a stale idle alarm retains a newer saved turn and its replay claim",
+      true,
+    ],
+    [
+      "idle expiry rechecks its deadline after awaiting the dirty snapshot mirror",
+      false,
+    ],
+  ] as const) {
+    test(name, async () => {
+      const agentId = withPriorRetry
+        ? "mirror-idle-fixture-refreshed-before-expiry"
+        : "mirror-idle-fixture-refreshed-during-expiry";
+      const room = `${agentId}:${agentId}`;
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const alarmEnded = Promise.withResolvers<void>();
+      const prior = {
+        id: "prior",
+        role: "assistant",
+        content: "an earlier answer",
+        createdAt: Date.now() - 100,
+      };
+      let attempts = 0;
+      mirrorOutcomes.set(agentId, async (request) => {
+        const body = (await request.json()) as {
+          channelId: string;
+          history: Array<{ id: string }>;
+        };
+        expect(body.channelId).toBe(agentId);
+        attempts += 1;
+        if (attempts === 1) {
+          expect(body.history.map(({ id }) => id)).toEqual([prior.id]);
+          started.resolve();
+          await release.promise;
+          return new Response(null, { status: 503 });
+        }
+        expect(body.history.map(({ id }) => id)).toEqual([
+          prior.id,
+          "new-turn",
+        ]);
+        return new Response(null, { status: 204 });
+      });
+      mirrorAlarms.set(room, alarmEnded.resolve);
+      const turn = {
+        operation: "bridge",
+        agent: {
+          id: agentId,
+          organization_id: "fixture-organization",
+          agent_name: "Mirror fixture",
+          execution_tier: "shared",
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "new-turn",
+          method: "message.send",
+          params: { roomId: agentId, text: "a newer user message" },
+        },
+      };
+      try {
+        const due = Date.now() - 1;
+        const seeded = await post(room, "/__test/mirror-idle", {
+          conversation: {
+            agentId,
+            channelId: agentId,
+            version: 1,
+            dirty: true,
+            history: [prior],
+          },
+          deadlines: {
+            idleExpiryAt: due,
+            ...(withPriorRetry && { mirrorRetryAt: due }),
+          },
+          fire: true,
+        });
+        expect(await seeded.json()).toEqual({ armed: true });
+        await started.promise;
+        const saved = await post(room, "/bridge", turn);
+        expect(await saved.json()).toEqual({
+          jsonrpc: "2.0",
+          id: "new-turn",
+          result: { text: "saved" },
+        });
+        const before = (await (
+          await post(room, "/__test/mirror-idle", {})
+        ).json()) as {
+          deadlines: { idleExpiryAt: number };
+        };
+        expect(before.deadlines.idleExpiryAt).toBeGreaterThan(Date.now());
+        release.resolve();
+        await alarmEnded.promise;
+        const after = await (
+          await post(room, "/__test/mirror-idle", { joinMirror: true })
+        ).json();
+        expect(after).toMatchObject({
+          conversation: {
+            version: 2,
+            dirty: false,
+            history: [prior, { id: "new-turn" }],
+          },
+          deadlines: before.deadlines,
+          claims: [{ key: "new-turn", result: { result: { text: "saved" } } }],
+          alarm: before.deadlines.idleExpiryAt,
+        });
+        const replay = await post(room, "/bridge", turn);
+        expect(await replay.json()).toEqual({
+          jsonrpc: "2.0",
+          id: "new-turn",
+          result: { text: "saved" },
+        });
+        const replayed = await (
+          await post(room, "/__test/mirror-idle", {})
+        ).json();
+        expect(replayed).toEqual(after);
+        expect(attempts).toBe(2);
+      } finally {
+        release.resolve();
+      }
+    }, 30_000);
+  }
+
+  test("idle expiry retains a failed mirror and retires only after an acknowledged retry", async () => {
+    const agentId = "mirror-idle-fixture-retry";
+    const room = `${agentId}:${agentId}`;
+    const history = [
+      {
+        id: "prior",
+        role: "assistant",
+        content: "retain the complete message",
+        createdAt: Date.now(),
+      },
+    ];
+    const conversation = {
+      agentId,
+      channelId: agentId,
+      version: 1,
+      dirty: true,
+      history,
+    };
+    const ended = Promise.withResolvers<void>();
+    const retryEnded = Promise.withResolvers<void>();
+    let attempts = 0;
+    mirrorAlarms.set(room, ended.resolve);
+    mirrorOutcomes.set(agentId, async (request) => {
+      const mirrored = (await request.json()) as {
+        channelId: string;
+        history: typeof history;
+      };
+      expect(mirrored).toEqual({ channelId: agentId, history });
+      attempts += 1;
+      return new Response(null, { status: attempts === 1 ? 503 : 204 });
+    });
+    const claim = await post(room, "/__test/claims", {
+      key: "prior-turn",
+      hash: "prior-hash",
+      seedResult: {
+        jsonrpc: "2.0",
+        id: "prior-turn",
+        result: { text: "saved" },
+      },
+    });
+    expect(await claim.json()).toMatchObject({ state: "replay" });
+
+    const due = Date.now() - 1;
+    const seeded = await post(room, "/__test/mirror-idle", {
+      conversation,
+      deadlines: { idleExpiryAt: due },
+      fire: true,
+    });
+    expect(await seeded.json()).toEqual({ armed: true });
+    await ended.promise;
+    const retained = (await (
+      await post(room, "/__test/mirror-idle", {})
+    ).json()) as {
+      conversation: typeof conversation;
+      claims: Array<{ key: string; result: { result: { text: string } } }>;
+      deadlines: { idleExpiryAt: number; mirrorRetryAt: number };
+      alarm: number;
+    };
+    expect(retained).toMatchObject({
+      conversation,
+      claims: [{ key: "prior-turn", result: { result: { text: "saved" } } }],
+    });
+    expect(retained.deadlines.idleExpiryAt).toBeGreaterThan(Date.now());
+    expect(retained.deadlines.mirrorRetryAt).toBeGreaterThan(Date.now());
+    expect(retained.alarm).toBe(
+      Math.min(
+        retained.deadlines.idleExpiryAt,
+        retained.deadlines.mirrorRetryAt,
+      ),
+    );
+    expect(attempts).toBe(1);
+
+    // Advance only the persisted deadlines so Workerd invokes the real alarm
+    // again without waiting for the production retry delay.
+    mirrorAlarms.set(room, retryEnded.resolve);
+    const retry = await post(room, "/__test/mirror-idle", {
+      deadlines: { idleExpiryAt: due, mirrorRetryAt: due },
+      fire: true,
+    });
+    expect(await retry.json()).toEqual({ armed: true });
+    await retryEnded.promise;
+    const retired = await (await post(room, "/__test/mirror-idle", {})).json();
+    expect(retired).toEqual({ alarm: null });
+    expect(attempts).toBe(2);
+  }, 30_000);
 
   test("a committed seal rejects a reminder before history mutation or inference", async () => {
     const personalAgent = {
@@ -1082,11 +1349,26 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       execution_tier: "shared",
     };
     const room = "room-barge-eviction-miniflare";
+    const priorMessage = {
+      id: "workerd-prior-history",
+      role: "user",
+      content: "  older retained text  ",
+      createdAt: 1787184000000,
+    };
+    const expectedHistory = [
+      priorMessage,
+      { id: "workerd-interrupted-user", content: "interrupted request" },
+      {
+        id: "workerd-interrupted-assistant",
+        content: "partial answer",
+        interrupted: true,
+      },
+    ];
     const seeded = await post(room, "/__test/seed", {
       conversation: {
         agentId: agent.id,
         channelId: room,
-        history: [],
+        history: [priorMessage],
         dirty: false,
         version: 1,
       },
@@ -1115,13 +1397,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       }),
     );
     const admittedBody = (await admitted.json()) as {
-      history: Array<{ id?: string }>;
+      history: unknown[];
     };
     expect(admitted.status).toBe(200);
-    expect(admittedBody.history.map((message) => message.id)).toEqual([
-      "workerd-interrupted-user",
-      "workerd-interrupted-assistant",
-    ]);
+    expect(admittedBody.history).toHaveLength(expectedHistory.length);
+    expect(admittedBody.history).toMatchObject(expectedHistory);
 
     await within(
       "Durable Object eviction",
@@ -1136,12 +1416,11 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       roomId: room,
     });
     const recoveredBody = (await recovered.json()) as {
-      history: Array<{ id?: string; interrupted?: boolean }>;
+      history: unknown[];
     };
-    expect(recoveredBody.history).toMatchObject([
-      { id: "workerd-interrupted-user" },
-      { id: "workerd-interrupted-assistant", interrupted: true },
-    ]);
+    expect(recovered.status).toBe(200);
+    expect(recoveredBody.history).toHaveLength(expectedHistory.length);
+    expect(recoveredBody.history).toMatchObject(expectedHistory);
     releaseFinalizationGate();
   }, 120_000);
 

@@ -8,8 +8,8 @@
   ],
   "conformance": "packages/agent/quint/check-connections.ts",
   "bounds": {
-    "domain": "One runtime and room, one proof identity with a shared observer, two queued raw mutations, and room and topology generations 0 through 2. One create response can overlap deletion, topology change, or runtime replacement.",
-    "scope": "Finite queue safety, conditional drain of a quarantined queue, and create-response safety. Real HTTP and file-backed SQLite scenario conformance."
+    "domain": "One runtime and room lifecycle, two proof identities and a shared observer, two queued raw mutations, and room and topology generations 0 through 2. One create response can overlap deletion, topology change, or runtime replacement.",
+    "scope": "Finite queue safety, conditional drain of a quarantined queue, and create-response safety. Real HTTP and file-backed SQLite scenarios check rename, deletion, production observer deadlines, shared in-flight work, reconciliation after prior success, queued cancellation, quarantine and recovery. Two HTTP creations exercise separate room IDs under the shared runtime queue. Their independent room lifecycles are outside the projection."
   },
   "cases": [
     {

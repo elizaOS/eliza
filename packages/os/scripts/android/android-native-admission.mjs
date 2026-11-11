@@ -68,18 +68,13 @@ export function stageAndroidNative({
   if (launcher) {
     if (launcher.moduleName !== moduleName)
       throw new Error("Native module differs from the admitted launcher");
-    const full = renderOverlay(launcher).blueprint;
-    const main = renderOverlay({
-      ...launcher,
-      defaultPermissions: undefined,
-      companions: undefined,
-    }).blueprint;
-    if (!full.startsWith(main))
-      throw new Error("Cannot separate the admitted launcher module");
+    const overlay = renderOverlay(launcher);
     admission = {
       ...admission,
-      launcherBlueprint: full,
-      remainingBlueprint: full.slice(main.length),
+      launcherBlueprint: overlay.blueprint,
+      remainingBlueprint: overlay.blueprint.slice(overlay.launcher.length),
+      // Reviewed privileged permissions place the launcher and its JNI in priv-app.
+      ...(launcher.privilegedPermissions ? { launcherPrivileged: true } : {}),
     };
   }
   const temporary = fs.mkdtempSync(

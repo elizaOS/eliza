@@ -240,12 +240,15 @@ public abstract class TelecomCallService extends InCallService {
         @Override
         public void onStateChanged(Call call, int state) {
             super.onStateChanged(call, state);
+            // Android can already have posted this callback when unregister runs.
+            if (callbacks.get(call) != this || ACTIVE_CALLS.get(callId) != call) return;
             openCallSurface("state-changed", callId, call);
         }
 
         @Override
         public void onDetailsChanged(Call call, Call.Details details) {
             super.onDetailsChanged(call, details);
+            if (callbacks.get(call) != this || ACTIVE_CALLS.get(callId) != call) return;
             openCallSurface("details-changed", callId, call);
         }
     }

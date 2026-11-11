@@ -109,6 +109,14 @@ describe("attachments", () => {
       () => expect.unreachable(),
       (error) => expect(attachmentRefused(error)).toBe(true),
     );
+    // Base64 without its padding is an encoding fault, not a size fault.
+    await expect(
+      reviewOpaqueAttachment({
+        name: "data.bin",
+        mimeType: "text/plain",
+        dataBase64: "YWI",
+      }),
+    ).rejects.toThrow("Invalid attachment name or encoding");
   });
 });
 

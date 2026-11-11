@@ -21,7 +21,7 @@ const suites = new Map([
     "speech_host_cutover.qnt",
     new Map([
       ["packages/cloud/scripts/speech-host-cutover-admission.test.ts", 37],
-      ["packages/cloud/api/__tests__/speech-relay-worker.test.ts", 17],
+      ["packages/cloud/api/__tests__/speech-relay-worker.test.ts", 28],
       ["packages/cloud/api/__tests__/speech-worker-contract.test.ts", 22],
     ]),
   ],

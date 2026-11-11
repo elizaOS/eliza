@@ -519,8 +519,11 @@ export async function createCloudSpeechRelayPorts(
         ? body.consentNonce
         : undefined;
     let finishAdmission: (() => void) | undefined;
-    const deadline = started + 10000;
-    const requestDeadline = AbortSignal.timeout(10000);
+    // Consent has no provider allocation and may need a cold authorization
+    // and storage round trip. Stop still cancels it through startupSignal.
+    const requestTimeoutMs = mintRequest ? 10_000 : 30_000;
+    const deadline = started + requestTimeoutMs;
+    const requestDeadline = AbortSignal.timeout(requestTimeoutMs);
     const startupSignal = AbortSignal.any([signal, requestDeadline]);
     const requestSignal = mintRequest ? requestDeadline : startupSignal;
     const encoded = JSON.stringify(body);

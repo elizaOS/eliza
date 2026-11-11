@@ -18,6 +18,8 @@ const sources = [
   "packages/cloud/api/v1/responses/compatibility.ts",
   "packages/cloud/api/v1/responses/route.ts",
   "packages/cloud/api/v1/chat/completions/route.ts",
+  "packages/cloud/api/v1/chat/completions/provider-boundary.ts",
+  "packages/cloud/shared/src/lib/services/native-application-inference.ts",
   "packages/cloud/api/v1/responses/route.test.ts",
   "packages/cloud/api/v1/responses/arguments.test.ts",
   "packages/cloud/api/v1/responses/provider-contract.test.ts",
@@ -28,7 +30,7 @@ const sources = [
 const tests = [
   { file: "v1/responses/route.test.ts", count: 48 },
   { file: "v1/responses/arguments.test.ts", count: 14 },
-  { file: "v1/responses/provider-contract.test.ts", count: 8 },
+  { file: "v1/responses/provider-contract.test.ts", count: 10 },
 ];
 const results = tests.map(({ file, count }, index) => {
   const junit = path.join(directory, `tests-${index}.xml`);

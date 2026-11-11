@@ -29,6 +29,12 @@ public final class LiveVoiceCapture {
   /** frames: [{pcm16 (base64 LE s16), sampleRate, channels, samples, timestamp}], vad: [{type,timestampMs}], peak in [0,1]. */
   void frames(String captureId,JSONArray frames,JSONArray vad,float peak);
   void ended(String captureId,String error);
+  /**
+   * Speech has been sustained for the capture's barge-in run ({@link LiveCaptureOptions#bargeInWindows});
+   * {@code atMs} is that window's wall-clock time. False (nothing to interrupt yet) asks again on the
+   * next window of the same run; true ends the reports for this run.
+   */
+  default boolean bargeIn(String captureId,long atMs){return true;}
  }
  /** One VAD detector for one capture; see {@link InferenceSession.Vad}. */
  public interface Detector {
@@ -111,6 +117,7 @@ public final class LiveVoiceCapture {
  private final String pipeline;
  private final SourceFactory sources;
  private final DetectorFactory detectors;
+ private final LiveCaptureOptions options;
  private volatile boolean running;
  private volatile boolean echoCancelled;
  private volatile long bufferMs;
@@ -120,11 +127,15 @@ public final class LiveVoiceCapture {
  private volatile long startedAt;
 
  /** The conversation (echoCancel) or dictation microphone capture with VAD from {@code inference}. */
- public LiveVoiceCapture(Context context,InferenceSession inference,String captureId,Sink sink,boolean echoCancel){this(context,captureId,sink,echoCancel?CONVERSATION:DICTATION,()->new MicrophoneSource(context,echoCancel),detectors(inference));}
+ public LiveVoiceCapture(Context context,InferenceSession inference,String captureId,Sink sink,boolean echoCancel){this(context,inference,captureId,sink,LiveCaptureOptions.of(echoCancel));}
+ /** As above, with the gate timing and barge-in reports of {@code options}. */
+ public LiveVoiceCapture(Context context,InferenceSession inference,String captureId,Sink sink,LiveCaptureOptions options){this(context,captureId,sink,options.echoCancel?CONVERSATION:DICTATION,()->new MicrophoneSource(context,options.echoCancel),detectors(inference),options);}
  /** {@code pipeline} labels the latency trials this capture opens ({@link #CONVERSATION} for a conversation). */
- public LiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline,SourceFactory sources,DetectorFactory detectors){
-  if(captureId==null||sink==null||pipeline==null||sources==null||detectors==null)throw new IllegalArgumentException("Incomplete live capture");
-  this.captureId=captureId;this.sink=sink;this.pipeline=pipeline;this.sources=sources;this.detectors=detectors;
+ public LiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline,SourceFactory sources,DetectorFactory detectors){this(context,captureId,sink,pipeline,sources,detectors,LiveCaptureOptions.of(false));}
+ /** {@code options}: only its gate timing and barge-in reports apply here; {@code sources} already chose the microphone path. */
+ public LiveVoiceCapture(Context context,String captureId,Sink sink,String pipeline,SourceFactory sources,DetectorFactory detectors,LiveCaptureOptions options){
+  if(captureId==null||sink==null||pipeline==null||sources==null||detectors==null||options==null)throw new IllegalArgumentException("Incomplete live capture");
+  this.captureId=captureId;this.sink=sink;this.pipeline=pipeline;this.sources=sources;this.detectors=detectors;this.options=options;
   if(context!=null)VoiceLatencyProbe.prepareIdentity(context.getApplicationContext());
  }
  public String captureId(){return captureId;}
@@ -172,15 +183,29 @@ public final class LiveVoiceCapture {
 
  /** Stops capture; returns the capture duration. The host closes an open segment itself. */
  public long stop(){
+  return stop(false);
+ }
+ /** Waits off the UI thread until the original source and detector actually release.
+  * A new microphone owner must not use the bounded stop as a release receipt. */
+ public long stopAndWait(){return stop(true);}
+ private long stop(boolean awaitRelease){
   Thread active;synchronized(this){running=false;active=thread;}
   resource.requestStop(); // AudioRecord.stop unblocks a read before waiting for its worker.
-  if(active!=null&&active!=Thread.currentThread()){try{active.join(1500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}}
+  if(active!=null&&active!=Thread.currentThread()){
+   if(awaitRelease){
+    boolean interrupted=false;
+    for(;;)try{active.join();break;}catch(InterruptedException cancelled){interrupted=true;}
+    if(interrupted)Thread.currentThread().interrupt();
+   }else try{active.join(1500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}
+  }
+  if(awaitRelease&&!resource.released())throw new IllegalStateException("Microphone release is unconfirmed");
   long began=startedAt;return began==0?0:Math.max(0,System.currentTimeMillis()-began);
  }
 
  private void loop(Source recorder,Detector vad){
   String error=null;
-  LiveVadGate gate=new LiveVadGate();
+  LiveVadGate gate=new LiveVadGate(options.startWindows,options.endWindows);
+  boolean bargeReported=false;
   ArrayDeque<JSONObject> preroll=new ArrayDeque<>();
   JSONArray frames=new JSONArray(),edges=new JSONArray();
   short[] window=new short[LiveVadGate.WINDOW];
@@ -211,7 +236,7 @@ public final class LiveVoiceCapture {
     if((gate.speaking()||edge==LiveVadGate.Edge.SPEECH_START)&&speech>=LiveVadGate.END){lastSpeechNs=windowEndNs;lastSpeechClock=windowClock;}
     if(edge==LiveVadGate.Edge.SPEECH_END&&!DICTATION.equals(pipeline)){VoiceLatencyProbe.TRIALS.speechEnded(lastSpeechNs,System.nanoTime(),lastSpeechClock,pipeline);lastSpeechNs=VoiceLatencyTrials.UNSET;}
     if(edge==LiveVadGate.Edge.SPEECH_START){
-     edges.put(new JSONObject().put("type","speech-start").put("timestampMs",at-(long)(LiveVadGate.START_WINDOWS-1)*32));
+     edges.put(new JSONObject().put("type","speech-start").put("timestampMs",at-(long)(options.startWindows-1)*LiveVadGate.WINDOW_MS));
      while(!preroll.isEmpty())frames.put(preroll.removeFirst());
      frames.put(frame);
     }else if(gate.speaking()){frames.put(frame);}
@@ -220,6 +245,11 @@ public final class LiveVoiceCapture {
     if(++windows>=EMIT_WINDOWS||edges.length()>0){
      sink.frames(captureId,frames,edges,Math.min(1f,peak));
      frames=new JSONArray();edges=new JSONArray();windows=0;peak=0f;
+    }
+    // After the frames, so a barge-in report never precedes the speech-start edge of its segment.
+    if(options.bargeIn){
+     int run=gate.speechRun();
+     if(run==0)bargeReported=false;else if(!bargeReported&&run>=options.bargeInWindows)bargeReported=sink.bargeIn(captureId,at);
     }
    }
    // Frames of an open segment read before the stop still belong to the utterance.

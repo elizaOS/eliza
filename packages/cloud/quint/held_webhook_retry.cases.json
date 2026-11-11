@@ -1,0 +1,107 @@
+{
+  "sources": [
+    "packages/cloud/services/gateway-webhook/src/cutover-hold.ts",
+    "packages/cloud/services/gateway-webhook/src/cloudflare-ingress.ts",
+    "packages/cloud/services/_common/src/webhook-ingress.ts",
+    "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.ts",
+    "packages/cloud/services/gateway-container/cloudflare/webhook-ingress.fixture.ts",
+    "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/cloud/services/gateway-webhook/src/index.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": {
+    "domain": "One held payload and a serial drainer. One attempt may return held once. The first callback can take three logical clock steps. A retry stores a two-step delay from the held reply observation. The next callback can finish delivery. One quiesced storage restart can occur between those attempts.",
+    "implementation": "Real Workerd SQLite, the production gateway drainer and selected ingress adapter. A controlled held callback takes longer than the retry delay. The case checks no eligible score or callback at the reply time, then restarts Workerd and checks the payload and eligible retry. A supplied follow-up poll time crosses the saved deadline without waiting for a production timer.",
+    "limitations": [
+      "A live lease covers each admitted callback and the associated retry or cleanup. The owned store mutation and acknowledgement are one transition. Lease expiry, lost replies, independent replica snapshots and actual provider acceptance are outside the projection.",
+      "The model assumes an uninterrupted clock during a callback and abstracts the backoff calculation to two steps. Hold-age expiry, repeated re-holds, separate terminal failures, ordering among multiple jobs, and import are outside the finite proof. The maintained Workerd suite includes lease renewal, stale cleanup and import regressions."
+    ],
+    "replicaWindow": [
+      "Two replica polls, one target hold, one optional earlier member and one re-hold. Each poll retains its captured cutoff. The bounded current due window uses one slot in the projection.",
+      "The initial scan proposes a member. After claiming its lease, a replica re-reads the bounded due window and admits only the original member. A stale or displaced target releases the lease. A later poll can claim a newly due target.",
+      "The Workerd check holds the initial real due receipt while a second drainer re-holds the same member and a different member becomes due. It checks that the stale poll changes neither payload nor attempts and releases its lease. A fresh poll then delivers both events.",
+      "The replica projection assumes leases remain live from claim through the callback and owned settlement. External producer updates that bypass the lease, transport-reply loss, hold-age expiry, repeated re-holds, and starvation from an unbounded earlier backlog remain outside the model. The existing due operation is wire-compatible with older Workers."
+    ]
+  },
+  "cases": [
+    {
+      "name": "durable-retry-after-held-reply",
+      "main": "HeldWebhookRetry",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "RetriedDelayFollowsReply",
+        "PendingRetainsPayload",
+        "DeliveredRetiresHold"
+      ],
+      "temporal": ["NoEarlyAdmission", "FairDelivery", "DeliveryEventually"],
+      "temporalChecks": [
+        {
+          "property": "NoEarlyAdmission",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The serial drainer reads the current durable due index. Independent stale due snapshots are outside the bound."
+          ]
+        },
+        {
+          "property": "FairDelivery",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of clock advance, due poll admission, callback settlement and resumption after one quiesced restart. At most one callback may return held. If it does, the next callback reports delivery."
+          ]
+        },
+        {
+          "property": "DeliveryEventually",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A poll, callback or restart can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    },
+    {
+      "name": "replica-revalidates-current-due-member",
+      "main": "HeldWebhookReplica",
+      "init": "init",
+      "step": "step",
+      "invariants": ["SingleLease", "CallbackNeedsDueMember"],
+      "temporal": [
+        "FreshWindowAtAdmission",
+        "FairReplicaDelivery",
+        "TargetEventuallySettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "FreshWindowAtAdmission",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The bounded re-read observes the current index while the target lease is live. One earlier member can displace the target."
+          ]
+        },
+        {
+          "property": "FairReplicaDelivery",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of clock advancement, retirement of the one earlier member, and both replicas' polls, claims, checks and callback outcomes. The bounded second callback reports delivery."
+          ]
+        },
+        {
+          "property": "TargetEventuallySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The eligible poll, lease holder or an earlier member can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000
+    }
+  ]
+}

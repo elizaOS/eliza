@@ -726,21 +726,31 @@ export class SharedRuntimeConversation {
       const next = deleted
         ? { ownerCaptureCleanupAt: proposed.ownerCaptureCleanupAt }
         : proposed;
-      const times = [
-        next.mirrorRetryAt,
-        next.idleExpiryAt,
-        next.ownerCaptureCleanupAt,
-        next.networkDeliveryRetryAt,
-        next.networkDeliveryAckRetryAt,
-      ].filter((time): time is number => typeof time === "number");
-      if (times.length === 0) {
-        await this.state.storage.delete(ALARM_DEADLINES_KEY);
-        await this.state.storage.deleteAlarm();
-        return;
-      }
-      await this.state.storage.put(ALARM_DEADLINES_KEY, next);
-      await this.state.storage.setAlarm(Math.min(...times));
+      await this.writeAlarmDeadlines(this.state.storage, next);
     });
+  }
+
+  private async writeAlarmDeadlines(
+    storage: Pick<
+      DurableObjectTransaction,
+      "delete" | "deleteAlarm" | "put" | "setAlarm"
+    >,
+    deadlines: StoredAlarmDeadlines,
+  ): Promise<void> {
+    const times = [
+      deadlines.mirrorRetryAt,
+      deadlines.idleExpiryAt,
+      deadlines.ownerCaptureCleanupAt,
+      deadlines.networkDeliveryRetryAt,
+      deadlines.networkDeliveryAckRetryAt,
+    ].filter((time): time is number => typeof time === "number");
+    if (times.length === 0) {
+      await storage.delete(ALARM_DEADLINES_KEY);
+      await storage.deleteAlarm();
+      return;
+    }
+    await storage.put(ALARM_DEADLINES_KEY, deadlines);
+    await storage.setAlarm(Math.min(...times));
   }
 
   private async runAlarmMutation(
@@ -3402,32 +3412,53 @@ export class SharedRuntimeConversation {
    * cold-migration path, so expiry is loss-free. A still-dirty snapshot is
    * hard-retained: the mirror is retried and expiry re-armed instead.
    */
-  private async expireIdleConversation(): Promise<void> {
-    await this.updateAlarmDeadlines(({ idleExpiryAt: _due, ...rest }) => rest);
-    const snapshot =
-      this.conversation ??
-      (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
-    if (!snapshot) return;
-    if (snapshot.agentId.startsWith("personal:")) return;
-    if (snapshot.dirty) {
+  private async expireIdleConversation(dueAt: number): Promise<void> {
+    const storage = this.state.storage;
+    const deadlines =
+      await storage.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
+    if (deadlines?.idleExpiryAt !== dueAt) return;
+
+    const snapshot = await storage.get<StoredConversation>(CONVERSATION_KEY);
+    if (snapshot?.dirty && !snapshot.agentId.startsWith("personal:")) {
       await this.scheduleMirror(snapshot);
-      const settled =
-        this.conversation ??
-        (await this.state.storage.get<StoredConversation>(CONVERSATION_KEY));
-      if (!settled || settled.dirty) {
-        await this.updateAlarmDeadlines((deadlines) => ({
-          ...deadlines,
-          idleExpiryAt: Date.now() + RETRY_DELAY_MS,
-        }));
-        return;
-      }
     }
-    await this.state.storage.delete(CONVERSATION_KEY);
-    // The turn-claim replay window is only meaningful for in-flight client
-    // retries; after a full idle period it is dead weight, and the billing
-    // admission gate still dedupes by deterministic identity.
-    await this.state.storage.delete(TURN_CLAIMS_KEY);
-    this.conversation = undefined;
+
+    await this.runAlarmMutation(async () => {
+      const retired = await storage.transaction(async (txn) => {
+        const currentDeadlines =
+          await txn.get<StoredAlarmDeadlines>(ALARM_DEADLINES_KEY);
+        if (currentDeadlines?.idleExpiryAt !== dueAt) return;
+
+        const current = await txn.get<StoredConversation>(CONVERSATION_KEY);
+        const { idleExpiryAt: _due, ...rest } = currentDeadlines;
+        if (!current || current.agentId.startsWith("personal:")) {
+          await this.writeAlarmDeadlines(txn, rest);
+          return;
+        }
+        // A save can commit while the mirror is pending, before its alarm
+        // refresh reaches this queue. Give that snapshot a full idle period.
+        const replaced =
+          current.agentId !== snapshot?.agentId ||
+          current.channelId !== snapshot?.channelId ||
+          current.version !== snapshot?.version;
+        if (replaced || current.dirty) {
+          await this.writeAlarmDeadlines(txn, {
+            ...rest,
+            idleExpiryAt:
+              Date.now() + (replaced ? IDLE_EXPIRY_MS : RETRY_DELAY_MS),
+          });
+          return;
+        }
+        // Only the matching, mirror-confirmed snapshot can retire its replay
+        // claims. The deadline, rows and alarm settle in one local transaction.
+        await txn.delete([CONVERSATION_KEY, TURN_CLAIMS_KEY]);
+        await this.writeAlarmDeadlines(txn, rest);
+        return current;
+      });
+      if (retired && this.conversation?.version === retired.version) {
+        this.conversation = undefined;
+      }
+    });
   }
 
   async alarm(): Promise<void> {
@@ -3562,7 +3593,7 @@ export class SharedRuntimeConversation {
       typeof deadlines.idleExpiryAt === "number" &&
       deadlines.idleExpiryAt <= now
     ) {
-      await this.expireIdleConversation();
+      await this.expireIdleConversation(deadlines.idleExpiryAt);
     } else {
       // A retried or early wake-up must not orphan future deadlines: re-arm
       // the alarm to the earliest one that remains.

@@ -29,6 +29,7 @@ function fixture(
   const toasts: string[] = [];
   const prepared: Array<{ proposal: Bag; source?: Bag }> = [];
   let sessionId = "session-1";
+  let onPublish = () => {};
   const store = {
     async read<T>(slot: string) {
       const raw = slots.get(slot);
@@ -73,7 +74,7 @@ function fixture(
     retire() {},
   });
   const controller = createMailDraftsController({
-    publish() {},
+    publish: () => onPublish(),
     toast: (text) => toasts.push(text),
     provider: {
       prepare: async (proposal, source) => {
@@ -107,9 +108,13 @@ function fixture(
   return {
     controller,
     slots,
+    store,
     retainedCopies,
     toasts,
     prepared,
+    onPublish(next: () => void) {
+      onPublish = next;
+    },
     switchSession(next: string) {
       sessionId = next;
     },
@@ -363,9 +368,11 @@ describe("createMailDraftsController", () => {
     const reference = { draftId: "g1", providerDigest: "d1" };
     expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
     expect((f.controller.proposal() as Bag).subject).toBe("From Gmail");
-    expect(shelfItems(f).map((row) => row.draft.subject)).toEqual([
-      "Local only",
-    ]);
+    expect(shelfItems(f)).toHaveLength(1);
+    expect(shelfItems(f)[0]?.draft).toMatchObject({
+      subject: "Local only",
+      body: "Local text",
+    });
 
     // Newer local text saved for the same Gmail draft is what reopens.
     type(f.controller, "onBody", "Newer local text");
@@ -384,6 +391,76 @@ describe("createMailDraftsController", () => {
       ),
     ).toBe(true);
     expect(shelfItems(f)).toHaveLength(1);
+    expect(f.prepared).toHaveLength(0);
+  });
+
+  it("preserves the prior draft when the account changes during provider draft shelving", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "first@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onBody", "Keep this account's text");
+    await save(f.controller);
+    f.controller.reset();
+    await f.controller.bind("grant-a", "first@example.invalid");
+
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const compareExchange = f.store.compareExchange;
+    f.store.compareExchange = async (key, expected, value) => {
+      if (key.includes(":shelf:")) {
+        entered.resolve();
+        await release.promise;
+      }
+      return compareExchange(key, expected, value);
+    };
+
+    const opened = f.controller.editProvider(gmailDraft, {
+      draftId: "g1",
+      providerDigest: "d1",
+    });
+    await entered.promise;
+    f.switchSession("session-2");
+    await f.controller.bind("grant-b", "second@example.invalid");
+    release.resolve();
+    expect(await opened).toBe(false);
+    expect(f.controller.proposal()).toBeNull();
+    expect(
+      [...f.slots.values()].some((value) =>
+        value.includes("Keep this account's text"),
+      ),
+    ).toBe(true);
+    expect(f.prepared).toHaveLength(0);
+  });
+
+  it("keeps a newer composer opened by the shelf publication", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    await f.controller.newEmail();
+    type(f.controller, "onBody", "Preserve the saved draft");
+    await save(f.controller);
+    f.controller.reset();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+
+    f.onPublish(() => {
+      if (!f.controller.ready || !shelfItems(f).length) return;
+      f.onPublish(() => {});
+      expect(
+        f.controller.begin(undefined, undefined, "", {
+          to: [],
+          subject: "New composer",
+          body: "Keep the newer edit",
+        }),
+      ).toBe(true);
+    });
+    expect(
+      await f.controller.editProvider(gmailDraft, {
+        draftId: "g1",
+        providerDigest: "d1",
+      }),
+    ).toBe(false);
+    expect(f.controller.proposal()?.bodyText).toBe("Keep the newer edit");
+    expect(shelfItems(f)[0]?.draft.body).toBe("Preserve the saved draft");
+    expect(f.prepared).toHaveLength(0);
   });
 
   it("warns when the saved copy of a Gmail draft is an earlier version of a sent email", async () => {
@@ -450,6 +527,10 @@ describe("createMailDraftsController", () => {
       "a@b.c",
       "d@e.f",
     ]);
+    // A save that an invalid Cc address stops names Cc and Bcc as the cause.
+    type(f.controller, "onCc", "a@b.c, friend");
+    await save(f.controller);
+    expect(f.toasts.at(-1)).toMatch(/^Cc or Bcc contains an invalid address/);
   });
 
   it("reopens a shelved earlier version of a sent email with a valid recovery copy", async () => {

@@ -229,20 +229,17 @@ async function recoverProvisionHandoff(
   executionAuthority: JobExecutionAuthority,
   cause?: unknown,
 ): Promise<void> {
-  const containerId = app.created_by_user_id
-    ? await jobsRepository.findAppDeployProvisionHandoff(
-        app.id,
-        app.organization_id,
-        app.created_by_user_id,
-        generation,
-      )
-    : undefined;
-  if (!containerId) {
+  const handoff = await jobsRepository.findAppDeployProvisionHandoff(
+    app.id,
+    app.organization_id,
+    generation,
+  );
+  if (!handoff) {
     if (app.deployment_status === "deployed") return;
     // The original process may still produce a durable child after lease loss.
     throw new AppDeployHandoffUnconfirmedError(generation, cause);
   }
-  await linkProvisionedContainer(app.id, generation, containerId, executionAuthority);
+  await linkProvisionedContainer(app.id, generation, handoff.containerId, executionAuthority);
 }
 
 export class DefaultAppDeployRunner implements AppDeployRunner {
