@@ -119,7 +119,7 @@ by itself; the page executor still checks document, snapshot and target policy.
 Run `bun run --cwd packages/os test:browser` for protocol tests. CI runs this
 lane in the OS verification job (`.github/workflows/os.yml`: `verify:portable`
 runs `test`, which ends with `test:browser`) whenever a change touches
-`packages/os`. That job runs for develop pushes (`develop-full.yml` calls
+`packages/os`. That job runs for staging and main pushes (`develop-full.yml` calls
 `ci.yml`), not in pull request validation. The Chromium scripts
 (`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance`, `scripts/test-protected-fill.mjs` and
 `scripts/test-page-guard.mjs`) need a browser and are run by hand.
