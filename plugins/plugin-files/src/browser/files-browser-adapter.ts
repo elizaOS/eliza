@@ -686,9 +686,16 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     total = outcomes.length,
   ) => {
     const ok = outcomes.filter((o) => o.status === done).length,
-      renamed = outcomes.filter(
-        (o) => o.status === done && o.to && baseName(o.to) !== baseName(o.path),
-      ).length;
+      // Restore paths are opaque Trash IDs, not the file's former name.
+      renamed =
+        done === "moved" || done === "copied"
+          ? outcomes.filter(
+              (o) =>
+                o.status === done &&
+                o.to &&
+                baseName(o.to) !== baseName(o.path),
+            ).length
+          : 0;
     if (ok === total)
       toast(
         `${verb} ${countLabel(ok)}` + (renamed ? ` · ${renamed} renamed` : ""),

@@ -515,16 +515,17 @@ test("overlapping Undo operations keep the toolbar disabled until both settle", 
   assert.equal(view.render().toolbar.disabled, true);
   restore[0].resolve({
     status: "ready",
-    outcomes: [{ path: "trash-1", status: "restored" }],
+    outcomes: [{ path: "trash-1", status: "restored", to: "Download/a.txt" }],
   });
   await tick();
   assert.equal(view.render().toolbar.disabled, true);
   restore[1].resolve({
     status: "ready",
-    outcomes: [{ path: "trash-2", status: "restored" }],
+    outcomes: [{ path: "trash-2", status: "restored", to: "Download/a.txt" }],
   });
   await tick();
   assert.equal(view.render().toolbar.disabled, false);
+  assert.equal(view.toasts.at(-1), "Restored 1 item");
 });
 
 test("external opening refuses a malformed grant and releases a retired fallback grant", async (t) => {
