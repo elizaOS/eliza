@@ -9,7 +9,14 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { parse } from "yaml";
@@ -988,6 +995,135 @@ describe("exact-source main Full admission", () => {
     expect(worker.indexOf("production-effect-certification.ts")).toBeLessThan(
       worker.indexOf("bun run db:cloud:migrate"),
     );
+    const imageSteps = Object.values(parse(image).jobs).flatMap(
+      (job) => job.steps ?? [],
+    );
+    const prepare = imageSteps.find(
+      (step) => step.name === "Prepare CI dockerignore",
+    );
+    const restore = imageSteps.find(
+      (step) =>
+        step.name ===
+        "Restore source Docker ignore after local image verification",
+    );
+    const push = imageSteps.find(
+      (step) => step.name === "Push exact verified image",
+    );
+    expect(imageSteps.indexOf(restore)).toBe(imageSteps.indexOf(push) - 1);
+    expect(restore.run).toBe("git restore --source=HEAD -- .dockerignore");
+    const fixtureRoot = mkdtempSync(
+      resolve(tmpdir(), "image-source-admission-"),
+    );
+    try {
+      // Real workflow/action closure, graph, policies and Git inventory; no Docker or provider effects.
+      cpSync(
+        resolve(repoRoot, ".github/workflows"),
+        resolve(fixtureRoot, ".github/workflows"),
+        { recursive: true },
+      );
+      cpSync(
+        resolve(repoRoot, ".github/actions"),
+        resolve(fixtureRoot, ".github/actions"),
+        { recursive: true },
+      );
+      cpSync(
+        resolve(repoRoot, ".github/develop-surface-graph.json"),
+        resolve(fixtureRoot, ".github/develop-surface-graph.json"),
+      );
+      mkdirSync(resolve(fixtureRoot, "packages/fixture"), { recursive: true });
+      mkdirSync(resolve(fixtureRoot, "packages/app/deploy"), {
+        recursive: true,
+      });
+      writeFileSync(
+        resolve(fixtureRoot, "package.json"),
+        JSON.stringify({
+          name: "admission-fixture",
+          workspaces: ["packages/*"],
+        }),
+      );
+      writeFileSync(
+        resolve(fixtureRoot, "packages/fixture/package.json"),
+        JSON.stringify({ name: "@fixture/source" }),
+      );
+      writeFileSync(
+        resolve(fixtureRoot, "packages/fixture/source.ts"),
+        "export const value = 1;\n",
+      );
+      cpSync(
+        resolve(repoRoot, ".dockerignore"),
+        resolve(fixtureRoot, ".dockerignore"),
+      );
+      cpSync(
+        resolve(repoRoot, "packages/app/deploy/.dockerignore.ci"),
+        resolve(fixtureRoot, "packages/app/deploy/.dockerignore.ci"),
+      );
+      const git = (...args) => {
+        const child = spawnSync("git", args, {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+        });
+        expect(child.status).toBe(0);
+        return child.stdout.trim();
+      };
+      git("init", "-q");
+      git("add", ".");
+      git(
+        "-c",
+        "user.name=Admission fixture",
+        "-c",
+        "user.email=ci@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "-qm",
+        "controlled source",
+      );
+      const head = git("rev-parse", "HEAD");
+      const clean = currentValidationManifest(fixtureRoot, head);
+      const rows = clean.surfaces.map((surface) =>
+        createEvidence(clean, surface.id, now, 168),
+      );
+      const run = (step) => {
+        const child = spawnSync("bash", ["-e", "-c", step.run], {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+        });
+        expect(child.status).toBe(0);
+      };
+      run(prepare);
+      const prepared = currentValidationManifest(fixtureRoot, head);
+      expect(
+        prepared.surfaces.every(
+          (surface, i) => surface.inputDigest !== clean.surfaces[i].inputDigest,
+        ),
+      ).toBe(true);
+      expect(() => verifyCompleteManifest(prepared, rows, now)).toThrow(
+        /input digest/,
+      );
+      run(restore);
+      const restored = currentValidationManifest(fixtureRoot, head);
+      expect(verifyCompleteManifest(restored, rows, now)).toEqual(
+        verifyCompleteManifest(clean, rows, now),
+      );
+      writeFileSync(
+        resolve(fixtureRoot, "packages/fixture/source.ts"),
+        "export const value = 2;\n",
+      );
+      expect(() =>
+        verifyCompleteManifest(
+          currentValidationManifest(fixtureRoot, head),
+          rows,
+          now,
+        ),
+      ).toThrow(/input digest/);
+      console.log(
+        "[image-preparation-fixture] actual CI copy refused; exact owned-file restore admitted; unrelated dirty source refused; effects=0",
+      );
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
     const release = parse(releaseWorkflow);
     for (const [job, labels] of Object.entries({
       "migrate-db": ["Run migrations"],
@@ -1019,27 +1155,34 @@ describe("exact-source main Full admission", () => {
             : job === "deploy-app"
               ? "packages/app"
               : ".";
-        const probe = spawnSync("bash", ["-c", prefix], {
-          cwd: resolve(repoRoot, nested),
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            MAIN_VALIDATION_ENVIRONMENT: "production",
-            TARGET_ENVIRONMENT: "production",
-            GITHUB_SHA: sourceSha,
-            GITHUB_REF_NAME: "feature",
-            GITHUB_TOKEN: "",
-          },
-        });
-        expect(probe.status).toBe(1);
-        expect(probe.stderr).toContain(
-          "Production certification requires a full main source SHA",
-        );
-        expect(probe.stderr).not.toContain("MODULE_NOT_FOUND");
+        for (const context of [
+          { name: "feature", ref: "refs/heads/feature" },
+          { name: "main", ref: "refs/tags/main" },
+        ]) {
+          const probe = spawnSync("bash", ["-c", prefix], {
+            timeout: 15_000,
+            cwd: resolve(repoRoot, nested),
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              MAIN_VALIDATION_ENVIRONMENT: "production",
+              TARGET_ENVIRONMENT: "production",
+              GITHUB_SHA: sourceSha,
+              GITHUB_REF_NAME: context.name,
+              GITHUB_REF: context.ref,
+              GITHUB_TOKEN: "",
+            },
+          });
+          expect(probe.status).toBe(1);
+          expect(probe.stderr).toContain(
+            "Production certification requires a full main source SHA",
+          );
+          expect(probe.stderr).not.toContain("MODULE_NOT_FOUND");
+        }
 
         expect(
           step.run.split("production-effect-certification.ts")[0],
         ).not.toContain('if [ "$FORCE"'); // existing force may be used later by freshness, proof itself is unconditional on it
       }
-  });
+  }, 90_000);
 });

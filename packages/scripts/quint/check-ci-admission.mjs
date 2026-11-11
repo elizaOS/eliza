@@ -166,7 +166,16 @@ assert(
     `quint-result=\${{ needs.quint-result.result }}:\${{ github.ref == 'refs/heads/main' }}`,
   ),
 );
+const full = parse(
+  await readFile(path.join(root, ".github/workflows/develop-full.yml"), "utf8"),
+);
+const fullPlan = full.jobs.plan;
+const dispatchGuard = fullPlan.steps.find(
+  (step) => step.name === "Validate promoted dispatch authority",
+);
 const eventMatrix = [];
+const dispatchResults = [];
+
 for (const event of [
   "pull_request",
   "merge_group",
@@ -176,6 +185,8 @@ for (const event of [
   for (const branch of ["develop", "staging", "main", "feature"]) {
     const github = {
       event_name: event,
+      sha: "a".repeat(40),
+      ref_name: branch,
       base_ref: event === "pull_request" ? branch : "",
       ref:
         event === "pull_request"
@@ -193,6 +204,9 @@ for (const event of [
       Boolean(
         runInNewContext(value.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
           github,
+          inputs: { source_sha: github.sha, effect_digest: "d".repeat(64) },
+          contains: (values, value) => values.includes(value),
+          fromJSON: JSON.parse,
           always: () => true,
           cancelled: () => false,
         }),
@@ -210,13 +224,95 @@ for (const event of [
       evaluate(canonical.jobs["quint-result"].if),
       canonicalExpected,
     );
+    const fullExpected =
+      ["push", "workflow_dispatch"].includes(event) &&
+      ["develop", "staging", "main"].includes(branch);
+    assert.equal(evaluate(fullPlan.if), fullExpected);
     eventMatrix.push({
       event,
       branch,
       prQuint: prExpected,
       canonicalQuint: canonicalExpected,
+      fullPlan: fullExpected,
     });
   }
+}
+for (const branch of ["develop", "staging", "main"])
+  for (const kind of ["heads", "tags"]) {
+    const github = {
+      event_name: "workflow_dispatch",
+      ref: `refs/${kind}/${branch}`,
+      ref_name: branch,
+      sha: "a".repeat(40),
+    };
+    const inputs = { source_sha: github.sha, effect_digest: "d".repeat(64) };
+    const selected = Boolean(
+      runInNewContext(fullPlan.if.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
+        github,
+        inputs,
+        contains: (a, v) => a.includes(v),
+        fromJSON: JSON.parse,
+      }),
+    );
+    assert.equal(selected, kind === "heads");
+    const checked = spawnSync("bash", ["-c", dispatchGuard.run], {
+      cwd: root,
+      env: {
+        ...process.env,
+        GITHUB_REF: github.ref,
+        GITHUB_REF_NAME: branch,
+        GITHUB_SHA: github.sha,
+        SOURCE_SHA: inputs.source_sha,
+        EFFECT_DIGEST: inputs.effect_digest,
+      },
+      encoding: "utf8",
+    });
+    assert.equal(checked.status, kind === "heads" ? 0 : 1);
+    dispatchResults.push({
+      ref: github.ref,
+      planSelected: selected,
+      shellExit: checked.status,
+    });
+  }
+for (const invalid of [
+  { source_sha: "b".repeat(40), effect_digest: "d".repeat(64) },
+  { source_sha: "a".repeat(40), effect_digest: "" },
+]) {
+  const github = {
+    event_name: "workflow_dispatch",
+    ref: "refs/heads/main",
+    ref_name: "main",
+    sha: "a".repeat(40),
+  };
+  const selected = Boolean(
+    runInNewContext(fullPlan.if.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
+      github,
+      inputs: invalid,
+      contains: (a, v) => a.includes(v),
+      fromJSON: JSON.parse,
+    }),
+  );
+  assert.equal(selected, false);
+  const checked = spawnSync("bash", ["-c", dispatchGuard.run], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GITHUB_REF: github.ref,
+      GITHUB_REF_NAME: "main",
+      GITHUB_SHA: github.sha,
+      SOURCE_SHA: invalid.source_sha,
+      EFFECT_DIGEST: invalid.effect_digest,
+    },
+    encoding: "utf8",
+  });
+  assert.equal(checked.status, 1);
+  dispatchResults.push({
+    ref: github.ref,
+    invalidSource: invalid.source_sha !== github.sha,
+    missingDigest: invalid.effect_digest === "",
+    planSelected: selected,
+    shellExit: checked.status,
+  });
 }
 const output = testOutputPath("quint-ci-admission");
 await mkdir(output, { recursive: true });
@@ -361,7 +457,11 @@ assert.match(
 );
 const selectorTests = spawnSync(
   process.execPath,
-  ["--test", "packages/scripts/ci-affected.integration.test.ts"],
+  [
+    "--test",
+    "--test-reporter=tap",
+    "packages/scripts/ci-affected.integration.test.ts",
+  ],
   {
     cwd: root,
     env: process.env,
@@ -436,7 +536,21 @@ for (const name of [
 const partitions = { tests: 7, passed: 7, failed: 0, skipped: 0, cancelled: 0 };
 await writeFile(
   path.join(directory, "results.json"),
-  `${JSON.stringify({ status: "passed", workflowPath, workflowSha256: createHash("sha256").update(source).digest("hex"), results, canonicalResults, eventMatrix, shardResults, partitions }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      status: "passed",
+      workflowPath,
+      workflowSha256: createHash("sha256").update(source).digest("hex"),
+      results,
+      canonicalResults,
+      eventMatrix,
+      dispatchResults,
+      shardResults,
+      partitions,
+    },
+    null,
+    2,
+  )}\n`,
 );
 console.log(
   `CI admission conformance passed 58 top-level and 18 shard shell outcomes plus canonical/event matrix, seven partition tests and 84 production/ledger tests. Results ${directory}`,

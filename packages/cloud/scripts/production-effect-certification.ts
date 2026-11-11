@@ -432,7 +432,8 @@ if (
   const sourceSha = process.argv[validationOnly ? 3 : 2];
   if (
     !/^[a-f0-9]{40}$/.test(sourceSha ?? "") ||
-    process.env.GITHUB_REF_NAME !== "main"
+    process.env.GITHUB_REF_NAME !== "main" ||
+    process.env.GITHUB_REF !== "refs/heads/main"
   )
     throw new Error("Production certification requires a full main source SHA");
   const repoRoot = process.cwd();
