@@ -67,7 +67,15 @@ export function calendarReadPromptProjection(
             year: "numeric",
             month: "long",
             day: "numeric",
-          }).format(new Date(record.startAt)),
+          }).format(
+            new Date(
+              // All-day values retain their civil date, matching the existing
+              // Calendar formatter, even when the source carries an offset.
+              record.isAllDay && /^\d{4}-\d{2}-\d{2}/.test(record.startAt)
+                ? `${record.startAt.slice(0, 10)}T00:00:00.000Z`
+                : record.startAt,
+            ),
+          ),
           displayTime: formatCalendarEventTimeRange(
             record as unknown as LifeOpsCalendarEvent,
             {

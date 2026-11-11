@@ -99,3 +99,37 @@ module SelectedCalendarSecondWindow {
     .then(queryReturns).then(changeSelection).then(finish)
     .expect(not(s.published) and s.output == 0)
 }
+
+// The complete selected event stays canonical; date labels are derived for the
+// current turn. All-day dates are civil values, not viewer-zone instants.
+module SelectedCalendarCivilDate {
+  type State = { minute: int, sourceOffset: int, viewerOffset: int,
+    allDay: bool, phase: int, canonicalToken: int, displayDay: int }
+  var s: State
+  action initialize(minute: int, source: int, viewer: int, allDay: bool): bool = s' = {
+    minute: minute, sourceOffset: source, viewerOffset: viewer,
+    allDay: allDay, phase: 0, canonicalToken: 17, displayDay: 0 }
+  action init = {
+    nondet minute = Set(0, 1439).oneOf()
+    nondet source = Set(-480, 0, 840).oneOf()
+    nondet viewer = Set(-480, 0, 840).oneOf()
+    nondet allDay = Bool.oneOf()
+    initialize(minute, source, viewer, allDay)
+  }
+  pure def day(minute: int): int = if (minute < 0) 2 else if (minute >= 1440) 4 else 3
+  val expectedDay = if (s.allDay) 3 else day(s.minute + s.viewerOffset)
+  val legacyAllDayUTC = day(-s.sourceOffset)
+  action project = all { s.phase == 0,
+    s' = s.with("phase", 1).with("displayDay", expectedDay) }
+  action done = all { s.phase == 1, s' = s }
+  action step = any { project, done }
+  val CanonicalEventRetained = s.canonicalToken == 17
+  val CivilAllDayIndependentOfOffsets = s.phase == 0 or not(s.allDay) or s.displayDay == 3
+  val TimedDateUsesCurrentTurnZone = s.phase == 0 or s.allDay or s.displayDay == day(s.minute + s.viewerOffset)
+  run offsetAllDayKeepsCivilWeekdayTest = initialize(0, 840, -480, true)
+    .expect(legacyAllDayUTC == 2).then(project).expect(s.displayDay == 3)
+  run timedMidnightUsesViewerPreviousDayTest = initialize(0, 0, -480, false)
+    .then(project).expect(s.displayDay == 2 and CanonicalEventRetained)
+  run timedLateEventUsesViewerNextDayTest = initialize(1439, 0, 840, false)
+    .then(project).expect(s.displayDay == 4 and CanonicalEventRetained)
+}

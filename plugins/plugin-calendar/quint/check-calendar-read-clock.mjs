@@ -80,6 +80,12 @@ requireVitestConformance(
   ),
   [
     "current selected canonical Calendar read reads a selected Google event through second-precision filters and emits its versioned receipt",
+    "current selected canonical Calendar read refuses a selection replaced while its authorized feed read is pending",
+    "current selected canonical Calendar read supplies the computed weekday for an all-day selected event",
+    "current selected canonical Calendar read keeps the whole timed selected event and computes its date in America/Los_Angeles",
+    "current selected canonical Calendar read keeps the whole timed selected event and computes its date in Pacific/Kiritimati",
+    "current selected canonical Calendar read keeps the whole timed selected event and computes its date in UTC",
+    "current selected canonical Calendar read preserves the all-day civil date when its canonical timestamp has an offset",
     "current selected canonical Calendar read refuses wrong-owner without returning record evidence",
     "current selected canonical Calendar read refuses wrong-view without returning record evidence",
     "current selected canonical Calendar read refuses sensitive without returning record evidence",
@@ -92,9 +98,8 @@ requireVitestConformance(
     "current selected canonical Calendar read refuses changed-event without returning record evidence",
     "current selected canonical Calendar read refuses duplicate-event without returning record evidence",
     "current selected canonical Calendar read binds only the host's current target and refuses a model-supplied target",
-    "current selected canonical Calendar read refuses a selection replaced while its authorized feed read is pending",
   ],
 );
 console.log(
-  `Fourteen exact selected Calendar cases passed without skips. Evidence ${directory}`,
+  `Nineteen exact selected Calendar cases passed without skips. Evidence ${directory}`,
 );

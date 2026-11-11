@@ -26,6 +26,7 @@ function fixture(provider: "eliza" | "google" = "eliza") {
     startAt: "2026-11-02T23:00:00Z",
     endAt: "2026-11-02T23:05:00Z",
     timezone: "America/Los_Angeles",
+    isAllDay: false,
     metadata: { etag: '"v1"' },
     status: "confirmed",
   };
@@ -126,6 +127,10 @@ describe("current selected canonical Calendar read", () => {
     );
     const result = await run(f);
     expect(result).toMatchObject({ data: { event: f.event } });
+    expect(result.promptData?.event).toMatchObject({
+      ...f.event,
+      displayDate: "Monday, November 2, 2026",
+    });
     expect(result).toMatchObject({
       success: true,
       data: {
@@ -190,6 +195,58 @@ describe("current selected canonical Calendar read", () => {
       endAt: f.event.endAt,
     });
     expect(result.promptData?.event).not.toHaveProperty("accountEmail");
+  });
+  it.each([
+    [
+      "America/Los_Angeles",
+      "2026-11-11T00:00:00Z",
+      "Tuesday, November 10, 2026",
+    ],
+    [
+      "Pacific/Kiritimati",
+      "2026-11-11T23:00:00Z",
+      "Thursday, November 12, 2026",
+    ],
+    ["UTC", "2026-11-11T00:00:00Z", "Wednesday, November 11, 2026"],
+  ])(
+    "keeps the whole timed selected event and computes its date in %s",
+    async (timeZone, startAt, displayDate) => {
+      const f = fixture("google");
+      Object.assign(f.context, { timeZone });
+      Object.assign(f.event, {
+        startAt,
+        endAt: new Date(Date.parse(startAt) + 60000).toISOString(),
+      });
+      const result = await run(f);
+      expect(result.data?.event).toEqual(f.event);
+      expect(result.promptData?.event).toMatchObject({
+        ...f.event,
+        displayDate,
+      });
+      expect(result.promptData?.event).toHaveProperty(
+        "description",
+        f.event.description,
+      );
+      expect(result.effectReceipts).toMatchObject([
+        { resource: { id: f.target.id, version: f.target.revision } },
+      ]);
+    },
+  );
+
+  it("preserves the all-day civil date when its canonical timestamp has an offset", async () => {
+    const f = fixture("google");
+    Object.assign(f.context, { timeZone: "America/Los_Angeles" });
+    Object.assign(f.event, {
+      startAt: "2026-11-11T00:00:00+14:00",
+      endAt: "2026-11-12T00:00:00+14:00",
+      isAllDay: true,
+    });
+    const result = await run(f);
+    expect(result.promptData?.event).toMatchObject({
+      ...f.event,
+      displayDate: "Wednesday, November 11, 2026",
+      displayTime: "all day",
+    });
   });
   it.each([
     "wrong-owner",
