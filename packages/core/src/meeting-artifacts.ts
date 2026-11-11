@@ -8,7 +8,7 @@
  * same artifact without importing runtime/native code.
  */
 
-import type { MeetingPlatform } from "./meetings.js";
+import { MEETING_PLATFORMS, type MeetingPlatform } from "./meetings.js";
 import type { TranscriptSegment } from "./transcripts.js";
 
 export const MEETING_ARTIFACT_SCHEMA_VERSION =
@@ -345,8 +345,12 @@ export function validateMeetingArtifact(
 			"meeting.captureMode",
 			errors,
 		);
-		if (!isNonEmptyString(meeting.platform))
-			errors.push("meeting.platform is required");
+		requireEnum(
+			meeting.platform,
+			[...MEETING_PLATFORMS, "local", "imported_corpus", "unknown"],
+			"meeting.platform",
+			errors,
+		);
 		const consent = meeting.consent;
 		if (!isRecord(consent)) {
 			errors.push("meeting.consent must be an object");
