@@ -103,6 +103,13 @@ export default defineConfig({
     conditions: ["eliza-source"],
     alias: [
       {
+        find: /^@elizaos\/plugin-assistant$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins/plugin-assistant/src/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/contracts\/client-turn-observation$/,
         replacement: path.join(
           elizaRoot,
