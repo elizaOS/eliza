@@ -436,5 +436,17 @@
         "concurrent deploy admission and a lost enqueue response leave one job for the winning generation"
       ]
     }
+  ],
+  "press_submission_authority.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/press-submission-authority.pglite.test.ts",
+      "required": [
+        "concurrent cancellation and submission leave one consistent durable outcome",
+        "a submission key cannot acknowledge a different release",
+        "concurrent exact submissions replay one durable receipt",
+        "a rejected release transition rolls back its submission receipt",
+        "a cancelled release cannot acknowledge a historical orphan receipt"
+      ]
+    }
   ]
 }

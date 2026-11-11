@@ -1315,6 +1315,27 @@
     ]
   },
   {
+    "id": "cloud-press-submission-authority",
+    "model": "packages/cloud/quint/press_submission_authority.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/press-releases.ts",
+      "packages/cloud/shared/src/db/repositories/press-releases.ts",
+      "packages/cloud/shared/src/db/schemas/press-releases.ts",
+      "packages/cloud/shared/src/db/migrations/0171_press_release_domain.sql",
+      "packages/cloud/shared/src/lib/services/__tests__/press-submission-authority.pglite.test.ts"
+    ],
+    "invariants": [
+      "NewReceiptsHaveSubmittedRelease",
+      "ReplayMatchesOriginal",
+      "HistoricalCancelledReleaseRemainsCancelled"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Local draft, READY, submission and cancellation for two releases, one global key and two caller organizations and providers. Checks atomic receipt/phase writes, rollback, original keyed replay and cancellation stability.",
+      "PGlite exercises actual local database statements and rollback without a publishing or payment provider. Subsequent distribution state, live provider effects and unrelated social publication are outside this proof."
+    ]
+  },
+  {
     "id": "cloud-flow-cloud-object-mutations",
     "model": "packages/cloud/quint/NativeStoragePutRecovery.qnt",
     "sources": [
