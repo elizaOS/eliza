@@ -25,6 +25,9 @@ its journal and files. A later check can retry after space is available.
 Before apply, extraction uses one private scratch file. After process death,
 a matching unapplied journal can reclaim the file before the space checks. This
 does not retire old downloads, verified payloads or recovery files.
+When an applied update waits for restart, a later check verifies the retained
+archive and payload without writing either file. Missing or invalid files keep
+the candidate held for review.
 The ordinary app remains nonprivileged. Android's shutdown path owns the reboot.
 
 The durable journal records an apply intent before Binder. An unsettled apply
