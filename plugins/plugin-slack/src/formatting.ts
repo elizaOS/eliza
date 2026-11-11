@@ -10,6 +10,7 @@
  */
 import {
   ElizaError,
+  parseFenceSpans,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -384,6 +385,26 @@ const DEFAULT_MAX_CHARS = 40_000;
 const REOPEN_FENCE = "```\n";
 
 /**
+ * True when `chunk` ends inside a backtick fenced block, per core's
+ * CommonMark fence parser. A ``` tally miscounts here: a ```js line inside
+ * an open block is content, not a closer (a closer may only be followed by
+ * spaces), so the tally flipped the state and later chunks lost the fence
+ * while the original closer opened a dangling block instead. Tilde fences
+ * stay out of scope: Slack renders only ``` as a code block, so a ~~~ span
+ * is left exactly as the tally left it.
+ */
+function chunkEndsInsideBacktickBlock(chunk: string): boolean {
+  // The added newline makes an unclosed span end past `chunk`, while a
+  // closer on the last line ends at it — the same read the Telegram
+  // chunker uses.
+  const spans = parseFenceSpans(`${chunk}\n`).filter((span) =>
+    span.marker.startsWith("`"),
+  );
+  const last = spans.at(-1);
+  return last !== undefined && last.end > chunk.length;
+}
+
+/**
  * A hard per-chunk cap can never be honored for arbitrary text unless it's a
  * positive integer that can hold at least one UTF-16 code unit; anything
  * else (NaN, 0, negative, fractional) has no sensible "effective bound" and
@@ -583,11 +604,10 @@ export function chunkSlackText(
       );
     }
 
-    // Check if this chunk ends inside a code block — count fences in the
-    // actual emitted chunk, not the max-size window, so a fence that sits
+    // Check if this chunk ends inside a code block — parse the fences in
+    // the actual emitted chunk, not the max-size window, so a fence that sits
     // between the break point and maxChars doesn't flip the state.
-    const codeBlockCount = (chunk.match(/```/g) || []).length;
-    inCodeBlock = codeBlockCount % 2 !== 0;
+    inCodeBlock = chunkEndsInsideBacktickBlock(chunk);
 
     // A block whose opener is followed only by whitespace in this chunk would
     // be sent as an empty code block. Start it in the next chunk instead, or,
