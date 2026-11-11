@@ -240,14 +240,26 @@ export function resolveActionContexts(action: Action): AgentContext[] {
 /**
  * Finds a provider’s declared context defaults by exact, lower-, or uppercase name.
  * Undefined distinguishes an uncataloged provider from explicit general context.
+ *
+ * The catalog mixes casings ("time", "ACTION_STATE", "walletBalance"), so the
+ * three spellings above only cover flat keys. A camelCase key under any other
+ * casing ("WALLETBALANCE", "WalletBalance") missed every lookup and the
+ * provider silently fell back to ["general"], so compare lowercased keys too.
+ * Exact matches still win when two keys differ only by case.
  */
+const PROVIDER_CONTEXT_MAP_BY_LOWERCASE = new Map(
+	Object.entries(PROVIDER_CONTEXT_MAP).map(([name, contexts]) => [
+		name.toLowerCase(),
+		contexts,
+	]),
+);
+
 export function lookupProviderCatalogContexts(
 	name: string,
 ): AgentContext[] | undefined {
 	return (
 		PROVIDER_CONTEXT_MAP[name] ??
-		PROVIDER_CONTEXT_MAP[name.toLowerCase()] ??
-		PROVIDER_CONTEXT_MAP[name.toUpperCase()]
+		PROVIDER_CONTEXT_MAP_BY_LOWERCASE.get(name.toLowerCase())
 	);
 }
 
