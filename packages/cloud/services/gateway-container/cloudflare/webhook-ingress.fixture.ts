@@ -103,7 +103,7 @@ export default {
             code: "personal_cutover_in_progress",
           },
           { code: "personal_cutover_in_progress", retryAfterSeconds: 1 },
-          Date.now() - 2000,
+          input.now ?? Date.now() - 2000,
           input.token
             ? { key: HOLD_LEASE_PREFIX + input.key, token: input.token }
             : undefined,

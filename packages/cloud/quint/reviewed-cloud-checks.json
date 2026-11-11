@@ -391,6 +391,7 @@
         "hold transaction fences stale owners and preserves a reopened marker during cleanup",
         "real hold drainer renews its native lease across long redelivery and does not dispatch twice",
         "slow redelivery retains the full retry delay after the held outcome",
+        "a stale replica scan cannot redeliver a re-held member while another member is due",
         "public ingress transport rejects imports and unrelated keyspaces"
       ]
     }
