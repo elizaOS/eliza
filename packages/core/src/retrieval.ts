@@ -957,7 +957,8 @@ export class Tokenizer {
 	 * - Removes diacritical marks (accents).
 	 * - Removes emojis and pictographs.
 	 * - Removes common symbols (™, ®, ©, ℠, ‼).
-	 * - Replaces Unicode punctuation with spaces.
+	 * - Replaces Unicode punctuation with spaces, except an apostrophe
+	 *   inside a word (`don't` stays one token).
 	 * - Removes characters not matching basic Latin, CJK, Hangul, or whitespace.
 	 * - Collapses multiple spaces into single spaces.
 	 * - Trims leading/trailing whitespace.
@@ -969,8 +970,8 @@ export class Tokenizer {
 	 * cleanText("Hello, World™!") // "hello world"
 	 * cleanText("héllo 👋") // "hello"
 	 * cleanText("Hello 世界!") // "hello 世界"
-	 * cleanText("I'm don't") // "i'm don't" (apostrophes kept by replacing punctuation with space)
-	 * cleanText("test©2023") // "test 2023"
+	 * cleanText("I'm don't") // "i'm don't" (in-word apostrophes kept)
+	 * cleanText("test©2023") // "test2023"
 	 */
 	cleanText(text: string): string {
 		return (
@@ -982,11 +983,18 @@ export class Tokenizer {
 				.replace(/[\u0300-\u036f]/g, "") // Diacritical marks
 				.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "") // Emojis and pictographs
 				.replace(/[™®©℠‼]/g, "") // Common symbols
-				.replace(/[\p{P}]/gu, " ") // Unicode punctuation to space
+				.replace(/[’‘]/g, "'") // Curly apostrophes become straight ones
+				.replace(/[\p{P}]/gu, (match, offset, source) =>
+					match === "'" &&
+					/[a-z0-9]/.test(source[offset - 1] ?? "") &&
+					/[a-z0-9]/.test(source[offset + 1] ?? "")
+						? "'"
+						: " ",
+				) // Unicode punctuation to space, except in-word apostrophes
 				.replace(
-					/[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu,
+					/[^a-z0-9'\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu,
 					" ",
-				) // Keep only latin, cjk, hangul, numbers, whitespace
+				) // Keep only latin, cjk, hangul, numbers, apostrophes, whitespace
 				.replace(/\s+/g, " ") // Collapse multiple spaces
 				.trim()
 		);
