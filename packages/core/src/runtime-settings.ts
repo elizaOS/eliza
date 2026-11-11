@@ -17,6 +17,23 @@ import type { Character } from "./types/agent.ts";
  * @param env - Environment record (defaults to process.env)
  * @returns String-only record suitable for adapter factories
  */
+/**
+ * Encode one setting value as a string for the flat adapter record.
+ * Strings pass through; objects and arrays are JSON-encoded so their
+ * content survives instead of collapsing to "[object Object]" (objects)
+ * or a comma join (arrays). `JSON.stringify` can return `undefined` for
+ * values with no JSON form, which falls back to `String(value)`.
+ */
+function stringifySettingValue(value: unknown): string {
+	if (typeof value === "string") {
+		return value;
+	}
+	if (value !== null && typeof value === "object") {
+		return JSON.stringify(value) ?? String(value);
+	}
+	return String(value);
+}
+
 export function flattenRuntimeSettings(
 	character: Character,
 	env: NodeJS.ProcessEnv = process.env,
@@ -36,7 +53,7 @@ export function flattenRuntimeSettings(
 	for (const [key, value] of Object.entries(settings)) {
 		if (value === undefined || value === null) continue;
 		if (key === "secrets" && typeof value === "object") continue;
-		out[key] = typeof value === "string" ? value : String(value);
+		out[key] = stringifySettingValue(value);
 	}
 
 	const secrets = (
@@ -47,7 +64,7 @@ export function flattenRuntimeSettings(
 	) as Record<string, unknown>;
 	for (const [key, value] of Object.entries(secrets)) {
 		if (value !== undefined && value !== null) {
-			out[key] = String(value);
+			out[key] = stringifySettingValue(value);
 		}
 	}
 
@@ -57,7 +74,7 @@ export function flattenRuntimeSettings(
 			: {};
 	for (const [key, value] of Object.entries(topSecrets)) {
 		if (value !== undefined && value !== null) {
-			out[key] = String(value);
+			out[key] = stringifySettingValue(value);
 		}
 	}
 
