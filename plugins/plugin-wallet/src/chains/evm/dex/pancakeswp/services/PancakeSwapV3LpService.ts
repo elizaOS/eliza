@@ -35,6 +35,7 @@ import {
   type PancakeSwapV3FeeTier,
 } from "../types.ts";
 import { minAmountAfterSlippage } from "../../slippage";
+import { positionAmounts } from "../../v3-position-amounts";
 
 const SUPPORTED_CHAIN_IDS = [56, 1, 42161, 8453]; // BSC, Ethereum, Arbitrum, Base
 
@@ -638,7 +639,7 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
 
       const client = this.getPublicClient(chainId);
 
-      const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
+      const [symbol0, decimals0, symbol1, decimals1, slot0] = await Promise.all([
         client
           .readContract({
             address: position.token0,
@@ -667,7 +668,20 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
             functionName: "decimals",
           })
           .catch(() => 18),
+        client.readContract({
+          address: poolAddress,
+          abi: PANCAKESWAP_V3_POOL_ABI,
+          functionName: "slot0",
+        }),
       ]);
+      // tokensOwed is only what the position has not collected yet. What it
+      // holds is the value of its liquidity at the pool's current price.
+      const { amount0, amount1 } = positionAmounts(
+        position.liquidity,
+        slot0[0] as bigint,
+        position.tickLower,
+        position.tickUpper
+      );
 
       return {
         poolId: poolAddress,
@@ -687,6 +701,20 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
         underlyingTokens: [
           {
             address: position.token0,
+            balance: amount0.toString(),
+            decimals: Number(decimals0),
+            symbol: symbol0 as string,
+          },
+          {
+            address: position.token1,
+            balance: amount1.toString(),
+            decimals: Number(decimals1),
+            symbol: symbol1 as string,
+          },
+        ],
+        accruedFees: [
+          {
+            address: position.token0,
             balance: position.tokensOwed0.toString(),
             decimals: Number(decimals0),
             symbol: symbol0 as string,
@@ -698,7 +726,6 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
             symbol: symbol1 as string,
           },
         ],
-        accruedFees: [],
         rewards: [],
       };
     }
