@@ -3,7 +3,8 @@
     "packages/agent/src/runtime/process-lifecycle.ts",
     "packages/agent/src/runtime/eliza.ts",
     "packages/agent/test/fixtures/process-lifecycle-child.ts",
-    "packages/agent/test/process-lifecycle-exit.test.ts"
+    "packages/agent/test/process-lifecycle-exit.test.ts",
+    "packages/agent/quint/check-process-signal-drain.ts"
   ],
   "bounds": {
     "domain": "One installed Agent process adapter, one initiating SIGINT or SIGTERM, at most one additional graceful signal and one external SIGKILL. Two registered callbacks, one sandbox cleanup, one runtime cleanup and one error report.",
