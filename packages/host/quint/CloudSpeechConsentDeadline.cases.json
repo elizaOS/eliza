@@ -3,7 +3,7 @@
     "packages/host/src/voice/cloud-speech-relay-client.ts",
     "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts"
   ],
-  "bounds": "One consent request, one owner cancellation, and 0..30 elapsed seconds. Cold consent can complete after ten seconds. Mint allocation and its separate ten-second drain budget retain their existing tests. Timers require eventual delivery. This model does not prove real transport latency or timer precision.",
+  "bounds": "One consent request and one owner cancellation. Consent has 30 seconds, the WebSocket upgrade has 10 seconds, and relay readiness has 5 seconds. Cold consent and upgrade may finish after five seconds. Mint allocation and its separate ten-second drain budget retain their existing tests. Timers require eventual delivery. This model does not prove real transport latency or timer precision.",
   "cases": [
     {
       "name": "consent-deadline",

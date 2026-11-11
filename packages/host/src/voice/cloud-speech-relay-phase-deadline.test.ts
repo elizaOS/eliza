@@ -228,3 +228,20 @@ test("ready deadline closes opening socket without invalid STOP and late ready c
     f.cleanup();
   }
 }, 8000);
+
+// Reproduces the live cold-upgrade failure after consent and mint succeeded.
+test("a cold six-second upgrade reaches ready without renewing its session", async () => {
+  const f = fixture(6000, 50);
+  try {
+    const ports = await f.pending;
+    expect(f.sent).toEqual(["hello"]);
+    expect(f.logs.some((row) => row.cause === "startup_timeout")).toBe(false);
+    expect(f.requests.filter((path) => path.endsWith("/session"))).toHaveLength(
+      1,
+    );
+    await ports.close();
+    expect(f.sent).toEqual(["hello", "stop"]);
+  } finally {
+    f.cleanup();
+  }
+}, 10000);

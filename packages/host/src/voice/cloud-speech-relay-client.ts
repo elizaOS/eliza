@@ -1007,23 +1007,26 @@ export async function createCloudSpeechRelayPorts(
         "websocket_connect";
       let phaseStarted = performance.now();
       let timer: ReturnType<typeof setTimeout>;
-      // Each startup phase has its own finite five-second budget. Upgrade time
-      // must not consume the hello-to-ready budget before hello can be sent.
+      // The network upgrade can include a cold Worker start. Keep its budget
+      // separate from the hello-to-ready budget; cancellation remains immediate.
       const armDeadline = () => {
-        timer = setTimeout(() => {
-          diagnose("startup_timeout", {
-            stage: startupStage,
-            durationMs: performance.now() - phaseStarted,
-            outcome: "failed",
-            clientCode: "transport",
-          });
-          fail(
-            new CloudSpeechRelayClientError(
-              "transport",
-              "Cloud speech did not become ready",
-            ),
-          );
-        }, 5000);
+        timer = setTimeout(
+          () => {
+            diagnose("startup_timeout", {
+              stage: startupStage,
+              durationMs: performance.now() - phaseStarted,
+              outcome: "failed",
+              clientCode: "transport",
+            });
+            fail(
+              new CloudSpeechRelayClientError(
+                "transport",
+                "Cloud speech did not become ready",
+              ),
+            );
+          },
+          startupStage === "websocket_connect" ? 10000 : 5000,
+        );
       };
       const fail = (error: Error) => {
         if (failed) return;
