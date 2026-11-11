@@ -312,13 +312,23 @@ export class MapsController {
     if (label !== undefined && !boundedText(label, 300))
       throw new MapsFailure("unsupported", "The origin name is invalid.");
     this.cancelOriginSearch();
+    this.retireLocate();
+    this.invalidateRoute();
+    this.update({ origin, originLabel: label ?? null, position: idle(null) });
+  }
+  /** Stop the location watch. A fix from an earlier request is ignored. */
+  private retireLocate() {
+    ++this.locationGeneration;
     void this.nativeLocation.stop().catch((error) =>
       this.update({
         position: { phase: "error", value: null, error: failure(error) },
       }),
     );
-    this.invalidateRoute();
-    this.update({ origin, originLabel: label ?? null, position: idle(null) });
+  }
+  /** Cancel a pending location request. The origin and the route do not change. */
+  cancelLocate() {
+    this.retireLocate();
+    this.update({ position: idle(null) });
   }
   /** Use a chosen origin candidate and plan from it. */
   chooseOrigin(candidate: Place | SavedPlace) {
