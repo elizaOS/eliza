@@ -328,11 +328,29 @@ public final class NativeProviderSlot {
       java.io.File filesDirectory,
       Map<String, String> env,
       long now) {
+    return applyLaunchEnvironment(runtimeProfile, provider, cloudSaved, nativeLibraryDirectory, filesDirectory, env, now,
+        NativeProviderAdmission.CLOUD_PROVIDER_BASE);
+  }
+
+  /**
+   * As above for a product that runs its own Cloud: an elizacloud selection sends its credential
+   * to {@code cloudProviderBase} (see {@link NativeProviderAdmission#requireCloudProviderBase}).
+   */
+  public static boolean applyLaunchEnvironment(
+      String runtimeProfile,
+      JSONObject provider,
+      String cloudSaved,
+      java.io.File nativeLibraryDirectory,
+      java.io.File filesDirectory,
+      Map<String, String> env,
+      long now,
+      String cloudProviderBase) {
+    NativeProviderAdmission.requireCloudProviderBase(cloudProviderBase);
     boolean bound = false;
     if (provider != null) {
       Map<String, String> applied = new java.util.HashMap<>(env);
       try {
-        NativeProviderAdmission.applyProviderEnvironment(provider, cloudSaved, applied, now);
+        NativeProviderAdmission.applyProviderEnvironment(provider, cloudSaved, applied, now, cloudProviderBase);
         env.clear();
         env.putAll(applied);
         bound = true;
