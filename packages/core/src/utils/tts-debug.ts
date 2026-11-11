@@ -104,7 +104,9 @@ function ttsEmit(): (typeof logger)["info"] {
 	const level = String(configuredLevel).trim().toLowerCase();
 	if (level === "fatal" || level === "alert") return logger.fatal.bind(logger);
 	if (level === "error") return logger.error.bind(logger);
-	if (level === "warn") return logger.warn.bind(logger);
+	// The logger accepts "warning" as an alias for "warn"; without it the
+	// diagnostic emits at info and the warn threshold drops it.
+	if (level === "warn" || level === "warning") return logger.warn.bind(logger);
 	return logger.info.bind(logger);
 }
 
