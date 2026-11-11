@@ -172,7 +172,7 @@ try {
     if (brand === "second") {
       runtimeDirectory = path.join(consumerRoot, "packaging-fixture");
       const main = path.join(runtimeDirectory, "android/app/src/main");
-      for (const abi of ["arm64-v8a", "x86_64", "riscv64"]) {
+      for (const abi of ["arm64-v8a", "x86_64"]) {
         const directory = path.join(main, "assets/agent", abi);
         fs.mkdirSync(directory, { recursive: true });
         fs.writeFileSync(
@@ -384,7 +384,7 @@ try {
           }).split("\n");
           assert.ok(entries.includes("assets/agent/agent-bundle.js"));
           assert.ok(entries.includes("assets/agent-runtime.inventory"));
-          for (const abi of ["arm64-v8a", "x86_64", "riscv64"]) {
+          for (const abi of ["arm64-v8a", "x86_64"]) {
             assert.equal(
               entries.some((entry) => entry.startsWith(`assets/agent/${abi}/`)),
               false,

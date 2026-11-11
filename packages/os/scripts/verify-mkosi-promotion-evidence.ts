@@ -11,11 +11,10 @@ import { pipeline } from "node:stream/promises";
 import { createZstdDecompress } from "node:zlib";
 import { parseArgs, sha256File } from "./os-release-lib.ts";
 
-const architectures = new Set(["x86_64", "arm64", "riscv64"]);
+const architectures = new Set(["x86_64", "arm64"]);
 const buildArchitecture = {
   x86_64: "amd64",
   arm64: "arm64",
-  riscv64: "riscv64",
 };
 
 async function regularFile(value, label) {
@@ -64,7 +63,7 @@ if (missing.length > 0) {
   );
 }
 if (!architectures.has(args.architecture)) {
-  throw new Error("--architecture must be x86_64, arm64, or riscv64");
+  throw new Error("--architecture must be x86_64 or arm64");
 }
 if (args.architecture !== "x86_64" && args["legacy-bios-evidence"]) {
   throw new Error("--legacy-bios-evidence is valid only for x86_64");

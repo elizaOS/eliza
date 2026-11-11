@@ -22,7 +22,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const architectures = ["x86_64", "arm64", "riscv64"];
+const architectures = ["x86_64", "arm64"];
 // The signer requires canonical (realpath-stable) artifact roots by design;
 // macOS places os.tmpdir() under the /var -> /private/var symlink, so anchor
 // every fixture at the resolved real path.
@@ -770,7 +770,7 @@ test("late commit failure leaves no manifest and requires private-root recovery"
     signRelease(paths, {
       env: {
         NODE_ENV: "test",
-        ELIZAOS_RELEASE_TEST_FAIL_PROMOTION_AFTER: "4",
+        ELIZAOS_RELEASE_TEST_FAIL_PROMOTION_AFTER: "3",
       },
     }),
     /unpublished release-set commit failed.*discard the private artifact root/,
@@ -1031,7 +1031,7 @@ test("input drift after manifest creation fails the signer's final validation", 
 test("canonical image signing rejects incomplete architecture sets", async () => {
   const paths = await fixture();
   await writeFile(
-    path.join(paths.root, "elizaos-1.2.3-beta.4-riscv64.raw"),
+    path.join(paths.root, "elizaos-1.2.3-beta.4-arm64.raw"),
     "",
   );
   await assert.rejects(signRelease(paths), /nonempty regular file/);

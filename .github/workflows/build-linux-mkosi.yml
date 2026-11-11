@@ -114,7 +114,7 @@ jobs:
           FLEET_ONLINE: ${{ vars.HETZNER_FLEET_ONLINE }}
         run: |
           if [ "$FLEET_ONLINE" != true ]; then
-            echo "::error::Native Linux release fleet is offline. Provision x64, arm64, riscv64, and signing runners before enabling the fleet opt-in."
+            echo "::error::Native Linux release fleet is offline. Provision x64, arm64, and signing runners before enabling the fleet opt-in."
             exit 1
           fi
 
@@ -138,10 +138,6 @@ jobs:
             build-architecture: arm64
             mkosi-architecture: arm64
             runner: arm64
-          - architecture: riscv64
-            build-architecture: riscv64
-            mkosi-architecture: riscv64
-            runner: riscv64
     env:
       WORK_ROOT: /var/tmp/elizaos-mkosi-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.architecture }}
       SOURCE_DATE_EPOCH: ${{ inputs.source_date_epoch }}
@@ -438,7 +434,7 @@ jobs:
       - name: Expand and reverify every architecture before signing
         run: |
           set -euo pipefail
-          for architecture in x86_64 arm64 riscv64; do
+          for architecture in x86_64 arm64; do
             compressed="$WORK_ROOT/unsigned/elizaos-${RELEASE_VERSION}-${architecture}.raw.zst"
             expanded="${compressed%.zst}"
             test -s "$compressed"
@@ -503,7 +499,7 @@ jobs:
             --repository "$GITHUB_REPOSITORY" --source-sha "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --workflow "$GITHUB_WORKFLOW_REF" --job sign-and-stage
-          for architecture in x86_64 arm64 riscv64; do
+          for architecture in x86_64 arm64; do
             directory="$WORK_ROOT/publish/${architecture}"
             test "$(stat -c '%a' -- "$directory")" = 700
             cp -- "$WORK_ROOT/unsigned/elizaos-${RELEASE_VERSION}-${architecture}.spdx.json" "$directory/"
@@ -574,15 +570,6 @@ jobs:
         with:
           name: elizaos-linux-mkosi-arm64
           path: ${{ env.WORK_ROOT }}/publish/arm64/*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
-
-      - name: Upload riscv64 publication input
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: elizaos-linux-mkosi-riscv64
-          path: ${{ env.WORK_ROOT }}/publish/riscv64/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

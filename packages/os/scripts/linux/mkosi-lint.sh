@@ -28,7 +28,7 @@ require_file "${MKOSI_DIR}/mkosi.postinst.chroot"
 [ ! -e "${MKOSI_DIR}/mkosi.finalize" ] || bad "legacy pre-output finalize script is present"
 [ ! -e "${MKOSI_DIR}/mkosi.skeleton" ] || bad "use mkosi.extra for image integration"
 
-for arch in amd64 arm64 riscv64; do
+for arch in amd64 arm64; do
     require_file "${MKOSI_DIR}/mkosi.conf.d/10-arch-${arch}.conf"
 done
 
@@ -60,11 +60,6 @@ require_text 'KernelCommandLine=console=tty0 console=ttyS0,115200n8' \
     "${MKOSI_DIR}/mkosi.conf.d/10-arch-amd64.conf"
 require_text 'KernelCommandLine=console=tty0 console=ttyAMA0,115200n8' \
     "${MKOSI_DIR}/mkosi.conf.d/10-arch-arm64.conf"
-require_text 'KernelCommandLine=console=tty0 console=ttyS0,115200n8' \
-    "${MKOSI_DIR}/mkosi.conf.d/10-arch-riscv64.conf"
-if grep -Fq 'ShimBootloader=signed' "${MKOSI_DIR}/mkosi.conf.d/10-arch-riscv64.conf"; then
-    bad "riscv64 must not claim Debian signed-shim support"
-fi
 
 for spec in 00-esp 05-bios 10-root 20-recovery 30-home; do
     require_file "${MKOSI_DIR}/mkosi.repart/${spec}.conf"
@@ -288,7 +283,7 @@ secure_gui_packages="$(sed -n '/^Packages=/,$p' "${MKOSI_DIR}/mkosi.profiles/sec
 [ "$secure_packages" = "$secure_gui_packages" ] || bad "secure and secure-gui hardening package sets differ"
 
 if command -v mkosi >/dev/null 2>&1; then
-    for arch in x86-64 arm64 riscv64; do
+    for arch in x86-64 arm64; do
         for profile in default gui secure secure-gui; do
             args=(--architecture "$arch")
             if [ "$profile" != default ]; then args+=(--profile "$profile"); fi

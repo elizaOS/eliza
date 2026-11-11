@@ -139,62 +139,6 @@
       }
     },
     {
-      "id": "linux-mkosi-riscv64",
-      "kind": "raw-image",
-      "status": "candidate",
-      "target": { "platform": "linux", "architecture": "riscv64" },
-      "filename": "elizaos-0.1.0-beta.1-riscv64.raw.zst",
-      "source": { "artifact": "elizaos-linux-mkosi-riscv64", "pattern": "*.raw.zst" },
-      "downloadUrl": null,
-      "sha256": null,
-      "sizeBytes": null,
-      "validation": {
-        "requiredEvidence": [
-          "sha256-generated",
-          "mkosi-release-build",
-          "qemu-uefi-usb",
-          "persistent-reboot",
-          "usb-expanded-readback",
-          "whole-disk-install",
-          "alongside-install",
-          "desktop-acceptance",
-          "hardware-qualification",
-          "slsa-provenance"
-        ],
-        "evidence": []
-      }
-    },
-    {
-      "id": "linux-mkosi-riscv64-signature",
-      "kind": "signature",
-      "status": "candidate",
-      "target": { "platform": "linux", "architecture": "riscv64" },
-      "filename": "elizaos-0.1.0-beta.1-riscv64.raw.zst.sig",
-      "source": { "artifact": "elizaos-linux-mkosi-riscv64", "pattern": "*.raw.zst.sig" },
-      "downloadUrl": null,
-      "sha256": null,
-      "sizeBytes": null,
-      "validation": {
-        "requiredEvidence": ["sha256-generated", "ed25519-signature", "image-release-verified"],
-        "evidence": []
-      }
-    },
-    {
-      "id": "linux-mkosi-riscv64-sbom",
-      "kind": "sbom",
-      "status": "candidate",
-      "target": { "platform": "linux", "architecture": "riscv64" },
-      "filename": "elizaos-0.1.0-beta.1-riscv64.spdx.json",
-      "source": { "artifact": "elizaos-linux-mkosi-riscv64", "pattern": "*.spdx.json" },
-      "downloadUrl": null,
-      "sha256": null,
-      "sizeBytes": null,
-      "validation": {
-        "requiredEvidence": ["sha256-generated", "syft-sbom", "slsa-provenance"],
-        "evidence": []
-      }
-    },
-    {
       "id": "linux-image-release-manifest",
       "kind": "release-metadata",
       "status": "candidate",
@@ -262,29 +206,6 @@
       "source": {
         "artifact": "elizaos-debian-package-arm64",
         "pattern": "*_arm64.deb"
-      },
-      "downloadUrl": null,
-      "sha256": null,
-      "sizeBytes": null,
-      "validation": {
-        "requiredEvidence": [
-          "sha256-generated",
-          "lintian",
-          "slsa-provenance",
-          "upstream-ed25519-artifact"
-        ],
-        "evidence": []
-      }
-    },
-    {
-      "id": "debian-package-riscv64",
-      "kind": "package",
-      "status": "candidate",
-      "target": { "platform": "debian", "architecture": "riscv64" },
-      "filename": "elizaos-app_2.0.3~beta.7-1_riscv64.deb",
-      "source": {
-        "artifact": "elizaos-debian-package-riscv64",
-        "pattern": "*_riscv64.deb"
       },
       "downloadUrl": null,
       "sha256": null,

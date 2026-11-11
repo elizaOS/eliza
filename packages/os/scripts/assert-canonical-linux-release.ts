@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, readJson } from "./os-release-lib.ts";
 
-export const canonicalArchitectures = ["x86_64", "arm64", "riscv64"];
+export const canonicalArchitectures = ["x86_64", "arm64"];
 export const canonicalEvidence = [
   "mkosi-release-build",
   "qemu-uefi-usb",

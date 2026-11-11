@@ -75,13 +75,13 @@ describe("release sequence rollback store", () => {
   it("serializes concurrent updates in one process", async () => {
     const { statePath, store } = await storeFixture();
     await Promise.all([
-      store.accept({ "nightly/riscv64": 10 }),
-      store.accept({ "nightly/riscv64": 11 }),
+      store.accept({ "nightly/arm64": 10 }),
+      store.accept({ "nightly/arm64": 11 }),
     ]);
     const state = JSON.parse(await fs.readFile(statePath, "utf8")) as {
       sequences: Record<string, number>;
     };
-    expect(state.sequences["nightly/riscv64"]).toBe(11);
+    expect(state.sequences["nightly/arm64"]).toBe(11);
   });
 
   it("preserves write and cleanup failures while attempting every cleanup", async () => {

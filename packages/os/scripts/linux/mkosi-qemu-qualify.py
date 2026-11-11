@@ -24,12 +24,10 @@ from qemu_arguments import qemu_guest_arguments, qemu_path_value
 QEMU = {
     "amd64": "qemu-system-x86_64",
     "arm64": "qemu-system-aarch64",
-    "riscv64": "qemu-system-riscv64",
 }
 LINUX_MACHINES = {
     "amd64": "q35,accel=kvm:tcg",
     "arm64": "virt,accel=kvm:tcg,gic-version=max",
-    "riscv64": "virt,accel=kvm:tcg",
 }
 RECOVERY_MARKERS = (
     "Linux version",

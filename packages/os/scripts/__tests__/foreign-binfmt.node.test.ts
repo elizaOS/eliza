@@ -48,19 +48,20 @@ test("foreign binfmt selects all supported Linux guests and skips native registr
           TEST_HOST_ARCH: host,
         },
       });
-    for (const arch of ["amd64", "arm64", "riscv64"]) {
+    for (const arch of ["amd64", "arm64"]) {
       const native = run(arch, arch);
       assert.equal(native.status, 0, native.stderr);
     }
-    const unsupported = run("ppc64el", "ppc64el");
-    assert.equal(unsupported.status, 64);
-    assert.match(unsupported.stderr, /unsupported architecture/);
+    for (const arch of ["ppc64el", "riscv64"]) {
+      const unsupported = run(arch, arch);
+      assert.equal(unsupported.status, 64);
+      assert.match(unsupported.stderr, /unsupported architecture/);
+    }
     await writeFile(path.join(proc, "register"), "unchanged");
     await writeFile(path.join(proc, "status"), "enabled\n");
     for (const [arch, handler] of [
       ["amd64", "qemu-x86_64"],
       ["arm64", "qemu-aarch64"],
-      ["riscv64", "qemu-riscv64"],
     ]) {
       await writeFile(path.join(proc, handler), "enabled\nflags: POCF\n");
       const result = run(arch, arch === "amd64" ? "arm64" : "amd64");

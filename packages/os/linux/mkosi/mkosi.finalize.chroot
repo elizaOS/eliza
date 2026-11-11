@@ -1,6 +1,5 @@
 #!/bin/bash
 # Stage a self-contained recovery boot before mkosi snapshots the root trees.
-# RISC-V also needs a removable-media EFI executable.
 set -euo pipefail
 
 mapfile -t kernels < <(find /boot -maxdepth 1 -type f \( -name 'vmlinuz-*' -o -name 'vmlinux-*' \) -print | LC_ALL=C sort)
@@ -13,18 +12,11 @@ kernel="${kernels[0]}"
 kernel_version="${kernel#/boot/vmlinuz-}"
 kernel_version="${kernel_version#/boot/vmlinux-}"
 module_dir="/usr/lib/modules/${kernel_version}"
-grub_modules=/usr/lib/grub/riscv64-efi
-required_paths=("$module_dir")
-[ "${ARCHITECTURE:-}" != riscv64 ] || required_paths+=("$grub_modules")
-for required in "${required_paths[@]}"; do
-    if [ ! -e "$required" ] || [ -L "$required" ]; then
-        echo "[mkosi.finalize] required boot input is missing or linked: $required" >&2
-        exit 1
-    fi
-done
-required_commands=(cpio find mkinitramfs python3 sort zstd)
-[ "${ARCHITECTURE:-}" != riscv64 ] || required_commands+=(grub-mkstandalone)
-for command in "${required_commands[@]}"; do
+if [ ! -e "$module_dir" ] || [ -L "$module_dir" ]; then
+    echo "[mkosi.finalize] required boot input is missing or linked: $module_dir" >&2
+    exit 1
+fi
+for command in cpio find mkinitramfs python3 sort zstd; do
     command -v "$command" >/dev/null || {
         echo "[mkosi.finalize] required boot tool is missing: $command" >&2
         exit 1
@@ -84,32 +76,3 @@ install -d -m 0700 /efi/grub
     /etc/grub.d/42_elizaos_recovery
 } >/efi/grub/grub.cfg
 chmod 0600 /efi/grub/grub.cfg
-
-[ "${ARCHITECTURE:-}" = riscv64 ] || exit 0
-
-cmdline="$ELIZAOS_KERNEL_CMDLINE"
-case " $cmdline " in
-    *' root='*) ;;
-    *) cmdline="root=LABEL=elizaos-system rw ${cmdline}" ;;
-esac
-{
-    printf 'set default=1\nset timeout=5\n'
-    /etc/grub.d/42_elizaos_recovery --embedded
-    cat <<EOF
-menuentry 'elizaOS' {
-    linux (memdisk)/vmlinuz ${cmdline}
-    initrd (memdisk)/initrd
-}
-EOF
-} >"${workdir}/grub.cfg"
-
-install -d -m 0755 /efi/EFI/BOOT
-grub-mkstandalone \
-    -O riscv64-efi \
-    -d "$grub_modules" \
-    -o "${workdir}/BOOTRISCV64.EFI" \
-    "boot/grub/grub.cfg=${workdir}/grub.cfg" \
-    "vmlinuz=${kernel}" \
-    "initrd=${recovery}/initrd"
-install -m 0644 "${workdir}/BOOTRISCV64.EFI" /efi/EFI/BOOT/BOOTRISCV64.EFI
-echo "[mkosi.finalize] installed self-contained RISC-V removable-media EFI boot path"

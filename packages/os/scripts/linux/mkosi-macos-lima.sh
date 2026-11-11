@@ -135,11 +135,10 @@ provision_vm() {
         apt-get install -y --no-install-recommends \
         binfmt-support ca-certificates debootstrap dosfstools e2fsprogs git \
         mkosi mtools ovmf python3 python3-cryptography \
-        qemu-efi-aarch64 qemu-efi-riscv64 qemu-system-arm qemu-system-misc \
+        qemu-efi-aarch64 qemu-system-arm \
         qemu-system-x86 qemu-user-static rsync swtpm systemd-boot \
         systemd-container systemd-repart zstd
     limactl shell "$instance" sudo update-binfmts --enable qemu-x86_64
-    limactl shell "$instance" sudo update-binfmts --enable qemu-riscv64
     limactl shell "$instance" bash -lc \
         'mkosi --version && systemd-repart --version | head -n 1 && uname -a'
 }

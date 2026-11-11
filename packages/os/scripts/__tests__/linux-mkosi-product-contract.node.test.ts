@@ -19,7 +19,7 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
     makefile,
     dockerfile,
     binfmt,
-    riscvFinalize,
+    finalize,
     qemuQualify,
     persistenceQualify,
     snapshot,
@@ -51,11 +51,7 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
   assert.match(binfmt, /\/usr\/lib\/binfmt\.d\/\$handler\.conf/);
   assert.match(binfmt, />\/proc\/sys\/fs\/binfmt_misc\/register/);
   assert.match(binfmt, /failed to enable \$handler/);
-  assert.match(riscvFinalize, /ARCHITECTURE:-.*riscv64/);
-  assert.match(riscvFinalize, /grub-mkstandalone/);
-  assert.match(riscvFinalize, /BOOTRISCV64\.EFI/);
-  assert.match(riscvFinalize, /root=LABEL=elizaos-system/);
-  assert.match(riscvFinalize, /kernel-modules\.initrd/);
+  assert.match(finalize, /kernel-modules\.initrd/);
   const consoleMarkers = await read("scripts/linux/mkosi_console.py");
   assert.match(consoleMarkers, /You are in emergency mode/);
   assert.match(qemuQualify, /from mkosi_console import/);
@@ -110,11 +106,7 @@ test("release image schema accepts only raw zstd images for supported architectu
   );
   const properties = schema.$defs.artifact.properties;
 
-  assert.deepEqual(properties.architecture.enum, [
-    "x86_64",
-    "arm64",
-    "riscv64",
-  ]);
+  assert.deepEqual(properties.architecture.enum, ["x86_64", "arm64"]);
   assert.equal(schema.properties.product.const, "elizaOS");
   assert.match(properties.url.pattern, /raw/);
   assert.match(properties.url.pattern, /zst/);
@@ -134,11 +126,7 @@ test("desktop artifact contract requires one feature-complete shell on all archi
     ),
   ]);
 
-  assert.deepEqual(schema.properties.architecture.enum, [
-    "x86_64",
-    "arm64",
-    "riscv64",
-  ]);
+  assert.deepEqual(schema.properties.architecture.enum, ["x86_64", "arm64"]);
   assert.equal(schema.properties.shell.const, "gtk-webkit");
   assert.equal(example.shell, "gtk-webkit");
   for (const capability of schema.properties.capabilities.required) {
@@ -154,12 +142,12 @@ test("tracked candidate declares the complete signed canonical Linux set", async
   assert.equal(
     manifest.artifacts.filter((artifact) => artifact.kind === "raw-image")
       .length,
-    3,
+    2,
   );
   assert.equal(
     manifest.artifacts.filter((artifact) => artifact.kind === "signature")
       .length,
-    4,
+    3,
   );
 });
 

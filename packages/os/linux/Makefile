@@ -8,27 +8,20 @@ OS_ROOT := $(abspath $(HERE)/..)
 OUT     := $(HERE)/out
 AGENT_ARTIFACTS ?= $(HERE)/artifacts/$(ARCH)
 BUN_SOURCE ?=
-BUN_RISCV64_ZIP ?= $(HERE)/../toolchains/bun-riscv64/dist/bun-linux-riscv64-musl.zip
-RISCV64_MUSL_RUNTIME ?= $(HERE)/artifacts/riscv64/elizaos-app/musl-runtime
-RISCV64_ICU_DATA ?=
-RISCV64_RUNTIME ?= bun
-RISCV64_AGENT_RUNTIME_REPORT ?=
-RISCV64_AGENT_RUNTIME_TRANSCRIPT ?=
 REMOVE_PATH_RECURSIVE ?= node ../../scripts/rm-path-recursive.ts
 DEBIAN_SNAPSHOT_LOCK := $(HERE)/debian-snapshot.lock.json
 DEBIAN_SNAPSHOT_SERIAL := $(shell python3 -c 'import json; print(json.load(open("$(DEBIAN_SNAPSHOT_LOCK)"))["serial"])')
 DEBIAN_BASE_IMAGE := $(shell python3 -c 'import json; print(json.load(open("$(DEBIAN_SNAPSHOT_LOCK)"))["baseImage"])')
 
-SUPPORTED_ARCHES := amd64 arm64 riscv64
+SUPPORTED_ARCHES := amd64 arm64
 SUPPORTED_PROFILES := default gui secure secure-gui
 
-.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke check-arch check-profile clean lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
+.PHONY: help build builder stage-agent-artifacts check-arch check-profile clean lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
 
 help:
 	@echo "elizaOS Linux build targets:"
-	@echo "  make build [ARCH=amd64|arm64|riscv64] [PROFILE=default|gui|secure|secure-gui]"
-	@echo "  make stage-agent-artifacts ARCH=<arch> [BUN_SOURCE=<path>|BUN_RISCV64_ZIP=<path>|RISCV64_RUNTIME=node]"
-	@echo "  make riscv64-agent-runtime-smoke"
+	@echo "  make build [ARCH=amd64|arm64] [PROFILE=default|gui|secure|secure-gui]"
+	@echo "  make stage-agent-artifacts ARCH=<arch> [BUN_SOURCE=<path>]"
 	@echo "  ----- mkosi (canonical persistent GNOME disk image) -----"
 	@echo "  make mkosi-build  [ARCH=...] [PROFILE=...]"
 	@echo "  make mkosi-summary [ARCH=...] [PROFILE=...]   # dry-run resolver"
@@ -44,18 +37,7 @@ help:
 build: mkosi-build
 
 stage-agent-artifacts: check-arch
-ifeq ($(ARCH),riscv64)
-ifeq ($(RISCV64_RUNTIME),node)
-	../scripts/linux/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --skip-build
-else
-	../scripts/linux/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --riscv64-bun-zip "$(BUN_RISCV64_ZIP)" --riscv64-musl-runtime "$(RISCV64_MUSL_RUNTIME)" $(if $(RISCV64_ICU_DATA),--riscv64-icu-data "$(RISCV64_ICU_DATA)",)
-endif
-else
 	../scripts/linux/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" $(if $(BUN_SOURCE),--bun-source "$(BUN_SOURCE)",)
-endif
-
-riscv64-agent-runtime-smoke:
-	RISCV64_AGENT_RUNTIME_REPORT="$(RISCV64_AGENT_RUNTIME_REPORT)" RISCV64_AGENT_RUNTIME_TRANSCRIPT="$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)" ../scripts/linux/check-riscv64-agent-runtime-artifact.sh "$(HERE)/artifacts/riscv64"
 
 lint: mkosi-lint
 
@@ -63,7 +45,7 @@ clean:
 	$(REMOVE_PATH_RECURSIVE) "$(OUT)"
 
 check-arch:
-	$(if $(and $(filter 1,$(words $(ARCH))),$(filter $(SUPPORTED_ARCHES),$(ARCH))),@:, $(error Unsupported ARCH; use amd64, arm64, or riscv64))
+	$(if $(and $(filter 1,$(words $(ARCH))),$(filter $(SUPPORTED_ARCHES),$(ARCH))),@:, $(error Unsupported ARCH; use amd64 or arm64))
 
 check-profile:
 	$(if $(and $(filter 1,$(words $(PROFILE))),$(filter $(SUPPORTED_PROFILES),$(PROFILE))),@:, $(error Unsupported PROFILE; use default, gui, secure, or secure-gui))
@@ -84,7 +66,6 @@ builder: check-arch check-profile
 # Architecture selectors map to mkosi architecture names:
 #   amd64   -> x86-64
 #   arm64   -> arm64
-#   riscv64 -> riscv64
 # -----------------------------------------------------------------------------
 MKOSI_DIR := $(HERE)/mkosi
 MKOSI_OUT := $(OUT)/mkosi

@@ -50,7 +50,7 @@
               },
               "architecture": {
                 "type": "string",
-                "enum": ["amd64", "x86_64", "arm64", "aarch64", "riscv64", "universal"]
+                "enum": ["amd64", "x86_64", "arm64", "aarch64", "universal"]
               },
               "device": {
                 "type": "string",

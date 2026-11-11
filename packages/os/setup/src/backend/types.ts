@@ -16,7 +16,7 @@ export interface AospBuild {
   targetDevice: string;
   /** stable repository hardware target identifier */
   targetId: string;
-  architecture: "arm64-v8a" | "x86_64" | "riscv64";
+  architecture: "arm64-v8a" | "x86_64";
   publishedAt: string;
   /** points to android-release-manifest JSON */
   manifestUrl: string;

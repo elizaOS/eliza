@@ -22,7 +22,7 @@ export interface ElizaOsImage {
   label: string;
   version: string;
   channel: "stable" | "beta" | "nightly";
-  architecture: "x86_64" | "arm64" | "riscv64";
+  architecture: "x86_64" | "arm64";
   buildId: string;
   publishedAt: string;
   url: string;

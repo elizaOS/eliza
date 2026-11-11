@@ -95,11 +95,9 @@ function validateBuild(v: unknown): AospBuild {
   if (!isString(v.targetId)) throw new Error("build.targetId must be a string");
   if (
     !isString(v.architecture) ||
-    !["arm64-v8a", "x86_64", "riscv64"].includes(v.architecture)
+    !["arm64-v8a", "x86_64"].includes(v.architecture)
   )
-    throw new Error(
-      "build.architecture must be one of arm64-v8a|x86_64|riscv64",
-    );
+    throw new Error("build.architecture must be one of arm64-v8a|x86_64");
   if (!isString(v.publishedAt))
     throw new Error("build.publishedAt must be a string");
   if (!isString(v.manifestUrl))

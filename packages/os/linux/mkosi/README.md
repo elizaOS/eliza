@@ -11,8 +11,8 @@ bun run --cwd packages/os verify:linux
 
 Images have an EFI system partition, system and recovery partitions, and a final
 home partition that grows on first boot. USB boot/persistence and internal-disk
-installation require separate runtime qualification. Secure Boot is unsupported
-on riscv64; other release targets require configured signing keys.
+installation require separate runtime qualification. Release targets
+require configured Secure Boot signing keys.
 
 Recovery keeps its factory root read-only and uses an ephemeral `/var` for service
 state. Recovery logs and state are lost at shutdown; export diagnostics before rebooting.
@@ -37,7 +37,7 @@ The inner schema v1 fields are `architecture`, `sourceCommit`, `extensionId`,
 `node`, `chromium`, and `files`, plus `schemaVersion`. The extension ID is
 `pmldpcoefklbdbgmggcejkfoinmjfeio`. Node provenance requires version `24.15.0`,
 its exact official Linux x64/arm64 archive URL (`sourceArchive`) and archive
-SHA-256 (`sourceArchiveSha256`); riscv64 has no admitted pinned Node artifact.
+SHA-256 (`sourceArchiveSha256`).
 Chromium provenance supplies its 40-character `revision` and four-part `version`.
 Every payload file except the manifest has a relative-path inventory entry with
 `sha256`, `bytes`, and an exact octal `mode` (`0644`/`0755`). Payload directories must be `0755`; setid bits, links, and

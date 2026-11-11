@@ -26,11 +26,6 @@ export const ABI_TARGETS = [
     zigTarget: "x86_64-linux-musl",
     cmakeProcessor: "x86_64",
   },
-  {
-    androidAbi: "riscv64",
-    zigTarget: "riscv64-linux-musl",
-    cmakeProcessor: "riscv64",
-  },
 ];
 
 export function zigTriplesForAbis(abis) {
@@ -108,7 +103,7 @@ export function assertZigPinForTargets({
     PINNED_ZIG_LINK_TRIPLES.includes(t),
   );
   if (pinnedTriples.length === 0) {
-    // No pinned-link triple in this run (e.g. riscv64-only) — nothing to pin.
+    // No pinned-link triple in this run — nothing to pin.
     return;
   }
   if (env[ALLOW_UNPINNED_ZIG_ENV] === "1") {
@@ -141,7 +136,6 @@ export function ensureZigDrivers({
   cacheDir,
   abi,
   zigBin = "zig",
-  riscv64MarchPassthrough = false,
 }) {
   const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
   if (!target) {
@@ -152,58 +146,27 @@ export function ensureZigDrivers({
   const ccPath = path.join(driverDir, "zig-cc");
   const cxxPath = path.join(driverDir, "zig-cxx");
 
-  // riscv64 needs an extra arg-filtering step on Zig 0.13. The vendored
-  // llama.cpp's ggml-cpu CMakeLists hardcodes `-march=rv64gc -mabi=lp64d`
-  // (and adds extension suffixes when GGML_RVV / GGML_RV_ZFH / etc. are ON).
-  // Zig 0.13's bundled LLVM doesn't accept `-march=rv64gc` as a GCC-style
-  // ISA string — it tries to translate it to `-mcpu=` and bails with
-  // "unknown CPU: 'rv64gc'". The triple `riscv64-linux-musl` already
-  // selects the rv64gc/lp64d baseline as Zig's triple-derived CPU, so
-  // stripping these flags is byte-for-byte equivalent to the intended
-  // build when RVV is OFF.
-  //
-  // On Zig 0.14+ (`riscv64MarchPassthrough=true`) we leave every
-  // `-march=` / `-mabi=` flag alone: Zig 0.14's LLVM accepts the
-  // GCC-style ISA string with the full `_zfh_zvfh_zicbop_zihintpause`
-  // extension suffix, which is exactly what flips the RVV intrinsic
-  // codepaths on in ggml/src/ggml-cpu/arch/riscv/quants.c.
-  //
-  // Filter logic: walk the argv via the POSIX `set --` idiom (no eval —
-  // CMake escapes embedded quotes in -DGGML_VERSION=\"0.12.0\", and a
-  // naive `eval exec "..."` collapses them and the C preprocessor sees
-  // `0.12.0` as a malformed numeric literal). Each non-stripped arg is
-  // re-pushed onto $@ in place; the final `exec "$zig" cc ... "$@"`
-  // forwards the whole array with every quote and space preserved.
-  const riscv64ArgFilter =
-    abi === "riscv64" && !riscv64MarchPassthrough
-      ? "_n=$#\n" +
-        "i=0\n" +
-        "while [ $i -lt $_n ]; do\n" +
-        "  arg=$1\n" +
-        "  shift\n" +
-        "  i=$((i+1))\n" +
-        '  case "$arg" in\n' +
-        "    -march=rv64gc|-march=rv64gc_*) ;;\n" +
-        "    -mabi=lp64d|-mabi=lp64) ;;\n" +
-        '    *) set -- "$@" "$arg" ;;\n' +
-        "  esac\n" +
-        "done\n"
-      : null;
-
   // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
   // `-march=armv8.2-a+dotprod+fp16` (from GGML_CPU_ARM_ARCH). Zig 0.13's
   // bundled LLVM rejects that for the aarch64 target — it tries to translate
-  // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'"
-  // (the same class of breakage the riscv64 filter handles). Zig instead
-  // speaks `-mcpu=<cpu>+<feature>` with its OWN feature names. Rewrite the
-  // GCC `-march=armv8.x-a+...` into the equivalent zig `-mcpu=generic+...`:
+  // `armv8.2-a` to a `-mcpu=` value and dies with "unknown CPU: 'armv8.2'".
+  // Zig instead speaks `-mcpu=<cpu>+<feature>` with its OWN feature names.
+  // Rewrite the GCC `-march=armv8.x-a+...` into the equivalent zig
+  // `-mcpu=generic+...`:
   // dotprod→dotprod, i8mm→i8mm, fp16→fullfp16. This sets exactly the same
   // __ARM_FEATURE_DOTPROD / __ARM_FEATURE_MATMUL_INT8 /
   // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC macros (verified), so the live QJL
   // NEON-dotprod / i8mm / fp16 kernel bodies survive preprocessing and the
   // ggml ARM-feature configure probes pass. Any other `-march=` is passed
   // through untouched (there shouldn't be one for arm64).
-  const arm64ArgFilter =
+  //
+  // Filter logic: walk the argv via the POSIX `set --` idiom (no eval —
+  // CMake escapes embedded quotes in -DGGML_VERSION=\"0.12.0\", and a
+  // naive `eval exec "..."` collapses them and the C preprocessor sees
+  // `0.12.0` as a malformed numeric literal). Each arg is re-pushed onto
+  // $@ in place; the final `exec "$zig" cc ... "$@"` forwards the whole
+  // array with every quote and space preserved.
+  const argFilter =
     abi === "arm64-v8a"
       ? "_n=$#\n" +
         "i=0\n" +
@@ -223,7 +186,6 @@ export function ensureZigDrivers({
         "done\n"
       : null;
 
-  const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
   const exec =
     argFilter !== null
       ? (subcmd) =>

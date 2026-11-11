@@ -19,7 +19,6 @@ const modules = [
   "android/collect-grizzly-graphics",
   "android/grizzly-evidence",
   "android/lint-init-rc",
-  "android/provision-cuttlefish-e1",
   "android/verify-grizzly-artifacts",
   "android/prepare-chromium-browser",
   "android/stage-browser-apps",

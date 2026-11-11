@@ -277,19 +277,18 @@ android {
 }
 // Bundle the NDK (bionic) fused inference stack into the APK's jniLibs.
 // The elizavoice JNI CMake target links the real bridge for arm64-v8a and
-// x86_64, so both slices are required before any native build starts;
-// riscv64 ships when its artifact exists. Only explicitly configured lib
+// x86_64, so both slices are required before any native build starts.
+// Only explicitly configured lib
 // dirs or slices already staged by stage-elizavoice-lib.ts are used: the
 // Bun/AOSP musl assets and the musl compile cache are NOT bionic JNI inputs
 // and are never discovered automatically. Cloud builds and explicitly
 // opted-out CI smoke builds skip this task.
-ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64', 'riscv64']
+ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64']
 ext.elizaRequiredJniAbis = ['arm64-v8a', 'x86_64']
 
 ext.forkLlamaLibompAbiTokens = [
     'arm64-v8a': 'aarch64',
-    'x86_64': 'x86_64',
-    'riscv64': 'riscv64'
+    'x86_64': 'x86_64'
 ]
 
 def resolveForkLlamaLibDir = { String abi ->

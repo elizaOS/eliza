@@ -57,7 +57,7 @@ test("Linux image workflow retains all architecture and exact-byte promotion gat
     workflow.jobs["build-and-qemu"].strategy.matrix.include.map(
       (item) => item.architecture,
     ),
-    ["x86_64", "arm64", "riscv64"],
+    ["x86_64", "arm64"],
   );
   assert.equal(workflow.jobs["sign-and-stage"].needs, "build-and-qemu");
   for (const id of ["build-and-qemu", "sign-and-stage"]) {

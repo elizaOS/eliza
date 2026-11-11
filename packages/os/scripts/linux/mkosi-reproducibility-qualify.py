@@ -28,7 +28,6 @@ SNAPSHOT_RE = re.compile(
 ROOT_PARTITION_TYPES = {
     "amd64": "4f68bce3-e8cd-4db1-96e7-fbcaf984b709",
     "arm64": "b921b045-1df0-41c3-af44-4c6f280d3fae",
-    "riscv64": "72ec70a6-cf74-40e6-bd49-4bda08e8f224",
 }
 
 
@@ -148,7 +147,7 @@ def validate_build(
         raise QualificationError(f"{label} configuration digest is invalid")
     if not str(identity["sourceDateEpoch"]).isdigit():
         raise QualificationError(f"{label} SOURCE_DATE_EPOCH is invalid")
-    if identity["architecture"] not in {"amd64", "arm64", "riscv64"}:
+    if identity["architecture"] not in {"amd64", "arm64"}:
         raise QualificationError(f"{label} architecture is invalid")
     if identity["profile"] not in {"default", "gui", "secure", "secure-gui"}:
         raise QualificationError(f"{label} profile is invalid")

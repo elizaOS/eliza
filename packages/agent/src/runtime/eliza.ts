@@ -2763,7 +2763,7 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  * Postgres. Without this, the provider defaulted to "pglite" whenever the
  * loaded config lacked an explicit provider — even when Postgres was wired via
  * env — so the WebAssembly PGlite build was attempted and aborted on runtimes
- * that have no WASM (e.g. the riscv64 image, which provisions native Postgres).
+ * that have no WASM.
  * Keeping env authoritative makes the env-only Postgres path consistent across
  * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
  */

@@ -14,7 +14,7 @@ make -C packages/os/android build ARCH=x86_64 AOSP_ROOT=/path/to/aosp \
   ARGS="--allow-development-browser"
 ```
 
-`ARCH` accepts `x86_64`, `arm64`, or `riscv64`. `build` stages native inference,
+`ARCH` accepts `x86_64` or `arm64`. `build` stages native inference,
 rebuilds the unsigned image APK, syncs the vendor tree with the staged launcher,
 builds AOSP, then launches and validates Cuttlefish. Sign that APK and pass it as
 `ARGS="--launcher-apk /absolute/signed.apk --development-launcher"` (or
@@ -33,7 +33,7 @@ Verify the full prepared source tree and matching factory archive without writin
 to either input:
 
 ```bash
-node packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
+bun packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
   --aosp-root /absolute/aosp --vendor-archive /absolute/stallion-factory.zip
 ```
 
@@ -146,7 +146,7 @@ is unchanged. Development unpacked-extension proofs do not qualify release build
   to a reviewed SKU/baseline. Missing values remain incomplete:
 
   ```bash
-  node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
+  bun packages/os/scripts/android/device-qualify.ts --serial SERIAL \
     [--requirements product.json] [--fastboot]
   ```
 
@@ -175,7 +175,7 @@ The rendered frames and `bootanimation.zip` are gitignored build outputs.
 
 ## Eliza image launcher
 
-Eliza's own Cuttlefish (x86_64, arm64, riscv64, riscv64 E1), GSI and grizzly
+Eliza's own Cuttlefish (x86_64, arm64), GSI and grizzly
 products install Eliza with the nonprivileged-launcher profile, as the Pixel 10a
 Eliza product does. There is no priv-app placement, platform certificate, privapp
 allowlist, init grant or app SELinux policy, and no Soong override removes a stock
@@ -188,7 +188,7 @@ Sign it (the release signer for a release; a developer key for development
 images), then stage it:
 
 ```bash
-node packages/os/scripts/android/image-launcher.ts \
+bun packages/os/scripts/android/image-launcher.ts \
   --brand-config packages/os/scripts/android/brand.eliza.json \
   --apk /absolute/signed.apk --development --source-commit ELIZA_COMMIT
 ```
@@ -227,7 +227,7 @@ Stage an independently built HOME application without replacing the Eliza runtim
 or inheriting its permission list:
 
 ```bash
-node packages/os/scripts/android/stage-launcher-overlay.ts \
+bun packages/os/scripts/android/stage-launcher-overlay.ts \
   --descriptor /absolute/launcher.json --apk /absolute/launcher.apk \
   --output /absolute/new-vendor-directory
 ```

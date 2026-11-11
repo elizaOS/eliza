@@ -10,9 +10,9 @@ def qemu_path_value(path: Path) -> str:
 
 def qemu_guest_arguments(architecture: str, cpu: str | None = None) -> list[str]:
     """Give virt machines a 64-bit CPU and a usable desktop framebuffer/input."""
-    selected_cpu = cpu or {"arm64": "cortex-a72", "riscv64": "rv64"}.get(architecture)
+    selected_cpu = cpu or {"arm64": "cortex-a72"}.get(architecture)
     arguments = ["-cpu", selected_cpu] if selected_cpu else []
-    if architecture in ("arm64", "riscv64"):
+    if architecture == "arm64":
         for device in ("virtio-gpu-pci", "virtio-keyboard-pci", "virtio-tablet-pci"):
             arguments.extend(("-device", device))
     return arguments

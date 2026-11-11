@@ -232,14 +232,14 @@ jobs:
               echo "::error::Mixed Debian package versions: $package_version and $version"
               exit 1
             fi
-            case "$architecture" in amd64|arm64|riscv64) ;; *) echo "::error::Unexpected Debian architecture: $architecture"; exit 1 ;; esac
+            case "$architecture" in amd64|arm64) ;; *) echo "::error::Unexpected Debian architecture: $architecture"; exit 1 ;; esac
             if [[ -n "${seen[$architecture]:-}" ]]; then
               echo "::error::Duplicate Debian architecture: $architecture"
               exit 1
             fi
             seen[$architecture]="$package"
           done
-          for architecture in amd64 arm64 riscv64; do test -n "${seen[$architecture]:-}"; done
+          for architecture in amd64 arm64; do test -n "${seen[$architecture]:-}"; done
 
       - name: Add .deb to reprepro
         env:

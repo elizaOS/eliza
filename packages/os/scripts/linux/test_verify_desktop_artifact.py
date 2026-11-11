@@ -148,8 +148,7 @@ console.log(JSON.stringify(produceArtifact(options)));
             (elf_header(kind=3), "x86_64", True),
             (elf_header()[:20], "x86_64", False),
             (elf_header(kind=1), "x86_64", False),
-            (elf_header(machine=243, flags=4), "riscv64", True),
-            (elf_header(machine=243), "riscv64", False),
+            (elf_header(machine=243, flags=4), "riscv64", False),
         ):
             with self.subTest(architecture=architecture, payload=payload):
                 target.write_bytes(payload)

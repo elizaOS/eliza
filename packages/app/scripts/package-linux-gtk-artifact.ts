@@ -11,7 +11,7 @@
  *
  * The producer takes an already-built shell stage directory (the GTK shell
  * build output containing `bin/` entrypoints) so the same command covers
- * x86_64, arm64, and riscv64 cross-builds. It refuses to package a stage
+ * x86_64 and arm64 cross-builds. It refuses to package a stage
  * whose declared entrypoints are missing or non-executable, and the verifier
  * re-derives every digest and signature from bytes rather than trusting the
  * manifest. Refs elizaOS/eliza#21783.

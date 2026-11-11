@@ -56,7 +56,7 @@ MANIFEST_FIELDS = {
     "entrypoints",
     "capabilities",
 }
-ELF_MACHINE = {"x86_64": 62, "arm64": 183, "riscv64": 243}
+ELF_MACHINE = {"x86_64": 62, "arm64": 183}
 
 
 class VerificationError(ValueError):
@@ -95,8 +95,6 @@ def _verify_entrypoint_architecture(
             or int.from_bytes(header[52:54], "little") != 64
             or int.from_bytes(header[16:18], "little") not in (2, 3)):
         raise VerificationError(f"desktop artifact {role} has an invalid executable ELF header")
-    if expected_architecture == "riscv64" and int.from_bytes(header[48:52], "little") & 6 != 4:
-        raise VerificationError(f"desktop artifact {role} requires the RISC-V double-float ABI")
     expected_machine = ELF_MACHINE.get(expected_architecture)
     actual_machine = int.from_bytes(header[18:20], "little")
     if expected_machine is None or actual_machine != expected_machine:

@@ -222,8 +222,8 @@ test("promotion rejects corrupt compressed bytes even with matching build eviden
   assert.match(result.stderr, /compressed image decompression failed/);
 });
 
-test("ARM64 and RISC-V promotion require a bound EDK2 firmware pair", async () => {
-  for (const architecture of ["arm64", "riscv64"]) {
+test("ARM64 promotion requires a bound EDK2 firmware pair", async () => {
+  for (const architecture of ["arm64"]) {
     const paths = await fixture(architecture);
     assert.equal(verify(paths).status, 0);
     const document = JSON.parse(await readFile(paths.qemuEvidence, "utf8"));

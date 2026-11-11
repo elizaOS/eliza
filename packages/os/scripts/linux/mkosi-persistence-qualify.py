@@ -28,12 +28,10 @@ from typing import Iterator
 QEMU = {
     "amd64": "qemu-system-x86_64",
     "arm64": "qemu-system-aarch64",
-    "riscv64": "qemu-system-riscv64",
 }
 MACHINES = {
     "amd64": "q35,accel=kvm:tcg",
     "arm64": "virt,accel=kvm:tcg,gic-version=max",
-    "riscv64": "virt,accel=kvm:tcg",
 }
 REQUIRED_MARKERS = GRAPHICAL_MARKERS
 SCHEMA = "ai.elizaos.mkosi-persistence-evidence.v1"
@@ -248,7 +246,7 @@ def qemu_command(
     return command
 
 
-def request_powerdown(monitor: Path, *, keyboard: bool = False) -> None:
+def request_powerdown(monitor: Path) -> None:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(5)
         connection.connect(str(monitor))
@@ -256,12 +254,8 @@ def request_powerdown(monitor: Path, *, keyboard: bool = False) -> None:
             greeting = json.loads(stream.readline())
             if "QMP" not in greeting:
                 raise QualificationError("QEMU monitor did not send a QMP greeting")
-            # RISC-V virt has no platform power-button handler. Its virtio
-            # keyboard supplies the power key that logind can handle instead.
-            for command in ("qmp_capabilities", "send-key" if keyboard else "system_powerdown"):
+            for command in ("qmp_capabilities", "system_powerdown"):
                 request = {"execute": command, "id": command}
-                if command == "send-key":
-                    request["arguments"] = {"keys": [{"type": "qcode", "data": "power"}]}
                 stream.write((json.dumps(request) + "\n").encode())
                 stream.flush()
                 deadline = time.monotonic() + 5
@@ -276,7 +270,7 @@ def request_powerdown(monitor: Path, *, keyboard: bool = False) -> None:
                     raise QualificationError(f"QEMU did not acknowledge {command}")
 
 
-def boot(command: list[str], transcript: Path, timeout: int, receipts: list[dict[str, object]], monitor: Path | None = None, *, keyboard_power: bool = False) -> None:
+def boot(command: list[str], transcript: Path, timeout: int, receipts: list[dict[str, object]], monitor: Path | None = None) -> None:
     transcript.parent.mkdir(parents=True, exist_ok=True)
     with transcript.open("wb") as output:
         process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
@@ -302,7 +296,7 @@ def boot(command: list[str], transcript: Path, timeout: int, receipts: list[dict
                 try:
                     if monitor is None:
                         raise QualificationError("a QMP monitor is required for clean shutdown")
-                    request_powerdown(monitor, keyboard=keyboard_power)
+                    request_powerdown(monitor)
                     process.wait(timeout=60)
                     reason = "guest-poweroff" if process.returncode == 0 else "shutdown-failed"
                 except (OSError, ValueError, QualificationError, subprocess.TimeoutExpired) as exc:
@@ -327,7 +321,7 @@ def boot(command: list[str], transcript: Path, timeout: int, receipts: list[dict
         "success": success,
         "terminationReason": reason,
         "shutdownError": shutdown_error,
-        "shutdownMethod": "keyboard-power-key" if keyboard_power else "system-powerdown",
+        "shutdownMethod": "system-powerdown",
         "returnCode": process.returncode,
         "markersFound": found,
         "missingMarkers": missing,
@@ -455,8 +449,7 @@ def main() -> int:
                     shutil.copyfile(args.firmware_vars, firmware_vars)
                 monitor = Path(temporary) / "qmp.sock"
                 command = qemu_command(args, qemu or QEMU[args.architecture], firmware_vars, monitor)
-                boot(command, args.transcript_directory / "boot-1.log", args.timeout, boots, monitor,
-                     keyboard_power=args.architecture == "riscv64")
+                boot(command, args.transcript_directory / "boot-1.log", args.timeout, boots, monitor)
 
                 with attached_loop(args.work_image) as loop:
                     home, home_partition_after = home_partition(loop)
@@ -478,8 +471,7 @@ def main() -> int:
                         finally:
                             os.close(directory)
 
-                boot(command, args.transcript_directory / "boot-2.log", args.timeout, boots, monitor,
-                     keyboard_power=args.architecture == "riscv64")
+                boot(command, args.transcript_directory / "boot-2.log", args.timeout, boots, monitor)
                 with attached_loop(args.work_image) as loop:
                     home, home_partition_second = home_partition(loop)
                     home_filesystem_second = ext4_size(home)

@@ -34,7 +34,6 @@ import {
 } from "./bootstrap-aosp.ts";
 import { loadBrandFromArgv } from "./brand-config.ts";
 import { LAUNCHER_DIRECTORY, stageImageLauncher } from "./image-launcher.ts";
-import { provisionCuttlefishE1 } from "./provision-cuttlefish-e1.ts";
 import { withSisoCompatibility } from "./siso-env.ts";
 import {
   admitBrowserVendor,
@@ -420,7 +419,7 @@ export function parseSubArgs(argv) {
       i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
+        "Usage: bun scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("-")) {
@@ -470,8 +469,7 @@ export function assertBuildHost({
       `${brand.distroName} AOSP builds require a Linux x86_64 builder.`,
     );
   }
-  const usesRiscvTcg = brand.productName.includes("riscv64");
-  if (launch && !usesRiscvTcg && !fs.existsSync(kvmPath)) {
+  if (launch && !fs.existsSync(kvmPath)) {
     throw new Error(`${brand.distroName} Cuttlefish launch requires /dev/kvm.`);
   }
 }
@@ -546,7 +544,7 @@ const CUTTLEFISH_GPU_MODES = new Set([
   "none",
 ]);
 
-export function resolveCuttlefishGpuMode(brand, env = process.env) {
+export function resolveCuttlefishGpuMode(env = process.env) {
   const configured = env.ELIZA_CUTTLEFISH_GPU_MODE?.trim();
   if (configured) {
     if (!CUTTLEFISH_GPU_MODES.has(configured)) {
@@ -556,13 +554,11 @@ export function resolveCuttlefishGpuMode(brand, env = process.env) {
     }
     return configured;
   }
-  return brand.productName.includes("riscv64")
-    ? "guest_swiftshader"
-    : "gfxstream";
+  return "gfxstream";
 }
 
 export function cuttlefishLaunchCommand(brand, env = process.env) {
-  const gpuMode = resolveCuttlefishGpuMode(brand, env);
+  const gpuMode = resolveCuttlefishGpuMode(env);
   const rendererFeatures = env.ELIZA_CUTTLEFISH_GPU_RENDERER_FEATURES?.trim();
   if (
     rendererFeatures &&
@@ -710,12 +706,6 @@ export async function main(argv = process.argv.slice(2)) {
     aospRoot: args.aospRoot,
     archivePath,
   });
-  if (brand.aospDeviceOverlay) {
-    provisionCuttlefishE1({
-      aospRoot: args.aospRoot,
-      lockPath: path.resolve(repoRoot, brand.aospDeviceOverlay),
-    });
-  }
   if (lock?.proprietaryArchive) {
     if (!archivePath) {
       throw new Error(

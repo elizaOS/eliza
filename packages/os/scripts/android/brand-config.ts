@@ -122,7 +122,7 @@ export function loadBrandConfig(configPath) {
   // Defaults for optional fields.
   if (
     parsed.architecture !== undefined &&
-    !["x86_64", "arm64", "riscv64"].includes(parsed.architecture)
+    !["x86_64", "arm64"].includes(parsed.architecture)
   ) {
     throw new BrandConfigurationError(
       `Brand config ${resolved} has invalid architecture`,
@@ -157,17 +157,6 @@ export function loadBrandConfig(configPath) {
   ) {
     throw new BrandConfigurationError(
       `Brand config ${resolved} has invalid aospLockProfile`,
-    );
-  }
-  if (
-    parsed.aospDeviceOverlay !== undefined &&
-    (typeof parsed.aospDeviceOverlay !== "string" ||
-      parsed.aospDeviceOverlay.length === 0 ||
-      path.isAbsolute(parsed.aospDeviceOverlay) ||
-      parsed.aospDeviceOverlay.split(/[\\/]/).includes(".."))
-  ) {
-    throw new BrandConfigurationError(
-      `Brand config ${resolved} has invalid repository-relative aospDeviceOverlay`,
     );
   }
   parsed.buildAndroidSystemCmd = parsed.buildAndroidSystemCmd ?? [

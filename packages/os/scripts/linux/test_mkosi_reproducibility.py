@@ -314,7 +314,6 @@ exit 1
     def test_each_architecture_uses_its_discoverable_root_type(self) -> None:
         types = {
             "arm64": "b921b045-1df0-41c3-af44-4c6f280d3fae",
-            "riscv64": "72ec70a6-cf74-40e6-bd49-4bda08e8f224",
         }
         for architecture, partition_type in types.items():
             with self.subTest(architecture=architecture), tempfile.TemporaryDirectory() as temporary:

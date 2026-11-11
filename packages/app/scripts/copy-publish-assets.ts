@@ -31,7 +31,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/aosp/seccomp-shim/loader-wrap.c",
   "scripts/aosp/seccomp-shim/preserve-sigsys.h",
   "scripts/aosp/seccomp-shim/sigsys-handler-arm64.c",
-  "scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler.c",
   "scripts/aosp/stage-default-models.ts",
   "scripts/aosp/stage-models-dfm.ts",

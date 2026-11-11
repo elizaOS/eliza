@@ -232,12 +232,12 @@ jobs:
               exit 1
             fi
           }
-          for architecture in x86_64 arm64 riscv64; do
+          for architecture in x86_64 arm64; do
             require_file "_verify/elizaos-linux-mkosi-${architecture}" "*.raw.zst" "${architecture} canonical Linux image"
             require_file "_verify/elizaos-linux-mkosi-${architecture}" "*.raw.zst.sig" "${architecture} canonical Linux image signature"
             require_file "_verify/elizaos-linux-mkosi-${architecture}" "*.spdx.json" "${architecture} canonical Linux SBOM"
           done
-          for architecture in amd64 arm64 riscv64; do
+          for architecture in amd64 arm64; do
             require_file "_verify/elizaos-debian-package-${architecture}" "*_${architecture}.deb" "${architecture} Debian package"
           done
           require_file _verify/elizaos-linux-image-metadata "*.json" "signed image discovery manifest"

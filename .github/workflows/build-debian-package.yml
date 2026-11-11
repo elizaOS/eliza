@@ -52,7 +52,7 @@ jobs:
           FLEET_ONLINE: ${{ vars.HETZNER_FLEET_ONLINE }}
         run: |
           if [ "$FLEET_ONLINE" != true ]; then
-            echo "::error::Native Debian release fleet is offline. Enable the repository fleet opt-in after provisioning x64, arm64, and riscv64 runners."
+            echo "::error::Native Debian release fleet is offline. Enable the repository fleet opt-in after provisioning x64 and arm64 runners."
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -83,9 +83,6 @@ jobs:
           - architecture: arm64
             debian-architecture: arm64
             runner: arm64
-          - architecture: riscv64
-            debian-architecture: riscv64
-            runner: riscv64
     env:
       WORK_ROOT: /var/tmp/elizaos-debian-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.debian-architecture }}
       SOURCE_DATE_EPOCH: ${{ inputs.source_date_epoch }}

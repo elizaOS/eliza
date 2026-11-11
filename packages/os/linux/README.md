@@ -13,7 +13,7 @@ The verification command requires Python's `cryptography` package (Debian:
 `python3-cryptography`). Without host `mkosi`, its configuration lint performs
 static checks only; image builds use the pinned builder container.
 
-Supported architecture selectors are `amd64`, `arm64`, and `riscv64`. Cross builds
+Supported architecture selectors are `amd64` and `arm64`. Cross builds
 require the corresponding QEMU binfmt handler. Output is under
 `out/mkosi`. Development images may omit the Eliza application; release
 images require verified desktop artifacts and the control broker.

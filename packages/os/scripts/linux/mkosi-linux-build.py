@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ARCHITECTURES = {"amd64": "x86-64", "arm64": "arm64", "riscv64": "riscv64"}
+ARCHITECTURES = {"amd64": "x86-64", "arm64": "arm64"}
 SCHEMA = "ai.elizaos.mkosi-build-evidence.v1"
 SNAPSHOT_RE = re.compile(
     r"https://snapshot\.debian\.org/archive/debian/\d{8}T\d{6}Z/?"
@@ -328,7 +328,7 @@ def main() -> int:
             errors.append("mkosi package cache must be a directory, not a symlink")
         document["packageCacheDirectory"] = str(package_cache.resolve())
     native = platform.machine().lower()
-    target_native = {"amd64": ("x86_64", "amd64"), "arm64": ("aarch64", "arm64"), "riscv64": ("riscv64",)}
+    target_native = {"amd64": ("x86_64", "amd64"), "arm64": ("aarch64", "arm64")}
     if native not in target_native[args.architecture]:
         handler = Path("/proc/sys/fs/binfmt_misc") / f"qemu-{target_native[args.architecture][0]}"
         if not binfmt_supports_chroot(handler):

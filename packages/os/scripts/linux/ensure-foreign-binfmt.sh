@@ -7,7 +7,6 @@ host_arch="$(dpkg --print-architecture)"
 case "$arch" in
     amd64) handler=qemu-x86_64 ;;
     arm64) handler=qemu-aarch64 ;;
-    riscv64) handler=qemu-riscv64 ;;
     *)
         echo "ERROR: unsupported architecture: $arch" >&2
         exit 64

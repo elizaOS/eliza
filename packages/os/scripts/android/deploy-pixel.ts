@@ -40,12 +40,12 @@
 // attached.
 //
 // Usage:
-//   node scripts/android/deploy-pixel.ts \
+//   bun scripts/android/deploy-pixel.ts \
 //     --aosp-root /path/to/aosp [--abi arm64-v8a|x86_64] [--device <serial>] \
 //     [--skip-libllama] [--skip-aosp-build] [--voice] [--jobs N] [--dry-run]
 //
 // For a running cvd (no AOSP build needed if the cvd already has the app):
-//   node scripts/android/deploy-pixel.ts --abi x86_64 \
+//   bun scripts/android/deploy-pixel.ts --abi x86_64 \
 //     --skip-libllama --skip-aosp-build --voice
 
 import { spawnSync } from "node:child_process";
@@ -110,8 +110,8 @@ export function parseArgs(argv) {
     } else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node scripts/android/deploy-pixel.ts " +
-          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64|riscv64] [--device <serial>] " +
+        "Usage: bun scripts/android/deploy-pixel.ts " +
+          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64] [--device <serial>] " +
           "[--brand-config <PATH>] [--skip-libllama] [--skip-aosp-build] " +
           "[--launcher-apk <SIGNED_APK> (--launcher-descriptor <JSON> | --development-launcher)] " +
           "[--voice|--voice-only] [--jobs N] [--dry-run]",
@@ -121,32 +121,14 @@ export function parseArgs(argv) {
       throw new Error(`Unknown argument: ${a} (see --help)`);
     }
   }
-  if (
-    args.abi !== "arm64-v8a" &&
-    args.abi !== "x86_64" &&
-    args.abi !== "riscv64"
-  ) {
-    throw new Error(
-      `--abi must be arm64-v8a, x86_64, or riscv64 (got "${args.abi}")`,
-    );
+  if (args.abi !== "arm64-v8a" && args.abi !== "x86_64") {
+    throw new Error(`--abi must be arm64-v8a or x86_64 (got "${args.abi}")`);
   }
   if (
     args.jobs !== null &&
     (!Number.isSafeInteger(args.jobs) || args.jobs < 1 || args.jobs > 256)
   ) {
     throw new Error("--jobs must be an integer from 1 through 256");
-  }
-  // Pixel hardware is arm64-only. x86_64 lands on a running cvd. riscv64
-  // has no shipping Pixel device — refuse the no-device case so we don't
-  // silently try to push a riscv64 APK at an arm64 phone. If the operator
-  // really has a riscv64 dev board, they pass --device <serial> and we
-  // trust them.
-  if (args.abi === "riscv64" && !args.device) {
-    throw new Error(
-      `[deploy-pixel] --abi riscv64 needs an explicit --device <serial> (Pixel is arm64; ` +
-        `there is no shipping Google riscv64 phone). For Cuttlefish cf_riscv64_phone, ` +
-        `use \`make -C android sim ARCH=riscv64\` instead.`,
-    );
   }
   return args;
 }
@@ -287,10 +269,10 @@ async function main(argv = process.argv.slice(2)) {
   // Android CPU-fused is the only backend whose compiler and staging contract
   // is complete. The upstream compiler deliberately fails closed for Android
   // Vulkan until shader-tool and backend artifact staging are fully wired.
-  let target;
-  if (args.abi === "x86_64") target = "android-x86_64-cpu-fused";
-  else if (args.abi === "riscv64") target = "android-riscv64-cpu-fused";
-  else target = "android-arm64-cpu-fused";
+  const target =
+    args.abi === "x86_64"
+      ? "android-x86_64-cpu-fused"
+      : "android-arm64-cpu-fused";
 
   console.log(
     `[deploy-pixel] target=${target} device=${args.device ?? "(auto)"} ` +
@@ -371,9 +353,7 @@ async function main(argv = process.argv.slice(2)) {
         `[deploy-pixel] (dry-run) would run: node ${aospArgs.join(" ")}`,
       );
     } else {
-      run("node", aospArgs, {
-        env: args.abi === "riscv64" ? {} : { ELIZA_BUN_RISCV64_OPTIONAL: "1" },
-      });
+      run("node", aospArgs);
     }
   } else {
     console.log("[deploy-pixel] step 2/5: --skip-aosp-build → reuse last APK");
@@ -453,7 +433,7 @@ async function main(argv = process.argv.slice(2)) {
         throw new Error(
           `[deploy-pixel] ${physicalTarget.targetId} is not running the expected flashed elizaOS image. ` +
             `fingerprint=${JSON.stringify(fingerprint)} packagePath=${JSON.stringify(packagePath)}. ` +
-            "Use node scripts/android/install-release.ts with a lab-validated " +
+            "Use bun scripts/android/install-release.ts with a lab-validated " +
             "signed release manifest, --execute, and --confirm-flash. " +
             "The image launcher APK will not be sideloaded onto a physical target.",
         );
@@ -517,7 +497,7 @@ async function main(argv = process.argv.slice(2)) {
   if (args.dryRun) {
     if (!args.voiceOnly) {
       console.log(
-        `[deploy-pixel] (dry-run) would run: node scripts/android/smoke-cuttlefish.ts` +
+        `[deploy-pixel] (dry-run) would run: bun scripts/android/smoke-cuttlefish.ts` +
           ` --package-name ${pkg} --app-name ${brand.appName}`,
       );
     }

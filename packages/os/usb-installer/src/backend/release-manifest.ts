@@ -24,7 +24,7 @@ export interface ElizaOsReleaseArtifact {
   channel: "stable" | "beta" | "nightly";
   sequence: number;
   expires: string;
-  architecture: "x86_64" | "arm64" | "riscv64";
+  architecture: "x86_64" | "arm64";
   url: string;
   compressedSize: number;
   expandedSize: number;
@@ -182,9 +182,7 @@ export function parseReleaseManifest(
     )
       fail("channel is unsupported.");
     if (
-      !(["x86_64", "arm64", "riscv64"] as const).includes(
-        item.architecture as never,
-      )
+      !(["x86_64", "arm64"] as const).includes(item.architecture as never)
     )
       fail("architecture is unsupported.");
     if (!positiveInteger(item.sequence))

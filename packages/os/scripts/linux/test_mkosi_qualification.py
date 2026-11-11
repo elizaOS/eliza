@@ -25,51 +25,48 @@ HERE = Path(__file__).resolve().parent
 
 
 class QualificationPreflightTest(unittest.TestCase):
-    def test_powerdown_requires_acknowledgement_for_platform_and_keyboard_requests(self) -> None:
+    def test_powerdown_requires_acknowledgement(self) -> None:
         module = runpy.run_path(str(HERE / "mkosi-persistence-qualify.py"))
-        for keyboard in (False, True):
-            for rejected in (False, True):
-                with self.subTest(keyboard=keyboard, rejected=rejected), tempfile.TemporaryDirectory() as temporary:
-                    monitor = Path(temporary) / "qmp.sock"
-                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
-                        server.settimeout(5)
-                        server.bind(str(monitor))
-                        server.listen(1)
+        for rejected in (False, True):
+            with self.subTest(rejected=rejected), tempfile.TemporaryDirectory() as temporary:
+                monitor = Path(temporary) / "qmp.sock"
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.settimeout(5)
+                    server.bind(str(monitor))
+                    server.listen(1)
 
-                        def serve() -> None:
-                            connection, _ = server.accept()
-                            with connection:
-                                connection.settimeout(5)
-                                with connection.makefile("rwb") as stream:
-                                    stream.write(b'{"QMP": {}}\n')
+                    def serve() -> None:
+                        connection, _ = server.accept()
+                        with connection:
+                            connection.settimeout(5)
+                            with connection.makefile("rwb") as stream:
+                                stream.write(b'{"QMP": {}}\n')
+                                stream.flush()
+                                command = "system_powerdown"
+                                for name in ("qmp_capabilities", command):
+                                    request = json.loads(stream.readline())
+                                    expected = {"execute": name, "id": name}
+                                    self.assertEqual(request, expected)
+                                    # Unrelated QMP events must not count as acknowledgement.
+                                    stream.write(b'{"event": "RESUME"}\n')
+                                    response = {"id": name, "return": {}}
+                                    if rejected and name == command:
+                                        response = {"id": name, "error": {"class": "GenericError", "desc": "rejected"}}
+                                    stream.write((json.dumps(response) + "\n").encode())
                                     stream.flush()
-                                    command = "send-key" if keyboard else "system_powerdown"
-                                    for name in ("qmp_capabilities", command):
-                                        request = json.loads(stream.readline())
-                                        expected = {"execute": name, "id": name}
-                                        if name == "send-key":
-                                            expected["arguments"] = {"keys": [{"type": "qcode", "data": "power"}]}
-                                        self.assertEqual(request, expected)
-                                        # Unrelated QMP events must not count as acknowledgement.
-                                        stream.write(b'{"event": "RESUME"}\n')
-                                        response = {"id": name, "return": {}}
-                                        if rejected and name == command:
-                                            response = {"id": name, "error": {"class": "GenericError", "desc": "rejected"}}
-                                        stream.write((json.dumps(response) + "\n").encode())
-                                        stream.flush()
 
-                        with ThreadPoolExecutor(max_workers=1) as executor:
-                            completed = executor.submit(serve)
-                            if rejected:
-                                with self.assertRaisesRegex(module["QualificationError"], "QEMU rejected"):
-                                    module["request_powerdown"](monitor, keyboard=keyboard)
-                            else:
-                                module["request_powerdown"](monitor, keyboard=keyboard)
-                            completed.result(timeout=5)
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        completed = executor.submit(serve)
+                        if rejected:
+                            with self.assertRaisesRegex(module["QualificationError"], "QEMU rejected"):
+                                module["request_powerdown"](monitor)
+                        else:
+                            module["request_powerdown"](monitor)
+                        completed.result(timeout=5)
 
     def test_persistence_virt_guests_have_64_bit_cpu_and_desktop_devices(self) -> None:
         command_for = runpy.run_path(str(HERE / "mkosi-persistence-qualify.py"))["qemu_command"]
-        for architecture, cpu in (("arm64", "cortex-a72"), ("riscv64", "rv64")):
+        for architecture, cpu in (("arm64", "cortex-a72"),):
             with self.subTest(architecture=architecture):
                 args = SimpleNamespace(
                     architecture=architecture, memory_mib=1024, cpus=1, cpu=None,
@@ -656,7 +653,7 @@ class QualificationPreflightTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(HERE / "mkosi-linux-build.py"),
-                    "--architecture", "riscv64",
+                    "--architecture", "arm64",
                     "--build-mode", "release",
                     "--output-dir", str(root / "out"),
                     "--evidence", str(evidence),
@@ -830,11 +827,11 @@ class QualificationPreflightTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(HERE / "mkosi-qemu-qualify.py"),
-                    "--architecture", "riscv64",
+                    "--architecture", "arm64",
                     "--image", str(root / "disk.raw"),
                     "--firmware-code", str(root / "code.fd"),
                     "--firmware-vars", str(root / "vars.fd"),
-                    "--bios", str(root / "opensbi.bin"),
+                    "--bios", str(root / "firmware.bin"),
                     "--transcript", str(root / "transcript.log"),
                     "--evidence", str(evidence),
                     "--preflight-only",
@@ -1033,7 +1030,7 @@ class QualificationPreflightTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(HERE / "mkosi-persistence-qualify.py"),
-                    "--architecture", "riscv64",
+                    "--architecture", "arm64",
                     "--source-image", str(source),
                     "--work-image", str(work),
                     "--firmware-mode", "bios",
