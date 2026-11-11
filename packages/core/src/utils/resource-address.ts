@@ -1,4 +1,12 @@
 /** Syntactic address recognition only: no network probe, permission or dispatch. */
+function isIPv4Literal(hostname: string): boolean {
+	const octets = hostname.split(".");
+	return (
+		octets.length === 4 &&
+		octets.every((octet) => /^\d+$/u.test(octet) && Number(octet) <= 255)
+	);
+}
+
 export function parseWebResourceAddress(value: string): URL | undefined {
 	const text = value.trim();
 	if (!text || /[\s<>"'`]/u.test(text)) return;
@@ -20,8 +28,17 @@ export function parseWebResourceAddress(value: string): URL | undefined {
 	// A bare word is an app/search term, not an implicit network destination.
 	// Validate DNS syntax without a site or TLD allowlist. Explicit IP/localhost
 	// addresses stay resources; the existing operation's policy owns eligibility.
-	if (!explicit && (labels.length < 2 || /^\d+$/u.test(labels.at(-1) ?? "")))
-		return;
+	// A host:port pair is not a bare word or a version number, so an implicit
+	// localhost, IPv4 literal, or IPv6 literal with an explicit port is a
+	// resource too ("open localhost:3000" names a destination, not a search).
+	if (!explicit && (labels.length < 2 || /^\d+$/u.test(labels.at(-1) ?? ""))) {
+		const isHostPortAddress =
+			url.port !== "" &&
+			(url.hostname === "localhost" ||
+				url.hostname.startsWith("[") ||
+				isIPv4Literal(url.hostname));
+		if (!isHostPortAddress) return;
+	}
 	if (
 		!url.hostname.startsWith("[") &&
 		labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/iu.test(label))
@@ -36,13 +53,21 @@ export function parseWebResourceAddress(value: string): URL | undefined {
 export function containsResourceAddress(text: string): boolean {
 	return (
 		/\b[a-z][a-z0-9+.-]*:\/\/\S*/iu.test(text) ||
-		text
-			.split(/\s+/u)
-			.some(
-				(token) =>
-					parseWebResourceAddress(
-						token.replace(/^[([<"'`]+|[)\]>"'`.,!?;]+$/gu, ""),
-					) !== undefined,
-			)
+		text.split(/\s+/u).some((token) => {
+			// Try the token as-is first, then with only trailing punctuation
+			// removed, then fully unwrapped. Stripping a leading "[" up
+			// front would mangle a bracketed IPv6 literal ("[::1]:8080"
+			// loses its "["), while a trailing "." after the port
+			// ("[::1]:8080.") is not a valid URL, so the raw token alone
+			// is not enough.
+			if (parseWebResourceAddress(token) !== undefined) return true;
+			const trailingStripped = token.replace(/[)\]>"'`.,!?;]+$/gu, "");
+			if (parseWebResourceAddress(trailingStripped) !== undefined) return true;
+			return (
+				parseWebResourceAddress(
+					token.replace(/^[([<"'`]+|[)\]>"'`.,!?;]+$/gu, ""),
+				) !== undefined
+			);
+		})
 	);
 }
