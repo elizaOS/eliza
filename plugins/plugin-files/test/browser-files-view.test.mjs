@@ -615,3 +615,105 @@ test("legacy query completeness is unknown for both zero and 500 returned rows",
     { count: "missing-entries", status: "failed", empty: false },
   ]);
 });
+
+test("a revoked folder listing is denied rather than empty", async (t) => {
+  let result = { status: "ready", entries: [] };
+  const view = files(t, { storageList: async () => result });
+  view.render();
+  await tick();
+  view.render().browse.allFiles();
+  await tick();
+  assert.equal(
+    view.render().fd.empty,
+    true,
+    "an admitted successful empty listing",
+  );
+  result = { status: "denied", access: "denied" };
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  await tick();
+  const denied = view.render();
+  assert.equal(denied.browse.denied, true);
+  assert.equal(denied.fd.loading, false);
+  assert.equal(denied.fd.empty, false, "a refused listing is not empty");
+});
+
+test("an unavailable access response is not a permission denial or an empty folder", async (t) => {
+  let state = { status: "ready", access: "granted" };
+  const view = files(t, { storageState: async () => state });
+  view.render();
+  await tick();
+  view.render().browse.allFiles();
+  await tick();
+  state = { status: "unavailable", message: "Files closed." };
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  await tick();
+  const out = view.render();
+  assert.equal(out.browse.unavailable, true);
+  assert.equal(out.browse.denied, false);
+  assert.equal(out.fd.loading, false);
+  assert.equal(out.fd.empty, false);
+});
+
+test("a failed folder or Trash read exposes its error until a successful retry", async (t) => {
+  let failure = true;
+  const view = files(t, {
+    storageList: async () =>
+      failure ? { status: "unavailable" } : { status: "ready", entries: [] },
+    storageTrashList: async () =>
+      failure ? { status: "unavailable" } : { status: "ready", items: [] },
+  });
+  view.render();
+  await tick();
+  const assertFailure = (out, error) => {
+    assert.equal(out.fd.loading, false);
+    assert.equal(out.fd.empty, false);
+    assert.equal(out.nativeTreeStatus, error);
+  };
+  view.render().browse.allFiles();
+  await tick();
+  assertFailure(view.render(), "Files could not be read.");
+  view.render().fd.close();
+  await tick();
+  view.render().browse.openTrash();
+  await tick();
+  assertFailure(view.render(), "Trash could not be read.");
+  failure = false;
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  await tick();
+  assert.equal(view.render().fd.empty, true);
+  assert.equal(view.render().nativeTreeStatus, "");
+});
+
+test("unreadable secondary Trash keeps the visible list incomplete until it is read", async (t) => {
+  let readable = false;
+  const view = files(t, {
+    storageState: async () => ({
+      status: "ready",
+      access: "granted",
+      volumes: [
+        { id: "primary", name: "Internal storage", primary: true },
+        { id: "secondary", name: "External storage", primary: false },
+      ],
+    }),
+    storageTrashList: async (input) =>
+      input?.volume && !readable
+        ? { status: "unavailable" }
+        : { status: "ready", items: [] },
+  });
+  view.render();
+  await tick();
+  view.render().browse.openTrash();
+  await tick();
+  const incomplete = view.render();
+  assert.equal(incomplete.fd.loading, false);
+  assert.equal(incomplete.fd.empty, false);
+  assert.equal(
+    incomplete.nativeTreeStatus,
+    "Some Trash locations could not be read.",
+  );
+  readable = true;
+  globalThis.document.dispatchEvent(new Event("visibilitychange"));
+  await tick();
+  assert.equal(view.render().fd.empty, true);
+  assert.equal(view.render().nativeTreeStatus, "");
+});

@@ -347,7 +347,12 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     try {
       const state = await storage.storageState();
       if (ticket !== stateGeneration || !current()) return false;
-      access = state.access || "denied";
+      access =
+        state.status === "ready"
+          ? state.access || "unavailable"
+          : state.status === "denied"
+            ? "denied"
+            : "unavailable";
       legacy = state.legacy === true;
       volumes = [...(state.volumes || [])].sort(
         (a, b) => Number(b.primary) - Number(a.primary),
@@ -361,8 +366,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   }
   const extraVolumes = () =>
     volumes.filter((volume) => !volume.primary).map((volume) => volume.id);
-  /** Trash across the primary and every extra volume. A volume that cannot be read adds nothing. */
-  async function trashAcross(): Promise<TrashRow[] | null> {
+  /** Keep readable secondary rows without claiming a complete Trash listing. */
+  async function trashAcross(): Promise<{
+    rows: TrashRow[];
+    incomplete: boolean;
+  } | null> {
     const lists = await Promise.all(
       [undefined, ...extraVolumes()].map(async (volume) => {
         try {
@@ -372,19 +380,19 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
                 ...item,
                 ...onVolume(volume),
               }))
-            : volume
-              ? []
-              : null;
+            : null;
         } catch {
-          return volume ? [] : null;
+          return null;
         }
       }),
     );
-    return lists[0] === null
-      ? null
-      : lists
-          .flatMap((list) => list || [])
-          .sort((a, b) => b.deletedAt - a.deletedAt);
+    if (lists[0] === null) return null;
+    return {
+      rows: lists
+        .flatMap((list) => list || [])
+        .sort((a, b) => b.deletedAt - a.deletedAt),
+      incomplete: lists.includes(null),
+    };
   }
   const volumeLabel = (volume?: string) =>
     volume
@@ -408,12 +416,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         }
       }),
     );
-    let trash = 0;
-    const rows = await trashAcross();
-    if (rows) trash = rows.length;
+    const trash = await trashAcross();
     if (active && ticket === generation) {
       counts = next;
-      trashCount = trash;
+      trashCount = trash && !trash.incomplete ? trash.rows.length : 0;
     }
   }
   /** Reload what is on screen (spec Refresh): the same place, rows that still exist, a selection
@@ -428,16 +434,26 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (!(await refreshState(current)) || !current()) return;
       if (access !== "granted") {
         entries = [];
+        categoryFolders = undefined;
         trashItems = [];
+        selection = null;
+        error = "";
         loaded = true;
         return;
       }
       if (at.kind === "browse") await loadCounts(ticket);
       else if (at.kind === "trash") {
-        const rows = await trashAcross();
+        const trash = await trashAcross();
         if (!current()) return;
-        if (rows) trashItems = rows;
-        else toast("Trash could not be read.");
+        if (trash) {
+          trashItems = trash.rows;
+          error = trash.incomplete
+            ? "Some Trash locations could not be read."
+            : "";
+        } else {
+          error = "Trash could not be read.";
+          toast(error);
+        }
       } else {
         const value =
           at.kind === "category"
@@ -451,7 +467,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           up();
           return;
         }
-        const ok = !failed(value);
+        const ok = value.status === "ready";
+        if (!ok) failed(value);
         truncated = ok && value.truncated === true;
         listedCount =
           truncated && "count" in value && typeof value.count === "number"
@@ -467,6 +484,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         } else {
           entries = [];
           categoryFolders = undefined;
+          error = access === "granted" ? "Files could not be read." : "";
         }
       }
       if (!current()) return;
@@ -1543,7 +1561,13 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       out.fd = {
         name: title,
         items,
-        empty: loaded && !loading && !truncated && items.length === 0 && !error,
+        empty:
+          granted &&
+          loaded &&
+          !loading &&
+          !truncated &&
+          items.length === 0 &&
+          !error,
         emptyText:
           at.kind === "trash"
             ? `Trash is empty. Items in Trash are deleted after ${TRASH_RETENTION_DAYS} days.`
