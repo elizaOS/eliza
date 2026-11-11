@@ -84,7 +84,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 25
+    timeout-minutes: 90
     env:
       # Match canonical source checks: one compiler fits the hosted runner,
       # including the cloud API's larger declaration graph.
@@ -93,6 +93,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Setup Java for Quint verification
+        if: ${{ !inputs.source_checks_in_canonical_ci }}
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
       - name: Lint and typecheck cloud workspaces
         if: ${{ !inputs.source_checks_in_canonical_ci }}
         run: bun run verify:cloud
