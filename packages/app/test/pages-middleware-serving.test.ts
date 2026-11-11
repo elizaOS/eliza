@@ -242,6 +242,52 @@ describe("unified host migration", () => {
     ).toBe("https://api-staging.eliza.app/api/health?full=1");
   });
 
+  it("sends a product Cloud only to its own configured API origin", async () => {
+    const product = { CLOUD_DEPLOYMENT_ID: "example-product" };
+    expect(
+      resolveApiWorkerTarget("https://cloud.example.org/api/health?full=1", {
+        ...product,
+        API_UPSTREAM: "https://api.example.org/",
+      }),
+    ).toBe("https://api.example.org/api/health?full=1");
+
+    // No Eliza fallback: a missing or malformed upstream stops the request
+    // before it reaches the bound Worker.
+    for (const upstream of [
+      undefined,
+      "",
+      "api.example.org",
+      "http://api.example.org",
+      "https://api.example.org/v1",
+      "https://user@api.example.org",
+    ]) {
+      const forwarded: Request[] = [];
+      const response = await proxyToApiWorker({
+        request: new Request("https://cloud.example.org/api/health"),
+        env: {
+          ...product,
+          API_UPSTREAM: upstream,
+          API_WORKER: {
+            fetch: async (request) => {
+              forwarded.push(request);
+              return new Response("bound");
+            },
+          },
+        },
+      });
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(forwarded).toEqual([]);
+    }
+
+    // The eliza deployment, named or implied, keeps its host-based fallback.
+    expect(
+      resolveApiWorkerTarget("https://cloud.eliza.app/api/health", {
+        CLOUD_DEPLOYMENT_ID: "eliza",
+      }),
+    ).toBe("https://api.eliza.app/api/health");
+  });
+
   it("proxies exact protocol roots and OIDC discovery through the bound API Worker", async () => {
     const requests: Request[] = [];
     const apiWorker = {
