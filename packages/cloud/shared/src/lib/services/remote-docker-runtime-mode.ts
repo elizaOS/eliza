@@ -18,9 +18,9 @@
  *   scanner only reads JS/TS content, so a `.py` or `.sh` payload is executed
  *   having never been opened.
  *
- * Matched by suffix rather than exact name on purpose. Agent images built
- * before brand env aliases were removed resolve `<PREFIX>_TERMINAL_RUN_TOKEN`
- * as the same switch as `ELIZA_TERMINAL_RUN_TOKEN`, so pinning one spelling
+ * Matched by suffix rather than exact name on purpose. Older agent images
+ * may still honour a prefixed partner key (`<PREFIX>_TERMINAL_RUN_TOKEN`) as
+ * the same switch as `ELIZA_TERMINAL_RUN_TOKEN`, so pinning one spelling
  * would leave the partner open on those images.
  *
  * Removed here, rather than denied on the write routes, because a denylist on

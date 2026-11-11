@@ -596,7 +596,7 @@ function launchCuttlefish(aospRoot, brand) {
 /**
  * Re-build the image APK with brand AOSP env flags so it picks up
  * BuildConfig.AOSP_BUILD=true and the agent bundle is produced with
- * <BRAND>_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
+ * ELIZA_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
  * sign it, then stage it with stageLauncherApk (image-launcher.ts). It is
  * installed as a nonprivileged product launcher, never a priv-app.
  */

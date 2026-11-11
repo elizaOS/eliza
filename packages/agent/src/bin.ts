@@ -19,11 +19,6 @@ import {
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 import { captureProtectedProfile } from "./security/protected-profile-state.ts";
 
-// Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
-// boot-config alias table — the reader path, with no process.env mirror
-// (issue #13423). `@elizaos/core` is already a transitive static import via
-// `./cli/index.ts`, so this adds no new module to the boot graph; before the
-// alias table is seeded these fall back to the raw ELIZA_ value.
 // Establish the host executable-search authority before the CLI dynamically
 // imports runtime configuration or any plugin code.
 captureHostExecutionBaseline();
