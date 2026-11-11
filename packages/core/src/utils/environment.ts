@@ -65,7 +65,12 @@ export function resolveSetting(
 ): string | undefined {
 	const fromRuntime = runtime?.getSetting(key);
 	if (fromRuntime !== undefined && fromRuntime !== null) {
-		return String(fromRuntime);
+		// An empty or whitespace-only runtime string is unset, like an
+		// empty env value: fall through to the env fallback instead of
+		// returning a blank setting that hides the deployment value.
+		if (typeof fromRuntime !== "string" || fromRuntime.trim()) {
+			return String(fromRuntime);
+		}
 	}
 	return readEnv(key, options);
 }
