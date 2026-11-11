@@ -182,6 +182,7 @@
     "./lib/constants/secrets": "./src/lib/constants/secrets.ts",
     "./lib/cors-constants": "./src/lib/cors-constants.ts",
     "./lib/cors/cloud-api-hono-cors": "./src/lib/cors/cloud-api-hono-cors.ts",
+    "./lib/deployment/cloud-deployment": "./src/lib/deployment/cloud-deployment.ts",
     "./lib/eliza-agent-web-ui": "./src/lib/eliza-agent-web-ui.ts",
     "./lib/eliza/runtime-factory": "./src/lib/eliza/runtime-factory.ts",
     "./lib/analytics/export": "./src/lib/analytics/export.ts",

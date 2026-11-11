@@ -1,0 +1,18 @@
+{
+  "name": "@elizaos/cloud-deploy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Renders a product's Cloud API Worker configuration from a deployment file.",
+  "bin": {
+    "cloud-deploy": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check ."
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  }
+}

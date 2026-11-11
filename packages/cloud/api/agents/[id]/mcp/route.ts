@@ -18,6 +18,7 @@ import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
 } from "@elizaos/cloud-shared/lib/cors-constants";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   RateLimitPresets,
   rateLimit,
@@ -170,7 +171,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     return c.json({ error: "MCP not accessible for this agent" }, 403);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;

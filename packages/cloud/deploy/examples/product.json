@@ -1,0 +1,103 @@
+{
+  "id": "example-product",
+  "environments": {
+    "staging": {
+      "workerName": "example-product-cloud-api-staging",
+      "accountId": "00000000000000000000000000000000",
+      "routes": [
+        { "pattern": "api-staging.example.org/*", "zone": "example.org" },
+        { "pattern": "blob-staging.example.org/*", "zone": "example.org" }
+      ],
+      "origins": {
+        "web": "https://staging.example.org",
+        "app": "https://cloud-staging.example.org",
+        "api": "https://api-staging.example.org"
+      },
+      "tenantId": "example-product-staging",
+      "serviceName": "Example Product Cloud",
+      "blobHost": "blob-staging.example.org",
+      "assetsBase": "https://blob-staging.example.org",
+      "mailFrom": "noreply@example.org",
+      "billingUrl": "https://cloud-staging.example.org/cloud/billing",
+      "entitlement": {
+        "issuer": "https://api-staging.example.org",
+        "audience": "example-product"
+      },
+      "resources": {
+        "hyperdriveId": "00000000000000000000000000000011",
+        "kvNamespaceId": "00000000000000000000000000000012",
+        "r2Bucket": "example-product-blob-staging",
+        "rateLimitNamespaceIds": {
+          "GLOBAL_RATE_LIMITER": "2001",
+          "CHAT_ROUTE_RATE_LIMITER": "2002",
+          "DASHBOARD_CHAT_ROUTE_RATE_LIMITER": "2003",
+          "MOBILE_API_KEY_INGRESS_LIMITER": "2004"
+        }
+      },
+      "vars": {
+        "LOGIN_API_URL": "https://login-staging.example.org",
+        "ELIZA_MOBILE_APP_AUTH_ENABLED": "true",
+        "CACHE_ENABLED": "true",
+        "CACHE_BACKEND": "auto"
+      },
+      "secrets": [
+        "DATABASE_URL",
+        "STEWARD_JWT_SECRET",
+        "SECRETS_MASTER_KEY",
+        "CRON_SECRET",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY_ID"
+      ]
+    },
+    "production": {
+      "workerName": "example-product-cloud-api",
+      "accountId": "00000000000000000000000000000000",
+      "routes": [
+        { "pattern": "api.example.org/*", "zone": "example.org" },
+        { "pattern": "blob.example.org/*", "zone": "example.org" }
+      ],
+      "origins": {
+        "web": "https://example.org",
+        "app": "https://cloud.example.org",
+        "api": "https://api.example.org",
+        "firstParty": ["https://www.example.org"]
+      },
+      "tenantId": "example-product",
+      "serviceName": "Example Product Cloud",
+      "blobHost": "blob.example.org",
+      "assetsBase": "https://blob.example.org",
+      "mailFrom": "noreply@example.org",
+      "billingUrl": "https://cloud.example.org/cloud/billing",
+      "entitlement": {
+        "issuer": "https://api.example.org",
+        "audience": "example-product"
+      },
+      "resources": {
+        "hyperdriveId": "00000000000000000000000000000021",
+        "kvNamespaceId": "00000000000000000000000000000022",
+        "r2Bucket": "example-product-blob",
+        "rateLimitNamespaceIds": {
+          "GLOBAL_RATE_LIMITER": "2011",
+          "CHAT_ROUTE_RATE_LIMITER": "2012",
+          "DASHBOARD_CHAT_ROUTE_RATE_LIMITER": "2013",
+          "MOBILE_API_KEY_INGRESS_LIMITER": "2014"
+        }
+      },
+      "placement": { "mode": "smart" },
+      "vars": {
+        "LOGIN_API_URL": "https://login.example.org",
+        "ELIZA_MOBILE_APP_AUTH_ENABLED": "true",
+        "CACHE_ENABLED": "true",
+        "CACHE_BACKEND": "auto"
+      },
+      "secrets": [
+        "DATABASE_URL",
+        "STEWARD_JWT_SECRET",
+        "SECRETS_MASTER_KEY",
+        "CRON_SECRET",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY",
+        "ELIZA_ENTITLEMENT_SIGNING_KEY_ID"
+      ]
+    }
+  }
+}

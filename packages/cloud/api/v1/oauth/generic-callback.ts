@@ -1,5 +1,7 @@
 // Handles v1 cloud API v1 oauth generic callback route traffic with route-local auth expectations.
+
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,
@@ -34,7 +36,7 @@ export async function handleGenericOAuthCallback(
   const searchParams = new URL(request.url).searchParams;
 
   const baseUrl =
-    getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+    getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const defaultRedirect = `${baseUrl}/cloud/connectors`;
 
   // Get provider configuration
