@@ -49,6 +49,8 @@ final class UpdateRunner {
 
     private UpdateRunner(Context context) { this.context = context; }
 
+    synchronized boolean running() { return active != null; }
+
     synchronized boolean start(int job, Runnable finished) {
         if (active != null) return false;
         Run run = active = new Run(job, finished);

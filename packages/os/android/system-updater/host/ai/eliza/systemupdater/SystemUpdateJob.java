@@ -14,6 +14,11 @@ import android.os.UserManager;
 public final class SystemUpdateJob extends JobService {
     static final int PERIODIC = 20851, REQUESTED = 20852;
 
+    static boolean requestedPending(Context context) {
+        JobScheduler scheduler = context.getSystemService(JobScheduler.class);
+        return scheduler != null && scheduler.getPendingJob(REQUESTED) != null;
+    }
+
     static void schedule(Context context, boolean requested) {
         UserManager users = context.getSystemService(UserManager.class);
         if (!context.getResources().getBoolean(R.bool.os_update_enabled) || users == null || !users.isSystemUser()) return;
