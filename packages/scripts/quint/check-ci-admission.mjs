@@ -5,8 +5,11 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { parse } from "yaml";
+import { parseJunitSummary } from "../lib/junit-summary.ts";
 import { testOutputPath } from "../lib/test-output.ts";
+import { validateWorkflowTriggerPolicy } from "../workflow-trigger-policy.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const model = "packages/scripts/quint/CiAdmission.qnt";
@@ -52,7 +55,8 @@ const gate = required.steps.find(
   (step) => step.name === "Require every admission lane",
 );
 assert(gate && typeof gate.run === "string");
-const promotion = "github.base_ref == 'main'";
+const promotion =
+  "(github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')";
 assert.equal(gate.env.PROMOTION, `\${{ ${promotion} }}`);
 const bindings = [
   ...gate.env.RESULTS.matchAll(
@@ -71,7 +75,7 @@ assert.deepEqual(shardJob.strategy.matrix.shard, [1, 2, 3, 4]);
 assert.equal(
   shardJob.if,
   promotion,
-  "Quint shards must run only for a pull request into main",
+  "Main pull requests and merge-queue candidates require every Quint shard",
 );
 assert.equal(shardJob.strategy["fail-fast"], false);
 assert.equal(shardJob.outputs.run, `\${{ steps.changes.outputs.run }}`);
@@ -101,7 +105,7 @@ for (const [job, name] of [
 assert.deepEqual(shardGate.needs, ["quint-models"]);
 assert.equal(
   shardGate.if,
-  `\${{ always() && !cancelled() && ${promotion} }}`,
+  `\${{ always() && !cancelled() && (${promotion}) }}`,
   "The Quint aggregate must run only for promotion and stop when the whole workflow is cancelled",
 );
 const shardGuard = shardGate.steps.find(
@@ -118,6 +122,96 @@ assert.equal(
   ).run,
   "node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4",
 );
+const selection = shardJob.steps.find((step) => step.id === "changes");
+assert.equal(selection.run, 'echo "run=true" >> "$GITHUB_OUTPUT"');
+assert.equal(
+  shardJob.steps.find((step) => step.name === "Checkout candidate source").with
+    .ref,
+  "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}",
+);
+assert.equal(
+  shardGate.steps.find((step) => step.name === "Checkout verified source").with
+    .ref,
+  shardJob.steps.find((step) => step.name === "Checkout candidate source").with
+    .ref,
+);
+assert.equal(validateWorkflowTriggerPolicy(root).developPushWorkflows, 1);
+const canonical = parse(
+  await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8"),
+);
+assert.equal(canonical.jobs.quint.if, "github.ref == 'refs/heads/main'");
+assert.equal(
+  canonical.jobs["quint-result"].if,
+  "${{ always() && !cancelled() && github.ref == 'refs/heads/main' }}",
+);
+assert.deepEqual(canonical.jobs.quint.strategy.matrix.shard, [1, 2, 3, 4]);
+assert.equal(
+  canonical.jobs.quint.steps.find(
+    (step) => step.name === "Quint application state models",
+  ).run,
+  "bun run test:quint --shard=${{ matrix.shard }}/4",
+);
+assert.equal(
+  canonical.jobs["quint-result"].steps.find(
+    (step) => step.name === "Verify complete disjoint model coverage",
+  ).run,
+  "node packages/scripts/check-quint-shards.ts test-results/quint-canonical-manifests 4",
+);
+assert(canonical.jobs.required.needs.includes("quint-result"));
+const canonicalGate = canonical.jobs.required.steps.find(
+  (step) => step.name === "Require every CI job to succeed",
+);
+assert(
+  canonicalGate.env.RESULTS.includes(
+    "quint-result=${{ needs.quint-result.result }}:${{ github.ref == 'refs/heads/main' }}",
+  ),
+);
+const eventMatrix = [];
+for (const event of [
+  "pull_request",
+  "merge_group",
+  "push",
+  "workflow_dispatch",
+]) {
+  for (const branch of ["develop", "staging", "main", "feature"]) {
+    const github = {
+      event_name: event,
+      base_ref: event === "pull_request" ? branch : "",
+      ref: `refs/heads/${branch}`,
+      event: {
+        merge_group: {
+          base_ref: event === "merge_group" ? `refs/heads/${branch}` : "",
+        },
+      },
+    };
+    const evaluate = (value) =>
+      Boolean(
+        runInNewContext(value.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), {
+          github,
+          always: () => true,
+          cancelled: () => false,
+        }),
+      );
+    const prExpected =
+      branch === "main" && ["pull_request", "merge_group"].includes(event);
+    assert.equal(evaluate(shardJob.if), prExpected);
+    assert.equal(evaluate(shardGate.if), prExpected);
+    assert.equal(evaluate(gate.env.PROMOTION), prExpected);
+    // Reusable CI inherits the push/manual caller's ref; it has no independent push trigger.
+    const canonicalExpected = branch === "main";
+    assert.equal(evaluate(canonical.jobs.quint.if), canonicalExpected);
+    assert.equal(
+      evaluate(canonical.jobs["quint-result"].if),
+      canonicalExpected,
+    );
+    eventMatrix.push({
+      event,
+      branch,
+      prQuint: prExpected,
+      canonicalQuint: canonicalExpected,
+    });
+  }
+}
 const output = testOutputPath("quint-ci-admission");
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(path.join(output, "run-"));
@@ -161,6 +255,38 @@ for (const promoted of ["true", "false"]) {
   }
 }
 assert.equal(results.length, 58);
+const canonicalResults = [];
+const canonicalBindings = [
+  ...canonicalGate.env.RESULTS.matchAll(
+    /(\S+)=\$\{\{\s*needs\.([^\s]+)\.result\s*\}\}:(.*)/g,
+  ),
+];
+assert.equal(canonicalBindings.length, canonical.jobs.required.needs.length);
+for (const main of [true, false])
+  for (const fault of [null, ...canonicalBindings.map((match) => match[1])]) {
+    for (const bad of fault
+      ? ["failure", "cancelled", "running", "", "skipped", "success"]
+      : [null]) {
+      const expected = (id) =>
+        id === "quint-result" && !main ? "skipped" : "success";
+      if (fault && bad === expected(fault)) continue;
+      const values = canonicalBindings
+        .map(
+          (match) =>
+            `${match[1]}=${match[1] === fault ? bad : expected(match[1])}:${match[1] === "quint-result" ? main : true}`,
+        )
+        .join("\n");
+      const checked = spawnSync("bash", ["-c", canonicalGate.run], {
+        cwd: root,
+        env: { ...process.env, RESULTS: values },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      assert.equal(checked.signal, null);
+      assert.equal(checked.status, fault ? 1 : 0);
+      canonicalResults.push({ main, fault, bad, exitCode: checked.status });
+    }
+  }
 const shardResults = [];
 for (const result of [
   "success",
@@ -179,7 +305,7 @@ for (const result of [
     });
     if (checked.error) throw checked.error;
     assert.equal(checked.signal, null);
-    const accepted = result === "success" && shouldRun !== "";
+    const accepted = result === "success" && shouldRun === "true";
     assert.equal(checked.status, accepted ? 0 : 1);
     shardResults.push({ result, shouldRun, accepted });
   }
@@ -227,11 +353,85 @@ assert.match(
   partitionOutput,
   /^ok \d+ - the real runner emits an exhaustive union across four shards$/m,
 );
+const selectorTests = spawnSync(
+  process.execPath,
+  ["--test", "packages/scripts/ci-affected.integration.test.ts"],
+  {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+    timeout: 120_000,
+    maxBuffer: 8 * 1024 * 1024,
+  },
+);
+await writeFile(
+  path.join(directory, "selectors.tap"),
+  `${selectorTests.stdout ?? ""}${selectorTests.stderr ?? ""}`,
+);
+assert.equal(selectorTests.signal, null);
+assert.equal(
+  selectorTests.status,
+  0,
+  `Actual source selector failed: ${directory}`,
+);
+assert.match(selectorTests.stdout, /^# fail 0$/m);
+assert.match(selectorTests.stdout, /^# skipped 0$/m);
+const proofTests = spawnSync(
+  "bun",
+  [
+    "test",
+    "./packages/cloud/scripts/staging-release-certification.test.ts",
+    "./packages/scripts/__tests__/develop-effect-ledger.test.ts",
+    "--reporter=junit",
+    `--reporter-outfile=${path.join(directory, "production.junit.xml")}`,
+  ],
+  {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+    timeout: 180_000,
+    maxBuffer: 8 * 1024 * 1024,
+  },
+);
+await writeFile(
+  path.join(directory, "production.log"),
+  `${proofTests.stdout ?? ""}${proofTests.stderr ?? ""}`,
+);
+assert.equal(proofTests.signal, null);
+assert.equal(
+  proofTests.status,
+  0,
+  `Main production conformance failed: ${directory}`,
+);
+const junit = await readFile(
+  path.join(directory, "production.junit.xml"),
+  "utf8",
+);
+assert.equal((junit.match(/<testcase /g) ?? []).length, 84);
+const proofSummary = parseJunitSummary(junit);
+assert.deepEqual(
+  new Map(proofSummary.files.map((file) => [file.file, file.executedTests])),
+  new Map([
+    ["packages/cloud/scripts/staging-release-certification.test.ts", 62],
+    ["packages/scripts/__tests__/develop-effect-ledger.test.ts", 22],
+  ]),
+);
+assert.equal(
+  proofSummary.failures + proofSummary.errors + proofSummary.skipped,
+  0,
+);
+assert(!/<(?:failure|error|skipped)[ >]/.test(junit));
+for (const name of [
+  "admits the complete current source manifest and an exact main manual run",
+  "rechecks the actual run after download and rejects rerun, newer run, or missing manifest",
+  "all three production effect consumers require main proof before their first mutation",
+])
+  assert(junit.includes(name), `Missing required real admission case ${name}`);
 const partitions = { tests: 7, passed: 7, failed: 0, skipped: 0, cancelled: 0 };
 await writeFile(
   path.join(directory, "results.json"),
-  `${JSON.stringify({ status: "passed", workflowPath, workflowSha256: createHash("sha256").update(source).digest("hex"), results, shardResults, partitions }, null, 2)}\n`,
+  `${JSON.stringify({ status: "passed", workflowPath, workflowSha256: createHash("sha256").update(source).digest("hex"), results, canonicalResults, eventMatrix, shardResults, partitions }, null, 2)}\n`,
 );
 console.log(
-  `CI admission conformance passed 58 top-level and 18 shard shell outcomes plus seven partition tests. Results ${directory}`,
+  `CI admission conformance passed 58 top-level and 18 shard shell outcomes plus canonical/event matrix, seven partition tests and 84 production/ledger tests. Results ${directory}`,
 );

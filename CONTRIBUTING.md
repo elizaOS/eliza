@@ -42,10 +42,12 @@ unclear or you cannot find the approved plan, ask maintainers before you start.
   concurrency, cancellation, retries, failure and recovery. State the safety
   invariants, progress obligations, fairness assumptions and finite bounds.
   Run `bun run test:quint` and checks that compare the model with the real
-  implementation locally before you merge a PR. That is the only time you must
-  run the models. CI runs them only when staging is promoted to production
-  (pull requests into `main`), not on pull requests into `develop` or `staging`
-  and not on pushes. Keep the model current when behavior changes. List uncovered
+  implementation locally before you merge a PR. Hosted CI also runs all four
+  partitions for pull requests and merge-queue candidates into `main`, and for
+  pushes or manual validation on `main`. Other branches skip hosted Quint.
+  Production effects require the successful exact-source main Full manifest
+  and the existing staging tree certificate. Keep the model current when
+  behavior changes. List uncovered
   behavior explicitly. See [the state-correctness requirement](PRD.md#state-correctness)
   and [the model workflow](packages/scripts/quint/README.md).
 - **Prove a useful improvement.** Show a failure before the fix and a successful

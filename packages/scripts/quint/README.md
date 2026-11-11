@@ -58,10 +58,13 @@ hash. Remove the review when a model or coverage entry links the source.
 ownerless review. It also requires all declared gaps to be resolved. Review
 application state beyond the candidates found by source patterns.
 
-CI runs Quint only for a pull request into `main`, the promotion from staging
-to production. Other pull requests, merge candidates and branch pushes do not
-run it, so run `bun run test:quint` locally before merging. Promotion checks
-run four disjoint partitions. The required Quint check validates
+Run `bun run test:quint` locally before merging. Hosted CI runs four complete,
+disjoint partitions for pull requests and merge-queue candidates into `main`,
+and for main pushes or manual main validation (including the canonical Full
+caller). Develop, staging and feature branches skip hosted Quint. Production
+mutations also require the successful exact-source main Full manifest, bound to
+its current run attempt and all current surface inputs, plus existing staging
+certification. No manual dispatch or empty effect digest exempts that proof. The required Quint check validates
 all four reports against the current source, including every case, invariant,
 temporal check and implementation hook. Missing or interrupted reports fail.
 Shard reports use `test-results/quint/shard-N-of-4/`. Run local partitions in

@@ -59,9 +59,10 @@ nested `AGENTS.md` files.
   states, transitions, safety invariants, concurrency, cancellation, failure and
   recovery paths current. Check progress under explicit fairness assumptions.
   Run `bun run test:quint` and the implementation conformance checks locally
-  before you merge a PR. That is the only time you must run the models. CI runs
-  them only when staging is promoted to production (pull requests into `main`),
-  not on pull requests into `develop` or `staging` and not on pushes.
+  before you merge a PR. Hosted CI also runs four complete partitions for
+  pull requests and merge-queue candidates into `main`, main pushes and manual
+  main validation. Other branches skip hosted Quint. Production effects require
+  the successful exact-source main Full manifest and existing staging certification.
   Record bounds and coverage gaps. Follow [PRD.md](PRD.md#state-correctness).
 - Keep model-facing context and recorded training data complete. Preserve the
   existing authorized source-selection/restoration contract; do not add silent

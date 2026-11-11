@@ -8,9 +8,21 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { parse } from "yaml";
+import {
+  createEvidence,
+  currentValidationManifest,
+  verifyCompleteManifest,
+} from "../../scripts/develop-impact-evidence.ts";
+import {
+  readValidationArchive,
+  requireMainValidation,
+  verifyMainValidation,
+} from "./production-effect-certification.ts";
 
 import {
   artifactNameForTree,
@@ -506,5 +518,282 @@ describe("deployed renderer compute consent", () => {
     expect(browserJob).not.toContain(
       'ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1"',
     );
+  });
+});
+
+describe("exact-source main Full admission", () => {
+  function mainFixture() {
+    const expected = currentValidationManifest(repoRoot, sourceSha);
+    const rows = expected.surfaces.map((surface) =>
+      createEvidence(expected, surface.id, now, 168),
+    );
+    return {
+      repository: "elizaOS/eliza",
+      sourceSha,
+      expected,
+      now,
+      run: {
+        id: 701,
+        run_attempt: 2,
+        status: "completed",
+        conclusion: "success",
+        event: "push",
+        head_branch: "main",
+        head_sha: sourceSha,
+        path: ".github/workflows/develop-full.yml",
+        repository: { full_name: "elizaOS/eliza" },
+      },
+      artifact: {
+        id: 801,
+        name: `develop-full-manifest-${sourceSha}`,
+        expired: false,
+        digest: `sha256:${"d".repeat(64)}`,
+        workflow_run: { id: 701, head_sha: sourceSha, head_branch: "main" },
+      },
+      archive: {
+        expected,
+        observed: verifyCompleteManifest(expected, rows, now),
+        results: {
+          headSha: sourceSha,
+          runId: "701",
+          runAttempt: "2",
+          results: Object.fromEntries(
+            expected.surfaces.map((surface) => [surface.id, "success"]),
+          ),
+        },
+      },
+    };
+  }
+
+  // Compute the actual Git/workspace dependency closure once; mutations below are isolated copies.
+  const original = mainFixture();
+  const main = () => structuredClone(original);
+  test("admits the complete current source manifest and an exact main manual run", () => {
+    const input = main();
+    expect(verifyMainValidation(input).runAttempt).toBe(2);
+    input.run.event = "workflow_dispatch";
+    expect(verifyMainValidation(input).sourceSha).toBe(sourceSha);
+  });
+  test.each([
+    ["fork", (x) => (x.run.repository.full_name = "other/repo")],
+    ["workflow", (x) => (x.run.path = ".github/workflows/ci.yml")],
+    ["branch", (x) => (x.run.head_branch = "staging")],
+    ["source", (x) => (x.run.head_sha = "e".repeat(40))],
+    ["PR event", (x) => (x.run.event = "pull_request")],
+    ["cancelled", (x) => (x.run.conclusion = "cancelled")],
+    ["unfinished", (x) => (x.run.status = "in_progress")],
+    ["attempt", (x) => x.run.run_attempt++],
+    ["artifact run", (x) => x.artifact.workflow_run.id++],
+    [
+      "artifact source",
+      (x) => (x.artifact.workflow_run.head_sha = "e".repeat(40)),
+    ],
+    [
+      "artifact branch",
+      (x) => (x.artifact.workflow_run.head_branch = "staging"),
+    ],
+    ["expired artifact", (x) => (x.artifact.expired = true)],
+    ["result source", (x) => (x.archive.results.headSha = "e".repeat(40))],
+    ["result run", (x) => (x.archive.results.runId = "702")],
+    ["missing surface result", (x) => delete x.archive.results.results.cloud],
+    [
+      "skipped surface",
+      (x) => (x.archive.results.results.canonical = "skipped"),
+    ],
+    [
+      "extra surface result",
+      (x) => (x.archive.results.results.extra = "success"),
+    ],
+    ["missing row", (x) => x.archive.observed.surfaces.pop()],
+    [
+      "extra row",
+      (x) => x.archive.observed.surfaces.push(x.archive.observed.surfaces[0]),
+    ],
+    [
+      "row from prior source",
+      (x) => (x.archive.observed.surfaces[0].sourceSha = "e".repeat(40)),
+    ],
+    [
+      "row digest",
+      (x) => (x.archive.observed.surfaces[0].inputDigest = "e".repeat(64)),
+    ],
+    [
+      "expected input",
+      (x) => (x.archive.expected.surfaces[0].inputDigest = "e".repeat(64)),
+    ],
+    ["expired proof", (x) => (x.now = "2026-08-30T12:00:00Z")],
+  ])("refuses %s without an effect", (_name, mutate) => {
+    const input = main();
+    mutate(input);
+    expect(() => verifyMainValidation(input)).toThrow();
+  });
+
+  function archiveBytes(input, extra = false) {
+    const directory = mkdtempSync(resolve(tmpdir(), "main-admission-test-"));
+    try {
+      for (const name of ["expected", "observed", "results"])
+        writeFileSync(
+          resolve(directory, `${name}.json`),
+          JSON.stringify(input.archive[name]),
+        );
+      if (extra) writeFileSync(resolve(directory, "extra.json"), "{}");
+      const zip = resolve(directory, "proof.zip");
+      const child = spawnSync(
+        "zip",
+        [
+          "-q",
+          zip,
+          "expected.json",
+          "observed.json",
+          "results.json",
+          ...(extra ? ["extra.json"] : []),
+        ],
+        { cwd: directory },
+      );
+      expect(child.status).toBe(0);
+      return readFileSync(zip);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+  test("reads the actual archive and refuses corrupt bytes or extra members", () => {
+    const input = main();
+    const bytes = archiveBytes(input);
+    const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    expect(readValidationArchive(bytes, digest)).toEqual(input.archive);
+    expect(() =>
+      readValidationArchive(
+        Buffer.concat([bytes, Buffer.from("changed")]),
+        digest,
+      ),
+    ).toThrow(/digest/);
+    const extra = archiveBytes(input, true);
+    expect(() =>
+      readValidationArchive(
+        extra,
+        `sha256:${createHash("sha256").update(extra).digest("hex")}`,
+      ),
+    ).toThrow(/members/);
+  });
+  test("rechecks the actual run after download and rejects rerun, newer run, or missing manifest", async () => {
+    for (const variant of [
+      "valid",
+      "rerun",
+      "newer",
+      "missing",
+      "failed",
+      "old attempt",
+    ]) {
+      const input = main();
+      if (variant === "old attempt") input.archive.results.runAttempt = "1";
+      const bytes = archiveBytes(input);
+      input.artifact.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      let lists = 0;
+      const calls = [];
+      const api = {
+        async request(method, endpoint, _body, mode) {
+          calls.push({ method, endpoint, mode });
+          expect(method).toBe("GET");
+          if (endpoint.includes("/workflows/")) {
+            lists++;
+            const run = structuredClone(input.run);
+            if (variant === "newer" && lists > 1) run.id++;
+            if (variant === "failed") run.conclusion = "failure";
+            return { total_count: 1, workflow_runs: [run] };
+          }
+          if (endpoint.endsWith("/zip")) return bytes;
+          if (endpoint.includes("/artifacts?"))
+            return {
+              total_count: variant === "missing" ? 0 : 1,
+              artifacts: variant === "missing" ? [] : [input.artifact],
+            };
+          if (endpoint === "/actions/runs/701")
+            return { ...input.run, run_attempt: variant === "rerun" ? 3 : 2 };
+          throw new Error(`Unexpected read ${endpoint}`);
+        },
+      };
+      const admission = requireMainValidation({
+        api,
+        repository: input.repository,
+        sourceSha,
+        repoRoot,
+        now,
+      });
+      if (variant === "valid") expect((await admission).runAttempt).toBe(2);
+      else await expect(admission).rejects.toThrow();
+      expect(calls.every((call) => call.method === "GET")).toBe(true);
+    }
+  }, 120_000);
+  test("all three production effect consumers require main proof before their first mutation", () => {
+    const image = readFileSync(
+      resolve(repoRoot, ".github/workflows/build-agent-image.yml"),
+      "utf8",
+    );
+    const worker = readFileSync(
+      resolve(
+        repoRoot,
+        ".github/workflows/deploy-eliza-provisioning-worker.yml",
+      ),
+      "utf8",
+    );
+    expect(image.indexOf("production-effect-certification.ts")).toBeLessThan(
+      image.indexOf('\n            docker push "$tag"'),
+    );
+    expect(worker.indexOf("production-effect-certification.ts")).toBeLessThan(
+      worker.indexOf("bun run db:cloud:migrate"),
+    );
+    const release = parse(releaseWorkflow);
+    for (const [job, labels] of Object.entries({
+      "migrate-db": ["Run migrations"],
+      "deploy-api": ["Deploy to Cloudflare Workers"],
+      "deploy-app": [
+        "Ensure eliza-app Pages project exists",
+        "Deploy to Cloudflare Pages",
+      ],
+    }))
+      for (const label of labels) {
+        const step = release.jobs[job].steps.find(
+          (step) => step.name === label,
+        );
+        expect(step.env.GITHUB_TOKEN).toBe("${{ github.token }}");
+        expect(step.run).toContain(
+          'production-effect-certification.ts main-validation "$GITHUB_SHA"',
+        );
+        expect(step.run).not.toContain("EFFECT_DIGEST");
+        expect(step.run).toContain('cd "$(git rev-parse --show-toplevel)"');
+        const prefix = step.run.slice(
+          0,
+          step.run.indexOf("\nfi") + "\nfi".length,
+        );
+        // Execute the actual YAML admission prefix from its real nested job directory.
+        // The expected branch refusal occurs before any GitHub read or effect.
+        const nested =
+          job === "deploy-api"
+            ? "packages/cloud/api"
+            : job === "deploy-app"
+              ? "packages/app"
+              : ".";
+        const probe = spawnSync("bash", ["-c", prefix], {
+          cwd: resolve(repoRoot, nested),
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            MAIN_VALIDATION_ENVIRONMENT: "production",
+            TARGET_ENVIRONMENT: "production",
+            GITHUB_SHA: sourceSha,
+            GITHUB_REF_NAME: "feature",
+            GITHUB_TOKEN: "",
+          },
+        });
+        expect(probe.status).toBe(1);
+        expect(probe.stderr).toContain(
+          "Production certification requires a full main source SHA",
+        );
+        expect(probe.stderr).not.toContain("MODULE_NOT_FOUND");
+
+        expect(
+          step.run.split("production-effect-certification.ts")[0],
+        ).not.toContain('if [ "$FORCE"'); // existing force may be used later by freshness, proof itself is unconditional on it
+      }
   });
 });

@@ -7,7 +7,7 @@
 # excluded. A path-scoped Core/assistant/Notes owning-regression subset also
 # qualifies changes to that flow through the unchanged package test configs.
 # Promotion to main also runs the source-linked Quint cases and implementation
-# conformance checks. Merge candidates have no base branch and do not run them.
+# conformance checks. Main merge-queue candidates require the same complete proof.
 name: PR Validation
 
 on:
@@ -865,7 +865,7 @@ jobs:
 
   quint-models:
     name: Quint shard (${{ matrix.shard }}/4)
-    if: github.base_ref == 'main'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -896,30 +896,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           persist-credentials: false
           submodules: false
-      - name: Select source and model changes
+      - name: Require complete main-context proof
         id: changes
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          status=0
-          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages plugins package.json bun.lock \
-            .github/workflows/pr-validation.yml \
-            ':(icase,glob)**/*.qnt' ':(icase,glob)**/*.tla' ':(icase,glob)**/*.pcal' || status=$?
-          if [ "$status" -eq 0 ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$status" -eq 1 ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Quint change selection failed with exit $status."
-            exit "$status"
-          fi
+        run: echo "run=true" >> "$GITHUB_OUTPUT"
       - if: steps.changes.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
@@ -1009,7 +991,7 @@ jobs:
 
   quint:
     name: Quint state and implementation checks
-    if: ${{ always() && !cancelled() && github.base_ref == 'main' }}
+    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main')) }}
     needs: [quint-models]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1025,7 +1007,7 @@ jobs:
             exit 1
           fi
           case "$SHOULD_RUN" in
-            true|false) ;;
+            true) ;;
             *) echo "::error::Quint selection result is missing or invalid"; exit 1 ;;
           esac
       - name: Checkout verified source
@@ -1033,7 +1015,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           persist-credentials: false
           submodules: false
       - name: Install evidence validator dependencies
@@ -1587,7 +1569,7 @@ jobs:
     steps:
       - name: Require every admission lane
         env:
-          PROMOTION: ${{ github.base_ref == 'main' }}
+          PROMOTION: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main') }}
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
