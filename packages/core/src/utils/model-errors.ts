@@ -25,17 +25,20 @@ const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"etimedout",
 	"timeout",
 	"timed out",
-	"529",
-	"503",
-	"502",
-	"504",
 ];
+
+// HTTP status codes are matched with non-digit boundaries, never as bare
+// substrings: "error 5030" and "job 1503 failed" are not a 503, and
+// matching them as one would retry a failure that is not transient.
+const TRANSIENT_MODEL_ERROR_STATUS_RE = /(?:^|\D)(?:529|503|502|504)(?:\D|$)/;
 
 export function isTransientModelError(error: unknown): boolean {
 	if (isModelFundingAuthorityError(error)) return false;
 	const message = formatError(error).toLowerCase();
-	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
-		message.includes(pattern),
+	return (
+		TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
+			message.includes(pattern),
+		) || TRANSIENT_MODEL_ERROR_STATUS_RE.test(message)
 	);
 }
 
