@@ -13,7 +13,11 @@ import {
 } from "@testing-library/react";
 import type { CSSProperties } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MapsProvider, ProviderConfig } from "../src/client/contracts.ts";
+import type {
+  Coordinate,
+  MapsProvider,
+  ProviderConfig,
+} from "../src/client/contracts.ts";
 import { createMapsScreen } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -32,7 +36,7 @@ function memory() {
   };
 }
 
-function setup(watch?: { start(): void; stop(): void }) {
+function setup(watch?: { start(): void; stop(): void }, phone?: string) {
   const config: ProviderConfig = {
     status: "configured",
     providerId: "fixture",
@@ -54,6 +58,7 @@ function setup(watch?: { start(): void; stop(): void }) {
     name: "Harbour",
     coordinate: END,
     address: "Quai Albert 1er",
+    ...(phone ? { phone } : {}),
     attribution: "Fixture data",
     fetchedAt: Date.now(),
   };
@@ -278,7 +283,7 @@ describe("MapsScreen view", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     const origin = screen.getByRole("textbox", {
-      name: "Route origin coordinates",
+      name: "Starting point",
     });
     expect(
       origin.compareDocumentPosition(plane) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -578,4 +583,69 @@ describe("MapsScreen view", () => {
     expect(handle.controller.isNavigating()).toBe(true);
     expect({ starts, stops }).toEqual(running);
   });
+});
+
+describe("MapsScreen review ports and phone links", () => {
+  it("forwards settled area and gestures while Recenter resumes following", async () => {
+    const handle = setup();
+    let gesture: (() => void) | undefined;
+    let viewport: ((center: Coordinate, zoom: number) => void) | undefined;
+    render(
+      <MapsScreen
+        screen={handle}
+        attribution="credits"
+        createPlane={(element, _error, _pin, events) => {
+          element.dataset.mapReady = "true";
+          gesture = events.onInteraction;
+          viewport = events.onViewport;
+          return { update() {}, destroy() {} };
+        }}
+      />,
+    );
+    await settle();
+    act(() => viewport?.(START, 14));
+    await plan(handle);
+    expect(handle.controller.ensure().snapshot().searchNear).toEqual(START);
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await settle();
+    expect(screen.queryByRole("button", { name: "Recenter" })).toBeNull();
+    act(() => gesture?.());
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Recenter" }));
+    await settle();
+    expect(handle.controller.view().navigation?.cameraFollowing).toBe(true);
+    expect(screen.queryByRole("button", { name: "Recenter" })).toBeNull();
+    handle.controller.dispose();
+  });
+
+  it.each([
+    ["+377 98 06 20 00", "tel:+37798062000"],
+    ["+++", undefined],
+  ])(
+    "renders an actionable phone only for a valid dial target: %s",
+    async (phone, href) => {
+      const handle = setup(undefined, phone);
+      render(<MapsScreen screen={handle} attribution="credits" />);
+      act(() => {
+        handle.controller.setQuery("Harbour");
+        handle.controller.submit();
+      });
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: /Harbour/ }));
+      await settle();
+      if (href)
+        expect(
+          screen
+            .getByRole("link", { name: `Call ${phone}` })
+            .getAttribute("href"),
+        ).toBe(href);
+      else {
+        expect(
+          screen.queryByRole("link", { name: `Call ${phone}` }),
+        ).toBeNull();
+        expect(screen.getByText(`Phone ${phone}`)).toBeTruthy();
+      }
+      handle.controller.dispose();
+    },
+  );
 });

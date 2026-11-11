@@ -33,6 +33,8 @@ export type MapsState = Readonly<{
   revision: number;
   provider: ProviderConfig;
   query: string;
+  /** The exact area admitted with this search; absent on older host snapshots. */
+  searchNear?: Coordinate | null;
   search: ResultState<readonly Place[]>;
   selection: ResultState<Place | null>;
   origin: Coordinate | null;
@@ -71,6 +73,7 @@ export class MapsController {
       revision: 0,
       provider: config,
       query: "",
+      searchNear: null,
       search: idle([]),
       selection: idle(null),
       origin: null,
@@ -116,7 +119,12 @@ export class MapsController {
     this.invalidateRoute();
     this.config = config;
     this.provider = provider;
-    this.update({ provider: config, search: idle([]), selection: idle(null) });
+    this.update({
+      provider: config,
+      searchNear: null,
+      search: idle([]),
+      selection: idle(null),
+    });
   }
   capabilities() {
     return this.config.status === "configured"
@@ -223,16 +231,27 @@ export class MapsController {
       item.label.toLocaleLowerCase().includes(text),
     );
   }
-  async search(query: string) {
+  /**
+   * `viewport` is the centre of the visible map when the host knows it. It ranks
+   * results ahead of the device position, because the user is looking there.
+   */
+  async search(query: string, viewport?: Coordinate) {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
     this.invalidateRoute();
     const text = query.trim();
-    const near =
+    const candidateNear =
+      viewport ??
       this.state.position.value?.coordinate ??
       this.state.origin ??
       this.state.selection.value?.coordinate;
-    this.update({ query: text, selection: idle(null), search: idle([]) });
+    const near = text && candidateNear ? coordinate(candidateNear) : undefined;
+    this.update({
+      query: text,
+      searchNear: near ?? null,
+      selection: idle(null),
+      search: idle([]),
+    });
     if (!text) return;
     const request = new AbortController();
     this.searchRequest = request;

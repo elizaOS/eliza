@@ -1,0 +1,24 @@
+[
+  {
+    "id": "WorkflowCalendarRunScope",
+    "model": "plugins/plugin-assistant/quint/WorkflowCalendarRunScope.qnt",
+    "sources": [
+      "packages/contracts/src/phone-workflow.ts",
+      "packages/contracts/src/workflow-device.ts",
+      "packages/contracts/src/workflow-device.test.ts",
+      "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "packages/agent/src/api/device-action-routes.ts",
+      "plugins/plugin-workflow/src/services/phone-workflow-generation.ts",
+      "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts"
+    ],
+    "invariants": ["TypeOK", "OnlyReviewedRead", "InvalidSourceNeverReads"],
+    "status": "partial",
+    "limitations": [
+      "One relative or fixed Calendar read; peer protocol three or four; one owner, selected calendar set and event count; one day boundary with an explicit fifteen-minute grace class; one permission loss and one peer downgrade.",
+      "The relative window resolves once per run and remains absolute for review and the provider read. The stored relative spec requires protocol four. Current authority, selected calendars, event count, timezone, and current or previous owner-day bounds are checked before admission. Existing absolute windows preserve their earlier protocol.",
+      "All twelve real contract tests cover exact bindings, relative resolution, old fixed windows, DST and owner-day ranges. The real PGlite service integration rejects foreign owner/enrollment, protocol-three relative proposals, changed calendar/event count/window and peer downgrade, then cancels the run. No native provider is stubbed as successful.",
+      "Finite abstraction of days and protocol versions; no machine-checked refinement, full timezone enumeration or physical device acceptance. Cancellation/permission changes observed after an already admitted native read do not undo it. LLM prompt correctness is separate empirical evidence."
+    ]
+  }
+]
