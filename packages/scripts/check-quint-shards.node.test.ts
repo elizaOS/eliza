@@ -16,6 +16,7 @@ import {
   main,
   QUINT_VERSION,
   quintRepositoryFingerprint,
+  quintTestMatch,
 } from "./check-quint.ts";
 import { validateQuintShardReports } from "./check-quint-shards.ts";
 import {
@@ -186,6 +187,8 @@ function evidence(directory: string, count = 4) {
               "typescript",
               "--seed",
               "20261107",
+              "--match",
+              quintTestMatch(path.join(directory, model.file), item.main),
             ],
           },
           {
@@ -354,6 +357,12 @@ test("interrupted, stale, failed and weakened proofs are rejected", () => {
     );
   }
   for (const mutate of [
+    (reports: ReturnType<typeof evidence>) => {
+      const row = defined(
+        reports.flatMap((r) => r.results).find((r) => r.command[0] === "test"),
+      );
+      row.command.splice(row.command.indexOf("--match"), 2);
+    },
     (reports: ReturnType<typeof evidence>) => {
       reports[0].completed = false;
     },
