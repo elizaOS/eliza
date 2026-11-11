@@ -395,11 +395,15 @@ export function resolveSensitiveRequestDelivery(
 	} else if (input.kind === "payment" && input.paymentContext === "any_payer") {
 		if (cloudAvailable && cloudBaseUrl) {
 			mode = source === "public" ? "public_link" : "cloud_authenticated_link";
+			// The mode names an authenticated link, so the plan must say so:
+			// every other branch that returns this mode sets authenticated.
+			authenticated = mode === "cloud_authenticated_link";
 			publicLinkAllowed = true;
 			linkBaseUrl = cloudBaseUrl;
 			reason = "payment context allows any payer and cloud is available";
 		} else if (tunnelAvailable && tunnelUrl) {
 			mode = source === "public" ? "public_link" : "tunnel_authenticated_link";
+			authenticated = mode === "tunnel_authenticated_link";
 			publicLinkAllowed = true;
 			linkBaseUrl = tunnelUrl;
 			reason = "payment context allows any payer and tunnel is available";
