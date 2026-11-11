@@ -134,7 +134,9 @@ A host that can hold the SMS role declares thin subclasses of
   goes to the host's `MmsResultReceiver`. The current native notice owns that
   action. A replaced notice cannot mark newer messages read or remove their
   notice. The existing SMS worker checks this receipt before provider writes;
-  a failed write keeps the current action available for retry.
+  a failed write keeps the current action available for retry. Publication waits
+  for the exact native notice receipt on that worker; enqueue alone does not
+  acknowledge the replacement. Unconfirmed publication retires its read action.
 - An MMS notification starts one download into a private file. The retrieved
   message (`MmsPdu` parses M-Retrieve.conf) is stored with its addresses and
   parts, then answered with M-NotifyResp.ind. A stored transaction is never

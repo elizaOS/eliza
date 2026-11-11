@@ -24,7 +24,7 @@ public abstract class MmsResultReceiver extends BroadcastReceiver {
  protected abstract SmsRoleConfiguration configuration();
 
  /** Marks the notified conversation read up to the notified message, as the default SMS app. */
- private void markRead(Context app, Intent intent) {
+ private void markRead(Context app, SmsRoleConfiguration config, Intent intent) {
   final long thread = intent.getLongExtra(EXTRA_THREAD, 0), through = intent.getLongExtra(EXTRA_THROUGH, 0);
   final String notice = intent.getStringExtra(EXTRA_NOTICE);
   if (thread <= 0 || through <= 0 || notice == null) return;
@@ -33,7 +33,7 @@ public abstract class MmsResultReceiver extends BroadcastReceiver {
    SmsTelephony.WORK.execute(() -> {
     try {
      // Incoming publication uses this same worker. A replaced notice cannot grant a later read.
-     if (!MmsStore.ownsNotice(app, thread, notice)) return;
+     if (!MmsStore.ownsNotice(app, config, thread, notice)) return;
      if (MmsStore.isDefaultSmsApp(app)) MmsStore.markThreadRead(app, thread, through);
      // Android ignores the write from any other app; the messages stay unread and only the notice goes.
      else MmsStore.cancelThreadNotice(app, thread);
@@ -49,7 +49,7 @@ public abstract class MmsResultReceiver extends BroadcastReceiver {
   final String action = intent.getAction(), name = intent.getStringExtra(MmsWapPushReceiver.EXTRA_FILE);
   final boolean ok = getResultCode() == Activity.RESULT_OK;
   final Context app = context.getApplicationContext();
-  if (ACTION_MARK_READ.equals(action)) { markRead(app, intent); return; }
+  if (ACTION_MARK_READ.equals(action)) { markRead(app, config, intent); return; }
   if (config.mmsResponseSentAction.equals(action)) { MmsStore.delete(app, name); return; }
   if (!config.mmsDownloadedAction.equals(action) || !MmsStore.validFileName(name)) return;
   final String transaction = intent.getStringExtra(MmsWapPushReceiver.EXTRA_TRANSACTION), location = intent.getStringExtra(MmsWapPushReceiver.EXTRA_LOCATION);
@@ -74,7 +74,8 @@ public abstract class MmsResultReceiver extends BroadcastReceiver {
   Uri row = MmsStore.persistIncomingMms(context, message, subscription, location);
   String text = MmsPdu.text(message);
   int attachments = MmsPdu.attachments(message).size();
-  MmsStore.notifyIncoming(context, config, row, message.from, text.isEmpty() ? (attachments == 1 ? "1 attachment" : attachments + " attachments") : text);
+  try { MmsStore.notifyIncoming(context, config, row, message.from, text.isEmpty() ? (attachments == 1 ? "1 attachment" : attachments + " attachments") : text); }
+  catch (RuntimeException unconfirmed) { android.util.Log.e("MmsResultReceiver", "Incoming MMS stored; notice publication unconfirmed", unconfirmed); }
   if (transaction != null) respond(context, config, transaction, subscription);
  }
 

@@ -27,8 +27,20 @@ import org.robolectric.annotation.Config;
 
 /** Real notification/PendingIntent identities over a controlled provider. Never sends a message. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 29, manifest = Config.NONE)
+@Config(sdk = 29, manifest = Config.NONE, shadows = MmsNotificationTest.DelayedNotifications.class)
 public final class MmsNotificationTest {
+  @org.robolectric.annotation.Implements(NotificationManager.class)
+  public static final class DelayedNotifications extends org.robolectric.shadows.ShadowNotificationManager {
+    static volatile boolean hold;
+    static volatile Notification pending;
+    static volatile String tag;
+    static java.util.concurrent.CountDownLatch queued;
+    @org.robolectric.annotation.Implementation protected void notify(String selected, int id, Notification notice) {
+      if (!hold) { super.notify(selected, id, notice); return; }
+      tag = selected; pending = notice; queued.countDown();
+    }
+    void publish() { hold = false; super.notify(tag, MmsStore.NOTICE_ID, pending); }
+  }
   public static final class Open extends Activity {}
   public static final class Compose extends Activity {}
   public static final class Receiver extends MmsResultReceiver {
@@ -60,6 +72,8 @@ public final class MmsNotificationTest {
   private SmsRoleConfiguration config;
   @Before public void setUp() {
     context = RuntimeEnvironment.getApplication();
+    DelayedNotifications.hold = false; DelayedNotifications.pending = null;
+    DelayedNotifications.queued = new java.util.concurrent.CountDownLatch(1);
     Provider.threads.clear();
     Provider.database = android.database.sqlite.SQLiteDatabase.create(null);
     Provider.failMms = false; Provider.writes = 0;
@@ -194,5 +208,60 @@ public final class MmsNotificationTest {
       assertEquals("the replacement unread notice stays visible", 1, notices.length);
       assertEquals("New unread message with an older sender timestamp", notices[0].getNotification().extras.getCharSequence(Notification.EXTRA_TEXT));
     } finally { release.countDown(); SmsTelephony.WORK.submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS); }
+  }
+  @Test public void delayedPublicationRetainsHistoryAndFencesTheOldReadBeforeAcknowledgement() throws Exception {
+    Notification previous = post(1, 7, "First full text"); unread("sms", 1, 7, SmsRecords.INBOX, 1);
+    org.robolectric.shadows.ShadowTelephony.ShadowSms.setDefaultSmsPackage(context.getPackageName());
+    DelayedNotifications.hold = true;
+    java.util.concurrent.Future<Notification> posted = SmsTelephony.WORK.submit(() -> post(2, 7, "Second full text"));
+    assertTrue(DelayedNotifications.queued.await(10, java.util.concurrent.TimeUnit.SECONDS));
+    BroadcastReceiver.PendingResult oldRead = beginRead(previous);
+    try {
+      assertFalse("enqueue is not a native publication receipt", posted.isDone());
+      assertTrue("prior action is retired before publication", Shadows.shadowOf(previous.actions[1].actionIntent).isCanceled());
+      ((DelayedNotifications) Shadows.shadowOf(context.getSystemService(NotificationManager.class))).publish();
+      Notification current = posted.get(10, java.util.concurrent.TimeUnit.SECONDS);
+      java.util.List<Notification.MessagingStyle.Message> texts = Notification.MessagingStyle.Message.getMessagesFromBundleArray(current.extras.getParcelableArray(Notification.EXTRA_MESSAGES));
+      assertEquals(2, texts.size()); assertEquals("First full text", texts.get(0).getText());
+      assertEquals("Second full text", texts.get(1).getText());
+      finishRead(oldRead); assertEquals("the queued old action grants no provider writes", 0, Provider.writes);
+      assertEquals(0, read("sms", 1));
+    } finally {
+      if (DelayedNotifications.hold) ((DelayedNotifications) Shadows.shadowOf(context.getSystemService(NotificationManager.class))).publish();
+      posted.get(10, java.util.concurrent.TimeUnit.SECONDS);
+    }
+  }
+  @Test public void interruptedPublicationRetiresItsActionEvenIfAndroidPublishesLate() throws Exception {
+    post(1, 7, "First full text");
+    DelayedNotifications.hold = true;
+    java.util.concurrent.Future<?> posted = SmsTelephony.WORK.submit(() -> {
+      Thread.currentThread().interrupt();
+      try { assertThrows(IllegalStateException.class, () -> post(2, 7, "Unconfirmed replacement")); }
+      finally { Thread.interrupted(); }
+    });
+    posted.get(10, java.util.concurrent.TimeUnit.SECONDS);
+    assertTrue(DelayedNotifications.queued.await(10, java.util.concurrent.TimeUnit.SECONDS));
+    Notification late = DelayedNotifications.pending;
+    ((DelayedNotifications) Shadows.shadowOf(context.getSystemService(NotificationManager.class))).publish();
+    assertTrue(Shadows.shadowOf(late.actions[1].actionIntent).isCanceled());
+    unread("sms", 1, 7, SmsRecords.INBOX, 1);
+    org.robolectric.shadows.ShadowTelephony.ShadowSms.setDefaultSmsPackage(context.getPackageName());
+    deliverRead(late);
+    assertEquals("a late unconfirmed notice has no live action authority", 0, Provider.writes);
+    assertEquals(0, read("sms", 1));
+  }
+  @Test public void publicationDeadlinePreservesStoredRowsAndRetiresUnconfirmedActions() throws Exception {
+    Notification previous = post(1, 7, "First full text");
+    unread("sms", 1, 7, SmsRecords.INBOX, 1); unread("mms", 1, 7, SmsRecords.INBOX, 1);
+    DelayedNotifications.hold = true;
+    try {
+      assertThrows(IllegalStateException.class, () -> post(2, 7, "Unconfirmed replacement"));
+      assertTrue(Shadows.shadowOf(previous.actions[1].actionIntent).isCanceled());
+      assertTrue(Shadows.shadowOf(DelayedNotifications.pending.actions[1].actionIntent).isCanceled());
+      assertEquals(0, Provider.writes); assertEquals(0, read("sms", 1)); assertEquals(0, read("mms", 1));
+    } finally { ((DelayedNotifications) Shadows.shadowOf(context.getSystemService(NotificationManager.class))).publish(); }
+    org.robolectric.shadows.ShadowTelephony.ShadowSms.setDefaultSmsPackage(context.getPackageName());
+    deliverRead(DelayedNotifications.pending);
+    assertEquals("a timed-out enqueue is not restored by late publication", 0, Provider.writes);
   }
 }

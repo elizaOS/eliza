@@ -282,11 +282,12 @@ public final class MmsStore {
   }
  }
  /** The existing Android notice owns the read action; an absent or replaced receipt grants nothing. */
- static boolean ownsNotice(Context context, long thread, String receipt) {
+ static boolean ownsNotice(Context context, SmsRoleConfiguration config, long thread, String receipt) {
   if (thread <= 0 || receipt == null) return false;
   NotificationManager notifications = context.getSystemService(NotificationManager.class);
   Notification shown = notifications == null ? null : shownNotice(notifications, SmsRecords.threadId(thread));
-  return shown != null && receipt.equals(shown.extras.getString(NOTICE_RECEIPT));
+  return shown != null && receipt.equals(shown.extras.getString(NOTICE_RECEIPT))
+   && PendingIntent.getBroadcast(context, 0, readIntent(context, config, receipt), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_NO_CREATE) != null;
  }
  private static void retireReadAction(Notification notice) {
   if (notice == null || notice.actions == null) return;
@@ -363,13 +364,38 @@ public final class MmsStore {
    notice.addAction(new Notification.Action.Builder(null, "Reply", PendingIntent.getActivity(context, 0, reply, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)).build());
   }
   if (thread > 0) {
-   Intent read = new Intent(MmsResultReceiver.ACTION_MARK_READ).setClass(context, config.mmsResultReceiver).setPackage(context.getPackageName())
-    .setData(Uri.fromParts("eliza-sms-read", receipt, null))
+   Intent read = readIntent(context, config, receipt)
     .putExtra(MmsResultReceiver.EXTRA_THREAD, thread).putExtra(MmsResultReceiver.EXTRA_THROUGH, now).putExtra(MmsResultReceiver.EXTRA_NOTICE, receipt);
    notice.addAction(new Notification.Action.Builder(null, "Mark as read", PendingIntent.getBroadcast(context, 0, read, PendingIntent.FLAG_IMMUTABLE)).addExtras(receiptExtras).build());
   }
-  try { notifications.notify(tag, NOTICE_ID, notice.build()); retireReadAction(previous); }
-  catch (SecurityException notAllowed) { /* Notifications are off; the message is stored. */ }
+  Notification replacement = notice.build();
+  // notify() only enqueues publication in Android. Fence the old action before that gap and do not
+  // let the next incoming worker rebuild history from a notice Android has not published yet.
+  retireReadAction(previous);
+  try {
+   notifications.notify(tag, NOTICE_ID, replacement);
+   awaitNotice(notifications, tag, receipt);
+  } catch (RuntimeException failed) {
+   retireReadAction(replacement);
+   throw failed;
+  }
+ }
+ private static Intent readIntent(Context context, SmsRoleConfiguration config, String receipt) {
+  return new Intent(MmsResultReceiver.ACTION_MARK_READ).setClass(context, config.mmsResultReceiver).setPackage(context.getPackageName())
+   .setData(Uri.fromParts("eliza-sms-read", receipt, null));
+ }
+ private static void awaitNotice(NotificationManager notifications, String tag, String receipt) {
+  long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+  do {
+   Notification shown = shownNotice(notifications, tag);
+   if (shown != null && receipt.equals(shown.extras.getString(NOTICE_RECEIPT))) return;
+   try { Thread.sleep(10); }
+   catch (InterruptedException stopped) {
+    Thread.currentThread().interrupt();
+    throw new IllegalStateException("Conversation notice publication interrupted", stopped);
+   }
+  } while (System.nanoTime() < deadline);
+  throw new IllegalStateException("Conversation notice publication was not confirmed");
  }
  private static Notification shownNotice(NotificationManager notifications, String tag) {
   try {
