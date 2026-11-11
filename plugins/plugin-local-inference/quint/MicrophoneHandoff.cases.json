@@ -8,7 +8,10 @@
     "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java",
     "packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureControllerTest.java",
     "packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs",
-    "plugins/plugin-local-inference/quint/check-microphone-handoff.mjs"
+    "plugins/plugin-local-inference/quint/check-microphone-handoff.mjs",
+    "packages/app/scripts/paradee-voice/speech-compile-dependencies.json",
+    "plugins/plugin-local-inference/native/android/consumer.gradle",
+    "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "plugins/plugin-local-inference/quint/check-microphone-handoff.mjs",
   "bounds": {

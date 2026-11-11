@@ -2,7 +2,10 @@
 	"sources": [
 		"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java",
 		"packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureControllerTest.java",
-		"packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs"
+		"packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs",
+		"packages/app/scripts/paradee-voice/speech-compile-dependencies.json",
+		"plugins/plugin-local-inference/native/android/consumer.gradle",
+		"packages/scripts/lib/test-output.ts"
 	],
 	"bounds": {
 		"domain": "One capture, one original host epoch, one native start, one interruption and one terminal delivery. Startup protection may toggle; retirement of the original host is permanent.",
