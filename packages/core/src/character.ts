@@ -76,6 +76,15 @@ function normalizeMessageExamples(
 	if (isMessageExampleGroup(first)) {
 		return input as MessageExampleGroup[];
 	}
+	// A flat list of message examples is one conversation, not an error:
+	// wrap it as a single group instead of silently dropping every example.
+	if (
+		isRecord(first) &&
+		typeof first.name === "string" &&
+		isRecord(first.content)
+	) {
+		return [{ examples: input as unknown as MessageExample[] }];
+	}
 	return [];
 }
 
