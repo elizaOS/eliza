@@ -299,15 +299,27 @@ public final class NativeProviderSlot {
     Store reserve() throws Exception;
   }
 
-  /** The slot's identity after {@link #clearProviderSlotIfBound}, and whether a binding was retired. */
+  /** The slot's identity after {@link #clearProviderSlotIfBound}, and what the call did to get there. */
   public static final class ClearOutcome {
     public final JSONObject identity;
-    /** False when the slot was already empty or retired: nothing was written and no intent reserved. */
+    /**
+     * True only when the fenced pass found a binding and retired it. False when nothing was written:
+     * the slot was already empty or retired, either at the first observation or by the time the
+     * reserved intent re-read it.
+     */
     public final boolean cleared;
+    /**
+     * True when a credential intent was reserved, superseding older ones. Always true when {@link
+     * #cleared}; also true without a write when a binding was observed but another clear retired it
+     * before this call's intent re-read the slot. That reservation cannot be avoided without
+     * reading under the credential lock.
+     */
+    public final boolean reserved;
 
-    ClearOutcome(JSONObject identity, boolean cleared) {
+    ClearOutcome(JSONObject identity, boolean cleared, boolean reserved) {
       this.identity = identity;
       this.cleared = cleared;
+      this.reserved = reserved;
     }
   }
 
@@ -323,13 +335,22 @@ public final class NativeProviderSlot {
    *
    * <p>An empty observation is a clear that happened at that instant; a binding committed afterwards
    * by a newer or pending intent is that intent's result, not something this call may remove.
+   *
+   * <p>Only an automatic unbound (re)start may use this. An owner-initiated clear (sign-out, provider
+   * change) must keep reserving unconditionally and call {@link #clearProviderSlot}: on an empty slot
+   * this method supersedes nothing, so an in-flight bind would complete after the owner signed out.
    */
   public static ClearOutcome clearProviderSlotIfBound(Store observer, FencedStore fenced, boolean onlyIfPresent)
       throws Exception {
     String observed = observer.readProvider();
     observer.assertCurrent();
-    if (providerSlotRetired(observed)) return new ClearOutcome(NativeProviderAdmission.providerIdentity(observed), false);
-    return new ClearOutcome(clearProviderSlot(fenced.reserve(), onlyIfPresent), true);
+    if (providerSlotRetired(observed))
+      return new ClearOutcome(NativeProviderAdmission.providerIdentity(observed), false, false);
+    Store store = fenced.reserve();
+    // What the reserved intent itself finds decides "cleared": a clear that won the race in between
+    // left nothing to retire, and clearProviderSlot then writes nothing.
+    boolean bound = !providerSlotRetired(store.readProvider());
+    return new ClearOutcome(clearProviderSlot(store, onlyIfPresent), bound, true);
   }
 
   /** Provider, Cloud and managed-Google variables an unbound launch must not inherit. */

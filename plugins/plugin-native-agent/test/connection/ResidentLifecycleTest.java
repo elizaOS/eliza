@@ -254,6 +254,20 @@ public final class ResidentLifecycleTest {
     refused(() -> NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true), "a clear superseded after reserving cannot retire the binding");
     check(before.equals(observed.value) && observed.writes == writesAtRace, "superseded clear wrote nothing");
     observed.beforeRead = () -> {};
+    // A sign-out that retires the binding between the observation and the reservation: the intent is
+    // reserved (it cannot be avoided without the credential lock) but nothing is written, and the
+    // outcome says so instead of claiming a clear.
+    observed.value = before;
+    String retiredByOther = NativeProviderAdmission.unbindProvider(before);
+    int reservedAtOvertake = reservations.get(), writesAtOvertake = observed.writes;
+    long beforeOvertake = intents.current();
+    int[] reads = {0};
+    observed.beforeRead = () -> { if (++reads[0] == 2) observed.value = retiredByOther; };
+    NativeProviderSlot.ClearOutcome overtaken = NativeProviderSlot.clearProviderSlotIfBound(observed, fenced, true);
+    observed.beforeRead = () -> {};
+    check(!overtaken.cleared && overtaken.reserved, "a clear overtaken by another clear reports that it retired nothing");
+    check(reservations.get() == reservedAtOvertake + 1 && intents.current() > beforeOvertake && observed.writes == writesAtOvertake && retiredByOther.equals(observed.value) && !overtaken.identity.getBoolean("configured"), "overtaken clear reserved once and wrote nothing");
+    check(!empty.reserved && bound.reserved && bound.cleared && !again.reserved, "reserved tracks the credential intent, cleared tracks the write");
     // The observer's bridge-lifetime check still applies to the no-op path.
     observed.value = null;
     observed.current = () -> { throw new IllegalStateException("Local agent bridge closed"); };
