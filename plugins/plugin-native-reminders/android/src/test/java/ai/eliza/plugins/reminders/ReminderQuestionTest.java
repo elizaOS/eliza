@@ -107,4 +107,19 @@ public class ReminderQuestionTest {
    assertEquals(expected,notice.getSmallIcon().getResId());assertEquals(expected,notice.publicVersion.getSmallIcon().getResId());
   }
  }
+ @org.robolectric.annotation.Implements(AlarmManager.class)
+ public static class WithdrawnExactAlarm extends org.robolectric.shadows.ShadowAlarmManager {
+  static int attempted;
+  @org.robolectric.annotation.Implementation protected boolean canScheduleExactAlarms(){return true;}
+  @org.robolectric.annotation.Implementation protected void setExactAndAllowWhileIdle(int type,long trigger,PendingIntent operation){attempted++;throw new SecurityException("Controlled capability withdrawal after check");}
+ }
+ @Test @Config(sdk=31,manifest=Config.NONE,shadows=WithdrawnExactAlarm.class) public void withdrawnExactAlarmCapabilityFallsBackWithoutLosingTheReminder()throws Exception{
+  Context context=RuntimeEnvironment.getApplication();String name="withdrawn"+UUID.randomUUID().toString().replace("-","");
+  WithdrawnExactAlarm.attempted=0;ReminderEngine engine=ReminderEngine.get(context,configuration(name,false),c->new Memory(name));
+  long at=System.currentTimeMillis()+3_600_000;engine.schedule("reminder","Synthetic reminder","Owned fixture",at,null,null);
+  assertEquals(1,WithdrawnExactAlarm.attempted);assertEquals("inexact",engine.read("reminder").getString("mode"));
+  org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm scheduled=null;
+  for(org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm alarm:org.robolectric.Shadows.shadowOf(context.getSystemService(AlarmManager.class)).getScheduledAlarms())if(alarm.getTriggerAtMs()==at)scheduled=alarm;
+  assertNotNull(scheduled);assertTrue(scheduled.isAllowWhileIdle());assertEquals(org.robolectric.shadows.ShadowAlarmManager.WINDOW_HEURISTIC,scheduled.getWindowLengthMs());
+ }
 }

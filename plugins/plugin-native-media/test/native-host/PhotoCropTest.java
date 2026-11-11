@@ -64,6 +64,10 @@ public final class PhotoCropTest {
     refused(Double.NaN, 0, 0.5, 0.5);
     refused(0, 0, Double.POSITIVE_INFINITY, 0.5);
     refused(0, 0, 0.5, Double.NaN);
+    refused(1, 0, 1e-12, 0.5);
+    refused(0, 1, 0.5, 1e-12);
+    refused(1 + 1e-12, 0, 1e-12, 0.5);
+    refused(0, 1 + 1e-12, 0.5, 1e-12);
 
     System.out.println(assertions + " assertions passed");
   }

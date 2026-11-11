@@ -1,0 +1,54 @@
+{
+  "sources": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserExternalHandoff.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserExternalLinkPolicy.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserTabHostPlugin.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSurfacePlugin.kt",
+    "plugins/plugin-native-browser-surface/android/src/test/java/ai/eliza/plugins/browsersurface/BrowserExternalHandoffTest.java",
+    "plugins/plugin-native-browser-surface/android/build.gradle",
+    "packages/scripts/quint/check-native-android.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/app/scripts/android-native-plugins-gradle/settings.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle"
+  ],
+  "conformance": "packages/scripts/quint/check-native-android.ts",
+  "nativeAndroid": {
+    "project": "elizaos-capacitor-browser-surface",
+    "directory": "plugins/plugin-native-browser-surface/android",
+    "suites": [
+      {
+        "className": "ai.eliza.plugins.browsersurface.BrowserExternalHandoffTest",
+        "required": [
+          "tappedSystemLinksOnlyOpenTheirFixedReviewAction",
+          "intentLinksCannotSupplyPrivateRoutesOrEffectAuthority",
+          "malformedAndControlBearingLinksNeverCreateAnIntent",
+          "selectedTappedSystemLinkCanResolveToTheHostWithoutSending",
+          "retiredBackgroundUnselectedAndUntappedTabsCannotHandoff"
+        ]
+      }
+    ]
+  },
+  "bounds": {
+    "domain": "One selected main-frame tab, five link kinds (telephone, text, geo, foreign view and own private intent), current-tab identity, foreground and destruction. Handoff is atomic on Main; no fairness or liveness is claimed.",
+    "conformance": "Five exact Robolectric cases execute production Android Intent construction and the production BrowserTabHostPlugin.handoff method, with actual WebView, controlled event/Android launch ports, selected/current/paused/dead/destroyed/no-gesture refusals and a host-resolved system link. Java and Kotlin production sources compile.",
+    "limits": "The abstraction admits only fixed DIAL/SENDTO/VIEW actions. It excludes URI parser completeness, all Android resolver behavior, physical handlers, WebView gesture attestation, popup-ticket provenance and full Capacitor lifecycle. No call or message send authority is modeled or exercised."
+  },
+  "cases": [
+    {
+      "name": "bounded-native-owner",
+      "main": "BrowserExternalHandoff",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OnlyReviewActions",
+        "EffectRequiresAdmission",
+        "OwnHandlerRequiresFixedSystemAction"
+      ],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

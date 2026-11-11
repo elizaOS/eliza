@@ -1,0 +1,71 @@
+{
+  "sources": [
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsResultReceiver.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRoleConfiguration.java",
+    "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRecords.java",
+    "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsNotificationTest.java",
+    "plugins/plugin-native-messages/android/build.gradle",
+    "packages/scripts/quint/check-native-android.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/app/scripts/android-native-plugins-gradle/settings.gradle",
+    "packages/app/scripts/android-native-plugins-gradle/build.gradle"
+  ],
+  "conformance": "packages/scripts/quint/check-native-android.ts",
+  "nativeAndroid": {
+    "project": "elizaos-plugin-native-messages",
+    "directory": "plugins/plugin-native-messages/android",
+    "suites": [
+      {
+        "className": "ai.eliza.plugins.messages.MmsNotificationTest",
+        "required": [
+          "hashCollidingThreadsKeepDistinctContentTargets",
+          "conversationRetainsItsMessagesAndReplyOnlyOpensCompose",
+          "markReadChangesOnlyReceivedRowsInTheShownThreadThroughItsCutoff",
+          "lostSmsRoleDismissesTheNoticeWithoutAProviderWrite",
+          "failedProviderWriteKeepsTheNoticeAndFinishesTheReceiver"
+        ]
+      }
+    ]
+  },
+  "bounds": {
+    "domain": "Two full 64-bit thread IDs with the same 32-bit hash, one notification action, one queued worker and separate SMS/MMS acknowledgements. Current role admission occurs when the worker begins. No fairness or provider success is assumed.",
+    "conformance": "Five exact Android JVM cases exercise actual notification/PendingIntent identities, MessagingStyle retained text, compose-only reply, the actual receiver and its completion future, and actual SQL provider update predicates for shown/later/foreign/sent rows, role loss and partial provider failure.",
+    "limits": "Read predicates are abstracted to selected-thread membership; timestamp units/cutoffs are checked by actual SQLite tests. Separate provider writes can partially succeed. Real default-SMS role grants, system Telephony provider enforcement, carrier delivery, audio/video, system notification rendering and process death remain external. Reply never invokes the send journal or radio."
+  },
+  "cases": [
+    {
+      "name": "bounded-native-owner",
+      "main": "NativeMessageNotice",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "FullConversationIdentity",
+        "WritesHaveSelectedOwner",
+        "NoSendAuthority",
+        "FinishedReleasesReceiver"
+      ],
+      "temporal": ["FairReceiverFinishes", "ReceiverFinishes"],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "FairReceiverFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the admitted worker and return of each provider update with success or failure. This assumes finite provider calls, not successful writes or carrier delivery."
+          ]
+        },
+        {
+          "property": "ReceiverFinishes",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted worker, external query or posted Main continuation can remain stalled indefinitely."
+          ]
+        }
+      ]
+    }
+  ]
+}

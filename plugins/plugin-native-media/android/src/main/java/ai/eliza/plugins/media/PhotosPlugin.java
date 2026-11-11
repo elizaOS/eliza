@@ -166,8 +166,11 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
    */
   private static PhotoCrop crop(PluginCall call) {
     JSObject rect = call.getObject("cropRect", null);
-    if (rect == null)
+    if (rect == null && !call.getData().has("cropRect"))
       return PhotoCrop.of(Boolean.TRUE.equals(call.getBoolean("crop", false)));
+    if (rect == null || !(rect.opt("x") instanceof Number) || !(rect.opt("y") instanceof Number)
+        || !(rect.opt("width") instanceof Number) || !(rect.opt("height") instanceof Number))
+      throw new IllegalArgumentException("Choose a crop area inside the photo");
     return PhotoCrop.rect(rect.optDouble("x", Double.NaN), rect.optDouble("y", Double.NaN),
         rect.optDouble("width", Double.NaN), rect.optDouble("height", Double.NaN));
   }

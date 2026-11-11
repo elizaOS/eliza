@@ -309,10 +309,11 @@ public final class MmsStore {
   notifications.createNotificationChannel(channel);
   long thread = threadOf(context, message);
   String tag = thread > 0 ? SmsRecords.threadId(thread) : message.toString();
-  Intent show = new Intent(context, config.openActivity).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+  Intent show = new Intent(context, config.openActivity).setAction(Intent.ACTION_MAIN)
+   .setData(Uri.fromParts("eliza-sms-notice", tag, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
   if (thread > 0) show.putExtra(SmsRoleConfiguration.EXTRA_THREAD_ID, tag);
-  // One PendingIntent per conversation: extras alone do not tell two PendingIntents apart.
-  PendingIntent open = PendingIntent.getActivity(context, thread > 0 ? Long.hashCode(thread) : 0, show, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+  // Full conversation identity: extras and a 32-bit thread hash cannot distinguish all threads.
+  PendingIntent open = PendingIntent.getActivity(context, 0, show, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
   Notification publicVersion = new Notification.Builder(context, config.channelId).setSmallIcon(config.notificationIcon).setContentTitle("New message").build();
   String name = contactName(context, sender);
   String title = name != null ? name : sender == null ? "Unknown sender" : sender;

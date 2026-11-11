@@ -36,7 +36,7 @@ public final class PhotoCrop {
    * an area and lies inside the photo. The whole photo is {@link #NONE}.
    */
   public static PhotoCrop rect(double x, double y, double width, double height) {
-    if (!(x >= 0 && y >= 0 && width > 0 && height > 0 && x + width <= 1 + EDGE
+    if (!(x >= 0 && x < 1 && y >= 0 && y < 1 && width > 0 && height > 0 && x + width <= 1 + EDGE
             && y + height <= 1 + EDGE))
       throw new IllegalArgumentException("Choose a crop area inside the photo");
     width = Math.min(width, 1 - x);

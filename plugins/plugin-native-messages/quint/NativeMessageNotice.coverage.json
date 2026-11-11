@@ -1,0 +1,25 @@
+[
+  {
+    "id": "NativeMessageNotice",
+    "model": "plugins/plugin-native-messages/quint/NativeMessageNotice.qnt",
+    "sources": [
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsResultReceiver.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRoleConfiguration.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRecords.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MmsNotificationTest.java"
+    ],
+    "invariants": [
+      "FullConversationIdentity",
+      "WritesHaveSelectedOwner",
+      "NoSendAuthority",
+      "FinishedReleasesReceiver"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two full 64-bit thread IDs with the same 32-bit hash, one notification action, one queued worker and separate SMS/MMS acknowledgements. Current role admission occurs when the worker begins. No fairness or provider success is assumed.",
+      "Five exact Android JVM cases exercise actual notification/PendingIntent identities, MessagingStyle retained text, compose-only reply, the actual receiver and its completion future, and actual SQL provider update predicates for shown/later/foreign/sent rows, role loss and partial provider failure.",
+      "Read predicates are abstracted to selected-thread membership; timestamp units/cutoffs are checked by actual SQLite tests. Separate provider writes can partially succeed. Real default-SMS role grants, system Telephony provider enforcement, carrier delivery, audio/video, system notification rendering and process death remain external. Reply never invokes the send journal or radio."
+    ]
+  }
+]
