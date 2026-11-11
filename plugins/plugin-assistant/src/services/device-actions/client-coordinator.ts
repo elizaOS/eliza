@@ -640,6 +640,14 @@ export function validateReviewableDeviceOperation(
 
 export const CAMERA_CONTEXT_NOTICE = "Open Camera to take the requested photo.";
 /** A pending proposal that does not fit the current screen. Its message is shown to the owner. */
+/**
+ * Thrown by a device executor that refused before it started any effect, with
+ * a reason the owner can read. The attempt closes as failed with that reason.
+ * Any other executor failure stays an unknown outcome.
+ */
+export class DeviceActionNotStarted extends Error {
+  override readonly name = "DeviceActionNotStarted";
+}
 export class ContextNotice extends Error {
   override readonly name = "ContextNotice";
 }
@@ -2300,9 +2308,11 @@ export class DeviceActionCoordinator<
         attemptId: claimed.attemptId,
       });
       let result: ExecutionResult;
+      let notDispatched = false;
       try {
         signal.throwIfAborted();
-        if (p.expiresAt <= Date.now()) throw new Error("Expired action");
+        if (p.expiresAt <= Date.now())
+          throw new DeviceActionNotStarted("This action expired.");
         const bindingHash = await this.bindingHash(
           this.session.sessionId,
           p,
@@ -2343,14 +2353,23 @@ export class DeviceActionCoordinator<
             journalIdentity,
             p.calendarAgendaSource,
           );
-      } catch {
+      } catch (error) {
         // `markDispatched` runs before any port call, so an attempt that never
-        // reached it had no effect; one that did stays uncertain.
-        result = execution.dispatched
-          ? { status: "unknown", summary: UNKNOWN_SUMMARY }
-          : { status: "failed", summary: NOT_DISPATCHED_SUMMARY };
+        // reached it had no effect, and an executor that throws
+        // DeviceActionNotStarted refused before its effect. Any other failure
+        // after dispatch stays uncertain.
+        const refused = error instanceof DeviceActionNotStarted;
+        notDispatched = refused || !execution.dispatched;
+        result = notDispatched
+          ? {
+              status: "failed",
+              summary:
+                refused && error.message
+                  ? `${NOT_DISPATCHED_SUMMARY} ${error.message}`
+                  : NOT_DISPATCHED_SUMMARY,
+            }
+          : { status: "unknown", summary: UNKNOWN_SUMMARY };
       }
-      const notDispatched = !execution.dispatched;
       const typed: TypedResults = notDispatched
         ? {}
         : await this.typedResults(p, result, operationId, context);
@@ -3665,12 +3684,13 @@ const UNKNOWN_SUMMARY =
   "Action outcome needs review. It will not be repeated automatically.";
 const NOT_DISPATCHED_SUMMARY = "Not started. Nothing was sent.";
 const NOT_DISPATCHED_CODE = "DEVICE_NOT_DISPATCHED";
-/** A journal entry this device finished before dispatch: failed, with no typed result. */
+/** A journal entry this device finished with no effect: failed, with no typed result. */
 function notDispatchedEntry(entry: DeviceJournalEntry): boolean {
   return (
     entry.phase === "terminal" &&
     entry.status === "failed" &&
-    entry.summary === NOT_DISPATCHED_SUMMARY &&
+    (entry.summary === NOT_DISPATCHED_SUMMARY ||
+      entry.summary?.startsWith(`${NOT_DISPATCHED_SUMMARY} `) === true) &&
     Object.keys(entry.result ?? {}).every((key) => key === "operationId")
   );
 }

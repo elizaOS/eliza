@@ -73,7 +73,7 @@ Schema: {"version":1,"name":"1–200 chars","description":"0–4000 chars","trig
 Use 1–32 steps. Every step has a unique id matching [A-Za-z][A-Za-z0-9_-]* (max 80). A source must be an earlier step id. Only these exact operation field shapes exist:
 Read/supplied_text: {id,kind:"Read",operation:"supplied_text",text} (max 16000).
 Read/selected_notes: {id,kind:"Read",operation:"selected_notes",notes:[{id,revision}]}.
-Read/calendar_range: {id,kind:"Read",operation:"calendar_range",range:{calendarIds,start,end,timeZone,maximumEvents}}.
+Read/calendar_range: {id,kind:"Read",operation:"calendar_range",range:{calendarIds,start,end,timeZone,maximumEvents}} or, for a range that follows the day of each run, range:{calendarIds,days,timeZone,maximumEvents} (days 1–7; 1 is the day of the run).
 Read/selected_reminders: {id,kind:"Read",operation:"selected_reminders",scope:{window:"open_and_completed_today",timeZone,maximumItems}}.
 If/contains: {id,kind:"If",operation:"contains",source,text,caseSensitive:boolean} (text 1–1000).
 Write/compose_draft: {id,kind:"Write",operation:"compose_draft",source,prefix,suffix} (each max 4000).

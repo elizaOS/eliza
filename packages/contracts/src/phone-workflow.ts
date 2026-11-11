@@ -72,6 +72,17 @@ export interface PhoneCalendarRange {
   maximumEvents: number;
 }
 /**
+ * A Calendar range that follows the run: the owner's local day of the run in
+ * `timeZone` and the days after it, `days` in all (1 is "today", 7 is "the next
+ * 7 days"). `resolvePhoneCalendarRange` turns it into absolute bounds at run time.
+ */
+export interface PhoneRelativeCalendarRange {
+  calendarIds: string[];
+  days: number;
+  timeZone: string;
+  maximumEvents: number;
+}
+/**
  * A reviewed reminder read scope. The day is not stored: each run reads the
  * owner's current local day in `timeZone`, and the agent and phone both refuse
  * any other day.
@@ -101,7 +112,7 @@ export type PhoneStep =
       id: string;
       kind: "Read";
       operation: "calendar_range";
-      range: PhoneCalendarRange;
+      range: PhoneCalendarRange | PhoneRelativeCalendarRange;
     }
   | {
       id: string;
@@ -212,6 +223,14 @@ function canonicalUtc(value: unknown): string {
     return fail("Use canonical UTC times with milliseconds");
   return result;
 }
+function relativeCalendarDays(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 7
+  );
+}
 /** True when the runtime's Intl data knows this IANA time zone. */
 export function isPhoneWorkflowTimeZone(value: unknown): value is string {
   if (typeof value !== "string" || !value || value.length > 100) return false;
@@ -223,6 +242,54 @@ export function isPhoneWorkflowTimeZone(value: unknown): value is string {
   }
 }
 
+/** The exact reviewed Calendar range, absolute or relative to the run. */
+export function validatePhoneCalendarRange(
+  value: unknown,
+): PhoneCalendarRange | PhoneRelativeCalendarRange {
+  const r = record(value);
+  const relative = "days" in r;
+  keys(
+    r,
+    relative
+      ? ["calendarIds", "days", "timeZone", "maximumEvents"]
+      : ["calendarIds", "start", "end", "timeZone", "maximumEvents"],
+  );
+  if (
+    !Array.isArray(r.calendarIds) ||
+    !r.calendarIds.length ||
+    r.calendarIds.length > 16
+  )
+    return fail("Select 1 to 16 calendars");
+  const calendarIds = r.calendarIds.map(phoneWorkflowIdentifier),
+    start = relative ? "" : canonicalUtc(r.start),
+    end = relative ? "" : canonicalUtc(r.end),
+    timeZone = text(r.timeZone, 100);
+  if (
+    new Set(calendarIds).size !== calendarIds.length ||
+    (relative
+      ? !relativeCalendarDays(r.days)
+      : Date.parse(end) <= Date.parse(start) ||
+        Date.parse(end) - Date.parse(start) > 7 * 86_400_000)
+  )
+    return fail("Choose distinct calendars and a range of at most 7 days");
+  if (!isPhoneWorkflowTimeZone(timeZone))
+    return fail("Choose a valid calendar time zone");
+  if (
+    typeof r.maximumEvents !== "number" ||
+    !Number.isInteger(r.maximumEvents) ||
+    r.maximumEvents < 1 ||
+    r.maximumEvents > 200
+  )
+    return fail("Choose between 1 and 200 events");
+  return relative
+    ? {
+        calendarIds,
+        days: r.days as number,
+        timeZone,
+        maximumEvents: r.maximumEvents,
+      }
+    : { calendarIds, start, end, timeZone, maximumEvents: r.maximumEvents };
+}
 /** The exact reviewed reminder scope; any other window, zone or bound is refused. */
 export function validatePhoneSelectedRemindersScope(
   value: unknown,
@@ -342,44 +409,11 @@ export function validatePhoneWorkflowSpec(input: unknown): PhoneWorkflowSpec {
       step = { id, kind: "Read", operation: "selected_notes", notes };
     } else if (s.kind === "Read" && s.operation === "calendar_range") {
       keys(s, ["id", "kind", "operation", "range"]);
-      const r = record(s.range);
-      keys(r, ["calendarIds", "start", "end", "timeZone", "maximumEvents"]);
-      if (
-        !Array.isArray(r.calendarIds) ||
-        !r.calendarIds.length ||
-        r.calendarIds.length > 16
-      )
-        return fail("Select 1 to 16 calendars");
-      const calendarIds = r.calendarIds.map(phoneWorkflowIdentifier),
-        start = canonicalUtc(r.start),
-        end = canonicalUtc(r.end),
-        timeZone = text(r.timeZone, 100);
-      if (
-        new Set(calendarIds).size !== calendarIds.length ||
-        Date.parse(end) <= Date.parse(start) ||
-        Date.parse(end) - Date.parse(start) > 7 * 86_400_000
-      )
-        return fail("Choose distinct calendars and a range of at most 7 days");
-      if (!isPhoneWorkflowTimeZone(timeZone))
-        return fail("Choose a valid calendar time zone");
-      if (
-        typeof r.maximumEvents !== "number" ||
-        !Number.isInteger(r.maximumEvents) ||
-        r.maximumEvents < 1 ||
-        r.maximumEvents > 200
-      )
-        return fail("Choose between 1 and 200 events");
       step = {
         id,
         kind: "Read",
         operation: "calendar_range",
-        range: {
-          calendarIds,
-          start,
-          end,
-          timeZone,
-          maximumEvents: r.maximumEvents,
-        },
+        range: validatePhoneCalendarRange(s.range),
       };
     } else if (s.kind === "Read" && s.operation === "selected_reminders") {
       keys(s, ["id", "kind", "operation", "scope"]);
@@ -595,6 +629,36 @@ export function phoneWorkflowLocalDayBounds(
   return {
     start: localDayStart(day, timeZone),
     end: localDayStart(next, timeZone),
+  };
+}
+/**
+ * The absolute range a Calendar step reads at `now`. A stored absolute range
+ * is returned unchanged. A relative range starts at the owner's local midnight
+ * of the day of `now` and ends at local midnight `days` days later.
+ */
+export function resolvePhoneCalendarRange(
+  range: PhoneCalendarRange | PhoneRelativeCalendarRange,
+  now = Date.now(),
+): PhoneCalendarRange {
+  if (!("days" in range)) return range;
+  if (!relativeCalendarDays(range.days))
+    return fail("Choose distinct calendars and a range of at most 7 days");
+  const first = phoneWorkflowLocalDay(now, range.timeZone),
+    last = new Date(
+      Date.parse(`${first}T00:00:00Z`) + (range.days - 1) * 86_400_000,
+    )
+      .toISOString()
+      .slice(0, 10);
+  return {
+    calendarIds: range.calendarIds,
+    start: new Date(
+      phoneWorkflowLocalDayBounds(first, range.timeZone).start,
+    ).toISOString(),
+    end: new Date(
+      phoneWorkflowLocalDayBounds(last, range.timeZone).end,
+    ).toISOString(),
+    timeZone: range.timeZone,
+    maximumEvents: range.maximumEvents,
   };
 }
 
