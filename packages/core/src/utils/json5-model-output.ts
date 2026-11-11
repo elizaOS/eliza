@@ -6,7 +6,7 @@
 import JSON5 from "json5";
 
 const jsonBlockPattern =
-	/```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
+	/```\s*(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.

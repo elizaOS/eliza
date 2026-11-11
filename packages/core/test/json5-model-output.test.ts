@@ -30,6 +30,16 @@ describe("parseJSONObjectFromText code fences", () => {
 		});
 	});
 
+	it("reads a fence with a space before the language label", () => {
+		expect(parseJSONObjectFromText('``` json\n{"a": 1}\n```')).toEqual({
+			a: 1,
+		});
+		expect(parseJSONObjectFromText("```  json5\n{a: 1,}\n```")).toEqual({
+			a: 1,
+		});
+		expect(parseJSONObjectFromText('``` json {"a": 1}```')).toEqual({ a: 1 });
+	});
+
 	it("does not treat a longer label as json or json5", () => {
 		expect(parseJSONObjectFromText("```json50\n{a:1}\n```")).toBeNull();
 		expect(parseJSONObjectFromText('```jsonc\n{"a":1}\n```')).toBeNull();
