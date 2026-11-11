@@ -18,5 +18,5 @@ module ReminderCreateIntent {
   val NoDuplicateWrite = s.writes <= 1
   val RefusalHasNoEffect = Set("rejected", "cancelled").contains(s.phase) implies s.writes == 0
   val Settled = Set("saved", "rejected", "cancelled").contains(s.phase)
-  temporal FairSettles = (weakFair(check, step) and weakFair(create, step)) implies eventually(Settled)
+  temporal FairSettles = (check.weakFair(s) and create.weakFair(s)) implies eventually(Settled)
 }
