@@ -325,6 +325,10 @@ test('registered typed generation HTTP route validates real enrollment and remai
     await db.query('UPDATE client_devices SET workflow_protocol=4 WHERE enrollment_id=$1', [
       target.enrollmentId,
     ]);
+    expect((await generate({ ...request, existing: relativeDraft })).status).toBe(409);
+    await db.query('UPDATE client_devices SET workflow_protocol=5 WHERE enrollment_id=$1', [
+      target.enrollmentId,
+    ]);
     expect((await generate({ ...request, existing: relativeDraft })).status).toBe(200);
     output = JSON.stringify({
       ...basic,
