@@ -283,9 +283,9 @@ A host builds one `DataReset` with its installed identities and shares it:
   it revokes each registered environment's saved key on an interrupted daemon
   worker, capped at 8 seconds.
 - The same-signer image listener (`SenseListenerClient.resetForData()`) must
-  acknowledge first. An installed listener that does not durably acknowledge
-  consent revocation keeps the marker and all app data; an absent listener is
-  safe to reset.
+  confirm durable consent revocation and microphone release before reset. Until
+  the listener confirms both, the pending marker and app data are kept. An
+  absent listener allows the reset to proceed.
 - The failure record keeps the last failed attempt's outcome, so the recovery
   screen explains what actually happened (Android refused the clear, or the
   listener did not acknowledge) rather than guessing from the listener's
