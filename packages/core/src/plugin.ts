@@ -121,11 +121,18 @@ export function validatePlugin(plugin: unknown): {
 }
 
 export function normalizePluginName(pluginName: string): string {
-	const scopedMatch = pluginName.match(/^@[^/]+\/plugin-(.+)$/);
+	const trimmed = pluginName.trim();
+	const scopedMatch = trimmed.match(/^@[^/]+\/plugin-(.+)$/);
 	if (scopedMatch) {
 		return scopedMatch[1];
 	}
-	return pluginName;
+	// The short form also carries the `plugin-` prefix (`plugin-sql`): strip
+	// it so it reconciles with the scoped form (`@elizaos/plugin-sql`) and
+	// the bare form (`sql`) instead of loading as a second, distinct plugin.
+	if (trimmed.startsWith("plugin-") && trimmed.length > "plugin-".length) {
+		return trimmed.slice("plugin-".length);
+	}
+	return trimmed;
 }
 
 export function resolvePluginDependencies(
@@ -143,7 +150,13 @@ export function resolvePluginDependencies(
 			lookupMap.set(plugin.name, plugin);
 		}
 		if (!plugin.name.startsWith("@")) {
-			lookupMap.set(`@elizaos/plugin-${plugin.name}`, plugin);
+			// Build the scoped alias from the normalized name: a plugin
+			// named `plugin-sql` must alias to `@elizaos/plugin-sql`, not
+			// the bogus `@elizaos/plugin-plugin-sql`.
+			lookupMap.set(
+				`@elizaos/plugin-${normalizePluginName(plugin.name)}`,
+				plugin,
+			);
 		}
 		const normalizedKey = normalizePluginName(key);
 		if (normalizedKey !== key) {
