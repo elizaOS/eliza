@@ -21,9 +21,11 @@ on first use, then compiles the Quint model and runs TLC. Native OTA conformance
 also needs Go 1.27.1 on `PATH`, as pinned by the native trust engine. Generated backend
 input is temporary. Maintained specifications are Quint.
 
-Every case is typechecked and its Quint tests run before verification. The
-full command checks safety and declared temporal properties over the finite
-state space. Include `DeadlockFree` for cases that require an enabled next step.
+Every case is typechecked and its Quint tests run before verification. Scenario
+selection uses an explicit name filter from the resolved module's `run` definitions,
+including imported scenarios. The full command checks safety and declared temporal
+properties over the finite state space. Include `DeadlockFree` for cases that
+require an enabled next step.
 Express progress with its actual fairness assumptions. Simulation uses a fixed
 seed and the case's explicit trace bounds. It does not check temporal properties
 or establish exhaustive coverage.
