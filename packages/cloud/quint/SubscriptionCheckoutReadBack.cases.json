@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/subscription-checkout.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-checkout-recovery.ts",
+    "packages/cloud/api/cron/process-stripe-queue/route.ts",
+    "packages/cloud/shared/src/lib/services/subscription-checkout-recovery.pglite.test.ts",
+    "packages/cloud/shared/src/db/repositories/test-support/subscription-paid-renewal-recovery-test-fixture.ts",
+    "packages/cloud/shared/src/db/repositories/subscription-paid-renewal-recovery.pglite.test.ts",
+    "packages/cloud/quint/check-platform-subscription-command.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-platform-subscription-command.ts",
+  "bounds": "One dispatched organization checkout, one provider session, clock 0..12 in ticks of the first read-back age, backoff cap 4, provider retry horizon 10 and a one-tick create-settle margin. The production values are 2 minutes, 30 minutes, 23 hours and 5 minutes.",
+  "fairness": "A captured payment settles under weak fairness of the clock and of both sweep lanes. Without the sweep the property has a counterexample, which is checked.",
+  "limitations": [
+    "One dispatched organization checkout, one provider session, clock 0..12 in ticks of the first read-back age, backoff cap 4, provider retry horizon 10 and a one-tick create-settle margin. The production values are 2 minutes, 30 minutes, 23 hours and 5 minutes.",
+    "Each sweep step is one atomic observation and settlement. Command compare-and-swap, revision history and entitlement publication are refined by PlatformSubscriptionCommand and SubscriptionTerminalReceipt. Composition is not mechanically established.",
+    "Lane budgets, ordering among several checkouts and the one provider account read per sweep are outside this single-checkout instance. The repository tests cover them.",
+    "The provider is trusted to report open, complete, expired or missing truthfully for the command's own customer and session. A session that expires on its own before the horizon is observed, never forced.",
+    "An unavailable provider read rotates the checkout like an open one and is counted as a read-back. A prepared command that never dispatched is outside the read-back lane and this instance.",
+    "Settlement without the webhook is conditional on the sweep running. Cron scheduling and provider availability are not promised."
+  ],
+  "sourceMapping": {
+    "Due/ReadBack": "listDispatchedCheckoutsDueForInspection and the inspection lane of recoverStaleSubscriptionCheckouts; rotateCheckoutRecovery stamps inspectedAt",
+    "Stale/Close": "listStalePendingCheckouts and the closure lane; expireOpen only for a fenced organization",
+    "Applied": "reconcileSubscriptionCheckout from settlePendingCheckout, the webhook and checkout/confirm",
+    "Materialize": "the original idempotent session create inside PROVIDER_RETRY_WINDOW_MS; noSessionDisposition"
+  },
+  "cases": [
+    {
+      "name": "dispatched",
+      "main": "SubscriptionCheckoutReadBack",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["PaidSettlesWithoutWebhook", "PaidSettlesUnconditionally"],
+      "temporalChecks": [
+        {
+          "property": "PaidSettlesWithoutWebhook",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in SubscriptionCheckoutReadBack: PaidSettlesWithoutWebhook = Fairness implies always(s.session == \"complete\" implies eventually(s.command == \"applied\"))",
+            "Model fairness predicate Fairness = Tick.weakFair(s) and ReadBack.weakFair(s) and Close.weakFair(s)",
+            "The property is conditional on its written model fairness. Real cron scheduling, provider availability and implementation refinement are not proved."
+          ]
+        },
+        {
+          "property": "PaidSettlesUnconditionally",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed. With a lost webhook and no sweep, confirm or clock progress a paid checkout can stay pending forever; this negative check prevents an unconditional settlement claim."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 2000
+    }
+  ]
+}

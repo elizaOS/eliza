@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/cloud/api/v1/app-auth/mobile/renew/route.ts",
+    "packages/cloud/api/v1/app-auth/mobile/_rate-limit.ts",
+    "packages/cloud/shared/src/lib/services/mobile-app-auth.ts",
+    "packages/cloud/shared/src/db/repositories/mobile-app-auth-grants.ts",
+    "packages/cloud/shared/src/db/schemas/mobile-app-auth-grants.ts",
+    "packages/cloud/shared/src/db/migrations/0572_mobile_app_auth_session_start.sql",
+    "packages/cloud/api/__tests__/mobile-app-auth-renewal.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-mobile-key-renewal.mjs",
+  "bounds": "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 2, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance.",
+  "fairness": "An authorized renewal settles under weak fairness of its issuing transaction. Starting a renewal, redeeming a code and revoking the predecessor are not promised.",
+  "limitations": [
+    "One sign-in at clock 0, three credential identities, two renewal requests, clock 0..6, cap 2, credential lifetime 3 and code lifetime 1. A third renewal and a second sign-in are outside the instance.",
+    "Exchange and acknowledgement of a renewal code are one atomic redemption. MobileAppCredential models them for one code. Composition is not mechanically established.",
+    "Owner eligibility groups the inactive user, changed organization and closed or deletion-fenced organization into one flag, and client availability groups the registry entry and the app row. Both only ever turn off.",
+    "The 401, 403, 409, 429 and 503 answers are one refusal outcome. Limiter buckets, request bodies, PKCE bytes and secret hashes are not modeled.",
+    "A grant issued before the session_started_at column counts from created_at. The model starts every lineage at the sign-in time.",
+    "The predecessor stays valid until the phone revokes it or it expires. Revocation by the phone is not promised."
+  ],
+  "cases": [
+    {
+      "name": "lineage",
+      "main": "MobileAppKeyRenewal",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RequestsSettle"],
+      "maxSteps": 40,
+      "samples": 2000,
+      "temporalChecks": [
+        {
+          "property": "RequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in MobileAppKeyRenewal: RequestsSettle = Fairness implies eventually(always(Idle))",
+            "Model fairness predicate Fairness = Requests.forall(r => CommitRenew(r).weakFair(s))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, database completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ]
+}
