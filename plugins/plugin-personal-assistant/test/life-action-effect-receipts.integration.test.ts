@@ -63,6 +63,7 @@ async function invoke(
   params: Record<string, unknown>,
   text: string,
   internalFailure = false,
+  metadata?: Record<string, unknown>,
 ): Promise<{
   callback: ReturnType<typeof vi.fn<HandlerCallback>>;
   result: ActionResult;
@@ -78,6 +79,7 @@ async function invoke(
       source: "autonomy",
       text,
       requestSequence,
+      ...(metadata ? { metadata } : {}),
     },
   } as Memory;
   const result = await runLifeOperationHandler(
@@ -1105,3 +1107,89 @@ it.each([
   },
   120000,
 );
+
+it("retains the supplied reminder clock after independent intent verification", async () => {
+  const createPlan = {
+    mode: "create",
+    requestKind: "reminder",
+    nativeProjection: "in_app_only",
+    notificationMode: "none",
+    title: "Verified local reminder clock",
+    description: "check the release",
+    cadenceKind: "once",
+    dueDate: "2026-11-12",
+    timeOfDay: "19:20",
+    timeZone: "America/Los_Angeles",
+    multiStep: false,
+  };
+  vi.spyOn(taskCreate, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+    extractionPlan({ ...createPlan, timeZone: "UTC" }),
+  );
+  const created = await invoke(
+    {
+      action: "create",
+      ownerSurface: "OWNER_REMINDERS",
+      kind: "definition",
+      confirmed: true,
+      createPlan,
+    },
+    "Remind me on November 12 at 7:20 PM local time to check the release in this app without alerts.",
+  );
+  expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+  const id = receipt(created.result).resource.id;
+  if (!id) throw new Error("Missing reminder receipt");
+  const definition = await new LifeOpsService(runtime).repository.getDefinition(
+    runtime.agentId,
+    id,
+  );
+  expect(definition?.timezone).toBe("America/Los_Angeles");
+  expect(definition?.cadence).toMatchObject({
+    kind: "once",
+    dueAt: "2026-11-13T03:20:00.000Z",
+  });
+  expect(definition?.reminderPlanId).toBeNull();
+});
+
+it("uses the current client clock when a reminder plan needs extraction", async () => {
+  const extraction = vi
+    .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
+    .mockResolvedValue(
+      extractionPlan({
+        mode: "create",
+        requestKind: "reminder",
+        nativeProjection: "in_app_only",
+        notificationMode: "none",
+        title: "Current client reminder clock",
+        description: null,
+        cadenceKind: "once",
+        dueDate: "2026-11-12",
+        timeOfDay: "19:20",
+        timeZone: null,
+        multiStep: false,
+      }),
+    );
+  const created = await invoke(
+    {
+      action: "create",
+      ownerSurface: "OWNER_REMINDERS",
+      kind: "definition",
+      confirmed: true,
+    },
+    "Remind me on November 12 at 7:20 PM local time in this app without an alert.",
+    false,
+    { uiTimeZone: "America/Los_Angeles" },
+  );
+  expect(extraction.mock.calls[0]?.[0].timeZone).toBe("America/Los_Angeles");
+  expect(created.result.success, JSON.stringify(created.result)).toBe(true);
+  const id = receipt(created.result).resource.id;
+  if (!id) throw new Error("Missing reminder receipt");
+  const definition = await new LifeOpsService(runtime).repository.getDefinition(
+    runtime.agentId,
+    id,
+  );
+  expect(definition?.timezone).toBe("America/Los_Angeles");
+  expect(definition?.cadence).toMatchObject({
+    kind: "once",
+    dueAt: "2026-11-13T03:20:00.000Z",
+  });
+});

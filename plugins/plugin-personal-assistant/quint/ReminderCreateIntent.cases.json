@@ -9,7 +9,7 @@
     "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "plugins/plugin-personal-assistant/quint/check-reminder-create-intent.mjs",
-  "bounds": "One fresh creation, one supplied planner proposal, one original-request classification, one durable write. The supplied proposal cannot grant authority. Failed classification and cancellation before write produce zero writes. Weak fairness of checking and saving is required for progress. Classifier semantic accuracy, previously confirmed drafts, owner authorization, database concurrency, notification delivery and physical device behavior remain external. Implementation cases use the real handler and PGlite with controlled model classification; live-model/browser qualification is separate.",
+  "bounds": "One fresh creation, one supplied planner proposal, one original-request classification, one durable write. The supplied proposal cannot grant authority. Failed classification and cancellation before write produce zero writes. Weak fairness of checking and saving is required for progress. Classifier semantic accuracy, previously confirmed drafts, owner authorization, database concurrency, notification delivery and physical device behavior remain external. Implementation cases use the real handler and PGlite with controlled model classification; live-model/browser qualification is separate. A complete plan has UTC or Los Angeles as its resolved clock. The verification extractor may report either clock; admission preserves the complete plan clock. Source tests additionally verify the current-client fallback for a plan requiring extraction.",
   "cases": [
     {
       "name": "original-request-before-reminder-write",
@@ -19,7 +19,8 @@
       "invariants": [
         "VerifiedBeforeWrite",
         "NoDuplicateWrite",
-        "RefusalHasNoEffect"
+        "RefusalHasNoEffect",
+        "VerifiedPlanClockRetained"
       ],
       "temporal": ["FairSettles"],
       "temporalChecks": [

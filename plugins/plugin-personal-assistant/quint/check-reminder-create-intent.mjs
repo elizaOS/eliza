@@ -45,6 +45,8 @@ const required = [
   "rejects a planner-supplied reminder for a Calendar-only owner request on OWNER_TODOS",
   "keeps an explicit reminder actionable after checking its owner request: Remind me in 2 minutes to check the notification in this app with an alert",
   "keeps an explicit reminder actionable after checking its owner request: Recuérdame revisar la notificación en esta app dentro de 2 minutos",
+  "retains the supplied reminder clock after independent intent verification",
+  "uses the current client clock when a reminder plan needs extraction",
 ];
 requireVitestConformance(
   JSON.parse(readFileSync(report, "utf8")),
