@@ -1,4 +1,5 @@
-// PR validation joins seven mandatory lanes before the required aggregate check.
+// PR validation joins seven lanes before the required aggregate check. Quint
+// runs only for promotion to main: it must succeed there and be skipped elsewhere.
 // Each lane settles once. Whole-workflow cancellation before aggregate dispatch
 // cancels the gate; cancellation of a dependency still fails admission.
 // GitHub scheduling and job completion are external.
@@ -7,8 +8,13 @@ module CiAdmission {
     "billing-payment-replay-e2e", "subscription-authority-postgres",
     "paradee-stream-contract", "quint")
   pure val Outcomes = Set("success", "failure", "cancelled", "skipped")
-  var s: { results: str -> str, gate: str, workflowCancelled: bool }
-  action init = s' = { results: Lanes.mapBy(_ => "running"), gate: "waiting", workflowCancelled: false }
+  var s: { promotion: bool, results: str -> str, gate: str, workflowCancelled: bool }
+  action start(promotion: bool): bool =
+    s' = { promotion: promotion, results: Lanes.mapBy(_ => "running"), gate: "waiting", workflowCancelled: false }
+  action init = {
+    nondet promotion = Set(false, true).oneOf()
+    start(promotion)
+  }
   action settle(lane: str, outcome: str): bool = all {
     s.results.get(lane) == "running",
     s' = { ...s, results: s.results.set(lane, outcome) }
@@ -18,7 +24,8 @@ module CiAdmission {
     settle(lane, outcome)
   }
   val finished = Lanes.forall(lane => s.results.get(lane) != "running")
-  val successful = Lanes.forall(lane => s.results.get(lane) == "success")
+  def expected(lane: str): str = if (lane == "quint" and not(s.promotion)) "skipped" else "success"
+  val successful = Lanes.forall(lane => s.results.get(lane) == expected(lane))
   action evaluate = all {
     s.gate == "waiting", finished,
     s' = { ...s, gate: if (successful) "success" else "failure" }
@@ -41,7 +48,7 @@ module CiAdmission {
   val WorkflowCancellationMatchesGate = (s.gate == "cancelled") == s.workflowCancelled
   val SuccessRequiresEveryLane = (s.gate == "success").implies(successful)
   val FailureHasFailedLane = (s.gate == "failure").implies(not(successful))
-  val QuintIsRequired = (s.gate == "success").implies(s.results.get("quint") == "success")
+  val QuintIsRequired = (s.gate == "success" and s.promotion).implies(s.results.get("quint") == "success")
   val safety = TypeOK and NoEarlyDecision and SuccessRequiresEveryLane
     and FailureHasFailedLane and QuintIsRequired and WorkflowCancellationMatchesGate
   temporal ConditionalCompletion = (Lanes.forall(lane => settleLane(lane).weakFair(s))
@@ -55,25 +62,31 @@ module CiAdmission {
     Lanes.exclude(Set("quint")).forall(lane => s.results.get(lane) == "success"),
     s' = { ...s, gate: "success" }
   }
-  run omittedQuintAllowsPrematureSuccessTest = init.then(otherLanesPass)
+  run omittedQuintAllowsPrematureSuccessTest = start(true).then(otherLanesPass)
     .then(legacyGate).expect(not(NoEarlyDecision) and not(QuintIsRequired))
-  run quintFailureBlocksSuccessTest = init.then(otherLanesPass)
+  run quintFailureBlocksSuccessTest = start(true).then(otherLanesPass)
     .then(settle("quint", "failure")).then(evaluate)
     .expect(safety and s.gate == "failure")
-  run quintCancellationBlocksSuccessTest = init.then(otherLanesPass)
+  run quintCancellationBlocksSuccessTest = start(true).then(otherLanesPass)
     .then(settle("quint", "cancelled")).then(evaluate)
     .expect(safety and s.gate == "failure")
-  run workflowCancellationCancelsGateTest = init.then(cancelWorkflow)
+  run workflowCancellationCancelsGateTest = start(true).then(cancelWorkflow)
     .expect(safety and s.gate == "cancelled" and not(finished))
-  run workflowCancellationAfterWorkersCancelsGateTest = init.then(otherLanesPass)
+  run workflowCancellationAfterWorkersCancelsGateTest = start(true).then(otherLanesPass)
     .then(settle("quint", "success")).then(cancelWorkflow)
     .expect(safety and s.gate == "cancelled" and finished)
-  run quintSkipBlocksSuccessTest = init.then(otherLanesPass)
+  run quintSkipBlocksSuccessTest = start(true).then(otherLanesPass)
     .then(settle("quint", "skipped")).then(evaluate)
     .expect(safety and s.gate == "failure")
-  run allLanesPassTest = init.then(otherLanesPass)
+  run allLanesPassTest = start(true).then(otherLanesPass)
     .then(settle("quint", "success")).then(evaluate)
     .expect(safety and s.gate == "success")
+  run skippedQuintPassesOutsidePromotionTest = start(false).then(otherLanesPass)
+    .then(settle("quint", "skipped")).then(evaluate)
+    .expect(safety and s.gate == "success")
+  run quintResultOutsidePromotionBlocksSuccessTest = start(false).then(otherLanesPass)
+    .then(settle("quint", "success")).then(evaluate)
+    .expect(safety and s.gate == "failure")
 }
 
 // The named Quint lane joins all workers and verifies the complete evidence

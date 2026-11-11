@@ -6,8 +6,8 @@
 # exceptions, alongside path-scoped SDK owning suites and a native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded. A path-scoped Core/assistant/Notes owning-regression subset also
 # qualifies changes to that flow through the unchanged package test configs.
-# Source and formal-model changes also run the source-linked Quint cases and
-# implementation conformance checks before merge.
+# Promotion to main also runs the source-linked Quint cases and implementation
+# conformance checks. Merge candidates have no base branch and do not run them.
 name: PR Validation
 
 on:
@@ -865,6 +865,7 @@ jobs:
 
   quint-models:
     name: Quint shard (${{ matrix.shard }}/4)
+    if: github.base_ref == 'main'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -895,21 +896,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
           submodules: false
       - name: Select source and model changes
         id: changes
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           status=0
           git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
             packages plugins package.json bun.lock \
-            .github/workflows/pr-validation.yml .github/workflows/ci.yml \
+            .github/workflows/pr-validation.yml \
             ':(icase,glob)**/*.qnt' ':(icase,glob)**/*.tla' ':(icase,glob)**/*.pcal' || status=$?
           if [ "$status" -eq 0 ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -1008,7 +1009,7 @@ jobs:
 
   quint:
     name: Quint state and implementation checks
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && github.base_ref == 'main' }}
     needs: [quint-models]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -1032,7 +1033,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
           submodules: false
       - name: Install evidence validator dependencies
@@ -1586,6 +1587,7 @@ jobs:
     steps:
       - name: Require every admission lane
         env:
+          PROMOTION: ${{ github.base_ref == 'main' }}
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
@@ -1599,7 +1601,9 @@ jobs:
           for pair in $RESULTS; do
             name="${pair%%=*}"
             result="${pair#*=}"
-            if [ "$result" != "success" ]; then
+            expected=success
+            if [ "$name" = quint ] && [ "$PROMOTION" != true ]; then expected=skipped; fi
+            if [ "$result" != "$expected" ]; then
               echo "::error title=PR admission::$name finished with $result"
               exit 1
             fi
