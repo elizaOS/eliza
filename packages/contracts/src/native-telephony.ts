@@ -227,6 +227,51 @@ export const VOICEMAIL_AUDIO_MAX_BYTES = 8 * 1024 * 1024;
 export const VOICEMAIL_PCM_MAX_SECONDS = 300;
 /** The largest WAV file `voicemailPcm` returns. */
 export const VOICEMAIL_PCM_MAX_BYTES = 10 * 1024 * 1024;
+export type PhoneNetworkType =
+  | "none"
+  | "2g"
+  | "3g"
+  | "4g"
+  | "5g"
+  | "wifi-calling"
+  | "unknown";
+/** One active SIM line of the owner's phone. A null field was not readable; it is not a value. */
+export interface PhoneLine {
+  subscriptionId: number;
+  /** 0-based SIM slot. */
+  slot: number;
+  displayName: string;
+  carrierName: string;
+  /** The line's own number: digits with an optional leading +. Null when unknown or not readable. */
+  number: string | null;
+  /** Two lower-case letters. */
+  countryIso: string | null;
+  networkType: PhoneNetworkType;
+  roaming: boolean | null;
+  /** 0 to 4. */
+  signalLevel: number | null;
+  /** An eSIM. */
+  embedded: boolean;
+  /** Null without device-identifier access. */
+  iccid: string | null;
+  /** The slot's IMEI. Null without device-identifier access or on a slot that has none. */
+  imei: string | null;
+}
+/** The phone's SIM lines from the host's bounded, foreground-only read, for a Settings page. */
+export interface PhoneInfo {
+  access: {
+    /** False: the SIM list was not read, and `lines` is empty. That is not "no SIM". */
+    phoneState: boolean;
+    /** False: every `number` is null. */
+    phoneNumbers: boolean;
+    /** False: every `iccid` and `imei` is null. Android grants this only to privileged apps. */
+    deviceIdentifiers: boolean;
+  };
+  /** At most 4, ordered by slot. */
+  lines: PhoneLine[];
+}
+/** The most SIM lines `phoneInfo` returns. */
+export const PHONE_INFO_MAX_LINES = 4;
 /** The native bridge surface of a host's `TelephonyPlugin` subclass. Results are untrusted until parsed. */
 export interface TelephonyNativePlugin {
   imageCapability(): Promise<unknown>;
@@ -244,6 +289,8 @@ export interface TelephonyNativePlugin {
   /** Asks Telecom for a call. Needs the dialer role and CALL_PHONE; rejects with code
    * `role-required` or `permission-required` without them. */
   placeCall?(options: { number: string }): Promise<unknown>;
+  /** The owner's SIM lines, numbers and device identifiers, each only as far as Android allows. */
+  phoneInfo?(): Promise<unknown>;
   voicemailStatus?(): Promise<unknown>;
   listVoicemail?(options: { limit: number }): Promise<unknown>;
   /** Rejects with code `not-found` when the voicemail is gone. */
@@ -770,6 +817,113 @@ function parseVoicemailWrite<S extends string>(
   if (data.status !== done && data.status !== "not-found")
     throw invalid("voicemail change");
   return data.status as S | "not-found";
+}
+
+const PHONE_NETWORK_TYPES: readonly PhoneNetworkType[] = [
+  "none",
+  "2g",
+  "3g",
+  "4g",
+  "5g",
+  "wifi-calling",
+  "unknown",
+];
+const PHONE_LINE_FIELDS = [
+  "subscriptionId",
+  "slot",
+  "displayName",
+  "carrierName",
+  "number",
+  "countryIso",
+  "networkType",
+  "roaming",
+  "signalLevel",
+  "embedded",
+  "iccid",
+  "imei",
+] as const;
+/** A nullable string of one shape; a present value that does not match is refused. */
+const shaped = (value: unknown, shape: RegExp, what: string) => {
+  if (value === null) return null;
+  if (typeof value !== "string" || !shape.test(value)) throw invalid(what);
+  return value;
+};
+/**
+ * Parses the phone's SIM lines. Refused: an unknown or missing field, more than 4 lines, a repeated
+ * subscription, lines out of slot order, lines without phone-state access, a number without
+ * phone-number access, and an ICCID or IMEI without device-identifier access.
+ */
+export function parsePhoneInfo(value: unknown): PhoneInfo {
+  const data = object(value, "phone information");
+  exact(data, ["access", "lines"], "phone information");
+  const granted = object(data.access, "phone access");
+  exact(
+    granted,
+    ["phoneState", "phoneNumbers", "deviceIdentifiers"],
+    "phone access",
+  );
+  const access = {
+    phoneState: bool(granted.phoneState, "phone access"),
+    phoneNumbers: bool(granted.phoneNumbers, "phone access"),
+    deviceIdentifiers: bool(granted.deviceIdentifiers, "phone access"),
+  };
+  if (
+    !Array.isArray(data.lines) ||
+    data.lines.length > PHONE_INFO_MAX_LINES ||
+    (!access.phoneState && data.lines.length > 0)
+  )
+    throw invalid("phone lines");
+  const seen = new Set<number>();
+  let previousSlot = 0;
+  const lines = data.lines.map((row): PhoneLine => {
+    const l = object(row, "phone line");
+    exact(l, PHONE_LINE_FIELDS, "phone line");
+    const subscriptionId = count(l.subscriptionId, "phone line subscription");
+    const slot = count(l.slot, "phone line slot");
+    if (seen.has(subscriptionId) || slot < previousSlot)
+      throw invalid("phone line");
+    seen.add(subscriptionId);
+    previousSlot = slot;
+    const number = shaped(
+      l.number,
+      /^(\+[0-9]{1,31}|[0-9]{1,32})$/,
+      "phone line number",
+    );
+    const iccid = shaped(
+      l.iccid,
+      /^([0-9]{1,21}F?|[0-9]{22})$/,
+      "phone line ICCID",
+    );
+    const imei = shaped(l.imei, /^[0-9]{14,16}$/, "phone line IMEI");
+    if (number !== null && !access.phoneNumbers)
+      throw invalid("phone line number");
+    if ((iccid !== null || imei !== null) && !access.deviceIdentifiers)
+      throw invalid("phone line identifier");
+    if (!PHONE_NETWORK_TYPES.includes(l.networkType as PhoneNetworkType))
+      throw invalid("phone line network");
+    if (
+      l.signalLevel !== null &&
+      (!Number.isSafeInteger(l.signalLevel) ||
+        (l.signalLevel as number) < 0 ||
+        (l.signalLevel as number) > 4)
+    )
+      throw invalid("phone line signal");
+    return {
+      subscriptionId,
+      slot,
+      displayName: text(l.displayName, "phone line name", 64),
+      carrierName: text(l.carrierName, "phone line carrier", 64),
+      number,
+      countryIso: shaped(l.countryIso, /^[a-z]{2}$/, "phone line country"),
+      networkType: l.networkType as PhoneNetworkType,
+      roaming: l.roaming === null ? null : bool(l.roaming, "phone line"),
+      signalLevel: l.signalLevel as number | null,
+      embedded: bool(l.embedded, "phone line"),
+      iccid,
+      imei,
+    };
+  });
+  return { access, lines };
 }
 
 /** A dialable number: digits with an optional leading +, and the separators people type. Letters,
@@ -1432,6 +1586,16 @@ export function createTelephonyClient(
           "Placing calls is not available in this install.",
         );
       return parsePlaceCall(await bridge.placeCall({ number: normalized }));
+    },
+    /** The phone's SIM lines for a Settings page, read only while the host is unlocked and in
+     * front. `access` says which parts Android let the host read; a part it refused is null. */
+    async phoneInfo() {
+      const bridge = native();
+      if (!bridge.phoneInfo)
+        throw new TelephonyUnavailable(
+          "Phone information is not available in this install.",
+        );
+      return parsePhoneInfo(await bridge.phoneInfo());
     },
     /** Whether this app may read voicemail and what the phone's voicemail sources report. */
     async voicemailStatus() {
