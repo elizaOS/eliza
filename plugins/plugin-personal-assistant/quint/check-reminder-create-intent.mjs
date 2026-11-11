@@ -47,6 +47,9 @@ const required = [
   "keeps an explicit reminder actionable after checking its owner request: Recuérdame revisar la notificación en esta app dentro de 2 minutos",
   "retains the supplied reminder clock after independent intent verification",
   "uses the current client clock when a reminder plan needs extraction",
+  "recovers unresolved destination from verification while retaining supplied reminder timing",
+  "recovers unresolved alert from verification while retaining supplied reminder timing",
+  "recovers unresolved destination and alert from verification while retaining supplied reminder timing",
 ];
 requireVitestConformance(
   JSON.parse(readFileSync(report, "utf8")),
