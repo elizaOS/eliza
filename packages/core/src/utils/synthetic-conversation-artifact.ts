@@ -17,7 +17,11 @@ export function isSyntheticConversationArtifactText(text: string): boolean {
 		SYNTHETIC_MARKER_RE.test(trimmed) ||
 		/^compacted prior planner trajectory steps/i.test(trimmed) ||
 		/^#{1,3}\s*Conversation Summary\b/i.test(trimmed) ||
-		/\b(?:conversation summary|compacted prior planner|compactor|summary mode)\b/i.test(
+		// Summary phrasing only counts at the start of a line: synthetic
+		// records lead with it, while a genuine turn asks for a summary
+		// mid-sentence ("give me a conversation summary", "switch to
+		// summary mode") and must not be mistaken for an artifact.
+		/^(?:conversation summary|compacted prior planner|compactor|summary mode)\b/im.test(
 			trimmed,
 		)
 	);
