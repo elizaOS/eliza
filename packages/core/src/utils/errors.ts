@@ -80,13 +80,16 @@ export function formatErrorWithStack(error: unknown): string {
 /** Classify an error as a fetch/AbortSignal timeout. */
 export function isTimeoutError(error: unknown): boolean {
 	const name = readDiagnosticProperty(error, "name");
-	if (name === "TimeoutError" || name === "AbortError") return true;
+	if (name === "TimeoutError") return true;
 	const message =
 		typeof error === "string"
 			? error
 			: readDiagnosticProperty(error, "message");
 	if (typeof message !== "string") return false;
 	const normalized = message.toLowerCase();
+	// An AbortError alone is not a timeout: a manual abort (the caller
+	// cancelled the operation) must not be retried as if the request had
+	// timed out. Only an abort whose message says it timed out counts.
 	return normalized.includes("timed out") || normalized.includes("timeout");
 }
 
