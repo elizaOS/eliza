@@ -7,7 +7,7 @@
     "packages/cloud/api/__tests__/voice-speech-mint.test.ts"
   ],
   "conformance": "packages/cloud/quint/check-speech-prepared-consent.mjs",
-  "bounds": "One new prepared consent, matching or foreign owner and nonce, expiry, retirement, restart, and legacy-route attempts. Existing random recovery IDs retain the Redis path. Storage commit and acknowledgement are atomic in this model. Lost acknowledgements and provider/billing activity retain the existing retirement protocol and are not proved here. No liveness promise or fairness assumption is made.",
+  "bounds": "One new prepared consent, matching or foreign owner and nonce, expiry, retirement, restart, and legacy-route attempts. Existing random recovery IDs retain the Redis path. Storage commit and acknowledgement are atomic in this model. Lost acknowledgements and provider/billing activity retain the existing retirement protocol and are not proved here. Repeated rejected attempts remain stuttering transitions; their unused count is omitted so the state space is finite. No rejection path is removed. No liveness promise or fairness assumption is made.",
   "cases": [
     {
       "name": "prepared-single-use",
