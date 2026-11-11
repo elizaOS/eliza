@@ -27,6 +27,7 @@ import {
   guidanceDistance,
   guidanceView,
   maneuverIcon,
+  trafficNote,
 } from "./guidance.ts";
 import type { MapsLocation, Position } from "./location.ts";
 import type { MapOverlay } from "./map-plane.ts";
@@ -1482,7 +1483,7 @@ export class MapsScreenController {
             ? "Planning…"
             : "No route",
         meta: route
-          ? `${guidanceDistance(route.distanceMeters)}${route.traffic === "live" ? "" : " · no live traffic"}`
+          ? `${guidanceDistance(route.distanceMeters)} · ${trafficNote(route.traffic)}`
           : "",
         via: route
           ? (snapshot.originLabel ? `From ${snapshot.originLabel} · ` : "") +

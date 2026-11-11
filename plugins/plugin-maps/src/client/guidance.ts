@@ -38,6 +38,14 @@ export function guidanceDistance(
   if (meters < 1000) return `${Math.round(meters / 10) * 10} m`;
   return `${(meters / 1000).toFixed(1)} km`;
 }
+/** The traffic note for a route: live durations carry live traffic, free-flow durations carry none. */
+export function trafficNote(traffic: "none" | "approximated" | "live"): string {
+  return traffic === "live"
+    ? "live traffic"
+    : traffic === "approximated"
+      ? "approximated traffic"
+      : "no live traffic";
+}
 export function guidanceDuration(seconds: number): string {
   const minutes = Math.max(1, Math.round(seconds / 60));
   return minutes < 60
@@ -94,7 +102,7 @@ export function guidanceView(
     thenIcon: then ? maneuverIcon(then.step.maneuver) : "",
     thenText: then?.step.instruction || "",
     remainingTime: guidanceDuration(progress.remainingSeconds),
-    remaining: `${guidanceDistance(progress.remainingMeters, locale)} · arrive ${clock}${traffic === "live" ? "" : " · no live traffic"}`,
+    remaining: `${guidanceDistance(progress.remainingMeters, locale)} · arrive ${clock} · ${trafficNote(traffic)}`,
     /** Distance plus the provider's own instruction; the screen owns near/now repetition. */
     spoken: next
       ? next.distanceMeters <= 50

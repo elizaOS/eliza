@@ -57,6 +57,40 @@ test("guidance presents the next maneuver, the following step and the remaining 
   assert.equal(near.hasThen, false);
 });
 
+test("a live-traffic route never claims no live traffic", async () => {
+  const { guidanceView } = await import("../src/client/guidance.ts");
+  const step = (instruction, maneuver) => ({
+    instruction,
+    maneuver,
+    coordinate: { latitude: 0, longitude: 0 },
+    distanceMeters: 1,
+  });
+  const progress = {
+    offRouteMeters: 2,
+    alongMeters: 100,
+    remainingMeters: 900,
+    remainingSeconds: 150,
+    stepIndex: 0,
+    next: {
+      index: 1,
+      step: step("Turn left onto Rue A", "left"),
+      distanceMeters: 120,
+    },
+  };
+  const live = guidanceView(progress, new Date(2026, 9, 8, 12, 0), "live");
+  assert.match(live.remaining, / · live traffic$/);
+  assert.doesNotMatch(live.remaining, /no live traffic/);
+  const approximated = guidanceView(
+    progress,
+    new Date(2026, 9, 8, 12, 0),
+    "approximated",
+  );
+  assert.match(approximated.remaining, / · approximated traffic$/);
+  // A free-flow route still says so explicitly.
+  const freeFlow = guidanceView(progress, new Date(2026, 9, 8, 12, 0));
+  assert.match(freeFlow.remaining, / · no live traffic$/);
+});
+
 test("the upcoming maneuver stays fixed until the device has come near it", async () => {
   const { atStep } = await import("../src/client/guidance.ts");
   const step = (instruction) => ({

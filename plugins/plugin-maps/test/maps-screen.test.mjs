@@ -15,7 +15,11 @@ import { MapsController } from "../src/client/state.ts";
 const ORIGIN = { latitude: 43.73, longitude: 7.42 };
 const END = { latitude: 43.74, longitude: 7.42 };
 const OFF_ROUTE = { latitude: 43.735, longitude: 7.43 };
-const config = (modes = ["drive", "walk"], alternatives = false) => ({
+const config = (
+  modes = ["drive", "walk"],
+  alternatives = false,
+  traffic = "none",
+) => ({
   status: "configured",
   providerId: "fixture",
   connectionId: "conn_fixture_123456789",
@@ -25,7 +29,7 @@ const config = (modes = ["drive", "walk"], alternatives = false) => ({
     search: true,
     placeDetails: true,
     modes,
-    traffic: "none",
+    traffic,
     transit: "none",
     offline: { map: false, search: false, routing: false },
     ...(alternatives ? { alternatives: true } : {}),
@@ -127,7 +131,7 @@ function fixture(options = {}) {
         ],
         attribution: "Fixture data",
         fetchedAt: now,
-        traffic: "none",
+        traffic: options.traffic ?? "none",
       };
     },
   };
@@ -156,7 +160,7 @@ function fixture(options = {}) {
   const connection = {
     config: options.unconfigured
       ? { status: "unconfigured" }
-      : config(options.modes, !!options.alternatives),
+      : config(options.modes, !!options.alternatives, options.traffic),
   };
   const host = {
     connection: () => ({
@@ -572,6 +576,22 @@ test("Start guides from fresh fixes; arrival and End release the watch", async (
   await settle();
   assert.equal(f.screen.view().mode, "directions");
   assert.ok(f.stops() >= 1);
+});
+
+test("a live-traffic route reports live traffic in directions and guidance", async () => {
+  const f = fixture({ traffic: "live", background: true });
+  await planned(f);
+  assert.equal(
+    f.screen.view().directions?.meta,
+    `${guidanceDistance(1200)} · live traffic`,
+  );
+  f.screen.start();
+  await settle();
+  f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+  const view = f.screen.view();
+  assert.equal(view.navigation?.instruction, "Head north");
+  assert.match(view.navigation?.remaining ?? "", / · live traffic$/);
+  assert.doesNotMatch(view.navigation?.remaining ?? "", /no live traffic/);
 });
 
 test("a retired location callback cannot guide a later Start", async () => {
