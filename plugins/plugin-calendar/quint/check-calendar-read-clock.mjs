@@ -36,3 +36,22 @@ const briefing = spawnSync(
 );
 if (briefing.error) throw briefing.error;
 if (briefing.status !== 0) process.exit(briefing.status ?? 1);
+
+const selected = spawnSync(
+  process.execPath,
+  [
+    fileURLToPath(
+      new URL("../../../node_modules/vitest/vitest.mjs", import.meta.url),
+    ),
+    "run",
+    "--config",
+    "vitest.config.ts",
+    "src/actions/calendar-read-selected.test.ts",
+  ],
+  {
+    cwd: fileURLToPath(new URL("../", import.meta.url)),
+    stdio: "inherit",
+  },
+);
+if (selected.error) throw selected.error;
+if (selected.status !== 0) process.exit(selected.status ?? 1);
