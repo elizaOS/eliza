@@ -5479,16 +5479,12 @@ async function runLifeOperationHandlerInner(
         };
       }
 
-      // Owner's stored timezone fact (travel-aware), used as the fallback zone
-      // for a conversational create when no zone was stated out loud and no
-      // more-specific candidate (explicit detail / planner / deferred draft /
-      // window policy) is present. Without this, "remind me tomorrow at 9am"
-      // resolves 9am against the HOST clock (`resolveDefaultTimeZone()` = UTC
-      // on shared-server / TZ=UTC topologies) instead of the owner's wall
-      // clock (#13509). Read once here; the store call falls back to the host
-      // zone itself when no owner fact is stored, so `ownerFactTimeZone` is
-      // always a concrete zone (never fabricated).
-      const ownerFactTimeZone = await resolveOwnerTimeZone(runtime, new Date());
+      // A current client clock grounds local-time requests. Fall back to the
+      // stored owner zone when the request has no valid client clock.
+      const requestTimeZone =
+        explicitCadenceTimeZone(
+          detailString(detailObject(message.content, "metadata"), "uiTimeZone"),
+        ) ?? (await resolveOwnerTimeZone(runtime, new Date()));
 
       // Track whether cadence/title came from explicit high-confidence
       // sources so the planner only fills genuine gaps.
@@ -5534,7 +5530,7 @@ async function runLifeOperationHandlerInner(
                   detailString(details, "timeZone") ??
                     deferredDefinitionDraft?.request.timezone ??
                     windowPolicy?.timezone,
-                ) ?? ownerFactTimeZone,
+                ) ?? requestTimeZone,
             }));
         } catch (error) {
           // error-policy:J4 Explicit create parameters remain usable without a
@@ -5542,6 +5538,15 @@ async function runLifeOperationHandlerInner(
           if (!(error instanceof NoModelProviderConfiguredError)) {
             throw error;
           }
+        }
+        // Verification may reject the action, but it must not reinterpret a
+        // complete plan's already resolved time, destination, or alert choice.
+        if (
+          verifyReminderIntent &&
+          nativeCreatePlan &&
+          llmPlan?.mode === "create"
+        ) {
+          llmPlan = { ...nativeCreatePlan, requestKind: llmPlan.requestKind };
         }
         const plannerResponse =
           llmPlan?.mode === "respond" ? llmPlan.response : undefined;
@@ -5614,7 +5619,7 @@ async function runLifeOperationHandlerInner(
                   ) ??
                   deferredDefinitionDraft?.request.timezone ??
                   windowPolicy?.timezone,
-              ) ?? ownerFactTimeZone;
+              ) ?? requestTimeZone;
             const relativeReminder =
               ownerSurfaceActionName === "OWNER_REMINDERS" &&
               llmPlan.cadenceKind === "once" &&
@@ -5656,7 +5661,7 @@ async function runLifeOperationHandlerInner(
             ) ??
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
-        ) ?? ownerFactTimeZone;
+        ) ?? requestTimeZone;
       const ownerDefinitionAction = ownerDefinitionSurface(
         ownerSurfaceActionName,
       );
