@@ -262,13 +262,29 @@ function walkDeep<T>(
 			// bypass the budget or reach the provider serializer.
 			reserveVisits(ctx, value.length);
 			let changed = false;
-			const next = value.map((item) => {
-				const sanitized = walkDeep(item, depth + 1, ctx, true);
-				if (sanitized !== item) {
+			const next = new Array<unknown>(value.length);
+			for (let index = 0; index < value.length; index += 1) {
+				const descriptor = Object.getOwnPropertyDescriptor(value, index);
+				// A hole is a missing descriptor and stays a hole. A present
+				// accessor is not skipped: `Array.prototype.map` would invoke
+				// the getter, so a caller-controlled getter would run at the
+				// provider boundary. Reject it without observation, as the
+				// object branch and the schema walker already do.
+				if (!descriptor) continue;
+				if (!("value" in descriptor)) {
+					failUnsafeValue("accessor", undefined, String(index));
+				}
+				const sanitized = walkDeep(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					true,
+				);
+				if (sanitized !== descriptor.value) {
 					changed = true;
 				}
-				return sanitized;
-			});
+				next[index] = sanitized;
+			}
 			return (changed ? next : value) as T;
 		} finally {
 			ctx.visiting.delete(value);
