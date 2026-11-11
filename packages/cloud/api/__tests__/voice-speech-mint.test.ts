@@ -30,6 +30,7 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   }),
 }));
 mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
+  CONSENT_NONCE_TTL_SECONDS: 300,
   issueConsentNonce: async () => ({
     nonce: NONCE,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
