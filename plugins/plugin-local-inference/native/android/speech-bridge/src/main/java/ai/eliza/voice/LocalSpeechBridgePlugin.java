@@ -326,11 +326,27 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","fused-paradee-asr");if(ttsOnly)out.put("ttsOnly",true);request.result=out;
  });}
  @PluginMethod public void transcribeLocalRecording(PluginCall call){submitLocal(call,request->{
-  File file=capture.selected(required(call.getString("recordingId"),256));if(file==null)throw new IOException();byte[] wav=RecordingPcm.decode(file,()->request.cancelled||destroyed);float[] samples;
+  File file=capture.selected(required(call.getString("recordingId"),256));if(file==null)throw new IOException();
+  transcribeWav(request,RecordingPcm.decode(file,()->request.cancelled||destroyed));
+ });}
+ /** Audio the host already holds, as one complete mono 16 kHz PCM16 WAV of at most sixty seconds. */
+ public interface WavSource{byte[] read(java.util.function.BooleanSupplier cancelled)throws Exception;}
+ /**
+  * On-device transcription of audio the host supplies (for example one window of a decoded
+  * voicemail), under the same request gate, foreground fence, cancellation and engine as a
+  * recording. The bytes never leave this process and are cleared after use. A host that needs more
+  * than sixty seconds calls this once per window.
+  */
+ protected final void transcribeSuppliedWav(PluginCall call,WavSource source){submitLocal(call,request->{
+  byte[] wav=source.read(()->request.cancelled||destroyed);if(wav==null)throw new IOException();
+  transcribeWav(request,wav);
+ });}
+ private void transcribeWav(SpeechRequestGate.Request request,byte[] wav)throws Exception{
+  float[] samples;
   try{samples=LocalSpeechEngine.readMono16kWav(wav);}finally{Arrays.fill(wav,(byte)0);}
   String text;try{text=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();return engine.transcribe(samples);});}finally{Arrays.fill(samples,0);}
   if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("text",text);out.put("local",true);out.put("execution","device");out.put("provider","fused-paradee-asr");request.result=out;
- });}
+ }
  @PluginMethod public void synthesizeLocal(PluginCall call){main.post(()->{if(!appends(call)&&Boolean.FALSE.equals(call.getBoolean("replace",true))&&speakerBusy()){call.reject("Speaker is in use","playback-busy");return;}synthesizeReviewed(call,null);});}
  /**
   * On-device synthesis of {@code reviewed} text the product already approved (for example a read-aloud

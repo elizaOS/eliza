@@ -42,6 +42,10 @@ dependencies {
     implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.12.0'}"
     implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.11.0'}"
 
+    // JVM tests of ContactsEditor (version, draft validation, stale writes) against a fake Contacts provider.
+    testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.robolectric:robolectric:4.16.1"
+
     // Instrumented test deps (issue #9967 — on-device contacts round-trip).
     androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     androidTestImplementation "androidx.test:core:1.5.0"

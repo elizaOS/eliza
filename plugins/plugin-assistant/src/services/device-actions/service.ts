@@ -189,6 +189,24 @@ import {
   smsReceiptOutcome,
   validateSmsResult,
 } from "./sms-contract.ts";
+import {
+  CONTACT_WRITE_CAPABILITY,
+  isSmsCompose,
+  isSmsReply,
+  isTelephonyAction,
+  MESSAGES_READ_CAPABILITY,
+  PHONE_CALL_CAPABILITY,
+  SMS_COMPOSE_CAPABILITY,
+  selectedTelephonyView,
+  smsComposeNotSubmitted,
+  smsReplyNotDrafted,
+  TELEPHONY_ACTION_OPERATION_TYPES,
+  telephonyActionCapabilityAvailable,
+  telephonyActionReceiptOutcome,
+  VOICEMAIL_DELETE_CAPABILITY,
+  VOICEMAIL_READ_CAPABILITY,
+  validateTelephonyActionResult,
+} from "./telephony-actions-contract.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
   type DeviceViewProfile,
@@ -848,7 +866,7 @@ export function setDeviceReadReplyContext(
 async function freshRequestedMessageId(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
-  browserRequest = false,
+  options: { allowReviewed?: boolean; readText?: boolean } = {},
 ): Promise<
   { messageId: string; requestText: string; assertCurrent(): void } | undefined
 > {
@@ -870,7 +888,7 @@ async function freshRequestedMessageId(
     typeof original.createdAt !== "number" ||
     !Number.isFinite(original.createdAt) ||
     original.createdAt < current.startedAt ||
-    (!browserRequest &&
+    (!options.allowReviewed &&
       (!metadata ||
         typeof metadata !== "object" ||
         Array.isArray(metadata) ||
@@ -947,7 +965,7 @@ async function freshRequestedMessageId(
     return;
   return {
     messageId: originalId,
-    requestText: browserRequest
+    requestText: options.readText
       ? extractUserText(unwrapUserMessageText(stored))
       : "",
     assertCurrent,
@@ -1920,6 +1938,12 @@ export class DeviceActionService {
           SMS_SEND_CAPABILITY,
           PHONE_DIAL_CAPABILITY,
           CONTACT_LOOKUP_CAPABILITY,
+          PHONE_CALL_CAPABILITY,
+          CONTACT_WRITE_CAPABILITY,
+          SMS_COMPOSE_CAPABILITY,
+          MESSAGES_READ_CAPABILITY,
+          VOICEMAIL_READ_CAPABILITY,
+          VOICEMAIL_DELETE_CAPABILITY,
           PHOTO_LIBRARY_CAPABILITY,
           PHOTOS_VIEW_CAPABILITY,
         ],
@@ -2159,6 +2183,11 @@ export class DeviceActionService {
       !phoneDialCapabilityAvailable(validated, c.capabilities)
     )
       throw new DeviceActionError("Dial capability unavailable");
+    if (
+      isTelephonyAction(validated) &&
+      !telephonyActionCapabilityAvailable(validated.type, c.capabilities)
+    )
+      throw new DeviceActionError("Telephony capability unavailable");
     if (isMapsOperation(validated)) {
       if (!c.capabilities?.includes(MAPS_CAPABILITY))
         throw new DeviceActionError("Maps capability unavailable");
@@ -2199,6 +2228,7 @@ export class DeviceActionService {
         "camera_capture_photo",
         "sms_send",
         "phone_dial",
+        ...TELEPHONY_ACTION_OPERATION_TYPES,
         "clock_handoff",
         "clock_alarm",
         "create_note",
@@ -2231,16 +2261,16 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     const browserRequest = validated.type === "browser_navigate";
+    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
-    const requestOrigin = await freshRequestedMessageId(
-      this.runtime,
-      c,
-      browserRequest,
-    );
+    const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
+      allowReviewed: browserRequest || selectedTelephony,
+      readText: browserRequest,
+    });
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =
@@ -2303,9 +2333,10 @@ export class DeviceActionService {
           !Array.isArray(metadata) &&
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
-        const requestingMessage = directRequest
-          ? requestOrigin?.messageId
-          : undefined;
+        const requestingMessage =
+          directRequest || selectedTelephony
+            ? requestOrigin?.messageId
+            : undefined;
         const payload: DeviceActionPayload = {
           action: "device_action",
           version: 1,
@@ -2951,6 +2982,14 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("Dial capability unavailable");
       if (
+        isTelephonyAction(payload.operation) &&
+        !telephonyActionCapabilityAvailable(
+          payload.operation.type,
+          c.capabilities,
+        )
+      )
+        throw new DeviceActionError("Telephony capability unavailable");
+      if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
       )
@@ -3068,6 +3107,38 @@ export class DeviceActionService {
             receipt = { ...receipt, result };
           } catch {
             throw new DeviceActionError("Invalid dial receipt");
+          }
+        }
+      } else if (isTelephonyAction(payload.operation)) {
+        // The contact SMS shares the SIM send's journal identity, so a lost
+        // response reconciles against one native row and never sends twice.
+        if (
+          isSmsCompose(payload.operation) &&
+          receipt.operationId !== request.execution?.providerIdempotencyKey
+        )
+          throw new DeviceActionError(
+            "SMS journal identity differs from execution claim",
+          );
+        // Missing evidence can only preserve uncertainty. A typed result must
+        // agree with the outcome: no status claims a connected call, and an
+        // unknown SMS stays unknown rather than failed or retryable.
+        if (receipt.outcome !== "unknown" || value.result !== undefined) {
+          try {
+            const result = validateTelephonyActionResult(
+              payload.operation,
+              value.result,
+            );
+            const outcome = telephonyActionReceiptOutcome(result);
+            if (
+              receipt.outcome !== outcome &&
+              !(receipt.outcome === "not_applied" && outcome === "failed")
+            )
+              throw new DeviceActionError(
+                "Telephony receipt outcome conflicts with native evidence",
+              );
+            receipt = { ...receipt, result };
+          } catch {
+            throw new DeviceActionError("Invalid telephony receipt");
           }
         }
       } else if (isClockOperation(payload.operation)) {
@@ -3219,7 +3290,22 @@ export class DeviceActionService {
           (receipt.result as { status?: unknown } | undefined)
             ?.status as string,
         );
-      return receipt.outcome === "applied" || notDispatched || smsNotSubmitted
+      // A contact SMS the owner dismissed, or whose contact or radio was
+      // missing, submitted nothing either. `unknown` never settles here.
+      const composeNotSubmitted =
+        isSmsCompose(payload.operation) &&
+        receipt.outcome === "failed" &&
+        smsComposeNotSubmitted(receipt.result);
+      // A reply draft that was not placed changed nothing and sends nothing.
+      const replyNotDrafted =
+        isSmsReply(payload.operation) &&
+        receipt.outcome === "failed" &&
+        smsReplyNotDrafted(receipt.result);
+      return receipt.outcome === "applied" ||
+        notDispatched ||
+        smsNotSubmitted ||
+        composeNotSubmitted ||
+        replyNotDrafted
         ? q.markDone(mutation)
         : q.markReconciliationRequired({
             ...mutation,
@@ -3295,6 +3381,14 @@ export class DeviceActionService {
         !phoneDialCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Dial capability unavailable");
+      if (
+        isTelephonyAction(payload.operation) &&
+        !telephonyActionCapabilityAvailable(
+          payload.operation.type,
+          c.capabilities,
+        )
+      )
+        throw new DeviceActionError("Telephony capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3402,6 +3496,38 @@ export class DeviceActionService {
             receipt = { ...receipt, result };
           } catch {
             throw new DeviceActionError("Invalid dial receipt");
+          }
+        }
+      } else if (isTelephonyAction(payload.operation)) {
+        // The contact SMS shares the SIM send's journal identity, so a lost
+        // response reconciles against one native row and never sends twice.
+        if (
+          isSmsCompose(payload.operation) &&
+          receipt.operationId !== request.execution?.providerIdempotencyKey
+        )
+          throw new DeviceActionError(
+            "SMS journal identity differs from execution claim",
+          );
+        // Missing evidence can only preserve uncertainty. A typed result must
+        // agree with the outcome: no status claims a connected call, and an
+        // unknown SMS stays unknown rather than failed or retryable.
+        if (receipt.outcome !== "unknown" || value.result !== undefined) {
+          try {
+            const result = validateTelephonyActionResult(
+              payload.operation,
+              value.result,
+            );
+            const outcome = telephonyActionReceiptOutcome(result);
+            if (
+              receipt.outcome !== outcome &&
+              !(receipt.outcome === "not_applied" && outcome === "failed")
+            )
+              throw new DeviceActionError(
+                "Telephony receipt outcome conflicts with native evidence",
+              );
+            receipt = { ...receipt, result };
+          } catch {
+            throw new DeviceActionError("Invalid telephony receipt");
           }
         }
       } else if (isClockOperation(payload.operation)) {

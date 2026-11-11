@@ -47,7 +47,13 @@ import org.json.JSONObject;
  * for hosts that declare it, at most {@link CallLogRows#MAX_CALLS} newest rows), in bounded pages, cancelled on
  * background, lock, screen-off and permission change, and fenced again before publication.
  *
- * Effects: dialing is always a handoff to the user's dialer, which also owns emergency numbers. A text
+ * Voicemail: while the host is the default dialer, the bounded list, audio and heard/delete writes of
+ * {@link VoicemailStore} over Android's voicemail provider, under the same fence. What the provider
+ * holds is whatever a visual-voicemail source on the phone stored; the {@code vvm} package is one for hosts that declare it.
+ *
+ * Effects: {@link #dial} is a handoff to the user's dialer, which also owns emergency numbers.
+ * {@link #placeCall} asks Telecom for a call only while the host holds the dialer role and CALL_PHONE,
+ * never for an emergency number, and reports only that Telecom accepted the request. A text
  * is sent natively only when SEND_SMS is held (granted on the image, or through the SMS role) and the
  * owner confirms the host's own native review of the exact recipients, text, SIM and part count on the
  * unlocked phone; the send then follows {@link SmsTelephony}: "sent" only from sent callbacks,
@@ -114,9 +120,9 @@ public abstract class TelephonyPlugin extends Plugin {
   return !closed && foreground && lock != null && !lock.isDeviceLocked() && users != null && users.isUserUnlocked()
    && (android.os.Build.VERSION.SDK_INT < 31 || users.isUserForeground()) && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed();
  }
- private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); stopObserving(); cancelReview(); }
+ private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); stopObserving(); stopObservingVoicemail(); cancelReview(); }
  @Override protected void handleOnPause() { foreground = false; invalidateReads(); super.handleOnPause(); }
- @Override protected void handleOnResume() { foreground = true; invalidateReads(); resumeObserving(); super.handleOnResume(); }
+ @Override protected void handleOnResume() { foreground = true; invalidateReads(); resumeObserving(); resumeObservingVoicemail(); super.handleOnResume(); }
  /** Rejects the call unless the profile admits this install and the phone is unlocked with the host in front. */
  protected final boolean refused(PluginCall call) {
   if (call == null) return true;
@@ -233,6 +239,18 @@ public abstract class TelephonyPlugin extends Plugin {
   return rows;
  }
 
+ /**
+  * The owner's SIM lines for a Settings page: carrier, own number, network and device identifiers
+  * ({@link PhoneInfoReader}). It needs no permission of its own: {@code access} says which parts
+  * Android let this app read, and a part it refused is absent or null, never an error. Without
+  * phone-state access the lines are empty and {@code access.phoneState} is false. Read only while
+  * unlocked and in front, on the reader thread, and fenced again before publication.
+  */
+ @PluginMethod public void phoneInfo(PluginCall call) {
+  if (refused(call)) return;
+  fenced(call, () -> true, "Phone information", cancel -> PhoneInfoReader.read(getContext(), SmsTelephony.activeSubscriptions(getContext(), config), cancel), true);
+ }
+
  /** Asks for contacts, phone-state, SMS or send access in Android's own dialog, only from an explicit request. */
  @PluginMethod public void requestAccess(PluginCall call) {
   if (refused(call)) return;
@@ -283,25 +301,30 @@ public abstract class TelephonyPlugin extends Plugin {
   */
  protected final void fencedWrite(PluginCall call, String alias, String noun, Read write) { fenced(call, alias, noun, write, false); }
  private void fenced(PluginCall call, String alias, String noun, Read read, boolean fenceResult) {
-  if (getPermissionState(alias) != PermissionState.GRANTED) { call.reject(noun + " access is not granted", "permission-required"); return; }
+  fenced(call, () -> getPermissionState(alias) == PermissionState.GRANTED, noun, read, fenceResult);
+ }
+ /** The same fence for access Android grants without a runtime permission dialog (the dialer role's voicemail access). */
+ private void fenced(PluginCall call, java.util.function.BooleanSupplier granted, String noun, Read read, boolean fenceResult) {
+  if (!granted.getAsBoolean()) { call.reject(noun + " access is not granted", "permission-required"); return; }
   final long access = generation.get();
   final android.os.CancellationSignal cancel = new android.os.CancellationSignal(); reads.add(cancel);
   try {
    reader.execute(() -> {
     try {
-     if (!current(access, cancel, alias)) throw new SecurityException();
+     if (!current(access, cancel, granted)) throw new SecurityException();
      JSObject value = read.read(cancel);
      main.post(() -> {
-      if (fenceResult && !current(access, cancel, alias)) call.reject(noun + " access changed. Refresh after unlocking.", "unavailable");
+      if (fenceResult && !current(access, cancel, granted)) call.reject(noun + " access changed. Refresh after unlocking.", "unavailable");
       else call.resolve(value);
      });
+    } catch (VoicemailStore.Refused refusal) { call.reject(refusal.getMessage(), refusal.code);
     } catch (Exception unreadable) { call.reject(noun + " could not be read. Check access and refresh.", "unavailable"); }
     finally { reads.remove(cancel); }
    });
   } catch (java.util.concurrent.RejectedExecutionException gone) { reads.remove(cancel); call.reject(CLOSED); }
  }
- private boolean current(long access, android.os.CancellationSignal cancel, String alias) {
-  return !cancel.isCanceled() && access == generation.get() && unlockedForeground() && admitted() && getPermissionState(alias) == PermissionState.GRANTED;
+ private boolean current(long access, android.os.CancellationSignal cancel, java.util.function.BooleanSupplier granted) {
+  return !cancel.isCanceled() && access == generation.get() && unlockedForeground() && admitted() && granted.getAsBoolean();
  }
 
  private JSObject handoff(String status, String target, String handler, String message) {
@@ -388,6 +411,67 @@ public abstract class TelephonyPlugin extends Plugin {
   if (number == null || !NUMBER.matcher(number).matches()) { call.reject("Not a dialable phone number", "invalid"); return; }
   open(call, new Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)), "dialer",
     "Your phone app is open with the number. Place the call there; this app does not know whether it connects.");
+ }
+
+ /** What became of a place-call request. It never says a call connected or was answered. */
+ private static JSObject placement(String status, String message) {
+  JSObject value = new JSObject(); value.put("status", status); value.put("message", message);
+  return value;
+ }
+ /**
+  * Hands a {@code tel:} URI to Telecom on the default calling account and answers {@code "placed"}
+  * (Telecom took the request; nothing is known about the call), {@code "failed"} (Android refused
+  * it) or {@code "unavailable"}. A host that ships plugin-native-phone may answer from its
+  * {@code TelecomDial.originate} instead; this library does not depend on that module.
+  */
+ @android.annotation.SuppressLint("MissingPermission") // placeCall checks the dialer role and CALL_PHONE first.
+ protected String originate(Uri tel) {
+  TelecomManager telecom = getContext().getSystemService(TelecomManager.class);
+  if (telecom == null) return "unavailable";
+  try {
+   android.os.Bundle extras = new android.os.Bundle();
+   android.telecom.PhoneAccountHandle account = telecom.getDefaultOutgoingPhoneAccount(tel.getScheme());
+   if (account != null) extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account);
+   telecom.placeCall(tel, extras);
+   return "placed";
+  } catch (SecurityException denied) { return "failed"; }
+ }
+ /**
+  * Places a call the owner asked for, through Telecom, only while the host holds the dialer role and
+  * CALL_PHONE and is unlocked in front. An emergency number is never placed from here: the dial
+  * screen opens with it, as {@link #dial} does, and the answer is {@code "emergency-handoff"}; a
+  * number Android cannot classify is treated the same way. With a call already ringing or in
+  * progress the answer is {@code "busy"} and nothing is placed. {@code "placed"} means only that
+  * Telecom accepted the request.
+  */
+ @android.annotation.SuppressLint("MissingPermission")
+ @PluginMethod public void placeCall(PluginCall call) {
+  if (refused(call)) return;
+  String number = call.getString("number", "");
+  if (number == null || !NUMBER.matcher(number).matches()) { call.reject("Not a dialable phone number", "invalid"); return; }
+  TelephonyManager telephony = getContext().getSystemService(TelephonyManager.class);
+  TelecomManager telecom = getContext().getSystemService(TelecomManager.class);
+  boolean emergency;
+  try { emergency = telephony == null || telephony.isEmergencyNumber(number); } catch (RuntimeException unclassified) { emergency = true; }
+  if (emergency) {
+   try {
+    getActivity().startActivity(new Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)));
+    call.resolve(placement("emergency-handoff", "The dial screen is open with this number. Place the call there."));
+   } catch (ActivityNotFoundException missing) { call.resolve(placement("unavailable", "No app on this phone handles this. Nothing was dialed."));
+   } catch (RuntimeException failure) { call.resolve(placement("failed", "The dial screen could not be opened. Nothing was dialed.")); }
+   return;
+  }
+  if (telecom == null || !telephony.isVoiceCapable()) { call.resolve(placement("unavailable", "This phone cannot place calls.")); return; }
+  if (!dialerRoleHeld()) { call.reject("Make this app your phone app to place calls here.", "role-required"); return; }
+  if (getContext().checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) { call.reject("Phone-call access is not granted", "permission-required"); return; }
+  final boolean inCall;
+  try { inCall = telecom.isInCall(); }
+  catch (RuntimeException unreadable) { call.resolve(placement("unavailable", "The phone's call state could not be read. Nothing was dialed.")); return; }
+  if (inCall) { call.resolve(placement("busy", "A call is already in progress. Nothing was dialed.")); return; }
+  String status = originate(Uri.fromParts("tel", number, null));
+  if ("placed".equals(status)) call.resolve(placement("placed", "Android accepted the call request. This does not show whether the call connects."));
+  else if ("failed".equals(status)) call.resolve(placement("failed", "Android refused the call request. Nothing was dialed."));
+  else call.resolve(placement("unavailable", "This phone cannot place calls."));
  }
 
  /** Opens the user's SMS app with the reviewed recipients and text. A handoff cannot choose the SIM, so a SIM choice is refused. */
@@ -506,6 +590,133 @@ public abstract class TelephonyPlugin extends Plugin {
   if (getPermissionState("sms") != PermissionState.GRANTED) { call.reject("Messages access is not granted", "permission-required"); return; }
   observeWanted = true; startObserving();
   if (!observing) { observeWanted = false; call.reject("Messages could not be observed", "unavailable"); return; }
+  call.resolve();
+ }
+
+ // ---- Visual voicemail (VoicemailContract) ----------------------------------------------------
+
+ private static final String READ_VOICEMAIL = "com.android.voicemail.permission.READ_VOICEMAIL", WRITE_VOICEMAIL = "com.android.voicemail.permission.WRITE_VOICEMAIL";
+ private boolean dialerRoleHeld() {
+  RoleManager roles = getContext().getSystemService(RoleManager.class);
+  return roles != null && roles.isRoleAvailable(RoleManager.ROLE_DIALER) && roles.isRoleHeld(RoleManager.ROLE_DIALER);
+ }
+ /** Android lets the default dialer, or a holder of the voicemail permission, read or change every source's voicemail. No dialog grants it. */
+ private boolean voicemailReadable() { return dialerRoleHeld() || getContext().checkSelfPermission(READ_VOICEMAIL) == PackageManager.PERMISSION_GRANTED; }
+ private boolean voicemailWritable() { return dialerRoleHeld() || getContext().checkSelfPermission(WRITE_VOICEMAIL) == PackageManager.PERMISSION_GRANTED; }
+ /** The default calling account as {flattened component, account ID}, or two nulls when Android names none or refuses the read. */
+ @android.annotation.SuppressLint("MissingPermission")
+ private String[] voiceAccount() {
+  try {
+   TelecomManager telecom = getContext().getSystemService(TelecomManager.class);
+   android.telecom.PhoneAccountHandle handle = telecom == null ? null : telecom.getDefaultOutgoingPhoneAccount("tel");
+   if (handle != null) return new String[] { handle.getComponentName().flattenToString(), handle.getId() };
+  } catch (RuntimeException unreadable) { /* Every source's status then counts. */ }
+  return new String[] { null, null };
+ }
+ private boolean callLogReadable() { return callLogDeclared && getPermissionState(CALL_LOG) == PermissionState.GRANTED; }
+ private static long voicemail(PluginCall call) { return VoicemailStore.row(call.getString("id")); }
+
+ /**
+  * Whether this app may read voicemail, and the carrier state its sources report for the default
+  * calling account: {@code {access, state}}. Without access the state is null (not read), never
+  * "unsupported".
+  */
+ @PluginMethod public void voicemailStatus(PluginCall call) {
+  if (refused(call)) return;
+  if (!voicemailReadable()) { JSObject value = new JSObject(); value.put("access", false); value.put("state", JSONObject.NULL); call.resolve(value); return; }
+  final String[] account = voiceAccount();
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> {
+   JSObject value = new JSObject(); value.put("access", true); value.put("state", VoicemailStore.carrierState(getContext(), account[0], account[1], cancel));
+   return value;
+  }, true);
+ }
+ /** The newest voicemails (at most {@link VoicemailStore#MAX_VOICEMAILS}) with the carrier state; see {@link VoicemailStore#list}. */
+ @PluginMethod public void listVoicemail(PluginCall call) {
+  if (refused(call)) return;
+  final int limit = VoicemailStore.limit(call.getInt("limit", 25));
+  if (limit < 0) { call.reject("Voicemail limit must be 1 to 50", "invalid"); return; }
+  final String[] account = voiceAccount(); final boolean names = callLogReadable();
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.list(getContext(), limit, account[0], account[1], names, cancel), true);
+ }
+ /** Asks the voicemail's source to download its audio when it is not on the phone; see {@link VoicemailStore#fetch}. */
+ @PluginMethod public void fetchVoicemailAudio(PluginCall call) {
+  if (refused(call)) return;
+  final long id = voicemail(call);
+  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.fetch(getContext(), id, cancel)); return value; }, true);
+ }
+ /** One voicemail's audio in base64, at most {@link VoicemailStore#MAX_AUDIO_BYTES}, for playback and on-device transcription. */
+ @PluginMethod public void voicemailAudio(PluginCall call) {
+  if (refused(call)) return;
+  final long id = voicemail(call);
+  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.audio(getContext(), id, cancel), true);
+ }
+ /**
+  * One voicemail decoded to 16 kHz mono PCM16 WAV in base64 for on-device transcription
+  * ({@link VoicemailPcm}). The decode runs on the reader thread and is cancelled, and its result
+  * dropped, when the host leaves the foreground or the phone locks.
+  */
+ @PluginMethod public void voicemailPcm(PluginCall call) {
+  if (refused(call)) return;
+  final long id = voicemail(call);
+  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.pcm(getContext(), id, cancel), true);
+ }
+ /** Marks one voicemail heard: {@code {status: "marked" | "not-found"}}. Reported even if access changed meanwhile. */
+ @PluginMethod public void markVoicemailHeard(PluginCall call) {
+  if (refused(call)) return;
+  final long id = voicemail(call);
+  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.markHeard(getContext(), id) ? "marked" : "not-found"); return value; }, false);
+ }
+ /** Deletes one voicemail the owner chose: {@code {status: "deleted" | "not-found"}}. Reported even if access changed meanwhile. */
+ @PluginMethod public void deleteVoicemail(PluginCall call) {
+  if (refused(call)) return;
+  final long id = voicemail(call);
+  if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
+  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.delete(getContext(), id) ? "deleted" : "not-found"); return value; }, false);
+ }
+
+ private boolean voicemailWanted, voicemailObserving;
+ private long voicemailSequence;
+ private final Runnable emitVoicemailChange = () -> {
+  if (!voicemailObserving || !unlockedForeground() || !admitted() || !voicemailReadable()) return;
+  JSObject value = new JSObject(); value.put("sequence", ++voicemailSequence);
+  // No content leaves here: the renderer re-reads a bounded list.
+  notifyListeners("voicemailChanged", value);
+ };
+ private final android.database.ContentObserver voicemailObserver = new android.database.ContentObserver(main) {
+  @Override public void onChange(boolean self) { main.removeCallbacks(emitVoicemailChange); main.postDelayed(emitVoicemailChange, 750); }
+ };
+ private void startObservingVoicemail() {
+  if (voicemailObserving) return;
+  android.content.ContentResolver resolver = getContext().getContentResolver();
+  try {
+   resolver.registerContentObserver(android.provider.VoicemailContract.Voicemails.CONTENT_URI, true, voicemailObserver);
+   resolver.registerContentObserver(android.provider.VoicemailContract.Status.CONTENT_URI, true, voicemailObserver);
+   voicemailObserving = true;
+  } catch (RuntimeException refusedObserver) { resolver.unregisterContentObserver(voicemailObserver); voicemailObserving = false; }
+ }
+ private void stopObservingVoicemail() {
+  main.removeCallbacks(emitVoicemailChange);
+  if (!voicemailObserving) return;
+  voicemailObserving = false;
+  getContext().getContentResolver().unregisterContentObserver(voicemailObserver);
+ }
+ private void resumeObservingVoicemail() {
+  if (!voicemailWanted || !admitted() || !voicemailReadable() || !unlockedForeground()) return;
+  startObservingVoicemail();
+  main.removeCallbacks(emitVoicemailChange); main.post(emitVoicemailChange);
+ }
+ /** Starts or stops content-free change notices ("voicemailChanged") while the host is unlocked in the foreground. */
+ @PluginMethod public void observeVoicemail(PluginCall call) {
+  if (refused(call)) return;
+  Boolean enabled = call.getBoolean("enabled", false);
+  if (enabled == null || !enabled) { voicemailWanted = false; stopObservingVoicemail(); call.resolve(); return; }
+  if (!voicemailReadable()) { call.reject("Voicemail access is not granted", "permission-required"); return; }
+  voicemailWanted = true; startObservingVoicemail();
+  if (!voicemailObserving) { voicemailWanted = false; call.reject("Voicemail could not be observed", "unavailable"); return; }
   call.resolve();
  }
 
