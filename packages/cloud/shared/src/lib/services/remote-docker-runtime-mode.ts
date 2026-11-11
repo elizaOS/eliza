@@ -37,9 +37,10 @@ const CALLER_FORBIDDEN_ENV_SUFFIXES = [
   // Shell execution. server-helpers-auth.ts reads this and the terminal action
   // replays it as its own authorisation.
   "TERMINAL_RUN_TOKEN",
-  // Auth bypasses, each permissive when set. Agent images built before the
-  // stdio-MCP switch was deleted still honour it; DEV_AUTH_BYPASS is honoured
-  // by loopback-trust.ts when NODE_ENV is a development value, which a caller
+  // Auth bypasses, each permissive when set. Only agent images that predate
+  // this source tree honour ALLOW_UNAUTHENTICATED_STDIO_MCP; drop that entry
+  // once no such image can be provisioned. DEV_AUTH_BYPASS is honoured by
+  // loopback-trust.ts when NODE_ENV is a development value, which a caller
   // also supplies.
   "ALLOW_UNAUTHENTICATED_STDIO_MCP",
   "DEV_AUTH_BYPASS",

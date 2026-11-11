@@ -1,4 +1,4 @@
-/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit salt unless the operator enables the default-salt exception. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
+/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit, non-default salt. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
