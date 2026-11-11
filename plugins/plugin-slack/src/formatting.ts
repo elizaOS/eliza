@@ -175,6 +175,39 @@ function convertStrikethrough(text: string): string {
 }
 
 /**
+ * Offset of the closing fence for a backtick block whose body starts at
+ * `bodyStart` (the first line after the opener), or -1 when the block never
+ * closes. A closer is a line of at least as many backticks as the opener,
+ * followed only by spaces or tabs — a ```js line inside the block is
+ * content, not a closer, and a mid-line ``` never closes either. The old
+ * indexOf("```") paired the opener with the first such marker, so the rest
+ * of the block fell through to the style passes and a `#` comment came out
+ * bold — the corruption the code sink exists to stop.
+ */
+function findBacktickFenceCloser(
+  text: string,
+  bodyStart: number,
+  markerLen: number,
+): number {
+  let lineStart = bodyStart;
+  while (lineStart <= text.length) {
+    const lineEnd = text.indexOf("\n", lineStart);
+    const end = lineEnd < 0 ? text.length : lineEnd;
+    const match = /^( {0,3})(`{3,})(.*)$/.exec(text.slice(lineStart, end));
+    if (
+      match &&
+      (match[2]?.length ?? 0) >= markerLen &&
+      /^[ \t]*$/.test(match[3] ?? "")
+    ) {
+      return lineStart + (match[1]?.length ?? 0);
+    }
+    if (lineEnd < 0) break;
+    lineStart = lineEnd + 1;
+  }
+  return -1;
+}
+
+/**
  * Converts markdown code blocks to Slack mrkdwn
  */
 function convertCodeBlocks(text: string, codeSink: string[]): string {
@@ -196,7 +229,15 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
     // language tag so the copied fence was empty.
     const bodyStart =
       newlineAt >= 0 ? afterOpener + newlineAt + 1 : afterOpener;
-    const closer = text.indexOf("```", bodyStart);
+    // A multi-line body starts on its own line, so its closer is a fence
+    // line by the CommonMark rule. A one-line block has no line of its own
+    // for the closer, so it keeps the old indexOf read.
+    let markerLen = 3;
+    while (text[opener + markerLen] === "`") markerLen += 1;
+    const closer =
+      newlineAt >= 0
+        ? findBacktickFenceCloser(text, bodyStart, markerLen)
+        : text.indexOf("```", bodyStart);
     if (closer < 0) {
       // An unmatched opener is what a truncated or streamed message produces,
       // and the rest of it is still code the user reads and copies. Pushing it

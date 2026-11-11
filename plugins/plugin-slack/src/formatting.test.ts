@@ -37,6 +37,24 @@ describe("markdownToSlackMrkdwn bare URLs", () => {
   });
 });
 
+describe("markdownToSlackMrkdwn fenced code blocks", () => {
+  it("keeps a ```js line and what follows it inside the block", () => {
+    expect(
+      markdownToSlackMrkdwn(
+        "```\n# heading comment\ncode line\n```js\n# second comment\nmore code\n```",
+      ),
+    ).toBe(
+      "```\n# heading comment\ncode line\n```js\n# second comment\nmore code\n```",
+    );
+  });
+
+  it("keeps a mid-line fence marker inside the block literal", () => {
+    expect(
+      markdownToSlackMrkdwn("```\ncode with ``` inline\n# comment\n```"),
+    ).toBe("```\ncode with ``` inline\n# comment\n```");
+  });
+});
+
 describe("markdown links in inline code", () => {
   it("keeps examples literal while converting links outside code", () => {
     expect(
