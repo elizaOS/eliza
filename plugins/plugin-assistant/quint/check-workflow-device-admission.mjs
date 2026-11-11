@@ -97,7 +97,34 @@ for (const [index, suite] of models[model].entries()) {
     });
   } else {
     const xml = readFileSync(report, "utf8");
-    const summary = parseJunitSummary(xml);
+    let junit = xml;
+    if (suite.kind === "node") {
+      // Node 24 emits flat testcases and summary comments. Require its full
+      // successful summary before adding the suite the shared parser expects.
+      const fields = [
+        ...xml.matchAll(
+          /<!-- (tests|suites|pass|fail|cancelled|skipped|todo) (\d+) -->/g,
+        ),
+      ];
+      assert.equal(fields.length, 7);
+      const counts = Object.fromEntries(
+        fields.map((field) => [field[1], Number(field[2])]),
+      );
+      assert.equal(Object.keys(counts).length, 7);
+      assert.equal(counts.tests, suite.required.length);
+      assert.equal(counts.pass, counts.tests);
+      for (const field of ["suites", "fail", "cancelled", "skipped", "todo"])
+        assert.equal(counts[field], 0, `Node conformance has ${field}`);
+      assert.equal(xml.split("<testsuites>").length, 2);
+      assert.equal(xml.split("</testsuites>").length, 2);
+      junit = xml
+        .replace(
+          "<testsuites>",
+          `<testsuites tests="${counts.tests}" failures="0" errors="0" skipped="0"><testsuite name="node-contracts" tests="${counts.tests}" failures="0" errors="0" skipped="0">`,
+        )
+        .replace("</testsuites>", "</testsuite></testsuites>");
+    }
+    const summary = parseJunitSummary(junit);
     assert.equal(summary.tests, suite.required.length);
     assert.equal(summary.executedTests, suite.required.length);
     assert.equal(summary.failures + summary.errors + summary.skipped, 0);
@@ -106,6 +133,8 @@ for (const [index, suite] of models[model].entries()) {
     parser.on("opentag", (tag) => {
       if (tag.name === "testcase") {
         assert.equal(typeof tag.attributes.name, "string");
+        if (suite.kind === "node")
+          assert.equal(tag.attributes.file, path.join(root, suite.file));
         names.push(tag.attributes.name);
       }
     });
