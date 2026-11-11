@@ -26,7 +26,8 @@ function files(t, storage = {}) {
   const calls = [],
     toasts = [],
     accepted = [],
-    forgotten = [];
+    forgotten = [],
+    undos = [];
   const preview = "__native_selected_document";
   const view = {
     render: (state) =>
@@ -34,7 +35,10 @@ function files(t, storage = {}) {
   };
   const api = {
     set() {},
-    toast: (text) => toasts.push(text),
+    toast: (text, options) => {
+      toasts.push(text);
+      if (options?.undo) undos.push(options.undo);
+    },
     isActive: () => true,
   };
   const base = {
@@ -85,6 +89,7 @@ function files(t, storage = {}) {
     toasts,
     accepted,
     forgotten,
+    undos,
     preview,
     leave: () => view.onLeave(),
     render: (state = {}) => view.render(state, api),
@@ -192,10 +197,11 @@ test("Sort and view on Browse do not leave Browse", async (t) => {
   assert.equal(view.render().top, true);
 });
 
-test("a selection larger than one storage call is changed in parts and shared up to the limit", async (t) => {
+test("a complete selection is shared once and changes use bounded storage calls", async (t) => {
   const entries = Array.from({ length: 1200 }, (_, index) =>
     file(`Download/${index}.txt`, "text/plain"),
   );
+  entries[1199] = { ...entries[1199], directory: true };
   const view = files(t, {
     storageList: async () => ({ status: "ready", entries }),
     storageShare: async () => ({ status: "opened" }),
@@ -211,8 +217,14 @@ test("a selection larger than one storage call is changed in parts and shared up
   view.render().selAll();
   view.render().selShare();
   await tick();
-  assert.deepEqual(view.named("storageShare"), []);
-  assert.deepEqual(view.toasts, ["Select up to 100 files to share."]);
+  assert.equal(view.named("storageShare").length, 1);
+  assert.equal(view.named("storageShare")[0][1].paths.length, 1200);
+  assert.deepEqual(
+    view.named("storageShare")[0][1].paths,
+    entries.map((entry) => entry.path),
+    "selected folders must not disappear from the share request",
+  );
+  assert.deepEqual(view.toasts, []);
   view.render().selDel();
   await tick();
   assert.deepEqual(
@@ -245,8 +257,9 @@ test("a listing that is only part of the folder says so, and so does the filter"
       new AbortController().signal,
     ),
     {
-      status: "succeeded",
-      summary: "Showing the first 1 item in Files. More files match.",
+      status: "failed",
+      summary:
+        "Files could not complete this search. Showing 1 item from the scanned folders.",
     },
   );
   assert.match(view.render().chip.label, /1\+$/);
@@ -296,7 +309,7 @@ test("empty and loading states carry text", async (t) => {
   assert.equal(fd.emptyText, "This folder is empty");
 });
 
-test("a filter left for more than ten minutes is cleared on return", async (t) => {
+test("a filter is restored after both short and long visits away", async (t) => {
   t.mock.timers.enable({ apis: ["Date"] });
   const view = files(t, {
     storageQuery: async () => ({
@@ -312,7 +325,7 @@ test("a filter left for more than ten minutes is cleared on return", async (t) =
   );
   for (const [minutes, kept] of [
     [1, true],
-    [11, false],
+    [11, true],
   ]) {
     view.leave();
     t.mock.timers.tick(minutes * 60 * 1000);
@@ -320,4 +333,222 @@ test("a filter left for more than ten minutes is cleared on return", async (t) =
     await tick();
     assert.equal(!!view.render().chip, kept);
   }
+});
+
+test("a shown position cannot switch to a new filter while access is pending", async (t) => {
+  const access = Promise.withResolvers();
+  let holdNext = false;
+  const ready = { status: "ready", access: "granted" };
+  const view = files(t, {
+    storageState: () => {
+      if (holdNext) {
+        holdNext = false;
+        return access.promise;
+      }
+      return Promise.resolve(ready);
+    },
+    storageQuery: async ({ text }) => ({
+      status: "ready",
+      entries: [file(`Download/${text}.pdf`, "application/pdf")],
+    }),
+  });
+  view.render();
+  await tick();
+  const signal = new AbortController().signal;
+  await view.runner.run({ type: "files_filter", text: "first" }, signal);
+  holdNext = true;
+  const opening = view.runner.run({ type: "files_open", shown: 1 }, signal);
+  await view.runner.run({ type: "files_filter", text: "replacement" }, signal);
+  access.resolve(ready);
+  assert.equal((await opening).status, "failed");
+  assert.deepEqual(view.named("storageSelect"), []);
+  assert.deepEqual(view.accepted, []);
+});
+
+test("a late shown grant is released when the displayed filter is replaced", async (t) => {
+  const selected = Promise.withResolvers();
+  const view = files(t, {
+    storageQuery: async ({ text }) => ({
+      status: "ready",
+      entries: [file(`Download/${text}.pdf`, "application/pdf")],
+    }),
+    storageSelect: () => selected.promise,
+  });
+  view.render();
+  await tick();
+  const signal = new AbortController().signal;
+  await view.runner.run({ type: "files_filter", text: "first" }, signal);
+  const opening = view.runner.run({ type: "files_open", shown: 1 }, signal);
+  await tick();
+  await view.runner.run({ type: "files_filter", text: "replacement" }, signal);
+  selected.resolve({ status: "selected", selectionId: "first-grant" });
+  assert.equal((await opening).status, "failed");
+  assert.deepEqual(view.accepted, []);
+  assert.deepEqual(view.forgotten, ["first-grant"]);
+});
+
+test("leaving Files stops later batch admissions and retains the committed outcome", async (t) => {
+  const first = Promise.withResolvers();
+  const entries = Array.from({ length: 1200 }, (_, i) =>
+    file(`Download/${i}.txt`, "text/plain"),
+  );
+  const view = files(t, {
+    storageList: async () => ({ status: "ready", entries }),
+    storageTrash: ({ paths }) =>
+      view.named("storageTrash").length === 1
+        ? first.promise
+        : Promise.resolve({
+            status: "ready",
+            outcomes: paths.map((path) => ({
+              path,
+              status: "trashed",
+              to: path,
+            })),
+          }),
+  });
+  view.render();
+  await tick();
+  view.render().browse.allFiles();
+  await tick();
+  view.render().selAll();
+  view.render().selDel();
+  await tick();
+  const paths = view.named("storageTrash")[0][1].paths;
+  view.leave();
+  first.resolve({
+    status: "ready",
+    outcomes: paths.map((path) => ({ path, status: "trashed", to: path })),
+  });
+  await tick();
+  assert.equal(view.named("storageTrash").length, 1);
+  assert.ok(view.toasts.some((text) => text.includes("500 of 1200")));
+});
+
+test("a later unknown trash batch retains confirmed Undo without retrying unknown effects", async (t) => {
+  const entries = Array.from({ length: 1200 }, (_, i) =>
+    file(`Download/${i}.txt`, "text/plain"),
+  );
+  const view = files(t, {
+    storageList: async () => ({ status: "ready", entries }),
+    storageTrash: async ({ paths }) => {
+      if (view.named("storageTrash").length === 2)
+        throw Error("Lost acknowledgement");
+      return {
+        status: "ready",
+        outcomes: paths.map((path) => ({ path, status: "trashed", to: path })),
+      };
+    },
+    storageRestore: async ({ ids }) => ({
+      status: "ready",
+      outcomes: ids.map((path) => ({ path, status: "restored" })),
+    }),
+  });
+  view.render();
+  await tick();
+  view.render().browse.allFiles();
+  await tick();
+  view.render().selAll();
+  view.render().selDel();
+  await tick();
+  assert.equal(view.named("storageTrash").length, 2);
+  assert.match(view.toasts.at(-1), /500 of 1200.*could not be confirmed/);
+  assert.equal(view.undos.length, 1);
+  view.undos[0]();
+  await tick();
+  assert.deepEqual(
+    view.named("storageRestore").map(([, input]) => input.ids),
+    [view.named("storageTrash")[0][1].paths],
+  );
+});
+
+test("an incomplete or failed empty search never claims no matching files", async (t) => {
+  for (const result of [
+    { status: "ready", entries: [], truncated: true },
+    { status: "unavailable", message: "Storage failed" },
+  ]) {
+    const view = files(t, { storageQuery: async () => result });
+    view.render();
+    await tick();
+    const outcome = await view.runner.run(
+      { type: "files_filter", kind: "pdf" },
+      new AbortController().signal,
+    );
+    assert.equal(outcome.status, "failed");
+    assert.equal(view.render().filterEmpty, false);
+    assert.match(view.render().filterNote, /incomplete|could not read/);
+    view.leave();
+  }
+});
+
+test("overlapping Undo operations keep the toolbar disabled until both settle", async (t) => {
+  const restore = [Promise.withResolvers(), Promise.withResolvers()];
+  let trashCount = 0;
+  const view = files(t, {
+    storageList: async () => ({
+      status: "ready",
+      entries: [file("Download/a.txt", "text/plain")],
+    }),
+    storageTrash: async ({ paths }) => ({
+      status: "ready",
+      outcomes: paths.map((path) => ({
+        path,
+        status: "trashed",
+        to: `trash-${++trashCount}`,
+      })),
+    }),
+    storageRestore: () =>
+      restore[view.named("storageRestore").length - 1].promise,
+  });
+  view.render();
+  await tick();
+  view.render().browse.allFiles();
+  await tick();
+  for (let i = 0; i < 2; i++) {
+    view.render().selAll();
+    view.render().selDel();
+    await tick();
+  }
+  assert.equal(view.undos.length, 2);
+  view.undos[0]();
+  view.undos[1]();
+  await tick();
+  assert.equal(view.render().toolbar.disabled, true);
+  restore[0].resolve({
+    status: "ready",
+    outcomes: [{ path: "trash-1", status: "restored" }],
+  });
+  await tick();
+  assert.equal(view.render().toolbar.disabled, true);
+  restore[1].resolve({
+    status: "ready",
+    outcomes: [{ path: "trash-2", status: "restored" }],
+  });
+  await tick();
+  assert.equal(view.render().toolbar.disabled, false);
+});
+
+test("external opening refuses a malformed grant and releases a retired fallback grant", async (t) => {
+  const held = Promise.withResolvers();
+  let delayed = false;
+  const entries = [file("Movies/clip.mp4", "video/mp4")];
+  const view = files(t, {
+    storageList: async () => ({ status: "ready", entries }),
+    storageOpen: async () => (delayed ? held.promise : { status: "selected" }),
+  });
+  view.render();
+  await tick();
+  view.render().browse.allFiles();
+  await tick();
+  view.render().fd.items[0].tap();
+  await tick();
+  assert.deepEqual(view.accepted, []);
+  assert.equal(view.toasts.at(-1), "This file could not open.");
+  delayed = true;
+  view.render().fd.items[0].tap();
+  await tick();
+  view.leave();
+  held.resolve({ status: "selected", selectionId: "late-external-fallback" });
+  await tick();
+  assert.deepEqual(view.accepted, []);
+  assert.deepEqual(view.forgotten, ["late-external-fallback"]);
 });
