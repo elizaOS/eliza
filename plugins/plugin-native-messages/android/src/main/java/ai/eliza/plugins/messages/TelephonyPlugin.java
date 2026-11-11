@@ -124,7 +124,7 @@ public abstract class TelephonyPlugin extends Plugin {
   return !closed && foreground && lock != null && !lock.isDeviceLocked() && users != null && users.isUserUnlocked()
    && (android.os.Build.VERSION.SDK_INT < 31 || users.isUserForeground()) && getActivity() != null && !getActivity().isFinishing() && !getActivity().isDestroyed();
  }
- private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); stopObserving(); stopObservingVoicemail(); cancelReview(); }
+ private void invalidateReads() { generation.incrementAndGet(); for (android.os.CancellationSignal read : reads) read.cancel(); for (ReviewCall pending : pendingReviews) pending.cancelled = true; stopObserving(); stopObservingVoicemail(); cancelReview(); }
  @Override protected void handleOnPause() { foreground = false; invalidateReads(); super.handleOnPause(); }
  @Override protected void handleOnResume() { foreground = true; invalidateReads(); resumeObserving(); resumeObservingVoicemail(); super.handleOnResume(); }
  /** Rejects the call unless the profile admits this install and the phone is unlocked with the host in front. */
@@ -729,6 +729,20 @@ public abstract class TelephonyPlugin extends Plugin {
  private android.app.AlertDialog review;
  private PluginCall reviewCall;
  private Runnable reviewCancelled;
+ /** Every queued review keeps its own cancellation owner until its original bridge call settles. */
+ private final java.util.Set<ReviewCall> pendingReviews = java.util.concurrent.ConcurrentHashMap.newKeySet();
+ private final class ReviewCall extends PluginCall {
+  private final PluginCall original;
+  private volatile boolean cancelled;
+  ReviewCall(PluginCall original) {
+   super(null, original.getPluginId(), original.getCallbackId(), original.getMethodName(), original.getData());
+   this.original = original;
+   pendingReviews.add(this);
+  }
+  @Override public void resolve() { pendingReviews.remove(this); original.resolve(); }
+  @Override public void resolve(JSObject value) { pendingReviews.remove(this); original.resolve(value); }
+  @Override public void reject(String message, String code, Exception cause, JSObject data) { pendingReviews.remove(this); original.reject(message, code, cause, data); }
+ }
  private void cancelReview() {
   if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) { main.post(this::cancelReview); return; }
   android.app.AlertDialog open = review; Runnable cancelled = reviewCancelled;
@@ -766,6 +780,9 @@ public abstract class TelephonyPlugin extends Plugin {
   */
  @PluginMethod public void sendSms(PluginCall call) {
   if (refused(call)) return;
+  startSms(new ReviewCall(call));
+ }
+ private void startSms(ReviewCall call) {
   String operationId = call.getString("operationId"), body = call.getString("body");
   String[] recipients = numbers(call.getArray("recipients"));
   Object rawSubscription = call.getData().opt("subscriptionId");
@@ -787,7 +804,8 @@ public abstract class TelephonyPlugin extends Plugin {
    main.post(() -> reviewSmsOnMain(call, journal, binding, operationId, recipients, body, subscriptionId));
   });
  }
- private void reviewSmsOnMain(PluginCall call, SmsSendJournal journal, String binding, String operationId, String[] recipients, String body, int subscriptionId) {
+ private void reviewSmsOnMain(ReviewCall call, SmsSendJournal journal, String binding, String operationId, String[] recipients, String body, int subscriptionId) {
+  if (call.cancelled) { decide(call, journal, operationId, recipients, body, subscriptionId, "cancelled", System.currentTimeMillis(), SmsTelephony.boot(getContext())); return; }
   if (refused(call)) return;
   if (review != null) { notAttempted(call, operationId, "busy"); return; }
   final long now = System.currentTimeMillis(), boot = SmsTelephony.boot(getContext());
@@ -823,7 +841,7 @@ public abstract class TelephonyPlugin extends Plugin {
      SmsTelephony.WORK.execute(() -> {
       try { call.resolve(SmsTelephony.result(SmsTelephony.dispatch(getContext(), config, journal, operationId, to, body, sub, parts, () -> {
        SubscriptionInfo current = activeSubscription(sub);
-       if (!admitted() || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+       if (call.cancelled || !admitted() || !unlockedForeground() || sendBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
       }))); }
       catch (Exception unrecorded) {
        final SmsSendJournal.Record record;
@@ -833,7 +851,7 @@ public abstract class TelephonyPlugin extends Plugin {
        if (record != null) call.resolve(SmsTelephony.result(record));
        // Nothing reached Android (access or the reviewed SIM changed, or the journal refused it):
        // close the ID as denied so it is never sent later; decide() rejects if even that cannot be recorded.
-       else decide(call, journal, operationId, to, body, sub, "denied", now, boot);
+       else decide(call, journal, operationId, to, body, sub, call.cancelled ? "cancelled" : "denied", now, boot);
       }
      });
     })
@@ -869,6 +887,7 @@ public abstract class TelephonyPlugin extends Plugin {
   if (refused(call)) return;
   final String operationId = call.getString("operationId", "");
   main.post(() -> {
+   for (ReviewCall pending : pendingReviews) if (operationId.equals(pending.getString("operationId"))) pending.cancelled = true;
    if (reviewCall != null && operationId.equals(reviewCall.getString("operationId"))) cancelReview();
    call.resolve();
   });
@@ -951,6 +970,9 @@ public abstract class TelephonyPlugin extends Plugin {
   */
  @PluginMethod public void sendMms(PluginCall call) {
   if (refused(call)) return;
+  startMms(new ReviewCall(call));
+ }
+ private void startMms(ReviewCall call) {
   String operationId = call.getString("operationId"), body = call.getString("body");
   String[] recipients = numbers(call.getArray("recipients"));
   Object rawSubscription = call.getData().opt("subscriptionId");
@@ -977,7 +999,8 @@ public abstract class TelephonyPlugin extends Plugin {
    main.post(() -> reviewMmsOnMain(call, journal, binding, operationId, recipients, body, attachments, data, subscriptionId));
   });
  }
- private void reviewMmsOnMain(PluginCall call, SmsSendJournal journal, String binding, String operationId, String[] recipients, String body, SmsSendJournal.Attachment[] attachments, byte[][] data, int subscriptionId) {
+ private void reviewMmsOnMain(ReviewCall call, SmsSendJournal journal, String binding, String operationId, String[] recipients, String body, SmsSendJournal.Attachment[] attachments, byte[][] data, int subscriptionId) {
+  if (call.cancelled) { decideMms(call, journal, operationId, recipients, body, attachments, subscriptionId, "cancelled", System.currentTimeMillis(), SmsTelephony.boot(getContext())); return; }
   if (refused(call)) return;
   if (review != null) { call.reject("Another message is waiting for review", "busy"); return; }
   final long now = System.currentTimeMillis(), boot = SmsTelephony.boot(getContext());
@@ -1030,7 +1053,7 @@ public abstract class TelephonyPlugin extends Plugin {
      if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
      final SmsTelephony.DispatchGuard guard = () -> {
       SubscriptionInfo current = activeSubscription(sub);
-      if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+      if (call.cancelled || !admitted() || !unlockedForeground() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
      };
      SmsTelephony.WORK.execute(() -> {
       try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
@@ -1042,7 +1065,7 @@ public abstract class TelephonyPlugin extends Plugin {
        } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
        catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
        if (record != null) call.resolve(SmsTelephony.result(record));
-       else decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);
+       else decideMms(call, journal, operationId, to, body, attachments, sub, call.cancelled ? "cancelled" : "denied", now, boot);
       }
      });
     });
