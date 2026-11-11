@@ -37,6 +37,7 @@ mock.module("@elizaos/cloud-shared/db/client", () => ({
   runWithDbCacheAsync: (fn: () => unknown) => fn(),
 }));
 mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => ({}),
   runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn(),
 }));
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
