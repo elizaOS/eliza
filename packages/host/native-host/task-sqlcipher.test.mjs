@@ -241,6 +241,9 @@ test("provider reads every row through the guarded native queryAll", async (t) =
   syncBuiltinESMExports();
   const calls = [];
   let current = true;
+  let retireAfterRead = false;
+  let closes = 0;
+  const retired = new Error("retired");
   process.dlopen = (addon) => {
     addon.exports = {
       acquireLease: () => ({ lease: true }),
@@ -250,9 +253,12 @@ test("provider reads every row through the guarded native queryAll", async (t) =
       query: () => undefined,
       queryAll: (...args) => {
         calls.push(args);
+        if (retireAfterRead) current = false;
         return [{ id: 1 }, { id: 2 }];
       },
-      close: () => {},
+      close: () => {
+        closes++;
+      },
       verify: () => true,
     };
   };
@@ -264,7 +270,7 @@ test("provider reads every row through the guarded native queryAll", async (t) =
       libraryMode: "android-installed",
       resolveKey: async () => new Uint8Array(32).fill(7),
       checkOwner: () => {
-        if (!current) throw new Error("retired");
+        if (!current) throw retired;
       },
     });
     const db = await provider.open({ path: join(root, "tasks.sqlite") });
@@ -272,13 +278,18 @@ test("provider reads every row through the guarded native queryAll", async (t) =
     assert.deepEqual(statement.all(0), [{ id: 1 }, { id: 2 }]);
     assert.equal(calls[0][1], "SELECT id FROM records WHERE id > ?");
     assert.deepEqual(calls[0][2], [0]);
+    const refusesRetiredOwner = (error) =>
+      error.code === "TASK_STORAGE_UNAVAILABLE" && error.cause === retired;
     current = false;
-    assert.throws(() => statement.all(0), {
-      code: "TASK_STORAGE_UNAVAILABLE",
-    });
+    assert.throws(() => statement.all(0), refusesRetiredOwner);
     assert.equal(calls.length, 1);
     current = true;
+    retireAfterRead = true;
+    assert.throws(() => statement.all(0), refusesRetiredOwner);
+    assert.equal(calls.length, 2);
     db.close();
+    db.close();
+    assert.equal(closes, 1);
     assert.throws(() => statement.all(0), {
       code: "TASK_STORAGE_UNAVAILABLE",
     });
