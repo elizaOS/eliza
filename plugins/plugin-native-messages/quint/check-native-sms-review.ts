@@ -2,7 +2,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { SaxesParser } from "saxes";
 import { parseJunitSummary } from "../../../packages/scripts/lib/junit-summary.ts";
@@ -27,6 +33,16 @@ const output = testOutputPath("quint-native-sms-review");
 mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
 const log = path.join(directory, "gradle.log");
+for (const suite of suites) {
+  rmSync(
+    path.join(
+      root,
+      "plugins/plugin-native-messages/android/build/test-results/testDebugUnitTest",
+      `TEST-${suite.className}.xml`,
+    ),
+    { force: true },
+  );
+}
 const child = spawnSync(
   process.execPath,
   [
