@@ -144,12 +144,27 @@ export class BatchQueue<T> {
 				let failures: Array<{ index: number; item: T; error: Error }>;
 				try {
 					const batchOutcomes = await processBatch(batch);
-					settled = batchOutcomes.map((outcome) =>
-						outcome.success ? outcome : undefined,
-					);
+					settled = batch.map(() => undefined);
 					failures = [];
-					batchOutcomes.forEach((outcome, index) => {
-						if (outcome.success) return;
+					// Index by the dequeued batch, not by the returned array:
+					// a provider that reports fewer outcomes than items must
+					// not silently drop the unreported items.
+					batch.forEach((item, index) => {
+						const outcome = batchOutcomes[index];
+						if (!outcome) {
+							failures.push({
+								index,
+								item,
+								error: new Error(
+									`BatchQueue "${this.options.name}" processBatch returned ${batchOutcomes.length} outcomes for ${batch.length} items; item at index ${index} was not reported`,
+								),
+							});
+							return;
+						}
+						if (outcome.success) {
+							settled[index] = outcome;
+							return;
+						}
 						failures.push({
 							index,
 							item: outcome.item,
