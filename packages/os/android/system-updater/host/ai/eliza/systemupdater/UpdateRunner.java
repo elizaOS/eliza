@@ -18,6 +18,7 @@ import android.telecom.TelecomManager;
 import android.util.Log;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -109,6 +110,8 @@ final class UpdateRunner {
                     || !current.packageSha256.equals(candidate.sha256)) {
                 finish(run, "The offered update changed; the earlier candidate remains held"); return;
             }
+            Path scratch = current.isUnapplied()
+                    ? PackageVerifier.reclaimExtractionScratch(directory.toPath()) : null;
             File ota = new File(directory, candidate.sha256 + ".zip");
             if (!ota.exists()) {
                 if (current.phase != UpdateJournal.Phase.DOWNLOADING) {
@@ -122,7 +125,7 @@ final class UpdateRunner {
             VerifiedPayload payload = PackageVerifier.verify(ota, directory,
                     candidate.sha256, candidate.bytes, candidate.fingerprint, candidate.timestamp,
                     context.getString(R.string.os_update_product), context.getString(R.string.os_update_device),
-                    context.getString(R.string.os_update_ota_certificate));
+                    context.getString(R.string.os_update_ota_certificate), scratch);
             run.verifying = false;
             if (current.phase == UpdateJournal.Phase.DOWNLOADING) {
                 UpdateJournal next = current.verified(android.os.Build.FINGERPRINT,
