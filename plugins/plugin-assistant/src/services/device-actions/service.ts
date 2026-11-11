@@ -3,7 +3,9 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   CALENDAR_AVAILABILITY_CAPABILITY,
   CALENDAR_NAMED_READ_CAPABILITY,
+  canonicalNotesListContextAllowed,
   NAMED_TARGET_CAPABILITY,
+  NOTES_LIST_FILTER_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   PHONE_WORKFLOW_DEVICE_PROTOCOL,
   validatePhoneCalendarRange,
@@ -333,6 +335,9 @@ export function deviceActionToolGuidance(
     .filter(
       (item) =>
         deviceOperationSupportedByCapabilities(item.operation, capabilities) &&
+        (DEVICE_RECORD_ADMISSION[item.operation]?.selection !==
+          "canonical-notes-list" ||
+          admitted(item.operation)) &&
         (DEVICE_RECORD_ADMISSION[item.operation]?.domain !== "notes" ||
           !canonicalNotes ||
           admitted(item.operation)) &&
@@ -669,10 +674,15 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
     {
       domain: "notes" | "calendar";
       views: readonly string[] | "any";
-      selection: "none" | "device";
+      selection: "none" | "device" | "canonical-notes-list";
     }
   >
 > = {
+  notes_list_filter: {
+    domain: "notes",
+    views: ["notes"],
+    selection: "canonical-notes-list",
+  },
   notes_query: { domain: "notes", views: ["home", "notes"], selection: "none" },
   notes_search: {
     domain: "notes",
@@ -756,7 +766,10 @@ export function deviceAppRecordOperationAvailable(
   const current = getDeviceActionTurn();
   // Workflow/system hosts outside an authenticated client turn keep their existing admission.
   if (!current || current.runtime !== runtime)
-    return options?.requestBound !== true;
+    return (
+      rule.selection !== "canonical-notes-list" &&
+      options?.requestBound !== true
+    );
   if (!current.active || !current.isCurrent()) return false;
   const source = currentAppRecordSource(runtime, rule.domain, message);
   if (rule.selection === "device") return source === "device";
@@ -771,6 +784,8 @@ export function deviceAppRecordOperationAvailable(
   message ??= current.requestMessage?.message ?? current.replyContext?.message;
   const context = message && turnObservation(message.content.metadata);
   if (!context?.view) return false;
+  if (rule.selection === "canonical-notes-list")
+    return source === "runtime" && canonicalNotesListContextAllowed(context);
   const kind = context.selectedObject
     ? Reflect.get(context.selectedObject, "kind")
     : undefined;
@@ -1925,6 +1940,7 @@ export class DeviceActionService {
           "notes.local-record.v1",
           NOTES_QUERY_CAPABILITY,
           NOTES_ORGANIZE_CAPABILITY,
+          NOTES_LIST_FILTER_CAPABILITY,
           NOTES_SEARCH_CAPABILITY,
           CALENDAR_AVAILABILITY_CAPABILITY,
           FILES_CAPABILITY,
