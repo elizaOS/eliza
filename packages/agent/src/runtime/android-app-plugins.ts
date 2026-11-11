@@ -36,9 +36,11 @@ const smsReplyDraftOnly = androidSmsReplyDraftEnabled();
 export const appPhonePlugin = smsReplyDraftOnly
   ? {
       name: PHONE_APP_NAME,
-      description: "Draft an SMS reply for a conversation selected by its owner.",
+      description:
+        "Draft an SMS reply for a conversation selected by its owner.",
       routes: rawPhonePlugin.routes?.filter(
-        (route) => route.type === "POST" && route.path === "/api/messages/reply-draft",
+        (route) =>
+          route.type === "POST" && route.path === "/api/messages/reply-draft",
       ),
     }
   : gatePluginSessionForHostedApp(rawPhonePlugin, PHONE_APP_NAME);

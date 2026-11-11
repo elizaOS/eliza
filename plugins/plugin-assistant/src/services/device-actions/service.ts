@@ -196,6 +196,7 @@ import {
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
+  selectedTelephonyView,
   SMS_COMPOSE_CAPABILITY,
   smsComposeNotSubmitted,
   smsReplyNotDrafted,
@@ -865,7 +866,7 @@ export function setDeviceReadReplyContext(
 async function freshRequestedMessageId(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
-  browserRequest = false,
+  options: { allowReviewed?: boolean; readText?: boolean } = {},
 ): Promise<
   { messageId: string; requestText: string; assertCurrent(): void } | undefined
 > {
@@ -887,7 +888,7 @@ async function freshRequestedMessageId(
     typeof original.createdAt !== "number" ||
     !Number.isFinite(original.createdAt) ||
     original.createdAt < current.startedAt ||
-    (!browserRequest &&
+    (!options.allowReviewed &&
       (!metadata ||
         typeof metadata !== "object" ||
         Array.isArray(metadata) ||
@@ -964,7 +965,7 @@ async function freshRequestedMessageId(
     return;
   return {
     messageId: originalId,
-    requestText: browserRequest
+    requestText: options.readText
       ? extractUserText(unwrapUserMessageText(stored))
       : "",
     assertCurrent,
@@ -2260,16 +2261,16 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
     const browserRequest = validated.type === "browser_navigate";
+    const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
-    const requestOrigin = await freshRequestedMessageId(
-      this.runtime,
-      c,
-      browserRequest,
-    );
+    const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
+      allowReviewed: browserRequest || selectedTelephony,
+      readText: browserRequest,
+    });
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =
@@ -2332,9 +2333,10 @@ export class DeviceActionService {
           !Array.isArray(metadata) &&
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
-        const requestingMessage = directRequest
-          ? requestOrigin?.messageId
-          : undefined;
+        const requestingMessage =
+          directRequest || selectedTelephony
+            ? requestOrigin?.messageId
+            : undefined;
         const payload: DeviceActionPayload = {
           action: "device_action",
           version: 1,

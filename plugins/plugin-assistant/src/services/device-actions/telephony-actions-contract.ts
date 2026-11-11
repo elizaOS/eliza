@@ -65,6 +65,20 @@ export function telephonyActionCapabilityAvailable(
 export function isTelephonyRead(operation: { type?: unknown }): boolean {
   return isMessagesRead(operation) || isVoicemailRead(operation);
 }
+
+/** Actions with no explicit target must stay bound to the owner's original open item. */
+export function selectedTelephonyView(operation: {
+  type?: unknown;
+}): "messages" | "phone" | undefined {
+  switch (operation.type) {
+    case "sms_reply_selected":
+    case "messages_read_selected":
+      return "messages";
+    case "voicemail_read_selected":
+    case "voicemail_delete_selected":
+      return "phone";
+  }
+}
 /** Exact, closed validation of a device result against the reviewed operation. */
 export function validateTelephonyActionResult(
   operation: TelephonyActionOperation,
