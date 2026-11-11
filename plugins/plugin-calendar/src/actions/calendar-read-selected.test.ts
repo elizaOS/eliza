@@ -22,6 +22,8 @@ function fixture(provider: "eliza" | "google" = "eliza") {
     agentId: agent,
     ...source,
     title: "Selected QA",
+    accountEmail: "selected-owner@example.test",
+    calendarSummary: "Selected owner calendar",
     description: `${"Complete selected event detail.\n".repeat(4096)}FINAL_SELECTED_DETAIL`,
     startAt: "2026-11-02T23:00:00Z",
     endAt: "2026-11-02T23:05:00Z",
@@ -64,7 +66,11 @@ function fixture(provider: "eliza" | "google" = "eliza") {
     },
   } as Memory;
   const snapshot = {
-    feed: { state: "complete", events: [event] },
+    feed: {
+      state: "complete",
+      events: [event],
+      sources: [{ status: "fresh", summary: "UNSELECTED_SOURCE_SENTINEL" }],
+    },
     calendars: [source],
   };
   const service = {
@@ -127,6 +133,9 @@ describe("current selected canonical Calendar read", () => {
     );
     const result = await run(f);
     expect(result).toMatchObject({ data: { event: f.event } });
+    expect(JSON.stringify(result.data)).not.toContain(
+      "UNSELECTED_SOURCE_SENTINEL",
+    );
     expect(result.promptData?.event).toMatchObject({
       ...f.event,
       displayDate: "Monday, November 2, 2026",
@@ -194,7 +203,10 @@ describe("current selected canonical Calendar read", () => {
       startAt: f.event.startAt,
       endAt: f.event.endAt,
     });
-    expect(result.promptData?.event).not.toHaveProperty("accountEmail");
+    expect(result.promptData?.event).toHaveProperty(
+      "accountEmail",
+      f.event.accountEmail,
+    );
   });
   it.each([
     [
