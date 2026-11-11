@@ -52,9 +52,9 @@ unclear or you cannot find the approved plan, ask maintainers before you start.
   result after it, a gain in accuracy or another relevant score, or a demonstrated
   improvement to an approved capability. State the test conditions and results.
 - **Make the code simpler.** Remove unnecessary code. Combine duplicate types and
-  functions and clean up as you go. Use existing work. Add a type or code only
-  when the approved task needs it. Add a script only when it does something no
-  existing script does. Explain why existing code cannot meet that need.
+  functions and clean up as you go. Use existing work. Add a script only when it
+  does something no existing script does. Add a type or code only when the
+  approved task needs it. Explain why existing code cannot meet that need.
 - **Change the existing code.** Do not patch over legacy behavior or add a new
   version beside the old one. Do not add a flag to introduce a change: change
   the underlying code to be the new thing. Add a conditional path only for a
