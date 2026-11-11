@@ -123,6 +123,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
               const closing = `          "@elizaos/cloud-shared/db/client"
         );`;
               const opening = `      ]);
+      this.current();
       await runWithCloudBindingsAsync`;
               if (
                 contents.split(upgrade).length !== 2 ||
@@ -143,6 +144,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
                 .replace(
                   opening,
                   `      ]).then((modules) => testDeliverSpeechImport(modules, "opening"));
+      this.current();
       await runWithCloudBindingsAsync`,
                 );
               contents += `
@@ -1979,7 +1981,8 @@ test("revoke joins a claimed opening across deferred imports before confirming n
       speechFenceCounts: Record<string, number>;
     }
   ).speechFenceCounts;
-  expect(fenceCounts[f.owner.organization_id]).toBe(1);
+  // The resumed opening stops before it can create a revocation subscription.
+  expect(fenceCounts[f.owner.organization_id] ?? 0).toBe(0);
 });
 
 test("failed deferred close import preserves an unconfirmed outcome and blocks a late upgrade", async () => {
