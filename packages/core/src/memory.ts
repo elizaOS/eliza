@@ -151,6 +151,18 @@ export function stampAppConversationProvenance<T extends Memory>(
 		const value = metadataRecord[key];
 		return typeof value === "string" && value.trim() ? value : undefined;
 	};
+	// This helper stamps conversation (message) provenance. A record that
+	// already carries a different type (for example a document) must not be
+	// silently retyped as a message: that would corrupt its kind for
+	// storage, embedding, and retrieval. Fail explicitly, like the
+	// missing-id check above, instead of rewriting the type.
+	const existingType = readMetadataString("type");
+	if (existingType && existingType !== "message") {
+		throw new ElizaError("Conversation memory is not a message memory", {
+			code: "CONVERSATION_MEMORY_TYPE_MISMATCH",
+			context: { roomId: memory.roomId, type: existingType },
+		});
+	}
 	const provider = readMetadataString("provider") ?? "client_chat";
 	const accountId = readMetadataString("accountId") ?? agentId;
 	const platformMessageId =
