@@ -122,3 +122,15 @@ describe("mobile client registry credential lifetime", () => {
     }
   });
 });
+
+test("an installed compatibility client resolves its own name with the same owner binding and scope", () => {
+  const alias = { ...ALPHA, clientId: "org.example.legacy", aliasOf: ALPHA.clientId };
+  const resolved = resolveMobileAppAuthRegistration(env([ALPHA, alias]), alias.clientId);
+  expect(resolved.clientId).toBe(alias.clientId);
+  expect(resolved.appId).toBe(ALPHA.appId);
+  expect(resolved.redirectUri).toBe(ALPHA.redirectUri);
+  expect(resolved.scopes).toEqual(["cloud:user"]);
+  expect(() =>
+    resolveMobileAppAuthRegistration(env([{ ...ALPHA, enabled: false }, alias]), alias.clientId),
+  ).toThrow();
+});
