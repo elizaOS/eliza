@@ -26,3 +26,28 @@ test("character examples stop JSON before trailing prose", () => {
 		}
 	}
 });
+
+test("character examples accept a single group object", () => {
+	const group = {
+		examples: [
+			{ role: "user", content: "Hello" },
+			{ role: "assistant", content: "Hi" },
+		],
+	};
+	const expected = [
+		{
+			examples: [
+				{ name: "{{user1}}", content: { text: "Hello" } },
+				{ name: "Agent", content: { text: "Hi" } },
+			],
+		},
+	];
+	expect(normalizeCharacterMessageExamples(group)).toEqual(expected);
+	expect(normalizeCharacterMessageExamples(JSON.stringify(group))).toEqual(
+		expected,
+	);
+	expect(normalizeCharacterMessageExamples({ messageExamples: group })).toEqual(
+		expected,
+	);
+	expect(normalizeCharacterMessageExamples([group])).toEqual(expected);
+});

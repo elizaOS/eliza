@@ -154,6 +154,15 @@ function normalizeConversation(
 	return { examples };
 }
 
+function isSingleMessageExampleGroup(value: unknown): boolean {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		"examples" in value &&
+		Array.isArray((value as { examples?: unknown }).examples)
+	);
+}
+
 export function normalizeCharacterMessageExamples(
 	input: unknown,
 	fallbackAgentName = "Agent",
@@ -170,13 +179,18 @@ export function normalizeCharacterMessageExamples(
 		}
 	}
 
-	const source =
-		parsed &&
-		typeof parsed === "object" &&
-		"messageExamples" in parsed &&
-		Array.isArray(parsed.messageExamples)
-			? parsed.messageExamples
+	const raw =
+		parsed && typeof parsed === "object" && "messageExamples" in parsed
+			? (parsed as { messageExamples?: unknown }).messageExamples
 			: parsed;
+
+	// A bare group object is the canonical shape itself; accept it unwrapped
+	// instead of dropping every example it carries.
+	const source = Array.isArray(raw)
+		? raw
+		: isSingleMessageExampleGroup(raw)
+			? [raw]
+			: raw;
 
 	if (!Array.isArray(source)) return [];
 
