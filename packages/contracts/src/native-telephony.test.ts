@@ -8,6 +8,7 @@ import {
   parseCallLog,
   parseHandoff,
   parseMessages,
+  parsePhoneInfo,
   parsePlaceCall,
   parseSmsJournal,
   parseSmsSendResult,
@@ -1238,6 +1239,153 @@ test("voicemail change notices carry no content and stop cleanly", async () => {
       { listVoicemail: async () => ({}) } as never,
       true,
     ).listVoicemail(),
+    TelephonyUnavailable,
+  );
+});
+
+const phoneLine = (patch: Record<string, unknown> = {}) => ({
+  subscriptionId: 3,
+  slot: 0,
+  displayName: "Work",
+  carrierName: "Carrier A",
+  number: "+15555550100",
+  countryIso: "us",
+  networkType: "4g",
+  roaming: false,
+  signalLevel: 3,
+  embedded: false,
+  iccid: "8901260123456789012F",
+  imei: "356938035643809",
+  ...patch,
+});
+const phoneAccess = (patch: Record<string, boolean> = {}) => ({
+  phoneState: true,
+  phoneNumbers: true,
+  deviceIdentifiers: true,
+  ...patch,
+});
+
+test("phone information degrades field by field and never passes an unread SIM list as no SIM", async () => {
+  const full = {
+    access: phoneAccess(),
+    lines: [
+      phoneLine(),
+      phoneLine({
+        subscriptionId: 5,
+        slot: 1,
+        displayName: "",
+        carrierName: "",
+        number: null,
+        countryIso: null,
+        networkType: "none",
+        roaming: null,
+        signalLevel: null,
+        embedded: true,
+        iccid: null,
+        imei: null,
+      }),
+    ],
+  };
+  const { plugin, calls } = stub({ phoneInfo: full });
+  assert.deepEqual(await createTelephonyClient(plugin, true).phoneInfo(), full);
+  assert.deepEqual(calls, [["phoneInfo", undefined]]);
+
+  // Without phone-state access the list was not read: empty lines under a false flag.
+  const unread = {
+    access: phoneAccess({
+      phoneState: false,
+      phoneNumbers: false,
+      deviceIdentifiers: false,
+    }),
+    lines: [],
+  };
+  assert.deepEqual(parsePhoneInfo(unread), unread);
+  // An ordinary app: lines without the number or the identifiers.
+  const ordinary = {
+    access: phoneAccess({ phoneNumbers: false, deviceIdentifiers: false }),
+    lines: [phoneLine({ number: null, iccid: null, imei: null })],
+  };
+  assert.deepEqual(parsePhoneInfo(ordinary), ordinary);
+  for (const networkType of ["2g", "3g", "5g", "wifi-calling", "unknown"])
+    assert.equal(
+      parsePhoneInfo({
+        access: phoneAccess(),
+        lines: [phoneLine({ networkType })],
+      }).lines[0].networkType,
+      networkType,
+    );
+
+  const page = (...lines: unknown[]) => ({ access: phoneAccess(), lines });
+  for (const bad of [
+    null,
+    { access: phoneAccess() },
+    { lines: [] },
+    { access: phoneAccess(), lines: [], version: 1 },
+    { access: { phoneState: true, phoneNumbers: true }, lines: [] },
+    { access: { ...phoneAccess(), location: true }, lines: [] },
+    { access: phoneAccess({ phoneState: 1 as never }), lines: [] },
+    { access: phoneAccess(), lines: null },
+    { access: phoneAccess({ phoneState: false }), lines: [phoneLine()] },
+    {
+      access: phoneAccess({ phoneNumbers: false }),
+      lines: [phoneLine()],
+    },
+    {
+      access: phoneAccess({ deviceIdentifiers: false }),
+      lines: [phoneLine({ iccid: null })],
+    },
+    {
+      access: phoneAccess({ deviceIdentifiers: false }),
+      lines: [phoneLine({ imei: null })],
+    },
+    page(
+      ...[0, 1, 2, 3, 4].map((slot) =>
+        phoneLine({ subscriptionId: slot + 1, slot }),
+      ),
+    ),
+    page(phoneLine(), phoneLine({ slot: 1 })),
+    page(phoneLine({ slot: 1 }), phoneLine({ subscriptionId: 5, slot: 0 })),
+    page(phoneLine({ subscriptionId: -1 })),
+    page(phoneLine({ subscriptionId: 1.5 })),
+    page(phoneLine({ slot: -1 })),
+    page(phoneLine({ displayName: "x".repeat(65) })),
+    page(phoneLine({ carrierName: null })),
+    page(phoneLine({ number: "+1 555 555 0100" })),
+    page(phoneLine({ number: "" })),
+    page(phoneLine({ number: "1".repeat(33) })),
+    page(phoneLine({ countryIso: "US" })),
+    page(phoneLine({ countryIso: "usa" })),
+    page(phoneLine({ networkType: "lte" })),
+    page(phoneLine({ roaming: 0 })),
+    page(phoneLine({ signalLevel: 5 })),
+    page(phoneLine({ signalLevel: -1 })),
+    page(phoneLine({ signalLevel: 2.5 })),
+    page(phoneLine({ embedded: null })),
+    page(phoneLine({ iccid: "89012601234567890123456" })),
+    page(phoneLine({ iccid: "8901F60123" })),
+    page(phoneLine({ imei: "3569380356438" })),
+    page(phoneLine({ imei: "35693803564380912" })),
+    page(phoneLine({ imei: undefined })),
+    page(phoneLine({ meid: "A0000000000000" })),
+  ])
+    assert.throws(() => parsePhoneInfo(bad), /invalid/);
+
+  // Without the profile, or on a host built before phoneInfo existed, nothing reaches native code.
+  const outside = stub();
+  await assert.rejects(
+    createTelephonyClient(outside.plugin, false).phoneInfo(),
+    TelephonyUnavailable,
+  );
+  assert.equal(outside.calls.length, 0);
+  await assert.rejects(
+    createTelephonyClient(null, true).phoneInfo(),
+    TelephonyUnavailable,
+  );
+  await assert.rejects(
+    createTelephonyClient(
+      { status: async () => ({}) } as never,
+      true,
+    ).phoneInfo(),
     TelephonyUnavailable,
   );
 });

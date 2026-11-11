@@ -157,6 +157,17 @@ only for such hosts, and access is asked for only through
 `requestAccess({access: "callLog"})`. Without the alias the read answers
 unavailable, never an empty list.
 
+Phone information. `phoneInfo()` answers `{access, lines}` for a Settings
+page (`PhoneInfoReader`): at most 4 active SIM lines ordered by slot, each
+with its names, own number, country, network generation, roaming, signal
+level, eSIM flag, ICCID and the slot's IMEI. It asks for nothing and never
+fails because one field is refused: `access.phoneState` false means the SIM
+list was not read (`lines` is empty, which is not "no SIM"),
+`access.phoneNumbers` false means every `number` is null, and
+`access.deviceIdentifiers` false means every `iccid` and `imei` is null.
+Android grants identifiers only to privileged apps, carrier-privileged apps
+and device or profile owners; this library never requests or logs them.
+
 Calls. `dial` is a handoff: the person places the call on the dial screen.
 `placeCall({number})` asks Telecom for the call itself, only while the host
 holds the dialer role and `CALL_PHONE` and is unlocked in front. It answers

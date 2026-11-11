@@ -239,6 +239,18 @@ public abstract class TelephonyPlugin extends Plugin {
   return rows;
  }
 
+ /**
+  * The owner's SIM lines for a Settings page: carrier, own number, network and device identifiers
+  * ({@link PhoneInfoReader}). It needs no permission of its own: {@code access} says which parts
+  * Android let this app read, and a part it refused is absent or null, never an error. Without
+  * phone-state access the lines are empty and {@code access.phoneState} is false. Read only while
+  * unlocked and in front, on the reader thread, and fenced again before publication.
+  */
+ @PluginMethod public void phoneInfo(PluginCall call) {
+  if (refused(call)) return;
+  fenced(call, () -> true, "Phone information", cancel -> PhoneInfoReader.read(getContext(), SmsTelephony.activeSubscriptions(getContext(), config), cancel), true);
+ }
+
  /** Asks for contacts, phone-state, SMS or send access in Android's own dialog, only from an explicit request. */
  @PluginMethod public void requestAccess(PluginCall call) {
   if (refused(call)) return;
