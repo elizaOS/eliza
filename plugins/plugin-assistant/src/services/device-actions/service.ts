@@ -6,6 +6,8 @@ import {
   NAMED_TARGET_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
   PHONE_WORKFLOW_DEVICE_PROTOCOL,
+  validatePhoneCalendarRange,
+  workflowCalendarReadMatches,
   workflowReminderDayIsCurrent,
 } from "@elizaos/contracts";
 import type { NativeNotesDeferredRead } from "@elizaos/contracts/native-notes-query";
@@ -2618,11 +2620,14 @@ export class DeviceActionService {
             "Workflow reminder read names a day other than today",
           );
       } else if (operation.type === "read_calendar_range") {
-        const { type: _type, ...range } = operation;
+        // A relative step range must name the run's current local days.
         if (
           step.kind !== "Read" ||
           step.operation !== "calendar_range" ||
-          stableStringify(step.range) !== stableStringify(range)
+          !workflowCalendarReadMatches(
+            validatePhoneCalendarRange(step.range),
+            operation,
+          )
         )
           throw new DeviceActionError("Workflow Calendar scope changed");
       } else if (operation.type === "post_notification") {

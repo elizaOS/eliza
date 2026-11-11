@@ -5,6 +5,7 @@ import {
   type DeviceActionClientProfile,
   DeviceActionCoordinator,
   type DeviceActionJournal,
+  DeviceActionNotStarted,
   type DeviceContextEnvelope,
   type DeviceExecutionResult,
   type DeviceExecutor,
@@ -330,6 +331,37 @@ describe("DeviceActionCoordinator", () => {
     expect(server.receipts.at(-1)?.receipt.outcome).toBe("unknown");
     await actions.syncReceipts(signal());
     expect(effects).toBe(1);
+  });
+
+  it("closes an executor refusal before any effect as failed with its reason", async () => {
+    const { server, request } = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    const actions = coordinator(request, journal, async () => {
+      throw new DeviceActionNotStarted("The screen changed.");
+    });
+    await actions.pending(notesContext, signal());
+    server.receiptOutage = true;
+    const receipt = await actions.approve("proposal", notesContext, signal());
+    expect(receipt).toMatchObject({
+      status: "failed",
+      summary:
+        "Not started. Nothing was sent. The screen changed. Not synced yet; open action history to retry.",
+    });
+    expect(entries.get("proposal")).toMatchObject({
+      phase: "terminal",
+      status: "failed",
+      summary: "Not started. Nothing was sent. The screen changed.",
+      result: { operationId: entries.get("proposal")?.operationId },
+    });
+    // The journaled refusal still settles the server claim after the outage.
+    server.receiptOutage = false;
+    await actions.syncReceipts(signal());
+    expect(server.receipts.at(-1)?.receipt).toEqual({
+      outcome: "failed",
+      operationId: entries.get("proposal")?.operationId,
+      code: "DEVICE_NOT_DISPATCHED",
+    });
+    expect(server.state).toBe("done");
   });
 
   it("recovers a journaled result after a receipt outage without re-executing", async () => {
