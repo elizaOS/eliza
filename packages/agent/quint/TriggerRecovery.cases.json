@@ -10,9 +10,9 @@
   ],
   "conformance": "packages/agent/quint/check-trigger-recovery.mjs",
   "bounds": {
-    "scope": "One runtime, one owned task, two recovery calls, revisions zero through six and at most two executions. Removed records remain in the existing task store.",
+    "scope": "One runtime, one owned task, two recovery calls, revisions zero through six and at most two executions. Archived records remain in the existing task store until exact-revision permanent deletion.",
     "limitations": [
-      "No cross-process writer fence is proved. Task runtime ownership remains a host responsibility. Legacy direct database mutation and permanent DELETE are outside this recovery API model.",
+      "No cross-process writer fence is proved. Task runtime ownership remains a host responsibility. Legacy direct database mutation and the legacy DELETE route are outside this recovery API model.",
       "HTTP scenario conformance checks ownership, stale snapshots, real stored task preservation and refusing removal during execution. Recovery returns an inactive task."
     ]
   },

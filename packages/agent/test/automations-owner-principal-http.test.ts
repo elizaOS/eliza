@@ -603,3 +603,58 @@ it("rejects stale recovery snapshots even when the clock does not advance", asyn
     await request("canonical", `/api/triggers/${trigger.id}`, "DELETE");
   }
 });
+
+it("permanently deletes only the exact owned archived prompt", async () => {
+  const created = await request("canonical", "/api/triggers", "POST", {
+    kind: "prompt",
+    displayName: "Permanent deletion QA",
+    instructions: "Never run this test record",
+    triggerType: "cron",
+    cronExpression: "0 8 * * *",
+    timezone: "UTC",
+    enabled: false,
+  });
+  const { trigger } = (await created.json()) as {
+    trigger: { id: string; taskId: string };
+  };
+  const before = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!before) throw Error("Missing test record");
+  const path = `/api/triggers/${trigger.id}/erase`;
+  expect(
+    (
+      await request("canonical", path, "POST", {
+        expectedRevision: hashStableJson(before),
+      })
+    ).status,
+  ).toBe(409);
+  await request("canonical", `/api/triggers/${trigger.id}/archive`, "POST", {
+    expectedRevision: hashStableJson(before),
+  });
+  const archived = await fixture.runtime.getTask(trigger.taskId as never);
+  if (!archived) throw Error("Missing archived test record");
+  expect(
+    (
+      await request("foreign", path, "POST", {
+        expectedRevision: hashStableJson(archived),
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await request("canonical", path, "POST", {
+        expectedRevision: hashStableJson(before),
+      })
+    ).status,
+  ).toBe(409);
+  expect(await fixture.runtime.getTask(trigger.taskId as never)).not.toBeNull();
+  const result = await request("canonical", path, "POST", {
+    expectedRevision: hashStableJson(archived),
+  });
+  expect(result.status).toBe(200);
+  expect(await result.json()).toMatchObject({
+    ok: true,
+    erased: true,
+    id: trigger.id,
+  });
+  expect(await fixture.runtime.getTask(trigger.taskId as never)).toBeNull();
+});

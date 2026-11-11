@@ -307,7 +307,7 @@ async function findTask(
   );
 }
 export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boolean> {
-  const match = /^\/api\/triggers\/([^/]+)(?:\/(archive|restore))?$/.exec(ctx.pathname);
+  const match = /^\/api\/triggers\/([^/]+)(?:\/(archive|restore|erase))?$/.exec(ctx.pathname);
   const ownerEntityId = ctx.ownerEntityId;
   const localOwnerEntityId = ctx.localOwnerEntityId;
   const mutation =
@@ -381,7 +381,15 @@ async function handleTriggerRoutesUnlocked(ctx: TriggerRouteContext): Promise<bo
     TRIGGER_TASK_TAGS,
   } = ctx;
   const listResponse = (triggers: TriggerSummary[], status = 200): void => {
-    json(res, { triggers, recovery: !!ctx.serializeTaskMutation }, status);
+    json(
+      res,
+      {
+        triggers,
+        recovery: !!ctx.serializeTaskMutation,
+        permanentDeletion: !!ctx.serializeTaskMutation,
+      },
+      status
+    );
   };
   const itemResponse = (
     summary: TriggerSummary,
@@ -433,7 +441,7 @@ async function handleTriggerRoutesUnlocked(ctx: TriggerRouteContext): Promise<bo
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
   }
-  const recoveryMatch = /^\/api\/triggers\/([^/]+)\/(archive|restore)$/.exec(pathname);
+  const recoveryMatch = /^\/api\/triggers\/([^/]+)\/(archive|restore|erase)$/.exec(pathname);
   if (method === 'POST' && recoveryMatch) {
     if (!ctx.serializeTaskMutation) {
       error(res, 'Automation recovery is unavailable on this host', 501);
@@ -460,6 +468,29 @@ async function handleTriggerRoutesUnlocked(ctx: TriggerRouteContext): Promise<bo
     }
     const metadata = (task.metadata ?? {}) as TriggerTaskMetadata;
     const removed = typeof metadata.removedAt === 'number';
+    if (recoveryMatch[2] === 'erase') {
+      const body = await readJsonBody<Record<string, unknown>>(req, res);
+      if (!body) return true;
+      if (
+        typeof body.expectedRevision !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(body.expectedRevision)
+      ) {
+        error(res, 'Refresh the automation before deleting it', 400);
+        return true;
+      }
+      if (!removed || body.expectedRevision !== hashStableJson(task)) {
+        error(res, 'This automation changed. Open Recently deleted again.', 409);
+        return true;
+      }
+      if (!canPersist()) return true;
+      await runtime.deleteTask(task.id);
+      if (await runtime.getTask(task.id)) {
+        error(res, 'Permanent deletion could not be confirmed', 409);
+        return true;
+      }
+      json(res, { ok: true, erased: true, id });
+      return true;
+    }
     const archive = recoveryMatch[2] === 'archive';
     if (removed !== archive) {
       const body = await readJsonBody<Record<string, unknown>>(req, res);

@@ -58,6 +58,7 @@ const requiredTests = [
   "renders persisted owner work and admitted automations without promoting maintenance queues into tasks",
   "keeps workflow todo responses and host overview projections identical",
   "archives and restores the same owned prompt without losing its definition",
+  "permanently deletes only the exact owned archived prompt",
   "refuses removal while the same trigger is executing",
   "rejects stale recovery snapshots even when the clock does not advance",
 ];
