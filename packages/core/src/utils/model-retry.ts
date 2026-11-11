@@ -235,8 +235,13 @@ export function parseProviderRateLimit(
 		retryAfterMs,
 		...(planId ? { planId } : {}),
 		...(scope ? { scope } : {}),
+		// resetAt stands alone: it is the absolute reset time, and the
+		// interface only promises resetAfterSeconds "present only with
+		// resetAt", not the reverse. Dropping a valid resetAt when the
+		// provider sent no offset lost the only reset signal.
+		...(resetAt !== undefined ? { resetAt } : {}),
 		...(resetAt !== undefined && resetAfterSeconds !== undefined
-			? { resetAt, resetAfterSeconds }
+			? { resetAfterSeconds }
 			: {}),
 	};
 }
