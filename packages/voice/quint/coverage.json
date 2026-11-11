@@ -10,5 +10,24 @@
       "Caller-supplied work must race interruption or honor the owned signal, as the API contract requires. Provider bridge cancel may fail without preventing fencing.",
       "Finite verification domain. One request, permanent binding loss, caller abort, one bridge cancel and terminal outcome. Values beyond these bounds are outside this instance; generation and revision values never wrap."
     ]
+  },
+  {
+    "id": "VoiceAssistantCaptureOwnership",
+    "model": "packages/voice/quint/VoiceAssistantCaptureOwnership.qnt",
+    "sources": [
+      "packages/voice/src/voice-assistant-session.ts",
+      "packages/voice/src/voice-assistant-session.test.ts"
+    ],
+    "invariants": [
+      "SendNeedsConfirmedClose",
+      "CaptureAdoptionRequiresLiveUnmutedOwner",
+      "StopWaitsForLateCancellation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One half-duplex turn and at most one replacement capture. The turn waits for confirmed close. Mute can win a pending reopen. Stop retires the owner immediately and waits for close, acquisition and any late cancellation to settle.",
+      "The maintained controller suite checks ordinary turn drain, idle Mute and Unmute, rejected reopen, muted reopen close failure, Stop during close, and a returned late capture whose asynchronous cancel remains pending.",
+      "The proof uses controlled host ports. Physical microphone release, cancellation failure recovery, concurrent Stop or restart, binding replacement, and overlap with a new turn while Unmute acquisition is pending are separate."
+    ]
   }
 ]

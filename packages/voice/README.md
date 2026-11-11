@@ -26,6 +26,8 @@ change keeps it closed. The turn is sent only after that close fulfilled; a clos
 the conversation, with nothing reopened, and so does a Mute close that fails before a turn
 waits on it, at once and also with nothing to send (Unmute never reopens over it). The host
 bounds `close()`: one that never settles keeps the turn unsent until Stop.
+If a pending reopen returns after Stop, the Stop promise waits for that capture's cancellation
+to settle.
 `interruptSpeech()` cuts a playing reply, and only fully played sentences count as heard.
 Optional `openMic` keeps an echo-cancelled full-duplex capture open through ordinary replies;
 resumed speech can replace an unheard speculative turn and interrupt playback. Owner-input

@@ -736,8 +736,11 @@ export class VoiceAssistantSession {
       .then(
         (capture) => {
           if (this.opening !== pending || !this.current(session)) {
-            void Promise.resolve(capture.cancel()).catch(() => {});
-            return undefined;
+            // Stop joins this opening receipt, including retirement of a late capture.
+            return Promise.resolve(capture.cancel()).then(
+              () => undefined,
+              () => undefined,
+            );
           }
           this.opening = undefined;
           // Muted or held while the microphone was opening: it never stays on.

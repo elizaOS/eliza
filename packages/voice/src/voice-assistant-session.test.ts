@@ -94,6 +94,8 @@ function harness(
     holdOpen?: Deferred<void>;
     /** The close of the nth capture (1-based); resolves at once when omitted. */
     close?: (capture: number) => Promise<void>;
+    /** The cancel of the nth capture (1-based); settles at once when omitted. */
+    cancel?: (capture: number) => void | Promise<void>;
     /** Playback settles only when the test settles it, also after an abort (slow cleanup). */
     manualSpeech?: boolean;
     openMic?: boolean;
@@ -139,6 +141,7 @@ function harness(
         },
         cancel: () => {
           log.cancelled++;
+          return options.cancel?.(capture);
         },
       };
     },
@@ -1186,6 +1189,54 @@ describe("VoiceAssistantSession busy hold", () => {
       expect(h.log.captures).toBe(1);
       expect(h.session.getSnapshot()).toEqual({ phase: "idle" });
     }
+  });
+
+  it("Stop waits for the cancel receipt of a capture returned after its reopen was retired", async () => {
+    const reopening = deferred();
+    const cancellation = deferred();
+    const h = harness({
+      cancel: (capture) => (capture === 2 ? cancellation.promise : undefined),
+    });
+    await h.session.start();
+    await h.say("what is next");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Done.");
+    await flush();
+    h.setHoldOpen(reopening);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.log.reopens).toEqual([undefined, true]);
+    const lateCapture = h.mic();
+
+    let stopped = false;
+    const stopping = h.session.stop().then(() => {
+      stopped = true;
+    });
+    try {
+      expect(lateCapture.signal.aborted).toBe(true);
+      expect(h.phase()).toBe("idle");
+      await flush();
+      expect(stopped).toBe(false);
+
+      reopening.resolve();
+      await flush();
+      expect(h.log.cancelled).toBe(1);
+      expect(stopped).toBe(false);
+      lateCapture.onSpeechStart(h.clock.now());
+      lateCapture.onSpeechEnd(h.clock.now());
+      lateCapture.onSegment("this capture has retired");
+      lateCapture.onEnd(Error("stale capture ended"));
+      await h.clock.advance(longGapMs * 2);
+      expect(h.log.sends).toHaveLength(1);
+      expect(h.phase()).toBe("idle");
+    } finally {
+      reopening.resolve();
+      cancellation.resolve();
+      await stopping;
+    }
+    expect(stopped).toBe(true);
+    expect(h.log).toMatchObject({ captures: 2, cancelled: 1, closed: 1 });
+    expect(h.session.getSnapshot()).toEqual({ phase: "idle" });
   });
 
   it("never sends or reopens when the binding changed while the turn waited for its close; the binding fence stops it", async () => {
