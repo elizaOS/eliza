@@ -104,7 +104,7 @@
       "required": [
         "a delete that completes inside markRunning's read/write window cannot resurrect the row",
         "the same interleave on the pre-fix statement resurrects the row to running",
-        "sequential execution — one worker, one batch — is never corrupted",
+        "sequential execution \u2014 one worker, one batch \u2014 is never corrupted",
         "markError cannot flip a completed delete back to failed",
         "markCleanupRequired cannot pin node capacity on a completed delete",
         "markDeleted stays idempotent and stays organization-scoped",
@@ -360,7 +360,6 @@
       ]
     }
   ],
-<<<<<<< HEAD
   "mcp_hosted_discovery.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/eliza/plugin-mcp/service.lifecycle.integration.test.ts",
@@ -384,8 +383,6 @@
       ]
     }
   ],
-=======
->>>>>>> origin/pr-39275
   "held_webhook_retry.qnt": [
     {
       "file": "packages/cloud/services/gateway-container/cloudflare/webhook-ingress-state.test.ts",
@@ -394,10 +391,7 @@
         "hold transaction fences stale owners and preserves a reopened marker during cleanup",
         "real hold drainer renews its native lease across long redelivery and does not dispatch twice",
         "slow redelivery retains the full retry delay after the held outcome",
-<<<<<<< HEAD
-=======
         "a stale replica scan cannot redeliver a re-held member while another member is due",
->>>>>>> origin/pr-39275
         "public ingress transport rejects imports and unrelated keyspaces"
       ]
     }
