@@ -100,9 +100,11 @@ start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`
 `markVoiceTurn` and `clearNativeVoiceTiming`. A live capture start with `reopen` (the voice
 assistant's automatic reopen after a busy hold) never prompts: without microphone permission it
 rejects with `permission`. The draft recording and the live capture never hold the microphone
-together: a draft that starts ends the live capture (`liveCaptureEnded` with `capture-replaced`),
+together: a draft waits on the capture worker for the live source to close (`liveCaptureEnded`
+with `capture-replaced`); failed cleanup refuses a replacement,
 and a live capture that the user starts finishes the open draft (`recordingStopped`; the draft
-is kept). For a spoken conversation it also provides: `startLiveCapture` with
+is kept). A cancelled queued start cannot clear this draft’s automatic-reopen fence.
+For a spoken conversation it also provides: `startLiveCapture` with
 `startMs`/`endHangoverMs` (the VAD start run and end hangover, whole 32 ms windows) and `bargeIn`
 (a `liveCaptureBargeIn` event when speech is sustained while the streamed reply is audible; the
 bridge stops nothing itself); `synthesizeLocal` with `append` (the next sentence joins the

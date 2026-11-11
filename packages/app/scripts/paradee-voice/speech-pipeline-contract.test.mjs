@@ -577,6 +577,17 @@ test("the product-subclassable speech bridge compiles with the library against A
     source,
     /LiveCaptureController\.Route route=Boolean\.TRUE\.equals\(call\.getBoolean\("nativeAsr",false\)\)\?residentRoute\(owner\):null;/,
   );
+  // Compile the actual bridge, then qualify its ownership wiring with the real
+  // controller JVM lifecycle above. Platform MediaRecorder remains a device boundary.
+  assert.match(source, /live\.interruptAndDrain\(CAPTURE_REPLACED,\(\)->\{/);
+  assert.match(
+    source,
+    /public void beforeCapture\(long admitted,boolean reopen\)\{\s*if\(!reopen&&capture!=null\)capture\.finishBeforeCapture\(\);/,
+  );
+  assert.doesNotMatch(
+    source,
+    /JSONObject started=capture\.start\(limit\);\s*live\.interrupt/,
+  );
   // Recognition reads only the selected private draft; no URL, path or provider reaches it.
   assert.match(
     source,
