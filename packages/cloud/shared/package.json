@@ -4,6 +4,20 @@
   "description": "Shared backend code for Eliza Cloud: billing, db schemas/repositories, services lib, types, and route resolution.",
   "private": true,
   "type": "module",
+  "files": [
+    "README.md",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/*.test.mjs",
+    "!src/**/__tests__/**",
+    "!src/**/__fixtures__/**",
+    "!src/**/fixtures/**",
+    "!src/**/test-support/**"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./billing": "./src/billing/index.ts",

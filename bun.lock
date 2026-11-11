@@ -774,6 +774,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/voice": "workspace:*",
@@ -795,7 +796,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
-        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
