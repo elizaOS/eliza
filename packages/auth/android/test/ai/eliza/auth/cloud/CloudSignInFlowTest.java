@@ -140,6 +140,24 @@ public final class CloudSignInFlowTest {
   check(CloudSignInReadiness.Result.notReady(t).until == t + CloudSignInReadiness.NOT_READY_TTL_MS && !CloudSignInReadiness.Result.notReady(t).methodsKnown, "not ready");
   check(CloudSignInReadiness.Result.parse("v2|true|true|1800000001000") == null && CloudSignInReadiness.Result.parse("v4-native-google|true|true|yes|true|1") == null && CloudSignInReadiness.Result.parse(null) == null, "old or malformed cache re-probes");
   check(!new CloudSignInReadiness.Result(true, true, false, t + 365L * 86400000L).fresh(t), "a cache entry from the future is not trusted");
+  // Per-method TTL: a ready method keeps six hours, a method that is not ready is due again after the short TTL.
+  CloudSignInReadiness.Result noGoogle = CloudSignInReadiness.Result.measured(true, false, true, t);
+  check(noGoogle.until == t + CloudSignInReadiness.READY_TTL_MS && noGoogle.recheckAt == t + CloudSignInReadiness.METHOD_RECHECK_MS, "a negative method never takes the six-hour TTL");
+  check(noGoogle.fresh(t + CloudSignInReadiness.METHOD_RECHECK_MS) && !noGoogle.complete() && !noGoogle.recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS - 1) && noGoogle.recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS), "the ready methods stay cached while the missing one is due");
+  for (boolean[] row : new boolean[][]{{false, true, true}, {true, true, false}, {false, false, false}})
+   check(CloudSignInReadiness.Result.measured(row[0], row[1], row[2], t).recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS), "each method that is not ready is due on its own");
+  CloudSignInReadiness.Result all = CloudSignInReadiness.Result.measured(true, true, true, t);
+  check(all.complete() && all.recheckAt == all.until && !all.recheckDue(t + CloudSignInReadiness.READY_TTL_MS - 1), "a complete answer has nothing to measure again");
+  check(CloudSignInReadiness.Result.notReady(t).recheckDue(t + CloudSignInReadiness.METHOD_RECHECK_MS) && !CloudSignInReadiness.Result.notReady(t).recheckDue(t), "an unavailable answer is due on the short TTL");
+  CloudSignInReadiness.Result restoredPartial = CloudSignInReadiness.Result.parse(noGoogle.serialize());
+  check(restoredPartial.recheckAt == noGoogle.recheckAt && restoredPartial.until == noGoogle.until && restoredPartial.sameMethods(noGoogle) && !restoredPartial.sameMethods(all), "the recheck time survives the stored cache");
+  check(CloudSignInReadiness.Result.parse("v4-native-google|true|false|false|true|" + (t + CloudSignInReadiness.READY_TTL_MS)) == null, "a six-hour negative Google answer cached by an earlier build is measured again");
+  check(new CloudSignInReadiness.Result(true, false, true, true, t + CloudSignInReadiness.READY_TTL_MS, t + 365L * 86400000L).recheckDue(t) , "a recheck time from the future is not trusted");
+  check(CloudSignInReadiness.LINK_WATCH_MS.length == 6 && java.util.Arrays.stream(CloudSignInReadiness.LINK_WATCH_MS).sum() < 5 * 60 * 1000L, "the return link watch is bounded");
+  // Verification: only an answer about the code ends or counts against the step.
+  check(CloudSignInFlow.verifyRetryable(500) && CloudSignInFlow.verifyRetryable(503) && CloudSignInFlow.verifyRetryable(408) && CloudSignInFlow.verifyRetryable(429), "timeouts, rate limits and server errors keep the code step");
+  check(!CloudSignInFlow.verifyRetryable(200) && !CloudSignInFlow.verifyRetryable(400) && !CloudSignInFlow.verifyRetryable(401) && !CloudSignInFlow.verifyRetryable(403) && !CloudSignInFlow.verifyRetryable(410), "an answer about the code or the account is final");
+  check(CloudSignInFlow.ackRetryDelayMs(0) == 5000 && CloudSignInFlow.ackRetryDelayMs(1) == 10000 && CloudSignInFlow.ackRetryDelayMs(3) == 40000 && CloudSignInFlow.ackRetryDelayMs(4) == 60000 && CloudSignInFlow.ackRetryDelayMs(400) == 60000, "background acknowledgement backoff is bounded at one minute");
 
   // Code adapters: tenant and client binding, PKCE, bounded expiry and resend deadlines.
   String verifier = CloudSignInFlow.newVerifier();

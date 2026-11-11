@@ -14,9 +14,16 @@ import java.security.MessageDigest;
  */
 public final class CloudSignInReadiness {
  private CloudSignInReadiness() {}
- /** A ready answer is cached for six hours; an unavailable one is re-checked after ten minutes. */
+ /** A ready method is cached for six hours; an answer with no ready method expires after ten minutes. */
  public static final long READY_TTL_MS = 6 * 60 * 60 * 1000L;
  public static final long NOT_READY_TTL_MS = 10 * 60 * 1000L;
+ /**
+  * A method that is not ready is measured again after this long, whatever the other methods answered:
+  * Android can finish verifying the return link, or Cloud can enable a method, after the first probe.
+  */
+ public static final long METHOD_RECHECK_MS = 30 * 1000L;
+ /** Local checks of the return link after a probe found it unverified (no request is sent by them). */
+ public static final long[] LINK_WATCH_MS = {3000, 7000, 15000, 30000, 60000, 120000};
  /** Each probe request is short; the renderer waits at most a few seconds before offering email alone. */
  public static final int REQUEST_TIMEOUT_MS = 4000;
 
@@ -75,21 +82,34 @@ public final class CloudSignInReadiness {
   return false;
  }
 
- /** The probe's answer. */
+ /** The probe's answer. Ready methods are trusted until `until`; a method that is not ready is measured again from `recheckAt`. */
  public static final class Result {
-  public final boolean inApp, email, google, phone, methodsKnown; public final long until;
+  public final boolean inApp, email, google, phone, methodsKnown; public final long until, recheckAt;
   public Result(boolean email, boolean google, boolean phone, long until) { this(email, google, phone, true, until); }
-  public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until) { this.methodsKnown = methodsKnown; this.email = email; this.google = google; this.phone = phone; this.inApp = email || google || phone; this.until = until; }
-  public static Result notReady(long now) { return new Result(false, false, false, false, now + NOT_READY_TTL_MS); }
+  public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until) { this(email, google, phone, methodsKnown, until, until); }
+  public Result(boolean email, boolean google, boolean phone, boolean methodsKnown, long until, long recheckAt) {
+   this.methodsKnown = methodsKnown; this.email = email; this.google = google; this.phone = phone; this.inApp = email || google || phone; this.until = until;
+   this.recheckAt = email && google && phone ? until : Math.min(until, recheckAt);
+  }
+  /** A fresh measurement: ready methods keep the long TTL, and any method that is not ready is due again after METHOD_RECHECK_MS. */
+  public static Result measured(boolean email, boolean google, boolean phone, long now) {
+   return new Result(email, google, phone, true, now + (email || google || phone ? READY_TTL_MS : NOT_READY_TTL_MS), now + METHOD_RECHECK_MS);
+  }
+  public static Result notReady(long now) { return new Result(false, false, false, false, now + NOT_READY_TTL_MS, now + METHOD_RECHECK_MS); }
   /** A cache entry from the future (beyond the longest TTL) is not trusted. */
   public boolean fresh(long now) { return now < until && until - now <= READY_TTL_MS; }
-  public String serialize() { return "v4-native-google|" + email + "|" + google + "|" + phone + "|" + methodsKnown + "|" + until; }
+  /** Every method is ready: nothing is left to measure again before `until`. */
+  public boolean complete() { return email && google && phone; }
+  /** A method is not ready and its short TTL has ended. A recheck time from the future is not trusted. */
+  public boolean recheckDue(long now) { return !complete() && (now >= recheckAt || recheckAt - now > METHOD_RECHECK_MS); }
+  public boolean sameMethods(Result other) { return other != null && email == other.email && google == other.google && phone == other.phone && methodsKnown == other.methodsKnown; }
+  public String serialize() { return "v5-method-ttl|" + email + "|" + google + "|" + phone + "|" + methodsKnown + "|" + until + "|" + recheckAt; }
   public static Result parse(String value) {
    if (value == null) return null;
    String[] parts = value.split("\\|", -1);
-   if (parts.length != 6 || !"v4-native-google".equals(parts[0])) return null;
+   if (parts.length != 7 || !"v5-method-ttl".equals(parts[0])) return null;
    for (int i = 1; i <= 4; i++) if (!"true".equals(parts[i]) && !"false".equals(parts[i])) return null;
-   try { return new Result(Boolean.parseBoolean(parts[1]), Boolean.parseBoolean(parts[2]), Boolean.parseBoolean(parts[3]), Boolean.parseBoolean(parts[4]), Long.parseLong(parts[5])); }
+   try { return new Result(Boolean.parseBoolean(parts[1]), Boolean.parseBoolean(parts[2]), Boolean.parseBoolean(parts[3]), Boolean.parseBoolean(parts[4]), Long.parseLong(parts[5]), Long.parseLong(parts[6])); }
    catch (Exception invalid) { return null; }
   }
  }

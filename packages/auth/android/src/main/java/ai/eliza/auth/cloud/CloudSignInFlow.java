@@ -212,6 +212,15 @@ public final class CloudSignInFlow {
    + " reason=" + reason + " elapsedMs=" + elapsed + " deadlineRemainingMs=" + remaining;
  }
 
+ /**
+  * A verification answer that says nothing about the code: a timeout, a rate limit or a server
+  * error. The step and its wrong-code budget are kept, as for a request with no answer.
+  */
+ public static boolean verifyRetryable(int status) { return status == 408 || status == 429 || status >= 500; }
+ /** One acknowledgement request: the key is active, the request may be sent again, or Cloud refused it. */
+ public enum Ack { ACKNOWLEDGED, RETRY, REFUSED }
+ /** Delay before background acknowledgement round `round` (0-based): 5 s doubling to one minute. */
+ public static long ackRetryDelayMs(int round) { return round < 0 ? 5000L : Math.min(60000L, 5000L << Math.min(round, 4)); }
  /** Ack is retried only for a transport failure or a retryable server status. */
  public static boolean ackRetryable(int status) { return status == -1 || status == 408 || status == 429 || status >= 500; }
  public static long ackBackoffMs(int attempt) { return attempt <= 0 ? 0 : Math.min(4000L, 1000L << (attempt - 1)); }

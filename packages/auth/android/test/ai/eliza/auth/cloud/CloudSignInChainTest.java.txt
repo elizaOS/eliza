@@ -16,7 +16,11 @@ public class CloudSignInChainTest {
  final java.util.concurrent.Executor recovery=recoveryQueued::add;
  long lastEmailSendAt, emailSendAllowedAt;
  final Main main=new Main();
- static class Main { void postDelayed(Runnable task,long delay){/* Run only the immediate callback in this harness. */} }
+ /** Delayed main-thread work is held here; only the scenarios that name it run it. */
+ static class Main { final ArrayDeque<Runnable> delayed=new ArrayDeque<>();final List<Long> delays=new ArrayList<>();void postDelayed(Runnable task,long delay){delayed.add(task);delays.add(delay);} }
+ final Set<String> activating=new HashSet<>();
+ /** Scripted acknowledgement answers for the in-process retry scenarios, and the acknowledgement window Cloud grants. */
+ final ArrayDeque<String> ackReplies=new ArrayDeque<>();long ackWindow=30000;String smsResendAt;
  static final long BROWSER_RETURN_GRACE_MS=1000;
  static final long[] REVOCATION_RETRY_MS={5000,25000};
  boolean pendingRetirementUnconfirmed; String cancelledBrowserState;
@@ -37,7 +41,9 @@ public class CloudSignInChainTest {
   JSObject getData(){JSObject data=new JSObject();for(var entry:input.entrySet())data.put(entry.getKey(),entry.getValue());return data;}
   void resolve(JSObject value){result=value;}
   void resolve(){resolve(new JSObject());}
+  JSObject errorData;
   void reject(String message,String code){error=code;rejections++;}
+  void reject(String message,String code,JSObject data){errorData=data;reject(message,code);}
  }
  static class Uri {
   final java.net.URI value;Uri(String value){this.value=java.net.URI.create(value);}
@@ -101,8 +107,17 @@ public class CloudSignInChainTest {
    if(mode.equals("send-offline"))throw new SignInFailure("offline");
    return new Response(200,new JSONObject());
   }
-  if(path.equals(CloudEmailCode.VERIFY_PATH)||path.startsWith("/steward/auth/mfa/")){
+  if(path.equals(CloudSmsCode.SEND_PATH)){
+   check("+14155550100".equals(body.getString("phone"))&&environment.tenant.equals(body.getString("tenantId")),"tenant-bound SMS send");
+   if(mode.equals("sms-limited")){Response limited=new Response(429,new JSONObject());limited.retryAfter="120";return limited;}
+   return new Response(200,smsResendAt==null?new JSONObject():new JSONObject().put("resendAt",smsResendAt));
+  }
+  if(path.equals(CloudEmailCode.VERIFY_PATH)||path.equals(CloudSmsCode.VERIFY_PATH)||path.startsWith("/steward/auth/mfa/")){
    if(mode.equals("verify-offline"))throw new SignInFailure("offline");
+   if(mode.equals("verify-503"))return new Response(503,new JSONObject());
+   if(mode.equals("verify-408"))return new Response(408,new JSONObject());
+   if(mode.equals("verify-429"))return new Response(429,new JSONObject());
+   if(mode.equals("verify-410"))return new Response(410,new JSONObject());
    if(mode.equals("cancel-before-wrong-reply")){cancel(new PluginCall());return new Response(401,new JSONObject());}
    if(mode.equals("bad-code")||mode.equals("mfa-denied"))return new Response(401,new JSONObject());
    if(mode.equals("invalid-mfa"))return new Response(200,new JSONObject().put("mfaRequired",true).put("mfa",new JSONObject().put("type","unknown").put("challengeId","fixture").put("expiresAt",System.currentTimeMillis()+60000)));
@@ -125,7 +140,7 @@ public class CloudSignInChainTest {
    check(issuedChallenge.equals(CloudSignInFlow.s256(body.getString("codeVerifier"))),"token PKCE");
    if(mode.equals("token-denied"))return new Response(401,new JSONObject());
    if(mode.equals("cancelled"))current.cancelled=true;
-   return new Response(200,new JSONObject().put("secret",mode.equals("bad-secret")?"wrong-prefix":NEW).put("credentialId",ID).put("expiresAt",System.currentTimeMillis()+(mode.equals("expired-token")?-1:60000)).put("acknowledgeBy",System.currentTimeMillis()+30000).put("acknowledgementRequired",!mode.equals("missing-ack-contract")).put("tokenType","Bearer"));
+   return new Response(200,new JSONObject().put("secret",mode.equals("bad-secret")?"wrong-prefix":NEW).put("credentialId",ID).put("expiresAt",System.currentTimeMillis()+(mode.equals("expired-token")?-1:60000)).put("acknowledgeBy",System.currentTimeMillis()+ackWindow).put("acknowledgementRequired",!mode.equals("missing-ack-contract")).put("tokenType","Bearer"));
   }
   if(path.equals("/api/v1/app-auth/mobile/ack")){
    events.add("ack");check(issuedState.equals(body.getString("state")),"ack state");
@@ -144,6 +159,19 @@ public class CloudSignInChainTest {
      case "complete" -> new Response(409,new JSONObject().put("error","authorization_complete"));
      case "wrong" -> new Response(200,new JSONObject().put("status","acknowledged").put("credentialId",REQUEST));
      case "newer" -> { slots.put(config().receiptSlot(TestRegistration.PRODUCTION),"newer-receipt"); yield new Response(200,new JSONObject().put("status","acknowledged").put("credentialId",ID)); }
+     case "success" -> new Response(200,new JSONObject().put("status","acknowledged").put("credentialId",ID));
+     default -> throw new AssertionError("unexpected fixture reply");
+    };
+   }
+   if(!ackReplies.isEmpty()){
+    check(ID.equals(body.getString("credentialId"))&&NEW.equals(body.getString("secret"))&&issuedChallenge.equals(CloudSignInFlow.s256(body.getString("codeVerifier"))),"every acknowledgement carries the same proof and key");
+    return switch(ackReplies.removeFirst()){
+     case "transport" -> throw new SignInFailure("unavailable");
+     case "retry" -> new Response(503,new JSONObject());
+     case "denied" -> new Response(403,new JSONObject());
+     case "complete" -> new Response(409,new JSONObject().put("error","authorization_complete"));
+     case "wrong" -> new Response(200,new JSONObject().put("status","acknowledged").put("credentialId",REQUEST));
+     case "supersede" -> { intent++; yield new Response(503,new JSONObject()); }
      case "success" -> new Response(200,new JSONObject().put("status","acknowledged").put("credentialId",ID));
      default -> throw new AssertionError("unexpected fixture reply");
     };
@@ -168,6 +196,7 @@ public class CloudSignInChainTest {
  /* ACTUAL_CANCEL */
  /* ACTUAL_CALLBACK */
  /* ACTUAL_BURN */
+ void requirePhoneAvailable(Attempt current)throws Exception{}
  /* ACTUAL_START_EMAIL */
  /* ACTUAL_VERIFY */
  /* ACTUAL_RELEASE */
@@ -378,6 +407,151 @@ public class CloudSignInChainTest {
   PluginCall again=sendCall();host.startEmail(again);
   check(again.result!=null&&working.cancelled,"a failed resend starts no cooldown");
  }
+ /** A timeout, rate limit or server error on the verification request keeps the code step and its budget. */
+ static void transientVerifyKeepsStep()throws Exception{
+  for(String[] row:new String[][]{{"verify-503","unavailable"},{"verify-408","unavailable"},{"verify-429","rate-limited"}}){
+   slots.clear();events.clear();notifications.clear();
+   CloudSignInChainTest host=new CloudSignInChainTest();host.mode=row[0];
+   Attempt owner=new Attempt(REQUEST);owner.credentialGuard=host.reserveCredentialCommit();host.attempt=owner;
+   for(int round=0;round<7;round++){
+    PluginCall failed=verificationCall(owner);host.verify(failed,false);
+    check(row[1].equals(failed.error)&&failed.rejections==1&&failed.errorData!=null&&Boolean.TRUE.equals(failed.errorData.opt("attemptKept")),"a transient verification answer is explicit and says the step is kept: "+row[0]);
+    check(host.attempt==owner&&!owner.cancelled&&!owner.busy&&owner.failedVerifies==0,"it neither ends the attempt nor counts as a wrong code: "+row[0]);
+   }
+   check(!events.contains("logout")&&!slots.containsKey("cloud:production"),"nothing is committed or revoked meanwhile");
+   host.mode="bad-code";PluginCall wrong=verificationCall(owner);host.verify(wrong,false);
+   check("invalid-code".equals(wrong.error)&&owner.failedVerifies==1&&Boolean.TRUE.equals(wrong.errorData.opt("attemptKept")),"a wrong code still counts");
+   host.mode="valid";PluginCall done=verificationCall(owner);host.verify(done,false);
+   check(done.result!=null&&"authenticated".equals(done.result.optString("status")),"the same code completes once Cloud answers: "+row[0]);
+  }
+  CloudSignInChainTest gone=new CloudSignInChainTest();gone.mode="verify-410";
+  Attempt expired=new Attempt(REQUEST);gone.attempt=expired;
+  PluginCall refused=verificationCall(expired);gone.verify(refused,false);
+  check("expired".equals(refused.error)&&refused.errorData==null&&gone.attempt==null&&expired.cancelled,"an expired code still ends the attempt");
+  CloudSignInChainTest sms=new CloudSignInChainTest();sms.mode="verify-503";
+  Attempt text=new Attempt(REQUEST);text.phone="+14155550100";text.credentialGuard=sms.reserveCredentialCommit();sms.attempt=text;
+  PluginCall textFailed=verificationCall(text);sms.verify(textFailed,false,true);
+  check("unavailable".equals(textFailed.error)&&sms.attempt==text&&text.failedVerifies==0,"an SMS code step is kept the same way");
+  sms.mode="valid";PluginCall textDone=verificationCall(text);sms.verify(textDone,false,true);
+  check(textDone.result!=null&&"authenticated".equals(textDone.result.optString("status")),"the SMS code completes once Cloud answers");
+ }
+ static PluginCall phoneCall(){
+  PluginCall call=new PluginCall();
+  call.input.put("environment","production");call.input.put("phone","+14155550100");
+  return call;
+ }
+ /** SMS sends share the email cooldown and honour Cloud's longer wait (Retry-After or resendAt). */
+ static void phoneCooldownFollowsCloud()throws Exception{
+  slots.clear();events.clear();notifications.clear();
+  CloudSignInChainTest host=new CloudSignInChainTest();host.mode="sms-limited";
+  long before=System.currentTimeMillis();
+  PluginCall limited=phoneCall();host.startPhone(limited);
+  check("rate-limited".equals(limited.error)&&host.attempt==null,"a refused SMS send is explicit");
+  check(host.emailSendAllowedAt>=before+120000&&host.emailSendAllowedAt<=System.currentTimeMillis()+120000,"Retry-After on a refused SMS send sets the shared wait");
+  host.mode="valid";host.lastEmailSendAt=0;
+  PluginCall early=phoneCall();host.startPhone(early);
+  check("cooldown".equals(early.error)&&host.requests==1,"an SMS send inside Cloud's wait sends nothing, although the local 30 seconds have passed");
+  PluginCall emailEarly=sendCall();host.startEmail(emailEarly);
+  check("cooldown".equals(emailEarly.error)&&host.requests==1,"the wait applies to an email send as well");
+  host.emailSendAllowedAt=0;host.smsResendAt=Instant.ofEpochMilli(System.currentTimeMillis()+90000).toString();
+  long resend=Instant.parse(host.smsResendAt).toEpochMilli();
+  PluginCall sent=phoneCall();host.startPhone(sent);
+  check(sent.result!=null&&host.attempt!=null&&host.attempt.phone!=null,"SMS code sent");
+  check(sent.result.getLong("resendAt")==resend&&host.emailSendAllowedAt==resend,"the code step reports Cloud's resend time, not the local 30 seconds");
+  host.lastEmailSendAt=0;
+  PluginCall again=phoneCall();host.startPhone(again);
+  check("cooldown".equals(again.error)&&host.requests==2,"a resend waits for Cloud's time");
+  host.emailSendAllowedAt=0;host.smsResendAt=null;long now=System.currentTimeMillis();
+  PluginCall plain=phoneCall();host.startPhone(plain);
+  check(plain.result!=null&&plain.result.getLong("resendAt")>=now+CloudSignInFlow.RESEND_COOLDOWN_MS,"without a Cloud time the local minimum still applies");
+ }
+ /** One committed sign-in whose first acknowledgement answers are scripted. */
+ static CloudSignInChainTest pendingActivation(PluginCall call,String requestId,long window,String... replies)throws Exception{
+  slots.clear();events.clear();notifications.clear();
+  CloudSignInChainTest host=new CloudSignInChainTest();host.ackWindow=window;host.ackReplies.addAll(List.of(replies));
+  Attempt owner=new Attempt(requestId);owner.credentialGuard=host.reserveCredentialCommit();host.attempt=owner;
+  call.input.put("attemptId",owner.id);call.input.put("code","123456");
+  host.verify(call,false);
+  return host;
+ }
+ void nextAcknowledgement(){
+  check(main.delayed.size()==1&&recoveryQueued.isEmpty(),"one acknowledgement round is waiting");
+  main.delays.remove(0);main.delayed.remove().run();
+  check(requests==requestsBefore(),"the delayed round sends nothing on the main thread");
+  while(!recoveryQueued.isEmpty())recoveryQueued.remove().run();
+ }
+ int requestsBefore(){return requests;}
+ static void activationScenarios()throws Exception{
+  String receiptSlot=TestRegistration.PRODUCT.receiptSlot(TestRegistration.PRODUCTION);
+  // No confirmation during the sign-in step: asked again in this process, then announced.
+  for(String requestId:new String[]{null,REQUEST}){
+   PluginCall call=new PluginCall();
+   CloudSignInChainTest host=pendingActivation(call,requestId,30000,"wrong","transport","retry","complete");
+   check("activation-pending".equals(call.error)&&call.result==null&&host.attempt==null,"the sign-in step ends as pending");
+   check(NEW.equals(new JSONObject(slots.get("cloud:production")).getString("token"))&&slots.containsKey(receiptSlot),"key and receipt stay for the retries");
+   check(host.activating.contains("production")&&host.main.delays.equals(List.of(5000L)),"the first background round waits five seconds");
+   int sent=host.requests;
+   host.nextAcknowledgement();check(host.requests==sent+1&&host.main.delays.equals(List.of(10000L))&&notifications.isEmpty(),"no answer: asked again with a longer wait");
+   host.nextAcknowledgement();check(host.requests==sent+2&&host.main.delays.equals(List.of(20000L))&&notifications.isEmpty(),"a retryable answer: asked again");
+   host.nextAcknowledgement();
+   check(host.requests==sent+3&&host.main.delayed.isEmpty()&&!host.activating.contains("production"),"a confirmation ends the retries");
+   check(!slots.containsKey(receiptSlot)&&NEW.equals(new JSONObject(slots.get("cloud:production")).getString("token")),"the receipt goes and the key stays");
+   check(events.get(events.size()-1).equals("signInCompleted")&&notifications.size()==1,"the sign-in is announced once, retained");
+   JSObject outcome=notifications.get(0);
+   check("authenticated".equals(outcome.getString("status"))&&"production".equals(outcome.getString("environment"))&&!outcome.toString().contains(NEW),"the announcement is the ordinary outcome without the key");
+   if(requestId==null)check(outcome.length()==4&&!outcome.has("credentialId")&&!outcome.has("attemptId"),"an unscoped caller gets the four-field outcome");
+   else check(REQUEST.equals(outcome.getString("requestId"))&&new JSONObject(slots.get("cloud:production")).getString("credentialId").equals(outcome.getString("credentialId")),"a scoped caller gets its identities");
+   check(host.reserved==1,"background acknowledgement reserves no credential intent");
+  }
+  // Cloud refuses during a background round: the dead key is removed, revoked and reported.
+  PluginCall refusedCall=new PluginCall();
+  CloudSignInChainTest refused=pendingActivation(refusedCall,null,30000,"wrong","denied");
+  slots.put("cloud:staging","preserved-other-environment");
+  check("activation-pending".equals(refusedCall.error),"pending first");
+  events.clear();refused.nextAcknowledgement();
+  check(!slots.containsKey("cloud:production")&&!slots.containsKey(receiptSlot)&&"preserved-other-environment".equals(slots.get("cloud:staging")),"only this deployment's dead key and receipt are removed");
+  check(events.contains("revoke")&&notifications.size()==1&&"activation-expired".equals(notifications.get(0).getString("code"))&&notifications.get(0).length()==1,"the refusal is reported once with a fixed code");
+  check(refused.main.delayed.isEmpty()&&!refused.activating.contains("production")&&refused.reserved==1,"nothing further is scheduled or reserved");
+  // The deadline passes with no confirmation: one request after it, then the same report.
+  PluginCall lateCall=new PluginCall();
+  CloudSignInChainTest late=pendingActivation(lateCall,null,400,"wrong","retry");
+  check("activation-pending".equals(lateCall.error)&&late.main.delays.get(0)<=1400&&late.main.delays.get(0)>=1000,"the last round is sent just after the deadline, not on the long backoff");
+  Thread.sleep(450);late.nextAcknowledgement();
+  check(late.ackReplies.isEmpty()&&!slots.containsKey("cloud:production")&&!slots.containsKey(receiptSlot),"after the deadline the unconfirmed key is removed");
+  check(notifications.size()==1&&"activation-expired".equals(notifications.get(0).getString("code"))&&late.main.delayed.isEmpty(),"the passed deadline is reported, with no further round");
+  // A confirmation whose answer was lost is still seen by the request after the deadline.
+  PluginCall lostCall=new PluginCall();
+  CloudSignInChainTest lost=pendingActivation(lostCall,null,400,"wrong","complete");
+  Thread.sleep(450);lost.nextAcknowledgement();
+  check(slots.containsKey("cloud:production")&&notifications.size()==1&&"authenticated".equals(notifications.get(0).getString("status")),"a late confirmation keeps the key and announces the sign-in");
+  // Cloud refuses inside the sign-in step itself.
+  PluginCall inlineCall=new PluginCall();
+  CloudSignInChainTest inline=pendingActivation(inlineCall,null,30000,"denied");
+  check("activation-expired".equals(inlineCall.error)&&!slots.containsKey("cloud:production")&&!slots.containsKey(receiptSlot),"an immediate refusal removes the key and says so");
+  check(inline.main.delayed.isEmpty()&&notifications.isEmpty()&&events.contains("logout")&&!inline.activating.contains("production"),"no retry is scheduled and the Steward session is revoked");
+  // A newer credential action owns the slot: retries stop and nothing of it is touched or announced.
+  PluginCall olderCall=new PluginCall();
+  CloudSignInChainTest older=pendingActivation(olderCall,null,30000,"wrong");
+  older.intent++;String stored=slots.get("cloud:production");int before=older.requests;
+  older.nextAcknowledgement();
+  check(older.requests==before&&stored.equals(slots.get("cloud:production"))&&slots.containsKey(receiptSlot)&&notifications.isEmpty(),"a superseded sign-in sends nothing and leaves the slot and the receipt");
+  check(older.main.delayed.isEmpty()&&!older.activating.contains("production"),"its retries end");
+  PluginCall midCall=new PluginCall();
+  CloudSignInChainTest mid=pendingActivation(midCall,null,400,"wrong","supersede");
+  Thread.sleep(450);String kept=slots.get("cloud:production");mid.nextAcknowledgement();
+  check(kept.equals(slots.get("cloud:production"))&&notifications.isEmpty()&&!events.contains("signInIncomplete"),"a deadline that passes after a newer action removes and reports nothing");
+  // The saved key was replaced by the time Cloud confirms: nothing is announced for the old one.
+  PluginCall replacedCall=new PluginCall();
+  CloudSignInChainTest replaced=pendingActivation(replacedCall,null,30000,"wrong","success");
+  slots.put("cloud:production",new JSONObject().put("credentialId",REQUEST).put("token",OLD).put("expiresAt",System.currentTimeMillis()+60000).toString());
+  replaced.nextAcknowledgement();
+  check(notifications.isEmpty()&&OLD.equals(new JSONObject(slots.get("cloud:production")).getString("token")),"a replaced key is neither announced nor touched");
+  // Closing the plugin ends the retries; the receipt waits for the next start.
+  PluginCall closedCall=new PluginCall();
+  CloudSignInChainTest closed=pendingActivation(closedCall,null,30000,"wrong");
+  closed.destroyed=true;int quiet=closed.requests;closed.nextAcknowledgement();
+  check(closed.requests==quiet&&slots.containsKey(receiptSlot)&&slots.containsKey("cloud:production")&&notifications.isEmpty(),"a closed plugin sends nothing and keeps the receipt for the next start");
+ }
  static void changedAfterCommit(String mode)throws Exception{
   slots.clear();events.clear();notifications.clear();
   CloudSignInChainTest host=new CloudSignInChainTest();host.mode=mode;
@@ -482,6 +656,12 @@ public class CloudSignInChainTest {
   System.out.println("PASS native code verification ownership (4 scenarios)");
   sendCooldownFollowsAnswer();
   System.out.println("PASS native sign-in chain (39 scenarios; no browser facilities)");
+  transientVerifyKeepsStep();
+  System.out.println("PASS transient verification answers keep the code step (5 scenarios)");
+  phoneCooldownFollowsCloud();
+  System.out.println("PASS SMS sends honour Cloud's cooldown (5 scenarios)");
+  activationScenarios();
+  System.out.println("PASS in-process acknowledgement retry and expiry (10 scenarios)");
   recoveryScenarios();
   System.out.println("PASS native startup acknowledgement recovery (18 scenarios)");
  }

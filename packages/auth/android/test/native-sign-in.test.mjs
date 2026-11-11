@@ -201,17 +201,12 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       " private void burnUnclaimedPending(Attempt owner)",
       " // ── Email code and MFA:",
     ),
-    ACTUAL_START_EMAIL:
-      between(
-        plugin,
-        " @PluginMethod public void startEmail(",
-        " @PluginMethod public void startPhone(",
-      ).replace("@PluginMethod ", "") +
-      between(
-        plugin,
-        " /** A failed send leaves",
-        " /** Check registration and tenant SMS policy",
-      ),
+    // startEmail, startPhone and notSent: one contiguous region.
+    ACTUAL_START_EMAIL: between(
+      plugin,
+      " @PluginMethod public void startEmail(",
+      " /** Check registration and tenant SMS policy",
+    ).replaceAll("@PluginMethod ", ""),
     ACTUAL_VERIFY:
       between(
         plugin,
@@ -240,7 +235,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
     ),
     ACTUAL_ACK: between(
       plugin,
-      " private boolean acknowledge(",
+      " private CloudSignInFlow.Ack acknowledge(",
       " /** A key stored before",
     ),
     ACTUAL_ACK_RECOVERY: between(
@@ -276,6 +271,18 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
       output,
       /^PASS native startup acknowledgement recovery \(18 scenarios\)$/m,
     );
+    assert.match(
+      output,
+      /^PASS transient verification answers keep the code step \(5 scenarios\)$/m,
+    );
+    assert.match(
+      output,
+      /^PASS SMS sends honour Cloud's cooldown \(5 scenarios\)$/m,
+    );
+    assert.match(
+      output,
+      /^PASS in-process acknowledgement retry and expiry \(10 scenarios\)$/m,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -303,14 +310,24 @@ test("exact readiness measurement, cache and single-flight probe (plain JVM)", (
       " private void probe(",
       " /** Cloud refused this app",
     ),
+    // The exact resume handler, without the Capacitor superclass call.
+    ACTUAL_RESUME: between(
+      plugin,
+      " @Override protected void handleOnResume() {",
+      " @Override protected void handleOnDestroy() {",
+    )
+      .replace("@Override protected ", "")
+      .replace("super.handleOnResume();", ""),
   });
   try {
+    const output = runJvm(
+      [...pure, ...support, file],
+      "ai.eliza.auth.cloud.CloudSignInReadinessTest",
+    );
+    assert.match(output, /^PASS native readiness measure/);
     assert.match(
-      runJvm(
-        [...pure, ...support, file],
-        "ai.eliza.auth.cloud.CloudSignInReadinessTest",
-      ),
-      /^PASS native readiness measure/,
+      output,
+      /^PASS per-method readiness TTL, resume and return link watch$/m,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -504,6 +521,71 @@ test("the plugin owns every secret, compares state before burning and logs only 
   assert.match(gate, /new AlertDialog\.Builder/);
   assert.match(gate, /"Authorize " \+ product/);
   assert.doesNotMatch(gate, /PluginCall|call\.getBoolean|\.write\(/);
+});
+
+test("a browser Google attempt ends only by its return, a cancel or its expiry; a Home host opens the page in the browser's task", () => {
+  // Resume: readiness only. Nothing in the resume or pause path can end an attempt.
+  const resume = between(
+    plugin,
+    " @Override protected void handleOnResume() {",
+    " @Override protected void handleOnDestroy() {",
+  );
+  assert.doesNotMatch(resume, /end\(|attempt|cancel/);
+  assert.match(resume, /probe\(config\(\)\.defaultEnvironment\(\), null, false\);/);
+  assert.doesNotMatch(plugin, /handleOnPause|browserPaused|"browser-closed"/);
+  const start = between(
+    plugin,
+    " private void startGoogleBrowser(Attempt next) {",
+    " /** The attempt's own deadline",
+  );
+  // The only timer of the attempt is its pending record's own lifetime, and it yields to a return.
+  assert.match(
+    start,
+    /expireBrowserAttempt\(next, CloudSignInFlow\.PENDING_TTL_MS\);/,
+  );
+  assert.doesNotMatch(start, /postDelayed/);
+  const expiry = between(
+    plugin,
+    " private void expireBrowserAttempt(Attempt next, long delay) {",
+    " /** The host is this device's Home app",
+  );
+  assert.match(
+    expiry,
+    /if \(attempt != next \|\| next\.cancelled \|\| next\.callbackReceived\) return;\s*if \(next\.returnClaimed\) \{ expireBrowserAttempt\(next, BROWSER_RETURN_GRACE_MS\); return; \}\s*\}\s*end\(next, "expired", true\);/,
+  );
+  assert.match(
+    start,
+    /final int task = hostIsHome\(\) \? Intent\.FLAG_ACTIVITY_NEW_TASK : 0;/,
+  );
+  assert.equal((start.match(/\.addFlags\(task\)/g) || []).length, 2);
+  const home = between(
+    plugin,
+    " private boolean hostIsHome() {",
+    " /** Optional caller identity",
+  );
+  assert.match(home, /Intent\.ACTION_MAIN\)\.addCategory\(Intent\.CATEGORY_HOME\)/);
+  assert.match(
+    home,
+    /getContext\(\)\.getPackageName\(\)\.equals\(home\.activityInfo\.packageName\)/,
+  );
+  // A return that cannot be consumed leaves the attempt; only an elapsed parameterless hint ends it.
+  const release = between(
+    plugin,
+    " private void releaseReturnClaim(Attempt claimed) {",
+    " /** Retire only the captured record",
+  );
+  assert.equal((release.match(/end\(/g) || []).length, 1);
+  assert.match(release, /end\(claimed, "app-link-unverified", false\)/);
+  // A return after process death still completes nothing: no live credential intent exists for it.
+  const capture = between(
+    plugin,
+    " private boolean captureCallback(",
+    " /** A recognized but unconsumable return",
+  );
+  assert.match(
+    capture,
+    /if \(owner == null\) \{[\s\S]*?notifyListeners\("signInIncomplete"[\s\S]*?return;\s*\}\s*if \(!pending\.state\.equals\(owner\.browserState\)\) return;/,
+  );
 });
 
 test("the exact Google observer logs only the fixed classification, never provider text (plain JVM)", () => {

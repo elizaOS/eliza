@@ -33,6 +33,13 @@ public class CloudSignInReadinessTest {
  final Object lock = new Object(); Attempt attempt; final Queue prober = new Queue();
  final Map<String, CloudSignInReadiness.Result> readiness = new HashMap<>(), stored = new HashMap<>();
  final Map<String, List<PluginCall>> probing = new HashMap<>();
+ final Set<String> linkWatch = new HashSet<>(), activating = new HashSet<>();
+ boolean destroyed;
+ /** Delayed main-thread work is held here until the fixture runs it. */
+ static class Main { final List<Runnable> delayed = new ArrayList<>(); final List<Long> delays = new ArrayList<>(); void postDelayed(Runnable task, long delay) { delayed.add(task); delays.add(delay); } void next() { delays.remove(0); delayed.remove(0).run(); } }
+ final Main main = new Main();
+ final List<JSObject> changes = new ArrayList<>();
+ void notifyListeners(String event, JSObject value, boolean retained) { check("signInReadinessChanged".equals(event) && !retained, "only an unretained readiness change is announced"); changes.add(value); }
  boolean browserMode, appLink, assetLinks;
  CloudSignInConfig config() { return browserMode ? TestRegistration.base().environment(TestRegistration.PRODUCTION).googleSignInMode("browser").build() : TestRegistration.PRODUCT; }
  String browserPackage() { return "synthetic.browser"; }
@@ -61,6 +68,7 @@ public class CloudSignInReadinessTest {
  /* ACTUAL_STATUS */
  /* ACTUAL_STATUS_OUTCOME */
  /* ACTUAL_PROBE */
+ /* ACTUAL_RESUME */
 
  static void check(boolean value, String why) { if (!value) throw new AssertionError(why); }
  static PluginCall call(boolean refresh) { PluginCall call = new PluginCall(); call.refresh = refresh; return call; }
@@ -102,8 +110,69 @@ public class CloudSignInReadinessTest {
    check(h.measures == 1 && retry.resolved == 1 && joined.resolved == 1 && ready(retry) && Boolean.FALSE.equals(retry.result.values.get("google")), "fresh measurement answers every waiter");
    check(h.stored.get(e.name) == h.next && h.probing.isEmpty(), "cache persisted and in-flight released");
   }
-  CloudSignInReadinessTest positive = scripted(); positive.readiness.put(e.name, new CloudSignInReadiness.Result(true, true, false, System.now + CloudSignInReadiness.READY_TTL_MS));
-  PluginCall hot = call(true); positive.status(hot); check(hot.resolved == 1 && positive.measures == 0, "a positive cache survives an explicit retry");
+  CloudSignInReadinessTest positive = scripted(); positive.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, true, true, System.now));
+  PluginCall hot = call(true); positive.status(hot); check(hot.resolved == 1 && positive.measures == 0, "a complete cache survives an explicit retry");
+  System.now += CloudSignInReadiness.READY_TTL_MS - 1; PluginCall later = call(false); positive.status(later); positive.handleOnResume();
+  check(later.resolved == 1 && positive.measures == 0 && positive.prober.tasks.isEmpty(), "a complete cache is served for its whole six hours, also across resume");
+  System.now = 1_000_000;
+
+  // Per-method TTL: Google not ready (the return link was unverified at first launch) while email and SMS are ready.
+  long start = System.now;
+  CloudSignInReadinessTest fresh = scripted(); fresh.next = CloudSignInReadiness.Result.measured(true, false, true, System.now);
+  fresh.probe(e, null, false); fresh.prober.drain();
+  check(fresh.measures == 1 && fresh.changes.isEmpty() && fresh.stored.get(e.name).until == start + CloudSignInReadiness.READY_TTL_MS, "the first-launch probe caches the ready methods");
+  PluginCall soon = call(false); fresh.status(soon);
+  check(soon.resolved == 1 && Boolean.FALSE.equals(soon.result.values.get("google")) && fresh.prober.tasks.isEmpty(), "inside the short TTL the cached answer is served");
+  System.now = start + CloudSignInReadiness.METHOD_RECHECK_MS;
+  PluginCall opened = call(false), joinedOpen = call(false); fresh.status(opened); fresh.status(joinedOpen);
+  check(opened.resolved == 0 && fresh.prober.tasks.size() == 1, "after the short TTL an ordinary lookup measures the missing method again, never serving six-hour-old Google=false");
+  fresh.next = CloudSignInReadiness.Result.measured(true, true, true, System.now); fresh.prober.drain();
+  check(fresh.measures == 2 && opened.resolved == 1 && joinedOpen.resolved == 1 && Boolean.TRUE.equals(opened.result.values.get("google")), "Google appears without an explicit retry");
+  check(fresh.changes.size() == 1 && Boolean.TRUE.equals(fresh.changes.get(0).values.get("google")) && "production".equals(fresh.changes.get(0).values.get("environment")), "the change is announced once with its deployment");
+  for (boolean[] row : new boolean[][]{{false, true, true}, {true, true, false}}) {
+   System.now = start;
+   CloudSignInReadinessTest other = scripted(); other.readiness.put(e.name, CloudSignInReadiness.Result.measured(row[0], row[1], row[2], System.now));
+   System.now += CloudSignInReadiness.METHOD_RECHECK_MS; PluginCall due = call(false); other.status(due);
+   check(due.resolved == 0 && other.prober.tasks.size() == 1, "email and SMS are measured again on the short TTL as well");
+   other.next = CloudSignInReadiness.Result.measured(row[0], row[1], row[2], System.now); other.prober.drain();
+   check(due.resolved == 1 && other.changes.isEmpty(), "an unchanged answer announces nothing");
+  }
+  // Resume: a due method is measured in the background; a browser attempt in progress is left alone.
+  System.now = start;
+  CloudSignInReadinessTest resumed = scripted(); resumed.readiness.put(e.name, CloudSignInReadiness.Result.measured(true, false, true, System.now));
+  resumed.attempt = new Attempt(); resumed.attempt.google = true; Attempt waitingInBrowser = resumed.attempt;
+  resumed.handleOnResume(); check(resumed.prober.tasks.isEmpty(), "resume inside the short TTL sends nothing");
+  System.now += CloudSignInReadiness.METHOD_RECHECK_MS; resumed.handleOnResume(); resumed.handleOnResume();
+  check(resumed.prober.tasks.size() == 1, "resume measures a due method once");
+  resumed.next = CloudSignInReadiness.Result.measured(true, true, true, System.now); resumed.prober.drain();
+  check(resumed.changes.size() == 1 && resumed.attempt == waitingInBrowser && resumed.main.delayed.isEmpty(), "resume announces the change and never ends or times a waiting browser attempt");
+  PluginCall during = call(false); resumed.status(during);
+  check(Boolean.TRUE.equals(during.result.values.get("active")) && "google".equals(during.result.values.get("kind")) && !during.result.values.containsKey("activationPending"), "the waiting attempt is still reported active");
+  resumed.activating.add(e.name); PluginCall pendingKey = call(false); resumed.status(pendingKey);
+  check(Boolean.TRUE.equals(pendingKey.result.values.get("activationPending")), "a stored key that waits for its acknowledgement is reported");
+
+  // Fresh install in browser mode: Android verifies the return link after the first probe.
+  System.now = start;
+  CloudSignInReadinessTest install = new CloudSignInReadinessTest(); install.browserMode = true;
+  install.probe(e, null, false); install.prober.drain();
+  check(!install.readiness.get(e.name).google && install.readiness.get(e.name).email && install.linkWatch.contains(e.name) && install.main.delays.equals(List.of(CloudSignInReadiness.LINK_WATCH_MS[0])), "an unverified return link is watched");
+  install.probe(e, null, true); install.prober.drain();
+  check(install.main.delayed.size() == 1, "one watch per deployment");
+  int requests = install.reads.size();
+  install.main.next(); install.prober.drain();
+  check(install.reads.size() == requests && install.main.delays.equals(List.of(CloudSignInReadiness.LINK_WATCH_MS[1])) && install.changes.isEmpty(), "a pending link costs no request");
+  install.appLink = true; install.assetLinks = true;
+  install.main.next(); install.prober.drain();
+  check(install.readiness.get(e.name).google && install.main.delayed.isEmpty() && !install.linkWatch.contains(e.name), "the verified link is measured at once and the watch ends");
+  check(install.changes.size() == 1 && Boolean.TRUE.equals(install.changes.get(0).values.get("google")), "Google is announced to the open sign-in screen");
+  CloudSignInReadinessTest never = new CloudSignInReadinessTest(); never.browserMode = true;
+  never.probe(e, null, false); never.prober.drain();
+  for (int round = 0; round < CloudSignInReadiness.LINK_WATCH_MS.length; round++) { never.main.next(); never.prober.drain(); }
+  check(never.main.delayed.isEmpty() && !never.linkWatch.contains(e.name) && never.changes.isEmpty(), "the watch is bounded when the link never verifies");
+  CloudSignInReadinessTest gone = new CloudSignInReadinessTest(); gone.browserMode = true;
+  gone.probe(e, null, false); gone.prober.drain(); gone.destroyed = true; gone.appLink = true; gone.main.next(); gone.prober.drain();
+  check(gone.main.delayed.isEmpty() && !gone.readiness.get(e.name).google, "a closed plugin stops watching");
+  System.now = 1_000_000;
   CloudSignInReadinessTest partial = scripted(); partial.readiness.put(e.name, new CloudSignInReadiness.Result(true, false, false, System.now + CloudSignInReadiness.NOT_READY_TTL_MS));
   PluginCall partialRetry = call(true); partial.status(partialRetry);
   check(partial.prober.tasks.size() == 1 && partialRetry.resolved == 0, "partial readiness is measured again on an explicit retry");
@@ -122,5 +191,6 @@ public class CloudSignInReadinessTest {
   CloudSignInReadinessTest invalid = scripted(); PluginCall staging = call(true); staging.environment = "staging"; invalid.status(staging);
   check(staging.rejected == 1 && invalid.prober.tasks.isEmpty(), "a deployment the build does not admit is refused");
   java.lang.System.out.println("PASS native readiness measure, status cache, single-flight and fail-closed admission");
+  java.lang.System.out.println("PASS per-method readiness TTL, resume and return link watch");
  }
 }
