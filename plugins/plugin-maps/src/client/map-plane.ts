@@ -76,6 +76,8 @@ export interface MapPlaneOptions {
   onPin?(id: string): void;
   /** Only direct map gestures interrupt camera following. */
   onInteraction?(): void;
+  /** The centre and zoom of the visible map, each time the map settles. */
+  onViewport?(center: Coordinate, zoom: number): void;
   fontUrl: string;
   workerUrl: string;
   accent: string;
@@ -363,6 +365,13 @@ export class MapPlane {
     this.map.on("idle", () => {
       if (this.destroyed) return;
       container.dataset.mapZoom = String(this.map.getZoom());
+      if (options.onViewport) {
+        const center = this.map.getCenter();
+        options.onViewport(
+          { latitude: center.lat, longitude: center.lng },
+          this.map.getZoom(),
+        );
+      }
       container.dataset.mapFeatureCount = String(
         this.map.queryRenderedFeatures(
           worldwide ? undefined : { layers: ["roads"] },

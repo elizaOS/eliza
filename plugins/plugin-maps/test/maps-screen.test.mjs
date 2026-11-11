@@ -372,6 +372,7 @@ test("place labels name provider places and typed coordinates", async () => {
   const directions = f.screen.view().directions;
   assert.equal(directions?.routeReady, false);
   assert.equal(directions?.meta, "");
+  f.screen.dispose();
 
   const typed = fixture();
   typed.screen.setQuery("1, 2");
@@ -424,10 +425,7 @@ test("directions need a real origin and a served mode", async () => {
   let view = f.screen.view();
   assert.equal(view.mode, "directions");
   assert.equal(view.directions?.routeReady, false);
-  assert.equal(
-    view.directions?.via,
-    "Choose a real origin to calculate a route.",
-  );
+  assert.equal(view.directions?.via, "Choose a starting point to see a route.");
   assert.deepEqual(
     view.directions?.modes.map((choice) => [choice.mode, choice.available]),
     [
@@ -1147,5 +1145,118 @@ test("retiring a provider clears a recentered location without a selected place"
   assert.deepEqual(f.screen.view().map.selected, OFF_ROUTE);
   f.screen.release(false);
   assert.equal(f.screen.view().map.selected, undefined);
+  f.screen.dispose();
+});
+
+test("Directions start from the device position when location is already granted", async () => {
+  const f = fixture();
+  f.setDeviceFix(f.fix({ coordinate: ORIGIN }));
+  f.screen.setQuery("Destination");
+  f.screen.submit();
+  await settle();
+  f.screen.choose("place:fixture:destination");
+  await settle();
+  f.screen.openDirections();
+  await settle();
+  const view = f.screen.view();
+  assert.equal(view.directions?.originText, "Your location");
+  assert.equal(view.directions?.routeReady, true);
+  assert.deepEqual(f.calls.routes.at(-1).from, ORIGIN);
+  f.screen.planOrigin();
+  await settle();
+  assert.equal(f.calls.routes.length, 2, "Enter plans again from the fix");
+  assert.deepEqual(f.calls.searches, ["Destination"]);
+  f.screen.dispose();
+
+  const denied = fixture({ granted: false });
+  denied.setDeviceFix(denied.fix({ coordinate: ORIGIN }));
+  denied.screen.setQuery("Destination");
+  denied.screen.submit();
+  await settle();
+  denied.screen.choose("place:fixture:destination");
+  await settle();
+  denied.screen.openDirections();
+  await settle();
+  assert.equal(denied.screen.view().directions?.routeReady, false);
+  assert.equal(denied.screen.view().status.locationBusy, false);
+  assert.deepEqual(denied.calls.routes, []);
+  denied.screen.dispose();
+
+  const typed = fixture();
+  typed.screen.setQuery("Destination");
+  typed.screen.submit();
+  await settle();
+  typed.screen.choose("place:fixture:destination");
+  await settle();
+  typed.screen.openDirections();
+  await settle();
+  assert.equal(typed.screen.view().status.locationBusy, true);
+  typed.screen.setOriginText("Harbour");
+  assert.equal(typed.screen.view().status.locationBusy, false);
+  typed.emitDevice(typed.fix({ coordinate: ORIGIN }));
+  await settle();
+  assert.equal(typed.screen.view().directions?.originText, "Harbour");
+  assert.deepEqual(typed.calls.routes, [], "a withdrawn fix plans nothing");
+  typed.screen.dispose();
+});
+
+test("search ranks around the visible map, rows show distance, and the search revision follows the query", async () => {
+  const f = fixture();
+  let options;
+  const search = f.host.connection().provider.search;
+  f.host.connection().provider.search = async (query, signal, input) => {
+    options = input;
+    return search(query, signal);
+  };
+  f.screen.setViewport({ latitude: 0, longitude: 20 }, 2);
+  f.screen.searchFor("Destination");
+  await settle();
+  assert.equal(options, undefined, "a world view is not a search area");
+  assert.equal(f.screen.view().results[0].distance, undefined);
+  assert.equal(f.screen.view().results[0].detail, "1 Destination Street");
+  const first = f.calls.contexts.at(-1);
+  assert.equal(first.kind, "map-search");
+  f.screen.refresh();
+  f.screen.refresh();
+  assert.equal(f.calls.contexts.at(-1).revision, first.revision);
+  f.screen.setViewport(ORIGIN, 14);
+  f.screen.searchFor("Coffee");
+  await settle();
+  assert.deepEqual(options, { near: ORIGIN });
+  assert.notEqual(f.calls.contexts.at(-1).revision, first.revision);
+
+  f.setDeviceFix(f.fix({ coordinate: ORIGIN }));
+  f.screen.recenter();
+  await settle();
+  f.screen.searchFor("Destination");
+  await settle();
+  const row = f.screen.view().results[0];
+  assert.equal(row.distance, guidanceDistance(1112));
+  assert.equal(row.detail, `${row.distance} · 1 Destination Street`);
+  f.screen.dispose();
+});
+
+test("a provider phone number is a separate, callable field; Recenter reflects camera following", async () => {
+  const f = fixture();
+  f.destination.phone = "+377 98 06 20 00";
+  await planned(f);
+  f.screen.back();
+  const place = f.screen.view().place;
+  assert.equal(place.meta, "Place");
+  assert.equal(place.phone, "+377 98 06 20 00");
+  assert.equal(place.phoneHref, "tel:+37798062000");
+  f.screen.openDirections();
+  f.screen.setOriginText(`${ORIGIN.latitude}, ${ORIGIN.longitude}`);
+  f.screen.planOrigin();
+  await settle();
+  f.screen.start();
+  f.emit(f.fix({ coordinate: ORIGIN }));
+  assert.equal(f.screen.view().navigation.cameraFollowing, true);
+  assert.equal(f.screen.view().map.overlay.follow, true);
+  f.screen.stopFollowing();
+  assert.equal(f.screen.view().navigation.cameraFollowing, false);
+  assert.equal(f.screen.view().map.overlay.follow, false);
+  f.screen.recenter();
+  assert.equal(f.screen.view().map.overlay.follow, true);
   f.screen.dispose();
 });

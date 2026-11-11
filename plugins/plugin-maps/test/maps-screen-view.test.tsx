@@ -278,7 +278,7 @@ describe("MapsScreen view", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     const origin = screen.getByRole("textbox", {
-      name: "Route origin coordinates",
+      name: "Starting point",
     });
     expect(
       origin.compareDocumentPosition(plane) & Node.DOCUMENT_POSITION_FOLLOWING,

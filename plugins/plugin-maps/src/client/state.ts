@@ -223,12 +223,17 @@ export class MapsController {
       item.label.toLocaleLowerCase().includes(text),
     );
   }
-  async search(query: string) {
+  /**
+   * `viewport` is the centre of the visible map when the host knows it. It ranks
+   * results ahead of the device position, because the user is looking there.
+   */
+  async search(query: string, viewport?: Coordinate) {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
     this.invalidateRoute();
     const text = query.trim();
     const near =
+      viewport ??
       this.state.position.value?.coordinate ??
       this.state.origin ??
       this.state.selection.value?.coordinate;
@@ -346,6 +351,13 @@ export class MapsController {
       throw new MapsFailure("unsupported", "This travel mode is unsupported.");
     this.invalidateRoute();
     this.update({ mode });
+  }
+  /** Withdraw an unanswered `locate`; its late fix or error is ignored. */
+  cancelLocate() {
+    ++this.locationGeneration;
+    void this.nativeLocation.stop().catch(() => {});
+    if (this.state.position.phase === "loading")
+      this.update({ position: idle(null) });
   }
   async locate() {
     const generation = ++this.locationGeneration;
