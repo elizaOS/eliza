@@ -9,7 +9,17 @@ export type BufferLike = NodeBuffer | Uint8Array;
 
 /** Decode hexadecimal text, ignoring non-hex separators. */
 export function fromHex(hex: string): BufferLike {
-	return NodeBuffer.from(hex.replace(/[^0-9a-fA-F]/g, ""), "hex");
+	const cleaned = hex.replace(/[^0-9a-fA-F]/g, "");
+	if (cleaned.length % 2 !== 0) {
+		// Buffer.from silently drops a trailing half-byte, so an odd-length
+		// value would decode to fewer bytes than its text claims. Callers
+		// that validate decoded lengths (e.g. settings isEncryptedV2)
+		// would then accept a malformed value; reject it here instead.
+		throw new Error(
+			`Invalid hex string: odd number of hex digits (${cleaned.length})`,
+		);
+	}
+	return NodeBuffer.from(cleaned, "hex");
 }
 
 export function fromString(
