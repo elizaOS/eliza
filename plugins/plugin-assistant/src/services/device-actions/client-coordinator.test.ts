@@ -2385,6 +2385,49 @@ describe("notes organize operations", () => {
       ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
       expect(f.effects()).toBe(1);
     }
+    const canonical = {
+      ...notesContext,
+      selectedObject: {
+        kind: "canonical-note-source",
+        id: "notes",
+        revision: "1",
+      },
+    };
+    const op = { type: "notes_list_filter", kind: "list" };
+    const f = organizeFixture(op, ["notes.list-filter.v1"]);
+    expect(
+      (await f.actions.pendingReview(notesContext, signal()))[0].proposal,
+    ).toBeNull();
+    expect((await f.actions.pending(canonical, signal()))[0].title).toBe(
+      "Show notes",
+    );
+    expect(
+      await f.actions.performRequested(
+        "other-message",
+        canonical,
+        signal(),
+        async () => true,
+      ),
+    ).toEqual([]);
+    expect(
+      await f.actions.performRequested(
+        "message",
+        canonical,
+        signal(),
+        async () => true,
+      ),
+    ).toMatchObject([{ status: "succeeded", committedChanges: [] }]);
+    expect(f.effects()).toBe(1);
+    const stale = organizeFixture(op, ["notes.list-filter.v1"]);
+    await stale.actions.pending(canonical, signal());
+    await expect(
+      stale.actions.approve(
+        "proposal",
+        { ...canonical, revision: canonical.revision + 1 },
+        signal(),
+      ),
+    ).rejects.toThrow();
+    expect(stale.effects()).toBe(0);
   });
 
   it("records only while Notes is open and reviews elsewhere only from Home or Notes", () => {
