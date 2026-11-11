@@ -16,7 +16,7 @@
     "plugins/plugin-calendar/test/eliza-calendar.pglite.test.ts",
     "plugins/plugin-calendar/quint/check-calendar-read-clock.mjs"
   ],
-  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. Selected-read conformance also checks Google's whole-second time filters; the discrete clock model does not emulate provider filtering. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption. The full personal-assistant composition uses the shared producer projection; its database-backed check requires that the local display time survives the canonical executor. Scheduled briefing conformance reads connected events through the canonical feed and retains the occurrence clock through dispatch. Creation models one 16:17 wall time and explicit/client/owner zone precedence for UTC, Los Angeles and New York winter offsets. The named real PGlite case checks the prompt context and persisted UTC interval. Existing provider authorization and mutation admission remain outside this clock projection.",
+  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. Selected-read conformance also checks Google's whole-second time filters; the discrete clock model does not emulate provider filtering. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption. The full personal-assistant composition uses the shared producer projection; its database-backed check requires that the local display time survives the canonical executor. Scheduled briefing conformance reads connected events through the canonical feed and retains the occurrence clock through dispatch. Creation models one 16:17 wall time and explicit/client/owner zone precedence for UTC, Los Angeles and New York winter offsets. The named real PGlite case checks the prompt context and persisted UTC interval. Existing provider authorization and mutation admission remain outside this clock projection. The outer planner clock varies independently and cannot override the current client or owner context. The source-backed create test covers absent and conflicting planner zones, an unspecified extracted zone, an explicit extracted New York zone, and stored UTC intervals. Native empty extraction refusal is covered separately.",
   "cases": [
     {
       "name": "local-display",
@@ -43,7 +43,8 @@
         "invariant",
         "RequestClockSelected",
         "NoProjectionBeforeResolution",
-        "StoredClockMatchesRequest"
+        "StoredClockMatchesRequest",
+        "ContextClockIgnoresPlanner"
       ],
       "temporal": [],
       "maxSteps": 4,
