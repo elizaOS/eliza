@@ -1269,19 +1269,6 @@
         "vitest": "5.1.0",
       },
     },
-    "packages/os/linux/installer": {
-      "name": "@elizaos/linux-installer-plan",
-      "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/os": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^25.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^5.1.0",
-      },
-    },
     "packages/os/setup": {
       "name": "@elizaos/setup",
       "version": "1.0.0",
@@ -4047,8 +4034,6 @@
     "@elizaos/lifeops-bench": ["@elizaos/lifeops-bench@workspace:packages/benchmarks/suites/lifeops-bench/runner"],
 
     "@elizaos/lifeops-quality-bench": ["@elizaos/lifeops-quality-bench@workspace:packages/benchmarks/suites/lifeops-bench/quality"],
-
-    "@elizaos/linux-installer-plan": ["@elizaos/linux-installer-plan@workspace:packages/os/linux/installer"],
 
     "@elizaos/macosreminders": ["@elizaos/macosreminders@workspace:plugins/plugin-native-reminders"],
 

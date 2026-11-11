@@ -12,7 +12,7 @@
 
 elizaOS is an open-source TypeScript framework and product stack for autonomous
 AI agents. This monorepo contains the core runtime, the Eliza app, the CLI,
-cloud services, native bridges, and first-party plugins. Linux and Android
+cloud services, native bridges, and first-party plugins. Android
 distribution tooling lives in [`packages/os`](packages/os/README.md).
 
 ## Choose a starting point
@@ -131,7 +131,7 @@ runtime and direct model-provider configuration remain first-class paths.
 
 ### elizaOS distributions
 
-[`packages/os`](packages/os/README.md) owns bootable Linux and AOSP distributions,
+[`packages/os`](packages/os/README.md) owns the bootable AOSP distribution,
 installers, release manifests, and OS toolchains. Application shells and native
 runtime bridges live in their owning app and plugin packages.
 

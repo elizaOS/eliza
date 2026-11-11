@@ -115,7 +115,6 @@
   "packageManager": "bun@1.4.2",
   "workspaces": [
     "packages/*",
-    "packages/os/linux/installer",
     "packages/os/setup",
     "packages/os/usb-installer",
     "packages/app/platforms/*",
