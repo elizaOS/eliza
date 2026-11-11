@@ -173,8 +173,12 @@ export class BrowserStorageVolume {
       ),
     };
   }
-  /** Every visible file, bounded. Hidden folders (the trash included) are skipped. */
-  private async walk(): Promise<StorageEntry[]> {
+  /** Every visible file, bounded (`truncated` when folders were left unread). Hidden folders
+   * (the trash included) are skipped. */
+  private async walk(): Promise<{
+    entries: StorageEntry[];
+    truncated: boolean;
+  }> {
     const out: StorageEntry[] = [],
       queue: [string, string][] = [["root", ""]];
     while (queue.length && out.length < WALK_MAX) {
@@ -187,9 +191,11 @@ export class BrowserStorageVolume {
         else out.push(this.row(p, e));
       }
     }
-    return out;
+    return { entries: out, truncated: queue.length > 0 };
   }
-  async category(input: unknown): Promise<{ entries: StorageEntry[] }> {
+  async category(
+    input: unknown,
+  ): Promise<{ entries: StorageEntry[]; truncated?: boolean }> {
     const category = CATEGORIES.find(({ id }) => id === input)?.id;
     if (!category) throw Error("Unknown category");
     if (category === "downloads") {
@@ -204,10 +210,12 @@ export class BrowserStorageVolume {
         throw error;
       }
     }
+    const { entries, truncated } = await this.walk();
     return {
-      entries: (await this.walk())
+      entries: entries
         .filter((e) => inCategory(category, e))
         .sort((a, b) => b.modified - a.modified),
+      truncated,
     };
   }
   /** Visible folders under the requested path, bounded like the file walk. */
@@ -237,15 +245,14 @@ export class BrowserStorageVolume {
   }
   async query(
     input: { folders?: boolean; folder?: string } = {},
-  ): Promise<{ entries: StorageEntry[] }> {
-    return {
-      entries:
-        input.folders === true
-          ? await this.walkFolders(
-              typeof input.folder === "string" ? input.folder : "",
-            )
-          : await this.walk(),
-    };
+  ): Promise<{ entries: StorageEntry[]; truncated?: boolean }> {
+    return input.folders === true
+      ? {
+          entries: await this.walkFolders(
+            typeof input.folder === "string" ? input.folder : "",
+          ),
+        }
+      : this.walk();
   }
 
   async createFolder(
@@ -746,12 +753,12 @@ export class BrowserStorageVolume {
         case "storageList":
           return { status: "ready", ...(await this.list(input.path ?? "")) };
         case "storageCategory": {
-          const { entries } = await this.category(input.category);
+          const { entries, truncated } = await this.category(input.category);
           return {
             status: "ready",
             ...(input.countOnly === true
               ? { count: entries.length }
-              : { entries }),
+              : { entries, ...(truncated ? { truncated } : {}) }),
           };
         }
         case "storageQuery":

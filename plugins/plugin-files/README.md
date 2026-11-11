@@ -15,6 +15,16 @@ that resolves after the host commits and renders Files. The open action reads
 storage permission independently of the view refresh. Leaving Files or
 cancelling the action retires its pending selection and releases any late grant.
 Changes to files still require the owner to review them in the active Files view.
+`files_open` also accepts `shown`, the position of an item in the filter results on
+screen; the view resolves it, so the filter still returns only a count.
+
+A host storage port can implement `storageOpen` to hand a file to another app.
+Files then opens types it cannot preview (video, audio, office files) that way and
+gives the preview `pv.canOpenWith` and `pv.openWith`. The host template renders the
+view output: `toolbar.disabled` and `toolbar.canSort`, `browse.loading` and
+`browse.deniedText`, `fd.loading`, `fd.emptyText` and `fd.note` (a listing that is
+only part of the folder), `filterEmptyText`, `filterLoading`, `filterNote` and
+`loadingText`.
 
 The `documents/*` exports provide scan correction and edge suggestions, reviewed
 text-layer validation, PDF generation, local OCR and revisioned draft persistence.

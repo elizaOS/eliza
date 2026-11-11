@@ -14,6 +14,7 @@ import {
   type FilesFilter,
   filterLabel,
   filterMatches,
+  filterTime,
   formatFree,
   formatSize,
   groupByFolder,
@@ -23,6 +24,7 @@ import {
   type StorageEntry,
   type StorageVolume,
   sortEntries,
+  TRASH_RETENTION_DAYS,
   type TrashEntry,
   trashDaysLeft,
   validateFilesFilter,
@@ -81,7 +83,7 @@ export type FilesStoragePort<Selection extends FilesSelection> = {
     folder?: string;
     from?: number;
     to?: number;
-  }): Promise<Result & { entries?: StorageEntry[] }>;
+  }): Promise<Result & { entries?: StorageEntry[]; truncated?: boolean }>;
   storageReviewedIdentities?(input: {
     paths: string[];
     volume?: string;
@@ -122,6 +124,8 @@ export type FilesStoragePort<Selection extends FilesSelection> = {
   }): Promise<Result & { count?: number }>;
   storageShare(input: { paths: string[]; volume?: string }): Promise<Result>;
   storageSelect(input: { path: string; volume?: string }): Promise<Selection>;
+  /** Hands the file to another app (`opened`). A host that previews it instead answers `selected`. */
+  storageOpen?(input: { path: string; volume?: string }): Promise<Selection>;
   storageWatch(input: {
     path?: string;
     category?: string;
@@ -211,8 +215,19 @@ type Dialog =
   /** The rows the owner is shown and confirms; Empty deletes only these. */
   | { kind: "empty"; items: TrashRow[] }
   | { kind: "trashItem"; item: TrashRow; confirmDelete: boolean };
-/** StorageBrowser.BATCH_MAX: ids per storageEmptyTrash call. */
+/** StorageBrowser.BATCH_MAX: ids or paths per storage call that changes files. */
 const EMPTY_BATCH = 500;
+/** Files one share sheet takes. */
+const SHARE_MAX = 100;
+/** A filter the owner left behind for longer than this is cleared when Files is shown again. */
+const FILTER_KEEP_MS = 10 * 60 * 1000;
+/** Types the host previews in Files. Every other type opens in another app when the host can. */
+const previews = (mimeType: string) =>
+  mimeType === "application/pdf" ||
+  mimeType === "application/json" ||
+  mimeType === "application/xml" ||
+  mimeType.startsWith("text/") ||
+  mimeType.startsWith("image/");
 
 /** Installs the Files browser over the files view. accept() opens a selected file in the
  * existing document preview; clearSelected() closes it. */
@@ -262,12 +277,21 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     categoryFolders: CategoryFolder[] | undefined,
     trashItems: TrashRow[] = [],
     loaded = false,
+    /** A listing refresh is in flight. It never blocks a tap. */
+    loading = false,
+    /** An open, share or change is in flight (`mutations` of them). */
     busy = false,
+    mutations = 0,
+    /** The listing is the bounded part of `listedCount` (when the storage counts it) items. */
+    truncated = false,
+    listedCount: number | undefined,
     error = "";
   let selection: Set<string> | null = null,
     filter: FilesFilter | null = null,
     pendingFilter: FilesFilter | null = null,
-    filterRows: StorageEntry[] = [];
+    filterRows: StorageEntry[] = [],
+    filterTruncated = false,
+    leftAt = 0;
   let dialog: Dialog | undefined,
     dialogTrigger: HTMLElement | null = null,
     opened: { path: string; volume?: string; selectionId?: string } | undefined;
@@ -281,6 +305,15 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     pressTimer: ReturnType<typeof setTimeout> | undefined,
     pressed = "";
   const repaint = () => api?.set({ filesBrowserRevision: ++revision });
+  /** Overlapping operations each end once; `busy` clears with the last one. */
+  const begin = () => {
+    mutations++;
+    busy = true;
+    repaint();
+  };
+  const end = () => {
+    busy = --mutations > 0;
+  };
   const modal = createInlineModal(
     () => {
       if (!busy) {
@@ -393,7 +426,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     const ticket = ++generation,
       at = place;
     const current = () => active && ticket === generation;
-    busy = true;
+    loading = true;
     repaint();
     try {
       if (!(await refreshState(current)) || !current()) return;
@@ -422,7 +455,13 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           up();
           return;
         }
-        if (!failed(value)) {
+        const ok = !failed(value);
+        truncated = ok && value.truncated === true;
+        listedCount =
+          truncated && "count" in value && typeof value.count === "number"
+            ? value.count
+            : undefined;
+        if (ok) {
           entries = value.entries || [];
           categoryFolders =
             "folders" in value && Array.isArray(value.folders)
@@ -450,7 +489,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       }
     } finally {
       if (ticket === generation) {
-        busy = false;
+        loading = false;
         repaint();
       }
     }
@@ -482,7 +521,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     if (!active) return;
     clearTimeout(changeTimer);
     changeTimer = setTimeout(() => {
-      if (active && !busy) void reload();
+      if (active && !busy && !loading) void reload();
       else if (active) changed();
     }, 150);
   };
@@ -493,15 +532,29 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     if (active) return;
     active = true;
     watching = "";
+    if (
+      filter &&
+      !pendingFilter &&
+      leftAt &&
+      Date.now() - leftAt > FILTER_KEEP_MS
+    )
+      clearFilter();
+    leftAt = 0;
     listening ??= storage
       .addListener("storageChanged", changed)
       .catch(() => ({ remove: async () => {} }));
     document.addEventListener("visibilitychange", visibility);
     void reload();
   }
+  const clearFilter = () => {
+    filter = null;
+    filterRows = [];
+    filterTruncated = false;
+  };
   function deactivate() {
     if (!active) return;
     active = false;
+    leftAt = Date.now();
     watching = "";
     clearTimeout(changeTimer);
     document.removeEventListener("visibilitychange", visibility);
@@ -520,6 +573,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     dialog = undefined;
     entries = [];
     categoryFolders = undefined;
+    truncated = false;
+    listedCount = undefined;
     loaded = false;
     error = "";
     api?.set({
@@ -547,24 +602,26 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     else show(place.kind === "folder" ? base.from : { kind: "browse" });
   }
 
+  /** A tap opens the file: in the Files preview, or in another app for a type Files cannot show. */
   async function openFile(entry: StorageEntry) {
     if (busy || !api) return;
     const currentApi = api,
       ticket = selectionEpoch;
     const current = () => ticket === selectionEpoch && currentApi.isActive();
-    busy = true;
-    repaint();
+    begin();
     try {
       const volume = place.kind === "folder" ? place.volume : undefined;
-      const value = await storage.storageSelect({
-        path: entry.path,
-        ...onVolume(volume),
-      });
+      const target = { path: entry.path, ...onVolume(volume) };
+      const value =
+        storage.storageOpen && !previews(entry.mimeType)
+          ? await storage.storageOpen(target)
+          : await storage.storageSelect(target);
       if (!current()) {
         if (value.selectionId)
           await forgetSelected(value.selectionId).catch(() => {});
         return;
       }
+      if (value.status === "opened" || value.status === "cancelled") return;
       if (value.status !== "selected") {
         failed(value as Result);
         return;
@@ -578,14 +635,33 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     } catch {
       if (current()) toast("This file could not open.");
     } finally {
-      busy = false;
+      end();
+      repaint();
+    }
+  }
+  /** "Open with" on the preview. The preview keeps its own selection. */
+  async function openElsewhere(path: string, volume?: string) {
+    if (busy || !storage.storageOpen) return;
+    begin();
+    try {
+      const value = await storage.storageOpen({ path, ...onVolume(volume) });
+      if (value.selectionId)
+        await forgetSelected(value.selectionId).catch(() => {});
+      else if (value.status !== "cancelled") failed(value as Result);
+    } catch {
+      toast("This file could not open.");
+    } finally {
+      end();
       repaint();
     }
   }
   async function share(paths: string[], volume?: string) {
     if (busy || !paths.length) return;
-    busy = true;
-    repaint();
+    if (paths.length > SHARE_MAX) {
+      toast(`Select up to ${SHARE_MAX} files to share.`);
+      return;
+    }
+    begin();
     try {
       const value = await storage.storageShare({ paths, ...onVolume(volume) });
       if (value.status !== "cancelled") failed(value);
@@ -593,20 +669,39 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (!(failure instanceof DOMException && failure.name === "AbortError"))
         toast("Sharing could not open.");
     } finally {
-      busy = false;
+      end();
       repaint();
     }
   }
-  const summarize = (outcomes: Outcome[], done: string, verb: string) => {
+  /** One storage change over many paths, in calls the storage accepts. Stops at the first
+   * refusal (already shown to the owner) and returns the outcomes confirmed before it. */
+  async function batched(
+    paths: string[],
+    call: (part: string[]) => Promise<Result & { outcomes?: Outcome[] }>,
+  ): Promise<Outcome[] | null> {
+    const outcomes: Outcome[] = [];
+    for (let at = 0; at < paths.length; at += EMPTY_BATCH) {
+      const value = await call(paths.slice(at, at + EMPTY_BATCH));
+      if (failed(value)) return at ? outcomes : null;
+      outcomes.push(...(value.outcomes || []));
+    }
+    return outcomes;
+  }
+  const summarize = (
+    outcomes: Outcome[],
+    done: string,
+    verb: string,
+    total = outcomes.length,
+  ) => {
     const ok = outcomes.filter((o) => o.status === done).length,
       renamed = outcomes.filter(
         (o) => o.status === done && o.to && baseName(o.to) !== baseName(o.path),
       ).length;
-    if (ok === outcomes.length)
+    if (ok === total)
       toast(
         `${verb} ${countLabel(ok)}` + (renamed ? ` · ${renamed} renamed` : ""),
       );
-    else toast(`${verb} ${ok} of ${outcomes.length}`);
+    else toast(`${verb} ${ok} of ${total}`);
   };
   async function transfer(
     paths: string[],
@@ -614,27 +709,27 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     copy: boolean,
     volume?: string,
   ) {
-    busy = true;
-    repaint();
+    begin();
     try {
-      const value = await storage.storageTransfer({
-        paths,
-        dest,
-        copy,
-        ...onVolume(volume),
-      });
-      if (failed(value)) return false;
+      const outcomes = await batched(paths, (part) =>
+        storage.storageTransfer({
+          paths: part,
+          dest,
+          copy,
+          ...onVolume(volume),
+        }),
+      );
+      if (!outcomes) return false;
       summarize(
-        value.outcomes || [],
+        outcomes,
         copy ? "copied" : "moved",
         copy ? "Copied" : "Moved",
+        paths.length,
       );
       if (
         !copy &&
         opened &&
-        (value.outcomes || []).some(
-          (o) => o.path === opened?.path && o.status === "moved",
-        )
+        outcomes.some((o) => o.path === opened?.path && o.status === "moved")
       )
         closePreview();
       return true;
@@ -642,7 +737,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       toast("The operation could not be confirmed.");
       return false;
     } finally {
-      busy = false;
+      end();
       selection = null;
       dialog = undefined;
       void reload();
@@ -650,15 +745,15 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   }
   async function trash(paths: string[], volume?: string) {
     if (busy || !paths.length) return;
-    busy = true;
-    repaint();
+    begin();
     try {
-      const value = await storage.storageTrash({ paths, ...onVolume(volume) });
-      if (failed(value)) return;
-      const outcomes = value.outcomes || [],
-        ids = outcomes.flatMap((o) =>
-          o.status === "trashed" && o.to ? [o.to] : [],
-        );
+      const outcomes = await batched(paths, (part) =>
+        storage.storageTrash({ paths: part, ...onVolume(volume) }),
+      );
+      if (!outcomes) return;
+      const ids = outcomes.flatMap((o) =>
+        o.status === "trashed" && o.to ? [o.to] : [],
+      );
       if (
         opened &&
         outcomes.some((o) => o.path === opened?.path && o.status === "trashed")
@@ -666,31 +761,38 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         closePreview();
       if (ids.length)
         api?.toast(
-          ids.length === outcomes.length
+          ids.length === paths.length
             ? `${countLabel(ids.length)} moved to Trash`
-            : `${ids.length} of ${outcomes.length} moved to Trash`,
+            : `${ids.length} of ${paths.length} moved to Trash`,
           { undo: () => void restore(ids, volume) },
         );
       else toast("Nothing was moved to Trash.");
     } catch {
       toast("The operation could not be confirmed.");
     } finally {
-      busy = false;
+      end();
       selection = null;
       void reload();
     }
   }
+  /** Undo and Restore. A long Undo list goes back in calls the storage accepts. */
   async function restore(ids: string[], volume?: string) {
-    busy = true;
-    repaint();
+    begin();
     try {
-      const value = await storage.storageRestore({ ids, ...onVolume(volume) });
-      if (!failed(value))
-        summarize(value.outcomes || [], "restored", "Restored");
+      const outcomes: Outcome[] = [];
+      for (let at = 0; at < ids.length; at += EMPTY_BATCH) {
+        const value = await storage.storageRestore({
+          ids: ids.slice(at, at + EMPTY_BATCH),
+          ...onVolume(volume),
+        });
+        if (failed(value)) return;
+        outcomes.push(...(value.outcomes || []));
+      }
+      summarize(outcomes, "restored", "Restored");
     } catch {
       toast("The operation could not be confirmed.");
     } finally {
-      busy = false;
+      end();
       dialog = undefined;
       void reload();
     }
@@ -698,8 +800,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   /** Permanent deletion of the rows the owner confirmed, on each row's volume. Items that reached
    * Trash after the confirmation was shown are not deleted. */
   async function emptyTrash(items: TrashRow[]) {
-    busy = true;
-    repaint();
+    begin();
     try {
       const byVolume = new Map<string | undefined, string[]>();
       for (const row of items)
@@ -719,7 +820,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     } catch {
       toast("The operation could not be confirmed.");
     } finally {
-      busy = false;
+      end();
       dialog = undefined;
       void reload();
     }
@@ -727,8 +828,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   async function nameDialog() {
     const d = dialog;
     if (!d || d.kind !== "name" || busy) return;
-    busy = true;
-    repaint();
+    begin();
     try {
       const value =
         d.op === "create"
@@ -752,7 +852,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     } catch {
       toast("The operation could not be confirmed.");
     } finally {
-      busy = false;
+      end();
       void reload();
     }
   }
@@ -804,7 +904,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     api?.set({ open: null });
   }
 
-  /** Its own counter: a filter never takes a reload's ticket, so the reload still clears `busy`. */
+  /** Its own counter: a filter never takes a reload's ticket, so the reload still clears `loading`. */
   async function runFilter(
     value: FilesFilter,
     admitted: () => boolean,
@@ -830,13 +930,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           : value.kind === "folder"
             ? { folders: true }
             : {}),
-        ...(value.from ? { from: Date.parse(value.from) } : {}),
-        ...(value.to
-          ? {
-              to:
-                Date.parse(value.to) + (value.to.length === 10 ? 86399999 : 0),
-            }
-          : {}),
+        ...(value.from ? { from: filterTime(value.from) } : {}),
+        ...(value.to ? { to: filterTime(value.to, true) } : {}),
       });
       if (!current()) return;
       if (query.status === "ready") {
@@ -844,11 +939,16 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           (query.entries || []).filter((entry) => filterMatches(value, entry)),
           "date",
         );
+        filterTruncated = query.truncated === true;
         return filterRows.length;
       }
       filterRows = [];
+      filterTruncated = false;
     } catch {
-      if (current()) filterRows = [];
+      if (current()) {
+        filterRows = [];
+        filterTruncated = false;
+      }
     }
   }
   const accessRequired = {
@@ -882,6 +982,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (state?.access !== "granted") return accessRequired;
       filter = value;
       filterRows = [];
+      filterTruncated = false;
       place = { kind: "browse" };
       selection = null;
       dialog = undefined;
@@ -891,7 +992,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (!current() || count === undefined) return unavailable;
       return {
         status: "succeeded",
-        summary: `Showing ${countLabel(count)} in Files.`,
+        summary: filterTruncated
+          ? `Showing the first ${countLabel(count)} in Files. More files match.`
+          : `Showing ${countLabel(count)} in Files.`,
       };
     } finally {
       if (pendingFilter === value) {
@@ -959,7 +1062,26 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         if (!current()) return stale;
         if (!state) return unavailable;
         if (state.access !== "granted") return accessRequired;
-        const value = await storage.storageSelect({ path: op.path });
+        let path: string;
+        if ("shown" in op) {
+          // The row at that position in the filter results on screen.
+          const row =
+            filter && !pendingFilter ? filterRows[op.shown - 1] : undefined;
+          if (!row)
+            return {
+              status: "failed",
+              summary: "Files does not show that item. Nothing was opened.",
+            };
+          if (row.directory) {
+            go({ kind: "folder", path: row.path });
+            return {
+              status: "succeeded",
+              summary: "Opened the folder in Files.",
+            };
+          }
+          path = row.path;
+        } else path = op.path;
+        const value = await storage.storageSelect({ path });
         if (!current()) {
           if (value.selectionId)
             await forgetSelected(value.selectionId).catch(() => {});
@@ -970,7 +1092,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             status: "failed",
             summary: "That file is not there. Nothing was opened.",
           };
-        opened = { path: op.path, selectionId: value.selectionId };
+        opened = { path, selectionId: value.selectionId };
         await accept("files", value, currentApi, false);
         if (!current())
           return {
@@ -1168,17 +1290,19 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       };
       currentApi.set({ menu: false });
     };
+    // Sort and view act on a listing. Browse has none, so it offers neither.
+    const listing = place.kind === "category" || place.kind === "folder";
     out.toolbar = {
-      ready: granted && !busy && !!primary && place.kind !== "trash",
+      ready: granted && !!primary && place.kind !== "trash",
+      disabled: busy,
       canCreate: place.kind === "browse" || place.kind === "folder",
+      canSort: listing,
       newFolder,
       sort: () => {
-        if (place.kind === "browse") go(rootFolder);
-        currentApi.set({ menu: true });
+        if (listing && !busy) currentApi.set({ menu: true });
       },
       toggleView: () => {
-        if (place.kind === "browse") go(rootFolder);
-        currentApi.set({ grid: !state.grid });
+        if (listing && !busy) currentApi.set({ grid: !state.grid });
       },
       viewLabel: state.grid ? "List view" : "Grid view",
       viewIcon: state.grid ? ICONS.rows : ICONS.grid,
@@ -1196,6 +1320,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       ready: granted && !filter,
       denied: access === "denied",
       deniedLabel: legacy ? "Allow storage access" : "Allow all files access",
+      deniedText: "Files shows your files and folders after you allow access.",
+      loading: access === "unknown",
       unavailable: access === "unavailable" || access === "unsupported",
       grant: async () => {
         try {
@@ -1241,10 +1367,13 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     };
     out.chip = filter
       ? {
-          label: filterLabel(filter) + " · " + filterRows.length,
+          label:
+            filterLabel(filter) +
+            " · " +
+            filterRows.length +
+            (filterTruncated ? "+" : ""),
           clear: () => {
-            filter = null;
-            filterRows = [];
+            clearFilter();
             repaint();
           },
         }
@@ -1252,7 +1381,14 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     out.filterRows = filter
       ? filterRows.map((entry) => entryRow(entry, true))
       : [];
-    out.filterEmpty = !!filter && !busy && filterRows.length === 0;
+    const filtering = !!filter && (!!pendingFilter || loading);
+    out.filterEmpty = !!filter && !filtering && filterRows.length === 0;
+    out.filterEmptyText = "No files match.";
+    out.filterLoading = filtering && filterRows.length === 0;
+    out.filterNote = filterTruncated
+      ? `Showing the first ${countLabel(filterRows.length)}. More files match.`
+      : "";
+    out.loadingText = "Loading…";
     out.storageBarStyle = "display:none";
 
     // Category, folder and trash share one detail page.
@@ -1352,7 +1488,19 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       out.fd = {
         name: title,
         items,
-        empty: loaded && !busy && items.length === 0 && !error,
+        empty: loaded && !loading && items.length === 0 && !error,
+        emptyText:
+          at.kind === "trash"
+            ? `Trash is empty. Items in Trash are deleted after ${TRASH_RETENTION_DAYS} days.`
+            : at.kind === "category"
+              ? `No ${title.toLowerCase()}`
+              : "This folder is empty",
+        loading: !loaded && !error,
+        note: truncated
+          ? listedCount
+            ? `Showing the newest ${countLabel(entries.length)} of ${listedCount}.`
+            : `Showing ${countLabel(entries.length)}. There are more.`
+          : "",
         emptyD:
           at.kind === "trash"
             ? ICONS.trash
@@ -1507,6 +1655,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       out.pv.move = (event: Event) =>
         beginDest("move", [path], event?.currentTarget, volume);
       out.pv.del = () => void trash([path], volume);
+      out.pv.canOpenWith = !!storage.storageOpen;
+      out.pv.openWith = () => void openElsewhere(path, volume);
       out.pv.startRename = (event: Event) => {
         dialogTrigger =
           event?.currentTarget instanceof HTMLElement
@@ -1686,8 +1836,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       return true;
     }
     if (filter) {
-      filter = null;
-      filterRows = [];
+      clearFilter();
       repaint();
       return true;
     }

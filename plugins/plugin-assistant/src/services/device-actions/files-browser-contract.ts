@@ -7,7 +7,9 @@
  *
  * - `files_filter` narrows what Files shows (a dismissible chip). It reads
  *   names, kinds, folders and dates only and changes nothing.
- * - `files_open` shows one file in Files. It changes nothing.
+ * - `files_open` shows one file in Files. It changes nothing. The file is a path,
+ *   or `shown`: the position (1 is the first) of an item in the filter results on
+ *   screen. The phone resolves the position, so no file name leaves the phone.
  * - `files_share`, `files_move`, `files_trash` and `files_folder_create` are
  *   proposals the owner reviews with Files on screen before anything changes or
  *   leaves the phone. A move keeps both files when the name is taken; trash is
@@ -58,6 +60,7 @@ export type FilesIdentity = string;
 export type FilesAgentOperation =
   | FilesFilterOperation
   | { type: "files_open"; path: string }
+  | { type: "files_open"; shown: number }
   | { type: "files_share"; paths: string[] }
   | {
       type: "files_move";
@@ -185,8 +188,16 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
       return out;
     }
     case "files_open":
-      exact(op, ["type", "path"]);
-      return { type: "files_open", path: validFilesPath(op.path) };
+      exact(op, ["type", "path", "shown"]);
+      if (op.shown === undefined)
+        return { type: "files_open", path: validFilesPath(op.path) };
+      if (
+        op.path !== undefined ||
+        !Number.isSafeInteger(op.shown) ||
+        (op.shown as number) < 1
+      )
+        throw Error("Invalid shown item");
+      return { type: "files_open", shown: op.shown as number };
     case "files_share":
       exact(op, ["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
@@ -269,7 +280,10 @@ export function describeFilesOperation(op: FilesAgentOperation): {
     case "files_filter":
       return { title: "Show files", description: filesFilterLabel(op) };
     case "files_open":
-      return { title: "Open file", description: place(op.path) };
+      return {
+        title: "Open file",
+        description: "shown" in op ? `Shown item ${op.shown}` : place(op.path),
+      };
     case "files_share":
       return {
         title: `Share ${count(op.paths.length)}`,
@@ -333,10 +347,16 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,
-    required: ["type", "path"],
+    required: ["type"],
     properties: {
       type: { type: "string", enum: ["files_open"] },
       path: filesPath,
+      shown: {
+        type: "integer",
+        minimum: 1,
+        description:
+          "Instead of path: position of an item in the files_filter results on screen; 1 is the first",
+      },
     },
   },
   ...(["files_share", "files_trash"] as const).map((type) => ({
@@ -373,4 +393,4 @@ export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   },
 ];
 export const FILES_GUIDANCE =
-  "Phone Files (requires files.browser.v1): to find files, use files_filter with name words, a kind, a folder or a modified date range; it only narrows what Files shows and returns a count, never file contents. files_open shows one file. files_share, files_move, files_trash and files_folder_create are reviewed with Files on screen; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed; never invent paths.";
+  "Phone Files (requires files.browser.v1): to find files, use files_filter with name words, a kind, a folder or a modified date range; it only narrows what Files shows and returns a count, never file names or contents. files_open shows one file: give its path, or shown (1 is the first) for an item in the filter results on screen, for example shown 1 when the filter found one file. files_share, files_move, files_trash and files_folder_create are reviewed with Files on screen; a move never replaces a file with the same name, and Trash is restorable for 30 days. Use only paths the owner named or Files showed; never invent paths.";
