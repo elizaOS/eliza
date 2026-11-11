@@ -114,6 +114,11 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo docker image prune -a -f || true
 
+      - name: Configure hosted Ubuntu package archive
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash packages/scripts/github/configure-hosted-apt.sh
+
       - name: Install jq
         # Used by docker-ci-smoke's boot-KPI budget parser after the image is
         # built. Keep it explicit so the real boot gate reports the committed
