@@ -1,7 +1,7 @@
-import { describe, expect, it } from "bun:test";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
 import { NotesService } from "../service.js";
 import { NotesStore } from "../store.js";
 
