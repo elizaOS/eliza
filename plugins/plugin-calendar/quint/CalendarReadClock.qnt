@@ -1,4 +1,4 @@
-// Calendar read-window and display clock selection. No provider writes.
+// Calendar read-window and display clock selection.
 // UTC instants remain canonical; display uses the current request's zone.
 module CalendarReadClock {
   // 0=UTC, 1=Los Angeles, 2=New York, -1=absent/invalid client hint.
@@ -43,6 +43,37 @@ module CalendarReadClock {
   val DisplayOffsetMatchesDate = phase != 2 or shownMinutes == 1140 + offset(expectedZone, summer)
   val WinterPacificIsEleven = not(phase == 2 and selected == 1 and not(summer)) or shownMinutes == 660
   val invariant = CanonicalInstantUnchanged and RequestClockSelected and DisplayOffsetMatchesDate and WinterPacificIsEleven
+}
+
+// Creation clock projection only. Existing mutation admission remains external.
+// A wall time of 16:17 crosses to the next UTC day in Los Angeles in winter.
+module CalendarCreateClock {
+  var ui: int
+  var explicit: int
+  var owner: int
+  var selected: int
+  var phase: int
+  var utcMinutes: int
+  val expectedZone = if (explicit >= 0) explicit else if (ui >= 0) ui else owner
+  pure def offset(zone: int): int = if (zone == 1) -480 else if (zone == 2) -300 else 0
+  action init = {
+    nondet client = Set(-1, 0, 1, 2).oneOf()
+    nondet requested = Set(-1, 0, 1, 2).oneOf()
+    nondet configured = Set(0, 1, 2).oneOf()
+    all { ui' = client, explicit' = requested, owner' = configured,
+      selected' = -1, phase' = 0, utcMinutes' = -1 }
+  }
+  action resolve = all { phase == 0, phase' = 1, selected' = expectedZone,
+    ui' = ui, explicit' = explicit, owner' = owner, utcMinutes' = utcMinutes }
+  action project = all { phase == 1, phase' = 2, utcMinutes' = 977 - offset(selected),
+    ui' = ui, explicit' = explicit, owner' = owner, selected' = selected }
+  action done = all { phase == 2, phase' = phase, utcMinutes' = utcMinutes,
+    ui' = ui, explicit' = explicit, owner' = owner, selected' = selected }
+  action step = any { resolve, project, done }
+  val RequestClockSelected = phase == 0 or selected == expectedZone
+  val NoProjectionBeforeResolution = phase == 2 or utcMinutes == -1
+  val StoredClockMatchesRequest = phase != 2 or utcMinutes == 977 - offset(expectedZone)
+  val invariant = RequestClockSelected and NoProjectionBeforeResolution and StoredClockMatchesRequest
 }
 
 // Whole-second provider filtering for one selected canonical event. Identity and
