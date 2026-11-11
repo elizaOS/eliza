@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
+import { resolvePhoneCalendarRange } from "@elizaos/contracts";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { expect, test } from "vitest";
 import { approvalDispatchControlTable } from "../../plugin-sql/src/schema/approvalDispatchControl";
 import { approvalRequestTable } from "../../plugin-sql/src/schema/approvalRequests";
-import { DeviceActionService } from "../src/services/device-actions/service";
+import {
+  DeviceActionService,
+  deviceProposalDigest,
+} from "../src/services/device-actions/service";
 
 async function createTable(pg: PGlite, table: any) {
   const c = getTableConfig(table),
@@ -34,7 +38,11 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
       "CREATE UNIQUE INDEX approvals_unique ON approval_requests(agent_id,idempotency_key) WHERE idempotency_key IS NOT NULL; CREATE SCHEMA workflow; CREATE TABLE workflow.embedded_executions(agent_id uuid,id text,workflow_id text,execution jsonb); CREATE TABLE workflow.embedded_workflows(agent_id uuid,id text,version_id text,workflow jsonb); CREATE TABLE workflow.workflow_revisions(agent_id uuid,workflow_id text,version_id text,workflow jsonb);",
     );
     const agentId = randomUUID(),
-      runtime = { agentId, adapter: { db: drizzle(pg) } } as any,
+      runtime = {
+        agentId,
+        adapter: { db: drizzle(pg) },
+        getService: () => null,
+      } as any,
       service = new DeviceActionService(runtime),
       owner = randomUUID(),
       subject = randomUUID(),
@@ -135,13 +143,141 @@ test("canonical workflow proposes only to its enrolled paired subject and refuse
         target: { ...target, enrollmentId: randomUUID() },
       }),
     ).rejects.toThrow();
+    // A trusted phone refusal settles the real durable claim without a result.
+    // The coordinator suite separately proves that only its typed refusal emits this code.
+    const proposalDigest = deviceProposalDigest(proposal);
+    await service.decide(credential, proposal.id, proposalDigest, true);
+    const claimed = await service.claim(
+      credential,
+      proposal.id,
+      proposalDigest,
+    );
+    const refusal = {
+      outcome: "failed",
+      code: "DEVICE_NOT_DISPATCHED",
+      operationId: randomUUID(),
+    };
+    const refused = await service.receipt(
+      credential,
+      proposal.id,
+      proposalDigest,
+      claimed.execution!.attemptId,
+      refusal,
+    );
+    expect(refused.state).toBe("done");
+    expect(refused.execution?.providerReceipt).toMatchObject(refusal);
+    expect(
+      (
+        await service.receipt(
+          credential,
+          proposal.id,
+          proposalDigest,
+          claimed.execution!.attemptId,
+          refusal,
+        )
+      ).execution?.attemptId,
+    ).toBe(claimed.execution!.attemptId);
+    await expect(
+      service.claim(credential, proposal.id, proposalDigest),
+    ).rejects.toThrow();
+    await expect(
+      service.receipt(
+        credential,
+        proposal.id,
+        proposalDigest,
+        claimed.execution!.attemptId,
+        { outcome: "unknown", operationId: refusal.operationId },
+      ),
+    ).rejects.toThrow();
+    const range = {
+      calendarIds: ["selected-calendar"],
+      days: 1,
+      timeZone: "UTC",
+      maximumEvents: 10,
+    };
+    const calendarSpec = {
+      ...spec,
+      steps: [
+        { id: "agenda", kind: "Read", operation: "calendar_range", range },
+      ],
+    };
+    await pg.query(
+      "UPDATE workflow.embedded_workflows SET workflow=$1 WHERE id=$2",
+      [
+        JSON.stringify({
+          metadata: {
+            elizaOwnerEntityId: owner,
+            elizaPhoneWorkflowSpec: JSON.stringify(calendarSpec),
+          },
+        }),
+        workflowId,
+      ],
+    );
+    const calendarDispatch = {
+      target,
+      binding: {
+        ...binding,
+        stepId: "agenda",
+        specDigest: createHash("sha256")
+          .update(JSON.stringify(calendarSpec))
+          .digest("hex"),
+      },
+      operation: {
+        type: "read_calendar_range",
+        ...resolvePhoneCalendarRange(range),
+      },
+    } as const;
+    // Older peers can read absolute windows, but cannot review the new spec.
+    await service.register(credential, "Synthetic device", 3, owner);
+    await expect(
+      service.proposeForWorkflow(owner, calendarDispatch),
+    ).rejects.toThrow();
+    expect(
+      (await pg.query("SELECT id FROM approval_requests")).rows,
+    ).toHaveLength(1);
+    await service.register(credential, "Synthetic device", 4, owner);
+    const calendarProposal = await service.proposeForWorkflow(
+      owner,
+      calendarDispatch,
+    );
+    expect(calendarProposal.state).toBe("pending");
+    expect((await service.proposeForWorkflow(owner, calendarDispatch)).id).toBe(
+      calendarProposal.id,
+    );
+    for (const operation of [
+      { ...calendarDispatch.operation, calendarIds: ["other-calendar"] },
+      { ...calendarDispatch.operation, maximumEvents: 200 },
+      {
+        ...calendarDispatch.operation,
+        start: "2020-01-01T00:00:00.000Z",
+        end: "2020-01-02T00:00:00.000Z",
+      },
+    ]) {
+      await expect(
+        service.proposeForWorkflow(owner, { ...calendarDispatch, operation }),
+      ).rejects.toThrow();
+    }
+    await service.register(credential, "Synthetic device", 3, owner);
+    await expect(
+      service.proposeForWorkflow(owner, calendarDispatch),
+    ).rejects.toThrow();
+    const calendarDigest = deviceProposalDigest(calendarProposal);
+    await expect(
+      service.decide(credential, calendarProposal.id, calendarDigest, true),
+    ).rejects.toThrow();
+    await service.register(credential, "Synthetic device", 4, owner);
+    await service.decide(credential, calendarProposal.id, calendarDigest, true);
+    await service.register(credential, "Synthetic device", 3, owner);
+    await expect(
+      service.claim(credential, calendarProposal.id, calendarDigest),
+    ).rejects.toThrow();
     await pg.query(
       'UPDATE workflow.embedded_executions SET execution=execution || \'{"finished":true,"status":"cancelled"}\'::jsonb',
     );
     await expect(service.proposeForWorkflow(owner, dispatch)).rejects.toThrow();
     expect(
       (await pg.query("SELECT id FROM approval_requests")).rows,
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   } finally {
     await pg.close();
   }
