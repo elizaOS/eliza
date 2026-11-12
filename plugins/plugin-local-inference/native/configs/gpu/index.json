@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "comment": "Index of per-GPU autotune configs. Consumed by gpu-autotune.ts.",
+  "comment": "Index of per-GPU autotune configs.",
   "configs": [
     { "id": "rtx-3090", "file": "3090.json" },
     { "id": "rtx-4090", "file": "4090.json" },
