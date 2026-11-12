@@ -63,8 +63,8 @@ Package build/test commands are in each package's README. Use
 
 Bun 1.4.2 (`packageManager`) runs the product, the build, `bun run verify`, and
 the repository scripts: run a script with `bun <script>.ts`. Node 24.15.0
-(`engines.node`) is needed only for the lanes below. They fail on Bun 1.4.2, or
-could not be shown to pass on it:
+(`engines.node`) is needed only for the lanes below. They fail on Bun 1.4.2,
+could not be shown to pass on it, or must prove behavior on Node:
 
 - Vitest. `packages/scripts/run-vitest.ts` always starts Vitest on Node. Bun
   fails suites that Node passes (`fetch` of an uppercase `DATA:` URL,
@@ -81,6 +81,22 @@ could not be shown to pass on it:
   `run-release-check.ts`) and the `node:test` half of `run-script-tests.ts`.
 - CI: the Bun download in `.github/actions/setup-bun-workspace`, and workflow
   jobs that install no Bun.
+- Syntax checks. `node --check` parses a file without running it; `bun --check`
+  runs the file. The Pages Functions checks in `cloud-cf-release.yml` and
+  `pr-validation.yml` use Node.
+- Packed-package consumer checks (`packages/core/scripts/verify-package.ts`,
+  the `plugin-elizacloud` `verify-built-package.ts`, and
+  `packages/ui/scripts/verify-batch-voice-package.ts`). The packages declare
+  `engines.node`, so the consumer runs on a real Node found on `PATH`.
+- Install scripts of published packages (`plugins/plugin-computeruse`
+  `postinstall`), because npm users have no Bun.
+- Native and device build paths that still start `node` and were not proven on
+  Bun: the `packages/os/android` and `packages/os/linux` Makefiles, AOSP and
+  Pixel scripts in `packages/os/scripts/android`, `compile-libllama.ts` (patch
+  step), the iOS xcframework and engine scripts (`build-xcframework.ts`,
+  `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, Mac App Store
+  signing in `desktop-build.ts`, and the SMS gateway and Cloud gateway
+  maintenance scripts.
 
 ## Benchmark
 

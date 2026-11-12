@@ -43,9 +43,10 @@ nested `AGENTS.md` files.
 - Preserve unrelated changes in this shared working tree.
 - Use pinned Bun 1.4.2 for the product, builds, and repository scripts
   (`bun <script>.ts`). Node 24.15.0 runs only the lanes that fail on Bun:
-  Vitest, Quint conformance replays, the remaining `node --test` suites, and
-  Wrangler. See [README.md](README.md#runtimes). Use ESM and the repository's
-  Biome config.
+  Vitest, Quint conformance replays, the remaining `node --test` suites,
+  Wrangler, `node --check`, packed-package consumer checks, published install
+  scripts, and some native and device build paths. See
+  [README.md](README.md#runtimes). Use ESM and the repository's Biome config.
 - Keep core independent of hosts; hosts compose assistant behavior, storage,
   and model providers. Validate untrusted input at boundaries.
 - Preserve authorization, tenant isolation, cancellation, and effect receipts.

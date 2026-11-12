@@ -1722,7 +1722,7 @@ function writeReport(reportPath, report) {
 
 function removeDirectoryRecursive(targetPath) {
   try {
-    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+    execFileSync("bun", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
       encoding: "utf8",
       stdio: "pipe",
     });

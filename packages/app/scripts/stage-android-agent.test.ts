@@ -597,6 +597,8 @@ test("ABI restaging removes only unselected owned runtime directories", () => {
   try {
     fs.mkdirSync(assetsAgentDir, { recursive: true });
     fs.writeFileSync(path.join(assetsAgentDir, "unrelated"), "keep");
+    // A retired ABI left by an older checkout is pruned even when all targets stay.
+    fs.mkdirSync(path.join(assetsAgentDir, "riscv64"));
     stage(undefined);
     stage("arm64-v8a");
     stage("x86_64");

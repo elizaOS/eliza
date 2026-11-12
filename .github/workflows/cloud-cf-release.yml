@@ -2257,7 +2257,7 @@ jobs:
             --build-output-directory web-dist
           test -s "$functions_bundle/index.js"
           install -m 0644 "$functions_bundle/index.js" web-dist/_worker.js
-          bun --check web-dist/_worker.js
+          node --check web-dist/_worker.js
 
       - name: Build self-contained Pages deployment helper
         run: |
@@ -2265,7 +2265,7 @@ jobs:
           bun build packages/cloud/scripts/pages-native-auth-callbacks.ts \
             --target=bun --conditions=eliza-source \
             --outfile=packages/app/pages-native-auth-callbacks.mjs
-          bun --check packages/app/pages-native-auth-callbacks.mjs
+          node --check packages/app/pages-native-auth-callbacks.mjs
 
       - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -2494,9 +2494,9 @@ jobs:
         run: |
           set -euo pipefail
           test -s web-dist/_worker.js
-          bun --check web-dist/_worker.js
+          node --check web-dist/_worker.js
           test -s pages-native-auth-callbacks.mjs
-          bun --check pages-native-auth-callbacks.mjs
+          node --check pages-native-auth-callbacks.mjs
 
       - name: Legacy inline fallback - install dependencies
         if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}

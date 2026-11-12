@@ -134,6 +134,21 @@ export function resolveExternalNode({
   );
 }
 
+/**
+ * Real Node.js for consumer checks of packages that declare `engines.node`;
+ * a packed package that only loads on Bun must fail them.
+ */
+export function requireRealNode(repoRoot = process.cwd()) {
+  if (!process.versions.bun) return process.execPath;
+  const node = resolveExternalNode({ repoRoot, rejectBun: true });
+  if (!node) {
+    throw new Error(
+      "Node.js is required for packed-package consumer checks; put node on PATH or set ELIZA_TEST_NODE",
+    );
+  }
+  return node;
+}
+
 export function buildTestRuntimeEnv(
   baseEnv: NodeJS.ProcessEnv = process.env,
   options: { repoRoot?: string; execPath?: string } = {},

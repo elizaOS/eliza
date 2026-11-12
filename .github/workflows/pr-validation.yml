@@ -251,7 +251,7 @@ jobs:
               --build-output-directory web-dist
             test -s "$artifact_root/functions/index.js"
             install -m 0644 "$artifact_root/functions/index.js" web-dist/_worker.js
-            bun --check web-dist/_worker.js
+            node --check web-dist/_worker.js
           )
           test -s packages/app/web-dist/index.html
           test -s "$artifact_root/api/index.js"

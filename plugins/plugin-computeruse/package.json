@@ -30,7 +30,7 @@
     "package.json"
   ],
   "scripts": {
-    "postinstall": "bun -e \"import { existsSync } from 'node:fs'; await import(existsSync('../../packages/scripts/plugins/plugin-computeruse/ensure-platform-deps.ts') ? '../../packages/scripts/plugins/plugin-computeruse/ensure-platform-deps.ts' : './dist/ensure-platform-deps.js')\"",
+    "postinstall": "node --input-type=module -e \"import { existsSync } from 'node:fs'; await import(existsSync('../../packages/scripts/plugins/plugin-computeruse/ensure-platform-deps.ts') ? '../../packages/scripts/plugins/plugin-computeruse/ensure-platform-deps.ts' : './dist/ensure-platform-deps.js')\"",
     "build": "bun run build.ts && bun run build:views",
     "build:views": "vite build --config vite.config.views.ts",
     "test": "vitest run --config vitest.config.ts",

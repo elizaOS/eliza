@@ -127,7 +127,7 @@ function isProcessAlive(pid) {
 }
 
 function removePathRecursive(targetPath, label = "path cleanup") {
-  const result = spawnSync("node", [CLEANUP_HELPER_SCRIPT, targetPath], {
+  const result = spawnSync("bun", [CLEANUP_HELPER_SCRIPT, targetPath], {
     cwd: ROOT,
     encoding: "utf8",
     stdio: "pipe",

@@ -26,7 +26,7 @@ const globalToolCache = process.env.ELIZA_CLEAN_GLOBAL_TOOL_CACHE === "1";
 
 function removeDirectoryRecursive(targetPath) {
   try {
-    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+    execFileSync("bun", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
       encoding: "utf8",
       stdio: "pipe",
     });
