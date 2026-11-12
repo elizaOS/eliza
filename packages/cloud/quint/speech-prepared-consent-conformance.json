@@ -335,6 +335,23 @@
           "name": "prepared UUIDv5 consent has one atomic mint winner and no replay"
         }
       ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/voice-speech-rate-limit.pglite.test.ts",
+      "required": [
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "speech consent cancellation after a credential timeout prevents its recheck"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "speech consent retries one credential deadline before any preparation (allowed=true)"
+        },
+        {
+          "classname": "Worker speech rate limit without an admission snapshot",
+          "name": "speech consent retries one credential deadline before any preparation (allowed=false)"
+        }
+      ]
     }
   ],
   "vitest": {
