@@ -171,9 +171,7 @@ describe("Android mobile build target table", () => {
         encoding: "utf8",
       });
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain(
-        "Usage: bun scripts/run-mobile-build.ts",
-      );
+      expect(result.stderr).toContain("Usage: bun scripts/run-mobile-build.ts");
     }
   });
 
