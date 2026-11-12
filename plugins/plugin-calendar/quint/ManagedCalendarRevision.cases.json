@@ -5,9 +5,10 @@
     "packages/app/src/runtime/managed-google-agent/managed-google-agent-host.ts",
     "packages/app/test/native-host/managed-google-agent.test.mjs",
     "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts",
-    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts"
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
+    "plugins/plugin-calendar/src/service/managed-calendar-host.ts"
   ],
-  "bounds": "One Google event, an unknown provider revision or two valid provider revision times, and repeated cache refreshes. The report uses provider edit or creation metadata for Google rows. Missing metadata cannot make a future event look recently changed. The host retains its existing fallback for storage; display provenance is checked separately. No provider mutation, wall-clock latency or fairness claim.",
+  "bounds": "One Google event, current and legacy provider timestamps, two refresh times, and repeated refreshes and edits. Refresh time is a storage fallback only when both provider timestamps are absent. Conformance runs the managed host readback against model-generated states. No provider mutation, wall-clock latency or fairness claim. The separate PGlite case retains coverage for filtering old or missing Google revision metadata from the recent-change summary.",
   "conformance": "plugins/plugin-calendar/quint/check-managed-calendar-revision.mjs",
   "cases": [
     {
