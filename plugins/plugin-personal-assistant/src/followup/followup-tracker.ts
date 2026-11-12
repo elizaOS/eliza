@@ -118,9 +118,11 @@ function buildFollowupTrackerMetadata(
     ...(isRecord(previous) ? previous : {}),
     updateInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
     baseInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
-    // Boot self-heals a row that core's maxFailures ladder paused after one
-    // failure burst: nothing else resumes it, and the spread above would
-    // carry paused=true across every restart (mirrors the LifeOps heartbeat).
+    // maxFailures 0: core never auto-pauses this row (failures still back
+    // off, capped at 5 min). Boot also clears a pause and failure state an
+    // older build persisted: nothing else resumes it, and the spread above
+    // would carry paused=true across every restart (mirrors the LifeOps
+    // heartbeat).
     maxFailures: 0,
     paused: false,
     failureCount: 0,

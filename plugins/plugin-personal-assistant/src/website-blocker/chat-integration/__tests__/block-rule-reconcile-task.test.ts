@@ -94,6 +94,29 @@ describe("BLOCK_RULE_RECONCILE task through the real core task tick", () => {
     expect(harness.tasks.get(taskId)?.metadata?.lastError).toBeUndefined();
   });
 
+  it("the real TaskService.runTick never auto-pauses the row after repeated failures", async () => {
+    harness.runtime.registerTaskWorker({
+      name: BLOCK_RULE_RECONCILE_TASK_NAME,
+      execute: async () => {
+        throw new Error("database keeps timing out");
+      },
+    });
+    const taskId = await ensureBlockRuleReconcileTask(harness.runtime);
+    const service = new TaskService(harness.runtime);
+
+    // Core's default ladder pauses a repeat row at the fifth failure.
+    for (let tick = 1; tick <= 7; tick++) {
+      vi.setSystemTime(T0 + tick * 10 * 60_000);
+      await service
+        .runTick(await queueTasks(harness.runtime))
+        .catch(() => undefined);
+    }
+
+    const metadata = harness.tasks.get(taskId)?.metadata;
+    expect(metadata?.failureCount).toBe(7);
+    expect(metadata?.paused).not.toBe(true);
+  });
+
   it("the real TaskService.runTick fires the worker on interval and it releases a fulfilled gate", async () => {
     registerBlockRuleReconcilerWorker(harness.runtime);
     const taskId = await ensureBlockRuleReconcileTask(harness.runtime);
