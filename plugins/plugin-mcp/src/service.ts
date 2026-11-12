@@ -681,8 +681,9 @@ export class McpService extends Service {
       );
     } catch (error) {
       // A JSON-RPC error answer is the server refusing the call. A timeout, a
-      // closed connection or a transport failure happens after the request was
-      // sent, so the tool may have run.
+      // closed connection or a transport failure can happen after the request
+      // was sent, so the tool may have run. The SDK does not tell these apart
+      // from a failure before the send, so treat them all as may-have-run.
       if (
         error instanceof SdkMcpError &&
         error.code !== ErrorCode.RequestTimeout &&

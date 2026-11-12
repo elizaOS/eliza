@@ -649,6 +649,8 @@ describe("MCP write that already reached the server", () => {
       expect(result.success).toBe(false);
       expect(result.data?.outcomeUnknown).toBe(true);
       expect(result.data?.retryable).toBe(false);
+      // The result must not claim that the tool did not run.
+      expect(result.values).not.toHaveProperty("toolExecuted");
       // The server recorded the write although the client gave up waiting.
       expect(await readInvocations()).toHaveLength(1);
       // The user is told that the outcome is unknown and that it is not repeated.

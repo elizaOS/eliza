@@ -271,16 +271,16 @@ async function handleCallTool(
         // of this handler does.
         if (callback) {
           await callback({
-            text: `I sent ${toolName} to ${serverName} but did not get its result, so I don't know whether it completed. I will not run it again. Please check before asking again.`,
+            text: `I tried to run ${toolName} on ${serverName} but did not get its result, so I don't know whether it completed. I will not run it again. Please check before asking again.`,
             actions: ["REPLY"],
             source: message.content?.source,
           });
         }
         return {
           text: `Tool ${serverName}/${toolName} may have run, but its result was not received. Do not call it again; check its effect first.`,
+          // No toolExecuted: whether the tool ran is the unknown part.
           values: {
             success: false,
-            toolExecuted: false,
             outcomeUnknown: true,
             serverName,
             toolName,
