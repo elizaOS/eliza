@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check ."
   },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2"
+  },
   "engines": {
     "bun": ">=1.3.0"
   }

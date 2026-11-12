@@ -816,6 +816,9 @@
       "bin": {
         "cloud-deploy": "src/cli.ts",
       },
+      "devDependencies": {
+        "@typescript/native": "npm:typescript@^7.0.2",
+      },
     },
     "packages/cloud/e2e": {
       "name": "@elizaos/cloud-e2e",
