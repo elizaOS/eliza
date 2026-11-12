@@ -68,6 +68,9 @@ it("keeps configured secrets out of persisted planner stages", async () => {
   const service = (await runtime.getServiceLoadPromise(
     "trajectories",
   )) as TrajectoriesService;
+  // The trajectory gate is off under test, so the service starts with capture
+  // off; turn it on as an operator would.
+  service.setEnabled(true);
   const dbTrajectoryId = await service.startTrajectory(runtime.agentId, {
     source: "chat",
   });
