@@ -240,7 +240,12 @@ describe("createMailDraftsController", () => {
     const composer = f.controller.render().c as {
       toKey: (event: { key: string; preventDefault: () => void }) => void;
     };
-    composer.toKey({ key, preventDefault: () => { prevented = true; } });
+    composer.toKey({
+      key,
+      preventDefault: () => {
+        prevented = true;
+      },
+    });
     expect(prevented).toBe(true);
     expect((f.controller.render().c as Bag).toQ).toBe("");
     expect(f.controller.proposal()?.to).toEqual(["friend@example.invalid"]);
