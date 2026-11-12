@@ -325,7 +325,7 @@ function assertSummaryReportDate(
   // "overdue as of <date>", "hotel check-in — <date>" and "Weekly summary:"
   // describe something else, and a date followed by "'s" names an event.
   const declarations = new RegExp(
-    `(?:\\b([\\p{L}'’]+)[ \\t]+)?\\b(as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b(?!['’]s\\b)`,
+    `(?:\\b([\\p{L}'’\\-]+)[ \\t]+)?\\b(as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b(?!['’]s\\b)`,
     "giu",
   );
   const reportLabelLead = new Set([
@@ -342,14 +342,27 @@ function assertSummaryReportDate(
     "nightly",
     "daily",
   ]);
+  const reportKind = new Set([
+    "brief",
+    "briefing",
+    "summary",
+    "check-in",
+    "update",
+    "report",
+  ]);
   const claims = [...summary.matchAll(declarations)]
     .filter(([, lead, keyword]) => {
       if (lead === undefined || /^today/i.test(keyword)) return true;
-      // "As of" declares the report date only where it opens a clause.
-      if (/^as\s/i.test(keyword)) return false;
+      const word = lead.toLowerCase();
+      // "As of" after a word declares the report date only when that word
+      // names the report ("Morning brief as of", "your update as of");
+      // "overdue as of" dates a source event.
+      if (/^as\s/i.test(keyword)) {
+        return reportKind.has(word) || reportLabelLead.has(word);
+      }
       // A report label names this report only after a determiner or a
       // report kind ("your brief", "Morning briefing").
-      return reportLabelLead.has(lead.toLowerCase());
+      return reportLabelLead.has(word);
     })
     .map((claim) => claim[3]);
   if (claims.length === 0) return;
