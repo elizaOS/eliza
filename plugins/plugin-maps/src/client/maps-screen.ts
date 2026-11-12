@@ -976,6 +976,9 @@ export class MapsScreenController {
 
   /** Typing in the origin field clears the previous route. */
   setOriginText(text: string): void {
+    this.locating = false;
+    clearTimeout(this.locationTimeout);
+    this.locationTimeout = undefined;
     this.originMode = false;
     this.editOrigin(text);
   }

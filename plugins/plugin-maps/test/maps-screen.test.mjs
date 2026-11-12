@@ -1203,3 +1203,14 @@ test("directions use an allowed device location and swapping reverses the endpoi
  assert.deepEqual(f.screen.view().map.route.to,ORIGIN);
  f.screen.dispose();
 });
+
+
+test("editing the automatic origin fences a late device location", async () => {
+ const f=fixture();
+ f.screen.setQuery("Destination");f.screen.submit();await settle();
+ f.screen.choose("place:fixture:destination");await settle();f.screen.openDirections(true);await settle();
+ f.screen.setOriginText("43.71, 7.40");f.screen.planOrigin();await settle();
+ f.emitDevice({coordinate:ORIGIN,accuracyMeters:5,timestamp:Date.now(),precision:"precise"});await settle();
+ assert.deepEqual(f.screen.view().map.route.from,{latitude:43.71,longitude:7.40});
+ f.screen.dispose();
+});

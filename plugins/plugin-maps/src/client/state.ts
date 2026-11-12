@@ -303,6 +303,8 @@ export class MapsController {
     }
   }
   clearOrigin() {
+    ++this.locationGeneration;
+    void this.nativeLocation.stop().catch(() => {});
     this.cancelOriginSearch();
     this.invalidateRoute();
     this.update({ origin: null, originLabel: null });
