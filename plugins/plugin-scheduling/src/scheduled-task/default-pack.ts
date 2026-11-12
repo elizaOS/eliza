@@ -40,6 +40,9 @@ export const FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS = {
   weeklyReview: "scheduling:default:weekly-review",
 } as const;
 
+export const FALLBACK_GOOD_MORNING_INSTRUCTIONS =
+  "Wish the owner a warm good morning and surface anything pressing for the day.";
+
 /**
  * Build the built-in fallback pack. `createdBy` is the seeding agent so the
  * rows are attributed; everything else is fixed and generic.
@@ -55,8 +58,7 @@ export function buildFallbackDefaultPack(opts: {
   const tasks: ScheduledTaskInput[] = [
     {
       kind: "reminder",
-      promptInstructions:
-        "Wish the owner a warm good morning and surface anything pressing for the day.",
+      promptInstructions: FALLBACK_GOOD_MORNING_INSTRUCTIONS,
       trigger: { kind: "cron", expression: "0 8 * * *", tz: OWNER_LOCAL_TZ },
       priority: "low",
       respectsGlobalPause: true,

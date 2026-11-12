@@ -34,7 +34,7 @@ const briefing = spawnSync(
     "plugins/plugin-personal-assistant/vitest.config.ts",
     "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
     "-t",
-    "canonical Calendar feed|ordinary Gmail",
+    "canonical Calendar feed|ordinary Gmail|composes the scheduled brief|customized morning",
   ],
   { stdio: "inherit" },
 );

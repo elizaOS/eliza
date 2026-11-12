@@ -55,6 +55,7 @@ import {
   createEscalationLadderRegistry,
   createScheduledTaskRunner,
   createTaskGateRegistry,
+  FALLBACK_GOOD_MORNING_INSTRUCTIONS,
   getAnchorRegistry,
   getScheduledTaskRunner,
   hasScheduledDispatchModel,
@@ -564,13 +565,30 @@ function metadataString(
     : null;
 }
 
+/** Use the canonical brief for the unchanged morning default, including older rows. */
+function isMorningBriefDispatch(record: ScheduledTaskDispatchRecord): boolean {
+  if (
+    metadataString(record.metadata, "delegatesAssemblyTo") ===
+    "lifeops:checkin:morning"
+  ) {
+    return true;
+  }
+  return (
+    record.kind === "reminder" &&
+    record.ownerVisible === true &&
+    metadataString(record.metadata, "defaultPack") === "fallback" &&
+    metadataString(record.metadata, "recordKey") === "gm" &&
+    record.promptInstructions === FALLBACK_GOOD_MORNING_INSTRUCTIONS
+  );
+}
+
 /**
  * Compose the owner-facing message for one dispatch. `promptInstructions` is a
  * model prompt, never user-facing copy, so there are exactly two composition
  * paths and neither delivers it verbatim:
  *
- * - Tasks whose structural `metadata.delegatesAssemblyTo` names the morning
- *   check-in assembler get the assembled brief's `summaryText` (#14802) —
+ * - Explicit morning tasks and the unchanged generic morning default get the
+ *   canonical check-in assembler's `summaryText` (#14802) —
  *   real data (meetings, todos, wins) the render prompt alone cannot supply;
  *   CheckinService already composes that text through the model.
  * - Everything else renders through `renderScheduledDispatchMessage` (the
@@ -600,12 +618,7 @@ export async function composeOwnerFacingScheduledTaskText(
     }
     return `${completedCount}/${targetCount} ${unit}${targetCount === 1 ? "" : "s"} logged for “${view.title}” today — ${remainingCount} remaining. How is it going?`;
   }
-  const delegatesAssemblyTo = metadataString(
-    record.metadata,
-    "delegatesAssemblyTo",
-  );
-
-  if (delegatesAssemblyTo === "lifeops:checkin:morning") {
+  if (isMorningBriefDispatch(record)) {
     const now = new Date(record.firedAtIso);
     const facts = ownerFactsToView(
       await resolveOwnerFactStore(runtime).read(),
@@ -1029,8 +1042,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
           message,
         );
         if (!history.ok) return history.failure;
-        const morningBrief =
-          record.metadata?.delegatesAssemblyTo === "lifeops:checkin:morning";
+        const morningBrief = isMorningBriefDispatch(record);
         if (
           morningBrief &&
           (!history.roomId || !history.messageId || !history.conversationId)

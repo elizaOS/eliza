@@ -2,6 +2,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
+import { buildFallbackDefaultPack } from "@elizaos/plugin-scheduling";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveOwnerFactStore } from "../owner/fact-store.js";
 import { composeOwnerFacingScheduledTaskText } from "../scheduled-task/runtime-wiring.js";
@@ -505,12 +506,54 @@ describe("check-in source availability and generation failures", () => {
     expect(prompts).toHaveLength(0);
   });
 
+  it("keeps customized morning defaults on their chosen prompt", async () => {
+    const task = buildFallbackDefaultPack({
+      agentId: runtime.agentId,
+    }).tasks.find((entry) => entry.metadata?.recordKey === "gm");
+    if (!task) throw new Error("Default morning reminder missing");
+    modelResponse = "Remember the chosen morning task.";
+    const summary = await composeOwnerFacingScheduledTaskText(runtime, {
+      taskId: "customized-morning",
+      kind: task.kind,
+      firedAtIso: "2026-10-02T18:30:00.000Z",
+      channelKey: "in_app",
+      ownerVisible: true,
+      promptInstructions: "Remind me to water the basil.",
+      metadata: task.metadata,
+    });
+    expect(summary).toBe(modelResponse);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Remind me to water the basil.");
+    const reports = await db.query(
+      "SELECT * FROM app_lifeops.life_checkin_reports",
+    );
+    expect(reports.rows).toHaveLength(0);
+  });
+
   it.each([
-    { ownerTimezone: "America/Los_Angeles", configuredTimezone: "Asia/Tokyo" },
-    { ownerTimezone: undefined, configuredTimezone: "America/Los_Angeles" },
+    {
+      ownerTimezone: "America/Los_Angeles",
+      configuredTimezone: "Asia/Tokyo",
+      fallback: false,
+    },
+    {
+      ownerTimezone: undefined,
+      configuredTimezone: "America/Los_Angeles",
+      fallback: false,
+    },
+    {
+      ownerTimezone: "America/Los_Angeles",
+      configuredTimezone: "Asia/Tokyo",
+      fallback: true,
+    },
+    {
+      ownerTimezone: undefined,
+      configuredTimezone: "America/Los_Angeles",
+      fallback: true,
+    },
   ])(
-    "composes the scheduled brief with owner zone $ownerTimezone before configured zone $configuredTimezone",
-    async ({ ownerTimezone, configuredTimezone }) => {
+    "composes the scheduled brief with owner zone $ownerTimezone before configured zone $configuredTimezone (fallback $fallback)",
+    async ({ ownerTimezone, configuredTimezone, fallback }) => {
       vi.stubEnv("TZ", "UTC");
       const now = new Date("2026-10-02T18:30:00.000Z");
       runtime.getSetting = (key) =>
@@ -588,15 +631,23 @@ describe("check-in source availability and generation failures", () => {
             : originalService(type),
       });
       modelResponse = "Owner-local meeting and the existing inbox item.";
+      const defaultMorning = buildFallbackDefaultPack({
+        agentId: runtime.agentId,
+      }).tasks.find((task) => task.metadata?.recordKey === "gm");
+      if (!defaultMorning) throw new Error("Default morning reminder missing");
       const summary = await composeOwnerFacingScheduledTaskText(runtime, {
         taskId: "managed-brief",
-        kind: "watcher",
+        kind: fallback ? defaultMorning.kind : "watcher",
         firedAtIso: now.toISOString(),
         channelKey: "in_app",
         intensity: "normal",
-        promptInstructions: "Assemble the managed morning brief.",
+        promptInstructions: fallback
+          ? defaultMorning.promptInstructions
+          : "Assemble the managed morning brief.",
         ownerVisible: true,
-        metadata: { delegatesAssemblyTo: "lifeops:checkin:morning" },
+        metadata: fallback
+          ? defaultMorning.metadata
+          : { delegatesAssemblyTo: "lifeops:checkin:morning" },
       });
 
       expect(summary).toContain("Owner-zone meeting");

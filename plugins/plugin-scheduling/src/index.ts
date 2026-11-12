@@ -86,6 +86,7 @@ export {
   buildFallbackDefaultPack,
   FALLBACK_DEFAULT_PACK_ID,
   FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
+  FALLBACK_GOOD_MORNING_INSTRUCTIONS,
 } from "./scheduled-task/default-pack.ts";
 export {
   buildDeterministicDispatchBody,
