@@ -15,7 +15,7 @@ export function renderSwiftFailureStrings() {
 
   return `// GENERATED FILE — DO NOT EDIT BY HAND.
 // Source of truth: packages/app/src/platform/chat-failure-strings.ts
-// Regenerate: node packages/app/scripts/lib/chat-failure-strings.ts --emit-swift
+// Regenerate: bun packages/app/scripts/lib/chat-failure-strings.ts --emit-swift
 // Parity guard: packages/app/scripts/lib/chat-failure-strings.test.ts
 //
 // The mobile chat-reply FAILURE vocabulary shared with mobile-local-chat-smoke.ts.

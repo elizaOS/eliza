@@ -19,10 +19,10 @@ include_directories(include src)
 # by the runtime and their unit tests.
 #
 # Architecture portability: every TU below is plain scalar C with no
-# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
-# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# x86/ARM intrinsics, so the same source list builds on x86_64 and
+# aarch64 without any CMAKE_SYSTEM_PROCESSOR branching.
 # When SIMD or ggml-dispatch TUs are added, mirror the qjl-cpu
-# pattern: separate per-arch TUs (avx2/neon/rvv), each compiled only
+# pattern: separate per-arch TUs (avx2/neon), each compiled only
 # for its own arch via a CMAKE_SYSTEM_PROCESSOR conditional.
 set(FACE_SRCS
     src/face_model.c

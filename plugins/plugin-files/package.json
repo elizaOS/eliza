@@ -36,12 +36,12 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --experimental-transform-types test/*.test.mjs",
+    "test": "bun test --timeout=120000 ./test/*.test.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo"
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

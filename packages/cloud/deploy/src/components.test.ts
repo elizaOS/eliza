@@ -194,7 +194,7 @@ describe("components in the deployment file", () => {
           Object.assign(c.speech, {
             routes: [{ pattern: "speech.other.org/*", zone: "example.org" }],
           }),
-        "host speech.other.org is not in zone example.org",
+        "host is not in the configured zone",
       ],
       [
         (c) => Object.assign(c.web, { projectName: "Example Web" }),
@@ -234,6 +234,82 @@ describe("components in the deployment file", () => {
     ];
     for (const [change, expected] of cases) {
       expect(problemsOf(productWith(change))).toContain(expected);
+    }
+  });
+
+  test("never echoes rejected credentials through component diagnostics", () => {
+    const secret = `sk_live_${"a".repeat(24)}`;
+    const credentialName = `AKIA${"A".repeat(16)}`;
+    const cases: [
+      (c: Record<string, Table>, env: Table, root: Table) => void,
+      string,
+    ][] = [
+      [
+        (c) => {
+          c.login[secret] = "value";
+        },
+        secret,
+      ],
+      [
+        (c, env) => {
+          env.workerName = secret;
+          c.admission.workerName = secret;
+        },
+        secret,
+      ],
+      [
+        (c, _env, root) => {
+          ((root.environments as Table).staging as Table).workerName = secret;
+          c.speech.workerName = secret;
+        },
+        secret,
+      ],
+      [
+        (c) => {
+          c.speech.routes = [
+            { pattern: `${secret}.example.org/*`, zone: "example.org" },
+          ];
+        },
+        secret,
+      ],
+      [
+        (c) => {
+          c.admission.routes = [{ pattern: "api.example.org/*", zone: secret }];
+        },
+        secret,
+      ],
+    ];
+    for (const component of COMPONENTS) {
+      cases.push([
+        (c) => {
+          c[component].vars = {
+            ...(c[component].vars as Table),
+            [secret]: "value",
+          };
+        },
+        secret,
+      ]);
+    }
+    for (const component of ["login", "speech", "admission"] as const) {
+      cases.push([
+        (c) => {
+          c[component].secrets = [
+            ...(c[component].secrets as string[]),
+            credentialName,
+            credentialName,
+          ];
+          c[component].vars = {
+            ...(c[component].vars as Table),
+            [credentialName]: "value",
+          };
+        },
+        credentialName,
+      ]);
+    }
+    for (const [change, credential] of cases) {
+      const problems = problemsOf(productWith(change));
+      expect(problems).toContain("looks like a secret value");
+      expect(problems).not.toContain(credential);
     }
   });
 
@@ -338,7 +414,7 @@ describe("components in the deployment file", () => {
         ),
       ),
     ).toContain(
-      "production.components.login.workerName: example-product-login-staging is also a Worker of staging",
+      "production.components.login.workerName: is also a Worker of staging",
     );
     expect(
       problemsOf(
@@ -930,4 +1006,73 @@ describe("check", () => {
       rmSync(tree, { recursive: true, force: true });
     }
   });
+});
+
+describe("native callback serving validation", () => {
+  const rejected: [string, (callbacks: Table[], env: Table) => void][] = [
+    [
+      "protocol callback",
+      (c) => {
+        c[0].redirectUri =
+          "https://cloud.example.org/.well-known/assetlinks.json";
+      },
+    ],
+    [
+      "normalized browser path",
+      (c) => {
+        (c[0].browserSignIn as Table).startPath = "/example/../start";
+      },
+    ],
+    [
+      "protocol browser return",
+      (c) => {
+        (c[0].browserSignIn as Table).returnPath =
+          "/.well-known/oidc/jwks.json";
+      },
+    ],
+    [
+      "HTTP loopback browser API",
+      (c, env) => {
+        (env.origins as Table).api = "http://127.0.0.1:8787";
+        (c[0].browserSignIn as Table).apiOrigin = "http://127.0.0.1:8787";
+      },
+    ],
+    [
+      "same-origin storage key",
+      (c) => {
+        c.push({
+          ...c[0],
+          redirectUri: "https://cloud.example.org/second/auth/callback",
+          browserSignIn: {
+            ...(c[0].browserSignIn as Table),
+            startPath: "/second/auth/browser-start",
+          },
+        });
+      },
+    ],
+    [
+      "derived billing return callback",
+      (c) => {
+        c.push({
+          redirectUri: "https://cloud.example.org/example/billing/return",
+          androidPackage: "org.example.other",
+          appName: "Other",
+        });
+      },
+    ],
+    [
+      "derived billing return browser start",
+      (c) => {
+        (c[0].browserSignIn as Table).startPath = "/example/billing/return";
+      },
+    ],
+  ];
+  for (const [name, change] of rejected) {
+    test(`rejects ${name} before rendering an unusable Pages config`, () => {
+      const input = productWith((components, env) => {
+        change(components.web.nativeAuthCallbacks as Table[], env);
+      });
+      expect(problemsOf(input)).toContain("components.web.nativeAuthCallbacks");
+    });
+  }
 });

@@ -7,8 +7,8 @@
  * `results/memperf/latest.json` and writes a consolidated dashboard under
  * `results/summary/`.
  *
- *   node suites/memperf/run-all.mjs
- *   node suites/memperf/run-all.mjs --json
+ *   bun suites/memperf/run-all.mjs
+ *   bun suites/memperf/run-all.mjs --json
  *
  * Exit codes mirror the harness:
  *   0  measured rows present, all budgets pass

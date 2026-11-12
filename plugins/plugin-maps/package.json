@@ -52,7 +52,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo",
     "test": "bun run test:client && vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

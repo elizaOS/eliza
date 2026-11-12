@@ -1,15 +1,21 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   checkElizaMutatingRequestOrigin,
   isPermittedElizaBrowserOrigin,
 } from "../auth/browser-origin-policy";
+import { deleteBlob, isValidBlobUrl, uploadToBlob } from "../blob";
 import { isFirstPartyOrigin } from "../cors/first-party-origin";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,
   isAllowedAbsoluteRedirectUrl,
 } from "../security/redirect-validation";
-import { publicUrlForR2Key } from "../storage/r2-public-object";
+import { publicUrlForR2Key, putPublicObject } from "../storage/r2-public-object";
+import {
+  getRuntimeR2Bucket,
+  type RuntimeR2Bucket,
+  setRuntimeR2Bucket,
+} from "../storage/r2-runtime-binding";
 import { getCorsHeaders } from "../utils/cors";
 import { getRandomUserAvatar } from "../utils/default-user-avatar";
 import {
@@ -346,6 +352,8 @@ describe("resolveCloudDeployment: product deployment", () => {
       ["NEXT_PUBLIC_API_URL", "ftp://api.alpha.example"],
       ["R2_PUBLIC_HOST", "https://blob.alpha.example"],
       ["R2_PUBLIC_HOST", "blob.alpha.example/path"],
+      ["R2_PUBLIC_HOST", "blob.alpha.example:65536"],
+      ["R2_PUBLIC_HOST", "blob.alpha.example:99999"],
       ["NEXT_PUBLIC_ASSETS_CDN_URL", "assets.alpha.example"],
       ["SENDGRID_FROM_EMAIL", "not-an-address"],
       ["CLOUD_BILLING_URL", "/billing"],
@@ -460,6 +468,83 @@ describe("resolveCloudDeployment: product deployment", () => {
     });
   });
 
+  for (const [configured, canonical] of [
+    ["blob.alpha.example:8443", "blob.alpha.example:8443"],
+    ["blob.alpha.example:443", "blob.alpha.example"],
+  ]) {
+    test(`blob uploads and deletion agree on the configured authority ${configured}`, async () => {
+      const previous = getRuntimeR2Bucket();
+      const writes: string[] = [];
+      const deleted: string[] = [];
+      const bucket: RuntimeR2Bucket = {
+        get: async () => null,
+        put: async (key) => writes.push(key),
+        delete: async (key) => deleted.push(key),
+      };
+      setRuntimeR2Bucket(bucket);
+      try {
+        await asAlpha(
+          async () => {
+            expect(getCloudDeployment().blobHost).toBe(canonical);
+            expect(publicUrlForR2Key({ BLOB: undefined as never }, "avatars/a.png")).toBe(
+              `https://${canonical}/avatars/a.png`,
+            );
+            const uploaded = await uploadToBlob("image bytes", {
+              filename: "a.png",
+              folder: "avatars",
+            });
+            expect(new URL(uploaded.url).host).toBe(canonical);
+            expect(isValidBlobUrl(uploaded.url)).toBe(true);
+            for (const refused of [
+              `http://${canonical}/avatars/a.png`,
+              `https://user@${canonical}/avatars/a.png`,
+              `https://blob.alpha.example:9443/avatars/a.png`,
+              "https://untrusted.example/avatars/a.png",
+            ]) {
+              expect(isValidBlobUrl(refused)).toBe(false);
+            }
+            if (canonical.endsWith(":8443")) {
+              expect(isValidBlobUrl("https://blob.alpha.example/avatars/a.png")).toBe(false);
+            }
+            await deleteBlob(uploaded.url);
+            expect(writes).toEqual([uploaded.pathname]);
+            expect(deleted).toEqual([uploaded.pathname]);
+          },
+          { R2_PUBLIC_HOST: configured },
+        );
+      } finally {
+        setRuntimeR2Bucket(previous);
+      }
+    });
+  }
+
+  test("invalid blob authorities fail before storage writes", async () => {
+    const previous = getRuntimeR2Bucket();
+    const writes: string[] = [];
+    const bucket: RuntimeR2Bucket = {
+      get: async () => null,
+      put: async (key) => writes.push(key),
+      delete: async () => undefined,
+    };
+    setRuntimeR2Bucket(bucket);
+    try {
+      await expect(
+        asAlpha(() => uploadToBlob("bytes", { filename: "a.png" }), {
+          R2_PUBLIC_HOST: "blob.alpha.example:99999",
+        }),
+      ).rejects.toBeInstanceOf(CloudDeploymentConfigError);
+      await expect(
+        putPublicObject(
+          { BLOB: bucket as never, R2_PUBLIC_HOST: "blob.alpha.example:65536" },
+          { key: "avatars/a.png", body: new Uint8Array([1]), contentType: "image/png" },
+        ),
+      ).rejects.toBeInstanceOf(CloudDeploymentConfigError);
+      expect(writes).toEqual([]);
+    } finally {
+      setRuntimeR2Bucket(previous);
+    }
+  });
+
   test("an incomplete product deployment fails every boundary instead of using Eliza", () => {
     asAlpha(
       () => {
@@ -481,6 +566,20 @@ describe("resolveCloudBlobHost", () => {
     expect(resolveCloudBlobHost({ R2_PUBLIC_HOST: " blob.example.test " })).toBe(
       "blob.example.test",
     );
+  });
+
+  test("explicit bindings use a canonical authority and refuse invalid ports", () => {
+    expect(resolveCloudBlobHost({ R2_PUBLIC_HOST: " BLOB.EXAMPLE.TEST:443 " })).toBe(
+      "blob.example.test",
+    );
+    expect(resolveCloudBlobHost({ R2_PUBLIC_HOST: "blob.example.test:8443" })).toBe(
+      "blob.example.test:8443",
+    );
+    for (const host of ["blob.example.test:65536", "blob.example.test:99999"]) {
+      expect(() => resolveCloudBlobHost({ R2_PUBLIC_HOST: host })).toThrow(
+        CloudDeploymentConfigError,
+      );
+    }
   });
 
   test("only Eliza has a default", () => {
@@ -530,4 +629,123 @@ describe("resolveCloudCallbackOrigins", () => {
       resolveCloudCallbackOrigins({ CLOUD_DEPLOYMENT_ID: "alpha" }, "production"),
     ).toThrow(CloudDeploymentConfigError);
   });
+});
+
+describe("CloudFilesService deployment validation before effects", () => {
+  async function fixture(host: string) {
+    const { CloudFilesService } = await import("../services/cloud-files");
+    const effects: string[] = [];
+    const service = new CloudFilesService(
+      {
+        create: async (row: unknown) => {
+          effects.push("metadata-create");
+          return row;
+        },
+      } as never,
+      {
+        tryReserveBytes: async () => {
+          effects.push("quota-reserve");
+          return 5n;
+        },
+        releaseBytes: async () => {
+          effects.push("quota-release");
+        },
+      },
+    );
+    const bindings = {
+      ...ALPHA,
+      R2_PUBLIC_HOST: host,
+      BLOB: {
+        put: async () => {
+          effects.push("object-put");
+        },
+        delete: async () => {
+          effects.push("object-delete");
+        },
+      },
+    } as unknown as import("../../types/cloud-worker-env").Bindings;
+    const upload = () =>
+      runWithCloudBindings(bindings, () =>
+        service.upload(bindings, {
+          organizationId: "example-org",
+          file: new File(["notes"], "notes.txt", { type: "text/plain" }),
+        }),
+      );
+    return { effects, upload };
+  }
+
+  for (const host of ["", "blob.example.org:65536", "blob.example.org:99999"]) {
+    test(`upload refuses product blob host ${host || "missing"} before quota and object effects`, async () => {
+      const { effects, upload } = await fixture(host);
+      await expect(upload()).rejects.toBeInstanceOf(CloudDeploymentConfigError);
+      expect(effects).toEqual([]);
+    });
+  }
+
+  test("upload records a configured explicit-port public URL", async () => {
+    const { effects, upload } = await fixture("blob.example.org:8443");
+    const row = await upload();
+    expect(row.storage_url).toStartWith("https://blob.example.org:8443/cloud-files/example-org/");
+    expect(effects).toEqual(["quota-reserve", "object-put", "metadata-create"]);
+  });
+});
+
+describe("affiliate images use the canonical managed blob authority", () => {
+  const cases = [
+    {
+      name: "configured non-default port",
+      host: "blob.alpha.example:8443",
+      url: "https://blob.alpha.example:8443/image.png",
+      managed: true,
+    },
+    {
+      name: "canonical default port",
+      host: "blob.alpha.example:443",
+      url: "https://blob.alpha.example/image.png",
+      managed: true,
+    },
+    {
+      name: "unconfigured port",
+      host: "blob.alpha.example",
+      url: "https://blob.alpha.example:8443/image.png",
+      managed: false,
+    },
+    {
+      name: "HTTP",
+      host: "blob.alpha.example",
+      url: "http://blob.alpha.example/image.png",
+      managed: false,
+    },
+    {
+      name: "userinfo",
+      host: "blob.alpha.example",
+      url: "https://user:pass@blob.alpha.example/image.png",
+      managed: false,
+    },
+  ];
+  for (const entry of cases) {
+    test(entry.name, async () => {
+      const blob = await import("../blob");
+      const uploadedUrl = "https://blob.alpha.example/affiliate/converted.png";
+      const upload = spyOn(blob, "uploadFromUrl").mockResolvedValue({
+        url: uploadedUrl,
+        pathname: "affiliate/converted.png",
+        contentType: "image/png",
+        size: 1,
+      });
+      try {
+        const { processAffiliateImages } = await import("../services/affiliate-images");
+        const result = await asAlpha(
+          () => processAffiliateImages({ imageUrls: [entry.url] }, "character-1"),
+          { R2_PUBLIC_HOST: entry.host },
+        );
+        expect(upload).toHaveBeenCalledTimes(entry.managed ? 0 : 1);
+        expect(result.referenceImageUrls).toEqual([entry.managed ? entry.url : uploadedUrl]);
+        expect(result.failedUploads).toBe(0);
+        if (!entry.managed) expect(upload.mock.calls[0]?.[0]).toBe(entry.url);
+      } finally {
+        upload.mockRestore();
+      }
+    });
+  }
 });

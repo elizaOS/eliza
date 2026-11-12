@@ -470,7 +470,7 @@ if (
   !manifest.workflowContracts[workflowName]
 ) {
   console.error(
-    `Usage: node scripts/validate-regression-matrix.ts --workflow <${Object.keys(
+    `Usage: bun scripts/validate-regression-matrix.ts --workflow <${Object.keys(
       manifest.workflowContracts,
     ).join("|")}> [--base <git-ref>] [--head <git-ref>]`,
   );

@@ -446,8 +446,8 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
   if (typeof main !== "string")
     throw new RenderError("upstream wrangler.toml has no main");
 
-  if (isRelativePath(main) && !staysInside(apiDir, main)) {
-    throw new RenderError(`upstream main leaves the API package: ${main}`);
+  if (!staysInside(apiDir, main)) {
+    throw new RenderError("upstream main leaves the API package");
   }
 
   const alias: Record<string, string> = {};
@@ -457,6 +457,11 @@ export function renderWranglerConfig(options: RenderOptions): RenderedConfig {
   )) {
     if (typeof target !== "string")
       throw new RenderError(`alias ${name} is not a string`);
+    if (packaged && isAbsolute(target)) {
+      throw new RenderError(
+        `installed API alias ${name} must not contain an absolute file path`,
+      );
+    }
     if (!isRelativePath(target)) {
       alias[name] = target;
     } else if (packaged && !staysInside(apiDir, target)) {

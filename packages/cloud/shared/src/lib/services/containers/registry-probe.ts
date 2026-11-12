@@ -1,5 +1,5 @@
 /**
- * Resolve a Docker image reference (e.g. `ghcr.io/elizaos/eliza:develop`) to
+ * Resolve a Docker image reference (e.g. `ghcr.io/elizaos/eliza:staging`) to
  * its registry-side sha256 digest. The fleet-upgrade reconciler uses this to
  * detect when a tag has been republished (i.e. a new image was pushed under
  * the same name), and then triggers a rolling blue/green upgrade of all

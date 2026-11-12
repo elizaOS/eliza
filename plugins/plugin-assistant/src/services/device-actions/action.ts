@@ -291,6 +291,16 @@ const notesOrganizeSchemas: ActionParameterSchema[] = [
     additionalProperties: false,
     required: ["type"],
     properties: {
+      type: { type: "string", enum: ["notes_list_filter"] },
+      text: { type: "string", description: "At most 200 characters" },
+      kind: { type: "string", enum: [...NOTES_KINDS] },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
       type: { type: "string", enum: ["notes_filter"] },
       text: { type: "string", description: "At most 200 characters" },
       folder: notesFolderSchema,
@@ -965,8 +975,12 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "With photos.library.v1 and photos.view.v1: photos_filter {from, to: epoch ms; kind image|video; favorite; album favorites|videos|camera|screenshots|custom:<id>; text} narrows the phone Photos grid behind a clearable chip and returns only how many items it shows; photos_open {id} opens one item in the Photos viewer; both run directly only when the owner's current message asked for them. photos_album_create {name, ids} and photos_share {ids} are reviewed by the owner in Photos; a share then opens Android's share sheet, and review_opened proves neither a created album nor a share. Use only library ids the phone returned; never guess them.",
   },
   {
-    types: NOTES_ORGANIZE_TYPES,
+    types: NOTES_ORGANIZE_TYPES.filter((type) => type !== "notes_list_filter"),
     text: "With notes.organize.v1: notes_filter {text, folder name and/or kind text|list|voice|link} filters the phone Notes list and returns no note content; notes_record {action: start|stop} starts or stops a voice note in the open Notes view; both run directly only when the owner's current message asked for them. notes_move {target: exact selected note identity/revision, folder: folder name or null for no folder}, notes_folder_create {name} and notes_restore {noteId of a note in Recently deleted} are reviewed by the owner. Folder names are at most 40 characters. Never guess note IDs, revisions or folder names.",
+  },
+  {
+    types: ["notes_list_filter"],
+    text: "With notes.list-filter.v1, notes_list_filter {text and/or kind text|list|voice|link} filters the open canonical Notes list. It returns no note content and cannot change a record or filter by folder.",
   },
   { types: FILES_OPERATION_TYPES, text: FILES_GUIDANCE },
   ...FOREGROUND_PROPOSAL_GUIDANCE,

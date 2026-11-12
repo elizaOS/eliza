@@ -10,7 +10,7 @@
     "packages/scripts/lib/test-output.ts"
   ],
   "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
-  "bounds": "One proof-version-1 session spanning /ws deferred credits import, durable Hello claim, three deferred opening imports, revocation fence and one joined retirement. The opening can exit to a separately unmodeled provider/admission region only before stop. Successful storage transactions and acknowledgement settle together.",
+  "bounds": "One proof-version-1 session spanning /ws deferred credits import, durable Hello claim, three deferred opening imports, revocation fence and one joined retirement. A stopped opening settles at import delivery before it starts a revocation subscription. The opening can exit to a separately unmodeled provider/admission region only before stop. Successful storage transactions and acknowledgement settle together.",
   "limitations": [
     "One minted proof-version-1 session, one valid authenticated Hello, one public socket, one opening claim, one retirement attempt and successful or failed import/storage completion. Claim identity is one fixed symbolic owner; generations range from zero through two.",
     "The model ends the checked acquisition region when an unretired opening passes its revocation fence. Quota, money/admission, provider creation, active PCM/TTS controls, renewal, provider cleanup and terminal financial evidence remain separate obligations.",

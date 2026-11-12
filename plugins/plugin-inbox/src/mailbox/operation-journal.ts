@@ -62,8 +62,10 @@ export interface InboxOperationRecord {
 export const composerKind = (kind: unknown): boolean =>
   kind === "send" || kind === "draft-create" || kind === "draft-replace";
 
-/** Everything the person reviews in a composer proposal, as one comparable text. */
-export const composerContent = (proposal: Bag): string =>
+const encodeComposerContent = (
+  proposal: Bag,
+  omitAttachments: boolean,
+): string =>
   JSON.stringify(
     [
       "mode",
@@ -75,8 +77,65 @@ export const composerContent = (proposal: Bag): string =>
       "attachments",
       "forwardAttachments",
       "replyMessageId",
-    ].map((field) => proposal[field] ?? null),
+    ].map((field) =>
+      omitAttachments && field === "attachments"
+        ? null
+        : (proposal[field] ?? null),
+    ),
   );
+
+/** Everything the person reviews in a composer proposal, as one comparable text. */
+export const composerContent = (proposal: Bag): string =>
+  encodeComposerContent(proposal, false);
+
+const attachmentFields = ["name", "mimeType", "dataBase64"] as const;
+
+/** Admits only the plain, dense attachment lists created by the composer. */
+function composerAttachments(
+  value: unknown,
+): value is OutgoingMailAttachment[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    value.length === 0 ||
+    value.length > outgoingAttachmentLimits.maximumFiles ||
+    Object.getOwnPropertyNames(value).length !== value.length + 1
+  )
+    return false;
+  for (let index = 0; index < value.length; index++) {
+    const file = Object.getOwnPropertyDescriptor(value, index)?.value;
+    if (!file || Object.getPrototypeOf(file) !== Object.prototype) return false;
+    const fields = Object.getOwnPropertyNames(file);
+    if (
+      fields.length !== attachmentFields.length ||
+      !attachmentFields.every((key, index) => {
+        const field = Object.getOwnPropertyDescriptor(file, key);
+        return (
+          fields[index] === key &&
+          field?.enumerable &&
+          typeof field.value === "string"
+        );
+      })
+    )
+      return false;
+  }
+  return true;
+}
+
+function sameComposerContentForRender(reviewed: Bag, current: Bag): boolean {
+  const left = reviewed.attachments,
+    right = current.attachments;
+  if (!composerAttachments(left) || !composerAttachments(right))
+    return composerContent(reviewed) === composerContent(current);
+  return (
+    left.length === right.length &&
+    encodeComposerContent(reviewed, true) ===
+      encodeComposerContent(current, true) &&
+    left.every((file, index) =>
+      attachmentFields.every((field) => file[field] === right[index][field]),
+    )
+  );
+}
 
 export interface ComposerEmail {
   draftId: string;
@@ -91,9 +150,10 @@ export interface ComposerEmail {
  */
 export type ReviewBinding = "bound" | "edited" | "other" | "absent";
 
-export function reviewBinding(
+function compareReviewBinding(
   record: Pick<InboxOperationRecord, "proposal" | "composer">,
   current: ComposerEmail | null,
+  matches: (reviewed: Bag, current: Bag) => boolean,
 ): ReviewBinding {
   if (!current) return "absent";
   if (
@@ -102,9 +162,27 @@ export function reviewBinding(
     record.composer.draftId !== current.draftId
   )
     return "other";
-  return composerContent(record.proposal) === composerContent(current.proposal)
-    ? "bound"
-    : "edited";
+  return matches(record.proposal, current.proposal) ? "bound" : "edited";
+}
+
+export function reviewBinding(
+  record: Pick<InboxOperationRecord, "proposal" | "composer">,
+  current: ComposerEmail | null,
+): ReviewBinding {
+  return compareReviewBinding(
+    record,
+    current,
+    (reviewed, proposal) =>
+      composerContent(reviewed) === composerContent(proposal),
+  );
+}
+
+/** Display-only comparison avoids encoding each attachment twice on every render. */
+export function renderReviewBinding(
+  record: Pick<InboxOperationRecord, "proposal" | "composer">,
+  current: ComposerEmail | null,
+): ReviewBinding {
+  return compareReviewBinding(record, current, sameComposerContentForRender);
 }
 
 export const reviewBindingRefusal: Record<

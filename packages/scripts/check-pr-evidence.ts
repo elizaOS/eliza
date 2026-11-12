@@ -2423,7 +2423,7 @@ function readFileListArg(args: string[], flag: string) {
 }
 
 function usage() {
-  console.log(`Usage: node packages/scripts/check-pr-evidence.ts [options]
+  console.log(`Usage: bun packages/scripts/check-pr-evidence.ts [options]
 
 Options:
   --body-file <path>  Read the PR body from a file (default: stdin).
@@ -2862,7 +2862,7 @@ from scratch.
 
 Fix in one command (uploads/patches rows AND re-adds the missing markers; each
 row takes a local file, an existing URL, or an "N/A - <reason>" string):
-  node packages/scripts/pr-evidence.ts rows <pr> \\
+  bun packages/scripts/pr-evidence.ts rows <pr> \\
 ${rowFlags}
 Or copy the \`<!-- evidence-row:* -->\` block from .github/pull_request_template.md
 into the PR description and fill each row.`;
@@ -2959,7 +2959,7 @@ How to fix (fastest path):
   2. capture: bun run --cwd packages/app audit:app  (screenshots + OCR)
      and/or the fixtures under packages/ui/src/components/shell/__e2e__/
   3. attach + patch rows in ONE command:
-     node packages/scripts/pr-evidence.ts rows <pr> \\
+     bun packages/scripts/pr-evidence.ts rows <pr> \\
        --row after-screenshots=shot.jpg --row walkthrough-video=walk.mp4 \\
        --row ocr-review=ocr.txt --row frontend-logs=e2e.log ...
      (uploads to the pr-evidence release and verifies this gate locally)

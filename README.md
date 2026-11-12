@@ -12,7 +12,7 @@
 
 elizaOS is an open-source TypeScript framework and product stack for autonomous
 AI agents. This monorepo contains the core runtime, the Eliza app, the CLI,
-cloud services, native bridges, and first-party plugins. Linux and Android
+cloud services, native bridges, and first-party plugins. Android
 distribution tooling lives in [`packages/os`](packages/os/README.md).
 
 ## Choose a starting point
@@ -28,7 +28,7 @@ distribution tooling lives in [`packages/os`](packages/os/README.md).
 ## Run Eliza from source
 
 The repository pins Bun and Node versions in [`package.json`](package.json).
-Install those versions, then:
+Install Bun, then:
 
 ```bash
 git clone --filter=blob:none https://github.com/elizaos/eliza.git
@@ -58,6 +58,45 @@ bun run cloud:mock  # local Eliza Cloud stack with mocks
 
 Package build/test commands are in each package's README. Use
 `bun run --cwd <package> <script>` to scope a command.
+
+### Runtimes
+
+Bun 1.4.2 (`packageManager`) runs the product, the build, `bun run verify`, and
+the repository scripts: run a script with `bun <script>.ts`. Node 24.15.0
+(`engines.node`) is needed only for the lanes below. They fail on Bun 1.4.2,
+could not be shown to pass on it, or must prove behavior on Node:
+
+- Vitest. `packages/scripts/run-vitest.ts` always starts Vitest on Node. Bun
+  fails suites that Node passes (`fetch` of an uppercase `DATA:` URL,
+  `http.Server.closeAllConnections`, child Node ESM probes).
+- Quint conformance replays (`check-quint.ts` without `--inventory`), because
+  they run Vitest.
+- `node --test` suites that use `module.stripTypeScriptTypes`, built-in module
+  mocks, or a nested Wrangler. Their package scripts still start with `node`.
+- `node --test --test-reporter=tap` suites whose TAP output a Quint conformance
+  check reads case by case (`plugins/plugin-assistant` `test:files-review`).
+  `bun test` has no TAP reporter.
+- Wrangler (`wrangler dev --local` accepts no request on Bun).
+- `packages/app` launchers that load `tsx` (`run-node-tsx.ts`,
+  `run-release-check.ts`) and the `node:test` half of `run-script-tests.ts`.
+- CI: the Bun download in `.github/actions/setup-bun-workspace`, and workflow
+  jobs that install no Bun.
+- Syntax checks. `node --check` parses a file without running it; `bun --check`
+  runs the file. The Pages Functions checks in `cloud-cf-release.yml` and
+  `pr-validation.yml` use Node.
+- Packed-package consumer checks (`packages/core/scripts/verify-package.ts`,
+  the `plugin-elizacloud` `verify-built-package.ts`, and
+  `packages/ui/scripts/verify-batch-voice-package.ts`). The packages declare
+  `engines.node`, so the consumer runs on a real Node found on `PATH`.
+- Install scripts of published packages (`plugins/plugin-computeruse`
+  `postinstall`), because npm users have no Bun.
+- Native and device build paths that still start `node` and were not proven on
+  Bun: the `packages/os/android` Makefile, AOSP and
+  Pixel scripts in `packages/os/scripts/android`, `compile-libllama.ts` (patch
+  step), the iOS xcframework and engine scripts (`build-xcframework.ts`,
+  `mobile/ios/engine.ts`), `paradee-voice/build-native.ts`, Mac App Store
+  signing in `desktop-build.ts`, and the SMS gateway and Cloud gateway
+  maintenance scripts.
 
 ## Benchmark
 
@@ -131,8 +170,8 @@ runtime and direct model-provider configuration remain first-class paths.
 
 ### elizaOS distributions
 
-[`packages/os`](packages/os/README.md) owns bootable Linux and AOSP distributions,
-installers, release manifests, and OS toolchains. Application shells and native
+[`packages/os`](packages/os/README.md) owns the bootable AOSP distribution,
+release manifests, and OS toolchains. Application shells and native
 runtime bridges live in their owning app and plugin packages.
 
 ## Build an agent

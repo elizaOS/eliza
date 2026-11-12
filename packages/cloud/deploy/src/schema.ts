@@ -321,10 +321,23 @@ function isHttpsUrl(value: string, allowQuery: boolean): boolean {
   }
 }
 
+function canonicalBlobHost(value: string): string | null {
+  if (!BLOB_HOST_PATTERN.test(value)) return null;
+  try {
+    return new URL(`https://${value}`).host;
+  } catch {
+    return null;
+  }
+}
+
 type Json = Record<string, unknown>;
 
 function isObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function fieldPath(path: string, key: string): string {
+  return `${path}.${looksLikeSecretValue(key) ? "[redacted field]" : key}`;
 }
 
 class Checker {
@@ -341,7 +354,7 @@ class Checker {
     }
     for (const key of Object.keys(value)) {
       if (!known.includes(key))
-        this.fail(`${path}.${key}`, "is not a known field");
+        this.fail(fieldPath(path, key), "is not a known field");
     }
     return value;
   }
@@ -361,7 +374,7 @@ class Checker {
     }
     const ok =
       !test || (test instanceof RegExp ? test.test(value) : test(value));
-    if (!ok) this.fail(path, `has an invalid value ${JSON.stringify(value)}`);
+    if (!ok) this.fail(path, "has an invalid value");
     return value;
   }
 
@@ -378,16 +391,13 @@ class Checker {
     }
     for (const [key, entry] of Object.entries(value)) {
       if (!keyPattern.test(key))
-        this.fail(`${path}.${key}`, "is not a valid name");
+        this.fail(fieldPath(path, key), "is not a valid name");
       if (typeof entry !== "string") {
-        this.fail(`${path}.${key}`, "must be a string");
+        this.fail(fieldPath(path, key), "must be a string");
         continue;
       }
       if (test && !test.test(entry)) {
-        this.fail(
-          `${path}.${key}`,
-          `has an invalid value ${JSON.stringify(entry)}`,
-        );
+        this.fail(fieldPath(path, key), "has an invalid value");
       }
       out[key] = entry;
     }
@@ -445,7 +455,7 @@ function checkRoutes(
     if (zone && pattern) {
       const host = routeHost(pattern);
       if (host !== zone && !host.endsWith(`.${zone}`)) {
-        check.fail(`${at}.pattern`, `host ${host} is not in zone ${zone}`);
+        check.fail(`${at}.pattern`, "host is not in the configured zone");
       }
     }
     routes.push({ pattern, zone });
@@ -464,13 +474,13 @@ function checkVars(
   for (const name of Object.keys(vars)) {
     if (derived.includes(name)) {
       check.fail(
-        `${path}.${name}`,
+        fieldPath(path, name),
         "is set from a typed field and may not be repeated",
       );
     }
     if (looksLikeSecretName(name)) {
       check.fail(
-        `${path}.${name}`,
+        fieldPath(path, name),
         "is a secret name; list it under secrets instead",
       );
     }
@@ -493,10 +503,9 @@ function checkSecrets(
   value.forEach((entry, index) => {
     const name = check.string(entry, `${path}[${index}]`, BINDING_NAME_PATTERN);
     if (!name) return;
-    if (secrets.includes(name))
-      check.fail(`${path}[${index}]`, `repeats ${name}`);
+    if (secrets.includes(name)) check.fail(`${path}[${index}]`, "is repeated");
     if (derived.includes(name) || (vars && name in vars)) {
-      check.fail(`${path}[${index}]`, `${name} is also a plain variable`);
+      check.fail(`${path}[${index}]`, "is also a plain variable");
     }
     secrets.push(name);
   });
@@ -522,9 +531,18 @@ function checkNativeAuthCallbacks(
     return callbacks;
   }
   const pathPattern = /^\/[A-Za-z0-9/_~.-]+$/;
+  // Keep these rules aligned with the Pages selector; the app parity suite
+  // exercises both validators without adding an app runtime dependency here.
   const reserved = (pathname: string) =>
-    /^\/(api|steward|assets)(\/|$)/.test(pathname);
+    /^\/(api|steward)(\/|$)/.test(pathname) ||
+    pathname.startsWith("/assets/") ||
+    [
+      "/.well-known/openid-configuration",
+      "/.well-known/oidc/jwks.json",
+      "/.well-known/assetlinks.json",
+    ].includes(pathname);
   const seen = new Set<string>();
+  const storageKeys = new Set<string>();
   value.forEach((entry, index) => {
     const at = `${path}[${index}]`;
     const callback =
@@ -557,8 +575,11 @@ function checkNativeAuthCallbacks(
     );
     // A callback is served by this deployment's Pages project only.
     let callbackOrigin = "";
+    let callbackPath = "";
     try {
-      callbackOrigin = new URL(redirectUri).origin;
+      const callbackUrl = new URL(redirectUri);
+      callbackOrigin = callbackUrl.origin;
+      callbackPath = callbackUrl.pathname;
     } catch {
       // Reported above.
     }
@@ -592,7 +613,10 @@ function checkNativeAuthCallbacks(
           "tenant",
         ]) ?? {};
       const pathTest = (value: string) =>
-        pathPattern.test(value) && !value.startsWith("//") && !reserved(value);
+        pathPattern.test(value) &&
+        !value.startsWith("//") &&
+        new URL(value, "https://callback.invalid").pathname === value &&
+        !reserved(value);
       browserSignIn = {
         startPath: check.string(
           signIn.startPath,
@@ -612,7 +636,7 @@ function checkNativeAuthCallbacks(
         apiOrigin: check.string(
           signIn.apiOrigin,
           `${at}.browserSignIn.apiOrigin`,
-          isOrigin,
+          (value) => isOrigin(value) && new URL(value).protocol === "https:",
         ),
         tenant: check.string(
           signIn.tenant,
@@ -630,6 +654,23 @@ function checkNativeAuthCallbacks(
       if (seen.has(start))
         check.fail(`${at}.browserSignIn.startPath`, "repeats a callback route");
       seen.add(start);
+      const storageKey = `${callbackOrigin}:${browserSignIn.storageKey}`;
+      if (storageKeys.has(storageKey))
+        check.fail(
+          `${at}.browserSignIn.storageKey`,
+          "repeats a storage key on this callback origin",
+        );
+      storageKeys.add(storageKey);
+    }
+    const callbackSuffix = "/auth/callback";
+    if (callbackPath.endsWith(callbackSuffix)) {
+      const billingReturn = `${callbackOrigin}${callbackPath.slice(0, -callbackSuffix.length)}/billing/return`;
+      if (seen.has(billingReturn))
+        check.fail(
+          `${at}.redirectUri`,
+          "repeats a derived billing return route",
+        );
+      seen.add(billingReturn);
     }
     callbacks.push({
       redirectUri,
@@ -653,8 +694,7 @@ function checkComponents(
   const workerName = (entry: unknown, at: string, component: string) => {
     const name = check.string(entry, at, WORKER_NAME_PATTERN);
     const owner = workerNames.get(name);
-    if (name && owner)
-      check.fail(at, `is also the ${owner} Worker's name (${name})`);
+    if (name && owner) check.fail(at, `is also the ${owner} Worker's name`);
     if (name) workerNames.set(name, component);
     return name;
   };
@@ -744,7 +784,7 @@ function checkComponents(
 
   for (const name of ["speech", "admission"] as const) {
     if (input[name] === undefined) continue;
-    const at = `${path}.${name}`;
+    const at = fieldPath(path, name);
     const known =
       name === "speech"
         ? [
@@ -909,11 +949,12 @@ function checkEnvironment(
     /^[A-Za-z0-9][A-Za-z0-9_-]*$/,
   );
   const serviceName = check.string(env.serviceName, `${path}.serviceName`);
-  const blobHost = check.string(
+  const configuredBlobHost = check.string(
     env.blobHost,
     `${path}.blobHost`,
-    BLOB_HOST_PATTERN,
+    (entry) => canonicalBlobHost(entry) !== null,
   );
+  const blobHost = canonicalBlobHost(configuredBlobHost) ?? configuredBlobHost;
   const assetsBase = check.string(
     env.assetsBase,
     `${path}.assetsBase`,
@@ -1073,8 +1114,8 @@ function eachString(
     });
   } else if (isObject(value)) {
     for (const [key, entry] of Object.entries(value)) {
-      visit(key, `${path}.${key} (name)`);
-      eachString(entry, `${path}.${key}`, visit);
+      visit(key, `${fieldPath(path, key)} (name)`);
+      eachString(entry, fieldPath(path, key), visit);
     }
   }
 }
@@ -1141,7 +1182,7 @@ export function validateDeployment(input: unknown): Deployment {
         if (other && other.environment !== environment && !(api && other.api)) {
           check.fail(
             `deployment.environments.${environment}.${field}`,
-            `${name} is also a Worker of ${other.environment}`,
+            `is also a Worker of ${other.environment}`,
           );
         }
         owners.set(name, { environment, api });
@@ -1151,10 +1192,7 @@ export function validateDeployment(input: unknown): Deployment {
 
   eachString(input, "deployment", (value, path) => {
     if (id !== ELIZA_DEPLOYMENT_ID && mentionsElizaHost(value)) {
-      check.fail(
-        path,
-        `names a host of the eliza deployment (${JSON.stringify(value)})`,
-      );
+      check.fail(path, "names a host of the eliza deployment");
     }
     if (looksLikeSecretValue(value)) {
       // The value is deliberately not echoed.

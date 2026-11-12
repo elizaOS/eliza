@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildNativeSignInIntentUrl,
   NATIVE_CALLBACK_SCRUB_SCRIPT,
+  nativeBillingReturnPath,
   onRequest,
   resolveCanonicalPageRedirect,
   selectNativeAuthCallback,
@@ -747,5 +748,90 @@ describe("native sign-in callback fallback", () => {
     expect(response.headers.get("Content-Type")).toContain("text/html");
     expect(await response.text()).toContain("app");
     expect(response.headers.get("X-Robots-Tag")).toBeNull();
+  });
+});
+
+describe("native checkout return fallback", () => {
+  const RETURN = "https://eliza.app/reader/billing/return";
+  const unescapeHtml = (value: string) =>
+    value.replaceAll("&amp;", "&").replaceAll("&quot;", '"');
+  const href = async (url: string): Promise<string> => {
+    const response = await run(new Request(url), async () => spaFallback());
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Security-Policy")).toContain(
+      "default-src 'none'",
+    );
+    const html = await response.text();
+    expect(html).not.toContain("<script");
+    // An unauthenticated address never claims a payment or a plan.
+    expect(html).toContain("Return to Example Reader to finish.");
+    expect(html).not.toMatch(/payment|paid|plan|confirm|received/i);
+    const match = html.match(/<a id="open" href="([^"]*)">/);
+    expect(match).not.toBeNull();
+    return unescapeHtml(match?.[1] ?? "");
+  };
+
+  it("derives the return from the configured sign-in callback only", () => {
+    expect(
+      nativeBillingReturnPath("https://eliza.app/alphaphone/auth/callback"),
+    ).toBe("/alphaphone/billing/return");
+    expect(nativeBillingReturnPath("https://eliza.app/auth/callback")).toBe(
+      "/billing/return",
+    );
+    expect(
+      nativeBillingReturnPath("https://eliza.app/notes/return"),
+    ).toBeNull();
+    expect(
+      selectNativeAuthCallback(
+        CALLBACK_ENV.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+        new URL(RETURN),
+        "billing-return",
+      )?.androidPackage,
+    ).toBe("org.example.reader");
+    // The sign-in callback and the checkout return never select each other.
+    expect(
+      selectNativeAuthCallback(
+        CALLBACK_ENV.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+        new URL(RETURN),
+      ),
+    ).toBeNull();
+    expect(resolveCanonicalPageRedirect(`${RETURN}?result=cancel`)).toBeNull();
+  });
+
+  it("hands the app only a well-formed session id and result", async () => {
+    expect(await href(`${RETURN}?session_id=cs_test_a1B2&result=success`)).toBe(
+      "intent://eliza.app/reader/billing/return?session_id=cs_test_a1B2&result=success#Intent;scheme=https;package=org.example.reader;end",
+    );
+    expect(await href(`${RETURN}?result=cancel`)).toBe(
+      "intent://eliza.app/reader/billing/return?result=cancel#Intent;scheme=https;package=org.example.reader;end",
+    );
+    // Anything else in the request is dropped, never reflected.
+    expect(
+      await href(
+        `${RETURN}?session_id=${encodeURIComponent("cs_test_a;package=evil;end")}&result=paid&code=secret#Intent;package=evil;end`,
+      ),
+    ).toBe(
+      "intent://eliza.app/reader/billing/return#Intent;scheme=https;package=org.example.reader;end",
+    );
+  });
+
+  it("serves the SPA for an unconfigured return and fails closed on a route collision", async () => {
+    const spa = await run(
+      new Request("https://eliza.app/other/billing/return?result=cancel"),
+      async () => spaFallback(),
+    );
+    expect(await spa.text()).toContain("app</body>");
+    const collision = await run(
+      new Request(RETURN),
+      async () => spaFallback(),
+      {
+        ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
+          CALLBACK_CONFIG[0],
+          { ...CALLBACK_CONFIG[0], redirectUri: RETURN },
+        ]),
+      },
+    );
+    expect(collision.status).toBe(503);
   });
 });

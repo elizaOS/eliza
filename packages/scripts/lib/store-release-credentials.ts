@@ -67,20 +67,6 @@ export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
 /** @type {readonly StoreLane[]} */
 export const STORE_LANES = Object.freeze([
   Object.freeze({
-    id: "snap",
-    provider: "Snap Store",
-    workflow: ".github/workflows/snap-publish.yml",
-    secrets: Object.freeze(["SNAPCRAFT_STORE_CREDENTIALS"]),
-    variables: Object.freeze([]),
-    prerequisite:
-      "Registered `eliza` snap name owned by the company Snapcraft account.",
-    owner: "Release engineering",
-    rotation:
-      "Re-export every 90 days with `snapcraft export-login --snaps eliza --channels edge,beta,candidate,stable --acls package_access,package_push,package_release -`.",
-    revocation:
-      "Revoke the exported macaroon in the Snapcraft account authentication settings, then re-export.",
-  }),
-  Object.freeze({
     id: "google-play",
     provider: "Google Play Console",
     workflow: ".github/workflows/store-mobile-publish.yml",

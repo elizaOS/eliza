@@ -124,6 +124,12 @@ export async function handleGenericOAuthCallback(
   });
 
   try {
+    // Validate redirect configuration before exchanging or storing credentials.
+    const allowedAbsoluteOrigins = [
+      ...getDefaultPlatformRedirectOrigins(),
+      ...LOOPBACK_REDIRECT_ORIGINS,
+    ];
+
     const result = await handleOAuth2Callback(provider, code, state);
     // A completed provider exchange is also authoritative if the preliminary cache read failed.
     if (appReturnLookupFailed)
@@ -134,11 +140,6 @@ export async function handleGenericOAuthCallback(
       );
     if (appReturn && result.redirectUrl !== appReturn.source)
       throw new Error("OAuth return binding changed");
-
-    const allowedAbsoluteOrigins = [
-      ...getDefaultPlatformRedirectOrigins(),
-      ...LOOPBACK_REDIRECT_ORIGINS,
-    ];
 
     const { target: redirectTarget, rejected } = appReturn
       ? {

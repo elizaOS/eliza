@@ -47,7 +47,6 @@ import {
   isMobilePlatform,
   type ReadJsonBodyOptions,
   type Route,
-  readAliasedEnv,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
@@ -3667,7 +3666,7 @@ export async function startApiServer(opts?: {
   // of 2138, so this change is transparent for non-desktop users.
   const port =
     opts?.port ??
-    (readAliasedEnv("ELIZA_API_PORT")
+    (process.env.ELIZA_API_PORT?.trim()
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);

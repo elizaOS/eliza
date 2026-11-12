@@ -57,7 +57,6 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
-  readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
@@ -283,7 +282,10 @@ async function runVaultBootHydration(): Promise<void> {
   // Same environments the old inline block skipped: Android has no D-Bus for
   // libsecret and no plaintext secrets to migrate; cloud-provisioned sandboxes
   // get real env vars from the daemon and vault-pglite init has hung there.
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     return;
   }
   const bridge = getAgentHostBridge();
@@ -2114,7 +2116,10 @@ export async function resolveConnectorSecretsOverlayForBoot(
     .filter(([, value]) => isVaultRef(value))
     .map(([key]) => key);
   if (refKeys.length === 0) return {};
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     logger.error(
       `[vault-bootstrap] connector vault ref(s) present but the vault is unavailable on this platform (fail-closed): ${refKeys.join(", ")}`,
     );
@@ -2137,7 +2142,10 @@ export async function resolveConnectorSecretsOverlayForBoot(
 export async function resolveConfigEnvVaultRefsForBoot(
   config: ElizaConfig,
 ): Promise<void> {
-  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
+  ) {
     return;
   }
   if (
@@ -2763,7 +2771,7 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
  * Postgres. Without this, the provider defaulted to "pglite" whenever the
  * loaded config lacked an explicit provider — even when Postgres was wired via
  * env — so the WebAssembly PGlite build was attempted and aborted on runtimes
- * that have no WASM (e.g. the riscv64 image, which provisions native Postgres).
+ * that have no WASM.
  * Keeping env authoritative makes the env-only Postgres path consistent across
  * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
  */
@@ -4277,7 +4285,8 @@ export async function startEliza(
   // records which of those keys the launch environment actually set, letting
   // the deferred hydrate keep that exact precedence (vault beats config-merged
   // values; never clobbers a real env var).
-  const isCloudProvisioned = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  const isCloudProvisioned =
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
   vaultBootHydration = null;
   if (!isMobilePlatform() && !isCloudProvisioned) {
     getAgentHostBridge().captureWalletEnvBootBaseline();
@@ -4390,7 +4399,7 @@ export async function startEliza(
   // injected by the daemon as env vars, so there's nothing to multiplex. The
   // pool implementation is supplied by the host through the injected agent host
   // bridge (see ./host-bridge.ts) — no app import, no boot-time cycle.
-  if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
+  if (process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1")
     try {
       const accountPool = getAgentHostBridge();
       accountPool.getDefaultAccountPool();
@@ -4605,7 +4614,7 @@ export async function startEliza(
   // PGlite cold start this inventory listing would otherwise trigger.
   if (
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1" &&
     existsSync(resolveDefaultVaultDataDir())
   ) {
     try {
@@ -4635,7 +4644,7 @@ export async function startEliza(
   if (
     preferredProviderId &&
     preferredProviderId !== "elizacloud" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+    process.env.ELIZA_CLOUD_PROVISIONED?.trim() !== "1"
   ) {
     const providerCredential = await hydrateSelectedProviderCredentialFromVault(
       {
@@ -5606,7 +5615,7 @@ export async function startEliza(
   ): Promise<readonly import("./agent-wallets.ts").AgentWalletDescriptor[]> => {
     if (
       process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
-      readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1"
+      process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1"
     ) {
       return Promise.resolve([]);
     }
@@ -6292,7 +6301,7 @@ export async function startEliza(
     // the renderer hit "Failed to fetch". Prefer the desktop API port
     // resolver when ELIZA_API_PORT is set; otherwise fall back to the
     // server-only resolver so CLI-mode defaults (2138) stay untouched.
-    const apiPort = readAliasedEnv("ELIZA_API_PORT")
+    const apiPort = process.env.ELIZA_API_PORT?.trim()
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env);
     // Local-agent IPC mode (Android stdio bridge / Capacitor): the WebView

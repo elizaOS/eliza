@@ -35,7 +35,7 @@ Android's device suite verifies the real WebView/Capacitor/Keystore round trip,
 activity recreation, ciphertext persistence, deletion, and invalid/corrupt input:
 
 ```bash
-node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-secure-store
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-secure-store
 ```
 
 Android bridge instances serialize Keystore key creation and AtomicFile operations
@@ -120,6 +120,12 @@ does not make it larger is accepted until it fits the new limit again.
 The device suite checks old-frame compatibility, backup recovery, tampering,
 byte limits, lowered limits, concurrent cold writes and competing admissions
 with synthetic JSON.
+
+Run `bun run --cwd plugins/plugin-native-secure-store test:native-slots` with a
+JDK and `org.json:json:20250517` in the Gradle cache or `ELIZA_JSON_JAR`. It checks
+32 MiB authenticated records, retained limits, CAS and tampering in a 192 MiB
+JVM heap with a 24 MiB resident allocation. It uses a synthetic key and host
+filesystem; Android Keystore and device memory qualification remain separate.
 
 `CredentialAccessSession.currentTicket()` binds queued work to the grant that admitted it.
 Check `authenticated(ticket)` before use. `lock(ticket)` cancels only that owner; an old

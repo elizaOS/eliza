@@ -36,6 +36,14 @@ export interface TrashedNote {
   note: StickyNote;
   deletedAt: string;
 }
+
+/** A committed Trash deletion whose device recording still needs cleanup. */
+export interface NotesTrashRecordingCleanup {
+  operationId: string;
+  noteId: string;
+  audioId: string;
+  deletedAt: string;
+}
 export interface StickyNote {
   id: string;
   title: string;
@@ -57,6 +65,8 @@ export interface NotesDocument extends NotesSnapshot {
   persistedAt: string;
   /** Private mutation order. Public snapshots omit it; legacy documents may lack it. */
   noteRevisions?: Record<string, number>;
+  /** Private cleanup work. The ordinary Notes snapshot does not expose it. */
+  trashRecordingCleanup?: NotesTrashRecordingCleanup[];
 }
 
 export type NotesStorePhase =

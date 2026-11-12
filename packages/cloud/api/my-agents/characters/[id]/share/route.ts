@@ -100,6 +100,10 @@ app.put("/", async (c) => {
     }
 
     const { isPublic } = validation.data;
+    // Publishing needs a usable URL; making a character private does not.
+    const baseUrl = isPublic
+      ? c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin
+      : null;
     logger.info("[Share API] Toggling character share status:", {
       characterId: id,
       userId: user.id,
@@ -121,7 +125,6 @@ app.put("/", async (c) => {
       cache.delPattern(CacheKeys.discovery.pattern()),
     ]);
 
-    const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
     return c.json({
       success: true,
       data: {

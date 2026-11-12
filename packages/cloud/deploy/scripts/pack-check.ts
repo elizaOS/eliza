@@ -78,9 +78,6 @@ const BUNDLED_PUBLIC_PACKAGES = [
   "@elizaos/voice",
 ] as const;
 
-/** Not a workspace member, so the root manifest does not list it. */
-const EXTRA_PACKAGE_DIRS = ["packages/cloud/deploy"];
-
 const NEVER_COPIED = new Set([
   "node_modules",
   ".turbo",
@@ -127,10 +124,8 @@ interface Workspace {
 
 /** Every workspace package of the checkout, by name. */
 function readWorkspaces(root: string): Map<string, Workspace> {
-  const patterns = [
-    ...((readJson(join(root, "package.json")).workspaces as string[]) ?? []),
-    ...EXTRA_PACKAGE_DIRS,
-  ];
+  const patterns =
+    (readJson(join(root, "package.json")).workspaces as string[]) ?? [];
   const dirs: string[] = [];
   for (const pattern of patterns) {
     if (!pattern.endsWith("/*")) {

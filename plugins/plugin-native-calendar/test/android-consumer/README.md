@@ -18,7 +18,7 @@ After building, run the shared harness qualification against an explicitly owned
 x86_64 fixture AVD (it must be booted and unlocked with foreground user 0):
 
 ```sh
-node plugins/plugin-native-calendar/test/android-consumer/run-consumer.mjs \
+bun plugins/plugin-native-calendar/test/android-consumer/run-consumer.mjs \
   --adb /absolute/android-sdk/platform-tools/adb \
   --aapt /absolute/android-sdk/build-tools/36.0.0/aapt \
   --serial emulator-5582 --abi x86_64 --avd your-disposable-fixture

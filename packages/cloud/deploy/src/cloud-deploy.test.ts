@@ -63,6 +63,35 @@ describe("deployment file validation", () => {
     expect(problemsOf(eliza())).toEqual([]);
   });
 
+  test("renders canonical blob authorities and refuses ports outside the URL range", () => {
+    for (const [configured, canonical] of [
+      ["blob.example.org:8443", "blob.example.org:8443"],
+      ["blob.example.org:443", "blob.example.org"],
+    ]) {
+      const deployment = validateDeployment(
+        productWith((env) => Object.assign(env, { blobHost: configured })),
+      );
+      const { config } = renderWranglerConfig({
+        deployment,
+        environment: "production",
+        upstreamRoot: UPSTREAM_ROOT,
+        outDir: PRODUCT_DIR,
+      });
+      const vars = config.vars as Record<string, string>;
+      expect(vars.R2_PUBLIC_HOST).toBe(canonical);
+      expect(resolveCloudDeployment(vars).blobHost).toBe(canonical);
+    }
+    for (const host of ["blob.example.org:65536", "blob.example.org:99999"]) {
+      expect(
+        problemsOf(
+          productWith((env) => Object.assign(env, { blobHost: host })),
+        ),
+      ).toContain(
+        "deployment.environments.production.blobHost: has an invalid value",
+      );
+    }
+  });
+
   test("refuses an eliza host anywhere in a product deployment", () => {
     for (const host of [
       "eliza.app",
@@ -117,6 +146,39 @@ describe("deployment file validation", () => {
     }
   });
 
+  test("never echoes rejected credentials through structural or host diagnostics", () => {
+    const secret = `sk_live_${"a".repeat(24)}`;
+    for (const input of [
+      productWith((env) => {
+        env.workerName = secret;
+      }),
+      productWith((env) => {
+        (env.resources as Table).hyperdriveId = secret;
+      }),
+      productWith((env) => {
+        env.billingUrl = `https://app:${secret}@api.eliza.app`;
+      }),
+      productWith((env) => {
+        (env.vars as Table)[secret] = "value";
+      }),
+      productWith((env) => {
+        (env.secrets as string[]).push(secret, secret);
+      }),
+      productWith((env) => {
+        env.routes = [
+          { pattern: `${secret}.example.org/*`, zone: "example.org" },
+        ];
+      }),
+      productWith((env) => {
+        env.routes = [{ pattern: "api.example.org/*", zone: secret }];
+      }),
+    ]) {
+      const problems = problemsOf(input);
+      expect(problems.length).toBeGreaterThan(0);
+      expect(problems.join("\n")).not.toContain(secret);
+    }
+  });
+
   test("refuses a secret name used as a plain variable, and a value in the secrets list", () => {
     expect(
       problemsOf(
@@ -167,7 +229,7 @@ describe("deployment file validation", () => {
           Object.assign(env, {
             routes: [{ pattern: "api.example.net/*", zone: "example.org" }],
           }),
-        "host api.example.net is not in zone example.org",
+        "host is not in the configured zone",
       ],
       [
         (env) =>

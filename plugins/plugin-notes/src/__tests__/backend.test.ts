@@ -1710,12 +1710,11 @@ describe("Notes authenticated routes", () => {
     for (const routeValue of notesRoutes) {
       expect(routeValue.public).not.toBe(true);
       expect(routeValue.rawPath).toBe(true);
-      expect(routeValue.modes).toEqual([
-        "local",
-        "local-only",
-        "cloud",
-        "remote",
-      ]);
+      expect(routeValue.modes).toEqual(
+        routeValue.path === "/api/notes/state"
+          ? ["local", "local-only", "cloud", "remote"]
+          : ["local", "local-only"],
+      );
     }
   });
 

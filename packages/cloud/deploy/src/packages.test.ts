@@ -215,13 +215,35 @@ describe("render from installed packages", () => {
   });
 
   test("refuses an installed main that leaves the package", () => {
+    for (const main of ["../../../../outside.ts", "/outside.ts"]) {
+      const product = installedProduct();
+      const file = join(installedApiDir(product), "wrangler.toml");
+      writeFileSync(
+        file,
+        readFileSync(file, "utf8").replace(
+          'main = "src/index.ts"',
+          `main = ${JSON.stringify(main)}`,
+        ),
+      );
+      expect(() =>
+        renderWranglerConfig({
+          deployment: example(),
+          environment: "staging",
+          packagesRoot: product,
+          outDir: product,
+        }),
+      ).toThrow(RenderError);
+    }
+  });
+
+  test("refuses an installed alias with an absolute file path", () => {
     const product = installedProduct();
     const file = join(installedApiDir(product), "wrangler.toml");
     writeFileSync(
       file,
       readFileSync(file, "utf8").replace(
-        'main = "src/index.ts"',
-        'main = "../../../../outside.ts"',
+        '"@elizaos/cloud-shared" = "../shared/src/index.ts"',
+        '"@elizaos/cloud-shared" = "/outside.ts"',
       ),
     );
     expect(() =>
@@ -231,7 +253,7 @@ describe("render from installed packages", () => {
         packagesRoot: product,
         outDir: product,
       }),
-    ).toThrow(RenderError);
+    ).toThrow("must not contain an absolute file path");
   });
 
   test("only the API Worker renders from packages", () => {

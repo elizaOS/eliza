@@ -14,17 +14,11 @@ import { captureHostExecutionBaseline } from "@elizaos/host";
 import {
   isAndroidMobile,
   isElizaOsAndroidRuntime,
-  readAliasedEnv,
 } from "@elizaos/host/protocol";
 
 import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 import { captureProtectedProfile } from "./security/protected-profile-state.ts";
 
-// Resolve a branded `<PREFIX>_STATE_DIR` / `<PREFIX>_PLATFORM` through the
-// boot-config alias table — the reader path, with no process.env mirror
-// (issue #13423). `@elizaos/core` is already a transitive static import via
-// `./cli/index.ts`, so this adds no new module to the boot graph; before the
-// alias table is seeded these fall back to the raw ELIZA_ value.
 // Establish the host executable-search authority before the CLI dynamically
 // imports runtime configuration or any plugin code.
 captureHostExecutionBaseline();
@@ -61,7 +55,7 @@ captureProtectedProfile();
     // identically to the rest of the codebase (see state-dir.ts).
     const home = process.env.HOME?.trim() || _earlyHomedir();
     const resolvedStateDir =
-      readAliasedEnv("ELIZA_STATE_DIR") ||
+      process.env.ELIZA_STATE_DIR?.trim() ||
       (xdgStateHome
         ? `${xdgStateHome}/eliza`
         : home
@@ -84,7 +78,7 @@ const _binDebugLog = isAndroidMobile()
         process.env.XDG_STATE_HOME ??
         `${process.env.HOME ?? "/data/local/tmp"}/.local/state`;
       const stateDir =
-        readAliasedEnv("ELIZA_STATE_DIR") || `${xdgStateHome}/eliza`;
+        process.env.ELIZA_STATE_DIR?.trim() || `${xdgStateHome}/eliza`;
       const logPath = `${stateDir}/bin-debug.log`;
       try {
         _earlyFs.mkdirSync(stateDir, { recursive: true });
@@ -107,7 +101,7 @@ const _binDebugLog = isAndroidMobile()
     })()
   : () => {};
 _binDebugLog(
-  `[bin.ts] started ELIZA_PLATFORM=${readAliasedEnv("ELIZA_PLATFORM") ?? "(unset)"} ELIZA_STATE_DIR=${readAliasedEnv("ELIZA_STATE_DIR") ?? "(unset)"}`,
+  `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM?.trim() || "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR?.trim() || "(unset)"}`,
 );
 // Mobile devices ship no /etc/resolv.conf, so the musl bun agent can't resolve
 // DNS — every outbound fetch (cloud, model catalog, connectors) fails until we

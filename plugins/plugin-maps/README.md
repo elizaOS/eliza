@@ -35,6 +35,12 @@ passes both callbacks to the host's `createPlane` argument; forward them to
 `MapPlaneOptions`. Hosts still own location permission, voice policy, provider
 configuration and presentation.
 
+Hosts may set `initialView` to choose the opening centre and zoom of a worldwide
+basemap. Regional maps keep their coverage. A new complete result-pin input is
+fitted once; repeating it leaves the camera alone. Selection, routes and active
+following retain camera ownership. `MapsObservation.qnt` includes this bounded
+camera contract; it does not prove an external host uses the opening option.
+
 A host may supply `selectionPadding` for its own panels. The map samples it on
 updates and idle after resize, so a selected place stays visible when panels
 move. Layout changes preserve the current zoom and marker, and do not take the
