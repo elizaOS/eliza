@@ -85,7 +85,6 @@ import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
 import {
   resolveConfiguredTimeZone,
-  resolveConfiguredTimeZone,
   resolveDefaultTimeZone,
 } from "../defaults.js";
 import { FAMILY_BACKUP_CLEANUP_OPERATION } from "../family-workflows/backup-cleanup-schedule.js";
@@ -364,8 +363,8 @@ function defaultOwnerFactsProvider(
     // whether the owner is inside a booked/declared travel window at this
     // instant, which is exactly what the `during_travel` gate needs each tick.
     const view = ownerFactsToView(await store.read(), new Date());
-    // With no owner timezone on file, owner_local triggers use the zone saved
-    // in the scheduling plugin settings instead of UTC.
+    // An unset owner zone follows the scheduling setting, runtime setting,
+    // then the host zone before owner-local cron is evaluated.
     view.timezone ??=
       configuredDefaultTimeZone(runtime) ?? resolveConfiguredTimeZone(runtime);
     const timezone = view.timezone;
