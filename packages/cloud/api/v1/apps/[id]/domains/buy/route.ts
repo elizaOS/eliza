@@ -712,7 +712,13 @@ async function reconcileDomainPurchaseAttempt(
     // refunded. Without this the attempt reconciles forever with the credits
     // held. One answer alone waits for the next lookup.
     if (isRegistrationNotFound(error)) {
-      if (attempt.error_code === "registration_not_found") {
+      const refund = attempt.error_code === "registration_not_found";
+      logger.warn("[Domains Buy] registrar has no registration", {
+        domain: attempt.domain,
+        decision: refund ? "refund" : "recheck",
+        error: extractErrorMessage(error),
+      });
+      if (refund) {
         return domainPurchaseAttemptsRepository.markRefundPending({
           key: attempt.key,
           organizationId: attempt.organization_id,
