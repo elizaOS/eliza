@@ -57,5 +57,12 @@ it("exposes a secret set in chat through runtime.getSetting", async () => {
   expect({
     runtimeReads: runtime.getSetting("OPENAI_API_KEY"),
     serviceReads: await service.get("OPENAI_API_KEY", context),
-  }).toEqual({ runtimeReads: null, serviceReads: null });
+    exists: await service.exists("OPENAI_API_KEY", context),
+    inSecrets: "OPENAI_API_KEY" in secrets,
+  }).toEqual({
+    runtimeReads: null,
+    serviceReads: null,
+    exists: false,
+    inSecrets: false,
+  });
 });
