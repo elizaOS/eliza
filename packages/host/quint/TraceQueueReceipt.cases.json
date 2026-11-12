@@ -1,0 +1,75 @@
+{
+  "sources": [
+    "packages/host/native-host/trace-queue.mjs",
+    "packages/host/native-host/trace-queue.test.mjs",
+    "packages/host/quint/check-trace-queue-receipt.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One SQLite queue handle, three event IDs, two retained events, up to two reported overflows, one checkpoint, one pending upload and one clean reopen. All retained events fit within a single batch. The reply abstracts the original array as its ID set and length, so a duplicate or unexpected ID cannot retire any row.",
+    "conformance": "The existing native Host cases use a real encrypted SQLite queue. They check restart, replay, checkpoint, withdrawal, close refusal, single upload ownership, incomplete and duplicate replies, and retry after overflow. The sender response is controlled locally. An append after upload admission is also a modeled scenario.",
+    "gaps": "Multiple queue handles, producer capture and transport cancellation, collector authority and idempotency, batches above the bound, arbitrary database faults, crash durability, and uploader timer policy are outside this model. Successful local receipt retirement abstracts one completed SQLite transaction. No provider delivery or deadline is guaranteed."
+  },
+  "conformance": "packages/host/quint/check-trace-queue-receipt.mjs",
+  "cases": [
+    {
+      "name": "durable-local-receipt-and-withdrawal",
+      "main": "TraceQueueReceipt",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "QueueBounds",
+        "PendingOwnsSnapshot",
+        "WithdrawalClearsDurableCapture",
+        "CloseRequiresSettledUpload"
+      ],
+      "temporal": [
+        "ReceiptRetiresOnlyItsSnapshot",
+        "FailedReceiptKeepsRows",
+        "WithdrawalPersists",
+        "FairFlushSettles",
+        "FlushSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ReceiptRetiresOnlyItsSnapshot",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The queue removes only the IDs in the pending exact durable receipt."
+          ]
+        },
+        {
+          "property": "FailedReceiptKeepsRows",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Failed or inexact replies preserve the current rows."
+          ]
+        },
+        {
+          "property": "WithdrawalPersists",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Withdrawal remains durable through a late reply and a clean reopen."
+          ]
+        },
+        {
+          "property": "FairFlushSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the reply and local settlement, which may succeed or fail. This requires a callback that settles and does not require delivery success."
+          ]
+        },
+        {
+          "property": "FlushSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The admitted upload can stay pending forever, and close still refuses."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}
