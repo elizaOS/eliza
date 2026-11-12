@@ -1819,7 +1819,6 @@ export class CheckinService {
   private async renderSummary(
     report: Omit<CheckinReport, "summaryText">,
   ): Promise<string> {
-    if (report.kind === "morning") return renderMorningCheckinReport(report);
     if (typeof this.runtime.useModel !== "function") {
       throw new ElizaError(
         "Check-in summary requires a configured text model",
