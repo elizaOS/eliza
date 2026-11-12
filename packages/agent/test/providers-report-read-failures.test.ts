@@ -290,12 +290,22 @@ it("keeps the owner's tasks and automation instructions out of shared and non-ow
         .text;
     };
 
+    const privateText = ["biopsy", "Doctor follow-up", "trg-private"];
     // The owner's private DM still sees them.
-    expect(await compose(owner, dm)).toContain("biopsy");
-    // Another member never does, even in their own DM with the agent.
-    expect(await compose(guest, guestDm)).not.toContain("biopsy");
-    // Nor a turn whose audience includes someone besides the owner.
-    expect(await compose(owner, group)).not.toContain("biopsy");
+    const ownerText = await compose(owner, dm);
+    expect(ownerText).toContain("biopsy");
+    expect(ownerText).toContain("Doctor follow-up");
+    // Another member never does, even in their own DM with the agent; nor a
+    // turn whose audience includes someone besides the owner.
+    for (const text of [
+      await compose(guest, guestDm),
+      await compose(owner, group),
+      // A turn with no audience attestation fails closed, even the owner's DM.
+      (await runtime.composeState(from(owner, dm), [provider.name], true, true))
+        .text,
+    ]) {
+      for (const secret of privateText) expect(text).not.toContain(secret);
+    }
   } finally {
     await runtime.stop().catch(() => undefined);
     await rm(directory, { recursive: true, force: true });
