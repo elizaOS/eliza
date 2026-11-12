@@ -7,7 +7,9 @@ import { initializeTestRuntime } from "@elizaos/testing/runtime";
  */
 
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { promises as fs } from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -18,12 +20,16 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import type {
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
+import {
+  getHttpRuntime,
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
 } from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { tryHandleHonoRuntimeRoute } from "../../../../packages/agent/src/api/hono-mount.js";
+import { resolveHostSessionAccessContext } from "../../../../packages/agent/src/api/host-session-access-context.js";
+import { createNotesClient } from "../client/notes-api.js";
 import {
   interact,
   type NotesInteractResult,
@@ -207,55 +213,113 @@ async function invokeRoute(
 }
 
 describe("Archived Notes permanent erase", () => {
-  it("only accepts the authenticated Notes owner on the direct erase route", async () => {
+  it("binds the Notes erase client to the authenticated owner over HTTP", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const runtime = await runtimeFor(service);
+    getHttpRuntime(runtime).routes.push(...notesRoutes);
     const note = await service.createNote({ content: "Disposable owner note" });
-    const archived = await service.deleteNoteWithCommit(note.id);
-    const erase = route("POST", "/api/notes/trash/erase");
-    const owner = {
-      requesterEntityId: resolveOwnerEntityIdOrDefault(runtime),
-      role: "OWNER",
-      isOwner: true,
-    } as const;
-    const body = {
-      phase: "begin",
-      id: note.id,
-      expectedRevision: archived.snapshot.revision,
-      operationId: randomUUID(),
-    };
-    for (const accessContext of [
-      undefined,
-      { ...owner, role: "GUEST" as const, isOwner: false },
-      { ...owner, requesterEntityId: stringToUuid("other-owner") },
-    ]) {
-      expect(
-        await invokeRoute(erase, runtime, {
-          body,
-          isTrustedLocal: false,
-          ...(accessContext ? { accessContext } : {}),
-        }),
-      ).toMatchObject({ status: 403 });
-    }
-    expect(
-      await invokeRoute(erase, runtime, {
-        body: { ...body, expectedRevision: archived.snapshot.revision - 1 },
-        accessContext: owner,
-        isTrustedLocal: false,
-      }),
-    ).toMatchObject({ status: 409 });
-    expect(service.snapshot()).toEqual(archived.snapshot);
-    expect(
-      await invokeRoute(erase, runtime, {
-        body,
-        accessContext: owner,
-        isTrustedLocal: false,
-      }),
-    ).toMatchObject({
-      status: 200,
-      body: { success: true, data: { trash: [] } },
+    const kept = await service.createNote({
+      content: "Unrelated archived note",
     });
-    expect((await service.store.persistedSnapshot()).trash).toEqual([]);
+    await service.deleteNoteWithCommit(note.id);
+    const archived = await service.deleteNoteWithCommit(kept.id);
+    const owner = resolveHostSessionAccessContext(
+      { ok: true, role: "OWNER", principal: "notes-owner" },
+      runtime,
+    );
+    const guest = resolveHostSessionAccessContext(
+      { ok: true, role: "GUEST", principal: "notes-guest" },
+      runtime,
+    );
+    expect(owner?.requesterEntityId).toBe(
+      resolveOwnerEntityIdOrDefault(runtime),
+    );
+    expect(guest?.role).toBe("GUEST");
+    const ownerToken = randomUUID();
+    const guestToken = randomUUID();
+    const otherOwnerToken = randomUUID();
+    const server = createServer((req, res) => {
+      const token = req.headers.authorization;
+      void tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime,
+        isAuthorized: () =>
+          [ownerToken, guestToken, otherOwnerToken].some(
+            (credential) => token === `Bearer ${credential}`,
+          ),
+        isTrustedLocal: () => false,
+        accessContext: () =>
+          token === `Bearer ${ownerToken}`
+            ? owner
+            : token === `Bearer ${guestToken}`
+              ? guest
+              : token === `Bearer ${otherOwnerToken}` && owner
+                ? { ...owner, requesterEntityId: stringToUuid("other-owner") }
+                : undefined,
+      })
+        .then((handled) => {
+          if (!handled) res.writeHead(404).end();
+        })
+        .catch(() => res.writeHead(500).end());
+    });
+    server.listen(0, "127.0.0.1");
+    try {
+      await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw Error("Notes test listener missing.");
+      const origin = `http://127.0.0.1:${address.port}`;
+      const body = {
+        phase: "begin",
+        id: note.id,
+        expectedRevision: archived.snapshot.revision,
+        operationId: randomUUID(),
+      } as const;
+      const send = async (token: string | undefined, value: unknown) =>
+        fetch(origin + "/api/notes/trash/erase", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(value),
+        });
+      expect((await send(undefined, body)).status).toBe(401);
+      for (const token of [guestToken, otherOwnerToken]) {
+        expect((await send(token, body)).status).toBe(403);
+      }
+      expect(
+        (
+          await send(ownerToken, {
+            ...body,
+            expectedRevision: body.expectedRevision - 1,
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (await send(ownerToken, { ...body, content: "x".repeat(2048) })).status,
+      ).toBe(413);
+      expect(service.snapshot()).toEqual(archived.snapshot);
+      const client = createNotesClient({
+        async fetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+          const headers = new Headers(options.headers);
+          headers.set("Authorization", `Bearer ${ownerToken}`);
+          const response = await fetch(origin + path, { ...options, headers });
+          if (!response.ok)
+            throw Error(`Notes test request failed: ${response.status}`);
+          return response.json() as Promise<T>;
+        },
+      });
+      expect(await client.readState()).toEqual(archived.snapshot);
+      const result = await client.eraseArchived(body);
+      expect(result.trash?.map((entry) => entry.note.id)).toEqual([kept.id]);
+      expect(await service.store.persistedSnapshot()).toEqual(result);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("fences a plain-note erase to the reviewed archived revision", async () => {
