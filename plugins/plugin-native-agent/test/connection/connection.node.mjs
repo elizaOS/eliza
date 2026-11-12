@@ -161,10 +161,7 @@ test("device billing routes exist in the Cloud API and exclude sign-in", () => {
   }
   // The authority those routes name must itself admit the mobile credential.
   const authority = fs.readFileSync(
-    path.resolve(
-      cloudApi,
-      "../shared/src/lib/auth/workers-hono-auth.ts",
-    ),
+    path.resolve(cloudApi, "../shared/src/lib/auth/workers-hono-auth.ts"),
     "utf8",
   );
   const body = authority.slice(
