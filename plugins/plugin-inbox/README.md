@@ -82,3 +82,8 @@ every host input is injected:
 
 Slot names (`inbox-operation:v1:*`, `inbox-drafts:v1:*`) and record layouts
 are installed-data identifiers; keep them stable.
+
+Review rendering compares ordinary attachment fields without re-encoding their
+bytes. Rendered button state never authorizes dispatch: confirmation compares
+the complete live composer with the immutable reviewed proposal again. Hosts
+must treat shared journal snapshots as read-only.
