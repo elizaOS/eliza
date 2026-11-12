@@ -246,6 +246,7 @@ export function createCalendarSyncHost(
     ((events: number) => `Ready to link ${events} local events.`);
   let destination: CalendarSyncDestination = { account: "", calendar: "" };
   let preparedBinding: CalendarSyncBinding | null = null,
+    resumeGeneration = 0,
     status = "Sync is off.",
     running = false,
     enabled = false,
@@ -314,8 +315,13 @@ export function createCalendarSyncHost(
     }
   }
 
-  const cancel = () => {
+  const cancelSync = () => {
+    // A resume can be waiting for storage before the controller has a signal.
+    resumeGeneration++;
     controller.cancel();
+  };
+  const cancel = () => {
+    cancelSync();
     gate()?.cancel();
   };
 
@@ -424,7 +430,7 @@ export function createCalendarSyncHost(
     sync: () =>
       work(() => controller.sync(), calendarSyncReportMessage, "Syncing…"),
     async pause() {
-      controller.cancel();
+      cancelSync();
       await gate()?.pause();
       await options.settings.edit((value) =>
         value ? { ...value, enabled: false } : null,
@@ -437,13 +443,20 @@ export function createCalendarSyncHost(
     cancel,
     async resume() {
       if (running || !options.foreground()) return;
+      const generation = resumeGeneration;
+      const identity = options.identity();
+      const current = () =>
+        generation === resumeGeneration &&
+        options.foreground() &&
+        options.identity() === identity;
       try {
         const config = await saved();
-        if (!config?.enabled) return;
+        if (!current() || running || !config?.enabled) return;
         if (!calendarSyncTargetMatches(config.binding, options.target()))
           return;
         await host.sync();
       } catch (error) {
+        if (!current()) return;
         status = calendarSyncFailureMessage(error);
         changed();
       }
@@ -509,6 +522,7 @@ export function createCalendarSyncHost(
           changed();
         },
         stop() {
+          if (stopped) return;
           stopped = true;
           clearTimeout(timer);
           settledListeners.delete(settled);
