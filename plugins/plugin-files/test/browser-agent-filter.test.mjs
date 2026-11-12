@@ -192,6 +192,7 @@ async function trashFixture(t) {
   globalThis.document = new EventTarget();
   const state = {};
   const calls = [];
+  const toasts = [];
   const rows = new Map([
     [
       undefined,
@@ -224,7 +225,9 @@ async function trashFixture(t) {
   const api = {
     get: () => state,
     set: (patch) => Object.assign(state, patch),
-    toast() {},
+    toast(message) {
+      toasts.push(message);
+    },
     isActive: () => true,
   };
   const apply = (action, input) => {
@@ -281,7 +284,7 @@ async function trashFixture(t) {
   await settle();
   render().browse.openTrash();
   await settle();
-  return { render, settle, calls, rows, document: globalThis.document };
+  return { render, settle, calls, rows, toasts, document: globalThis.document };
 }
 
 test("deleted Files selection restores the selected volume even when trash IDs match", async (t) => {
@@ -304,6 +307,7 @@ test("deleted Files selection restores the selected volume even when trash IDs m
   ]);
   assert.equal(f.rows.get(undefined).length, 1);
   assert.equal(f.render().isSel, false);
+  assert.deepEqual(f.toasts, []);
 });
 
 test("deleted Files cancellation has no effect and confirmation keeps its reviewed selection", async (t) => {

@@ -709,7 +709,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           ...onVolume(volume),
         });
         if (failed(value)) break;
-        summarize(value.outcomes || [], "restored", "Restored");
+        const restored = (value.outcomes || []).filter(
+          (outcome) => outcome.status === "restored",
+        ).length;
+        if (restored < ids.length)
+          toast(`Recovered ${restored} of ${ids.length} items`);
       }
     } catch {
       toast("The operation could not be confirmed.");
