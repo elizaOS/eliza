@@ -1,4 +1,3 @@
-import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_STT_MODEL,
   CloudflareSpeechError,
@@ -11,6 +10,7 @@ import {
  */
 
 import {
+  elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderError,
   isKnownUnacceptedProviderStatus,
 } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
@@ -58,8 +58,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { inferenceFundingRefusal } from "@elizaos/cloud-shared/lib/services/inference-funding-refusal";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
@@ -70,6 +69,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  timeSpeechPhase,
 } from "@/api-app/lib/generative-route-auth";
 import {
   calculateCartesiaSttCost,
@@ -514,9 +514,8 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     }
 
     const uploadStartedAt = performance.now();
-    const sizeCheckedRequest = await readRequestWithMultipartLimit(
-      request,
-      multipartBodyLimit,
+    const sizeCheckedRequest = await timeSpeechPhase(c, "upload_read", () =>
+      readRequestWithMultipartLimit(request, multipartBodyLimit),
     );
     timings.push({
       name: "upload",
@@ -531,21 +530,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     request = sizeCheckedRequest;
 
     const authStartedAt = performance.now();
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: true,
+        cachedDecisionIsFinal: true,
       }).finally(() => {
         timings.push({
           name: "auth",
           durationMs: performance.now() - authStartedAt,
         });
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -559,7 +555,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
 
     let formData: FormData;
     try {
-      formData = await request.formData();
+      formData = await timeSpeechPhase(c, "multipart_decode", () =>
+        request.formData(),
+      );
     } catch (error) {
       // error-policy:J3 malformed multipart bytes are explicit invalid input.
       logger.warn("[Voice STT API] Invalid multipart form data", {
@@ -613,8 +611,12 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       );
     }
 
-    const buffer = Buffer.from(await audioFile.arrayBuffer());
-    const fileTypeResult = await fileTypeFromBuffer(buffer);
+    const buffer = Buffer.from(
+      await timeSpeechPhase(c, "audio_buffer", () => audioFile.arrayBuffer()),
+    );
+    const fileTypeResult = await timeSpeechPhase(c, "audio_sniff", () =>
+      fileTypeFromBuffer(buffer),
+    );
 
     if (!fileTypeResult) {
       logger.warn("[Voice STT API] Unable to detect audio file type", {
@@ -663,7 +665,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     let billingEstimate: SttBillingEstimate | undefined;
     const getBillingEstimate = async (): Promise<SttBillingEstimate> => {
       if (billingEstimate) return billingEstimate;
-      const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
+      const metadata = await timeSpeechPhase(c, "audio_metadata", () =>
+        parseBuffer(buffer, { mimeType: finalMimeType }),
+      );
       const parsedDurationSeconds = metadata.format?.duration;
       const durationSeconds = Number.isFinite(parsedDurationSeconds)
         ? Math.max(parsedDurationSeconds ?? 0, 1)
@@ -692,14 +696,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
+          refreshAuthEntry,
           atomicProviderBoundary: true,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return Response.json(
             {
-              error: "Insufficient credits for speech-to-text",
+              // Clients parse `error.code` and `error.resetsAt`.
+              error: inferenceFundingRefusal(error, {
+                insufficientCreditsMessage:
+                  "Insufficient credits for speech-to-text",
+              }),
               required: error.required,
             },
             { status: 402 },
@@ -1289,7 +1297,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
     if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
-      await credentialGuard[Symbol.asyncDispose]();
       const started = performance.now();
       const payload = await transcribeCloudflareAudio(
         env.AI,
@@ -1452,6 +1459,11 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     settleUnknown = admission.settleUnknown;
     markProviderDispatched = admission.markProviderDispatched;
 
+    // Only this lane loads the ElevenLabs SDK, so cold requests on the other
+    // providers do not evaluate its module graph.
+    const { getElevenLabsService } = await import(
+      "@elizaos/cloud-shared/lib/services/elevenlabs"
+    );
     const elevenlabs = getElevenLabsService(env);
 
     const startTime = performance.now();
@@ -1558,8 +1570,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     if (reservation) {
       // A clear provider rejection (the ElevenLabs SDK error carries the HTTP
       // status) proves nothing was transcribed.
-      const rejectedStatus =
-        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const rejectedStatus = elevenLabsSdkErrorStatus(error);
       const rejected =
         isKnownUnacceptedProviderError(error) ||
         (rejectedStatus !== undefined &&

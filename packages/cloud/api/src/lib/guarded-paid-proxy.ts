@@ -4,7 +4,6 @@
  */
 
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
 import type { ProxyCombinedAdmission } from "@elizaos/cloud-shared/lib/services/proxy/engine";
 import {
@@ -82,45 +81,26 @@ export async function withGuardedPaidProxyAdmission(
       deferStrongCredentialCheck: options.deferStrongCredentialCheck ?? true,
       rateLimitEndpoint: options.rateLimitEndpoint ?? "standard",
     });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     const auth = {
       user: caller.user,
       ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
     };
 
-    if (!executionCtx || !caller.admissionSnapshot) {
-      if (executionCtx) {
-        logger.error(
-          "[PaidProxyAdmission] Combined admission snapshot missing",
-          {
-            requestId,
-            route: new URL(c.req.url).pathname,
-            organizationId: caller.user.organization_id,
-            authSource: caller.authSource,
-          },
-        );
-        return paidProxyApiErrorResponse(
-          new ApiError(
-            503,
-            "service_unavailable",
-            "Provider admission is unavailable; retry shortly",
-            { retryable: true, retryAfterSeconds: 1 },
-          ),
-        );
-      }
+    if (!executionCtx)
       return dispatch({ mode: "compatibility", auth, requestId });
-    }
 
+    // A Worker caller authorized authoritatively (the combined auth cache is
+    // not qualified) carries no admission snapshot. Durable admission then
+    // takes the authoritative hold, policy and balance path itself, as the
+    // inference and speech routes do, instead of refusing the request.
     return dispatch({
       mode: "combined",
       auth,
       requestId,
-      admissionSnapshot: caller.admissionSnapshot,
-      ...(caller.credential ? { credential: caller.credential } : {}),
-      credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      ...(caller.admissionSnapshot
+        ? { admissionSnapshot: caller.admissionSnapshot }
+        : {}),
+      refreshAuthEntry: caller.refreshAuthEntry,
       executionCtx,
     });
   } catch (error) {

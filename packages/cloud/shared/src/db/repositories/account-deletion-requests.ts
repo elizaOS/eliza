@@ -1,7 +1,12 @@
 import {
+  setInferenceOrganizationActive,
+  setInferenceSubjectActive,
+} from "../../lib/services/inference-credential-revocation";
+import {
   clearDisabledInferencePolicyForAccountDeletion,
   withInferenceUserPolicyMutation,
 } from "../../lib/services/inference-policy-fence";
+import { logger } from "../../lib/utils/logger";
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
 import { createHash } from "node:crypto";
@@ -130,6 +135,11 @@ function exportRevocationIdempotencyKeyDigest(request: {
 
 const EXPORT_REVOCATION_FENCE_ERROR = "ACCOUNT_DELETION_EXPORT_REVOCATION_FENCED";
 const LATE_EXPORT_PUT_ERROR = "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION";
+const EXPORT_NOT_REQUESTED_ERROR = "export_not_requested";
+const EXPORT_REQUIRED_PARK_CODE = "EXPORT_REQUIRED_BEFORE_ERASURE";
+const EXPORT_ABANDONED_AFTER_EXPIRY_ERROR = "export_abandoned_after_expiry";
+// How long expiry waits for a started export before erasing without it.
+const EXPORT_WAIT_AFTER_EXPIRY_MILLISECONDS = 7 * 24 * 60 * 60 * 1_000;
 
 export interface ReservePersonalAccountDeletionInput {
   requestId: string;
@@ -177,6 +187,8 @@ export interface AccountDeletionPhaseLease {
 export interface AccountDeletionStatusRecord {
   request: AccountDeletionRequest;
   exportReceipt: AccountDeletionExport | null;
+  /** True when a phase receipt is parked for an operator. */
+  phaseActionRequired?: boolean;
 }
 
 export type ActivateExpiredAccountDeletionResult =
@@ -330,9 +342,15 @@ export class AccountDeletionRequestsRepository {
       }
       if (current.is_anonymous) return { outcome: "anonymous_account" };
 
-      const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
-      const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
+      // Expiry and erasure handle every member row, inactive ones included, so
+      // only an organization with no other member row may enter recovery.
+      const activeOwners = members.filter(
+        (member) => member.is_active && !member.deleted_at && member.role === "owner",
+      );
+      if (
+        members.some((member) => member.id !== current.id) ||
+        (await isNativeAppPublisher(organization.id, tx))
+      ) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -419,6 +437,22 @@ export class AccountDeletionRequestsRepository {
       return { outcome: "account_unavailable" };
     }
 
+    let gateFenced = false;
+    try {
+      return await this.activateReservedInTransaction(observed, input, () => {
+        gateFenced = true;
+      });
+    } catch (error) {
+      if (gateFenced) await this.reopenGateAfterFailedActivation(observed);
+      throw error;
+    }
+  }
+
+  private async activateReservedInTransaction(
+    observed: AccountDeletionRequest,
+    input: { recoveryTokenHash: string; now: Date },
+    onGateFence: () => void,
+  ): Promise<ActivateReservedAccountDeletionResult> {
     return await writeTransaction(async (tx) => {
       await withInferenceUserPolicyMutation(
         observed.user_id!,
@@ -469,9 +503,15 @@ export class AccountDeletionRequestsRepository {
         )
         .limit(1);
       if (providerAdmission) return { outcome: "provider_work_in_flight" };
-      const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
-      const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
+      // Same membership rule as reservation, expiry and erasure: any other
+      // member row, active or not, blocks the personal deletion path.
+      const activeOwners = members.filter(
+        (member) => member.is_active && !member.deleted_at && member.role === "owner",
+      );
+      if (
+        members.some((member) => member.id !== current.id) ||
+        (await isNativeAppPublisher(organization.id, tx))
+      ) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
 
@@ -533,8 +573,49 @@ export class AccountDeletionRequestsRepository {
           severity: "fatal",
         });
       }
+      // Fence the gate last, still before commit. The gate is not part of this
+      // transaction, so the caller reopens it if the request row rolls back.
+      onGateFence();
+      await setInferenceOrganizationActive(organization.id, false);
+      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       return { outcome: "activated", request: activated };
     });
+  }
+
+  /**
+   * Best-effort compensation for a gate fence whose activation transaction
+   * failed. The request row lock orders this against a concurrent replay, and
+   * a row that shows activation committed (ambiguous COMMIT) keeps the fence.
+   */
+  private async reopenGateAfterFailedActivation(observed: AccountDeletionRequest): Promise<void> {
+    try {
+      await dbWrite.transaction(async (tx) => {
+        const [request] = await tx
+          .select({ status: accountDeletionRequests.status })
+          .from(accountDeletionRequests)
+          .where(eq(accountDeletionRequests.id, observed.id))
+          .for("update")
+          .limit(1);
+        if (request?.status !== "requested") return;
+        await setInferenceSubjectActive(
+          observed.organization_id!,
+          observed.user_id!,
+          true,
+          "account",
+        );
+        await setInferenceOrganizationActive(observed.organization_id!, true);
+      });
+    } catch (error) {
+      // error-policy:J2 Preserve the activation failure; record the gate that
+      // may still deny a live account.
+      logger.error(
+        "[AccountDeletion] Could not reopen the inference gate after failed activation",
+        {
+          requestId: observed.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
   }
 
   async leasePhase(input: {
@@ -543,8 +624,34 @@ export class AccountDeletionRequestsRepository {
     leaseOwnerDigest: string;
     now: Date;
     leaseMilliseconds: number;
+    irreversibleRequest?: {
+      requestDigest: string;
+      lifecycleRevision: number;
+      userId: string;
+      organizationId: string;
+    };
   }): Promise<AccountDeletionPhaseLease | undefined> {
     return await dbWrite.transaction(async (tx) => {
+      if (input.irreversibleRequest) {
+        const expected = input.irreversibleRequest;
+        const [request] = await tx
+          .select({ id: accountDeletionRequests.id })
+          .from(accountDeletionRequests)
+          .where(
+            and(
+              eq(accountDeletionRequests.id, input.requestId),
+              eq(accountDeletionRequests.request_digest, expected.requestDigest),
+              eq(accountDeletionRequests.lifecycle_revision, expected.lifecycleRevision),
+              eq(accountDeletionRequests.user_id, expected.userId),
+              eq(accountDeletionRequests.organization_id, expected.organizationId),
+              inArray(accountDeletionRequests.status, ["scheduled", "processing"]),
+              isNotNull(accountDeletionRequests.irreversible_at),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!request) return undefined;
+      }
       const [current] = await tx
         .select()
         .from(accountDeletionPhaseReceipts)
@@ -582,6 +689,15 @@ export class AccountDeletionRequestsRepository {
       if (current.lease_expires_at && current.lease_expires_at > input.now) return undefined;
       if (current.next_attempt_at && current.next_attempt_at > input.now) return undefined;
 
+      // Publish the request state with its first owned phase lease. A canonical
+      // provider may already be complete, so progress cannot depend on a retry
+      // error calling scheduleRequestReconciliation first.
+      if (input.irreversibleRequest) {
+        await tx
+          .update(accountDeletionRequests)
+          .set({ status: "processing", updated_at: input.now })
+          .where(eq(accountDeletionRequests.id, input.requestId));
+      }
       const generation = current.lease_generation + 1;
       const [leased] = await tx
         .update(accountDeletionPhaseReceipts)
@@ -747,10 +863,23 @@ export class AccountDeletionRequestsRepository {
           asc(accountDeletionPhaseReceipts.id),
         )
         .for("update");
-      if (
-        exportReceipt?.status !== "ready" ||
-        phases.find((phase) => phase.phase === "export")?.status !== "completed"
-      ) {
+      const exportPhase = phases.find((phase) => phase.phase === "export");
+      if (!exportReceipt || !exportPhase) return { outcome: "account_unavailable" };
+      const exportDelivered =
+        exportReceipt.status === "ready" && exportPhase.status === "completed";
+      // The export is optional and only the user can build it. Skip one that
+      // was never attempted. A started build may have written an object, so
+      // wait for it, but not past the bound; export_revoke below deletes any
+      // orphan either way.
+      const neverAttempted =
+        exportPhase.status !== "completed" &&
+        exportPhase.before_provider_call_at === null &&
+        !(exportPhase.lease_expires_at && exportPhase.lease_expires_at > input.now) &&
+        exportReceipt.status !== "ready";
+      const waitedLongEnough =
+        input.now.getTime() - request.execute_after.getTime() >=
+        EXPORT_WAIT_AFTER_EXPIRY_MILLISECONDS;
+      if (!exportDelivered && !neverAttempted && !waitedLongEnough) {
         return { outcome: "export_required" };
       }
       if (
@@ -758,6 +887,23 @@ export class AccountDeletionRequestsRepository {
         phases.find((phase) => phase.phase === "steward_deactivation")?.status !== "completed"
       ) {
         return { outcome: "identity_deactivation_required" };
+      }
+
+      if (exportPhase.status !== "completed" && exportPhase.status !== "canceled") {
+        await tx
+          .update(accountDeletionPhaseReceipts)
+          .set({
+            status: "canceled",
+            lease_owner_digest: null,
+            lease_expires_at: null,
+            next_attempt_at: null,
+            completed_at: input.now,
+            last_error_code: neverAttempted
+              ? EXPORT_NOT_REQUESTED_ERROR
+              : EXPORT_ABANDONED_AFTER_EXPIRY_ERROR,
+            updated_at: input.now,
+          })
+          .where(eq(accountDeletionPhaseReceipts.id, exportPhase.id));
       }
 
       const lifecycleRevision = request.lifecycle_revision + 1;
@@ -789,7 +935,12 @@ export class AccountDeletionRequestsRepository {
       await tx
         .update(accountDeletionExports)
         .set({ status: "expired", updated_at: input.now })
-        .where(eq(accountDeletionExports.request_id, request.id));
+        .where(
+          and(
+            eq(accountDeletionExports.request_id, request.id),
+            notInArray(accountDeletionExports.status, ["deleted"]),
+          ),
+        );
       await tx
         .insert(accountDeletionPhaseReceipts)
         .values({
@@ -828,6 +979,98 @@ export class AccountDeletionRequestsRepository {
         });
       }
       return { outcome: "activated", request: activated };
+    });
+  }
+
+  /** Requests parked by the retired rule that every erasure needs a ready export. */
+  async findExportParkedRequests(
+    limit: number,
+  ): Promise<Array<Pick<AccountDeletionRequest, "id" | "execute_after" | "updated_at">>> {
+    return await dbWrite
+      .select({
+        id: accountDeletionRequests.id,
+        execute_after: accountDeletionRequests.execute_after,
+        updated_at: accountDeletionRequests.updated_at,
+      })
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          eq(accountDeletionRequests.status, "action_required"),
+          eq(accountDeletionRequests.last_error_code, EXPORT_REQUIRED_PARK_CODE),
+          isNull(accountDeletionRequests.irreversible_at),
+        ),
+      )
+      .orderBy(asc(accountDeletionRequests.updated_at))
+      .limit(limit);
+  }
+
+  /**
+   * Returns one export-parked request to expiry activation, taking the
+   * organization, member and request locks in activation order.
+   */
+  async requeueExportParkedRequest(input: { requestId: string; now: Date }): Promise<boolean> {
+    const [observed] = await dbWrite
+      .select({ organization_id: accountDeletionRequests.organization_id })
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.id, input.requestId))
+      .limit(1);
+    if (!observed?.organization_id) return false;
+    const organizationId = observed.organization_id;
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for("update")
+        .limit(1);
+      await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organization_id, organizationId))
+        .orderBy(asc(users.id))
+        .for("update");
+      const [request] = await tx
+        .select()
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.id, input.requestId))
+        .for("update")
+        .limit(1);
+      if (
+        !request ||
+        request.organization_id !== organizationId ||
+        request.status !== "action_required" ||
+        request.last_error_code !== EXPORT_REQUIRED_PARK_CODE ||
+        request.irreversible_at !== null
+      ) {
+        return false;
+      }
+      const [exportPhase] = await tx
+        .select({ status: accountDeletionPhaseReceipts.status })
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.request_id, request.id),
+            eq(accountDeletionPhaseReceipts.phase, "export"),
+          ),
+        )
+        .limit(1);
+      const [requeued] = await tx
+        .update(accountDeletionRequests)
+        .set({
+          status: exportPhase?.status === "completed" ? "recovery" : "reserved",
+          last_error_code: null,
+          failure_class: null,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(accountDeletionRequests.id, request.id),
+            eq(accountDeletionRequests.status, "action_required"),
+          ),
+        )
+        .returning({ id: accountDeletionRequests.id });
+      return requeued !== undefined;
     });
   }
 
@@ -2071,6 +2314,10 @@ export class AccountDeletionRequestsRepository {
       }
 
       const restoredRevision = request.lifecycle_revision + 1;
+      // Inside the transaction: a gate failure rolls back and the cancellation
+      // retries. After commit, a failure would leave the account denied for good.
+      await setInferenceSubjectActive(organization.id, user.id, true, "account");
+      await setInferenceOrganizationActive(organization.id, true);
       await tx
         .update(organizations)
         .set({
@@ -2195,6 +2442,9 @@ export class AccountDeletionRequestsRepository {
         and(
           lte(accountDeletionExports.expires_at, now),
           inArray(accountDeletionExports.status, ["pending", "building", "ready", "failed"]),
+          // Expiry activation decides on the export and schedules its revocation;
+          // revoking first would hide a downloaded export from that decision.
+          notInArray(accountDeletionRequests.status, ["reserved", "recovery"]),
         ),
       )
       .orderBy(asc(accountDeletionExports.expires_at))
@@ -2458,7 +2708,21 @@ export class AccountDeletionRequestsRepository {
       .from(accountDeletionExports)
       .where(eq(accountDeletionExports.request_id, request.id))
       .limit(1);
-    return { request, exportReceipt: exportReceipt ?? null };
+    const [parkedPhase] = await dbWrite
+      .select({ id: accountDeletionPhaseReceipts.id })
+      .from(accountDeletionPhaseReceipts)
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.request_id, request.id),
+          eq(accountDeletionPhaseReceipts.status, "action_required"),
+        ),
+      )
+      .limit(1);
+    return {
+      request,
+      exportReceipt: exportReceipt ?? null,
+      phaseActionRequired: parkedPhase !== undefined,
+    };
   }
 
   async createIdempotent(data: NewAccountDeletionRequest): Promise<AccountDeletionRequest> {

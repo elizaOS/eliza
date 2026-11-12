@@ -76,3 +76,41 @@ describe("local-inference runtime services", () => {
 		}
 	});
 });
+
+describe("LocalInferenceLoaderRuntimeService live ASR surface", () => {
+	it("forwards streaming transcription bound to the backend", async () => {
+		const backend = {
+			loadModel: async () => {},
+			unloadModel: async () => {},
+			currentModelPath: () => null,
+			streaming: true,
+			createStreamingTranscriber(this: { streaming: boolean }) {
+				return this.streaming;
+			},
+			async asrStreamSupported(this: { streaming: boolean }) {
+				return this.streaming;
+			},
+		};
+		const service = new LocalInferenceLoaderRuntimeService(
+			{} as never,
+			backend,
+			async () => {},
+		);
+		expect(service.createStreamingTranscriber?.(undefined as never)).toBe(true);
+		await expect(service.asrStreamSupported?.()).resolves.toBe(true);
+	});
+
+	it("leaves the surface absent for a backend without it", () => {
+		const service = new LocalInferenceLoaderRuntimeService(
+			{} as never,
+			{
+				loadModel: async () => {},
+				unloadModel: async () => {},
+				currentModelPath: () => null,
+			},
+			async () => {},
+		);
+		expect(service.createStreamingTranscriber).toBeUndefined();
+		expect(service.asrStreamSupported).toBeUndefined();
+	});
+});

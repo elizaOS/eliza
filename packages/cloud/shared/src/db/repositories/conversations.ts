@@ -40,16 +40,19 @@ async function hydrateMessage(message: ConversationMessage): Promise<Conversatio
       storage: message.content_storage,
       key: message.content_key,
       inlineValue: message.content,
+      strict: true,
     }),
     hydrateJsonField<Record<string, unknown>>({
       storage: message.api_request_storage,
       key: message.api_request_key,
       inlineValue: message.api_request ?? null,
+      strict: true,
     }),
     hydrateJsonField<Record<string, unknown>>({
       storage: message.api_response_storage,
       key: message.api_response_key,
       inlineValue: message.api_response ?? null,
+      strict: true,
     }),
   ]);
 

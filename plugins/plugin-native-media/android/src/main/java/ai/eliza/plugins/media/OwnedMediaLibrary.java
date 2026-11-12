@@ -150,7 +150,20 @@ public final class OwnedMediaLibrary {
       result[11] = MediaStore.MediaColumns.GENERATION_ADDED;
     }
     result[result.length - 1] = MediaStore.MediaColumns.DATE_MODIFIED;
+    // Folder and capture time, read by name: Camera/Screenshots albums, day headers and Info.
+    result = Arrays.copyOf(result, result.length + 2);
+    result[result.length - 2] = MediaStore.MediaColumns.RELATIVE_PATH;
+    result[result.length - 1] = MediaStore.MediaColumns.DATE_TAKEN;
     return result;
+  }
+
+  /** Adds {@code folder} (relative path) and {@code taken} (capture time, ms) when known. */
+  static void putPlace(JSObject item, Cursor row) {
+    int folder = row.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH);
+    int taken = row.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN);
+    if (folder >= 0 && !row.isNull(folder)) item.put("folder", row.getString(folder));
+    if (taken >= 0 && !row.isNull(taken) && row.getLong(taken) > 0)
+      item.put("taken", row.getLong(taken));
   }
 
   /**
@@ -194,6 +207,8 @@ public final class OwnedMediaLibrary {
     item.put("width", row.getInt(1));
     item.put("height", row.getInt(2));
     item.put("date", row.getLong(3) * 1000);
+    item.put("size", row.getLong(4));
+    putPlace(item, row);
     String base = row.getLong(3) + ":" + row.getLong(4);
     String marker = versions.getString(key, "");
     item.put(
@@ -262,10 +277,22 @@ public final class OwnedMediaLibrary {
   }
 
   /**
-   * One page of owned items, newest first. {@code album} is {@code ""}, {@code "favorites"} or
-   * {@code "videos"}; trash has no albums.
+   * One page of owned items, newest first. {@code album} is {@code ""}, {@code "favorites"},
+   * {@code "videos"}, {@code "camera"} or {@code "screenshots"}; trash has no albums.
    */
   public JSObject list(String before, boolean trashed, String album) throws Exception {
+    return list(before, trashed, album, PAGE);
+  }
+
+  /** As {@link #list(String, boolean, String)}, with at most {@code limit} (1 to PAGE) items. */
+  public JSObject list(String before, boolean trashed, String album, int limit) throws Exception {
+    return list(before, trashed, album, limit, true);
+  }
+
+  /** Lists without decoding previews when a caller is refreshing rows it already displays. */
+  public JSObject list(String before, boolean trashed, String album, int limit, boolean thumbnails)
+      throws Exception {
+    if (limit < 1 || limit > PAGE) throw new IllegalArgumentException("Invalid page size");
     if (trashed && Build.VERSION.SDK_INT < 30)
       throw new UnsupportedOperationException("Android trash requires Android 11 or later");
     long cursor = OwnedMediaSelection.cursor(before);
@@ -280,7 +307,7 @@ public final class OwnedMediaLibrary {
         ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {MediaStore.Images.Media._ID});
     query.putInt(
         ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING);
-    query.putInt(ContentResolver.QUERY_ARG_LIMIT, PAGE + 1);
+    query.putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1);
     if (Build.VERSION.SDK_INT >= 30)
       query.putInt(
           MediaStore.QUERY_ARG_MATCH_TRASHED,
@@ -291,13 +318,13 @@ public final class OwnedMediaLibrary {
     try (Cursor rows = context.getContentResolver().query(CATALOG, fields(), query, null)) {
       if (rows == null) throw new IllegalStateException();
       while (rows.moveToNext()) {
-        if (items.length() == PAGE) {
+        if (items.length() == limit) {
           next = Long.toString(last);
           break;
         }
         JSObject item = metadata(rows);
         last = rows.getLong(0);
-        putPreview(item, key(rows), 240);
+        if (thumbnails) putPreview(item, key(rows), 240);
         items.put(item);
       }
     }
@@ -450,15 +477,15 @@ public final class OwnedMediaLibrary {
   }
 
   /**
-   * A bounded per-item batch of {@code favorite}, {@code trash} or {@code restore} over 1–20
+   * A bounded per-item batch of {@code favorite}, {@code unfavorite}, {@code trash} or {@code
+   * restore} over 1–20
    * distinct owned items. The whole request is validated before the first write; each item then
    * reports its own outcome, so the result is {@code complete} or {@code partial}, never an
    * all-or-nothing promise. {@code closed} stops further writes when the host goes away.
    */
   public JSObject changeMany(String operation, JSONArray items, BooleanSupplier closed)
       throws Exception {
-    if (!"favorite".equals(operation) && !"trash".equals(operation) && !"restore".equals(operation))
-      throw new IllegalArgumentException();
+    boolean[] change = PhotoLibraryAccess.batchChange(operation);
     if (items == null || items.length() < 1 || items.length() > BATCH)
       throw new IllegalArgumentException();
     Set<String> seen = new HashSet<>();
@@ -480,8 +507,8 @@ public final class OwnedMediaLibrary {
             changeFlag(
                 item.getString("id"),
                 item.getString("revision"),
-                operation.equals("favorite"),
-                !operation.equals("restore"));
+                change[0],
+                change[1]);
         outcome.put("status", result.getString("status"));
         outcome.put("item", result);
         verified++;
@@ -498,7 +525,7 @@ public final class OwnedMediaLibrary {
     return result;
   }
 
-  /** Counts of owned favorites, videos and trash. */
+  /** Counts of owned favorites, videos, Camera and Screenshots folder items, and trash. */
   public JSObject summary() throws Exception {
     Bundle query = new Bundle();
     query.putString(
@@ -507,9 +534,10 @@ public final class OwnedMediaLibrary {
     query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, new String[] {owner()});
     if (Build.VERSION.SDK_INT >= 30)
       query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE);
-    int favorite = 0, videos = 0, trash = 0;
+    int favorite = 0, videos = 0, trash = 0, camera = 0, screenshots = 0;
     try (Cursor rows = context.getContentResolver().query(CATALOG, fields(), query, null)) {
       if (rows == null) throw new IllegalStateException();
+      int folder = rows.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH);
       while (rows.moveToNext()) {
         if (Build.VERSION.SDK_INT >= 30 && rows.getInt(7) == 1) {
           trash++;
@@ -517,11 +545,16 @@ public final class OwnedMediaLibrary {
         }
         if (rows.getInt(5) == 3) videos++;
         if (Build.VERSION.SDK_INT >= 30 && rows.getInt(10) == 1) favorite++;
+        String album = OwnedMediaSelection.folderAlbum(rows.getString(folder));
+        if (album.equals("camera")) camera++;
+        else if (album.equals("screenshots")) screenshots++;
       }
     }
     JSObject result = new JSObject();
     result.put("favorites", favorite);
     result.put("videos", videos);
+    result.put("camera", camera);
+    result.put("screenshots", screenshots);
     result.put("trash", trash);
     result.put("canFavorite", Build.VERSION.SDK_INT >= 30);
     return result;

@@ -2,8 +2,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { eq } from "drizzle-orm";
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { eq, is, SQL } from "drizzle-orm";
+import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { Client } from "pg";
 import type { MobileAppAuthGrantBinding } from "../../db/repositories/mobile-app-auth-grants";
 import type { NewApiKey } from "../../db/schemas/api-keys";
@@ -20,6 +20,7 @@ let cli: typeof import("./cli-auth-session-completion");
 let tables: typeof import("../../db/schemas");
 let provenance: typeof import("../../db/mobile-app-auth-credential-policy");
 let decrypt: typeof import("../../db/crypto/api-keys");
+let service: typeof import("./mobile-app-auth");
 const organizationId = randomUUID();
 const userId = randomUUID();
 const appId = randomUUID();
@@ -29,6 +30,22 @@ let begins: string[];
 let commits: string[];
 let beforePermit: (() => Promise<void>) | undefined;
 let rejectPermit = false;
+
+function fixtureDefault(value: unknown, type: string): string {
+  if (value === undefined) return "";
+  if (is(value, SQL)) {
+    const query = new PgDialect().sqlToQuery(value);
+    if (query.params.length) throw new Error("Fixture defaults require literal production DDL");
+    return ` DEFAULT ${query.sql}`;
+  }
+  if (value === null) return " DEFAULT NULL";
+  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean")
+    return ` DEFAULT ${String(value)}`;
+  if (typeof value === "string") return ` DEFAULT '${value.replaceAll("'", "''")}'`;
+  if (type === "jsonb" || type === "json")
+    return ` DEFAULT '${JSON.stringify(value).replaceAll("'", "''")}'::${type}`;
+  throw new Error(`Unsupported fixture default for ${type}`);
+}
 
 const gate = {
   getByName(organization: string) {
@@ -160,6 +177,107 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
   );
 }
 
+// A grant whose code, state, verifier and secret are real, so the service's
+// own `acknowledgeMobileAppAuthCredential` can check the proof.
+async function seedProvableGrant() {
+  const seeded = await seedGrant();
+  const hex = () => randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
+  const proof = {
+    code: `emac_${hex()}`,
+    codeVerifier: `verifier-${hex()}`,
+    state: `state-${hex()}`,
+    credentialId: seeded.credential.id!,
+    secret: `eliza_mobile_${hex()}`,
+  };
+  const binding: MobileAppAuthGrantBinding = {
+    ...seeded.binding,
+    codeHash: service.sha256Hex(proof.code),
+    stateHash: service.sha256Hex(proof.state),
+    codeChallenge: service.deriveMobileAppAuthS256Challenge(proof.codeVerifier),
+  };
+  await setup.query(
+    "UPDATE mobile_app_auth_grants SET code_hash=$2,state_hash=$3,code_challenge=$4 WHERE id=$1",
+    [seeded.id, binding.codeHash, binding.stateHash, binding.codeChallenge],
+  );
+  const credential = { ...seeded.credential, key_hash: service.sha256Hex(proof.secret) };
+  const ack = (now: Date) =>
+    run(() =>
+      service.acknowledgeMobileAppAuthCredential({
+        registration: {
+          appId,
+          clientId: binding.clientId,
+          environment: binding.environment,
+          redirectUri: binding.redirectUri,
+          scopes: service.MOBILE_APP_AUTH_SCOPES,
+          credentialTtlSeconds: 3600,
+        },
+        binding: {
+          clientId: binding.clientId,
+          environment: binding.environment,
+          redirectUri: binding.redirectUri,
+          state: proof.state,
+        },
+        code: proof.code,
+        codeVerifier: proof.codeVerifier,
+        credentialId: proof.credentialId,
+        secret: proof.secret,
+        now,
+      }),
+    );
+  return { ...seeded, binding, credential, proof, ack };
+}
+
+async function prepareMobileReveal() {
+  const input = await seedProvableGrant();
+  const exchangeInput = {
+    registration: {
+      appId,
+      clientId: input.binding.clientId,
+      environment: input.binding.environment,
+      redirectUri: input.binding.redirectUri,
+      scopes: service.MOBILE_APP_AUTH_SCOPES,
+      credentialTtlSeconds: 3600,
+    },
+    binding: {
+      clientId: input.binding.clientId,
+      environment: input.binding.environment,
+      redirectUri: input.binding.redirectUri,
+      state: input.proof.state,
+    },
+    code: input.proof.code,
+    codeVerifier: input.proof.codeVerifier,
+  };
+  const reveal = () => run(() => service.exchangeMobileAppAuthCode(exchangeInput));
+  return { ...input, exchangeInput, reveal, response: await reveal() };
+}
+
+async function pauseMobileDecrypt() {
+  const access = await import("../../db/crypto/kms-client");
+  const kms = await run(async () => access.getKmsClient());
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  access.setKmsClient(
+    new Proxy(kms, {
+      get(target, property, receiver) {
+        if (property === "decrypt") {
+          return async (...args: Parameters<typeof kms.decrypt>) => {
+            entered.resolve();
+            await release.promise;
+            return target.decrypt(...args);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }),
+  );
+  return {
+    entered: entered.promise,
+    release: () => release.resolve(),
+    restore: () => access.setKmsClient(kms),
+  };
+}
+
 (url ? describe : describe.skip)(
   "canonical credential writers with enrolled inference policy",
   () => {
@@ -201,9 +319,10 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
             names.add(enumeration.enumName);
           }
         }
-        // Use all real Drizzle columns; unrelated constraints are outside this fixture.
+        // Include production defaults used by issuance. Unrelated constraints
+        // remain outside this fixture so malformed recovery rows can be seeded.
         await setup.query(
-          `CREATE TABLE ${quote(config.name)} (${config.columns.map((column) => `${quote(column.name)} ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}`).join(",")})`,
+          `CREATE TABLE ${quote(config.name)} (${config.columns.map((column) => `${quote(column.name)} ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}${fixtureDefault(column.default, column.getSQLType())}`).join(",")})`,
         );
       }
       for (const table of [
@@ -239,6 +358,7 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
       cli = await import("./cli-auth-session-completion");
       provenance = await import("../../db/mobile-app-auth-credential-policy");
       decrypt = await import("../../db/crypto/api-keys");
+      service = await import("./mobile-app-auth");
     }, 60_000);
 
     beforeEach(async () => {
@@ -303,6 +423,173 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
       expect(commits).toHaveLength(3);
     }, 30_000);
 
+    test("mobile exchange returns the same encrypted credential on a valid retry", async () => {
+      const input = await prepareMobileReveal();
+      expect(await input.reveal()).toMatchObject({
+        credentialId: input.response.credentialId,
+        secret: input.response.secret,
+        expiresAt: input.response.expiresAt,
+        acknowledgeBy: input.response.acknowledgeBy,
+        acknowledgementRequired: true,
+      });
+      const keys = await setup.query("SELECT id,is_active,key_ciphertext FROM api_keys");
+      expect(keys.rows).toHaveLength(1);
+      expect(keys.rows[0]).toMatchObject({ id: input.response.credentialId, is_active: false });
+      expect(keys.rows[0].key_ciphertext).toBeTruthy();
+      expect(keys.rows[0].key_ciphertext).not.toContain(input.response.secret);
+    }, 30_000);
+
+    test("mobile exchange rejects mismatched client, state and PKCE bindings", async () => {
+      const input = await prepareMobileReveal();
+      const rejected = async (patch: Partial<typeof input.exchangeInput>) =>
+        run(() => service.exchangeMobileAppAuthCode({ ...input.exchangeInput, ...patch }));
+      await expect(
+        rejected({ binding: { ...input.exchangeInput.binding, clientId: "another-client" } }),
+      ).rejects.toMatchObject({ protocolCode: "invalid_client" });
+      await expect(
+        rejected({ binding: { ...input.exchangeInput.binding, state: "x".repeat(64) } }),
+      ).rejects.toMatchObject({ protocolCode: "binding_mismatch" });
+      await expect(rejected({ codeVerifier: "x".repeat(64) })).rejects.toMatchObject({
+        protocolCode: "invalid_code_verifier",
+      });
+      expect((await setup.query("SELECT id FROM api_keys")).rowCount).toBe(1);
+    }, 30_000);
+
+    test("mobile issuance, exchange and acknowledgement preserve one active-client grant", async () => {
+      const registration = {
+        appId,
+        clientId: "isolated-native-client",
+        environment: "staging" as const,
+        redirectUri: "ai.eliza.test:/callback",
+        scopes: service.MOBILE_APP_AUTH_SCOPES,
+        credentialTtlSeconds: 3600,
+      };
+      const codeVerifier = "v".repeat(64);
+      const binding = {
+        clientId: registration.clientId,
+        environment: registration.environment,
+        redirectUri: registration.redirectUri,
+        state: "s".repeat(64),
+        codeChallenge: service.deriveMobileAppAuthS256Challenge(codeVerifier),
+        codeChallengeMethod: "S256",
+      };
+      const issue = () =>
+        run(() =>
+          service.issueMobileAppAuthCode({ registration, userId, organizationId, binding }),
+        );
+      const issued = await issue();
+      const request = { registration, binding, code: issued.code, codeVerifier };
+      const revealed = await run(() => service.exchangeMobileAppAuthCode(request));
+      expect((await setup.query("SELECT is_active FROM api_keys")).rows[0].is_active).toBe(false);
+      await run(() =>
+        service.acknowledgeMobileAppAuthCredential({
+          ...request,
+          credentialId: revealed.credentialId,
+          secret: revealed.secret,
+        }),
+      );
+      expect((await setup.query("SELECT status FROM mobile_app_auth_grants")).rows).toEqual([
+        { status: "acknowledged" },
+      ]);
+      expect((await setup.query("SELECT is_active,key_ciphertext FROM api_keys")).rows).toEqual([
+        { is_active: true, key_ciphertext: null },
+      ]);
+      await setup.query("UPDATE apps SET is_active=false WHERE id=$1", [appId]);
+      await expect(issue()).rejects.toMatchObject({ protocolCode: "invalid_client" });
+      expect((await setup.query("SELECT id FROM mobile_app_auth_grants")).rowCount).toBe(1);
+    }, 30_000);
+
+    test("mobile exchange refuses client deactivation during actual decryption", async () => {
+      const input = await prepareMobileReveal();
+      const pause = await pauseMobileDecrypt();
+      try {
+        const pending = input.reveal().then(
+          (value) => ({ value }),
+          (error) => ({ error }),
+        );
+        await pause.entered;
+        await setup.query("UPDATE apps SET is_active=false WHERE id=$1", [appId]);
+        pause.release();
+        expect(await pending).toMatchObject({ error: { protocolCode: "invalid_client" } });
+      } finally {
+        pause.release();
+        pause.restore();
+      }
+    }, 30_000);
+
+    test("mobile exchange refuses expired authority after actual decryption", async () => {
+      const input = await prepareMobileReveal();
+      const pause = await pauseMobileDecrypt();
+      try {
+        const pending = input.reveal().then(
+          (value) => ({ value }),
+          (error) => ({ error }),
+        );
+        await pause.entered;
+        await setup.query(
+          "UPDATE mobile_app_auth_grants SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+          [input.id],
+        );
+        pause.release();
+        expect(await pending).toMatchObject({
+          error: { protocolCode: "authorization_code_expired" },
+        });
+      } finally {
+        pause.release();
+        pause.restore();
+      }
+    }, 30_000);
+
+    test("mobile exchange refuses a replay when acknowledgement commits during decryption", async () => {
+      const input = await prepareMobileReveal();
+      const pause = await pauseMobileDecrypt();
+      try {
+        const pending = input.reveal().then(
+          (value) => ({ value }),
+          (error) => ({ error }),
+        );
+        await pause.entered;
+        await run(() =>
+          service.acknowledgeMobileAppAuthCredential({
+            ...input.exchangeInput,
+            credentialId: input.response.credentialId,
+            secret: input.response.secret,
+          }),
+        );
+        pause.release();
+        expect(await pending).toMatchObject({ error: { protocolCode: "authorization_complete" } });
+      } finally {
+        pause.release();
+        pause.restore();
+      }
+    }, 30_000);
+
+    test("a landed acknowledgement replays after the code's acknowledgeBy; one that never landed is refused", async () => {
+      // The host keeps `acknowledgeBy` (the code's expiry) with its receipt and
+      // resends the same proof when an ack reply was lost.
+      const landed = await seedProvableGrant();
+      await exchange(landed);
+      const acknowledgeBy = new Date(landed.now.getTime() + 60_000);
+      const first = await landed.ack(landed.now);
+      expect(first.status).toBe("acknowledged");
+      const late = new Date(acknowledgeBy.getTime() + 1_000);
+      const replay = await landed.ack(late);
+      expect(replay).toEqual(first);
+
+      const lost = await seedProvableGrant();
+      await exchange(lost);
+      const lostExpiry = (
+        await setup.query("SELECT expires_at FROM mobile_app_auth_grants WHERE id=$1", [lost.id])
+      ).rows[0].expires_at as Date;
+      await expect(lost.ack(new Date(lostExpiry.getTime() + 1_000))).rejects.toMatchObject({
+        protocolCode: "authorization_code_expired",
+      });
+      const keys = await setup.query("SELECT id,is_active,deleted_at FROM api_keys ORDER BY id");
+      const byId = new Map(keys.rows.map((row) => [row.id, row]));
+      expect(byId.get(landed.credential.id)).toMatchObject({ is_active: true, deleted_at: null });
+      expect(byId.get(lost.credential.id)?.is_active).toBe(false);
+    }, 30_000);
+
     test("expiry cleanup fences every organization before tombstoning inactive and acknowledged credentials", async () => {
       const inactive = await seedGrant();
       const active = await seedGrant({ owner: otherUserId, organization: otherOrganizationId });
@@ -329,6 +616,46 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
             key.key_ciphertext === null,
         ),
       ).toBe(true);
+    }, 30_000);
+
+    test("mobile cleanup preserves shared credential references", async () => {
+      const first = await seedGrant();
+      const second = await seedGrant();
+      await exchange(first);
+      await setup.query(
+        "UPDATE mobile_app_auth_grants SET status='exchanged',credential_id=$2,exchanged_at=$3 WHERE id=$1",
+        [second.id, first.credential.id, second.now],
+      );
+      const result = await run(() =>
+        mobile.mobileAppAuthGrantsRepository.cleanupExpired(new Date(Date.now() + 7_200_000)),
+      );
+      expect(result.grantsDeleted).toBe(0);
+      expect(result.integrityViolations).toBe(2);
+      expect((await setup.query("SELECT id FROM mobile_app_auth_grants")).rowCount).toBe(2);
+      expect((await setup.query("SELECT is_active,deleted_at FROM api_keys")).rows).toEqual([
+        { is_active: false, deleted_at: null },
+      ]);
+    }, 30_000);
+
+    test("mobile cleanup drains valid rows beside malformed pending grants", async () => {
+      const malformed = await seedGrant();
+      const valid = await seedGrant();
+      await setup.query("UPDATE mobile_app_auth_grants SET exchanged_at=$2 WHERE id=$1", [
+        malformed.id,
+        malformed.now,
+      ]);
+      const result = await run(() =>
+        mobile.mobileAppAuthGrantsRepository.cleanupExpired(new Date(Date.now() + 7_200_000)),
+      );
+      expect(result.grantsDeleted).toBe(1);
+      expect(result.integrityViolations).toBe(1);
+      expect((await setup.query("SELECT id FROM mobile_app_auth_grants")).rows).toEqual([
+        { id: malformed.id },
+      ]);
+      expect(
+        (await setup.query("SELECT id FROM mobile_app_auth_grants WHERE id=$1", [valid.id]))
+          .rowCount,
+      ).toBe(0);
     }, 30_000);
 
     test("bounded cleanup passes locked candidates and reaches later expired grants", async () => {
@@ -472,6 +799,163 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
       expect(key.is_active).toBe(false);
       expect(key.deleted_at).toBeNull();
       expect(key.key_ciphertext).toBe(input.credential.key_ciphertext);
+    }, 30_000);
+
+    test("CLI consumed credentials survive cleanup after concurrent one-shot delivery", async () => {
+      const sessionId = randomUUID();
+      const now = new Date();
+      await setup.query(
+        "INSERT INTO cli_auth_sessions(id,session_id,status,expires_at,created_at,updated_at) VALUES($1,$2,'pending',$3,$4,$4)",
+        [randomUUID(), sessionId, new Date(now.getTime() + 60_000), now],
+      );
+      const created = await run(() =>
+        new cli.CliAuthSessionCompletionService().claimPending({
+          sessionId,
+          userId,
+          organizationId,
+        }),
+      );
+      expect(created.claimed).toBe(true);
+      const { CliAuthSessionsService } = await import("./cli-auth-sessions");
+      const { CliAuthSessionsRepository } = await import("../../db/repositories/cli-auth-sessions");
+      const sessions = new CliAuthSessionsService();
+      const locker = new Client({ connectionString: scopedUrl });
+      await locker.connect();
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM cli_auth_sessions WHERE session_id=$1 FOR UPDATE", [
+        sessionId,
+      ]);
+      const polls = run(() =>
+        Promise.all([sessions.getAndClearApiKey(sessionId), sessions.getAndClearApiKey(sessionId)]),
+      );
+      try {
+        const deadline = Date.now() + 5_000;
+        while (
+          (
+            await setup.query(
+              "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'update \"cli_auth_sessions\"%'",
+            )
+          ).rowCount !== 2
+        ) {
+          if (Date.now() >= deadline)
+            throw new Error("Both reveal contenders did not reach the row lock");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        await locker.query("COMMIT");
+        const results = await polls;
+        expect(results.filter((result) => result.status === "revealed")).toHaveLength(1);
+        const reaped = await run(() =>
+          new CliAuthSessionsRepository().reapExpiredSessions(new Date(now.getTime() + 120_000)),
+        );
+        expect(reaped.deletedSessions).toBe(1);
+        expect(reaped.revokedOrphanKeys).toHaveLength(0);
+        expect(
+          (await setup.query("SELECT is_active FROM api_keys WHERE id=$1", [created.apiKey!.id]))
+            .rows[0].is_active,
+        ).toBe(true);
+      } finally {
+        await locker.query("ROLLBACK");
+        await locker.end();
+        await polls.catch(() => undefined);
+      }
+    }, 30_000);
+
+    test("CLI cleanup cannot strand an active key from a completion admitted before expiry", async () => {
+      const sessionId = randomUUID();
+      const expiresAt = new Date(Date.now() + 4_000);
+      await setup.query(
+        "INSERT INTO cli_auth_sessions(id,session_id,status,expires_at,created_at,updated_at) VALUES($1,$2,'pending',$3,clock_timestamp(),clock_timestamp())",
+        [randomUUID(), sessionId, expiresAt],
+      );
+      const blocker = new Client({ connectionString: scopedUrl });
+      await blocker.connect();
+      const lock = `${schema}:cli-cleanup-race`;
+      await blocker.query("SELECT pg_advisory_lock(hashtextextended($1,0))", [lock]);
+      await setup.query(`CREATE FUNCTION hold_cli_cleanup() RETURNS trigger LANGUAGE plpgsql AS $body$
+        BEGIN
+          PERFORM pg_advisory_xact_lock(hashtextextended(TG_TABLE_SCHEMA || ':cli-cleanup-race',0));
+          RETURN NULL;
+        END $body$`);
+      await setup.query(
+        "CREATE TRIGGER hold_cli_cleanup AFTER UPDATE ON api_keys FOR EACH STATEMENT EXECUTE FUNCTION hold_cli_cleanup()",
+      );
+      let allowPermit!: () => void;
+      let permitReached!: () => void;
+      const permit = new Promise<void>((resolve) => {
+        allowPermit = resolve;
+      });
+      const reached = new Promise<void>((resolve) => {
+        permitReached = resolve;
+      });
+      beforePermit = async () => {
+        permitReached();
+        await permit;
+      };
+      let completionSettled = false;
+      const completion = run(() =>
+        new cli.CliAuthSessionCompletionService().claimPending({
+          sessionId,
+          userId,
+          organizationId,
+        }),
+      ).then((value) => {
+        completionSettled = true;
+        return value;
+      });
+      let cleanup: Promise<unknown> | undefined;
+      try {
+        await reached;
+        expect(Date.now()).toBeLessThan(expiresAt.getTime());
+        await new Promise((resolve) => setTimeout(resolve, expiresAt.getTime() - Date.now() + 20));
+        const { CliAuthSessionsRepository } = await import(
+          "../../db/repositories/cli-auth-sessions"
+        );
+        cleanup = run(() => new CliAuthSessionsRepository().reapExpiredSessions());
+        const waitFor = async (predicate: () => Promise<boolean>, message: string) => {
+          const deadline = Date.now() + 5_000;
+          while (!(await predicate())) {
+            if (Date.now() >= deadline) throw new Error(message);
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        };
+        await waitFor(
+          async () =>
+            (
+              await setup.query(
+                "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory' AND query LIKE 'update \"api_keys\"%'",
+              )
+            ).rowCount !== 0,
+          "Cleanup never reached its key-update barrier",
+        );
+        allowPermit();
+        await waitFor(
+          async () =>
+            completionSettled ||
+            (
+              await setup.query(
+                "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'update \"cli_auth_sessions\"%'",
+              )
+            ).rowCount !== 0,
+          "Completion neither settled nor waited for cleanup's session lock",
+        );
+        await blocker.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [lock]);
+        await Promise.all([completion, cleanup]);
+        expect(
+          (await setup.query("SELECT id FROM cli_auth_sessions WHERE session_id=$1", [sessionId]))
+            .rowCount,
+        ).toBe(0);
+        expect((await setup.query("SELECT id FROM api_keys WHERE is_active=true")).rowCount).toBe(
+          0,
+        );
+      } finally {
+        allowPermit();
+        await blocker.query("SELECT pg_advisory_unlock_all()");
+        await Promise.allSettled([completion, ...(cleanup ? [cleanup] : [])]);
+        await setup.query("DROP TRIGGER hold_cli_cleanup ON api_keys");
+        await setup.query("DROP FUNCTION hold_cli_cleanup()");
+        await blocker.end();
+        beforePermit = undefined;
+      }
     }, 30_000);
 
     test("CLI completion encrypts, commits and replays its single credential through enrolled policy", async () => {

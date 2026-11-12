@@ -1,5 +1,6 @@
-/** Parses bounded YAML frontmatter without losing document content. Rejects NULs and excessive nesting; string coercion is explicit. */
+/** Parses bounded YAML frontmatter without losing document content. Rejects NULs and excessive nesting. */
 import YAML from "yaml";
+import { isPlainObject } from "../utils/type-guards.ts";
 
 export const DEFAULT_FRONTMATTER_MAX_DEPTH = 32;
 
@@ -31,15 +32,7 @@ export interface ParseFrontmatterDocumentOptions {
 }
 
 function normalizeNewlines(value: string): string {
-	return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return false;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
+	return value.replace(/\r\n?/g, "\n");
 }
 
 function preflightFrontmatter(
@@ -53,19 +46,22 @@ function preflightFrontmatter(
 			// A failed CST must never be passed to the recursive composer.
 			if (token.type === "error") return "invalid-yaml";
 		}
-		const collections = parser.stack.filter(
-			(token) =>
-				token.type === "block-map" ||
-				token.type === "block-seq" ||
-				token.type === "flow-collection",
-		);
 		// Existing callers count nesting below the implicit block root; an explicit
 		// flow collection is itself one nesting level even at the document root.
-		const implicitRoot =
-			collections[0]?.type === "block-map" ||
-			collections[0]?.type === "block-seq";
-		const depth = collections.length - (implicitRoot ? 1 : 0);
-		if (depth > maxDepth) return "nest-bound";
+		let depth = 0;
+		let implicitRoot = false;
+		for (const token of parser.stack) {
+			if (
+				token.type !== "block-map" &&
+				token.type !== "block-seq" &&
+				token.type !== "flow-collection"
+			) {
+				continue;
+			}
+			if (depth === 0) implicitRoot = token.type !== "flow-collection";
+			depth += 1;
+		}
+		if (depth - (implicitRoot ? 1 : 0) > maxDepth) return "nest-bound";
 	}
 	return undefined;
 }
@@ -115,61 +111,8 @@ export function parseFrontmatterDocument(
 	if (parsed == null) {
 		return { kind: "parsed", frontmatter: {}, body, raw };
 	}
-	if (!isPlainRecord(parsed)) {
+	if (!isPlainObject(parsed)) {
 		return { kind: "invalid", code: "invalid-root", body, raw };
 	}
 	return { kind: "parsed", frontmatter: parsed, body, raw };
-}
-
-/** Markdown metadata with explicitly string-coerced values. */
-export type ParsedFrontmatter = Record<string, string>;
-
-function coerceFrontmatterValue(value: unknown): string | undefined {
-	if (value == null) return undefined;
-	if (typeof value === "string") return value.trim();
-	if (typeof value === "number" || typeof value === "boolean")
-		return String(value);
-	if (typeof value === "object") return JSON.stringify(value);
-	return undefined;
-}
-
-function parseLegacyLineMetadata(raw: string): ParsedFrontmatter {
-	const result: ParsedFrontmatter = {};
-	const lines = raw.split("\n");
-	for (let index = 0; index < lines.length; index += 1) {
-		const match = lines[index].match(/^([\w-]+):\s*(.*)$/);
-		if (!match) continue;
-		const [, key, inline] = match;
-		if (inline.trim()) {
-			result[key] = inline.trim().replace(/^(?:"|')|(?:"|')$/g, "");
-			continue;
-		}
-		const continuation: string[] = [];
-		while (
-			index + 1 < lines.length &&
-			(lines[index + 1].startsWith(" ") || lines[index + 1].startsWith("\t"))
-		) {
-			continuation.push(lines[index + 1]);
-			index += 1;
-		}
-		const value = continuation.join("\n").trim();
-		if (value) result[key] = value;
-	}
-	return result;
-}
-
-/** Compatibility adapter for callers that consume only string metadata. */
-export function parseFrontmatterBlock(content: string): ParsedFrontmatter {
-	const parsed = parseFrontmatterDocument(content);
-	if (parsed.kind === "invalid") {
-		return parsed.raw ? parseLegacyLineMetadata(parsed.raw) : {};
-	}
-	if (parsed.kind === "none") return {};
-	const result: ParsedFrontmatter = {};
-	for (const [rawKey, value] of Object.entries(parsed.frontmatter)) {
-		const key = rawKey.trim();
-		const coerced = coerceFrontmatterValue(value);
-		if (key && coerced !== undefined) result[key] = coerced;
-	}
-	return result;
 }

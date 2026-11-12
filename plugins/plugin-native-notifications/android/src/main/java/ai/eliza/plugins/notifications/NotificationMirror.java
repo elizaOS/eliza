@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -277,6 +276,9 @@ public final class NotificationMirror {
         if (!active(service, p)) {
           if (!granted(service))
             clearHistory(service);
+          // An inactive mirror does not stay bound; update() and pause() rebind once it is active.
+          // A failed policy read (below) keeps the binding, so a transient error cannot silence it.
+          service.requestUnbind();
           return;
         }
         pruneHistory(service, p);
@@ -346,8 +348,8 @@ public final class NotificationMirror {
       entries.remove(entries.keySet().iterator().next());
   }
   /**
-   * Active selected-app notifications, newest first, bounded and redacted per the owner's preview
-   * choice.
+   * Active selected-app notifications, newest first, bounded to the newest MAX_ACTIVE and redacted
+   * per the owner's preview choice.
    */
   public JSONArray list(Context c) throws Exception {
     synchronized (lock) {
@@ -362,18 +364,12 @@ public final class NotificationMirror {
       StatusBarNotification[] current = listener.getActiveNotifications();
       if (current == null)
         throw new IllegalStateException();
-      Arrays.sort(current, Comparator.comparingLong(StatusBarNotification::getPostTime).reversed());
       Set<String> live = new HashSet<>();
-      for (StatusBarNotification n : current) {
-        JSONObject app = allowed(c, p, n);
-        if (app == null)
-          continue;
+      for (Map.Entry<StatusBarNotification, JSONObject> admitted : NotificationMirrorPolicy.newest(
+               current, StatusBarNotification::getPostTime, n -> allowed(c, p, n))) {
+        StatusBarNotification n = admitted.getKey();
+        JSONObject app = admitted.getValue();
         live.add(n.getKey());
-        if (out.length() >= NotificationMirrorPolicy.MAX_ACTIVE) {
-          invalidate();
-          throw new NotificationMirrorPolicy.Rejected(
-              "Too many active notifications; select fewer apps");
-        }
         Entry e = entries.get(n.getKey());
         if (e == null || e.at != n.getPostTime()) {
           e = new Entry(n);

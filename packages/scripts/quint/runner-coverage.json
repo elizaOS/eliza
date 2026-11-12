@@ -1,0 +1,25 @@
+[
+  {
+    "id": "scripts-RunnerCancellation",
+    "model": "packages/scripts/quint/RunnerCancellation.qnt",
+    "sources": [
+      "packages/scripts/check-quint.ts",
+      "packages/scripts/run-with-deadline.ts",
+      "packages/scripts/check-quint.node.test.ts",
+      "packages/scripts/quint-cancellation.node.test.ts"
+    ],
+    "invariants": [
+      "NoCheckerAfterClose",
+      "CancelledNeverPasses",
+      "NoLaterCaseAfterCancellation",
+      "ActiveEvidenceIsIncomplete"
+    ],
+    "status": "partial",
+    "limitations": [
+      "The model projects a process group to one checker. Independently daemonized process groups are outside this ownership boundary.",
+      "The implementation conformance runs all 23 runner checks, including real Node parent/child/grandchild cancellation, inventory receipt retention and source-change rejection. Compiler semantic correctness remains in each source model.",
+      "Operating-system process and Job Object semantics are platform assumptions. Linux conformance is exercised in this repository's Quint CI job.",
+      "Managed nested cancellation and late child spawn are bounded by a three-second direct-controller grace inside the enclosing ten-second grace. Arbitrary external suspension and uncatchable controller termination remain outside the progress guarantee."
+    ]
+  }
+]

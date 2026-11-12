@@ -116,13 +116,29 @@ test("a cancelled queued request never starts after an earlier request completes
     () => true,
   );
   await handler({ type: "cancel", id: "second" }, f.sender, () => true);
+  // The cancelled request had not started, so it is answered at once, not
+  // after the request ahead of it: the host then knows nothing of it can
+  // still take effect, and a slow request ahead never makes its fence wait.
+  assert.deepEqual(
+    f.replies.map((reply) => [reply.id, reply.ok]),
+    [["second", false]],
+  );
   release.resolve();
   await Promise.all([first, second]);
   assert.equal(queries, 1);
+  // It is answered once only.
   assert.deepEqual(
-    f.replies.map((reply) => reply.id),
-    ["first"],
+    f.replies.map((reply) => [reply.id, reply.ok]),
+    [
+      ["second", false],
+      ["first", true],
+    ],
   );
+  assert.deepEqual(f.replies[0].error, {
+    kind: "STALE_REF",
+    message: "The request was cancelled before it took effect.",
+    reason: "request-cancelled",
+  });
 });
 
 test("invalid or stale-port cancellation cannot write a record", async () => {
@@ -597,4 +613,196 @@ test("a submit whose reply was lost is a capture gap only when the journal lacks
     captureGap: true,
     captureGapEvents: [denied, lost],
   });
+});
+
+test("a task snapshot reports the network watch and never forwards the page's handoff", async () => {
+  const f = fixture();
+  f.api.runtime = { id: "extension" };
+  f.api.tabs = {
+    get: async () => ({ url: `${binding.origin}/form`, status: "complete" }),
+    update: async () => {},
+  };
+  f.api.webNavigation = {
+    getAllFrames: async () => [{ frameId: 0, documentId: "doc" }],
+  };
+  const handoff = { presses: [1], activatedAt: null, consentedUrls: [] };
+  f.api.scripting = {
+    executeScript: async ({ func }) => [
+      {
+        frameId: 0,
+        documentId: "doc",
+        result:
+          func.name === "installManualActivity"
+            ? { installed: true, refused: [], unconfirmed: [] }
+            : {
+                complete: true,
+                elements: [],
+                blockers: [],
+                watchHandoff: handoff,
+              },
+      },
+    ],
+  };
+  const calls = [];
+  const effects = {
+    arm: () => () => {},
+    close: (tabId) => {
+      calls.push(["close", tabId]);
+      return () => calls.push(["reopen", tabId]);
+    },
+    read: (...args) => {
+      calls.push(["read", ...args]);
+      return "request";
+    },
+  };
+  const handler = createCommandHandler(f.api, { effects });
+  await handler(
+    { type: "task-bind", id: "bind", binding },
+    f.sender,
+    () => true,
+  );
+  await handler(
+    {
+      type: "command",
+      id: "snap",
+      command: {
+        subaction: "snapshot",
+        id: "1",
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  const [frame] = f.replies.at(-1).result.frames;
+  assert.equal("watchHandoff" in frame, false);
+  assert.equal(frame.effectViolation, "request");
+  assert.deepEqual(frame.effectWatch, { frames: "all", unseen: ["webrtc"] });
+  assert.deepEqual(calls, [["read", 1, "1", handoff]]);
+  // The host's own navigation ends the watch: the page did not cause it.
+  await handler(
+    {
+      type: "command",
+      id: "go",
+      command: {
+        subaction: "navigate",
+        id: "1",
+        url: `${binding.origin}/next`,
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  assert.deepEqual(calls.at(-1), ["close", 1]);
+  // A navigation the browser refuses leaves the page, and its watch, as it
+  // was: the tab turns out to show a browser page by the time it would run.
+  let gets = 0;
+  f.api.tabs.get = async () => ({
+    url: gets++ === 0 ? `${binding.origin}/form` : "chrome://settings",
+    status: "complete",
+  });
+  await handler(
+    {
+      type: "command",
+      id: "go2",
+      command: {
+        subaction: "navigate",
+        id: "1",
+        url: `${binding.origin}/next`,
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  assert.equal(f.replies.at(-1).ok, false);
+  assert.deepEqual(calls.slice(-2), [
+    ["close", 1],
+    ["reopen", 1],
+  ]);
+});
+
+test("a task effect's result hands the network watch its handoff and is never judged", async () => {
+  const f = fixture();
+  f.api.runtime = { id: "extension" };
+  f.api.tabs = {
+    get: async () => ({ url: `${binding.origin}/form`, status: "complete" }),
+    update: async () => {},
+    query: async () => [{ id: 1, active: true }],
+  };
+  f.api.webNavigation = {
+    getAllFrames: async () => [{ frameId: 0, documentId: "doc" }],
+  };
+  const handoff = {
+    presses: [],
+    activatedAt: null,
+    consentedUrls: [`${binding.origin}/done`],
+    expected: { url: `${binding.origin}/done`, method: "POST", exact: true },
+  };
+  const previous = { scope: "1", presses: [5], activatedAt: null };
+  // Every page script answers as a page that accepted and ran the fill.
+  f.api.scripting = {
+    executeScript: async () => [
+      {
+        frameId: 0,
+        documentId: "doc",
+        result: {
+          validated: true,
+          visible: false,
+          accepted: true,
+          ready: true,
+          dispatched: true,
+          completed: false,
+          requiresReadback: true,
+          watchHandoff: handoff,
+          previousWatchHandoff: previous,
+        },
+      },
+    ],
+  };
+  const calls = [];
+  const effects = {
+    arm: (...args) => {
+      calls.push(["arm", args[0], args[2]]);
+      return () => {};
+    },
+    close: () => {},
+    report: (...args) => calls.push(["report", ...args]),
+    read: (...args) => {
+      calls.push(["read", ...args]);
+      return "request";
+    },
+  };
+  const handler = createCommandHandler(f.api, { effects });
+  await handler(
+    { type: "task-bind", id: "bind", binding },
+    f.sender,
+    () => true,
+  );
+  await handler(
+    {
+      type: "command",
+      id: "fill",
+      command: {
+        subaction: "fill",
+        id: "1",
+        selector: "12345678-1234-1234-1234-123456789012:0:3",
+        expectedSelector: "#name",
+        text: "Ana",
+        taskContext: context(binding),
+      },
+    },
+    f.sender,
+    () => true,
+  );
+  const reply = f.replies.at(-1);
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  assert.equal("watchHandoff" in reply.result, false);
+  assert.equal("previousWatchHandoff" in reply.result, false);
+  assert.equal("effectViolation" in reply.result, false);
+  assert.deepEqual(calls, [
+    ["arm", 1, "fill"],
+    ["report", 1, "1", handoff, previous],
+  ]);
 });

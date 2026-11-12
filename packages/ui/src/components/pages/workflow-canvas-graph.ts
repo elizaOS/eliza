@@ -10,10 +10,12 @@ import type {
 
 export type WorkflowStepState =
   | "idle"
+  | "queued"
   | "running"
+  | "waiting"
+  | "skipped"
   | "finished"
-  | "failed"
-  | "waiting";
+  | "failed";
 
 interface WorkflowNodeData extends Record<string, unknown> {
   step: WorkflowStepManifest;
@@ -22,20 +24,74 @@ interface WorkflowNodeData extends Record<string, unknown> {
 
 export type WorkflowCanvasNode = Node<WorkflowNodeData, "workflowStep">;
 
-function eventState(type?: string): WorkflowStepState {
-  if (!type) return "idle";
-  if (/fail|error|cancel/i.test(type)) return "failed";
-  if (/waiting|approval|signal/i.test(type)) return "waiting";
-  if (/finish|complete|success/i.test(type)) return "finished";
-  return "running";
-}
+/**
+ * Node lifecycle events of the Smithers engine and the step state each one
+ * sets. Every other event (tool calls, outputs, token usage, heartbeats,
+ * approval decisions) leaves the node's state as it was.
+ */
+const NODE_LIFECYCLE_STATES: Readonly<Record<string, WorkflowStepState>> = {
+  NodePending: "queued",
+  NodeSkipped: "skipped",
+  NodeStarted: "running",
+  NodeRetrying: "running",
+  NodeStalled: "running",
+  NodeWaitingApproval: "waiting",
+  NodeWaitingTimer: "waiting",
+  NodeFinished: "finished",
+  NodeFailed: "failed",
+  NodeCancelled: "failed",
+};
+
+/** States that only an active run can hold. */
+const ACTIVE_STATES = new Set<WorkflowStepState>([
+  "queued",
+  "running",
+  "waiting",
+]);
 
 function latestNodeStates(
   execution: WorkflowExecution | null,
 ): Map<string, WorkflowStepState> {
   const states = new Map<string, WorkflowStepState>();
   for (const event of execution?.events ?? []) {
-    if (event.nodeId) states.set(event.nodeId, eventState(event.type));
+    const state = NODE_LIFECYCLE_STATES[event.type];
+    if (event.nodeId && state) states.set(event.nodeId, state);
+  }
+  // A settled run has no node still in progress; one that never reported its
+  // end is shown as not run rather than as running forever.
+  if (execution?.finished)
+    for (const [nodeId, state] of states)
+      if (ACTIVE_STATES.has(state)) states.set(nodeId, "idle");
+  for (const [stepId, state] of typedStepStates(execution))
+    states.set(stepId, state);
+  return states;
+}
+
+/**
+ * A typed phone workflow compiles to one `typed-steps` node that loops over the
+ * spec's steps, so no event names a step. Its output lists each step's result.
+ */
+function typedStepStates(
+  execution: WorkflowExecution | null,
+): Map<string, WorkflowStepState> {
+  const states = new Map<string, WorkflowStepState>();
+  const output = execution?.output;
+  if (!Array.isArray(output) || output.length !== 1) return states;
+  const item = output[0] as Record<string, unknown> | null;
+  if (
+    !item ||
+    typeof item !== "object" ||
+    item.nodeId !== "typed-steps" ||
+    item.runId !== execution?.id ||
+    !Array.isArray(item.steps)
+  )
+    return states;
+  for (const step of item.steps as unknown[]) {
+    if (!step || typeof step !== "object") continue;
+    const { id, status } = step as Record<string, unknown>;
+    if (typeof id !== "string") continue;
+    if (status === "completed") states.set(id, "finished");
+    else if (status === "skipped") states.set(id, "skipped");
   }
   return states;
 }

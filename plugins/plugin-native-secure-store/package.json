@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-secure-store",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "description": "Device-only Apple Keychain and Android Keystore storage for Eliza app credentials.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
@@ -18,6 +18,8 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
+    "android-nativeonly/src/main/",
+    "android-nativeonly/build.gradle",
     "dist/",
     "ios/Sources/",
     "*.podspec"
@@ -38,7 +40,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test:native-session": "node --test test/native-host/credential-access.node.mjs",
-    "test:native-passwords": "node --test test/native-host/password-custody.node.mjs"
+    "test:native-passwords": "node --test test/native-host/password-custody.node.mjs",
+    "test:native-identity": "node --test test/native-host/owner-identity.node.mjs"
   },
   "capacitor": {
     "android": {
@@ -52,7 +55,7 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "rollup": "^4.65.0",
+    "rollup": "^4.68.0",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

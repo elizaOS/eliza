@@ -1,0 +1,20 @@
+type eliza_system_updater, domain;
+typeattribute eliza_system_updater coredomain;
+type eliza_system_updater_data_file, file_type, data_file_type, core_data_file_type, app_data_file_type;
+app_domain(eliza_system_updater)
+net_domain(eliza_system_updater)
+allow eliza_system_updater eliza_system_updater_data_file:dir create_dir_perms;
+allow eliza_system_updater eliza_system_updater_data_file:file create_file_perms;
+binder_use(eliza_system_updater)
+# ActivityThread and the host use the normal application framework services.
+allow eliza_system_updater app_api_service:service_manager find;
+# The system update activity also creates its normal Android window.
+allow eliza_system_updater window_service:service_manager find;
+allow eliza_system_updater update_engine_service:service_manager find;
+binder_call(eliza_system_updater, update_engine)
+binder_call(update_engine, eliza_system_updater)
+# The verified payload is transferred as a read-only Binder file descriptor.
+# update_engine receives no path permission for other app-private files.
+
+# Only descriptors explicitly transferred by this updater can be read; no path access.
+allow update_engine eliza_system_updater_data_file:file { getattr read map };

@@ -661,7 +661,7 @@ export class ExperienceService extends Service {
       extractionReason: experienceData.extractionReason,
     };
 
-    await this.saveExperienceToMemory(experience);
+    await this.saveExperienceToMemory(experience, true);
     this.setExperience(experience);
 
     // Check for contradictions and add relationships
@@ -687,11 +687,15 @@ export class ExperienceService extends Service {
     return this.cloneExperience(experience);
   }
 
-  private async saveExperienceToMemory(experience: Experience): Promise<void> {
-    await this.runtime.upsertMemory(
-      this.buildExperienceMemory(experience),
-      "experiences",
-    );
+  private async saveExperienceToMemory(
+    experience: Experience,
+    replaceEmbedding: boolean,
+  ): Promise<void> {
+    const memory = this.buildExperienceMemory(experience);
+    // Metadata and access updates retain the durable vector. A vector loaded
+    // from storage is not a new provider result.
+    if (!replaceEmbedding) delete memory.embedding;
+    await this.runtime.upsertMemory(memory, "experiences");
   }
 
   private async persistDirtyExperiences(): Promise<void> {
@@ -705,7 +709,7 @@ export class ExperienceService extends Service {
       const exp = this.experiences.get(id);
       if (exp) {
         try {
-          await this.saveExperienceToMemory(exp);
+          await this.saveExperienceToMemory(exp, false);
           saved++;
         } catch (error) {
           // error-policy:J7 the periodic writer retries on its next cycle and
@@ -834,7 +838,7 @@ export class ExperienceService extends Service {
       updatedAt: Date.now(),
     };
 
-    await this.saveExperienceToMemory(updated);
+    await this.saveExperienceToMemory(updated, shouldRegenerateEmbedding);
     this.setExperience(updated);
     this.dirtyExperiences.delete(id);
 
@@ -1411,7 +1415,7 @@ export class ExperienceService extends Service {
       ]),
     };
 
-    await this.saveExperienceToMemory(merged);
+    await this.saveExperienceToMemory(merged, false);
     this.setExperience(merged);
 
     if (deleteDuplicate) {
@@ -1429,7 +1433,7 @@ export class ExperienceService extends Service {
         primary.id,
       ]),
     };
-    await this.saveExperienceToMemory(superseded);
+    await this.saveExperienceToMemory(superseded, false);
     this.setExperience(superseded);
   }
 
@@ -1628,7 +1632,7 @@ export class ExperienceService extends Service {
     const experiencesToSave = Array.from(this.experiences.values());
     await Promise.all(
       experiencesToSave.map((experience) =>
-        this.saveExperienceToMemory(experience),
+        this.saveExperienceToMemory(experience, false),
       ),
     );
     this.dirtyExperiences.clear();

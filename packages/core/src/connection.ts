@@ -195,6 +195,12 @@ function withRecordLocks<T>(
 	return acquire(0);
 }
 
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(Object.values(ChannelType));
+
+function isChannelType(value: unknown): value is ChannelType {
+	return typeof value === "string" && CHANNEL_TYPES.has(value);
+}
+
 /** WHY: World is required for room hierarchy; derive a stable worldId from messageServerId when not provided. */
 function resolveWorldId(
 	worldId: UUID | undefined,
@@ -219,7 +225,7 @@ export async function ensureConnections(
 	if (!connections.length) return { createdRoomParticipants: 0 };
 
 	const entityMap = new Map<
-		string,
+		UUID,
 		{
 			entityId: UUID;
 			names: string[];
@@ -227,31 +233,25 @@ export async function ensureConnections(
 			agentId: UUID;
 		}
 	>();
-	const worldMap = new Map<string, World>();
-	const worldFallbackNames = new Map<string, string>();
-	const roomMap = new Map<string, Room>();
-	const roomExplicitTypes = new Map<string, ChannelType>();
-	const roomFallbackNames = new Map<string, string>();
-	const roomParticipants = new Map<string, Set<UUID>>();
+	const worldMap = new Map<UUID, World>();
+	const worldFallbackNames = new Map<UUID, string>();
+	const roomMap = new Map<UUID, Room>();
+	const roomExplicitTypes = new Map<UUID, ChannelType>();
+	const roomFallbackNames = new Map<UUID, string>();
+	const roomParticipants = new Map<UUID, Set<UUID>>();
 
 	for (const c of connections) {
 		const worldId = resolveWorldId(c.worldId, c.messageServerId, agentId);
 		const names = [c.name, c.userName].filter(Boolean) as string[];
 		const source = c.source || "default";
-		const entityKey = c.entityId;
-		if (!entityMap.has(entityKey)) {
-			entityMap.set(entityKey, {
-				entityId: c.entityId,
-				names: [],
-				metadata: {},
-				agentId,
-			});
-		}
-		const ent = entityMap.get(entityKey);
+		let ent = entityMap.get(c.entityId);
 		if (!ent) {
-			continue;
+			ent = { entityId: c.entityId, names: [], metadata: {}, agentId };
+			entityMap.set(c.entityId, ent);
 		}
-		ent.names = [...new Set([...ent.names, ...names])].filter(Boolean);
+		for (const name of names) {
+			if (!ent.names.includes(name)) ent.names.push(name);
+		}
 		// A connection contributes identity fields; it does not own the entity's
 		// per-source identity record. Connectors that alias several platform
 		// identities onto one canonical entity (e.g. Discord owner aliases)
@@ -273,14 +273,15 @@ export async function ensureConnections(
 		// write, so a nameless connection cannot replace a real world name
 		// with the fallback. A name an earlier connection in this batch gave
 		// the same world is kept the same way.
+		const batchedWorld = worldMap.get(worldId);
 		const world: World = {
 			id: worldId,
-			name: c.worldName || worldMap.get(worldId)?.name || undefined,
+			name: c.worldName || batchedWorld?.name || undefined,
 			agentId,
 			messageServerId: c.messageServerId,
 			metadata: {
-				...(worldMap.get(worldId)?.metadata ?? {}),
-				...(c.metadata ?? {}),
+				...batchedWorld?.metadata,
+				...c.metadata,
 			},
 		};
 		worldMap.set(worldId, world);
@@ -293,16 +294,12 @@ export async function ensureConnections(
 			);
 		}
 
-		const roomType =
-			typeof c.type === "string" &&
-			(Object.values(ChannelType) as string[]).includes(c.type)
-				? (c.type as keyof typeof ChannelType)
-				: ChannelType.DM;
+		const roomType = isChannelType(c.type) ? c.type : ChannelType.DM;
 		// `type` is optional: remember only a type the connection actually
 		// gave, so a type-less connection can keep the stored room's type
 		// at write time instead of demoting it to the DM default.
 		if (roomType !== ChannelType.DM || c.type === ChannelType.DM) {
-			roomExplicitTypes.set(c.roomId, roomType as ChannelType);
+			roomExplicitTypes.set(c.roomId, roomType);
 		}
 		// `name` and `channelId` stay unset here when the connection omits them;
 		// they are filled from the stored room (or a default) before the write.
@@ -319,12 +316,10 @@ export async function ensureConnections(
 		roomMap.set(c.roomId, room);
 		if (c.name) roomFallbackNames.set(c.roomId, c.name);
 
-		if (!roomParticipants.has(c.roomId)) {
-			roomParticipants.set(c.roomId, new Set());
-		}
-		const participants = roomParticipants.get(c.roomId);
+		let participants = roomParticipants.get(c.roomId);
 		if (!participants) {
-			continue;
+			participants = new Set();
+			roomParticipants.set(c.roomId, participants);
 		}
 		participants.add(c.entityId);
 		participants.add(agentId);
@@ -339,9 +334,7 @@ export async function ensureConnections(
 		entityIds.map((id) => `entity:${id}`),
 		async () => {
 			const existingEntities =
-				entityIds.length > 0
-					? await adapter.getEntitiesByIds(entityIds as UUID[])
-					: [];
+				entityIds.length > 0 ? await adapter.getEntitiesByIds(entityIds) : [];
 			const existingByKey = new Map(existingEntities.map((e) => [e.id, e]));
 			const entities: Entity[] = [];
 			for (const [, v] of entityMap) {
@@ -368,7 +361,7 @@ export async function ensureConnections(
 		},
 	);
 
-	const worldIds = [...worldMap.keys()] as UUID[];
+	const worldIds = [...worldMap.keys()];
 	await withRecordLocks(
 		adapter,
 		worldIds.map((id) => `world:${id}`),
@@ -442,9 +435,7 @@ export async function ensureConnections(
 	// `worldId` omits `serverId`/`messageServerId`, and the write replaces the
 	// whole row, so an omitted binding must fall back to the stored one.
 	const storedRooms =
-		roomMap.size > 0
-			? ((await adapter.getRoomsByIds([...roomMap.keys()] as UUID[])) ?? [])
-			: [];
+		roomMap.size > 0 ? await adapter.getRoomsByIds([...roomMap.keys()]) : [];
 	const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]));
 	const rooms = [...roomMap.values()].map((r) => {
 		const stored = storedRoomById.get(r.id);
@@ -462,15 +453,17 @@ export async function ensureConnections(
 	});
 	if (rooms.length) await adapter.upsertRooms(rooms);
 
+	// One batched read: the adapter returns one entry per requested room, in order.
+	const currentParticipants = await adapter.getParticipantsForRooms([
+		...roomParticipants.keys(),
+	]);
 	let createdRoomParticipants = 0;
+	let index = 0;
 	for (const [roomId, entityIdsSet] of roomParticipants) {
-		const currentResult = await adapter.getParticipantsForRooms([
-			roomId as UUID,
-		]);
-		const current = currentResult[0]?.entityIds ?? [];
+		const current = currentParticipants[index++]?.entityIds ?? [];
 		const missing = [...entityIdsSet].filter((id) => !current.includes(id));
 		if (missing.length) {
-			await adapter.createRoomParticipants(missing, roomId as UUID);
+			await adapter.createRoomParticipants(missing, roomId);
 			createdRoomParticipants += missing.length;
 		}
 	}

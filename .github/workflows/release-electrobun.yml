@@ -1150,6 +1150,13 @@ jobs:
 
           Write-Host "Windows embedding model cache ready: $modelPath"
 
+      - name: Run packaged Windows startup smoke
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bun run --cwd packages/app test:desktop:packaged:windows
+
       - name: Run Windows clean installer proof
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
         shell: pwsh
@@ -1599,9 +1606,9 @@ jobs:
       - name: Collect public release files
         run: |
           mkdir -p release-files
-          # Public GitHub releases should expose end-user installables, not the
-          # updater transport files. Windows publishes the standalone Inno Setup
-          # installer, not the raw Electrobun bootstrap stub.
+          # Publish installers and updater metadata/payloads together so the OTA
+          # channel manifest can resolve every asset on this GitHub Release.
+          # Windows publishes the Inno Setup installer, not the bootstrap stub.
           find release-artifacts -type f \( \
             -name "*.dmg" -o \
             -name "*.app.tar.gz" -o \
@@ -1613,6 +1620,8 @@ jobs:
             -name "eliza-canary-windows-*.exe.zip" -o \
             -name "*Setup*.tar.gz" -o \
             -name "*.tar.zst" -o \
+            -name "*.patch" -o \
+            -name "*-update.json" -o \
             -name "*.flatpak" -o \
             -name "*.msix" \
           \) -exec cp {} release-files/ \; 2>/dev/null || true
@@ -1748,10 +1757,10 @@ jobs:
             "version": "${VERSION}",
             "updatedAt": "${UPDATED_AT}",
             "platforms": {
-              "macos-arm64": "${BASE_URL}/macos-arm64-update.json",
-              "macos-x64": "${BASE_URL}/macos-x64-update.json",
-              "windows-x64": "${BASE_URL}/windows-x64-update.json",
-              "linux-x64": "${BASE_URL}/linux-x64-update.json"
+              "macos-arm64": "${BASE_URL}/${CHANNEL}-macos-arm64-update.json",
+              "macos-x64": "${BASE_URL}/${CHANNEL}-macos-x64-update.json",
+              "windows-x64": "${BASE_URL}/${CHANNEL}-win-x64-update.json",
+              "linux-x64": "${BASE_URL}/${CHANNEL}-linux-x64-update.json"
             }
           }
           JSON

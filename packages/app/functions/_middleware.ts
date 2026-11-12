@@ -34,6 +34,11 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  type BrowserSignInConfiguration,
+  browserReturnScript,
+  browserSignInStart,
+} from "./_browser-sign-in";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
@@ -226,6 +231,7 @@ export interface NativeAuthCallback {
   redirectUri: string;
   androidPackage: string;
   appName: string;
+  browserSignIn?: BrowserSignInConfiguration;
 }
 
 class NativeAuthCallbackConfigurationError extends Error {
@@ -235,10 +241,27 @@ class NativeAuthCallbackConfigurationError extends Error {
   }
 }
 
+const NATIVE_AUTH_CALLBACK_SUFFIX = "/auth/callback";
+const NATIVE_BILLING_RETURN_SUFFIX = "/billing/return";
+
+/**
+ * The checkout return of a configured native app: its sign-in callback path
+ * with `/auth/callback` replaced by `/billing/return`. Cloud derives the same
+ * address for a mobile checkout (`mobileBillingReturnUrl`); a callback with
+ * another shape has no billing return.
+ */
+export function nativeBillingReturnPath(redirectUri: string): string | null {
+  const pathname = new URL(redirectUri).pathname;
+  return pathname.endsWith(NATIVE_AUTH_CALLBACK_SUFFIX)
+    ? `${pathname.slice(0, -NATIVE_AUTH_CALLBACK_SUFFIX.length)}${NATIVE_BILLING_RETURN_SUFFIX}`
+    : null;
+}
+
 /** Request data selects a configured callback; it cannot define a destination. */
 export function selectNativeAuthCallback(
   raw: unknown,
   url: URL,
+  kind: "callback" | "browser-start" | "billing-return" = "callback",
 ): NativeAuthCallback | null {
   if (raw === undefined || raw === "") return null;
   let entries: unknown;
@@ -249,7 +272,8 @@ export function selectNativeAuthCallback(
     throw new NativeAuthCallbackConfigurationError();
   }
   if (!Array.isArray(entries)) throw new NativeAuthCallbackConfigurationError();
-  const redirects = new Set<string>();
+  const routes = new Set<string>();
+  const storageKeys = new Set<string>();
   let selected: NativeAuthCallback | null = null;
   for (const entry of entries) {
     if (
@@ -257,7 +281,13 @@ export function selectNativeAuthCallback(
       typeof entry !== "object" ||
       Array.isArray(entry) ||
       Object.keys(entry).some(
-        (key) => !["redirectUri", "androidPackage", "appName"].includes(key),
+        (key) =>
+          ![
+            "redirectUri",
+            "androidPackage",
+            "appName",
+            "browserSignIn",
+          ].includes(key),
       ) ||
       typeof entry.redirectUri !== "string" ||
       typeof entry.androidPackage !== "string" ||
@@ -286,15 +316,83 @@ export function selectNativeAuthCallback(
       /[%;*\\]/.test(callback.pathname) ||
       isProtocolPath(callback.pathname) ||
       callback.pathname.startsWith(ASSETS_PREFIX) ||
-      redirects.has(callback.href)
+      routes.has(callback.href)
     ) {
       throw new NativeAuthCallbackConfigurationError();
     }
-    redirects.add(callback.href);
+    routes.add(callback.href);
+    if (entry.browserSignIn !== undefined) {
+      const configuration = entry.browserSignIn;
+      if (
+        !configuration ||
+        typeof configuration !== "object" ||
+        Array.isArray(configuration) ||
+        Object.keys(configuration).some(
+          (key) =>
+            ![
+              "startPath",
+              "returnPath",
+              "storageKey",
+              "apiOrigin",
+              "tenant",
+            ].includes(key),
+        ) ||
+        typeof configuration.storageKey !== "string" ||
+        !/^[A-Za-z0-9:._-]{1,128}$/.test(configuration.storageKey) ||
+        typeof configuration.tenant !== "string" ||
+        !/^[A-Za-z0-9_-]{1,64}$/.test(configuration.tenant)
+      )
+        throw new NativeAuthCallbackConfigurationError();
+      for (const key of ["startPath", "returnPath"] as const) {
+        const value = configuration[key];
+        if (
+          typeof value !== "string" ||
+          !/^\/[A-Za-z0-9/_~.-]+$/.test(value) ||
+          value.startsWith("//") ||
+          new URL(value, callback.origin).pathname !== value ||
+          isProtocolPath(value) ||
+          value.startsWith(ASSETS_PREFIX)
+        )
+          throw new NativeAuthCallbackConfigurationError();
+      }
+      let api: URL;
+      try {
+        api = new URL(configuration.apiOrigin);
+      } catch {
+        // error-policy:J3 Invalid operator input cannot define an auth authority.
+        throw new NativeAuthCallbackConfigurationError();
+      }
+      const start = callback.origin + configuration.startPath;
+      const storageKey = `${callback.origin}:${configuration.storageKey}`;
+      if (
+        api.protocol !== "https:" ||
+        api.username ||
+        api.password ||
+        api.origin !== configuration.apiOrigin ||
+        routes.has(start) ||
+        storageKeys.has(storageKey)
+      )
+        throw new NativeAuthCallbackConfigurationError();
+      routes.add(start);
+      storageKeys.add(storageKey);
+    }
+    const billingReturnPath = nativeBillingReturnPath(entry.redirectUri);
+    if (billingReturnPath !== null) {
+      // The derived return is a served route too; it may not shadow a configured one.
+      const billingReturn = callback.origin + billingReturnPath;
+      if (routes.has(billingReturn))
+        throw new NativeAuthCallbackConfigurationError();
+      routes.add(billingReturn);
+    }
     if (
       url.protocol === "https:" &&
       url.origin === callback.origin &&
-      url.pathname === callback.pathname
+      url.pathname ===
+        (kind === "callback"
+          ? callback.pathname
+          : kind === "billing-return"
+            ? billingReturnPath
+            : entry.browserSignIn?.startPath)
     )
       selected = entry;
   }
@@ -306,7 +404,6 @@ export const NATIVE_CALLBACK_SCRUB_SCRIPT =
 // sha256 of NATIVE_CALLBACK_SCRUB_SCRIPT; the test recomputes it.
 const NATIVE_CALLBACK_SCRIPT_HASH =
   "sha256-fNxHkHlQFHRiRhxEEUudIprPl4u12pkFQlEahycnH88=";
-const NATIVE_CALLBACK_CSP = `default-src 'none'; script-src '${NATIVE_CALLBACK_SCRIPT_HASH}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
 const escapeHtml = (value: string): string =>
   value
@@ -336,6 +433,11 @@ export function nativeSignInCallbackFallback(
 ): Response {
   const href = escapeHtml(buildNativeSignInIntentUrl(url, callback));
   const appName = escapeHtml(callback.appName);
+  const browserSignIn = callback.browserSignIn;
+  const nonce = browserSignIn ? crypto.randomUUID() : null;
+  const scriptHashes = browserSignIn
+    ? `'${NATIVE_CALLBACK_SCRIPT_HASH}' 'nonce-${nonce}'`
+    : `'${NATIVE_CALLBACK_SCRIPT_HASH}'`;
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -358,6 +460,7 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
 <p>${appName} did not open automatically, so this sign-in was not completed. Return to ${appName} and start sign-in again.</p>
 <p>If this keeps happening, open Android Settings, then Apps, ${appName}, Open by default, and allow it to open its supported links.</p>
 <a id="open" href="${href}">Return to ${appName}</a>
+${browserSignIn ? `<script nonce="${nonce}">${browserReturnScript(callback.redirectUri, browserSignIn)}</script>` : ""}
 <script>${NATIVE_CALLBACK_SCRUB_SCRIPT}</script>
 </main>
 </body>
@@ -366,7 +469,73 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
     status: 200,
     headers: {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": NATIVE_CALLBACK_CSP,
+      "Content-Security-Policy": `default-src 'none'; script-src ${scriptHashes}; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      "Content-Type": "text/html; charset=utf-8",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+}
+
+const CHECKOUT_SESSION_ID = /^cs_(test|live)_[A-Za-z0-9]{1,200}$/;
+
+/**
+ * Fallback for a native app's checkout return when Android did not hand the
+ * App Link to the app. The page offers one server-rendered `intent://` link
+ * back to the configured package. It forwards only a well-formed Stripe
+ * session id and the fixed result word: both are identifiers, not payment
+ * evidence, and the app must still confirm with its own credential. The page
+ * runs no script, reads nothing else from the request, and says the same thing
+ * for every result: an unauthenticated address cannot say a payment was made.
+ */
+export function nativeBillingReturnFallback(
+  url: URL,
+  callback: NativeAuthCallback,
+): Response {
+  const path = nativeBillingReturnPath(callback.redirectUri);
+  const result = url.searchParams.get("result");
+  const sessionId = url.searchParams.get("session_id");
+  const query = new URLSearchParams();
+  if (sessionId !== null && CHECKOUT_SESSION_ID.test(sessionId))
+    query.set("session_id", sessionId);
+  if (result === "success" || result === "cancel") query.set("result", result);
+  const search = query.size > 0 ? `?${query}` : "";
+  const href = escapeHtml(
+    `intent://${url.host}${path}${search}#Intent;scheme=https;package=${callback.androidPackage};end`,
+  );
+  const appName = escapeHtml(callback.appName);
+  const body = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Return to ${appName}</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+main { max-width: 420px; text-align: center; line-height: 1.5; }
+a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 10px; background: #111; color: #fff; font-weight: 600; text-decoration: none; }
+@media (prefers-color-scheme: dark) { a { background: #f4f4f4; color: #111; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Return to ${appName}</h1>
+<p>Return to ${appName} to finish.</p>
+<a id="open" href="${href}">Return to ${appName}</a>
+</main>
+</body>
+</html>`;
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
@@ -393,10 +562,22 @@ export const onRequest = async (
     return serveAsset(context);
   }
   let callback: NativeAuthCallback | null;
+  let browserStart: NativeAuthCallback | null;
+  let billingReturn: NativeAuthCallback | null;
   try {
     callback = selectNativeAuthCallback(
       context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
       url,
+    );
+    browserStart = selectNativeAuthCallback(
+      context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+      url,
+      "browser-start",
+    );
+    billingReturn = selectNativeAuthCallback(
+      context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+      url,
+      "billing-return",
     );
   } catch (error) {
     if (!(error instanceof NativeAuthCallbackConfigurationError)) throw error;
@@ -406,7 +587,15 @@ export const onRequest = async (
       headers: { "Cache-Control": "no-store" },
     });
   }
+  if (browserStart?.browserSignIn) {
+    return browserSignInStart(
+      context.request,
+      new URL(browserStart.redirectUri),
+      browserStart.browserSignIn,
+    );
+  }
   if (callback) return nativeSignInCallbackFallback(url, callback);
+  if (billingReturn) return nativeBillingReturnFallback(url, billingReturn);
   // A single lookup decides both that this is a crawl asset and what type it
   // must be served as, so the two can never drift apart.
   const crawlAssetContentType = CRAWL_ASSET_CONTENT_TYPES.get(url.pathname);

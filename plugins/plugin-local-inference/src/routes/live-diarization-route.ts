@@ -57,6 +57,8 @@ import {
 } from "./compat-helpers.js";
 
 let session: LiveDiarizationSession | null = null;
+/** The runtime `session` emits to; a replaced runtime gets a new session. */
+let sessionRuntime: RuntimeEventSink | null = null;
 
 /**
  * Best-effort mirror of the agent-side AEC evidence (near/far PCM + live
@@ -111,6 +113,12 @@ function resolveRuntimeEchoReference(
 function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 	const runtime = state.current as RuntimeEventSink | null;
 	if (!runtime || typeof runtime.emitEvent !== "function") return null;
+	if (session && sessionRuntime !== runtime) {
+		// The runtime was replaced: the old session emits to the disposed one.
+		const stale = session;
+		session = null;
+		void stale.close().catch(() => {});
+	}
 	if (!session) {
 		// Thread a host-supplied echo reference (if any) into the live AEC path
 		// so the NLMS canceller has a far-end signal without the playback-frames
@@ -120,6 +128,7 @@ function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 			runtime,
 			echoReference ? { echoReference } : {},
 		);
+		sessionRuntime = runtime;
 	}
 	return session;
 }
@@ -128,6 +137,7 @@ function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 export async function resetLiveDiarizationSession(): Promise<void> {
 	const current = session;
 	session = null;
+	sessionRuntime = null;
 	if (current) await current.close();
 }
 

@@ -20,9 +20,10 @@
  * `DocumentRequest` record is held in an in-memory map keyed by runtime.
  *
  * Approval gating:
- *   - `request_signature` and `upload_asset` enqueue an `ApprovalRequest`
- *     in the `draft` -> `pending` state and wait for owner approval before
- *     dispatching the actual signing portal call / browser upload.
+ *   - `request_signature` enqueues an `ApprovalRequest` in the `draft` ->
+ *     `pending` state. Approval only starts internal tracking; nothing is
+ *     sent to the signer.
+ *   - `upload_asset` is refused: no executor performs portal uploads.
  *   - `request_approval`, `track_deadline`, `collect_id`, `close_request`
  *     are operator-callable without approval gating.
  */
@@ -325,7 +326,7 @@ export function dispatchApprovedSignatureRequest(
   });
   if (!next) return null;
   logger.info(
-    `[OWNER_DOCUMENTS] signature request ${documentRequestId} dispatched (status=${next.status})`,
+    `[OWNER_DOCUMENTS] signature request ${documentRequestId} tracking started (status=${next.status}); nothing sent to the signer`,
   );
   return next;
 }
@@ -535,8 +536,8 @@ async function createSignatureRequest(
     ...(input.note ? { note: input.note } : {}),
   };
 
-  // Owner approval gate. The actual signing dispatch waits for
-  // RESOLVE_REQUEST approve to flip the approval queue entry to `done`.
+  // Owner approval gate. RESOLVE_REQUEST approve only starts internal
+  // tracking; nothing is sent to the signer.
   const queue = createApprovalQueue(scope.runtime, { agentId: scope.agentId });
   const approvalRequest = await queue.enqueue({
     requestedBy: input.requestedBy,
@@ -713,86 +714,19 @@ async function handleTrackDeadline(
   };
 }
 
+/**
+ * Portal upload has no executor: no workflow performs it, so queueing an
+ * approval would promise an upload that can never happen.
+ */
 async function handleUploadAsset(
-  scope: RunnerScope,
-  params: DocActionParameters,
+  _scope: RunnerScope,
+  _params: DocActionParameters,
 ): Promise<ActionResult> {
   const subaction: Subaction = "upload_asset";
-  const portalUrl = params.portalUrl?.trim();
-  if (!portalUrl) return missing("portalUrl", subaction);
-  const assetPath = params.assetPath?.trim();
-  if (!assetPath) return missing("assetPath", subaction);
-  const assetKind = params.assetKind?.trim();
-  if (!assetKind) return missing("assetKind", subaction);
-
-  const documentTitle =
-    params.documentTitle?.trim() ?? `Upload ${assetKind} to ${portalUrl}`;
-  const now = nowIso();
-  const doc: DocumentRequest = {
-    id: newDocumentRequestId(),
-    kind: "upload",
-    title: documentTitle,
-    portalUrl,
-    assetKind,
-    status: "draft",
-    createdAt: now,
-    updatedAt: now,
-    createdBy: scope.agentId,
-    ...(params.deadline ? { deadline: params.deadline.trim() } : {}),
-    ...(params.requesteeEntityId
-      ? { requesteeEntityId: params.requesteeEntityId.trim() }
-      : {}),
-    ...(params.note ? { note: params.note } : {}),
-  };
-
-  // Owner approval gate. Sensitive uploads (decks, IDs) must not dispatch
-  // through the browser bridge without explicit consent — this matches the
-  // PRD §Approval-Required Operations row "Upload sensitive document or ID".
-  const queue = createApprovalQueue(scope.runtime, { agentId: scope.agentId });
-  const approvalRequest = await queue.enqueue({
-    requestedBy: ACTION_NAME,
-    subjectUserId: scope.subjectUserId,
-    action: "execute_workflow",
-    payload: {
-      action: "execute_workflow",
-      workflowId: "doc.upload_asset",
-      input: {
-        documentId: doc.id,
-        portalUrl,
-        assetPath,
-        assetKind,
-      },
-    },
-    channel: "browser",
-    reason: `Upload ${assetKind} to ${portalUrl}`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
-
-  const scheduledTaskId = await scheduleDeadlineTask(scope, doc);
-  const saved = saveDocument(scope.runtime, {
-    ...doc,
-    status: "pending",
-    approvalRequestId: approvalRequest.id,
-    ...(scheduledTaskId ? { scheduledTaskId } : {}),
-  });
-
-  // Execution is intentionally deferred to the approval/workflow bridge. This
-  // action only creates the DocumentRequest and approval payload.
-  logger.info(
-    `[OWNER_DOCUMENTS] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
-  );
-
   return {
-    success: true,
-    text: `Queued ${assetKind} upload to ${portalUrl} pending owner approval.`,
-    data: {
-      subaction,
-      documentRequest: saved,
-      documentRequestId: saved.id,
-      status: saved.status,
-      approvalRequestId: approvalRequest.id,
-      scheduledTaskId: saved.scheduledTaskId ?? null,
-    },
+    success: false,
+    text: "I can't upload files to portals yet, so nothing was queued.",
+    data: { subaction, error: "PORTAL_UPLOAD_UNAVAILABLE" },
   };
 }
 

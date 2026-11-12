@@ -6,58 +6,14 @@
  */
 
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
-import type {
-	ArtifactShareGrant,
-	ArtifactShareGrantMode,
-} from "../types/memory.js";
-import type { UUID } from "../types/primitives.js";
+import type { DisclosureSubject } from "../types/memory.js";
+import { validateUuid } from "../utils/uuid.js";
 import {
 	type AudienceAdmission,
 	attestedAudienceViewerResolver,
-	type DisclosureSubject,
 	resolveAudienceAdmission,
 } from "./audience-disclosure";
-import { isMemoryScope } from "./memory-scope.js";
-
-const UUID_PATTERN =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function stringUuid(value: unknown): UUID | undefined {
-	return typeof value === "string" && UUID_PATTERN.test(value)
-		? (value as UUID)
-		: undefined;
-}
-
-/**
- * Parse untrusted grant entries off a stored/serialized value into typed
- * grants. Mirrors `parseArtifactShareMetadata` fail-closed rules: a grant that
- * cannot be read grants NOTHING (dropped), never a default.
- */
-// error-policy:J3 untrusted-input sanitizing — a response's declared subject is
-// model-adjacent data; invalid grant entries yield an empty result, never a
-// fabricated grant.
-function parseGrants(value: unknown): ArtifactShareGrant[] {
-	if (!Array.isArray(value)) return [];
-	const out: ArtifactShareGrant[] = [];
-	for (const entry of value) {
-		if (!entry || typeof entry !== "object") continue;
-		const g = entry as Record<string, unknown>;
-		const entityId = stringUuid(g.entityId);
-		if (!entityId) continue;
-		if (g.mode !== "full" && g.mode !== "redacted") continue;
-		out.push({
-			entityId,
-			mode: g.mode as ArtifactShareGrantMode,
-			...(stringUuid(g.grantedBy)
-				? { grantedBy: stringUuid(g.grantedBy) }
-				: {}),
-			...(typeof g.grantedAtMs === "number"
-				? { grantedAtMs: g.grantedAtMs }
-				: {}),
-		});
-	}
-	return out;
-}
+import { isMemoryScope, parseShareGrantList } from "./memory-scope.js";
 
 /**
  * Parse a disclosure subject a response declares it requires of its audience
@@ -81,8 +37,8 @@ export function parseEgressDisclosureSubject(
 	}
 	const record = value as Record<string, unknown>;
 	const scope = isMemoryScope(record.scope) ? record.scope : "owner-private";
-	const scopedEntityId = stringUuid(record.scopedEntityId);
-	const grants = parseGrants(record.grants);
+	const scopedEntityId = validateUuid(record.scopedEntityId);
+	const grants = parseShareGrantList(record.grants);
 	return {
 		scope,
 		...(scopedEntityId ? { scopedEntityId } : {}),

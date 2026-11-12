@@ -1,11 +1,12 @@
 /** Preserves persisted deterministic UUID bytes independently of the host hashing implementation. */
 import type { UUID } from "../types/primitives.js";
 
+/** 8-4-4-4-12 hexadecimal, any case and any version nibble (elizaOS derives version 0). */
+export const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function validateUuid(value: unknown): UUID | null {
-	return typeof value === "string" &&
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			value,
-		)
+	return typeof value === "string" && UUID_PATTERN.test(value)
 		? (value as UUID)
 		: null;
 }
@@ -41,22 +42,16 @@ export function uuidFromString(
 	return bytesToUuid(bytes) as UUID;
 }
 
+const BYTE_HEX = Array.from({ length: 256 }, (_, byte) =>
+	byte.toString(16).padStart(2, "0"),
+);
+
+/** Format 16 bytes as 8-4-4-4-12 hexadecimal digits. */
 function bytesToUuid(bytes: Uint8Array): string {
-	const hex: string[] = [];
-	for (let i = 0; i < bytes.length; i++) {
-		const h = bytes[i].toString(16).padStart(2, "0");
-		hex.push(h);
+	let uuid = "";
+	for (let i = 0; i < 16; i++) {
+		if (i === 4 || i === 6 || i === 8 || i === 10) uuid += "-";
+		uuid += BYTE_HEX[bytes[i]];
 	}
-	// Format: 8-4-4-4-12 hexadecimal digits
-	return (
-		hex.slice(0, 4).join("") +
-		"-" +
-		hex.slice(4, 6).join("") +
-		"-" +
-		hex.slice(6, 8).join("") +
-		"-" +
-		hex.slice(8, 10).join("") +
-		"-" +
-		hex.slice(10, 16).join("")
-	);
+	return uuid;
 }

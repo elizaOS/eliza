@@ -36,6 +36,7 @@ function assets() {
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
     "page-command.mjs": Buffer.from("export function pageCommand() {}\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
+    "effect-watch.mjs": Buffer.from("export const network = true;\n"),
     "figtree-OFL.txt": Buffer.from("SIL Open Font License, Version 1.1\n"),
     "guide-font.mjs": Buffer.from(
       'export const guideFonts = [{ weight: 500, data: "d09GMgAB" }];\n',
@@ -58,11 +59,17 @@ function assets() {
           "tabs",
           "scripting",
           "webNavigation",
+          "webRequest",
           "storage",
           "nativeMessaging",
           "alarms",
         ],
-        host_permissions: ["http://*/*", "https://*/*"],
+        host_permissions: [
+          "http://*/*",
+          "https://*/*",
+          "ws://*/*",
+          "wss://*/*",
+        ],
         background: { service_worker: "background.mjs", type: "module" },
       }),
     ),
@@ -481,7 +488,7 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     count + protectionAssetNames.length <=
       Number(allocation[2]) - Number(allocation[1]),
   );
-  assert.equal(count, 25); // Includes both optional Hangouts entries, conservatively.
+  assert.equal(count, 26); // Includes both optional Hangouts entries, conservatively.
   const structures = [
     ...overlay.files[
       "chrome/browser/resources/component_extension_resources.grd"

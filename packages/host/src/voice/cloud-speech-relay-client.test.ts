@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, expect, test } from "vitest";
 import {
@@ -42,7 +43,6 @@ async function fixture() {
   let expiry = new Date(Date.now() + 60000).toISOString(),
     mode = "ok",
     current = true,
-    offerExtend = true,
     connections = 0;
   const server = await listenLoopbackWebSocket(
     async (request) => {
@@ -59,28 +59,43 @@ async function fixture() {
       if (url.pathname.endsWith("/consent"))
         return Response.json({
           consentNonce: crypto.randomUUID(),
+          retirementProofVersion: 1,
           expiresAt: new Date(Date.now() + 300000).toISOString(),
         });
       if (url.pathname.endsWith("/revoke"))
-        return Response.json({ revoked: true });
+        return Response.json(
+          mode === "legacy-revoke"
+            ? { revoked: true }
+            : {
+                revoked: true,
+                retirement: {
+                  version: 1,
+                  sessionId,
+                  state: "confirmed",
+                  mode: "retired",
+                  stt: "gracefully_drained",
+                  tts: "transport_closed",
+                  accounting: "settled_actual",
+                  completedAt: new Date().toISOString(),
+                },
+              },
+        );
       const wsUrl = `${server.url.origin.replace("http:", "ws:")}/api/v1/voice/speech/ws?sessionId=${sessionId}`;
       if (mode === "expired") expiry = new Date(Date.now() - 1).toISOString();
       if (mode === "short") expiry = new Date(Date.now() + 150).toISOString();
-      return Response.json(
-        {
-          sessionId,
-          token,
-          expiresAt: expiry,
-          version: 1,
-          wsUrl:
-            mode === "foreign"
-              ? "wss://other.invalid/api/v1/voice/speech/ws?sessionId=" +
-                sessionId
-              : wsUrl,
-          ...(mode === "extra" ? { apiKey: "must-reject" } : {}),
-        },
-        offerExtend ? { headers: { "X-Eliza-Speech-Extend": "1" } } : {},
-      );
+      return Response.json({
+        sessionId,
+        token,
+        expiresAt: expiry,
+        version: 1,
+        ...(mode === "legacy-mint" ? {} : { retirementProofVersion: 1 }),
+        wsUrl:
+          mode === "foreign"
+            ? "wss://other.invalid/api/v1/voice/speech/ws?sessionId=" +
+              sessionId
+            : wsUrl,
+        ...(mode === "extra" ? { apiKey: "must-reject" } : {}),
+      });
     },
     (request) => {
       const url = new URL(request.url);
@@ -193,10 +208,6 @@ async function fixture() {
     },
     get expiry() {
       return expiry;
-    },
-    /** Mint like a relay deployed before session renewal existed. */
-    withoutExtendOffer() {
-      offerExtend = false;
     },
     changeOwner() {
       current = false;
@@ -1118,278 +1129,307 @@ test("negotiated insufficient credits stop before PCM with a public billing reas
   expect(f.connections).toBe(1);
 });
 
-test("auth-cache warming retries consent and mint before admission with identical authority and bodies", async () => {
-  const f = await fixture();
-  const calls: {
-    path: string;
-    authorization: string | null;
-    body: string;
-    at: number;
-  }[] = [];
-  const warmed = new Set<string>();
-  const client = await createCloudSpeechRelayPorts({
-    ...f.options,
-    fetch: Object.assign(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const path = new URL(String(input)).pathname;
-        calls.push({
-          path,
-          authorization: new Headers(init?.headers).get("authorization"),
-          body: String(init?.body),
-          at: performance.now(),
-        });
-        if (!path.endsWith("/revoke") && !warmed.has(path)) {
-          warmed.add(path);
-          return Response.json(
-            { error: { code: "auth_cache_warming" } },
-            {
-              status: 503,
-              headers: path.endsWith("/consent") ? { "Retry-After": "1" } : {},
-            },
-          );
-        }
-        return fetch(input, init);
-      },
-      { preconnect() {} },
-    ),
-  });
-  expect(calls).toHaveLength(4);
-  for (const [first, second] of [
-    [calls[0], calls[1]],
-    [calls[2], calls[3]],
-  ]) {
-    expect(second).toMatchObject({
-      path: first.path,
-      authorization: first.authorization,
-      body: first.body,
-    });
-  }
-  expect(calls[1].at - calls[0].at).toBeGreaterThanOrEqual(990);
-  expect(f.requests.map((r) => r.path)).toEqual([
-    "/api/v1/voice/speech/consent",
-    "/api/v1/voice/speech/session",
-  ]);
-  expect(f.connections).toBe(1);
-  await client.close();
-});
-
-test("a nested pre-admission cache warming code is retried like the auth-cache code", async () => {
-  const f = await fixture();
-  const warmed = new Set<string>();
-  let refusals = 0;
-  const client = await createCloudSpeechRelayPorts({
-    ...f.options,
-    fetch: Object.assign(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        const path = new URL(String(input)).pathname;
-        if (!path.endsWith("/revoke") && !warmed.has(path)) {
-          warmed.add(path);
-          refusals++;
-          return Response.json(
-            { error: { code: "rate_limit_cache_warming" } },
-            { status: 503, headers: { "Retry-After": "1" } },
-          );
-        }
-        return fetch(input, init);
-      },
-      { preconnect() {} },
-    ),
-  });
-  expect(refusals).toBe(2);
-  expect(f.connections).toBe(1);
-  await client.close();
-});
-
-test("auth-cache retry is bounded and never treats unrelated refusals or failures as replayable", async () => {
-  for (const fixtureCase of [
-    {
-      status: 503,
-      body: { code: "auth_cache_warming" },
-      wait: "0",
-      expected: 3,
-    },
-    {
-      status: 503,
-      body: { code: "auth_cache_warming" },
-      wait: "Thu, 01 Jan 1970 00:00:00 GMT",
-      expected: 3,
-    },
-    {
-      status: 503,
-      body: { code: "auth_cache_warming" },
-      wait: "10",
-      expected: 1,
-    },
-    {
-      status: 503,
-      body: { code: "auth_cache_warming" },
-      wait: "1.5",
-      expected: 1,
-    },
-    {
-      status: 503,
-      body: { code: "auth_cache_warming" },
-      wait: "invalid",
-      expected: 1,
-    },
-    {
-      status: 503,
-      body: { code: "billing_cache_warming" },
-      wait: "0",
-      expected: 1,
-    },
-    {
-      status: 503,
-      body: {
-        code: "service_unavailable",
-        details: { retryable: true, retryAfterSeconds: 1 },
-      },
-      wait: "0",
-      expected: 1,
-    },
-    {
-      status: 503,
-      body: { error: { code: "unknown_cache_warming" } },
-      wait: "0",
-      expected: 1,
-    },
-    {
-      status: 429,
-      body: { code: "auth_cache_warming" },
-      wait: "0",
-      expected: 1,
-    },
-    {
-      status: 401,
-      body: { code: "auth_cache_warming" },
-      wait: "0",
-      expected: 1,
-    },
-    {
-      status: 503,
-      body: { code: "auth_cache_warming", data: "x".repeat(17000) },
-      wait: "0",
-      expected: 1,
-    },
-  ]) {
+test.each([false, true])(
+  "a warming mint is replayed only with a matching preallocation refusal (%s)",
+  async (attested) => {
     const f = await fixture();
-    let calls = 0;
-    await expect(
-      createCloudSpeechRelayPorts({
-        ...f.options,
-        fetch: Object.assign(
-          async () => {
-            calls++;
-            return Response.json(fixtureCase.body, {
-              status: fixtureCase.status,
-              headers: { "Retry-After": fixtureCase.wait },
-            });
-          },
-          { preconnect() {} },
-        ),
-      }),
-    ).rejects.toBeDefined();
-    expect(calls).toBe(fixtureCase.expected);
-    expect(f.connections).toBe(0);
-  }
-});
-
-test("cancellation and owner replacement during warming prevent another auth request", async () => {
-  for (const change of ["abort", "owner"]) {
-    const f = await fixture();
-    const controller = new AbortController();
-    let calls = 0;
+    let mints = 0;
     const opening = createCloudSpeechRelayPorts({
       ...f.options,
-      signal: controller.signal,
       fetch: Object.assign(
-        async () => {
-          calls++;
-          return Response.json(
-            { code: "auth_cache_warming" },
-            { status: 503, headers: { "Retry-After": "1" } },
-          );
+        async (
+          input: Parameters<typeof fetch>[0],
+          init?: Parameters<typeof fetch>[1],
+        ) => {
+          if (
+            new URL(String(input)).pathname.endsWith("/session") &&
+            ++mints === 1
+          ) {
+            const intent = new Headers(init?.headers).get(
+              "X-Eliza-Speech-Mint-Intent",
+            );
+            return Response.json(
+              { error: { code: "auth_cache_warming" } },
+              {
+                status: 503,
+                headers: {
+                  "Retry-After": "0",
+                  ...(attested
+                    ? {
+                        "X-Eliza-Speech-Admission-Outcome": `not-created-v1:${intent}`,
+                      }
+                    : {}),
+                },
+              },
+            );
+          }
+          return fetch(input, init);
         },
-        { preconnect() {} },
+        { preconnect: fetch.preconnect },
       ),
     });
-    // Observe the rejection without asserting yet: Bun's `rejects` matcher
-    // settles the promise eagerly, which would run every warming retry first.
-    const settled = opening.then(
-      () => false,
-      () => true,
-    );
-    await until(() => calls === 1);
-    if (change === "abort") controller.abort();
-    else f.changeOwner();
-    expect(await settled).toBe(true);
-    expect(calls).toBe(1);
-    expect(f.connections).toBe(0);
-  }
+    if (attested) {
+      const client = await opening;
+      await client.close();
+    } else {
+      await expect(opening).rejects.toThrow();
+    }
+    expect(mints).toBe(attested ? 2 : 1);
+    expect(f.connections).toBe(attested ? 1 : 0);
+  },
+);
+
+test("explicit retirement retry preserves close idempotency and never opens a provider", async () => {
+  const f = await fixture();
+  let attempts = 0;
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    fetch: Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        if (new URL(String(input)).pathname.endsWith("/revoke")) {
+          attempts++;
+          if (attempts === 1)
+            return Response.json({ revoked: false }, { status: 503 });
+        }
+        return fetch(input, init);
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const first = client.close();
+  await expect(first).rejects.toThrow("retirement was not confirmed");
+  expect(client.close()).toBe(first);
+  expect(attempts).toBe(1);
+  assert(client.retryRetirement);
+  const retry = client.retryRetirement();
+  expect(client.retryRetirement()).toBe(retry);
+  await retry;
+  expect(attempts).toBe(2);
+  expect(f.connections).toBe(1);
+  expect(f.pcm).toHaveLength(0);
 });
 
-test("an extending relay moves the session end forward without a new session", async () => {
+test("missing proof capability refuses before paid websocket", async () => {
   const f = await fixture();
-  f.mode("short");
-  const client = await createCloudSpeechRelayPorts(f.options),
-    events: { type: string }[] = [];
-  expect(f.controls.find((frame) => frame.t === "hello")).toMatchObject({
-    extend: true,
-  });
-  client.speechPorts.openStt((event) => events.push(event));
-  const first = Date.parse(f.expiry),
-    extended = new Date(first + 400).toISOString();
-  f.send({ t: "extended", expiresAt: extended });
-  await until(() => client.expiresAt === Date.parse(extended));
-  await sleep(Math.max(0, first - Date.now()) + 50);
-  // Past the minted end the session is still live and accepts speech.
-  const stream = client.speechPorts.tts.createStream(
-    { traceId: "local", maxBufferDelayMs: 250 },
-    {},
-  );
-  stream.sendPhrase({ text: "Still here", continueContext: false });
-  await stream.closed;
-  expect(events.some((event) => event.type === "error")).toBe(false);
+  f.mode("legacy-mint");
+  await expect(createCloudSpeechRelayPorts(f.options)).rejects.toThrow();
+  expect(f.connections).toBe(0);
+});
+test("legacy revoke boolean cannot release the client retirement fence", async () => {
+  const f = await fixture();
+  const client = await createCloudSpeechRelayPorts(f.options);
+  f.mode("legacy-revoke");
+  await expect(client.close()).rejects.toThrow("unconfirmed");
   expect(f.connections).toBe(1);
-  expect(f.requests.filter((r) => r.path.endsWith("/session"))).toHaveLength(1);
-  // The extended end still retires the session.
-  await until(() => events.some((event) => event.type === "error"));
-  await client.close();
 });
-test("an extension that does not move forward by at most one window is a protocol failure", async () => {
-  for (const offset of [0, -1000, 60_001]) {
-    const f = await fixture();
-    const client = await createCloudSpeechRelayPorts(f.options),
-      events: { type: string }[] = [];
-    client.speechPorts.openStt((event) => events.push(event));
-    const before = client.expiresAt;
-    f.send({
-      t: "extended",
-      expiresAt: new Date(Date.parse(f.expiry) + offset).toISOString(),
-    });
-    await until(() => events.some((event) => event.type === "error"));
-    expect(client.expiresAt).toBe(before);
-    await client.close();
-  }
-});
-test("a relay that did not offer renewal gets the pre-renewal hello and may not extend", async () => {
+
+test("explicit same-owner current credential can reconcile exact old session without new provider", async () => {
   const f = await fixture();
-  f.withoutExtendOffer();
-  const client = await createCloudSpeechRelayPorts(f.options),
-    events: { type: string }[] = [];
-  // Exactly the keys an older relay's strict hello parser accepts.
-  expect(f.controls.find((frame) => frame.t === "hello")).toEqual({
-    t: "hello",
-    token: "one-use-speech-token",
-    errorReasons: true,
+  const credentials: string[] = [];
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    assertRetirementLineage() {},
+    fetch: Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        if (new URL(String(input)).pathname.endsWith("/revoke")) {
+          const credential = new Headers(init?.headers).get("authorization");
+          assert(credential);
+          credentials.push(credential);
+          if (credential !== "Bearer current-same-owner")
+            return Response.json({}, { status: 401 });
+        }
+        return fetch(input, init);
+      },
+      { preconnect: fetch.preconnect },
+    ),
   });
-  client.speechPorts.openStt((event) => events.push(event));
-  const before = client.expiresAt;
-  f.send({
-    t: "extended",
-    expiresAt: new Date(Date.parse(f.expiry) + 1000).toISOString(),
-  });
-  await until(() => events.some((event) => event.type === "error"));
-  expect(client.expiresAt).toBe(before);
+  await expect(client.close()).rejects.toThrow();
+  expect(credentials).toEqual(["Bearer server-account-secret"]);
+  assert(client.reconcileRetirement);
+  await client.reconcileRetirement("current-same-owner");
   await client.close();
+  expect(credentials).toEqual([
+    "Bearer server-account-secret",
+    "Bearer current-same-owner",
+  ]);
+  expect(f.connections).toBe(1);
+  expect(f.pcm).toHaveLength(0);
+});
+test("wrong-owner credential and changed lineage cannot clear old retirement", async () => {
+  const f = await fixture();
+  let current = true,
+    calls = 0;
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    assertRetirementLineage() {
+      if (!current) throw Error("lineage changed");
+    },
+    fetch: Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        if (new URL(String(input)).pathname.endsWith("/revoke")) {
+          calls++;
+          return Response.json({}, { status: 404 });
+        }
+        return fetch(input, init);
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  await expect(client.close()).rejects.toThrow();
+  assert(client.reconcileRetirement);
+  await expect(client.reconcileRetirement("wrong-owner")).rejects.toThrow();
+  const before = calls;
+  current = false;
+  await expect(client.reconcileRetirement("fresh")).rejects.toThrow(
+    "lineage changed",
+  );
+  expect(calls).toBe(before);
+  expect(f.connections).toBe(1);
+});
+test("late proof after runtime/environment lineage changes stays held", async () => {
+  const f = await fixture();
+  let current = true;
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    assertRetirementLineage() {
+      if (!current) throw Error("lineage changed");
+    },
+    fetch: Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        if (new URL(String(input)).pathname.endsWith("/revoke")) {
+          if (
+            new Headers(init?.headers).get("authorization") !== "Bearer fresh"
+          )
+            return Response.json({}, { status: 401 });
+          const response = await fetch(input, init);
+          current = false;
+          return response;
+        }
+        return fetch(input, init);
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  await expect(client.close()).rejects.toThrow();
+  assert(client.reconcileRetirement);
+  await expect(client.reconcileRetirement("fresh")).rejects.toThrow(
+    "lineage changed",
+  );
+  await expect(client.close()).rejects.toThrow();
+  expect(f.connections).toBe(1);
+});
+
+test("close during mint waits for identity and proof without opening a websocket", async () => {
+  const f = await fixture();
+  let handle:
+    | import("./cloud-speech-relay-client").CloudSpeechRelayRetirement
+    | undefined;
+  let release!: () => void, entered!: () => void;
+  const wait = new Promise<void>((yes) => {
+      release = yes;
+    }),
+    started = new Promise<void>((yes) => {
+      entered = yes;
+    });
+  const opening = createCloudSpeechRelayPorts({
+    ...f.options,
+    registerRetirement(value) {
+      handle = value;
+    },
+    fetch: Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const response = await fetch(input, init);
+        if (
+          new URL(String(input)).pathname === "/api/v1/voice/speech/session"
+        ) {
+          entered();
+          await wait;
+        }
+        return response;
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  void opening.catch(() => {});
+  await started;
+  let retired = false;
+  assert(handle);
+  const closing = handle.close().then(() => {
+    retired = true;
+  });
+  await Promise.resolve();
+  expect(retired).toBe(false);
+  expect(f.connections).toBe(0);
+  release();
+  await expect(opening).rejects.toThrow();
+  await closing;
+  expect(retired).toBe(true);
+  expect(f.connections).toBe(0);
+  expect(
+    f.requests.filter((row) => row.path.endsWith("/session")),
+  ).toHaveLength(1);
+  expect(f.requests.filter((row) => row.path.endsWith("/revoke"))).toHaveLength(
+    1,
+  );
+});
+test("unidentifiable mint outcome remains unconfirmed after early close", async () => {
+  const f = await fixture();
+  let handle:
+    | import("./cloud-speech-relay-client").CloudSpeechRelayRetirement
+    | undefined;
+  let release!: () => void, entered!: () => void;
+  const wait = new Promise<void>((yes) => {
+      release = yes;
+    }),
+    started = new Promise<void>((yes) => {
+      entered = yes;
+    });
+  const opening = createCloudSpeechRelayPorts({
+    ...f.options,
+    registerRetirement(value) {
+      handle = value;
+    },
+    fetch: Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        if (
+          new URL(String(input)).pathname === "/api/v1/voice/speech/session"
+        ) {
+          entered();
+          await wait;
+          return Response.json({ version: 1 });
+        }
+        return fetch(input, init);
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  void opening.catch(() => {});
+  await started;
+  assert(handle);
+  const closing = handle.close();
+  void closing.catch(() => {});
+  release();
+  await expect(opening).rejects.toThrow();
+  await expect(closing).rejects.toThrow("unconfirmed");
+  assert(handle.retryRetirement);
+  await expect(handle.retryRetirement()).rejects.toThrow("unconfirmed");
+  expect(f.connections).toBe(0);
 });

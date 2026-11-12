@@ -42,6 +42,11 @@ enum ElizaBunRuntimeBootTrace {
 /// queue. The plugin shell (`ElizaBunRuntimePlugin`) talks to this class to
 /// start/stop the agent, send chat messages, and route React UI calls into
 /// JS-registered handlers via the UI bridge.
+///
+/// With the full Bun engine, calls into the engine run on a concurrent queue
+/// (the engine matches responses by request id), so a streaming chat turn does
+/// not hold up other calls. `stop` and `currentStatus` do not wait on the
+/// serial queue either.
 public final class ElizaBunRuntime {
     // MARK: - Public state
 
@@ -54,6 +59,16 @@ public final class ElizaBunRuntime {
     // MARK: - Private state
 
     private let queue = DispatchQueue(label: RuntimeQueue.label, qos: .userInitiated)
+    private let callQueue = DispatchQueue(
+        label: "ai.eliza.bun.runtime.calls",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
+    /// Copy of the queue-owned state that `currentStatus` reads without
+    /// waiting on the queue. Written by `publishStatus()`.
+    private let statusLock = NSLock()
+    private var publishedStatus: RuntimeStatus = (false, "compat", nil, nil, nil)
+    private var publishedEngine: FullBunEngineHost?
 #if !ELIZA_IOS_FULL_BUN_ENGINE
     private let virtualMachine = JSVirtualMachine()!
     private var context: JSContext?
@@ -103,8 +118,8 @@ public final class ElizaBunRuntime {
             if self.isRunning {
                 if let fullBunEngine = self.fullBunEngine, !fullBunEngine.isRunning {
                     NSLog("[ElizaBunRuntime] start found stale full Bun host")
-                    self.isRunning = false
-                    self.fullBunEngine = nil
+                    self.teardown()
+                    RuntimeQueue.current = self.queue
                 } else {
                     NSLog("[ElizaBunRuntime] start reused running runtime engineMode=\(self.engineMode)")
                     completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)))
@@ -124,6 +139,7 @@ public final class ElizaBunRuntime {
                     argv: argv,
                     env: env
                 )
+                self.publishStatus()
                 let outcome = StartOutcome(bridgeVersion: self.bridgeVersion ?? Self.defaultBridgeVersion)
                 let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
                 NSLog("[ElizaBunRuntime] start completed engineMode=\(self.engineMode) bridgeVersion=\(outcome.bridgeVersion) durationMs=\(durationMs)")
@@ -134,6 +150,7 @@ public final class ElizaBunRuntime {
                 ])
                 completion(.success(outcome))
             } catch {
+                self.publishStatus()
                 let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
                 NSLog("[ElizaBunRuntime] start failed engine=\(engine) durationMs=\(durationMs) error=\(error)")
                 ElizaBunRuntimeBootTrace.post(stage: "engine-bootstrap-failed", detail: [
@@ -147,6 +164,10 @@ public final class ElizaBunRuntime {
     }
 
     public func stop(completion: @escaping () -> Void) {
+        // Stop the engine first, off the queue: this ends a start that is
+        // waiting for readiness and fails in-flight calls, so the teardown
+        // queued behind them runs promptly.
+        FullBunEngineHost.shared.stop()
         queue.async { [weak self] in
             self?.teardown()
             completion()
@@ -154,19 +175,35 @@ public final class ElizaBunRuntime {
     }
 
     public func currentStatus(completion: @escaping (RuntimeStatus) -> Void) {
+        statusLock.lock()
+        let status = publishedStatus
+        let engine = publishedEngine
+        statusLock.unlock()
+        guard status.ready, let engine, !engine.isRunning else {
+            completion(status)
+            return
+        }
+        // The full Bun engine exited (or its pipe failed) after start: report
+        // not ready, then clear the stale state on the queue and tell the
+        // WebView, as an agent exit does.
+        completion((false, status.engine, status.bridgeVersion, status.model, status.tokensPerSecond))
         queue.async { [weak self] in
-            guard let self = self else {
-                completion((false, "compat", nil, nil, nil))
+            guard let self, self.isRunning, self.fullBunEngine === engine, !engine.isRunning else {
                 return
             }
-            completion((
-                self.isRunning,
-                self.engineMode,
-                self.bridgeVersion,
-                self.loadedModelPath,
-                self.tokensPerSecond
-            ))
+            NSLog("[ElizaBunRuntime] full Bun engine is no longer running; clearing runtime state")
+            self.teardown()
+            DispatchQueue.main.async {
+                self.plugin?.notifyListeners("eliza:runtime-exit", data: ["code": -1])
+            }
         }
+    }
+
+    private func publishStatus() {
+        statusLock.lock()
+        publishedStatus = (isRunning, engineMode, bridgeVersion, loadedModelPath, tokensPerSecond)
+        publishedEngine = fullBunEngine
+        statusLock.unlock()
     }
 
     public struct StartOutcome {
@@ -203,15 +240,17 @@ public final class ElizaBunRuntime {
                 return
             }
             if let fullBunEngine = self.fullBunEngine {
-                do {
-                    let payload: [String: Any] = [
-                        "message": text,
-                        "conversationId": conversationId ?? NSNull(),
-                    ]
-                    let result = try fullBunEngine.call(method: "send_message", payload: payload)
-                    completion(.success(self.extractReply(from: result)))
-                } catch {
-                    completion(.failure(error))
+                self.callQueue.async {
+                    do {
+                        let payload: [String: Any] = [
+                            "message": text,
+                            "conversationId": conversationId ?? NSNull(),
+                        ]
+                        let result = try fullBunEngine.call(method: "send_message", payload: payload)
+                        completion(.success(self.extractReply(from: result)))
+                    } catch {
+                        completion(.failure(error))
+                    }
                 }
                 return
             }
@@ -254,10 +293,12 @@ public final class ElizaBunRuntime {
                 return
             }
             if let fullBunEngine = self.fullBunEngine {
-                do {
-                    completion(.success(try fullBunEngine.call(method: method, payload: args ?? NSNull())))
-                } catch {
-                    completion(.failure(error))
+                self.callQueue.async {
+                    do {
+                        completion(.success(try fullBunEngine.call(method: method, payload: args ?? NSNull())))
+                    } catch {
+                        completion(.failure(error))
+                    }
                 }
                 return
             }
@@ -385,7 +426,10 @@ public final class ElizaBunRuntime {
 
         let ctx = JSContext(virtualMachine: virtualMachine)!
         ctx.name = "ElizaBunRuntime"
-        ctx.exceptionHandler = { _, exception in
+        ctx.exceptionHandler = { context, exception in
+            // A custom handler replaces JSC's default, which stores the
+            // exception; keep storing it so takeException() sees it.
+            context?.exception = exception
             let msg = exception?.toString() ?? "<unknown exception>"
             let stack = exception?.objectForKeyedSubscript("stack")?.toString() ?? ""
             NSLog("[ElizaBunRuntime] JS exception: \(msg)\n\(stack)")
@@ -439,6 +483,9 @@ public final class ElizaBunRuntime {
     }
 
     private func teardown() {
+        // Release any idle-timer hold so a stop during a model download does
+        // not keep the screen awake.
+        KeepAwakeBridge.shared.reset()
         fullBunEngine?.stop()
         fullBunEngine = nil
 #if !ELIZA_IOS_FULL_BUN_ENGINE
@@ -452,6 +499,7 @@ public final class ElizaBunRuntime {
         tokensPerSecond = nil
         engineMode = "compat"
         RuntimeQueue.current = nil
+        publishStatus()
     }
 
     // MARK: - Source loading
@@ -592,10 +640,10 @@ public final class ElizaBunRuntime {
         if value.isString {
             return value.toString() ?? ""
         }
-        if let s = value.objectForKeyedSubscript("reply")?.toString(), !s.isEmpty {
-            return s
-        }
-        if let s = value.objectForKeyedSubscript("text")?.toString(), !s.isEmpty {
+        for key in ["reply", "text"] {
+            guard let field = value.objectForKeyedSubscript(key),
+                  !field.isUndefined, !field.isNull,
+                  let s = field.toString(), !s.isEmpty else { continue }
             return s
         }
         return value.toString() ?? ""

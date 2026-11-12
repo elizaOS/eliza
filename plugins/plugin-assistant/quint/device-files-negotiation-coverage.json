@@ -1,0 +1,19 @@
+[
+  {
+    "id": "DeviceFilesNegotiation",
+    "model": "plugins/plugin-assistant/quint/DeviceFilesNegotiation.qnt",
+    "sources": [
+      "packages/agent/src/api/device-action-routes.ts",
+      "plugins/plugin-assistant/src/services/device-actions/action.ts",
+      "plugins/plugin-assistant/src/services/device-actions/files-browser-contract.ts",
+      "plugins/plugin-assistant/src/services/device-actions/service.ts",
+      "plugins/plugin-assistant/test/files-negotiation.e2e.test.ts"
+    ],
+    "invariants": ["ProposalNeedsEnrollment", "VisibilityNeedsLiveEnrollment"],
+    "status": "partial",
+    "limitations": [
+      "One scoped device enrollment, one reviewed Files proposal and one attempt.",
+      "Real HTTP and PGlite cover the server negotiation and approval boundary. Native Files adapters, mutation identity, physical transport, restart and concurrent enrollments remain outside this proof."
+    ]
+  }
+]

@@ -7,6 +7,16 @@
  * with empty data and a warning so type-only consumers compile cleanly.
  */
 
+/**
+ * Security a scan result advertises. `eap` (enterprise) and `wep` networks
+ * cannot be joined from an app; the system settings can. A WPA2/WPA3
+ * transition network is `wpa2`.
+ */
+export type WiFiSecurity = "open" | "owe" | "wpa2" | "wpa3" | "eap" | "wep";
+
+/** Security an app can join: open, Enhanced Open (OWE), WPA2 or WPA3 personal. */
+export type JoinableWiFiSecurity = Exclude<WiFiSecurity, "eap" | "wep">;
+
 /** Information about a single Wi-Fi network (scan result or active connection). */
 export interface WiFiNetwork {
   /** Service Set Identifier — display name of the network. May be empty when hidden. */
@@ -25,6 +35,8 @@ export interface WiFiNetwork {
   capabilities: string;
   /** Whether the network requires a password / key. */
   secured: boolean;
+  /** Security parsed from `capabilities`. Present on scan results only. */
+  security?: WiFiSecurity;
 }
 
 /** Optional filters/tuning passed to `listAvailableNetworks`. */
@@ -36,6 +48,14 @@ export interface ListNetworksOptions {
   maxAge?: number;
   /** Cap the number of networks returned (after de-duplication by SSID). */
   limit?: number;
+  /** Leave out `eap` and `wep` networks, which an app cannot join. Defaults to false. */
+  joinable?: boolean;
+  /**
+   * How long a started scan waits for Android's results, in milliseconds
+   * (0 to 30000). Defaults to 10000. A throttled scan returns the cached
+   * results at once.
+   */
+  timeout?: number;
 }
 
 /** Parameters for `connectToNetwork`. */
@@ -46,6 +66,12 @@ export interface ConnectOptions {
   password?: string;
   /** Whether the SSID is hidden / not broadcast. Defaults to false. */
   hidden?: boolean;
+  /**
+   * Security to join with, usually the scan result's `security`. Without it a
+   * `password` means WPA2 and no password means open. `owe` and `wpa3` need
+   * Android 10 or later. An open or `owe` network takes no password.
+   */
+  security?: JoinableWiFiSecurity;
 }
 
 /** Result returned by `getWifiState`. */
@@ -88,6 +114,21 @@ export interface ConnectivityResult {
   ssid: string | null;
 }
 
+/** Result returned by `getCapabilities`. */
+export interface WiFiCapabilities {
+  /** Android API level. */
+  sdk: number;
+  /** `addNetworkWithApproval` can run (Android 11 or later, Wi-Fi present). */
+  approvedJoin: boolean;
+  /** `openInternetPanel` can run (Android 10 or later). */
+  internetPanel: boolean;
+}
+
+/** Result of `checkPermissions` / `requestPermissions`: the `location` alias scans need. */
+export interface WiFiPermissionStatus {
+  location: "granted" | "denied" | "prompt" | "prompt-with-rationale";
+}
+
 /** Result returned by `addNetworkWithApproval`. */
 export interface ApprovedJoinResult {
   /**
@@ -100,22 +141,47 @@ export interface ApprovedJoinResult {
    *   access or Location off), so it may or may not be the requested one.
    * - `notConnected`: the network was saved, but Android confirmed no Wi-Fi
    *   network named `ssid` within 30 seconds and reported no unnamed one.
+   * - `wrongPassword`: Android reported an authentication failure while
+   *   waiting for a join with a password. Best-effort: not every Android
+   *   build sends this report, and it does not name the network.
    */
   status:
     | "connected"
     | "captivePortal"
     | "declined"
     | "unverified"
-    | "notConnected";
+    | "notConnected"
+    | "wrongPassword";
 }
 
-/** Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback. */
+/**
+ * Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback.
+ *
+ * A host can register a subclass that turns the bridge off; every method then
+ * rejects with `DISABLED`.
+ */
 export interface WiFiPlugin {
+  /** Read the `location` permission that scans need. */
+  checkPermissions(): Promise<WiFiPermissionStatus>;
+  /** Ask for precise and approximate location together, as Android 12+ requires. */
+  requestPermissions(options?: {
+    permissions: "location"[];
+  }): Promise<WiFiPermissionStatus>;
+  /** Read which join paths this device supports. */
+  getCapabilities(): Promise<WiFiCapabilities>;
+  /** Open Android's internet panel over the app. Rejects with `UNSUPPORTED` before Android 10. */
+  openInternetPanel(): Promise<void>;
   /** Read radio + active connection state. */
   getWifiState(): Promise<WifiStateResult>;
   /** Read active connection details. */
   getConnectedNetwork(): Promise<ConnectedNetworkResult>;
-  /** Trigger a scan (or reuse a recent one) and return nearby networks. */
+  /**
+   * Trigger a scan (or reuse a recent one) and return nearby networks,
+   * strongest first, one entry per name, hidden names left out. Rejects with
+   * `LOCATION_PERMISSION_REQUIRED` without precise location and with
+   * `LOCATION_DISABLED` while Location is off, because Android then returns
+   * no results.
+   */
   listAvailableNetworks(
     options?: ListNetworksOptions,
   ): Promise<ListNetworksResult>;
@@ -128,7 +194,8 @@ export interface WiFiPlugin {
   /**
    * Ask the user to save the network in the system "Save this network?" dialog
    * (Android 11+), then wait for Wi-Fi Internet. Needs no privileged permission.
-   * Rejects with `UNSUPPORTED` before Android 11.
+   * Rejects with `UNSUPPORTED` before Android 11 and with `INVALID_ARGUMENT`
+   * for a passphrase or security type Android refuses.
    */
   addNetworkWithApproval(options: ConnectOptions): Promise<ApprovedJoinResult>;
 }

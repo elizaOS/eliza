@@ -38,7 +38,7 @@ public class BionicSpeechInstrumentedTest {
         Path models = Files.createDirectories(root.resolve(ElizaBionicInferenceServer.PARADEE_DIR));
         String name = "eliza-speech-proof-" + android.os.Process.myPid();
         ElizaBionicInferenceServer host = new ElizaBionicInferenceServer(name,
-            "/unavailable-chat-bundle", InferenceMemoryPolicy.RamClass.CONSTRAINED, 0L, null, null);
+            "/unavailable-chat-bundle", InferenceMemoryPolicy.RamClass.CONSTRAINED, 0L, null, null, app.getDataDir());
         try {
             String[] names = {ElizaBionicInferenceServer.PARADEE_MODEL, ElizaBionicInferenceServer.MISAKI_LEXICON};
             String[] hashes = {MODEL_HASH, LEXICON_HASH};

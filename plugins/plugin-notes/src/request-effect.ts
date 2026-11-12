@@ -15,7 +15,10 @@ type NotesFieldValue = RequestOperationClassification | ParsedNotesEffect;
 export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldValue> =
   {
     name: "notesRequestEffect",
-    priority: 45,
+    // Written before replyText (20), after calendar (19.25) and before view
+    // navigation (19.75), so a direct answer can stream once it says the
+    // turn has no Notes effect.
+    priority: 19.5,
     description:
       "Classify only the CURRENT user's requested Notes effects: read_only for reads/history/navigation, mutation_requested for an explicit create/edit/append/delete request, unresolved for no Notes effect or uncertainty or unsupported operations such as restoring a deleted note. List only the requested registered operations, not a tool plan: create=new note, get/list=reads, update=edit, patch=append or patch edit, delete=remove; include read and write for compounds, with no duplicates. Quoted commands, past requests and operation words inside note content do not add operations. Use [] for unresolved/navigation-only; mutation_requested must name a mutation and read_only must not. This is semantic interpretation for completion accounting, not proof of intent truth, execution or write permission; existing permissions and full outcome evaluation still apply.",
     schema: {
@@ -35,6 +38,21 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
       additionalProperties: false,
     },
     shouldRun: ({ senderRole }) => senderRole === "OWNER",
+    // No Notes effect. handle only records the classification; it never
+    // reroutes the turn or changes replyText.
+    // read_only and unresolved with no operations are both no-ops for the
+    // turn: the classification only narrows what Notes may write later.
+    // mutation_requested, or any listed operation, holds a streamed reply.
+    directReplyValue: (value) =>
+      value === "unresolved" ||
+      value === "read_only" ||
+      (typeof value === "object" &&
+        value !== null &&
+        ["unresolved", "read_only"].includes(
+          String((value as { classification?: unknown }).classification),
+        ) &&
+        Array.isArray((value as { operations?: unknown }).operations) &&
+        (value as { operations: unknown[] }).operations.length === 0),
     parse(value) {
       // Preserve the old scalar parse contract, but do not infer operations from
       // it. Missing/malformed values likewise have no operation commitment.

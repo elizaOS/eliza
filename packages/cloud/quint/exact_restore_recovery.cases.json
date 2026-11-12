@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+    "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+    "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
+    "packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/agent-backup-restore-coordinator.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-restore-cleanup.mjs",
+  "bounds": "One fixed terminal restore and immutable S0 attempt, one counted slot, two concurrent trusted coordinator turns and two node occurrences.",
+  "limitations": [
+    "One-shot Docker creation may finish after lease expiry and tombstone. Exact ID or producer quiescence is required before proof.",
+    "Database settlement is atomic. Provider receipt validity, SSH authentication, cryptographic digests and immutable source authority are assumptions exercised separately by integration tests.",
+    "The original operation stays terminal. The conditional liveness property does not cover unavailable/reincarnated nodes or an unresponsive provider."
+  ],
+  "cases": [
+    {
+      "name": "bounded-recovery",
+      "main": "exact_restore_recovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["StableAuthorityCleanupFinishes"],
+      "maxSteps": 35,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "StableAuthorityCleanupFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in exact_restore_recovery: StableAuthorityCleanupFinishes = (always(s.currentNode == 1) and producerQuiescent.weakFair(s) and workers.forall(w => begin(w, 1).weakFair(s) and tombstone(w).weakFair(s) and observeExactId(w).weakFair(s) and deleteExactId(w).weakFair(s) and receiveProof(w).weakFair(s) and settle(w).weakFair(s))).implies(eventually(s.receipt))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
+    }
+  ],
+  "fairness": "Cleanup completion assumes a stable original node incarnation, eventual producer quiescence, and weak fairness for trusted begin, tombstone, observation, exact deletion, proof and settlement actions. Unavailable authority remains quarantined."
+}

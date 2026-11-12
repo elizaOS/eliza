@@ -1,0 +1,33 @@
+{
+  "sources": [
+    "plugins/plugin-native-action-journal/android/src/main/java/ai/eliza/plugins/actionjournal/deletion/DeferredDeletionCoordinator.java",
+    "plugins/plugin-native-action-journal/test/native-host/DeferredDeletionTest.java"
+  ],
+  "conformance": "plugins/plugin-native-action-journal/quint/check-deletion-owner-admission.mjs",
+  "bounds": {
+    "domain": "One expired queued row, one authenticated owner snapshot, one final review-fence check and at most one provider effect.",
+    "limitations": [
+      "The row was already reviewed and durably staged. Owner classes mean exact equality with the newly authenticated snapshot, a known difference, or an unavailable owner route. Final fence results are fresh, changed, or thrown. Calendar and reminder rows use this same admission projection.",
+      "An unavailable owner is within the existing retry window. A thrown final fence keeps a reminder queued; the Calendar journal pauses it as owner-unavailable. Retry bounds, storage faults, Undo, provider response loss, later receipt recovery and arbitrary rows remain outside this model. No unconditional progress or Android/device acceptance is claimed. A delivered call with a known changed owner pauses; an equal owner needs a fresh final fence before dispatch.",
+      "Conformance runs the actual Java coordinator and journal with controlled host ports. Strict expected-identity fences, owner rotation between authentication and the final check, repeated reconciliation and zero foreign effects are checked for both row kinds. This is bounded scenario conformance, not generated-trace equivalence or complete coordinator refinement."
+    ]
+  },
+  "cases": [
+    {
+      "name": "queued-owner-admission",
+      "main": "DeletionOwnerAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "EffectRequiresCurrentOwner",
+        "ChangedOwnerPauses",
+        "UncertainFenceNeverDispatches",
+        "PausedNeverDispatches"
+      ],
+      "maxSteps": 10,
+      "samples": 1000,
+      "temporal": []
+    }
+  ]
+}

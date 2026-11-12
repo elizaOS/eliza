@@ -76,7 +76,7 @@ const COMMIT = "a".repeat(40);
 const defaults = Object.fromEntries(
   Object.entries(inputs).map(([name, input]) => [
     name,
-    String(input.default ?? ""),
+    String(input.default ?? (name === "family" ? "sample_campaign" : "")),
   ]),
 );
 const environment = (overrides: Record<string, string>) => {
@@ -132,12 +132,14 @@ function mint(overrides: Record<string, string> = {}): {
 }
 
 describe("staging grant-code mint workflow", () => {
-  test("defaults mint exactly what the workflow minted before these inputs", () => {
+  test("an explicit campaign keeps the existing grant terms and sealed output", () => {
     expect(admit().ok).toBe(true);
     const { options, envelope } = mint();
-    // The argv the workflow passed before family/plan/months/expiry inputs.
+    // Public campaign input reaches the actual mint parser unchanged.
     expect(options).toEqual([
       parseMintOptions([
+        "--family",
+        "sample_campaign",
         "--count",
         "5",
         "--max-redemptions",
@@ -145,9 +147,11 @@ describe("staging grant-code mint workflow", () => {
         "--duration-days",
         "183",
         "--label",
-        "alpha-staging-qa",
+        "staging-qa",
       ]),
       parseMintOptions([
+        "--family",
+        "sample_campaign",
         "--count",
         "1",
         "--max-redemptions",
@@ -155,18 +159,18 @@ describe("staging grant-code mint workflow", () => {
         "--duration-days",
         "183",
         "--label",
-        "alpha-staging-shared",
+        "staging-shared",
       ]),
     ]);
     expect(options[0]).toMatchObject({
-      family: "alpha_phone",
+      family: "sample_campaign",
       planKey: "plus_monthly",
       requiresNoPaidPlan: false,
       expiresAt: null,
     });
     expect(envelope).toBe(
-      "# alpha-staging-qa: 5 single-use code(s), 183 days\nFAKE-CODE\n" +
-        "# alpha-staging-shared: 1 code, 50 redemptions, 183 days\nFAKE-CODE\n",
+      "# staging-qa: 5 single-use code(s), 183 days\nFAKE-CODE\n" +
+        "# staging-shared: 1 code, 50 redemptions, 183 days\nFAKE-CODE\n",
     );
   });
 
@@ -219,7 +223,7 @@ describe("staging grant-code mint workflow", () => {
     "admission refuses malformed, ambiguous and hostile inputs",
     () => {
       const refused: Array<[Record<string, string>, RegExp]> = [
-        [{ family: "production_qa" }, /family must be/],
+        [{ family: "" }, /family must be/],
         [{ family: "alpha_phone; touch pwned" }, /family must be/],
         [{ plan: "enterprise" }, /plan must be/],
         [{ duration_days: "30", duration_months: "6" }, /mutually exclusive/],
@@ -247,8 +251,11 @@ describe("staging grant-code mint workflow", () => {
     for (const script of [admission, mintAndSeal]) {
       expect(script).not.toContain("${{");
     }
+    expect(inputs.family.default).toBeUndefined();
+    expect(() => parseMintOptions(["--count", "1"])).toThrow("--family");
     expect(inputs.family).toMatchObject({
-      options: ["alpha_phone", "grace_pilot"],
+      required: true,
+      type: "string",
     });
   });
 });

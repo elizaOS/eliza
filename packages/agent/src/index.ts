@@ -28,7 +28,6 @@ export {
 } from "./actions/settings-actions.ts";
 export {
   completeOutputBlock,
-  normalizeTerminalOutput,
   resolveTerminalTransportTimeoutMs,
   terminalAction,
 } from "./actions/terminal.ts";

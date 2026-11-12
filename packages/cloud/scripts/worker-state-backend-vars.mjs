@@ -56,22 +56,23 @@ function cloudflareErrorCodes(payload) {
   return codes.length ? `cloudflare codes ${codes.join(",")}` : "";
 }
 
-export async function fetchStateBackendVars(environment, fetchImpl = fetch) {
-  const deployEnvironment = environment.DEPLOY_ENVIRONMENT;
+/** Shared read-only release inventory client. Never returns provider errors. */
+export async function fetchCloudflareInventory(
+  environment,
+  path,
+  fetchImpl = fetch,
+) {
   const account = environment.CLOUDFLARE_ACCOUNT_ID;
   const token = environment.CLOUDFLARE_API_TOKEN;
   if (
-    !["staging", "production"].includes(deployEnvironment) ||
+    !["staging", "production"].includes(environment.DEPLOY_ENVIRONMENT) ||
     !/^[a-f0-9]{32}$/.test(account ?? "") ||
-    !token
+    !token ||
+    !/^\/workers\/[a-zA-Z0-9_/?=&.-]+$/.test(path)
   )
     throw new StateBackendInventoryError("Missing deployment authority");
-  const worker =
-    deployEnvironment === "staging"
-      ? "eliza-cloud-api-staging"
-      : "eliza-cloud-api-prod";
   const response = await fetchImpl(
-    `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${worker}/settings`,
+    `https://api.cloudflare.com/client/v4/accounts/${account}${path}`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
@@ -92,8 +93,34 @@ export async function fetchStateBackendVars(environment, fetchImpl = fetch) {
       "Binding inventory rejected",
       cloudflareErrorCodes(payload),
     );
+  return payload;
+}
+
+export async function fetchWorkerBindings(
+  environment,
+  worker,
+  fetchImpl = fetch,
+) {
+  if (!/^[a-z0-9-]+$/.test(worker))
+    throw new StateBackendInventoryError("Invalid Worker identity");
+  const payload = await fetchCloudflareInventory(
+    environment,
+    `/workers/scripts/${worker}/settings`,
+    fetchImpl,
+  );
+  if (!Array.isArray(payload.result?.bindings))
+    throw new StateBackendInventoryError("Missing binding inventory");
+  return payload.result.bindings;
+}
+
+export async function fetchStateBackendVars(environment, fetchImpl = fetch) {
+  const worker =
+    environment.DEPLOY_ENVIRONMENT === "staging"
+      ? "eliza-cloud-api-staging"
+      : "eliza-cloud-api-prod";
+  const bindings = await fetchWorkerBindings(environment, worker, fetchImpl);
   try {
-    return planStateBackendVars(payload.result?.bindings, environment);
+    return planStateBackendVars(bindings, environment);
   } catch (error) {
     throw new StateBackendInventoryError(error.message);
   }

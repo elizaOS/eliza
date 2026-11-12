@@ -24,7 +24,6 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
@@ -142,15 +141,11 @@ app.post("/", async (c) => {
       );
     }
 
-    const { user, apiKeyId, admissionSnapshot, credential } =
+    const { user, apiKeyId, admissionSnapshot } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     if (pendingResponse) return pendingResponse;
     if (!request || !definition) {
       throw new Error("Validated SFX request was not retained");
@@ -212,7 +207,6 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
         atomicProviderBoundary: true,
       });
     } catch (error) {

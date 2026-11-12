@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "plugins/plugin-native-media/android/src/main/java/ai/eliza/plugins/media/OwnedPhotoEdits.java"
+  ],
+  "conformance": "plugins/plugin-native-media/test/native-host/photo-copy-recovery.node.mjs",
+  "bounds": {
+    "domain": "One known save-copy identity, one writing or saved receipt, zero or one unique owned MediaStore row, pending/published/absent state, and confirmed or unconfirmed cleanup.",
+    "assumptions": "Recovery sees pending rows explicitly. Confirmed cleanup removes exactly its pending row before writing failure. A failed provider read or cleanup stays unconfirmed. No fairness is assumed; callers need not retry.",
+    "limitations": "No concurrent provider row replacement, ambiguous duplicate names, preference durability failure or image encoding is modeled. The source-level JVM check covers unavailable lookup, ambiguous rows and failed cleanup; Android consumer instrumentation checks actual pending visibility and deletion. Replace-original recovery and its retained backups are unchanged."
+  },
+  "cases": [
+    {
+      "name": "pending-copy-recovery",
+      "main": "PhotoCopyRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 10,
+      "samples": 1000
+    }
+  ]
+}

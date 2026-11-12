@@ -11,7 +11,8 @@ public final class RuntimeRequestDispatcherTest {
   private static void check(boolean value) { assertions++; if (!value) throw new AssertionError("assertion " + assertions); }
   private static void await(CountDownLatch latch) throws Exception { check(latch.await(15, TimeUnit.SECONDS)); }
   public static void main(String[] args) throws Exception {
-    for (String urgent : new String[]{"/conversations/one/abort", "/tasks/one/pause", "/tasks/one/cancel"}) {
+    for (String urgent : new String[]{"/conversations/one/abort", "/tasks/one/pause", "/tasks/one/cancel",
+        "/conversations/one/messages/stream/cancel"}) {
       RuntimeRequestDispatcher dispatcher = new RuntimeRequestDispatcher(1, 1, 1);
       CountDownLatch normalStarted = new CountDownLatch(1), controlStarted = new CountDownLatch(1);
       CountDownLatch interrupted = new CountDownLatch(2), hold = new CountDownLatch(1);
@@ -35,12 +36,26 @@ public final class RuntimeRequestDispatcherTest {
     }
     try (RuntimeRequestDispatcher dispatcher = new RuntimeRequestDispatcher()) {
       AtomicInteger rejectedRuns = new AtomicInteger();
-      check(dispatcher.submit("/messages", 65537, rejectedRuns::incrementAndGet) == TOO_LARGE);
-      check(dispatcher.submit("/voice/stt", 12 * 1024 * 1024 + 1, rejectedRuns::incrementAndGet) == TOO_LARGE);
+      check(dispatcher.submit("/messages", RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS + 1, rejectedRuns::incrementAndGet) == TOO_LARGE);
+      check(dispatcher.submit("/voice/stt", RuntimeRequestDispatcher.MAX_STT_BODY_TEXT_UNITS + 1, rejectedRuns::incrementAndGet) == TOO_LARGE);
       CountDownLatch completed = new CountDownLatch(2);
-      check(dispatcher.submit("/messages", 65536, completed::countDown) == ACCEPTED);
-      check(dispatcher.submit("/voice/stt", 12 * 1024 * 1024, completed::countDown) == ACCEPTED);
+      check(dispatcher.submit("/messages", RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS, completed::countDown) == ACCEPTED);
+      check(dispatcher.submit("/voice/stt", RuntimeRequestDispatcher.MAX_STT_BODY_TEXT_UNITS, completed::countDown) == ACCEPTED);
       await(completed); check(rejectedRuns.get() == 0);
+    }
+    // A held stream pull is normal work; only its cancel is urgent.
+    {
+      RuntimeRequestDispatcher dispatcher = new RuntimeRequestDispatcher(1, 1, 1);
+      CountDownLatch started = new CountDownLatch(1), hold = new CountDownLatch(1);
+      try {
+        check(dispatcher.submit("/conversations/one/messages/stream/pull", 0, () -> {
+          started.countDown(); try { hold.await(); } catch (InterruptedException expected) {}
+        }) == ACCEPTED); await(started);
+        check(dispatcher.submit("/conversations/one/messages/stream/pull", 0, () -> {}) == ACCEPTED);
+        check(dispatcher.submit("/conversations/one/messages/stream/start", 0, () -> {}) == BUSY);
+      } finally { dispatcher.close(); hold.countDown(); }
+    }
+    try (RuntimeRequestDispatcher dispatcher = new RuntimeRequestDispatcher()) {
       try { dispatcher.submit("/messages", -1, () -> {}); throw new AssertionError("negative size accepted"); }
       catch (IllegalArgumentException expected) { assertions++; }
     }

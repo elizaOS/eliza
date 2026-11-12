@@ -15,28 +15,36 @@
  * for the agent's own tool surface.
  */
 
+import { createHash } from "node:crypto";
 import {
   type Action,
   type ActionResult,
   type ColumnInfo,
+  type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
+  requireConfirmation,
   type SearchCategoryRegistration,
   type TableInfo,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
+import { resolveDistributionProfile } from "@elizaos/host/protocol";
 
-import { checkReadOnly } from "../security/sql-readonly-guard.ts";
-
+import {
+  checkReadOnly,
+  executeReadOnlySql,
+} from "../security/sql-readonly-guard.ts";
 import {
   parseRequestedSchema,
   qualifiedTable,
   quoteIdent,
   resolveTableSchema,
 } from "../shared/database-table.ts";
+import { isHostManagedInference } from "./host-operation-policy.ts";
 
 // ---------------------------------------------------------------------------
 // Op dispatch
@@ -520,6 +528,8 @@ async function opGetTable(
 async function opQuery(
   runtime: IAgentRuntime,
   params: DatabaseParams,
+  message: Memory,
+  callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const sqlText = params.sql?.trim();
   if (!sqlText) {
@@ -530,14 +540,61 @@ async function opQuery(
     };
   }
 
+  // Raw SQL writes follow the TERMINAL gate: direct builds only, and never
+  // under a store distribution profile or a product host policy.
+  const writesPermitted =
+    isLocalCodeExecutionAllowed() &&
+    resolveDistributionProfile() !== "store" &&
+    !isHostManagedInference();
+  if (params.allowWrites === true && !writesPermitted) {
+    return {
+      success: false,
+      text: "Database writes are off on this build. Read-only queries still work.",
+      values: { error: "DATABASE_QUERY_FAILED", reason: "WRITES_DISABLED" },
+      data: { actionName: "DATABASE", op: "query" },
+    };
+  }
+
   const allowWrites = params.allowWrites === true;
-  if (!allowWrites) {
+  if (allowWrites) {
+    // The model asked for a write: the owner confirms the exact SQL first.
+    const sqlHash = createHash("sha256").update(sqlText).digest("hex");
+    const decision = await requireConfirmation({
+      runtime,
+      message,
+      actionName: "DATABASE",
+      pendingKey: `database-write:${sqlHash}`,
+      prompt: `Run this SQL against the agent database?\n\n${sqlText}\n\nReply yes to run it or no to cancel.`,
+      callback,
+    });
+    if (decision.status !== "confirmed") {
+      const pending = decision.status === "pending";
+      return {
+        success: pending,
+        text: pending
+          ? "Asked the owner to confirm the SQL write; wait for their yes/no reply."
+          : "The owner cancelled the SQL write; nothing ran.",
+        values: {
+          allowWrites,
+          ...(pending ? {} : { reason: "WRITE_CANCELLED" }),
+        },
+        data: {
+          actionName: "DATABASE",
+          op: "query",
+          confirmationRequired: pending,
+          awaitingUserInput: pending,
+          cancelled: !pending,
+        },
+      };
+    }
+    logger.info(`[DATABASE] running confirmed SQL write sha256=${sqlHash}`);
+  } else {
     const guard = checkReadOnly(sqlText);
     if (!guard.ok) {
       const reason = "reason" in guard ? guard.reason : "not read-only";
       return {
         success: false,
-        text: `Query rejected: ${reason}`,
+        text: `Read-only query refused: ${reason}`,
         values: { error: "DATABASE_QUERY_FAILED", reason: "MUTATION_BLOCKED" },
         data: { actionName: "DATABASE", op: "query" },
       };
@@ -545,7 +602,12 @@ async function opQuery(
   }
 
   const start = Date.now();
-  const result = await executeRawSql(runtime, sqlText);
+  const result = allowWrites
+    ? await executeRawSql(runtime, sqlText)
+    : await executeReadOnlySql(
+        (runtime.adapter as { db?: unknown } | undefined)?.db,
+        sqlText,
+      );
   const durationMs = Date.now() - start;
 
   return {
@@ -700,7 +762,9 @@ async function opSearchVectors(
 
 async function databaseHandler(
   runtime: IAgentRuntime,
+  message: Memory,
   options: unknown,
+  callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const params = getParams(options);
   const op = params.action ?? params.subaction ?? params.op;
@@ -723,7 +787,7 @@ async function databaseHandler(
       case "get_table":
         return await opGetTable(runtime, params);
       case "query":
-        return await opQuery(runtime, params);
+        return await opQuery(runtime, params, message, callback);
       case "search_vectors":
         return await opSearchVectors(runtime, params);
     }
@@ -772,8 +836,8 @@ export const databaseAction: Action = {
     registerVectorSearchCategory(runtime);
     return true;
   },
-  handler: async (runtime, _message, _state, options) =>
-    databaseHandler(runtime, options),
+  handler: async (runtime, message, _state, options, callback) =>
+    databaseHandler(runtime, message, options, callback),
   parameters: [
     {
       name: "action",
@@ -835,13 +899,14 @@ export const databaseAction: Action = {
     },
     {
       name: "sql",
-      description: "query: SQL text. Read-only unless allowWrites:true.",
+      description: "query: SQL text. Runs read-only.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "allowWrites",
-      description: "query: permit mutations (INSERT/UPDATE/DELETE/DDL).",
+      description:
+        "query: request a mutation (INSERT/UPDATE/DELETE/DDL). The owner confirms the exact SQL before it runs. Direct builds only.",
       required: false,
       schema: { type: "boolean" as const, default: false },
     },

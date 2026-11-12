@@ -1,0 +1,35 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+    "packages/cloud/api/stripe/create-checkout-session/route.ts",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/test-support/stripe-checkout-test-schema.ts",
+    "packages/cloud/quint/check-checkout-recovery.mjs"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
+      "Transactions and receipt publication are atomic. Provider idempotency is assumed within the original retained window; the separate clock model does not establish compositional refinement.",
+      "Cryptography, arbitrary decimals, SQL isolation, unbounded provider/network delay and TypeScript refinement are not proved."
+    ],
+    "progress": "No fairness or temporal progress claim. Safety covers only the declared finite model.",
+    "conformance": "The hook requires every named real PGlite route/service/migration scenario for this model. Authentication and remote Stripe are controlled boundaries in the existing tests. General trace equivalence, provider behavior and composition of the two models are not proved."
+  },
+  "cases": [
+    {
+      "name": "checkout-credit-settlement",
+      "main": "checkout_credit_settlement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 45,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

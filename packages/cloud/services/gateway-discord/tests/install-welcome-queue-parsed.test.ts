@@ -22,6 +22,9 @@ function upstashLikeRedis(): DiscordInstallWelcomeRedis {
     }
   };
   return {
+    async eval() {
+      throw new Error("Unexpected retry for an accepted welcome");
+    },
     async get(key) {
       return (keys.get(key) ?? null) as never;
     },

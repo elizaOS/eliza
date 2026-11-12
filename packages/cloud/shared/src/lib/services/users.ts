@@ -595,6 +595,18 @@ export class UsersService {
     });
   }
 
+  /**
+   * Removes an address the user set without proof, so a sign-in that does
+   * prove it can take it. Returns false when the row no longer holds it
+   * unverified.
+   */
+  async clearUnverifiedEmail(user: User | UserWithOrganization, email: string): Promise<boolean> {
+    const cleared = await usersRepository.clearUnverifiedEmail(user.id, email);
+    if (!cleared) return false;
+    await this.invalidateCache(user);
+    return true;
+  }
+
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
     const existing = await usersRepository.findByIdForWrite(userId);
     if (existing?.organization_id && existing.steward_user_id !== stewardUserId) {

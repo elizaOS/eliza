@@ -213,7 +213,7 @@ export function extractJsonObjectSpans(
 	return spans;
 }
 
-export function repairJsonStringEscapes(
+function repairJsonStringEscapes(
 	raw: string,
 	{
 		trailingBackslashQuotes = true,
@@ -307,9 +307,10 @@ function isValidJsonEscape(raw: string, index: number): boolean {
 	if (char !== "u") {
 		return false;
 	}
-	const hex = raw.slice(index + 1, index + 5);
-	return /^[0-9a-fA-F]{4}$/.test(hex);
+	return HEX4_RE.test(raw.slice(index + 1, index + 5));
 }
+
+const HEX4_RE = /^[0-9a-fA-F]{4}$/;
 
 function escapeRawJsonStringChar(char: string): string {
 	switch (char) {
@@ -372,16 +373,19 @@ export function stringifyForDiagnostics(value: unknown): string {
 	}
 }
 
+/** `_`-bearing uppercase tag name: the only shape recovered as an invocation. */
+const PSEUDO_TOOL_SNAKE_NAME_SRC = "[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+";
+
 /**
  * Tag-name shape of an invented pseudo-tool tag: `_`-bearing OR ≥4 uppercase
  * chars, case-sensitive, so quoted real acronyms (`<AI>`) stay prose. Single
- * source of truth shared by the reply stripper below, the planner's embedded
- * tool-call recovery, and the evaluator's user-facing-answer screen — the
- * three must agree on what counts as tool markup, or text screened by one is
- * silently laundered by another (matrix F38, tj-9129a432454364).
+ * source of truth shared by the reply stripper, the planner's embedded
+ * tool-call recovery ({@link parsePseudoTagToolInvocations}), and the
+ * evaluator's user-facing-answer screen ({@link containsToolCallShapedMarkup})
+ * — the three must agree on what counts as tool markup, or text screened by
+ * one is silently laundered by another (matrix F38, tj-9129a432454364).
  */
-export const PSEUDO_TOOL_TAG_NAME_SRC =
-	"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,}";
+const PSEUDO_TOOL_TAG_NAME_SRC = `${PSEUDO_TOOL_SNAKE_NAME_SRC}|[A-Z][A-Z0-9]{3,}`;
 
 const PSEUDO_TOOL_TAG_BLOCK_RE = new RegExp(
 	`<(${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*?</\\1>`,
@@ -391,6 +395,17 @@ const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
 	`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*$`,
 	"g",
 );
+const PSEUDO_TOOL_TAG_OPEN_RE = new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`);
+const NATIVE_TOOL_CALL_MARKUP_RE =
+	/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i;
+const PSEUDO_TAG_INVOCATION_RE = new RegExp(
+	`<(${PSEUDO_TOOL_SNAKE_NAME_SRC})>\\s*(\\{[\\s\\S]*?\\})\\s*<\\/\\1>`,
+	"g",
+);
+const PAIRED_TOOL_CALL_RE = /<tool_call\b[\s\S]*?<\/tool_call>/gi;
+const TRUNCATED_TOOL_CALL_RE =
+	/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g;
+const JSON_PUNCTUATION_ONLY_RE = /^[\s{}[\]":,]+$/;
 
 /**
  * Detects tool-call-shaped markup a model emitted as reply text instead of a
@@ -402,8 +417,7 @@ const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
  */
 export function containsToolCallShapedMarkup(text: string): boolean {
 	return (
-		/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text) ||
-		new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`).test(text)
+		NATIVE_TOOL_CALL_MARKUP_RE.test(text) || PSEUDO_TOOL_TAG_OPEN_RE.test(text)
 	);
 }
 
@@ -421,9 +435,7 @@ export function parsePseudoTagToolInvocations(
 ): Array<{ name: string; params: Record<string, unknown> }> {
 	if (!text?.includes("<")) return [];
 	const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
-	const blockRe =
-		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(\{[\s\S]*?\})\s*<\/\1>/g;
-	for (const match of text.matchAll(blockRe)) {
+	for (const match of text.matchAll(PSEUDO_TAG_INVOCATION_RE)) {
 		try {
 			const parsed: unknown = JSON.parse(match[2]);
 			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -462,16 +474,13 @@ export function parsePseudoTagToolInvocations(
 export function stripJsonStructuralJunkReply(value: string): string {
 	const cleaned = value
 		// Fully-serialized (paired) tool-call markup leaked as text.
-		.replace(/<tool_call\b[\s\S]*?<\/tool_call>/gi, "")
+		.replace(PAIRED_TOOL_CALL_RE, "")
 		// Truncated-open markup (no closing tag): only strip to end when it is
 		// clearly a leaked serialization - an uppercase ACTION token or the native
 		// `<arg_key>`/`<arg_value>` markup follows. Case-SENSITIVE on purpose: the
 		// uppercase action token is what distinguishes a real leaked call from a
 		// bare prose mention of `<tool_call>` (which must be preserved).
-		.replace(
-			/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g,
-			"",
-		)
+		.replace(TRUNCATED_TOOL_CALL_RE, "")
 		// Invented pseudo-tool-invocation tags: a weak model reaching for a
 		// capability it cannot call structurally emits a bare `<UPPER_SNAKE>`
 		// tag block instead (observed on cerebras zai/gemma:
@@ -483,5 +492,5 @@ export function stripJsonStructuralJunkReply(value: string): string {
 		.replace(PSEUDO_TOOL_TAG_OPEN_TAIL_RE, "")
 		.trim();
 	if (!cleaned) return "";
-	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
+	return JSON_PUNCTUATION_ONLY_RE.test(cleaned) ? "" : cleaned;
 }

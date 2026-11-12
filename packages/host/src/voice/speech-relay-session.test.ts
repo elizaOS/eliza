@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   createSpeechRelaySession,
   parseSpeechRelayControl,
@@ -85,6 +85,7 @@ function harness(overrides: Partial<SpeechRelayPorts> = {}) {
         cancel: () => order.push("tts-cancel"),
       };
     },
+    confirmTtsTransportStopped: async () => "transport_closed",
     emit: (event) => events.push(event),
     onClosed: (promise) => {
       closures.push(promise);
@@ -388,7 +389,10 @@ test("a durable dispatch marker blocks the provider factory and revocation drops
   await expect(speech).rejects.toThrow("closed");
   await s.close();
   expect(f.order).not.toContain("tts-open");
-  expect(f.settled).toEqual([
+  expect(
+    f.settled,
+    `queued-before-dispatch receipt=${JSON.stringify(f.settled)}`,
+  ).toEqual([
     {
       pcmBytes: 0,
       ttsCharacters: 0,
@@ -805,3 +809,264 @@ test("a late renewal never asks for more than one window past the current end", 
   expect(f.extensions[0]).toBe(1_020 + SPEECH_RELAY_BUDGET.durationMs);
   await session.close();
 });
+
+test("an entered TTS provider factory remains uncertain when it throws", async () => {
+  let attempts = 0;
+  const f = harness({
+    openTts: () => {
+      attempts++;
+      throw Error("provider upgrade outcome unknown");
+    },
+    confirmTtsTransportStopped: async () => "unknown",
+  });
+  const session = await f.open();
+  await expect(
+    session.control({ t: "tts", id: "ambiguous", text: "hello" }),
+  ).rejects.toThrow("provider upgrade outcome unknown");
+  await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
+  expect(attempts).toBe(1);
+  expect(f.settled).toMatchObject([
+    {
+      ttsCharacters: 5,
+      dispatched: { stt: true, tts: true },
+      outcomes: { tts: "unknown" },
+    },
+  ]);
+  expect(session.retirement.evidence()?.tts).toBe("unknown");
+});
+
+test("earlier cancellation uncertainty survives a later pre-provider revocation", async () => {
+  let marks = 0,
+    release!: () => void;
+  const held = new Promise<void>((yes) => {
+    release = yes;
+  });
+  const f = harness({
+    reserveCredits: async () => ({
+      beforeProviderDispatch: async (kind) => {
+        if (kind === "tts" && ++marks === 2) await held;
+      },
+      settle: async (receipt) => {
+        f.settled.push(receipt);
+      },
+    }),
+  });
+  const session = await f.open();
+  await session.control({ t: "tts", id: "prior", text: "already" });
+  await session.control({ t: "cancel", id: "prior" });
+  const queued = session.control({ t: "tts", id: "queued", text: "later" });
+  await tick();
+  f.revoke();
+  release();
+  await expect(queued).rejects.toThrow("closed");
+  await session.close();
+  expect(f.order.filter((value) => value === "tts-open")).toHaveLength(1);
+  expect(f.settled).toMatchObject([
+    { ttsCharacters: 7, outcomes: { tts: "unknown" } },
+  ]);
+});
+
+test("unused renewed STT budgets do not repeat an unknown initial hold", async () => {
+  const f = renewing({ confirmProviderStopped: async () => "unknown" }),
+    session = await f.open();
+  await until(() => f.events.some((event) => isExtended(event)));
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled[0]).toMatchObject({
+    pcmBytes: 0,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: true },
+  });
+  expect(f.settled[1]).toMatchObject({
+    pcmBytes: 0,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: false },
+  });
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+});
+
+test("unknown STT drain preserves the used audio budget and releases unused renewal", async () => {
+  const f = renewing({ confirmProviderStopped: async () => "unknown" }),
+    session = await f.open();
+  await until(() => f.events.some((event) => isExtended(event)));
+  f.advance(1_000);
+  session.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes));
+  await session.close();
+  expect(f.settled).toHaveLength(2);
+  expect(f.settled[0]).toMatchObject({
+    pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: true },
+  });
+  expect(f.settled[1]).toMatchObject({
+    pcmBytes: 0,
+    outcomes: { stt: "unknown" },
+    dispatched: { stt: false },
+  });
+});
+
+test("a send that throws after dispatch at the next STT budget keeps that budget uncertain", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  let session: Awaited<ReturnType<typeof createSpeechRelaySession>> | undefined;
+  let attempted = 0;
+  const windowBytes =
+    (SPEECH_RELAY_BUDGET.durationMs * SPEECH_RELAY_BUDGET.pcmBytesPerSecond) /
+    1000;
+  const f = harness({
+    expiresAt: 1_000 + SPEECH_RELAY_BUDGET.durationMs,
+    maxWindows: 2,
+    extend: async (_scope, end) => end,
+    confirmProviderStopped: async () => "unknown",
+    openStt: () => ({
+      sendAudioChunk: (chunk) => {
+        attempted += chunk.byteLength;
+        if (attempted > windowBytes) throw Error("send dispatched then threw");
+      },
+      cancel: () => {},
+    }),
+  });
+  try {
+    session = await f.open();
+    for (let n = 0; n < windowBytes / SPEECH_RELAY_BUDGET.chunkBytes; n++) {
+      f.advance(100);
+      await vi.advanceTimersByTimeAsync(100);
+      session.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes));
+    }
+    expect(f.events.filter(isExtended)).toHaveLength(1);
+    f.advance(100);
+    await vi.advanceTimersByTimeAsync(100);
+    const activeSession = session;
+    expect(() =>
+      activeSession.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
+    ).toThrow("send dispatched then threw");
+    await session.close();
+    expect(attempted).toBe(windowBytes + SPEECH_RELAY_BUDGET.chunkBytes);
+    expect(f.settled).toHaveLength(2);
+    expect(f.settled[0]).toMatchObject({
+      pcmBytes: windowBytes,
+      dispatched: { stt: true },
+      outcomes: { stt: "unknown" },
+    });
+    // Confirmed bytes did not advance, but the attempted send may have billed.
+    expect(f.settled[1]).toMatchObject({
+      pcmBytes: 0,
+      dispatched: { stt: true },
+      outcomes: { stt: "unknown" },
+    });
+    expect(() =>
+      activeSession.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes)),
+    ).toThrow();
+    await session.close();
+    expect(f.settled).toHaveLength(2);
+  } finally {
+    await session?.close().catch(() => {});
+    vi.useRealTimers();
+  }
+});
+
+test("complete STT drain splits a full, partial and unused budget without changing usage", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000);
+  let delivered = 0;
+  let session: Awaited<ReturnType<typeof createSpeechRelaySession>> | undefined;
+  const windowBytes =
+    (SPEECH_RELAY_BUDGET.durationMs * SPEECH_RELAY_BUDGET.pcmBytesPerSecond) /
+    1000;
+  const f = harness({
+    expiresAt: 1_000 + SPEECH_RELAY_BUDGET.durationMs,
+    maxWindows: 3,
+    extend: async (_scope, end) => end,
+    openStt: () => ({
+      sendAudioChunk: (chunk) => {
+        delivered += chunk.byteLength;
+      },
+      cancel: () => {},
+      drain: async () => ({
+        source: "provider-graceful-close" as const,
+        audioBytes: delivered,
+        sampleRate: 16000 as const,
+        channels: 1 as const,
+        encoding: "pcm_s16le" as const,
+      }),
+    }),
+  });
+  try {
+    session = await f.open();
+    for (let n = 0; n <= windowBytes / SPEECH_RELAY_BUDGET.chunkBytes; n++) {
+      f.advance(100);
+      await vi.advanceTimersByTimeAsync(100);
+      session.sendPcm(new Uint8Array(SPEECH_RELAY_BUDGET.chunkBytes));
+    }
+    f.advance(39_900);
+    await vi.advanceTimersByTimeAsync(39_900);
+    expect(f.events.filter(isExtended)).toHaveLength(2);
+    await session.close();
+    expect(f.settled).toHaveLength(3);
+    expect(f.settled).toMatchObject([
+      {
+        pcmBytes: windowBytes,
+        outcomes: { stt: "complete" },
+        dispatched: { stt: true },
+      },
+      {
+        pcmBytes: SPEECH_RELAY_BUDGET.chunkBytes,
+        outcomes: { stt: "complete" },
+        dispatched: { stt: true },
+      },
+      {
+        pcmBytes: 0,
+        outcomes: { stt: "complete" },
+        dispatched: { stt: false },
+      },
+    ]);
+    expect(delivered).toBe(windowBytes + SPEECH_RELAY_BUDGET.chunkBytes);
+  } finally {
+    await session?.close().catch(() => {});
+    vi.useRealTimers();
+  }
+});
+
+for (const windows of [3, 10]) {
+  test(`zero PCM with ${windows} granted STT windows retains only the initial unknown risk`, async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    let session:
+      | Awaited<ReturnType<typeof createSpeechRelaySession>>
+      | undefined;
+    const f = harness({
+      expiresAt: 1_000 + SPEECH_RELAY_BUDGET.durationMs,
+      maxWindows: windows,
+      usageLimits: { organizationDailyMinutes: 10, userDailyMinutes: 10 },
+      extend: async (_scope, end) => end,
+      confirmProviderStopped: async () => "unknown",
+    });
+    try {
+      session = await f.open();
+      for (let n = 1; n < windows; n++) {
+        f.advance(50_000);
+        await vi.advanceTimersByTimeAsync(50_000);
+      }
+      expect(f.events.filter(isExtended)).toHaveLength(windows - 1);
+      await session.close();
+      expect(f.settled).toHaveLength(windows);
+      expect(f.settled[0]).toMatchObject({
+        pcmBytes: 0,
+        dispatched: { stt: true },
+        outcomes: { stt: "unknown" },
+      });
+      for (const receipt of f.settled.slice(1))
+        expect(receipt).toMatchObject({
+          pcmBytes: 0,
+          dispatched: { stt: false },
+          outcomes: { stt: "unknown" },
+        });
+      await session.close();
+      expect(f.settled).toHaveLength(windows);
+    } finally {
+      await session?.close().catch(() => {});
+      vi.useRealTimers();
+    }
+  });
+}

@@ -28,8 +28,7 @@ export interface RuntimeDurableObjectNamespace {
 export interface Bindings {
   /** Bounded speech-only sockets; agents and conversation storage remain on the client. */
   VOICE_SPEECH_RELAY_ENABLED?: string;
-  /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
-  VOICE_SPEECH_END_TIMEOUT_MS?: string;
+  VOICE_SPEECH_RETIREMENT_PROOF_ENABLED?: string;
   /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
   VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
   SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;
@@ -97,11 +96,6 @@ export interface Bindings {
   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
   /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
-  /**
-   * Routes chat completions through the lazy chat-only Worker application.
-   * Default off provides an immediate rollback to the monolithic router.
-   */
-  THIN_INFERENCE_ENTRY_ENABLED?: string;
   /**
    * Secondary kill switch for durable auto-top-up claims. Only the exact
    * string "true" permits new claims; recovery and signed reconciliation run
@@ -663,43 +657,11 @@ export interface Bindings {
   DIRECT_REDIS_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
-  // Inference hot path (#9899). The auth+moderation single-read cache is the
-  // default now (no flag). INFERENCE_OPTIMISTIC_BILLING="true" enables Tier-2
-  // off-path billing (requires the durable backstop). SAFE_BALANCE_THRESHOLD
-  // (USD) gates the optimistic path; unset/invalid -> +Inf (every org takes the
-  // safe synchronous-reserve path).
-  INFERENCE_OPTIMISTIC_BILLING?: string;
-  SAFE_BALANCE_THRESHOLD?: string;
-  // Optimistic-billing durable backstop selector. "db" routes the pending-charge
-  // + settlement through the inference_pending_charges DB ledger (atomic
-  // overdraw bound + exactly-once settle + age-ordered sweep); anything else
-  // (default) keeps the KV backstop. Both still require INFERENCE_OPTIMISTIC_BILLING.
-  INFERENCE_BILLING_LEDGER?: string;
-  // Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
-  // (ledger insert / KV pending charge) off the pre-forward critical path via
-  // executionCtx.waitUntil, keeping a cached balance gate (15s org-balance hint
-  // + revision-aware Durable Object lease) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
-  INFERENCE_DEFERRED_ADMISSION?: string;
-  // Tier-3 in-isolate decision caches (#9899): "true" enables the org
-  // rate-limit lease (convergent — leased requests are carried back into the
-  // Redis window), the 60s shouldBlockUser memo, and the 60s model-catalog
-  // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
-  INFERENCE_HOT_PATH_CACHES?: string;
-  INFERENCE_AUTH_CACHE_ENABLED?: string;
-  /** Strong Durable Object boundary required before positive auth caching can activate. */
-  INFERENCE_STRONG_REVOCATION_ENABLED?: string;
   /** Delegated, primary-backed inference budgets; enroll organizations only after validation. */
   INFERENCE_FUNDED_BUDGET_ADMISSION?: string;
   /** Fenced rate-only admission; separate from funded escrow and default off. */
   INFERENCE_RATE_POLICY_ADMISSION?: string;
   INFERENCE_FUNDING_BUDGET_SEAL_SECRET?: string;
-  /**
-   * "true" serves warm Worker admission from the published admission snapshot:
-   * no policy or dispatch-policy transaction runs before provider dispatch. The
-   * organization Durable Object fences the snapshot's policy generation and
-   * balance revision. Requires INFERENCE_DEFERRED_ADMISSION.
-   */
-  INFERENCE_SNAPSHOT_ADMISSION_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead
@@ -760,6 +722,13 @@ export interface Variables {
    * server-side only, so retries of one sign-in get the same answer.
    */
   stewardAccountCreated?: true;
+  /**
+   * Why a verified Steward session could not be resolved to a Cloud account
+   * during first-sign-in provisioning. `requireUser` reports `unavailable` as
+   * a retryable `account_not_ready` 503 and `conflict` as an
+   * `identity_conflict` 409; an unclassified failure sets nothing and stays 401.
+   */
+  stewardAccountSyncFailure?: "conflict" | "unavailable";
 }
 
 export type AppEnv = {

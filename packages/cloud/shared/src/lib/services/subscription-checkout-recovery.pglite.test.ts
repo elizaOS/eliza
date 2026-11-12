@@ -45,6 +45,8 @@ let configurations: Row[] = [];
 const configurationsByKey = new Map<string, string>();
 let portalUrl = "https://billing.stripe.com/p/session/test_portal";
 let sequence = 0;
+/** The next this-many provider account reads answer 429. */
+let accountReadFailures = 0;
 
 function priceObject(id: string) {
   const plus = id === "price_plus";
@@ -147,8 +149,15 @@ const server = createServer((request, response) => {
       send(status, { error: { type: "invalid_request_error", message } });
     const { method } = recorded;
     const path = url.pathname;
-    if (method === "GET" && path === "/v1/account")
+    if (method === "GET" && path === "/v1/account") {
+      if (accountReadFailures > 0) {
+        accountReadFailures -= 1;
+        return send(429, {
+          error: { type: "rate_limit_error", message: "Too many requests" },
+        });
+      }
       return send(200, { id: ACCOUNT_ID, object: "account" });
+    }
     if (method === "GET" && path.startsWith("/v1/prices/"))
       return send(200, priceObject(path.split("/").at(-1) ?? ""));
     if (method === "GET" && path.startsWith("/v1/products/"))
@@ -862,6 +871,335 @@ test("recovery settles provider-expired checkouts and closes payable sessions of
   // A fresh, payable checkout of an unfenced organization is never touched.
   expect(sessions.get(liveSession)?.status).toBe("open");
   expect((await commandRow(liveCheckout.command.id))?.status).toBe("OUTCOME_UNKNOWN");
+});
+
+const ALPHA_RETURN = "https://eliza.app/alphaphone/billing/return";
+
+function submitMobile(
+  org: Org,
+  planKey: "plus_monthly" | "pro_monthly",
+  idempotencyKey: string,
+  mobileReturnUrl: string | null = ALPHA_RETURN,
+) {
+  return checkout.submitSubscriptionCheckout(
+    {
+      organizationId: org.organizationId,
+      actorId: org.actorId,
+      planKey,
+      idempotencyKey,
+      presentation: "mobile",
+      ...(mobileReturnUrl ? { mobileReturnUrl } : {}),
+    },
+    async () => {},
+  );
+}
+
+test("mobile checkout is a hosted page that returns to the registered native billing return", async () => {
+  const org = await seedOrganization();
+  const key = randomUUID();
+  const result = await submitMobile(org, "plus_monthly", key);
+  if (result.status !== "open" || !("presentation" in result) || result.presentation !== "mobile")
+    throw new Error("expected an open mobile checkout");
+  expect(new URL(result.checkoutUrl).hostname).toBe("checkout.stripe.com");
+  expect(sessions.has(result.sessionId)).toBe(true);
+  expect(Date.parse(result.expiresAt)).toBeGreaterThan(Date.now() + 23 * HOUR);
+  const [create] = sessionCreates();
+  expect(create?.body.get("success_url")).toBe(
+    `${ALPHA_RETURN}?session_id={CHECKOUT_SESSION_ID}&result=success`,
+  );
+  expect(create?.body.get("cancel_url")).toBe(`${ALPHA_RETURN}?result=cancel`);
+  expect(create?.body.has("ui_mode")).toBe(false);
+
+  // The same intent, and another device of the same app, resume the one provider session.
+  requests.length = 0;
+  expect(await submitMobile(org, "plus_monthly", key)).toEqual(result);
+  expect(await submitMobile(org, "plus_monthly", randomUUID())).toEqual(result);
+  expect(sessionCreates()).toEqual([]);
+
+  // The same key can never be replayed toward another client's return.
+  await expect(
+    submitMobile(org, "plus_monthly", key, "https://eliza.app/other/billing/return"),
+  ).rejects.toMatchObject({
+    code: "SUBSCRIPTION_CHECKOUT_REJECTED",
+    context: { reason: "checkout_replay_mismatch" },
+  });
+  // Another registered client of the same organization closes this session before opening its own.
+  const other = await submitMobile(
+    org,
+    "plus_monthly",
+    randomUUID(),
+    "https://eliza.app/other/billing/return",
+  );
+  expect(other.commandId).not.toBe(result.commandId);
+  expect(sessions.get(result.sessionId)?.status).toBe("expired");
+});
+
+test("mobile checkout refuses a missing or malformed return before any provider write", async () => {
+  const org = await seedOrganization();
+  for (const value of [
+    null,
+    "http://eliza.app/alphaphone/billing/return",
+    "https://eliza.app/alphaphone/auth/callback",
+    "https://eliza.app/alphaphone/billing/return?next=https://evil.example",
+    "https://eliza.app/alphaphone/billing/return#x",
+    "https://user@eliza.app/alphaphone/billing/return",
+  ]) {
+    requests.length = 0;
+    await expect(submitMobile(org, "plus_monthly", randomUUID(), value)).rejects.toMatchObject({
+      code: expect.stringMatching(/^SUBSCRIPTION_CHECKOUT_(REJECTED|UNAVAILABLE)$/),
+    });
+    expect(providerWrites()).toEqual([]);
+  }
+  // A return address is never accepted for another presentation.
+  await expect(
+    checkout.submitSubscriptionCheckout(
+      {
+        organizationId: org.organizationId,
+        actorId: org.actorId,
+        planKey: "plus_monthly",
+        idempotencyKey: randomUUID(),
+        mobileReturnUrl: ALPHA_RETURN,
+      },
+      async () => {},
+    ),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_CHECKOUT_REJECTED" });
+  expect(
+    await query("SELECT id FROM billing_subscription_commands WHERE organization_id=$1", [
+      org.organizationId,
+    ]),
+  ).toEqual([]);
+});
+
+test("a stored mobile contract returns only to one billing return with the fixed query", async () => {
+  const org = await seedOrganization();
+  const { contract } = await seedCheckout(org, "plus_monthly");
+  const valid = (params: Record<string, unknown>) =>
+    contracts.checkoutContractSchema.safeParse({
+      ...contract,
+      presentation: "mobile",
+      params: { ...contract.params, ...params },
+    }).success;
+  const success = `${ALPHA_RETURN}?session_id={CHECKOUT_SESSION_ID}&result=success`;
+  const cancel = `${ALPHA_RETURN}?result=cancel`;
+  expect(valid({ success_url: success, cancel_url: cancel })).toBe(true);
+  expect(
+    valid({
+      success_url: success,
+      cancel_url: "https://evil.example/billing/return?result=cancel",
+    }),
+  ).toBe(false);
+  expect(valid({ success_url: `${success}&next=x`, cancel_url: cancel })).toBe(false);
+  expect(
+    valid({
+      success_url:
+        "https://eliza.app/alphaphone/auth/callback?session_id={CHECKOUT_SESSION_ID}&result=success",
+      cancel_url: "https://eliza.app/alphaphone/auth/callback?result=cancel",
+    }),
+  ).toBe(false);
+  // The web billing page is not a mobile return, and a mobile return is not a hosted one.
+  expect(valid({})).toBe(false);
+  expect(
+    contracts.checkoutContractSchema.safeParse({
+      ...contract,
+      params: { ...contract.params, success_url: success, cancel_url: cancel },
+    }).success,
+  ).toBe(false);
+});
+
+/** Backdates a checkout's dispatch (when it was dispatched) and its last inspection. */
+async function ageDispatch(commandId: string, minutes: number, inspectedMinutesAgo = minutes) {
+  const execute = (sql: string) => client.getPgliteClientForTests().exec(sql);
+  await execute("ALTER TABLE billing_subscription_commands DISABLE TRIGGER ALL");
+  try {
+    await query(
+      `UPDATE billing_subscription_commands
+         SET provider_started_at = CASE WHEN provider_started_at IS NULL THEN NULL
+                                        ELSE now() - make_interval(mins => $2::int) END,
+             updated_at = now() - make_interval(mins => $3::int)
+       WHERE id=$1`,
+      [commandId, minutes, inspectedMinutesAgo],
+    );
+  } finally {
+    await execute("ALTER TABLE billing_subscription_commands ENABLE TRIGGER ALL");
+  }
+}
+
+const customerListed = (org: Org) =>
+  requests.some(
+    (request) =>
+      request.path === "/v1/checkout/sessions" && request.query.get("customer") === org.customerId,
+  );
+
+async function dueOpenCheckout(minutes = 3, inspectedMinutesAgo = minutes) {
+  const org = await seedOrganization();
+  const pending = await seedCheckout(org, "plus_monthly", { dispatched: true });
+  const sessionId = openSession(org, pending.command.id, "open");
+  await ageDispatch(pending.command.id, minutes, inspectedMinutesAgo);
+  return { org, pending, sessionId };
+}
+
+test("a still-open checkout is read back with a doubling, capped backoff", async () => {
+  // [minutes since dispatch, minutes since the last inspection, due?]
+  const cases = [
+    [1, 1, false], // younger than the first read-back
+    [3, 3, true], // never inspected, past two minutes
+    [20, 5, false], // inspected at 15 minutes: waits 15
+    [20, 16, true], // inspected at 4 minutes: waits 4
+    [200, 29, false], // the wait is capped at 30 minutes
+    [200, 31, true],
+  ] as const;
+  const seeded = [];
+  for (const [minutes, inspected] of cases) seeded.push(await dueOpenCheckout(minutes, inspected));
+  // Closure and expiry left over from other tests are not this test's subject.
+  await checkout.recoverStaleSubscriptionCheckouts(50, 0);
+  requests.length = 0;
+  await checkout.recoverStaleSubscriptionCheckouts(50);
+  expect(seeded.map(({ org }) => customerListed(org))).toEqual(cases.map(([, , due]) => due));
+  // One provider account read serves every checkout of the sweep.
+  expect(requests.filter((request) => request.path === "/v1/account")).toHaveLength(1);
+  expect(providerWrites()).toEqual([]);
+  for (const { sessionId } of seeded) expect(sessions.get(sessionId)?.status).toBe("open");
+});
+
+test("a failed provider account read costs no checkout its place or its backoff", async () => {
+  const lastInspection = async (commandId: string) =>
+    new Date(
+      (
+        await query<{ updated_at: string }>(
+          "SELECT updated_at::text AS updated_at FROM billing_subscription_commands WHERE id=$1",
+          [commandId],
+        )
+      )[0]!.updated_at,
+    ).getTime();
+  // Closure and expiry left over from other tests are not this test's subject.
+  await checkout.recoverStaleSubscriptionCheckouts(50, 0);
+  const seeded = [await dueOpenCheckout(16), await dueOpenCheckout(16), await dueOpenCheckout(16)];
+  const before = await Promise.all(seeded.map(({ pending }) => lastInspection(pending.command.id)));
+  const accountReads = () => requests.filter((request) => request.path === "/v1/account").length;
+
+  try {
+    // The account read fails for the whole sweep: nothing is read, and nothing is rotated.
+    accountReadFailures = 50;
+    requests.length = 0;
+    const outage = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(outage.unavailable).toBe(3);
+    expect(outage.pending).toBe(0);
+    // The failure is not remembered: every candidate asked again.
+    expect(accountReads()).toBe(3);
+    expect(seeded.some(({ org }) => customerListed(org))).toBe(false);
+    expect(
+      await Promise.all(seeded.map(({ pending }) => lastInspection(pending.command.id))),
+    ).toEqual(before);
+
+    // One transient failure costs only the candidate it happened for, and that one stays due.
+    accountReadFailures = 1;
+    requests.length = 0;
+    const transient = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(transient.unavailable).toBe(1);
+    expect(transient.pending).toBe(2);
+    expect(accountReads()).toBe(2);
+    const skipped = seeded.filter(({ org }) => !customerListed(org));
+    expect(skipped).toHaveLength(1);
+    expect(await lastInspection(skipped[0]!.pending.command.id)).toBe(
+      before[seeded.indexOf(skipped[0]!)],
+    );
+
+    // The next sweep reads exactly the one that was skipped; the others wait out their backoff.
+    requests.length = 0;
+    const next = await checkout.recoverStaleSubscriptionCheckouts(50);
+    expect(next.pending).toBe(1);
+    expect(seeded.filter(({ org }) => customerListed(org))).toEqual(skipped);
+  } finally {
+    accountReadFailures = 0;
+  }
+});
+
+test("abandoned open checkouts cannot crowd out fenced or provider-expired ones, or each other's lane", async () => {
+  const abandoned = [];
+  for (let index = 0; index < 6; index += 1) abandoned.push(await dueOpenCheckout());
+  const fenced = await seedOrganization();
+  const fencedCheckout = await seedCheckout(fenced, "pro_monthly", { dispatched: true });
+  const fencedSession = openSession(fenced, fencedCheckout.command.id, "open");
+  await query("UPDATE organizations SET paid_work_fenced_at=now() WHERE id=$1", [
+    fenced.organizationId,
+  ]);
+  const expired = await seedOrganization();
+  const expiredCheckout = await seedCheckout(expired, "plus_monthly", {
+    createdAt: new Date(Date.now() - (23 * HOUR + 30 * 60 * 1000)),
+    dispatched: true,
+  });
+  openSession(expired, expiredCheckout.command.id, "expired");
+
+  requests.length = 0;
+  // Six abandoned checkouts are due, but read-backs have their own two slots: closure and
+  // expiry are served in full whatever is waiting in the other lane.
+  const result = await checkout.recoverStaleSubscriptionCheckouts(50, 2);
+  expect(result.inspected).toBeGreaterThanOrEqual(4);
+  expect(sessions.get(fencedSession)?.status).toBe("expired");
+  expect((await commandRow(fencedCheckout.command.id))?.status).toBe("FAILED");
+  expect((await commandRow(expiredCheckout.command.id))?.status).toBe("FAILED");
+  expect(abandoned.filter(({ org }) => customerListed(org))).toHaveLength(2);
+  // A fenced organization is closed by the first lane only, never merely observed by the second.
+  const refenced = await dueOpenCheckout();
+  await query("UPDATE organizations SET paid_work_fenced_at=now() WHERE id=$1", [
+    refenced.org.organizationId,
+  ]);
+  requests.length = 0;
+  await checkout.recoverStaleSubscriptionCheckouts(0, 50);
+  expect(customerListed(refenced.org)).toBe(false);
+  expect(sessions.get(refenced.sessionId)?.status).toBe("open");
+});
+
+test("recovery reads a dispatched checkout back within minutes so a paid session is settled without its webhook", async () => {
+  // Paid three minutes ago; the webhook never arrived.
+  const paid = await seedOrganization();
+  const paidCheckout = await seedCheckout(paid, "plus_monthly", { dispatched: true });
+  const paidSession = openSession(paid, paidCheckout.command.id, "complete");
+  await ageDispatch(paidCheckout.command.id, 3);
+  // Still on the payment page after three minutes.
+  const open = await seedOrganization();
+  const openCheckout = await seedCheckout(open, "plus_monthly", { dispatched: true });
+  const openId = openSession(open, openCheckout.command.id, "open");
+  await ageDispatch(openCheckout.command.id, 3);
+  // Dispatched a moment ago: the webhook and its drain get the first chance.
+  const fresh = await seedOrganization();
+  const freshCheckout = await seedCheckout(fresh, "plus_monthly", { dispatched: true });
+  openSession(fresh, freshCheckout.command.id, "complete");
+  // Never dispatched: a prepared command is not retired early.
+  const prepared = await seedOrganization();
+  const preparedCheckout = await seedCheckout(prepared, "plus_monthly");
+  await ageDispatch(preparedCheckout.command.id, 3);
+
+  // Closure and expiry left over from other tests are not this test's subject.
+  await checkout.recoverStaleSubscriptionCheckouts(50, 0);
+  requests.length = 0;
+  const first = await checkout.recoverStaleSubscriptionCheckouts(50);
+  const listed = customerListed;
+  expect(listed(paid)).toBe(true);
+  expect(listed(open)).toBe(true);
+  expect(listed(fresh)).toBe(false);
+  expect(listed(prepared)).toBe(false);
+  // The paid session went to settlement from provider evidence: the sweep fetched the session
+  // and then its invoice. This loopback provider has no invoice objects, so it is counted as
+  // unavailable here; subscription-paid-renewal-recovery drives the same sweep to an applied
+  // subscription and entitlement, and races it against confirm and the webhook.
+  const invoiceId = String(sessions.get(paidSession)?.invoice);
+  expect(requests.map((request) => request.path)).toContain(`/v1/checkout/sessions/${paidSession}`);
+  expect(requests.map((request) => request.path)).toContain(`/v1/invoices/${invoiceId}`);
+  expect(first.unavailable).toBeGreaterThanOrEqual(1);
+  expect(first.pending).toBeGreaterThanOrEqual(1);
+  // Observation never closes, expires or retires a payable session of an unfenced organization.
+  expect(providerWrites()).toEqual([]);
+  expect(sessions.get(openId)?.status).toBe("open");
+  expect((await commandRow(openCheckout.command.id))?.status).toBe("OUTCOME_UNKNOWN");
+  expect((await commandRow(paidCheckout.command.id))?.status).toBe("OUTCOME_UNKNOWN");
+  expect((await commandRow(preparedCheckout.command.id))?.status).toBe("PREPARED");
+
+  // An inspected checkout is rotated: it is not read again until the interval has passed.
+  requests.length = 0;
+  await checkout.recoverStaleSubscriptionCheckouts(50);
+  expect(listed(paid)).toBe(false);
+  expect(listed(open)).toBe(false);
 });
 
 test("fencing an organization closes its payable subscription checkout", async () => {

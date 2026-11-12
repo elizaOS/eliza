@@ -21,10 +21,13 @@ import { isDeepStrictEqual } from "node:util";
 import { deserialize as deserializeLegacy } from "node:v8";
 import { ElizaError, logger, type UUID } from "@elizaos/core";
 import { decodeRecord, encodeRecord, RECORD_CODEC } from "./record-codec";
-import type { SQLiteDriver, SqlDatabase } from "./sqlite-driver-types";
+import type { SQLiteDriver, SqlDatabase, SqlRow } from "./sqlite-driver-types";
 import type { IStorage } from "./types";
 
 type Owner = { active: boolean; child?: Promise<void> };
+
+/** Records decoded per page by mapAll. */
+const MAP_PAGE_ROWS = 256;
 
 /** Persist the published name and any ancestors created for a new backup directory. */
 function syncDirectoryChain(directory: string): void {
@@ -352,6 +355,42 @@ export class SQLiteStorageBase implements IStorage {
           return decodeRecord(row.data) as T;
         }),
     );
+  }
+
+  async mapAll<T, R>(
+    collection: string,
+    select: (item: T) => R | undefined,
+  ): Promise<R[]> {
+    return this.exclusive(async () => {
+      // Keyset pages over the primary key: only one page of blobs and decoded
+      // records is held at a time, and the queue keeps the read consistent.
+      const db = this.connection();
+      const first = db.prepare(
+        "SELECT id,data FROM records WHERE collection=? ORDER BY id LIMIT ?",
+      );
+      const next = db.prepare(
+        "SELECT id,data FROM records WHERE collection=? AND id>? ORDER BY id LIMIT ?",
+      );
+      const result: R[] = [];
+      let after: string | null = null;
+      for (;;) {
+        const rows: SqlRow[] =
+          after === null
+            ? first.all(collection, MAP_PAGE_ROWS)
+            : next.all(collection, after, MAP_PAGE_ROWS);
+        for (const row of rows) {
+          if (typeof row.id !== "string" || !(row.data instanceof Uint8Array))
+            throw this.failure(
+              "RECORD_INVALID",
+              "SQLite record has invalid storage fields",
+            );
+          const value = select(decodeRecord(row.data) as T);
+          if (value !== undefined) result.push(value);
+          after = row.id;
+        }
+        if (rows.length < MAP_PAGE_ROWS) return result;
+      }
+    });
   }
 
   async getWhere<T>(

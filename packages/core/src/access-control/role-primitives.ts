@@ -30,7 +30,7 @@ export function hasAtLeastRole(
 	return rank >= CANONICAL_ROLE_RANK[minRole];
 }
 
-/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER).. */
+/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER). */
 export function isAdminRank(role: string | undefined | null): boolean {
 	return hasAtLeastRole(role, "ADMIN");
 }
@@ -49,16 +49,13 @@ export interface RoleGate {
 	/** Caller must have at least this role by rank. */
 	minRole?: RoleGateRole;
 }
-//: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
-const GATE_ROLE_RANK: Record<string, number> = CANONICAL_ROLE_RANK;
-
 export function normalizeGateRole(role: RoleGateRole): RoleGateRole {
 	const normalized = String(role).trim().toUpperCase();
 	return (normalized === "USER" ? "MEMBER" : normalized) as RoleGateRole;
 }
 
 export function roleRank(role: RoleGateRole): number {
-	return GATE_ROLE_RANK[String(normalizeGateRole(role))] ?? 0;
+	return CANONICAL_ROLE_RANK[normalizeGateRole(role)] ?? 0;
 }
 
 export function satisfiesRoleGate(
@@ -69,34 +66,34 @@ export function satisfiesRoleGate(
 		return true;
 	}
 
-	const normalizedRoles = new Set((userRoles ?? []).map(normalizeGateRole));
-	const highestRank = Math.max(
-		0,
-		...[...normalizedRoles].map((role) => roleRank(role)),
-	);
+	const normalizedRoles = new Set<RoleGateRole>();
+	let highestRank = 0;
+	for (const userRole of userRoles ?? []) {
+		const role = normalizeGateRole(userRole);
+		normalizedRoles.add(role);
+		highestRank = Math.max(highestRank, CANONICAL_ROLE_RANK[role] ?? 0);
+	}
+	const hasRole = (role: RoleGateRole) =>
+		normalizedRoles.has(normalizeGateRole(role));
 
-	for (const role of gate.noneOf ?? []) {
-		if (normalizedRoles.has(normalizeGateRole(role))) {
-			return false;
-		}
+	if (gate.noneOf?.some(hasRole)) {
+		return false;
 	}
 
 	if (gate.minRole && highestRank < roleRank(gate.minRole)) {
 		return false;
 	}
 
-	const anyOf = [...(gate.roles ?? []), ...(gate.anyOf ?? [])];
+	const anyOfCount = (gate.roles?.length ?? 0) + (gate.anyOf?.length ?? 0);
 	if (
-		anyOf.length > 0 &&
-		!anyOf.some((role) => normalizedRoles.has(normalizeGateRole(role)))
+		anyOfCount > 0 &&
+		!gate.roles?.some(hasRole) &&
+		!gate.anyOf?.some(hasRole)
 	) {
 		return false;
 	}
 
-	if (
-		gate.allOf?.length &&
-		!gate.allOf.every((role) => normalizedRoles.has(normalizeGateRole(role)))
-	) {
+	if (gate.allOf?.length && !gate.allOf.every(hasRole)) {
 		return false;
 	}
 

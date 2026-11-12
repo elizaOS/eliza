@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { createServer, type Server } from "node:http";
+import { once } from "node:events";
+import {
+  Agent,
+  createServer,
+  request as httpRequest,
+  type Server,
+} from "node:http";
+import type { Socket } from "node:net";
+import { Readable } from "node:stream";
 import type { AccessContext, UUID } from "@elizaos/core";
 import {
   getHttpRuntime,
@@ -33,6 +41,73 @@ let arrivals = 0;
 let release: () => void;
 const overlap = new Promise<void>((resolve) => {
   release = resolve;
+});
+
+it("drains a rejected chunked body before reusing its connection", async () => {
+  let admitted = 0;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "POST",
+    path: "/api/chunked-body-limit",
+    maxBodyBytes: 64,
+    routeHandler: async () => {
+      admitted += 1;
+      return { status: 200, body: { accepted: true } };
+    },
+  });
+  const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  const sockets = new Set<Socket>();
+  const send = async (chunks: Iterable<string> | AsyncIterable<string>) => {
+    const reply = Promise.withResolvers<{ status: number; body: unknown }>();
+    const outgoing = httpRequest(
+      new URL("/api/chunked-body-limit", base),
+      {
+        agent,
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokens[0]}`,
+          "Content-Type": "application/json",
+        },
+      },
+      (res) => {
+        void (async () => {
+          const parts: Buffer[] = [];
+          for await (const chunk of res) parts.push(Buffer.from(chunk));
+          reply.resolve({
+            status: res.statusCode ?? 0,
+            body: JSON.parse(Buffer.concat(parts).toString("utf8")),
+          });
+        })().catch(reply.reject);
+      },
+    );
+    outgoing.once("socket", (socket: Socket) => sockets.add(socket));
+    outgoing.once("error", reply.reject);
+    const written = once(outgoing, "finish");
+    Readable.from(chunks).pipe(outgoing);
+    const [result] = await Promise.all([reply.promise, written]);
+    return result;
+  };
+  try {
+    const oversized = async function* () {
+      yield '{"content":"';
+      yield "x".repeat(80);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      yield "y".repeat(80);
+      yield '"}';
+    };
+    expect(await send(oversized())).toEqual({
+      status: 413,
+      body: { error: "Request body too large", maxBytes: 64 },
+    });
+    expect(admitted).toBe(0);
+    expect(await send(["{}"])).toEqual({
+      status: 200,
+      body: { accepted: true },
+    });
+    expect(admitted).toBe(1);
+    expect(sockets.size).toBe(1);
+  } finally {
+    agent.destroy();
+  }
 });
 
 beforeAll(async () => {

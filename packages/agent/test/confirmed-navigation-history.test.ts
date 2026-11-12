@@ -21,6 +21,10 @@ import {
   getCurrentViewState,
   handleViewsRoutes,
 } from "../src/api/views-routes.ts";
+import {
+  getActiveViewContext,
+  renderActiveViewContextBlock,
+} from "../src/runtime/view-action-affinity.ts";
 import { runWithViewClient } from "../src/runtime/view-client-context.ts";
 import {
   registerViewNavigationRoutingRule,
@@ -737,4 +741,65 @@ it("retains only the prepared destination's verified alias through the real ackn
     source: "user",
   });
   expect(await context()).not.toContain('"preferredAlias"');
+});
+
+it("records a renderer-reported manual switch as the user's after settlement", async () => {
+  const f = await fixture();
+  const scope = { hostKey: f.hostKey, clientId: "manual-client" };
+  const post = (path: string, body: unknown) =>
+    fetch(f.url + path, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  let sequence = 0;
+  const settle = async (viewId: string, source?: unknown) => {
+    const response = await post(`/api/views/${viewId}/navigate`, {
+      clientId: scope.clientId,
+      delivery: "completed-action",
+      prepareOnly: true,
+      viewType: "gui",
+      completedActionHandoffId: `manual-${++sequence}`,
+      ...(source === undefined ? {} : { source }),
+    });
+    if (response.status !== 200) return response.status;
+    const { navigationBinding } = await response.json();
+    const claim = await (
+      await post("/api/views/interact-claim", navigationBinding)
+    ).json();
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...navigationBinding,
+          claimId: claim.claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe(viewId),
+    );
+    return response.status;
+  };
+  expect(await settle("notes", "user")).toBe(200);
+  expect(getCurrentViewState(f.runtime, scope)?.source).toBe("user");
+  const manual = getActiveViewContext(f.runtime, scope);
+  expect(manual?.source).toBe("user");
+  const block = renderActiveViewContextBlock(f.runtime, manual!);
+  expect(block).toContain("The user just switched into this view.");
+  expect(block).not.toContain("you navigated here");
+  // Without the key the settled switch stays the agent's, as before.
+  expect(await settle("calendar")).toBe(200);
+  expect(getActiveViewContext(f.runtime, scope)?.source).toBe("agent");
+  expect(
+    renderActiveViewContextBlock(
+      f.runtime,
+      getActiveViewContext(f.runtime, scope)!,
+    ),
+  ).toContain("(you navigated here)");
+  expect(await settle("notes", "someone-else")).toBe(409);
 });

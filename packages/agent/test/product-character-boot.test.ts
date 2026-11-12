@@ -47,7 +47,9 @@ test.each([
   "distinct-identity",
 ])("normal runtime preserves persona and profile scope: %s", async (mode) => {
   const localAgentMode = mode !== "implicit";
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "product-boot-"));
+  const root = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), "product-boot-")),
+  );
   roots.push(root);
   vi.stubEnv("ELIZA_STATE_DIR", root);
   vi.stubEnv("ELIZA_CONFIG_PATH", path.join(root, "eliza.json"));

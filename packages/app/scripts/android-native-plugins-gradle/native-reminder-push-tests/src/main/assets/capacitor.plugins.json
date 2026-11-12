@@ -1,5 +1,8 @@
 [
   {
+    "classpath": "ai.elizaos.app.ReceiptAppPlugin"
+  },
+  {
     "classpath": "com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin"
   }
 ]

@@ -32,6 +32,7 @@ public class MainActivity extends BridgeActivity {
 
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
 
+    private Intent initialDeepLinkIntent;
     private SharedPreferences wakePreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener wakePreferenceListener =
         (preferences, key) -> {
@@ -95,7 +96,8 @@ public class MainActivity extends BridgeActivity {
         }
 
         captureNativeNotification(getIntent());
-        DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        initialDeepLinkIntent = getIntent();
+        DeepLinkBufferPlugin.captureIntent(this, initialDeepLinkIntent);
         ElizaReminderMessagingService.onReminderOpened(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
@@ -183,7 +185,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         captureNativeNotification(intent);
-        DeepLinkBufferPlugin.captureIntent(this, intent);
+        // BridgeActivity.load also dispatches the already captured launch Intent.
+        if (intent != initialDeepLinkIntent) DeepLinkBufferPlugin.captureIntent(this, intent);
+        initialDeepLinkIntent = null;
         ElizaReminderMessagingService.onReminderOpened(this, intent);
         super.onNewIntent(intent);
         if (getBridge() != null) getBridge().triggerWindowJSEvent("eliza:sense-invocation");

@@ -65,6 +65,7 @@ export class RemoteSigningService {
   private auditLog?: SandboxAuditLog;
   private pendingApprovals = new Map<string, PendingApproval>();
   private approvalTimeoutMs: number;
+  private policyEpoch = 0;
 
   constructor(config: RemoteSigningServiceConfig) {
     this.signer = config.signer;
@@ -78,6 +79,8 @@ export class RemoteSigningService {
   }
 
   async submitSigningRequest(request: SigningRequest): Promise<SigningResult> {
+    request = structuredClone(request);
+    const epoch = this.policyEpoch;
     // Atomically check-and-reserve: a plain evaluate() followed by a later
     // recordRequest() left a TOCTOU window where two concurrent submissions
     // could both pass a maxTransactionsPerHour: 1 policy before either
@@ -104,6 +107,21 @@ export class RemoteSigningService {
       // error-policy:J2 No request proceeds without its submission evidence.
       if (decision.allowed) this.policyEvaluator.release(request.requestId);
       throw error;
+    }
+
+    if (decision.allowed && epoch !== this.policyEpoch) {
+      this.policyEvaluator.release(request.requestId);
+      return {
+        success: false,
+        error: "Signing policy changed; resubmit the request",
+        policyDecision: {
+          allowed: false,
+          reason: "Signing policy changed; resubmit the request",
+          requiresHumanConfirmation: false,
+          matchedRule: "policy_changed",
+        },
+        humanConfirmed: false,
+      };
     }
 
     if (!decision.allowed) {
@@ -214,11 +232,18 @@ export class RemoteSigningService {
         this.policyEvaluator.release(id);
       }
     }
-    return [...this.pendingApprovals.values()];
+    return [...this.pendingApprovals.values()].map((approval) =>
+      structuredClone(approval),
+    );
   }
 
   updatePolicy(policy: SigningPolicy): void {
     this.policyEvaluator.updatePolicy(policy);
+    this.policyEpoch += 1;
+    for (const requestId of this.pendingApprovals.keys()) {
+      this.policyEvaluator.release(requestId);
+    }
+    this.pendingApprovals.clear();
     if (this.auditLog) {
       reportDetachedAuditRecord(
         this.auditLog.record({

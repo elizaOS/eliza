@@ -1,7 +1,7 @@
 # Pixel 10a release, update and recovery
 
 Pixel 10a (`stallion`) on Android 17 is one shared hardware target. Each launcher
-brand composes the same product from `android/products/pixel10a-<brand>.json`
+brand composes the same hardware from its consumer-owned product descriptor
 (`stage-pixel10a-product.ts`): a nonprivileged launcher on `/product`, the separately
 admitted Sense listener as the only privileged package (exactly
 `CAPTURE_AUDIO_HOTWORD` and `START_ACTIVITIES_FROM_BACKGROUND`), the reviewed
@@ -22,7 +22,7 @@ Release inputs are brand-owned public identities. A brand keeps three records:
 | Qualification gates | (downstream products keep theirs) | source admission, APK variants, Cuttlefish boot, physical device, signed update/recovery and user acceptance, each with its own evidence |
 
 [`scripts/android/pixel10a-release.mjs`](../../scripts/android/pixel10a-release.mjs)
-validates all three for any brand. A downstream product (for example Alpha Phone)
+validates all three for any brand. A downstream product
 keeps its records in its own repository and passes its root, its product name, the
 vendored path of `android/sources/pixel10a-stallion.json` and, optionally, its
 application signer file. A descriptor that names another brand's product is refused.

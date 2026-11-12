@@ -1609,6 +1609,7 @@ async function handleImportUrl(
     contentType: fetched.mimeType,
     originalFilename: fetched.filename,
     content: fetched.content,
+    contentEncoding: fetched.contentEncoding,
     metadata: {
       url,
       source: isYouTube ? "youtube" : "url",

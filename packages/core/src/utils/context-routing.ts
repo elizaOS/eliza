@@ -71,7 +71,7 @@ function parseDelimitedList(value: unknown): string[] {
 }
 
 export function parseContextList(value: unknown): AgentContext[] {
-	return dedupeStringValues(parseDelimitedList(value))
+	return parseDelimitedList(value)
 		.map((context) => normalizeContext(context))
 		.filter((context): context is AgentContext => Boolean(context));
 }
@@ -106,16 +106,13 @@ export function routingContextsOverlap(
 	left: readonly AgentContext[] | undefined,
 	right: readonly AgentContext[] | undefined,
 ): boolean {
-	const normalizedRight = new Set(
-		normalizeRoutingContexts(right).map((context) =>
-			`${context}`.toLowerCase(),
-		),
-	);
+	// normalizeRoutingContexts already trims and lowercases every entry.
+	const normalizedRight = new Set(normalizeRoutingContexts(right));
 	if (normalizedRight.size === 0) {
 		return false;
 	}
 	return normalizeRoutingContexts(left).some((context) =>
-		normalizedRight.has(`${context}`.toLowerCase()),
+		normalizedRight.has(context),
 	);
 }
 
@@ -253,15 +250,12 @@ export function withActiveRoutingContexts<T extends State | null | undefined>(
 	if (!state) return state;
 	const wanted = normalizeRoutingContexts(activeContexts);
 	if (wanted.length === 0) return state;
-	const active = new Set(
-		getActiveRoutingContextsForTurn(state, message).map((context) =>
-			`${context}`.toLowerCase(),
-		),
-	);
-	if (wanted.every((context) => active.has(`${context}`.toLowerCase()))) {
+	const routing = mergeContextRouting(state, message);
+	// Parsed routing contexts and `wanted` are both trimmed and lowercased.
+	const active = new Set<string>(getActiveRoutingContexts(routing));
+	if (wanted.every((context) => active.has(context))) {
 		return state;
 	}
-	const routing = mergeContextRouting(state, message);
 	const primaryContext = routing.primaryContext ?? wanted[0];
 	const secondaryContexts = dedupeStringValues([
 		...(routing.secondaryContexts ?? []),

@@ -16,10 +16,7 @@
  * `action-parameter-value.ts`.
  */
 
-import {
-	parseActionParams,
-	toActionParameterValue,
-} from "./action-parameter-value.ts";
+import { toActionParameterValue } from "./action-parameter-value.ts";
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
 import type {
 	Action,
@@ -41,6 +38,7 @@ import {
 	toWellFormedUnicode,
 } from "./utils/unicode.ts";
 
+export { parseActionParams } from "./action-parameter-value.ts";
 export {
 	type ExtractorPipelineResult,
 	type RunExtractorPipelineArgs,
@@ -95,29 +93,21 @@ export const composeActionExamples = (
 		return "";
 	}
 
-	const actionsWithExamples = actionsData.filter(
-		(action) =>
-			action.examples &&
-			Array.isArray(action.examples) &&
-			action.examples.length > 0,
-	);
-
-	if (!actionsWithExamples.length) {
+	// Mutable copies: each pick removes its example so it is not repeated.
+	const examplesCopy: ActionExample[][][] = [];
+	for (const action of actionsData) {
+		if (action.examples?.length) examplesCopy.push([...action.examples]);
+	}
+	if (!examplesCopy.length) {
 		return "";
 	}
-
-	const examplesCopy: ActionExample[][][] = actionsWithExamples.map(
-		(action) => [...(action.examples || [])],
-	);
 
 	const selectedExamples: ActionExample[][] = [];
 	const random = createDeterministicRandom(
 		buildDeterministicSeed(seed, "examples"),
 	);
 
-	const availableActionIndices = examplesCopy
-		.map((examples, index) => (examples.length > 0 ? index : -1))
-		.filter((index) => index !== -1);
+	const availableActionIndices = examplesCopy.map((_, index) => index);
 
 	while (selectedExamples.length < count && availableActionIndices.length > 0) {
 		const randomIndex = Math.floor(random() * availableActionIndices.length);
@@ -264,10 +254,10 @@ function formatActionExampleSummary(action: Action): string | null {
 		}
 
 		const userMessage = example[0]?.content?.text;
-		const actionHints = getExampleActionHints(example);
 		if (!userMessage) {
 			continue;
 		}
+		const actionHints = getExampleActionHints(example);
 		rendered.push(
 			actionHints.length === 0
 				? `User: ${formatPromptScalar(userMessage)} -> actions: ${action.name}`
@@ -276,10 +266,6 @@ function formatActionExampleSummary(action: Action): string | null {
 	}
 
 	return rendered.length > 0 ? rendered.join("\n") : null;
-}
-
-function shuffleActions<T>(items: T[], seed = "actions"): T[] {
-	return deterministicShuffle(items, seed);
 }
 
 function collectActionSimiles(action: Action): string[] {
@@ -302,18 +288,10 @@ function collectActionTags(action: Action): string[] {
 	].filter((tag) => tag.length > 0 && tag !== "always-include");
 }
 
-function renderCompleteDescription(item: {
-	description?: string;
-	descriptionCompressed?: string;
-	compressedDescription?: string;
-}): string {
-	return item.description ?? "";
-}
-
 export function formatActionNames(actions: Action[], seed = "actions"): string {
 	if (!actions.length) return "";
 
-	return shuffleActions(actions, buildDeterministicSeed(seed, "names"))
+	return deterministicShuffle(actions, buildDeterministicSeed(seed, "names"))
 		.map((action) => action.name)
 		.join(", ");
 }
@@ -321,13 +299,12 @@ export function formatActionNames(actions: Action[], seed = "actions"): string {
 export function formatActions(actions: Action[], seed = "actions"): string {
 	if (!actions.length) return "";
 
-	const actionRows = shuffleActions(
+	const actionRows = deterministicShuffle(
 		actions,
 		buildDeterministicSeed(seed, "descriptions"),
 	).map((action) => ({
 		name: action.name,
-		description:
-			renderCompleteDescription(action) || "No description available",
+		description: action.description || "No description available",
 		params:
 			action.parameters && action.parameters.length > 0
 				? formatActionParameters(action.parameters)
@@ -363,7 +340,7 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 			}
 
 			const suffix = modifiers.length > 0 ? ` [${modifiers.join("; ")}]` : "";
-			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${renderCompleteDescription(param)}`;
+			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${param.description ?? ""}`;
 		})
 		.join("; ");
 }
@@ -398,8 +375,6 @@ function formatParameterType(schema: ActionParameterSchema): string {
 			return primitiveType;
 	}
 }
-
-export { parseActionParams };
 
 export function validateActionParams(
 	action: Action,
@@ -473,7 +448,7 @@ function coerceActionParamValue(
 	if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
 		let parsed: unknown;
 		try {
-			parsed = JSON.parse(trimmed) as unknown;
+			parsed = JSON.parse(trimmed);
 		} catch {
 			// error-policy:J3 This field accepts either a JSON array or its documented
 			// delimited-string form; malformed JSON remains untrusted string input.
@@ -487,16 +462,10 @@ function coerceActionParamValue(
 		return value;
 	}
 
-	const splitValues = toWellFormedUnicode(trimmed)
+	return toWellFormedUnicode(trimmed)
 		.split(/\|\||,|\n/)
 		.map((entry) => entry.trim())
 		.filter((entry) => entry.length > 0);
-
-	if (splitValues.length === 0) {
-		return [];
-	}
-
-	return splitValues;
 }
 
 type ValidatableParamValue =

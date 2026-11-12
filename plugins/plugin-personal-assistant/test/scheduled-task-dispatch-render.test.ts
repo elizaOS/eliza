@@ -3,7 +3,7 @@
  * instruction-voice `promptInstructions` must never reach a user-visible
  * surface (assistant stream, notification body, connector channel send)
  * verbatim — the dispatcher renders it through the model, and a render failure
- * is a typed retryable dispatch failure, never a raw-instruction fallback.
+ * delivers the authored fallback copy at once, never the raw instruction.
  * Deterministic: the model is stubbed at the runtime boundary (`useModel`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
@@ -172,7 +172,7 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
     expect(sent[0]?.message).not.toBe(INSTRUCTION);
   });
 
-  it("a throwing model is a typed retryable failure with reportError — nothing is emitted, no raw fallback", async () => {
+  it("a throwing model delivers the authored fallback with reportError — no raw instruction", async () => {
     enableAgentEventServiceStub();
     const notified: Record<string, unknown>[] = [];
     const { runtime, reported } = makeRuntime({
@@ -188,18 +188,30 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
     });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
 
-    const result = await dispatcher.dispatch(inAppRecord());
+    const result = await dispatcher.dispatch(
+      inAppRecord({
+        output: {
+          destination: "in_app_card",
+          fallback: { body: "Take your medication.", title: "Medication" },
+        },
+      }),
+    );
 
-    expect(result).toMatchObject({
-      ok: false,
-      reason: "transport_error",
-      userActionable: false,
-      retryAfterMinutes: 5,
+    expect(result).toMatchObject({ ok: true });
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toMatchObject({
+      body: "Take your medication.",
+      title: "Medication",
     });
-    expect(getAgentEventServiceStubEvents()).toHaveLength(0);
-    expect(notified).toHaveLength(0);
-    expect(reported).toHaveLength(1);
-    expect(reported[0]?.scope).toBe("lifeops:scheduled-task:dispatch-render");
+    const events = getAgentEventServiceStubEvents();
+    expect(events).toHaveLength(1);
+    expect(String(events[0]?.data.text)).not.toContain(
+      "Remind the owner to take",
+    );
+    expect(reported.map((entry) => entry.scope)).toEqual([
+      "scheduling:scheduled-task:dispatch-render-fallback",
+      "scheduling:scheduled-task:dispatch-render-fallback",
+    ]);
   });
 
   it("a runtime without a model surface delivers the deterministic fallback — never the raw instruction", async () => {
@@ -228,16 +240,27 @@ describe("scheduled dispatch renders promptInstructions through the model", () =
     );
   });
 
-  it("blank model output fails closed instead of sending the raw instruction", async () => {
+  it("blank model output delivers the fallback instead of the raw instruction", async () => {
     enableAgentEventServiceStub();
-    const { runtime, reported } = makeRuntime({ model: () => "   \n" });
+    const notified: Record<string, unknown>[] = [];
+    const { runtime, reported } = makeRuntime({
+      model: () => "   \n",
+      notifier: {
+        notify: async (input) => {
+          notified.push(input);
+          return { id: "n1" };
+        },
+      },
+    });
     const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
 
     const result = await dispatcher.dispatch(inAppRecord());
 
-    expect(result).toMatchObject({ ok: false, reason: "transport_error" });
-    expect(getAgentEventServiceStubEvents()).toHaveLength(0);
-    expect(reported).toHaveLength(1);
+    expect(result).toMatchObject({ ok: true });
+    expect(notified).toHaveLength(1);
+    expect(String(notified[0]?.body)).not.toContain("Remind the owner to take");
+    expect(String(notified[0]?.body).length).toBeGreaterThan(0);
+    expect(reported).toHaveLength(2);
   });
 
   it("a channel-send failure never leaks the raw instruction and preserves the typed result", async () => {

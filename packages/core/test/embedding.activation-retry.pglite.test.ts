@@ -107,8 +107,11 @@ describe("EmbeddingGenerationService late activation", () => {
 				)
 				.toBe(DIMENSIONS);
 			expect(textCalls).toBe(1);
+			const query = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+				text: memory.content.text,
+			});
 			const [recalled] = await runtime.searchMemories({
-				embedding: vector,
+				embedding: query,
 				tableName: "messages",
 				count: 1,
 			});

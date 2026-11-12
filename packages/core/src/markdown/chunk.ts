@@ -2,10 +2,13 @@
 
 import { ElizaError } from "../errors.js";
 import {
+	advanceFenceScan,
+	type FenceScan,
 	type FenceSpan,
 	findFenceSpanAt,
 	isSafeFenceBreak,
 	parseFenceSpans,
+	startFenceScan,
 } from "./code.js";
 
 /** Stable classification for invalid public Markdown chunk limits. */
@@ -186,7 +189,21 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 	let remaining = text;
 
 	while (remaining.length > limit) {
-		const spans = parseFenceSpans(remaining);
+		// Every span query below is at an index <= limit, so only fences starting
+		// on a line at or before `limit` matter. A fence still open there gets an
+		// unbounded end (its closing line starts after `limit`); its real end is
+		// resolved only when the closing-line check below needs it. Scanning the
+		// whole remainder on every chunk would make chunking quadratic.
+		const scan = startFenceScan();
+		advanceFenceScan(remaining, scan, limit);
+		const pendingFence: FenceSpan | undefined = scan.open && {
+			start: scan.open.start,
+			end: Number.POSITIVE_INFINITY,
+			openLine: scan.open.openLine,
+			marker: scan.open.marker,
+			indent: scan.open.indent,
+		};
+		const spans = pendingFence ? [...scan.spans, pendingFence] : scan.spans;
 		const window = remaining.slice(0, limit);
 
 		const softBreak = pickSafeBreakIndex(window, spans);
@@ -270,9 +287,11 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 			breakIdx = avoidGraphemeSplit(remaining, limit);
 		}
 
-		const closer = fenceToSplit
-			? findClosingFenceLine(remaining, fenceToSplit)
-			: undefined;
+		const closer =
+			fenceToSplit &&
+			resolveFenceEnd(remaining, scan, fenceToSplit, pendingFence, breakIdx)
+				? findClosingFenceLine(remaining, fenceToSplit)
+				: undefined;
 		if (
 			fenceToSplit &&
 			closer &&
@@ -396,6 +415,36 @@ function avoidSurrogateSplit(text: string, index: number): number {
 	return index;
 }
 
+/**
+ * Give `span` its real end when the closing-line check can use it. That check
+ * passes only when nothing but whitespace lies between `breakIdx` and the
+ * closing line, so the scan stops at the first non-whitespace character: a
+ * fence still open there closes on a later line and the check would fail.
+ * Returns false in that case.
+ */
+function resolveFenceEnd(
+	text: string,
+	scan: FenceScan,
+	span: FenceSpan,
+	pendingFence: FenceSpan | undefined,
+	breakIdx: number,
+): boolean {
+	if (span !== pendingFence) {
+		return true;
+	}
+	let firstContent = breakIdx;
+	while (firstContent < text.length && /\s/.test(text[firstContent])) {
+		firstContent++;
+	}
+	advanceFenceScan(text, scan, firstContent);
+	const closed = scan.spans.find((candidate) => candidate.start === span.start);
+	if (!closed) {
+		return false;
+	}
+	span.end = closed.end;
+	return true;
+}
+
 /** Locate the line that closed `span`; undefined when the fence runs to EOF. */
 function findClosingFenceLine(
 	text: string,
@@ -427,7 +476,7 @@ function stripLeadingNewlines(value: string): string {
 
 function pickSafeBreakIndex(
 	window: string,
-	spans: ReturnType<typeof parseFenceSpans>,
+	spans: readonly FenceSpan[],
 ): number {
 	const { lastNewline, lastWhitespace } = scanParenAwareBreakpoints(
 		window,

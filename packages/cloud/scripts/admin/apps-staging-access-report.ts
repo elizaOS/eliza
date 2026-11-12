@@ -11,11 +11,39 @@ export function classifyAppsStagingHost(
   servers: HetznerServer[],
   addresses: string[],
 ) {
+  // These are observations of provider labels and attachments, not approved
+  // targets, apps-network identity or proof of guest authorization.
+  const stagingControlRoleCandidates = {
+    appsControlCount: 0,
+    appsWorkerCount: 0,
+    runningCount: 0,
+    privateNetworkAttachmentObservedCount: 0,
+  };
   const matches = servers.flatMap((server) => {
+    const role = server.labels?.role;
     const publicAddressMatch =
       addresses.includes(server.public_net.ipv4?.ip ?? "") ||
       addresses.includes(server.public_net.ipv6?.ip ?? "");
     const privateNet: unknown = Reflect.get(server, "private_net");
+    if (
+      server.labels?.environment === "staging" &&
+      (role === "apps-control" || role === "apps-worker")
+    ) {
+      if (role === "apps-control")
+        stagingControlRoleCandidates.appsControlCount++;
+      else stagingControlRoleCandidates.appsWorkerCount++;
+      if (server.status === "running")
+        stagingControlRoleCandidates.runningCount++;
+      if (
+        Array.isArray(privateNet) &&
+        privateNet.some((network: unknown) => {
+          if (network === null || typeof network !== "object") return false;
+          const ip = Reflect.get(network, "ip");
+          return typeof ip === "string" && isIP(ip) !== 0;
+        })
+      )
+        stagingControlRoleCandidates.privateNetworkAttachmentObservedCount++;
+    }
     const privateAddressMatch =
       Array.isArray(privateNet) &&
       privateNet.some(
@@ -26,7 +54,6 @@ export function classifyAppsStagingHost(
           addresses.includes(Reflect.get(network, "ip")),
       );
     if (!publicAddressMatch && !privateAddressMatch) return [];
-    const role = server.labels?.role;
     return [
       {
         running: server.status === "running",
@@ -46,6 +73,7 @@ export function classifyAppsStagingHost(
   });
   return {
     inventoryServerCount: servers.length,
+    stagingControlRoleCandidates,
     configuredHostMatchCount: matches.length,
     matchingServer: matches.length === 1 ? matches[0] : null,
     guestAuthorizationVerified: false,

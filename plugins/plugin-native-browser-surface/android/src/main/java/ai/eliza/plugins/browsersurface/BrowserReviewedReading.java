@@ -13,10 +13,11 @@ import org.json.JSONObject;
 import org.json.JSONTokener;
 
 /**
- * One foreground, immutable, explicitly reviewed page excerpt for a {@link BrowserTabHostPlugin}.
- * No remote-page bridge: the text comes from the tab's {@link BrowserReadingWorld} and is shown in
- * full before the person releases it, either to a question editor or, bound to one speech route,
- * owner and session, to a single speech request that consumes it once.
+ * One foreground, immutable page excerpt for a {@link BrowserTabHostPlugin}. No remote-page bridge:
+ * the text comes from the tab's {@link BrowserReadingWorld}. An excerpt for a question editor, or
+ * for speech that leaves the phone, is shown in full before the person releases it; on-device
+ * speech is released without a review, since nothing leaves the phone. Speech is bound to one
+ * route, owner and session, and a single speech request consumes it once.
  *
  * <p>The sensitive-address refusal, the extraction script and the reject codes are the shared
  * {@link BrowserPageReading} policy. The heuristic is not a credential detector: a blocked page has
@@ -29,7 +30,7 @@ public final class BrowserReviewedReading {
  private AlertDialog dialog;
  private PluginCall pending;
  private BooleanSupplier current;
- private String binding, token, text, requestId;
+ private String binding, token, text, requestId, tabId;
  private long generation, expires;
  private boolean approved;
  /**
@@ -49,17 +50,17 @@ public final class BrowserReviewedReading {
   if(uri.getHost()==null||(!"https".equals(uri.getScheme())&&!local)||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!"".equals(uri.getRawPath()))throw new IllegalArgumentException();
   return new JSONObject().put("origin",origin).put("owner",owner).put("session",session).put("expires",expires).toString();
  }
- void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){
-  review(call,web,world,stillCurrent,false);
+ void review(PluginCall call,String tab,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){
+  review(call,tab,web,world,stillCurrent,false);
  }
- void reviewQuestion(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,web,world,stillCurrent,true);}
+ void reviewQuestion(PluginCall call,String tab,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,tab,web,world,stillCurrent,true);}
  /**
   * Stable reject codes, so the renderer never parses message text (J05). A missing isolated world
   * may fall back to a pasted excerpt; a sensitive page never may.
   */
  private static final String ISOLATED_MESSAGE="Isolated page reading is unavailable. Update Android System WebView, then reload this page.";
- private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
-  cancel();final long expected=generation;
+ private void review(PluginCall call,String tab,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
+  cancel();final long expected=generation;tabId=tab;
   // The provider cannot read in isolation: say so before anything else. No speech route, other page or reload can help, and nothing falls back to the page's own world.
   if(world==null||!world.available()){call.reject(BrowserPageReading.UNSUPPORTED_MESSAGE,BrowserPageReading.READING_UNSUPPORTED);return;}
   try{if(!question)binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
@@ -74,10 +75,12 @@ public final class BrowserReviewedReading {
     Object decoded=new JSONTokener(encoded).nextValue();if(!(decoded instanceof JSONObject))throw new IllegalStateException();JSONObject result=(JSONObject)decoded;
     if(result.optBoolean("blocked")){PluginCall rejected=pending;pending=null;cancel();rejected.reject("Reading unavailable on a sensitive or ambiguous page",BrowserPageReading.SENSITIVE_PAGE);return;}
     String extracted=result.getString("text");if(extracted.isBlank()||extracted.length()>BrowserPageReading.MAX_EXCERPT)throw new IllegalStateException();text=extracted;token=UUID.randomUUID().toString();
-    String source=android.net.Uri.parse(web.getUrl()).getHost();boolean local="device".equals(call.getString("execution"));
-    TextView preview=new TextView(activity);preview.setText(question?"Source: "+source+"\n\nContinue releases this public excerpt to the question editor. Review and edit it there; only Send shares your draft with the selected agent.\n\n"+text:"Source: "+source+"\nSpeech: "+(local?"On this device":call.getString("origin"))+"\nOwner: "+call.getString("ownerId")+(local?"\n\nRead on this device uses local speech. The excerpt is not sent to an agent or speech server.\n":"\n\nRead with selected agent sends exactly the following text for speech.\n")+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
+    String source=android.net.Uri.parse(web.getUrl()).getHost();
+    // On-device speech: nothing leaves the phone and the menu tap is the request, so the token is issued without a review.
+    if(!question&&"device".equals(call.getString("execution"))){if(!valid())throw new IllegalStateException();approved=true;PluginCall accepted=pending;pending=null;JSObject response=new JSObject();response.put("readingToken",token);accepted.resolve(response);return;}
+    TextView preview=new TextView(activity);preview.setText(question?"Source: "+source+"\n\nReview question opens this excerpt in the editor. Nothing is shared until you tap Send.\n\n"+text:"Source: "+source+"\nSpeech: "+call.getString("origin")+"\n\nRead with selected agent sends exactly the following text for speech.\n"+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
     ScrollView scroll=new ScrollView(activity);scroll.addView(preview);
-    dialog=new AlertDialog.Builder(activity).setTitle(question?"Ask about this page?":"Read this page aloud?").setView(scroll).setNegativeButton("Cancel",(d,w)->cancel()).setPositiveButton(question?"Review question":local?"Read on this device":"Read with selected agent",(d,w)->{
+    dialog=new AlertDialog.Builder(activity).setTitle(question?"Ask about this page?":"Read this page aloud?").setView(scroll).setNegativeButton("Cancel",(d,w)->cancel()).setPositiveButton(question?"Review question":"Read with selected agent",(d,w)->{
      if(expected!=generation||!valid()){cancel();return;}if(question){PluginCall accepted=pending;pending=null;JSObject response=new JSObject();response.put("text",text);cancel();accepted.resolve(response);return;}approved=true;PluginCall accepted=pending;pending=null;dialog=null;JSObject response=new JSObject();response.put("readingToken",token);accepted.resolve(response);
     }).setOnCancelListener(d->cancel()).create();dialog.show();
    }catch(Exception error){cancel();}
@@ -92,9 +95,12 @@ public final class BrowserReviewedReading {
  public String consume(PluginCall call)throws Exception{
   if(!approved||!valid()||!Objects.equals(token,call.getString("readingToken"))||!Objects.equals(binding,binding(call)))throw new IllegalStateException("Reading approval expired");
   requestId=call.getString("requestId");if(requestId==null||requestId.isBlank()||requestId.length()>256)throw new IllegalArgumentException();approved=false;token=null;String result=text;text=null;
-  if("device".equals(call.getString("execution"))){expires=System.currentTimeMillis()+20*60*1000;scheduleTimeout(++generation,20*60*1000);}
-  dialog=new AlertDialog.Builder(activity).setTitle("device".equals(call.getString("execution"))?"Reading on this device":"Reading with selected agent").setMessage("Preparing or playing the reviewed text. Stop reading cancels this request and playback.").setNegativeButton("Stop reading",(d,w)->cancel()).setOnCancelListener(d->cancel()).create();dialog.show();return result;
+  // Playback outlives the review deadline on either route; Stop reading, the page or the tab ends it sooner.
+  expires=System.currentTimeMillis()+20*60*1000;scheduleTimeout(++generation,20*60*1000);
+  dialog=new AlertDialog.Builder(activity).setTitle("device".equals(call.getString("execution"))?"Reading on this device":"Reading with selected agent").setNegativeButton("Stop reading",(d,w)->cancel()).setOnCancelListener(d->cancel()).create();dialog.show();return result;
  }
  void check(){if(current!=null&&!valid())cancel();}
- void cancel(){generation++;PluginCall rejected=pending;pending=null;AlertDialog old=dialog;dialog=null;String active=requestId;requestId=null;current=null;binding=null;token=null;text=null;approved=false;if(old!=null)old.dismiss();if(rejected!=null)rejected.reject("Reading cancelled or page unavailable");if(active!=null)cancelSpeech.accept(active);}
+ /** Cancels only a reading of the given tab: another tab's load, close or crash leaves it alone. */
+ void cancelFor(String tab){if(Objects.equals(tabId,tab))cancel();}
+ void cancel(){generation++;tabId=null;PluginCall rejected=pending;pending=null;AlertDialog old=dialog;dialog=null;String active=requestId;requestId=null;current=null;binding=null;token=null;text=null;approved=false;if(old!=null)old.dismiss();if(rejected!=null)rejected.reject("Reading cancelled or page unavailable");if(active!=null)cancelSpeech.accept(active);}
 }

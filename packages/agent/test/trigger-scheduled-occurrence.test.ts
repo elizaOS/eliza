@@ -6,6 +6,7 @@
  */
 import {
   type IAgentRuntime,
+  type MessageProcessingResult,
   MISSED_SCHEDULED_OCCURRENCE_TEXT,
   MISSED_SCHEDULED_OCCURRENCES_SETTING,
   ServiceType,
@@ -180,6 +181,11 @@ function fixture(
         message: { content: { text: string } },
       ) {
         prompts.push(message.content.text);
+        return {
+          outcome: { status: "completed", effects: [] },
+          didRespond: false,
+          responseMessages: [],
+        } satisfies MessageProcessingResult;
       },
     },
   } as unknown as IAgentRuntime;

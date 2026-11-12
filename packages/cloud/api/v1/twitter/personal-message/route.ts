@@ -1,6 +1,8 @@
 /**
- * Accepts authenticated DM turns from an organization's agent-role X account
- * and routes the verified sender to personal Shared or Dedicated Eliza.
+ * Accepts DM turns from the platform DM router's agent-role X account and
+ * routes the sender to personal Shared or Dedicated Eliza. The body-supplied
+ * sender id is trusted only because the caller's organization is listed in
+ * X_PERSONAL_DM_ROUTER_ORG_IDS; every other caller gets 403.
  */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
@@ -8,7 +10,11 @@ import {
   failureResponse,
   jsonError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { findOrCreateXPersonalAccount } from "@elizaos/cloud-shared/lib/services/eliza-app/x-personal-identity";
+import { rateLimit } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  findOrCreateXPersonalAccount,
+  xPersonalDmRouterOrgIds,
+} from "@elizaos/cloud-shared/lib/services/eliza-app/x-personal-identity";
 import { deliverPersonalTextMessage } from "@elizaos/cloud-shared/lib/services/personal-message-delivery";
 import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import { twitterAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation";
@@ -31,11 +37,38 @@ const inputSchema = z.object({
   message: z.string().trim().min(1).max(10_000),
 });
 
+const DELIVERY_RATE_LIMIT = { windowMs: 60_000, maxRequests: 600 } as const;
+
+function deliveryRateLimit(organizationId: string) {
+  return rateLimit({
+    ...DELIVERY_RATE_LIMIT,
+    keyGenerator: () => `x-personal-dm:${organizationId}`,
+    redisUnavailableFallback: { namespace: "x-personal-dm" },
+  });
+}
+
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
     const authenticated = await requireUserOrApiKeyWithOrg(c);
+    if (
+      !xPersonalDmRouterOrgIds(c.env ?? {}).has(
+        authenticated.organization_id.toLowerCase(),
+      )
+    ) {
+      return jsonError(
+        c,
+        403,
+        "Only the platform DM router can deliver X personal messages",
+        "access_denied",
+      );
+    }
+    const limited = await deliveryRateLimit(authenticated.organization_id)(
+      c,
+      async () => {},
+    );
+    if (limited) return limited;
     let raw: unknown;
     try {
       raw = await c.req.json();

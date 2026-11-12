@@ -1,0 +1,96 @@
+{
+  "cases": [
+    {
+      "name": "empty",
+      "main": "FactWriteDedupe_empty",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "NoDuplicateFact", "NoLostEvidence"],
+      "temporal": ["WriteReturns", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "FactWriteDedupe.empty.cfg",
+        "constants": [
+          "Writers = {w1, w2, w3}",
+          "Prefilled = FALSE",
+          "Serialised = TRUE",
+          "Seed = Seed"
+        ],
+        "specification": ["Spec"],
+        "invariants": ["TypeOK", "NoDuplicateFact", "NoLostEvidence"],
+        "properties": ["WriteReturns"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "WriteReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in FactWriteDedupe_empty: WriteReturns = Fairness implies Writers.forall(w => eventually(s.pc.get(w) == \"done\"))",
+            "Model fairness predicate Fairness = Writers.forall(w => WriterStep(w).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in FactWriteDedupe_empty: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prefilled",
+      "main": "FactWriteDedupe_prefilled",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "NoDuplicateFact", "NoLostEvidence"],
+      "temporal": ["WriteReturns", "DeadlockFree"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "FactWriteDedupe.prefilled.cfg",
+        "constants": [
+          "Writers = {w1, w2, w3}",
+          "Prefilled = TRUE",
+          "Serialised = TRUE",
+          "Seed = Seed"
+        ],
+        "specification": ["Spec"],
+        "invariants": ["TypeOK", "NoDuplicateFact", "NoLostEvidence"],
+        "properties": ["WriteReturns"],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "WriteReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in FactWriteDedupe_prefilled: WriteReturns = Fairness implies Writers.forall(w => eventually(s.pc.get(w) == \"done\"))",
+            "Model fairness predicate Fairness = Writers.forall(w => WriterStep(w).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in FactWriteDedupe_prefilled: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    "packages/core/src/runtime/data-mutations.ts",
+    "packages/core/src/runtime/fact-write-dedupe.ts"
+  ]
+}

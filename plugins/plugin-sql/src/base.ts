@@ -68,6 +68,7 @@ import {
   type ListConnectorAccountsParams,
   type Log,
   type LogBody,
+  type LogInventoryRow,
   logger,
   MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
   MESSAGE_CONTENT_READ_MAX_SEGMENTS,
@@ -445,7 +446,15 @@ function documentVisibilityCondition(
   params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
   metadata: SQLWrapper = memoryTable.metadata
 ): SQL {
-  const validAuthorizationMetadata = validDocumentAuthorizationMetadata(metadata);
+  if (params.requesterRole === "AGENT" || params.requesterRole === "RUNTIME") {
+    return validDocumentAuthorizationMetadata(metadata);
+  }
+  // Runtime-internal bookkeeping rows are readable only by AGENT/RUNTIME,
+  // mirroring isDocumentVisibleToRequester.
+  const validAuthorizationMetadata = sql`(
+    ${validDocumentAuthorizationMetadata(metadata)}
+    AND COALESCE(${metadata}->'runtimeInternal' <> 'true'::jsonb, true)
+  )`;
   if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return validAuthorizationMetadata;
   }
@@ -714,7 +723,14 @@ function mapAgentRow(row: AgentRow): Agent {
   };
 }
 
-import { EMBEDDING_WRITE_FENCE_STATEMENTS, embeddingSpaceCondition } from "./embedding-space";
+import {
+  assertEmbeddingWrite,
+  captureEmbeddingTarget,
+  EMBEDDING_WRITE_FENCE_STATEMENTS,
+  type EmbeddingWriteContext,
+  embeddingSpaceCondition,
+  readEmbeddingVector,
+} from "./embedding-space";
 import {
   ConnectorAccountStore,
   type ListConnectorAccountAuditEventsParams,
@@ -778,6 +794,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       this._connectorAccountStore = new ConnectorAccountStore(ctx);
     }
     return this._connectorAccountStore;
+  }
+
+  private activeEmbeddingSpace(): string | null {
+    if (this.embeddingSpace === null && this.requestedEmbeddingSpace !== null) {
+      throw new ElizaError("Embedding representation is still being activated", {
+        code: "EMBEDDING_SPACE_NOT_INITIALIZED",
+      });
+    }
+    return this.embeddingSpace;
+  }
+
+  private embeddingWriteContext(embedding: unknown): EmbeddingWriteContext | undefined {
+    return Array.isArray(embedding)
+      ? captureEmbeddingTarget(embedding, this.embeddingDimension, this.activeEmbeddingSpace())
+      : undefined;
   }
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
@@ -1008,16 +1039,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
    */
   async ensureEmbeddingDimension(dimension: number) {
-    if (
-      (this.embeddingSpace !== null || this.embeddingSpaceActivation !== null) &&
-      dimension !== Number(this.embeddingDimension.replace("dim", ""))
-    ) {
-      throw new ElizaError(
-        "Restart the runtime before changing a named embedding representation's dimension",
-        { code: "EMBEDDING_SPACE_CHANGED" }
-      );
-    }
     return this.withDatabase(async () => {
+      if (
+        (this.embeddingSpace !== null || this.requestedEmbeddingSpace !== null) &&
+        dimension !== Number(this.embeddingDimension.slice(3))
+      ) {
+        throw new ElizaError(
+          "Restart the runtime before changing a named embedding representation's dimension",
+          { code: "EMBEDDING_SPACE_CHANGED" }
+        );
+      }
       const resolvedDimension = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
       if (!resolvedDimension) {
         logger.warn(
@@ -2165,6 +2196,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
     }
+    const embeddingWrites = new Map(
+      params.segments.map((segment) => [segment.id, this.embeddingWriteContext(segment.embedding)])
+    );
+    const parentEmbeddingWrite =
+      params.mode === "create" ? this.embeddingWriteContext(params.parent.embedding) : undefined;
     const entityContext = params.mode === "create" ? params.parent.entityId : agentId;
     return this.withEntityContext(entityContext, async (tx) => {
       if (params.mode === "create") {
@@ -2182,12 +2218,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               segment,
               "message_content_segments",
               segment.id as UUID,
-              true
+              true,
+              embeddingWrites.get(segment.id)
             );
           }
         }
         // Manifest-last: no reader can resolve staged rows until this parent exists.
-        await this.insertMemoryInTransaction(tx, params.parent, "messages", params.parent.id, true);
+        await this.insertMemoryInTransaction(
+          tx,
+          params.parent,
+          "messages",
+          params.parent.id,
+          true,
+          parentEmbeddingWrite
+        );
         return { status: "created", parent: params.parent, removedSegmentIds: [] };
       }
 
@@ -2285,7 +2329,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             segment,
             "message_content_segments",
             segment.id as UUID,
-            true
+            true,
+            embeddingWrites.get(segment.id)
           );
         }
       }
@@ -3051,10 +3096,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
 
-      const activeColumn = embeddingTable[this.embeddingDimension];
+      const { column, spaceId } = captureEmbeddingTarget(
+        params.embedding,
+        this.embeddingDimension,
+        this.activeEmbeddingSpace()
+      );
+      const activeColumn = embeddingTable[column];
       const distance = cosineDistance(activeColumn, params.embedding);
       const similarity = sql<number>`1 - (${distance})`;
-      conditions.push(isNotNull(activeColumn), embeddingSpaceCondition(this.embeddingSpace));
+      conditions.push(isNotNull(activeColumn), embeddingSpaceCondition(spaceId));
       if (params.matchThreshold !== undefined) {
         conditions.push(gte(similarity, params.matchThreshold));
       }
@@ -3062,6 +3112,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: fragment,
           embedding: activeColumn,
+          embeddingSpace: embeddingTable.spaceId,
           similarity,
           sourceFingerprint: sql<string>`${parent.metadata}->>'sourceFingerprint'`,
         })
@@ -3075,7 +3126,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return rows.map((row) => {
         const memory = memoryFromRow(
           row.memory,
-          row.embedding ? Array.from(row.embedding) : undefined,
+          readEmbeddingVector(row.embedding, row.embeddingSpace),
           row.similarity
         );
         return {
@@ -3206,6 +3257,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     this.validateMemoryBatchEmbeddings(
       params.fragments.map((memory) => ({ memory, tableName: "document_fragments" }))
     );
+    const embeddingWrites = new Map(
+      params.fragments.map((fragment) => [
+        fragment.id,
+        this.embeddingWriteContext(fragment.embedding),
+      ])
+    );
     const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
       ? params.agentId
       : params.requesterEntityId;
@@ -3295,7 +3352,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             fragment,
             "document_fragments",
             fragment.id as UUID,
-            true
+            true,
+            embeddingWrites.get(fragment.id)
           );
         }
       }
@@ -3565,7 +3623,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         unique: boolean;
         metadata: unknown;
       };
-      const mapRow = (m: SelectedMemory, embedding: ArrayLike<number> | null | undefined) => ({
+      const mapRow = (
+        m: SelectedMemory,
+        embedding: ArrayLike<number> | null | undefined,
+        spaceId: string | null = null
+      ) => ({
         id: m.id as UUID,
         type: m.type,
         createdAt: m.createdAt.getTime(),
@@ -3579,7 +3641,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         worldId: (m.worldId ?? undefined) as UUID | undefined,
         unique: m.unique,
         metadata: m.metadata as MemoryMetadata,
-        embedding: embedding ? Array.from(embedding) : undefined,
+        embedding: readEmbeddingVector(embedding, spaceId),
       });
 
       if (includeEmbedding) {
@@ -3587,6 +3649,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .select({
             memory: memorySelect,
             embedding: embeddingTable[this.embeddingDimension],
+            embeddingSpace: embeddingTable.spaceId,
           })
           .from(memoryTable)
           .leftJoin(
@@ -3614,7 +3677,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             return baseQuery;
           }
         })();
-        return rows.map((row) => mapRow(row.memory as SelectedMemory, row.embedding));
+        return rows.map((row) =>
+          mapRow(row.memory as SelectedMemory, row.embedding, row.embeddingSpace)
+        );
       }
 
       // includeEmbedding === false: skip the embeddingTable join + column. The
@@ -3937,6 +4002,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           embedding: embeddingTable[this.embeddingDimension],
+          embeddingSpace: embeddingTable.spaceId,
         })
         .from(memoryTable)
         .leftJoin(
@@ -3965,7 +4031,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         worldId: (row.memory.worldId ?? undefined) as UUID | undefined,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ?? undefined,
+        embedding: readEmbeddingVector(row.embedding, row.embeddingSpace),
       };
     });
   }
@@ -3991,6 +4057,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           embedding: embeddingTable[this.embeddingDimension],
+          embeddingSpace: embeddingTable.spaceId,
         })
         .from(memoryTable)
         .leftJoin(
@@ -4016,7 +4083,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         worldId: (row.memory.worldId ?? undefined) as UUID | undefined,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ?? undefined,
+        embedding: readEmbeddingVector(row.embedding, row.embeddingSpace),
       }));
     });
   }
@@ -4062,7 +4129,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                     embedded_text AS (
                         SELECT
                             ct.content_text,
-                            e.${sql.identifier(embeddingTable[this.embeddingDimension].name)} as embedding
+                            e.${sql.identifier(embeddingTable[this.embeddingDimension].name)} as embedding,
+                            e.space_id as embedding_space
                         FROM content_text ct
                         LEFT JOIN embeddings e ON e.memory_id = ct.id
                         WHERE e.memory_id IS NOT NULL
@@ -4071,6 +4139,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                     )
                     SELECT
                         embedding,
+                        embedding_space,
                         levenshtein(CAST(${opts.query_input} AS text), content_text) as levenshtein_score
                     FROM embedded_text
                     WHERE levenshtein(CAST(${opts.query_input} AS text), content_text) <= ${opts.query_threshold}
@@ -4080,11 +4149,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return results.rows
           .map((row) => ({
-            embedding: Array.isArray(row.embedding)
-              ? row.embedding
-              : typeof row.embedding === "string"
-                ? JSON.parse(row.embedding)
-                : [],
+            embedding: readEmbeddingVector(
+              Array.isArray(row.embedding)
+                ? row.embedding
+                : typeof row.embedding === "string"
+                  ? JSON.parse(row.embedding)
+                  : [],
+              typeof row.embedding_space === "string" ? row.embedding_space : null
+            ),
             levenshtein_score: Number(row.levenshtein_score),
           }))
           .filter((row) => Array.isArray(row.embedding));
@@ -4230,6 +4302,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (logs.length === 0) return [];
 
       return logs;
+    });
+  }
+
+  async getLogInventory(params: { excludeTypes?: readonly string[] }): Promise<LogInventoryRow[]> {
+    const excludeTypes = params.excludeTypes ?? [];
+    // Same rows and order as getLogs, without the body column.
+    return this.withEntityContext(null, async (tx) => {
+      const rows = await tx
+        .select({ id: logTable.id, roomId: logTable.roomId, createdAt: logTable.createdAt })
+        .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
+        .where(
+          and(
+            eq(roomTable.agentId, this.agentId),
+            excludeTypes.length > 0 ? notInArray(logTable.type, [...excludeTypes]) : undefined
+          )
+        )
+        .orderBy(desc(logTable.createdAt), desc(logTable.id));
+      return rows.map((row) => ({
+        id: row.id as UUID,
+        roomId: row.roomId as UUID,
+        createdAt: new Date(row.createdAt as string | number | Date),
+      }));
     });
   }
 
@@ -4585,8 +4680,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
+      const { column, spaceId } = captureEmbeddingTarget(
+        embedding,
+        this.embeddingDimension,
+        this.activeEmbeddingSpace()
+      );
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
-      const activeColumn = embeddingTable[this.embeddingDimension];
+      const activeColumn = embeddingTable[column];
       // An absent count means the caller asked for the COMPLETE eligible
       // result, not a default page; a silent top-10 cap would drop eligible
       // matches with no signal to the caller.
@@ -4619,7 +4719,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const similarity = sql<number>`1 - (${distance})`;
       const conditions = [
         isNotNull(activeColumn),
-        embeddingSpaceCondition(this.embeddingSpace),
+        embeddingSpaceCondition(spaceId),
         eq(memoryTable.type, params.tableName),
         eq(memoryTable.agentId, this.agentId),
         ...memoryAccessContextConditions(params.accessContext, this.agentId, params.tableName),
@@ -4646,6 +4746,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           memory: memoryTable,
           similarity,
           embedding: params.includeEmbedding === false ? sql<null>`null` : activeColumn,
+          embeddingSpace: embeddingTable.spaceId,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
@@ -4675,7 +4776,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         worldId: row.memory.worldId as UUID | undefined, // Include worldId
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
-        embedding: row.embedding ?? undefined,
+        embedding: readEmbeddingVector(row.embedding, row.embeddingSpace),
         similarity: row.similarity,
       }));
     });
@@ -4692,6 +4793,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     tableName: string
   ): Promise<UUID> {
     const memoryId = memory.id ?? (v4() as UUID);
+    const embeddingWrite = this.embeddingWriteContext(memory.embedding);
 
     await this.resolveMemoryUniqueness(memory, tableName);
 
@@ -4699,7 +4801,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // also supplies the real Drizzle transaction used for both the memory row
     // and its optional embedding.
     await this.withEntityContext(memory.entityId, async (tx) => {
-      await this.insertMemoryInTransaction(tx, memory, tableName, memoryId);
+      await this.insertMemoryInTransaction(tx, memory, tableName, memoryId, false, embeddingWrite);
     });
 
     return memoryId;
@@ -4751,7 +4853,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     memory: Memory & { metadata?: MemoryMetadata },
     tableName: string,
     memoryId: UUID,
-    requireInserted = false
+    requireInserted = false,
+    embeddingWrite = this.embeddingWriteContext(memory.embedding)
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
@@ -4794,8 +4897,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return;
     }
 
-    if (memory.embedding && Array.isArray(memory.embedding)) {
-      const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+    if (memory.embedding && Array.isArray(memory.embedding) && embeddingWrite) {
+      const expectedDimension = Number(embeddingWrite.column.replace(/^dim/, ""));
       if (memory.embedding.length !== expectedDimension) {
         // The runtime's TEXT_EMBEDDING provider returned a vector whose width
         // does not match the column this agent is configured to write to —
@@ -4817,8 +4920,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const embeddingValues: Record<string, unknown> = {
           id: v4(),
           memoryId: memoryId,
-          spaceId: this.embeddingSpace,
-          writeNonce: this.embeddingSpace === null ? null : v4(),
+          spaceId: embeddingWrite.spaceId,
+          writeNonce: embeddingWrite.spaceId === null ? null : v4(),
           createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
         };
 
@@ -4826,8 +4929,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           Number.isFinite(n) ? Number(n.toFixed(6)) : 0
         );
 
-        embeddingValues[this.embeddingDimension] = cleanVector;
+        embeddingValues[embeddingWrite.column] = cleanVector;
 
+        assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.activeEmbeddingSpace());
         await tx.insert(embeddingTable).values([embeddingValues]);
       }
     }
@@ -4836,7 +4940,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updateMemoryEmbedding(
     update: import("@elizaos/core").MemoryEmbeddingUpdate
   ): Promise<boolean> {
-    const column = this.embeddingDimension;
+    const embeddingWrite = captureEmbeddingTarget(
+      update.embedding,
+      this.embeddingDimension,
+      this.activeEmbeddingSpace()
+    );
+    const column = embeddingWrite.column;
     const dimension = Number(column.replace(/^dim/, ""));
     if (update.embedding.length !== dimension || !update.embedding.every(Number.isFinite)) {
       throw new Error("Invalid memory embedding for active dimension");
@@ -4863,13 +4972,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .from(embeddingTable)
           .where(eq(embeddingTable.memoryId, update.id))
           .limit(1);
+        assertEmbeddingWrite(embeddingWrite, this.embeddingDimension, this.activeEmbeddingSpace());
         if (existing) {
           await tx
             .update(embeddingTable)
             .set({
               [column]: vector,
-              spaceId: this.embeddingSpace,
-              writeNonce: this.embeddingSpace === null ? null : v4(),
+              spaceId: embeddingWrite.spaceId,
+              writeNonce: embeddingWrite.spaceId === null ? null : v4(),
             })
             .where(eq(embeddingTable.memoryId, update.id));
         } else {
@@ -4877,8 +4987,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             id: v4(),
             memoryId: update.id,
             [column]: vector,
-            spaceId: this.embeddingSpace,
-            writeNonce: this.embeddingSpace === null ? null : v4(),
+            spaceId: embeddingWrite.spaceId,
+            writeNonce: embeddingWrite.spaceId === null ? null : v4(),
           });
         }
         return true;
@@ -4894,6 +5004,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updateMemory(
     memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
   ): Promise<boolean> {
+    const embeddingWrite = this.embeddingWriteContext(memory.embedding);
     return this.withDatabase(async () => {
       try {
         await this.db.transaction(async (tx) => {
@@ -4940,8 +5051,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           }
 
           // Update embedding if provided
-          if (memory.embedding && Array.isArray(memory.embedding)) {
-            const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+          if (memory.embedding && Array.isArray(memory.embedding) && embeddingWrite) {
+            const expectedDimension = Number(embeddingWrite.column.replace(/^dim/, ""));
             if (memory.embedding.length !== expectedDimension) {
               logger.warn(
                 {
@@ -4966,13 +5077,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 .where(eq(embeddingTable.memoryId, memory.id))
                 .limit(1);
 
+              assertEmbeddingWrite(
+                embeddingWrite,
+                this.embeddingDimension,
+                this.activeEmbeddingSpace()
+              );
               if (existingEmbedding.length > 0) {
                 // Update existing embedding
                 const updateValues: Record<string, unknown> = {
-                  spaceId: this.embeddingSpace,
-                  writeNonce: this.embeddingSpace === null ? null : v4(),
+                  spaceId: embeddingWrite.spaceId,
+                  writeNonce: embeddingWrite.spaceId === null ? null : v4(),
                 };
-                updateValues[this.embeddingDimension] = cleanVector;
+                updateValues[embeddingWrite.column] = cleanVector;
 
                 await tx
                   .update(embeddingTable)
@@ -4983,10 +5099,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 const embeddingValues: Record<string, unknown> = {
                   id: v4(),
                   memoryId: memory.id,
-                  spaceId: this.embeddingSpace,
-                  writeNonce: this.embeddingSpace === null ? null : v4(),
+                  spaceId: embeddingWrite.spaceId,
+                  writeNonce: embeddingWrite.spaceId === null ? null : v4(),
                 };
-                embeddingValues[this.embeddingDimension] = cleanVector;
+                embeddingValues[embeddingWrite.column] = cleanVector;
 
                 await tx.insert(embeddingTable).values([embeddingValues]);
               }
@@ -7502,7 +7618,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {
     return this.withDatabase(async () => {
       const id = entry.id || (v4() as UUID);
-      await this.db
+      const [inserted] = await this.db
         .insert(pairingAllowlistTable)
         .values({
           id,
@@ -7512,8 +7628,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           metadata: entry.metadata || {},
           agentId: entry.agentId,
         })
-        .onConflictDoNothing();
-      return id;
+        .onConflictDoNothing()
+        .returning();
+      if (inserted) return inserted.id as UUID;
+
+      const [existing] = await this.db
+        .select({ id: pairingAllowlistTable.id })
+        .from(pairingAllowlistTable)
+        .where(
+          and(
+            eq(pairingAllowlistTable.channel, entry.channel),
+            eq(pairingAllowlistTable.senderId, entry.senderId),
+            eq(pairingAllowlistTable.agentId, entry.agentId)
+          )
+        )
+        .limit(1);
+      if (existing) return existing.id as UUID;
+      throw new ElizaError("Pairing grant identity conflicts with another scope", {
+        code: "PAIRING_ALLOWLIST_ID_CONFLICT",
+      });
     });
   }
 
@@ -8075,6 +8208,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async compareAndSwapMemoryPublication(
     params: AtomicMemoryPublicationParams
   ): Promise<AtomicMemoryPublicationResult> {
+    const embeddingWrites = new Map(
+      params.dependencies.map((dependency) => [
+        dependency.memory.id,
+        this.embeddingWriteContext(dependency.memory.embedding),
+      ])
+    );
     const headId = params.head.memory.id;
     if (!headId) throw new TypeError("atomic memory publication head requires an id");
     // The head gets the strict serializers insertMemoryInTransaction applies to
@@ -8114,7 +8253,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               tx,
               { ...dependency.memory, unique: true },
               dependency.tableName,
-              dependencyId
+              dependencyId,
+              false,
+              embeddingWrites.get(dependencyId)
             );
             const storedRows = await tx
               .select()
@@ -8196,6 +8337,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       memory: unique !== undefined ? { ...memory, unique } : memory,
       tableName,
       id: memory.id ?? (v4() as UUID),
+      embeddingWrite: this.embeddingWriteContext(memory.embedding),
     }));
     for (const entry of prepared) {
       await this.resolveMemoryUniqueness(entry.memory, entry.tableName);
@@ -8203,7 +8345,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     await this.withEntityContext(entityContext, async (tx) => {
       for (const entry of prepared) {
-        await this.insertMemoryInTransaction(tx, entry.memory, entry.tableName, entry.id);
+        await this.insertMemoryInTransaction(
+          tx,
+          entry.memory,
+          entry.tableName,
+          entry.id,
+          false,
+          entry.embeddingWrite
+        );
       }
     });
 

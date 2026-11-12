@@ -381,16 +381,11 @@ async function executeEmbeddingBatch(
       // bounded exponential backoff (see EMBED_* constants) instead of a single
       // 30s blind sleep.
       let response: Response | null = null;
-      // The cold-gateway warming 503 (`*_cache_warming` body, #17875) gets its
-      // OWN bounded budget, separate from the small transient budget below: a
-      // fresh container / node move / cache-TTL expiry answers the first
-      // /embeddings calls with a structural retry-shortly signal for ~3s while
-      // the Worker hydrates auth/billing caches. Spending the 2-attempt
-      // transient budget on that window dropped one-shot seed embeddings
-      // (bundled-document seeds are attempted exactly once) — #18103. The
-      // warming schedule sums past the measured recovery; anything still
-      // failing after it falls through to the existing transient policy so a
-      // genuinely dead gateway still fails promptly.
+      // The gateway's typed transient 503 (`nextWarmingRetryDelayMs` in
+      // text.ts) gets its own bounded budget, separate from the small
+      // transient budget below, so one-shot seed embeddings survive a brief
+      // admission outage (#18103). Anything still failing after it falls
+      // through to the transient policy so a dead gateway fails promptly.
       const warmingState = { attempt: 0 };
       let attempt = 0;
       for (;;) {

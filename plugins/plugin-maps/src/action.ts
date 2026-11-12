@@ -13,7 +13,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { appendInteractionBlock, hasOwnerAccess } from "@elizaos/core";
+import {
+  appendInteractionBlock,
+  hasOwnerAccess,
+  requireConfirmation,
+} from "@elizaos/core";
 import {
   appendMapsCard,
   handoffCard,
@@ -24,7 +28,10 @@ import {
 } from "./card.js";
 import { describeMapsCoverage, offeredTravelModes } from "./coverage.js";
 import { MapsError } from "./errors.js";
-import type { MapsDeviceNavigationStatus } from "./navigation.js";
+import type {
+  MapsDeviceNavigation,
+  MapsDeviceNavigationStatus,
+} from "./navigation.js";
 import { getMapsService, type MapsService } from "./service.js";
 import {
   coordinatesSchema,
@@ -185,8 +192,9 @@ function awaitingLocation(
 }
 
 /**
- * Sharing a location is gated on an explicit in-chat confirmation so a model
- * turn can never disclose coordinates without the user's visible consent.
+ * Sharing a location waits for the user's own reply to this prompt. Core binds
+ * the pending consent to the place and ignores the message that asked, so a
+ * model turn can never disclose coordinates without the user's visible consent.
  */
 function shareConfirmation(message: Memory, place: PlaceRef): ActionResult {
   const prompt = `Share the location of ${place.name}?`;
@@ -330,7 +338,142 @@ async function resolvedPlace(
   return directPlace(params);
 }
 
-function actionError(error: MapsError): ActionResult {
+const PLACE_QUERY_FIELD: FormInteraction["fields"][number] = {
+  name: "placeQuery",
+  type: "text",
+  label: "Place (name or address)",
+  required: true,
+};
+
+const ORIGIN_QUERY_FIELD: FormInteraction["fields"][number] = {
+  name: "originQuery",
+  type: "text",
+  label: "Starting place (name or address)",
+  required: true,
+};
+
+const DESTINATION_QUERY_FIELD: FormInteraction["fields"][number] = {
+  name: "destinationQuery",
+  type: "text",
+  label: "Destination (name or address)",
+  required: true,
+};
+
+function isReply(value: PlaceRef | ActionResult): value is ActionResult {
+  return "success" in value;
+}
+
+/**
+ * Resolves a typed name or address to one place. Several matches ask which one
+ * was meant; no match is the plain not-found reply.
+ */
+async function placeFromQuery(
+  service: MapsService,
+  action: MapsSubaction,
+  message: Memory,
+  field: FormInteraction["fields"][number],
+  query: string,
+  provider?: string,
+): Promise<PlaceRef | ActionResult> {
+  const { page, provider: searchProvider } = await service.searchPlacesResult(
+    { query, limit: 5 },
+    provider,
+  );
+  const [only] = page.places;
+  if (only && page.places.length === 1) return only;
+  if (!only) {
+    return {
+      success: false,
+      text: "No matching place was found.",
+      userFacingText: "No matching place was found.",
+      verifiedUserFacing: true,
+      data: { actionName: "MAPS", action, reason: "not_found", query },
+    };
+  }
+  const ask = missingInput(
+    action,
+    message,
+    [field],
+    [
+      "Which one did you mean?",
+      ...page.places.map((place) =>
+        place.formattedAddress
+          ? `${place.name} — ${place.formattedAddress}`
+          : place.name,
+      ),
+    ].join("\n"),
+  );
+  return {
+    ...ask,
+    userFacingText: appendMapsCard(ask.userFacingText ?? ask.text ?? "", {
+      kind: "places",
+      query,
+      places: page.places.slice(0, MAPS_CARD_MAX_PLACES).map(toCardPlace),
+      nextCursor: null,
+      attribution: searchProvider.attribution,
+    }),
+    data: { ...ask.data, places: page.places },
+  };
+}
+
+/** A place from ids or coordinates, else from the typed placeQuery. */
+async function requestedPlace(
+  service: MapsService,
+  action: MapsSubaction,
+  params: Params,
+  message: Memory,
+): Promise<PlaceRef | ActionResult | null> {
+  const place = await resolvedPlace(service, params, message.entityId);
+  if (place) return place;
+  const query = text(params.placeQuery);
+  return query
+    ? placeFromQuery(
+        service,
+        action,
+        message,
+        PLACE_QUERY_FIELD,
+        query,
+        text(params.provider),
+      )
+    : null;
+}
+
+/** Distances read as km with one decimal from 1 km, metres to the nearest 10 below. */
+function distanceText(meters: number): string {
+  const rounded = Math.round(meters / 10) * 10;
+  return rounded >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${rounded} m`;
+}
+
+/** Plain replies for failures whose provider message is not meant for the user. */
+function userErrorText(error: MapsError, adapterCount: number): string {
+  switch (error.code) {
+    case "MAPS_PROVIDER_UNAVAILABLE":
+      return adapterCount === 0 ? "Sign in to use Maps." : error.message;
+    case "MAPS_ALLOWANCE_UNCONFIGURED":
+      return "Maps isn't available for this account right now.";
+    case "MAPS_ADMISSION_UNKNOWN":
+      return "Maps couldn't confirm that request. Ask again if you still need it.";
+    case "MAPS_REQUEST_CANCELLED":
+      return "That Maps request was cancelled.";
+    case "MAPS_BUDGET_EXHAUSTED":
+      return "You've used your Maps requests for now.";
+    case "MAPS_RATE_LIMITED":
+      return "Maps is busy. Try again in a moment.";
+    case "MAPS_AUTH_EXPIRED":
+    case "MAPS_AUTH_REVOKED":
+      return "Sign in again to use Maps.";
+    case "MAPS_NOT_ENTITLED":
+      return "Maps needs an active subscription.";
+    case "MAPS_PROVIDER_TIMEOUT":
+    case "MAPS_PROVIDER_NETWORK":
+    case "MAPS_PROVIDER_FAILURE":
+      return "Maps couldn't be reached. Try again.";
+    default:
+      return error.message;
+  }
+}
+
+function actionError(error: MapsError, service: MapsService): ActionResult {
   const retryAfterMs = error.retryAfterMs;
   const retryable =
     error.code === "MAPS_RATE_LIMITED" ||
@@ -343,7 +486,7 @@ function actionError(error: MapsError): ActionResult {
   return {
     success: false,
     text: error.message,
-    userFacingText: error.message,
+    userFacingText: userErrorText(error, service.listAdapters().length),
     data: {
       actionName: "MAPS",
       error: error.code,
@@ -388,15 +531,40 @@ function deviceResult(
           : status.state === "awaiting-location"
             ? "The phone needs location access before navigation can start."
             : "Navigation stopped.";
+  const waitingReason =
+    status.state === "awaiting-confirmation"
+      ? "device_confirmation"
+      : status.state === "awaiting-location"
+        ? "device_location"
+        : undefined;
   return {
-    success:
-      status.state !== "awaiting-location" &&
-      status.state !== "awaiting-confirmation",
+    success: waitingReason === undefined,
     text: userFacingText,
     userFacingText,
     verifiedUserFacing: true,
-    data: { actionName, action, device: status },
+    data: {
+      actionName,
+      action,
+      device: status,
+      ...(waitingReason
+        ? { awaitingUserInput: true, reason: waitingReason }
+        : {}),
+    },
   };
+}
+
+/** The phone's navigation owner when it reports it can take a request now. */
+async function availableDevice(
+  service: MapsService,
+): Promise<MapsDeviceNavigation | null> {
+  try {
+    const device = service.requireDeviceNavigation();
+    return (await device.available?.()) === true ? device : null;
+  } catch (error) {
+    // A typed refusal from the owner or its probe means "use the link".
+    if (error instanceof MapsError) return null;
+    throw error;
+  }
 }
 
 async function execute(
@@ -416,18 +584,13 @@ async function execute(
       }
     )?.[MAPS_SAVE_VIRTUAL_EXECUTION]
   ) {
-    return result(
-      action,
-      {
-        success: false,
-        text: "Saving places requires the receipt-enforced MAPS_SAVE action.",
-        userFacingText:
-          "Saving places requires the receipt-enforced MAPS_SAVE action.",
-        error: "MAPS_SAVE_REQUIRED",
-        data: { actionName: "MAPS", action: "save" },
-      },
-      callback,
-    );
+    // A planner-only refusal: nothing is said to the user.
+    return {
+      success: false,
+      text: "Saving places requires the receipt-enforced MAPS_SAVE action.",
+      error: "MAPS_SAVE_REQUIRED",
+      data: { actionName: "MAPS", action: "save" },
+    };
   }
   const service = getMapsService(runtime);
   try {
@@ -630,16 +793,42 @@ async function execute(
       case "route": {
         const originPlaceId = opaqueText(params.originPlaceId);
         const destinationPlaceId = opaqueText(params.destinationPlaceId);
-        const origin =
+        let origin =
           directPlace(params, "origin") ??
           (originPlaceId
             ? await service.getPlace(originPlaceId, text(params.provider))
             : null);
-        const destination =
+        let destination =
           directPlace(params, "destination") ??
           (destinationPlaceId
             ? await service.getPlace(destinationPlaceId, text(params.provider))
             : null);
+        const originQuery = text(params.originQuery);
+        if (!origin && originQuery) {
+          const found = await placeFromQuery(
+            service,
+            action,
+            message,
+            ORIGIN_QUERY_FIELD,
+            originQuery,
+            text(params.provider),
+          );
+          if (isReply(found)) return result(action, found, callback);
+          origin = found;
+        }
+        const destinationQuery = text(params.destinationQuery);
+        if (!destination && destinationQuery) {
+          const found = await placeFromQuery(
+            service,
+            action,
+            message,
+            DESTINATION_QUERY_FIELD,
+            destinationQuery,
+            text(params.provider),
+          );
+          if (isReply(found)) return result(action, found, callback);
+          destination = found;
+        }
         if (!origin && destination && flag(params.useCurrentLocation)) {
           return result(
             action,
@@ -653,22 +842,8 @@ async function execute(
         }
         if (!origin || !destination) {
           const unresolvedFields: FormInteraction["fields"] = [];
-          if (!origin) {
-            unresolvedFields.push({
-              name: "originPlaceId",
-              type: "text",
-              label: "Starting place ID",
-              required: true,
-            });
-          }
-          if (!destination) {
-            unresolvedFields.push({
-              name: "destinationPlaceId",
-              type: "text",
-              label: "Destination place ID",
-              required: true,
-            });
-          }
+          if (!origin) unresolvedFields.push(ORIGIN_QUERY_FIELD);
+          if (!destination) unresolvedFields.push(DESTINATION_QUERY_FIELD);
           unresolvedFields.push(
             travelModeField(
               await servedTravelModes(service, text(params.provider)),
@@ -713,23 +888,24 @@ async function execute(
               .then(({ route, provider }) => ({ routes: [route], provider }));
         const [route] = routes as [RoutePlan, ...RoutePlan[]];
         const minutes = Math.round(route.durationSeconds / 60);
+        const distance = distanceText(route.distanceMeters);
         const others = routes
           .slice(1)
           .map(
             (alternative, index) =>
-              `Alternative ${index + 1}: about ${Math.round(alternative.durationSeconds / 60)} min, ${alternative.distanceMeters} m.`,
+              `Alternative ${index + 1}: about ${Math.round(alternative.durationSeconds / 60)} min, ${distanceText(alternative.distanceMeters)}.`,
           );
         return result(
           action,
           {
             success: true,
             text: [
-              `${route.distanceMeters} m, about ${minutes} min by ${route.travelMode}.`,
+              `${distance}, about ${minutes} min by ${route.travelMode}.`,
               ...others,
             ].join("\n"),
             userFacingText: appendMapsCard(
               [
-                `${route.origin.name} to ${route.destination.name}: about ${minutes} min by ${route.travelMode}.`,
+                `${route.origin.name} to ${route.destination.name}: ${distance}, about ${minutes} min by ${route.travelMode}.`,
                 ...others,
               ].join("\n"),
               routeCard(route, routeProvider.attribution),
@@ -746,21 +922,15 @@ async function execute(
         );
       }
       case "select": {
-        const place = await resolvedPlace(service, params, message.entityId);
+        const place = await requestedPlace(service, action, params, message);
+        if (place && isReply(place)) return result(action, place, callback);
         if (!place) {
           return result(
             action,
             missingInput(
               action,
               message,
-              [
-                {
-                  name: "placeId",
-                  type: "text",
-                  label: "Place ID",
-                  required: true,
-                },
-              ],
+              [PLACE_QUERY_FIELD],
               "Which place should I select on the map?",
             ),
             callback,
@@ -770,7 +940,8 @@ async function execute(
         return result(action, deviceResult("MAPS", action, status), callback);
       }
       case "save": {
-        const place = await resolvedPlace(service, params, message.entityId);
+        const place = await requestedPlace(service, action, params, message);
+        if (place && isReply(place)) return result(action, place, callback);
         if (!place) {
           return result(
             action,
@@ -778,12 +949,7 @@ async function execute(
               action,
               message,
               [
-                {
-                  name: "placeId",
-                  type: "text",
-                  label: "Place ID",
-                  required: true,
-                },
+                PLACE_QUERY_FIELD,
                 {
                   name: "label",
                   type: "text",
@@ -867,7 +1033,11 @@ async function execute(
           ? saved.currentlyApplied
             ? `${saved.savedPlace.label} was already saved.`
             : `${saved.savedPlace.label} was saved previously; the current saved label is ${saved.currentSavedPlace?.label ?? "no longer available"}.`
-          : `Saved ${saved.savedPlace.label}.`;
+          : service.hasSavedPlacesHost()
+            ? `Saved ${saved.savedPlace.label}.`
+            : // MAPS_SAVE writes only the agent's store; without a device host the
+              // phone's own Maps list does not get the place.
+              `Saved ${saved.savedPlace.label} with your assistant. It isn't in the phone's Maps list.`;
         return result(
           action,
           {
@@ -900,13 +1070,19 @@ async function execute(
           { includeDevice: await hasOwnerAccess(runtime, message) },
         );
         const names = listing.places.map((row) => row.label);
+        // Without the phone's list the reply covers only the assistant's own
+        // saves and says so.
         const deviceNote =
           listing.device === "unavailable"
             ? " Places saved only on the phone could not be read right now."
-            : "";
+            : listing.device === "none"
+              ? " Places saved only on the phone's Maps screen aren't included."
+              : "";
         const prose = names.length
           ? `Saved places: ${names.join(", ")}.${deviceNote}`
-          : `You have no saved places.${deviceNote}`;
+          : listing.device === "none"
+            ? `No places are saved with your assistant yet.${deviceNote}`
+            : `You have no saved places.${deviceNote}`;
         return result(
           action,
           {
@@ -957,21 +1133,15 @@ async function execute(
       }
       case "share":
       case "navigate": {
-        const place = await resolvedPlace(service, params, message.entityId);
+        const place = await requestedPlace(service, action, params, message);
+        if (place && isReply(place)) return result(action, place, callback);
         if (!place) {
           return result(
             action,
             missingInput(
               action,
               message,
-              [
-                {
-                  name: "savedPlaceId",
-                  type: "text",
-                  label: "Saved place ID",
-                  required: true,
-                },
-              ],
+              [PLACE_QUERY_FIELD],
               action === "share"
                 ? "Which place should I share?"
                 : "Where should navigation go?",
@@ -979,8 +1149,53 @@ async function execute(
             callback,
           );
         }
-        if (action === "share" && !flag(params.confirm)) {
-          return result(action, shareConfirmation(message, place), callback);
+        if (action === "share") {
+          const share = shareConfirmation(message, place);
+          // Only the user's own later reply confirms; a model-supplied flag
+          // or the asking message itself never does.
+          const decision = await requireConfirmation({
+            runtime,
+            message,
+            actionName: "MAPS_SHARE",
+            pendingKey: `share:${place.provider}:${place.providerPlaceId}`,
+            prompt: share.text ?? "",
+          });
+          if (decision.status === "pending") {
+            return result(action, share, callback);
+          }
+          if (decision.status === "cancelled") {
+            return result(
+              action,
+              {
+                success: false,
+                text: "Not shared.",
+                userFacingText: "Not shared.",
+                verifiedUserFacing: true,
+                data: { actionName: "MAPS", action, reason: "cancelled" },
+              },
+              callback,
+            );
+          }
+        } else {
+          // The phone's own review still gates guidance; without a connected
+          // phone the user gets a directions link.
+          const device = await availableDevice(service);
+          if (device) {
+            const travelMode = validated(
+              travelModeSchema,
+              text(params.travelMode) ?? "drive",
+              "Travel mode must be drive, walk, bicycle, or transit.",
+            );
+            return result(
+              action,
+              deviceResult(
+                "MAPS",
+                action,
+                await device.start({ destination: place, travelMode }),
+              ),
+              callback,
+            );
+          }
         }
         const handoff =
           action === "share"
@@ -1017,7 +1232,7 @@ async function execute(
     // error-policy:J1 The action boundary translates typed domain/provider
     // failures for the planner; unexpected programming errors still throw.
     if (error instanceof MapsError)
-      return result(action, actionError(error), callback);
+      return result(action, actionError(error, service), callback);
     throw error;
   }
 }
@@ -1039,7 +1254,7 @@ export const mapsAction: Action = {
     "Place search, routes, saved places, sharing, navigation, and coverage.",
   contexts: ["location", "travel", "productivity"],
   routingHint:
-    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SAVED to list saved places (including those saved on the phone), MAPS_SHARE for a geo share link, MAPS_NAVIGATE for a navigation handoff, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
+    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SAVED to list places saved with the assistant, MAPS_SHARE for a geo share link after the user confirms, MAPS_NAVIGATE to start phone navigation when the phone is connected and otherwise return a directions link, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
   // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
   // owns the write and receipt contract in plugin.ts.
   tags: ["domain:maps"],
@@ -1122,6 +1337,28 @@ export const mapsAction: Action = {
       subactions: ["save", "share", "navigate"],
     },
     {
+      name: "placeQuery",
+      description:
+        "Place name or address the user typed, when no place id or coordinates are known.",
+      required: false,
+      schema: { type: "string" },
+      subactions: ["select", "save", "share", "navigate"],
+    },
+    {
+      name: "originQuery",
+      description: "Route origin name or address, when no id is known.",
+      required: false,
+      schema: { type: "string" },
+      subactions: ["route"],
+    },
+    {
+      name: "destinationQuery",
+      description: "Route destination name or address, when no id is known.",
+      required: false,
+      schema: { type: "string" },
+      subactions: ["route"],
+    },
+    {
       name: "originPlaceId",
       description: "Route origin provider place id.",
       required: false,
@@ -1189,7 +1426,7 @@ export const mapsAction: Action = {
         "drive | walk | bicycle | transit. Transit only where MAPS coverage lists it.",
       required: false,
       schema: { type: "string", enum: ["drive", "walk", "bicycle", "transit"] },
-      subactions: ["route"],
+      subactions: ["route", "navigate"],
     },
     {
       name: "alternatives",
@@ -1206,14 +1443,6 @@ export const mapsAction: Action = {
       required: false,
       schema: { type: "boolean" },
       subactions: ["place", "route"],
-    },
-    {
-      name: "confirm",
-      description:
-        "Required true to emit a share link; without it the user is asked to confirm sharing their location.",
-      required: false,
-      schema: { type: "boolean" },
-      subactions: ["share"],
     },
     {
       name: "label",
@@ -1309,19 +1538,20 @@ async function executeNavigation(
       );
     }
     const device = service.requireDeviceNavigation();
-    const destination = await resolvedPlace(service, params, message.entityId);
+    const destination = await requestedPlace(
+      service,
+      "navigate",
+      params,
+      message,
+    );
+    if (destination && isReply(destination)) return reply(destination);
     if (!destination) {
       return reply(
         missingInput(
           "navigate",
           message,
           [
-            {
-              name: "placeId",
-              type: "text",
-              label: "Destination place ID",
-              required: true,
-            },
+            PLACE_QUERY_FIELD,
             travelModeField(await servedTravelModes(service)),
           ],
           "Where should navigation go?",
@@ -1342,7 +1572,7 @@ async function executeNavigation(
     );
   } catch (error) {
     // error-policy:J1 Typed provider and device failures reach the planner.
-    if (error instanceof MapsError) return reply(actionError(error));
+    if (error instanceof MapsError) return reply(actionError(error, service));
     throw error;
   }
 }
@@ -1372,6 +1602,14 @@ export const mapsNavigationAction: Action = {
     {
       name: "savedPlaceId",
       description: "Destination saved-place UUID.",
+      required: false,
+      schema: { type: "string" },
+      subactions: ["start"],
+    },
+    {
+      name: "placeQuery",
+      description:
+        "Destination name or address the user typed, when no id or coordinates are known.",
       required: false,
       schema: { type: "string" },
       subactions: ["start"],

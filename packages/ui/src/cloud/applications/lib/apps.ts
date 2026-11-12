@@ -16,6 +16,7 @@ import {
   authenticatedQueryKey,
   useAuthenticatedQueryGate,
 } from "../../lib/auth-query";
+import { deleteAppAndWait } from "./app-deletion-client";
 
 type LegacyAppDatabaseFields =
   | "user_database_status"
@@ -262,7 +263,7 @@ export async function updateApp(
 
 /** DELETE /api/v1/apps/:id — permanently delete an app. */
 export async function deleteApp(id: string): Promise<void> {
-  await api(`/api/v1/apps/${id}`, { method: "DELETE" });
+  await deleteAppAndWait(id);
 }
 
 /** POST /api/v1/apps/:id/regenerate-api-key — rotate the server-to-server key. */

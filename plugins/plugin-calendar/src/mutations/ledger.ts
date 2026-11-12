@@ -26,6 +26,7 @@ import type {
   CalendarMutationFailure,
   CalendarMutationOperation,
   CalendarMutationReceipt,
+  CalendarMutationReconciliation,
   CalendarMutationState,
 } from "./types.js";
 
@@ -715,6 +716,37 @@ async function prepareTx(
   return attempt;
 }
 
+/**
+ * Moves the approval of an unknown-outcome attempt to reconciliation_required
+ * and records the ledger attempt as its execution, so the approval queue's
+ * reconcile path can address it. Running rows carry no execution metadata:
+ * the ledger, not the generic recovery, decides what an executing row means.
+ */
+async function quarantineApprovalTx(
+  tx: TransactionalDb,
+  agentId: string,
+  attempt: CalendarMutationAttempt,
+  failure: CalendarMutationFailure,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const startedAt = attempt.lastAttemptedAt ?? now;
+  await executeRawSqlTx(
+    tx,
+    `UPDATE approval_requests
+        SET state = ${sqlText("reconciliation_required")},
+            execution_attempt_id = ${sqlText(attempt.id)},
+            execution_provider = ${sqlText(attempt.provider ?? "calendar")},
+            provider_idempotency_key = ${sqlText(attempt.operationKey)},
+            execution_claimed_at = ${sqlText(startedAt)},
+            dispatch_started_at = ${sqlText(startedAt)},
+            execution_error = ${sqlText(failure.message)},
+            updated_at = ${sqlText(now)}
+      WHERE id = ${sqlText(attempt.approvalRequestId)}
+        AND agent_id = ${sqlText(agentId)}
+        AND state = ${sqlText("executing")}`,
+  );
+}
+
 export class CalendarMutationLedger {
   private readonly sessionId: string;
 
@@ -776,18 +808,27 @@ export class CalendarMutationLedger {
 
       const now = new Date().toISOString();
       const claimToken = randomUUID();
-      const approvalState =
+      // A provider rejection leaves the approval retryable; rows written
+      // before that rule still sit in executing.
+      const approvalStates =
         attempt.state === "failed_retryable" && attempt.attemptCount > 0
-          ? "executing"
-          : "approved";
+          ? ["retryable", "executing"]
+          : ["approved"];
       const approvalRows = await executeRawSqlTx(
         tx,
         `UPDATE approval_requests
             SET state = ${sqlText("executing")},
+                execution_attempt_id = NULL,
+                execution_provider = NULL,
+                provider_idempotency_key = NULL,
+                execution_claimed_at = NULL,
+                dispatch_started_at = NULL,
+                provider_receipt = NULL,
+                execution_error = NULL,
                 updated_at = ${sqlText(now)}
           WHERE id = ${sqlText(request.id)}
             AND agent_id = ${sqlText(this.runtime.agentId)}
-            AND state = ${sqlText(approvalState)}
+            AND state IN (${approvalStates.map((state) => sqlText(state)).join(", ")})
           RETURNING id`,
       );
       if (approvalRows.length === 0) {
@@ -802,8 +843,8 @@ export class CalendarMutationLedger {
         }
         throw invariant(
           "CALENDAR_MUTATION_APPROVAL_NOT_CLAIMABLE",
-          `approval ${request.id} cannot be claimed from ${approvalState}`,
-          { requestId: request.id, expectedState: approvalState },
+          `approval ${request.id} cannot be claimed from ${approvalStates.join(" or ")}`,
+          { requestId: request.id, expectedStates: approvalStates },
         );
       }
       const rows = await executeRawSqlTx(
@@ -850,6 +891,13 @@ export class CalendarMutationLedger {
       const classified = await this.classifyExistingTx(tx, attempt);
       if (classified) return classified;
       const now = new Date().toISOString();
+      // Same states claim() accepts: a retry after a provider rejection may
+      // find its approval in retryable, or in executing on rows written
+      // before that rule.
+      const approvalStates =
+        attempt.state === "failed_retryable" && attempt.attemptCount > 0
+          ? ["retryable", "executing"]
+          : ["approved"];
       const approvals = await executeRawSqlTx(
         tx,
         `UPDATE approval_requests
@@ -860,13 +908,13 @@ export class CalendarMutationLedger {
                 updated_at = ${sqlText(now)}
           WHERE id = ${sqlText(request.id)}
             AND agent_id = ${sqlText(this.runtime.agentId)}
-            AND state = ${sqlText("approved")}
+            AND state IN (${approvalStates.map((state) => sqlText(state)).join(", ")})
           RETURNING id`,
       );
       if (approvals.length === 0) {
         throw invariant(
           "CALENDAR_MUTATION_INVALIDATION_CONFLICT",
-          `approval ${request.id} cannot be invalidated outside approved`,
+          `approval ${request.id} cannot be invalidated outside ${approvalStates.join(" or ")}`,
           { requestId: request.id, attemptId: attempt.id },
         );
       }
@@ -1031,6 +1079,17 @@ export class CalendarMutationLedger {
           { attemptId: attempt.id, state: current?.state ?? "missing" },
         );
       }
+      // Nothing was applied, so the approval may be retried or rejected.
+      await executeRawSqlTx(
+        tx,
+        `UPDATE approval_requests
+            SET state = ${sqlText("retryable")},
+                execution_error = ${sqlText(failure.message)},
+                updated_at = ${sqlText(now)}
+          WHERE id = ${sqlText(attempt.approvalRequestId)}
+            AND agent_id = ${sqlText(this.runtime.agentId)}
+            AND state = ${sqlText("executing")}`,
+      );
       return rowToAttempt(rows[0]);
     });
   }
@@ -1068,6 +1127,17 @@ export class CalendarMutationLedger {
           { attemptId: attempt.id, state: current?.state ?? "missing" },
         );
       }
+      // The approval store allows executing -> retryable -> expired, not a
+      // direct expiry of a running row; nothing was sent, so take that path.
+      await executeRawSqlTx(
+        tx,
+        `UPDATE approval_requests
+            SET state = ${sqlText("retryable")},
+                updated_at = ${sqlText(now)}
+          WHERE id = ${sqlText(attempt.approvalRequestId)}
+            AND agent_id = ${sqlText(this.runtime.agentId)}
+            AND state = ${sqlText("executing")}`,
+      );
       const approvals = await executeRawSqlTx(
         tx,
         `UPDATE approval_requests
@@ -1078,7 +1148,7 @@ export class CalendarMutationLedger {
                 updated_at = ${sqlText(now)}
           WHERE id = ${sqlText(attempt.approvalRequestId)}
             AND agent_id = ${sqlText(this.runtime.agentId)}
-            AND state = ${sqlText("executing")}
+            AND state = ${sqlText("retryable")}
           RETURNING id`,
       );
       if (approvals.length === 0) {
@@ -1096,27 +1166,155 @@ export class CalendarMutationLedger {
     attempt: CalendarMutationAttempt,
     failure: CalendarMutationFailure,
   ): Promise<CalendarMutationAttempt> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_calendar_mutation_attempts
-          SET state = ${sqlText("ambiguous")},
-              last_failure_json = ${sqlJson(failure)},
-              updated_at = ${sqlText(new Date().toISOString())}
-        WHERE id = ${sqlText(attempt.id)}
-          AND agent_id = ${sqlText(this.runtime.agentId)}
-          AND state = ${sqlText("executing")}
-          AND executor_session_id = ${sqlText(this.sessionId)}
-          AND claim_token = ${sqlText(attempt.claimToken)}
-        RETURNING ${SELECT_COLUMNS}`,
-    );
-    if (rows[0]) return rowToAttempt(rows[0]);
-    const current = await this.byApprovalRequestId(attempt.approvalRequestId);
-    if (current?.state === "ambiguous") return current;
-    throw invariant(
-      "CALENDAR_MUTATION_AMBIGUITY_PERSIST_CONFLICT",
-      `attempt ${attempt.id} cannot record ambiguity`,
-      { attemptId: attempt.id, state: current?.state ?? "missing" },
-    );
+    return withCalendarTransaction(this.runtime, async (tx) => {
+      const rows = await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_calendar_mutation_attempts
+            SET state = ${sqlText("ambiguous")},
+                last_failure_json = ${sqlJson(failure)},
+                updated_at = ${sqlText(new Date().toISOString())}
+          WHERE id = ${sqlText(attempt.id)}
+            AND agent_id = ${sqlText(this.runtime.agentId)}
+            AND state = ${sqlText("executing")}
+            AND executor_session_id = ${sqlText(this.sessionId)}
+            AND claim_token = ${sqlText(attempt.claimToken)}
+          RETURNING ${SELECT_COLUMNS}`,
+      );
+      const ambiguous = rows[0]
+        ? rowToAttempt(rows[0])
+        : await byApprovalRequestIdTx(
+            tx,
+            String(this.runtime.agentId),
+            attempt.approvalRequestId,
+          );
+      if (ambiguous?.state !== "ambiguous") {
+        throw invariant(
+          "CALENDAR_MUTATION_AMBIGUITY_PERSIST_CONFLICT",
+          `attempt ${attempt.id} cannot record ambiguity`,
+          { attemptId: attempt.id, state: ambiguous?.state ?? "missing" },
+        );
+      }
+      await quarantineApprovalTx(
+        tx,
+        String(this.runtime.agentId),
+        ambiguous,
+        ambiguous.lastFailure ?? failure,
+      );
+      return ambiguous;
+    });
+  }
+
+  /**
+   * Settles an unknown outcome on evidence from outside the ledger: an owner
+   * who checked the calendar, or a provider readback. "applied" completes the
+   * approval; with a source-bound receipt the attempt also becomes succeeded,
+   * and without one it keeps its unknown-outcome record because nothing more
+   * is claimed from a done approval. "not_applied" makes both retryable.
+   */
+  async reconcile(
+    approvalRequestId: string,
+    evidence: CalendarMutationReconciliation,
+  ): Promise<CalendarMutationAttempt> {
+    return withCalendarTransaction(this.runtime, async (tx) => {
+      const agentId = String(this.runtime.agentId);
+      const attempt = await byApprovalRequestIdTx(
+        tx,
+        agentId,
+        approvalRequestId,
+      );
+      if (attempt?.state !== "ambiguous") {
+        throw invariant(
+          "CALENDAR_MUTATION_NOT_AMBIGUOUS",
+          `approval ${approvalRequestId} has no unknown calendar outcome to reconcile`,
+          { approvalRequestId, state: attempt?.state ?? "missing" },
+        );
+      }
+      if (attempt.lastFailure) {
+        await quarantineApprovalTx(tx, agentId, attempt, attempt.lastFailure);
+      }
+      const now = new Date().toISOString();
+      const applied = evidence.outcome === "applied";
+      const receipt = applied ? evidence.receipt : null;
+      if (receipt && receipt.operation !== attempt.operation) {
+        throw invariant(
+          "CALENDAR_MUTATION_RECONCILE_RECEIPT_INVALID",
+          `receipt for ${receipt.operation} cannot settle ${attempt.operation}`,
+          { attemptId: attempt.id },
+        );
+      }
+      const approvals = await executeRawSqlTx(
+        tx,
+        `UPDATE approval_requests
+            SET state = ${sqlText(applied ? "done" : "retryable")},
+                provider_receipt = ${receipt ? sqlJson(receipt) : "provider_receipt"},
+                execution_error = ${
+                  applied
+                    ? "NULL"
+                    : sqlText("provider reconciliation confirmed non-delivery")
+                },
+                reconciliation_resolved_at = ${sqlText(now)},
+                reconciliation_resolved_by = ${sqlText(evidence.reconciledBy)},
+                reconciliation_reason = ${sqlText(evidence.reason)},
+                updated_at = ${sqlText(now)}
+          WHERE id = ${sqlText(approvalRequestId)}
+            AND agent_id = ${sqlText(agentId)}
+            AND state = ${sqlText("reconciliation_required")}
+            AND execution_attempt_id = ${sqlText(attempt.id)}
+          RETURNING id`,
+      );
+      if (approvals.length === 0) {
+        throw invariant(
+          "CALENDAR_MUTATION_RECONCILE_CONFLICT",
+          `approval ${approvalRequestId} is not awaiting reconciliation of attempt ${attempt.id}`,
+          { approvalRequestId, attemptId: attempt.id },
+        );
+      }
+      if (applied && !receipt) return attempt;
+      const rows = receipt
+        ? await executeRawSqlTx(
+            tx,
+            `UPDATE app_lifeops.life_calendar_mutation_attempts
+                SET state = ${sqlText("succeeded")},
+                    provider = ${sqlText(receipt.provider)},
+                    source_id = ${sqlText(receipt.sourceId)},
+                    calendar_id = ${sqlText(receipt.calendarId)},
+                    event_id = ${sqlText(receipt.eventId)},
+                    provider_event_id = ${sqlText(receipt.providerEventId)},
+                    provider_version = ${sqlText(receipt.providerVersion)},
+                    receipt_json = ${sqlJson(receipt)},
+                    completed_at = ${sqlText(now)},
+                    updated_at = ${sqlText(now)}
+              WHERE id = ${sqlText(attempt.id)}
+                AND agent_id = ${sqlText(agentId)}
+                AND state = ${sqlText("ambiguous")}
+              RETURNING ${SELECT_COLUMNS}`,
+          )
+        : await executeRawSqlTx(
+            tx,
+            `UPDATE app_lifeops.life_calendar_mutation_attempts
+                SET state = ${sqlText("failed_retryable")},
+                    last_failure_json = ${sqlJson({
+                      code: "CALENDAR_MUTATION_RECONCILED_NOT_APPLIED",
+                      message: evidence.reason,
+                      retryable: true,
+                    } satisfies CalendarMutationFailure)},
+                    executor_session_id = NULL,
+                    claim_token = NULL,
+                    updated_at = ${sqlText(now)}
+              WHERE id = ${sqlText(attempt.id)}
+                AND agent_id = ${sqlText(agentId)}
+                AND state = ${sqlText("ambiguous")}
+              RETURNING ${SELECT_COLUMNS}`,
+          );
+      if (!rows[0]) {
+        throw invariant(
+          "CALENDAR_MUTATION_RECONCILE_CONFLICT",
+          `attempt ${attempt.id} left ambiguous during reconciliation`,
+          { attemptId: attempt.id },
+        );
+      }
+      return rowToAttempt(rows[0]);
+    });
   }
 
   private assertBinding(
@@ -1150,6 +1348,16 @@ export class CalendarMutationLedger {
       return { kind: "already_succeeded", attempt };
     }
     if (attempt.state === "ambiguous") {
+      // Rows quarantined before the approval moved with its attempt still
+      // sit in executing; move them now so they can be reconciled.
+      if (attempt.lastFailure) {
+        await quarantineApprovalTx(
+          tx,
+          String(this.runtime.agentId),
+          attempt,
+          attempt.lastFailure,
+        );
+      }
       return { kind: "blocked", reason: "ambiguous", attempt };
     }
     if (attempt.state === "invalidated") {
@@ -1198,6 +1406,12 @@ export class CalendarMutationLedger {
         { attemptId: attempt.id },
       );
     }
+    await quarantineApprovalTx(
+      tx,
+      String(this.runtime.agentId),
+      ambiguous,
+      ambiguous.lastFailure ?? failure,
+    );
     return { kind: "blocked", reason: "ambiguous", attempt: ambiguous };
   }
 }

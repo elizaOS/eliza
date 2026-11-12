@@ -625,7 +625,8 @@ export function useShellController(): ShellController {
       // Never synthesize local bubbles: the normal conversation loader remains
       // the sole reader and deduper for saved history. Reconcile again when
       // playback starts for older gateways. That start can belong to an ACK;
-      // reply_complete is the authoritative final-history refresh. Usage stays
+      // reply_complete is the successful final-history refresh; turn_terminal
+      // refreshes a failed/silent outcome without creating a local saved bubble. Usage stays
       // a recovery refresh for gateways without that event.
       // Expiry/recovery may replace the socket before those terminal frames.
       // A newly authenticated ready boundary reloads saved history too; it must
@@ -635,6 +636,7 @@ export function useShellController(): ShellController {
         event.t !== "stt_final" &&
         event.t !== "speaking_start" &&
         event.t !== "reply_complete" &&
+        event.t !== "turn_terminal" &&
         event.t !== "usage"
       )
         return;
@@ -2140,6 +2142,15 @@ export function useShellController(): ShellController {
       return;
     }
     if (outcome.kind === "live") return;
+    if (outcome.kind === "refused") {
+      realtimeVoiceWantedRef.current = false;
+      realtimeVoiceWasActiveRef.current = false;
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      return;
+    }
     const message = describeRealtimeVoiceFailure(
       outcome,
       realtimeVoiceRef.current.error?.message || null,
@@ -2243,6 +2254,15 @@ export function useShellController(): ShellController {
   }, [realtimeVoice.active]);
   React.useEffect(() => {
     if (!realtimeVoiceSelected) return;
+    if (realtimeVoice.refused) {
+      realtimeVoiceWasActiveRef.current = false;
+      realtimeVoiceWantedRef.current = false;
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      return;
+    }
     if (!realtimeVoice.error) return;
     if (realtimeVoice.active || realtimeVoice.connecting) return;
     if (!realtimeVoiceWasActiveRef.current) return;
@@ -2256,6 +2276,7 @@ export function useShellController(): ShellController {
   }, [
     realtimeVoiceSelected,
     realtimeVoice.error,
+    realtimeVoice.refused,
     realtimeVoice.active,
     realtimeVoice.connecting,
     setActionNotice,

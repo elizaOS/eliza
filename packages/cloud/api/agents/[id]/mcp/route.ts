@@ -39,9 +39,7 @@ import {
 } from "@elizaos/cloud-shared/lib/providers/language-model";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
-import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -229,44 +227,9 @@ app.post("/", async (c) => {
       rateLimitEndpoint: "standard",
       deferStrongCredentialCheck: true,
     });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const characterResolution = executionCtx
-      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-      : {
-          kind: "ready" as const,
-          character: (await charactersService.getById(id)) ?? null,
-        };
-    if (characterResolution.kind !== "ready") {
-      // Confirm only the negative cold-cache case. Existing agents remain
-      // fail-closed until their cached character is ready for inference.
-      if (!(await charactersService.getById(id))) {
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32001, message: "Agent not found" },
-            id: null,
-          },
-          404,
-        );
-      }
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Agent cache is warming; retry shortly",
-          },
-          id: null,
-        },
-        503,
-      );
-    }
-    const character = characterResolution.character;
+    const character = (await charactersService.getById(id)) ?? null;
     if (!character) {
       return c.json(
         {
@@ -370,8 +333,6 @@ app.post("/", async (c) => {
             organization_id: caller.user.organization_id,
             apiKeyId: caller.apiKeyId,
             admissionSnapshot: caller.admissionSnapshot,
-            credentialForAdmission: () =>
-              credentialGuard.credentialForAdmission(),
             executionCtx,
           }),
         );
@@ -416,7 +377,6 @@ export async function handleToolCall(
     organization_id: string;
     apiKeyId?: string | null;
     admissionSnapshot?: InferenceAdmissionSnapshot;
-    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   },
 ): Promise<Response> {
@@ -525,7 +485,6 @@ export async function handleToolCall(
         },
         executionCtx: authUser.executionCtx,
         admissionSnapshot: authUser.admissionSnapshot,
-        credential: authUser.credentialForAdmission?.(),
         atomicProviderBoundary: Boolean(authUser.executionCtx),
       });
     } catch (error) {

@@ -1,5 +1,5 @@
 import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
-import { requestBionicHost } from "./bionic-host-request.js";
+import { abortError, requestBionicHost } from "./bionic-host-request.js";
 /**
  * Stock Capacitor mobile local-inference bridge.
  *
@@ -42,6 +42,7 @@ import {
   MobileDeviceBridgeService,
   type MobileDeviceBridgeStatus,
   ModelType,
+  NoModelProviderConfiguredError,
   type Plugin,
   type PreparedModelRequestGuard,
   resolveBackgroundInferenceBudget,
@@ -70,6 +71,11 @@ const LOCAL_INFERENCE_PRIORITY = 0;
 const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600000;
 const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
+// A registered device that sends nothing (not even a pong) for this many
+// heartbeat intervals is treated as gone: its socket is closed and its
+// outstanding requests fail now instead of at the 10-minute RPC deadline.
+const MAX_MISSED_HEARTBEATS = 3;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 /**
  * Constant-time pairing-token comparison (W1-011). Callers fail closed when
@@ -95,6 +101,8 @@ const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
  * registerMobileDeviceBridgeModels, never by mere plugin presence.
  */
 let registeredModelTrigger: "bionic-host" | "device-bridge" | null = null;
+/** True once that registration bound the TEXT_SMALL/TEXT_LARGE handlers. */
+let registeredTextHandlers = false;
 // Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
 // catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
 // window; omitting a drafter path would select the retired same-file path.
@@ -447,6 +455,7 @@ class MobileDeviceBridge {
   private loadTimeoutMs: number = DEFAULT_LOAD_TIMEOUT_MS;
   private generateTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
   private embedTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
+  private heartbeatIntervalMs: number = DEFAULT_HEARTBEAT_INTERVAL_MS;
   status(): MobileDeviceBridgeStatus {
     const devices = [...this.devices.values()].map((device) => ({
       deviceId: device.deviceId,
@@ -495,6 +504,10 @@ class MobileDeviceBridge {
     this.embedTimeoutMs = resolveTimeoutMs(
       "ELIZA_DEVICE_EMBED_TIMEOUT_MS",
       DEFAULT_CALL_TIMEOUT_MS,
+    );
+    this.heartbeatIntervalMs = resolveTimeoutMs(
+      "ELIZA_DEVICE_HEARTBEAT_INTERVAL_MS",
+      DEFAULT_HEARTBEAT_INTERVAL_MS,
     );
     const serverCloseHandler = () => {
       // error-policy:J6 the server close is already committed; transport
@@ -574,6 +587,7 @@ class MobileDeviceBridge {
       return;
     }
     let registeredDeviceId: string | null = null;
+    let missedHeartbeats = 0;
     socket.on("message", (raw) => {
       let msg: DeviceOutbound;
       try {
@@ -583,6 +597,7 @@ class MobileDeviceBridge {
         logger.warn("[mobile-device-bridge] Ignoring non-JSON frame");
         return;
       }
+      missedHeartbeats = 0;
       if (!registeredDeviceId) {
         if (msg.type !== "register") {
           socket.close(4002, "must-register-first");
@@ -629,6 +644,12 @@ class MobileDeviceBridge {
       const current = this.devices.get(registeredDeviceId);
       if (current?.socket === socket) {
         this.devices.delete(registeredDeviceId);
+        this.rejectDevicePending(
+          registeredDeviceId,
+          new Error(
+            `DEVICE_DISCONNECTED: device ${registeredDeviceId} disconnected`,
+          ),
+        );
         logger.info(
           `[mobile-device-bridge] Device disconnected: ${registeredDeviceId}`,
         );
@@ -639,12 +660,18 @@ class MobileDeviceBridge {
     });
     const heartbeat = setInterval(() => {
       if (!registeredDeviceId || socket.readyState !== WsCtor.OPEN) return;
+      if (missedHeartbeats >= MAX_MISSED_HEARTBEATS) {
+        clearInterval(heartbeat);
+        this.evictUnresponsiveDevice(registeredDeviceId, socket);
+        return;
+      }
+      missedHeartbeats += 1;
       try {
         socket.send(JSON.stringify({ type: "ping", at: Date.now() }));
       } catch {
         clearInterval(heartbeat);
       }
-    }, 15000);
+    }, this.heartbeatIntervalMs);
     if (typeof heartbeat === "object" && "unref" in heartbeat) {
       (
         heartbeat as {
@@ -742,6 +769,51 @@ class MobileDeviceBridge {
   private primaryDevice(): ConnectedDevice | null {
     return this.devices.values().next().value ?? null;
   }
+  private evictUnresponsiveDevice(
+    deviceId: string,
+    socket: MinimalWebSocket,
+  ): void {
+    logger.warn(
+      `[mobile-device-bridge] Closing device ${deviceId}: no reply to ${MAX_MISSED_HEARTBEATS} heartbeats`,
+    );
+    if (this.devices.get(deviceId)?.socket === socket) {
+      this.devices.delete(deviceId);
+      this.rejectDevicePending(
+        deviceId,
+        new Error(
+          `DEVICE_DISCONNECTED: device ${deviceId} stopped answering heartbeats`,
+        ),
+      );
+    }
+    try {
+      if (socket.terminate) socket.terminate();
+      else socket.close(4008, "heartbeat-timeout");
+    } catch (error) {
+      // error-policy:J6 the device is already evicted and its requests
+      // rejected; a failed transport close only leaves a dead socket behind.
+      logger.warn(
+        "[mobile-device-bridge] Failed to close unresponsive device socket:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  private rejectDevicePending(deviceId: string, error: Error): void {
+    const maps: Map<string, Pending<never>>[] = [
+      this.pendingLoads,
+      this.pendingUnloads,
+      this.pendingGenerates,
+      this.pendingEmbeds,
+      this.pendingFormatChats,
+    ] as Map<string, Pending<never>>[];
+    for (const pending of maps) {
+      for (const [correlationId, item] of pending) {
+        if (item.routedDeviceId !== deviceId) continue;
+        clearTimeout(item.timeout);
+        pending.delete(correlationId);
+        item.reject(error);
+      }
+    }
+  }
   private rejectPending<T>(
     pending: Map<string, Pending<T>>,
     error: Error,
@@ -792,6 +864,7 @@ class MobileDeviceBridge {
     this.sockets.clear();
     this.devices.clear();
     registeredModelTrigger = null;
+    registeredTextHandlers = false;
     const wss = this.wss;
     this.wss = null;
     if (wss) {
@@ -1137,11 +1210,13 @@ function resolveGemmaDrafterPath(
   }
   return null;
 }
+/** First chat GGUF in models/; the pinned BGE encoder is never a chat model. */
 function resolveFirstGguf(): string | null {
   const dir = modelsDir();
   if (!existsSync(dir)) return null;
   for (const name of readdirSync(dir)) {
     if (!name.toLowerCase().endsWith(".gguf")) continue;
+    if (name === BGE_EMBEDDING_MODEL.filename) continue;
     const absolute = path.join(dir, name);
     if (existsSync(absolute)) return absolute;
   }
@@ -1429,48 +1504,84 @@ function resolveEmbeddingDimension(): number {
 // role labels (`role:\ncontent`) — hardcoding Llama-3 special tokens here
 // breaks non-Llama GGUFs, including current Gemma 4 Eliza-1 bundles whose
 // templates may not use Llama-style turn markers.
-// (#7612). When params include a legacy `prompt`, pass it through unchanged.
+// (#7612). A legacy `prompt` passes through unchanged unless a system prompt
+// is also set, in which case both become role turns.
 function flattenChatParamsForPrompt(params: GenerateTextParams): string {
-  if (typeof params.prompt === "string" && params.prompt.length > 0) {
-    return params.prompt;
-  }
-  const messages = params.messages ?? [];
-  const blocks: string[] = [];
-  const hasSystemMessage = messages.some(
-    (m: { role?: string }) => m.role === "system",
+  const hasPrompt =
+    typeof params.prompt === "string" && params.prompt.length > 0;
+  if (hasPrompt && !params.system) return params.prompt as string;
+  const blocks = (chatParamsToTurns(params) ?? []).map(
+    (turn) => `${turn.role}:\n${turn.content}`,
   );
-  if (!hasSystemMessage && typeof params.system === "string" && params.system) {
-    blocks.push(`system:\n${params.system}`);
-  }
-  for (const m of messages) {
-    const content =
-      typeof (
-        m as {
-          content?: unknown;
-        }
-      ).content === "string"
-        ? (
-            m as {
-              content: string;
-            }
-          ).content
-        : "";
-    if (!content) continue;
-    const role = (
-      (
-        m as {
-          role?: string;
-        }
-      ).role ?? "user"
-    ).toLowerCase();
-    const safeRole =
-      role === "system" || role === "assistant" || role === "user"
-        ? role
-        : "user";
-    blocks.push(`${safeRole}:\n${content}`);
-  }
   blocks.push("assistant:");
   return blocks.join("\n\n");
+}
+type PromptTurn = { role: "system" | "user" | "assistant"; content: string };
+/** Text of a chat message: the string itself, or the text parts of a part array. */
+function chatMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      part &&
+      typeof part === "object" &&
+      typeof (part as { text?: unknown }).text === "string"
+        ? (part as { text: string }).text
+        : "",
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+/**
+ * The conversation as role turns for the local templates. `params.system`
+ * becomes a system turn unless a system message is present, also for a plain
+ * prompt. Tool results become user turns labelled "Tool result:". A plain
+ * prompt with no system text returns null so callers can pass it through.
+ */
+function chatParamsToTurns(params: GenerateTextParams): PromptTurn[] | null {
+  const messages = params.messages ?? [];
+  const system =
+    typeof params.system === "string" && params.system.trim()
+      ? params.system.trim()
+      : "";
+  if (messages.length === 0) {
+    if (typeof params.prompt !== "string" || !params.prompt) return null;
+    const labeled = collectRoleLabeledPromptMessages(params.prompt, system);
+    if (labeled) return labeled as PromptTurn[];
+    return system
+      ? [
+          { role: "system", content: system },
+          { role: "user", content: params.prompt },
+        ]
+      : null;
+  }
+  const turns: PromptTurn[] = [];
+  if (system && !messages.some((m: { role?: string }) => m.role === "system")) {
+    turns.push({ role: "system", content: system });
+  }
+  let sawText = false;
+  for (const m of messages) {
+    const text = chatMessageText((m as { content?: unknown }).content);
+    if (!text) continue;
+    sawText = true;
+    const role = String((m as { role?: string }).role ?? "user").toLowerCase();
+    if (role === "system" || role === "developer") {
+      turns.push({ role: "system", content: text });
+    } else if (role === "assistant") {
+      turns.push({ role: "assistant", content: text });
+    } else if (role === "tool") {
+      turns.push({ role: "user", content: `Tool result:\n${text}` });
+    } else {
+      turns.push({ role: "user", content: text });
+    }
+  }
+  if (!sawText) {
+    throw new ElizaError("The chat messages contain no text to send", {
+      code: "MODEL_INPUT_EMPTY",
+      context: { messageCount: messages.length },
+    });
+  }
+  return turns;
 }
 // ── Bionic-host GPU delegation (abstract-namespace UDS) ────────────────────
 // When the dynamic-Vulkan fused lib is staged, the GPU is reachable only from
@@ -1479,28 +1590,43 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 // (which can't reach Vulkan and adds a pairing-token hop). The wire framing
 // matches ElizaBionicInferenceServer.java + BionicHostLoader.ts:
 // [int32 BE length][UTF-8 JSON] each direction.
-// The bionic host does a SINGLE blocking generate per call (no streaming), so
-// the whole decode must finish inside this window. On a CPU-only build (the
-// Vulkan lib isn't staged) a small model runs at only a few tok/s, so a longer
-// reply (~200+ tokens) can exceed a 120s window and surface as a bionic-host
-// timeout with an empty/failed turn. Default to 300s (the other native
-// device-bridge ops already use 600s) and let it be tuned via env for slower
-// devices.
+// Buffered ops (generate, embed, image) get one total deadline. A streamed
+// generate gets the same total bound plus an idle bound that every token frame
+// re-arms, so a slow but productive decode finishes while a silent host fails
+// early. The total defaults to ELIZA_BIONIC_REQUEST_TIMEOUT_MS, then to
+// ELIZA_DEVICE_GENERATE_TIMEOUT_MS (which ElizaAgentService sizes for the
+// device), then to 600s. The idle bound also covers prompt prefill before the
+// first token, so it defaults to 300s.
 // Resolved lazily (not at module evaluation) and memoized on first real use,
-// so a malformed ELIZA_BIONIC_REQUEST_TIMEOUT_MS only fails when the bionic
-// generate path actually runs, not on every import of this module regardless
-// of whether the bionic host is even enabled.
+// so a malformed value only fails when the bionic path actually runs, not on
+// every import of this module regardless of whether the bionic host is even
+// enabled.
 let cachedBionicRequestTimeoutMs: number | undefined;
 function getBionicRequestTimeoutMs(): number {
   if (cachedBionicRequestTimeoutMs === undefined) {
     cachedBionicRequestTimeoutMs = resolveTimeoutMs(
       "ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
-      300000,
+      resolveTimeoutMs(
+        "ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
+        DEFAULT_NATIVE_REQUEST_TIMEOUT_MS,
+      ),
     );
   }
   return cachedBionicRequestTimeoutMs;
 }
+let cachedBionicStreamIdleTimeoutMs: number | undefined;
+function getBionicStreamIdleTimeoutMs(): number {
+  if (cachedBionicStreamIdleTimeoutMs === undefined) {
+    cachedBionicStreamIdleTimeoutMs = resolveTimeoutMs(
+      "ELIZA_BIONIC_STREAM_IDLE_TIMEOUT_MS",
+      300000,
+    );
+  }
+  return cachedBionicStreamIdleTimeoutMs;
+}
 const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
+/** ElizaBionicInferenceServer.MAX_PAYLOAD_FRAME_BYTES: the host's cap on an image request. */
+const BIONIC_PAYLOAD_FRAME_LIMIT_BYTES = 16 * 1024 * 1024;
 interface BionicGenerateResponse {
   ok: boolean;
   text?: string;
@@ -1650,45 +1776,80 @@ function collectChatMlPromptMessages(
   }
   return result.length > 0 ? result : null;
 }
-function renderGemmaPromptMessages(
+/**
+ * One piece of a bionic prompt. The host tokenizes `special` segments with
+ * control-token parsing and every other segment as plain text, so message
+ * content can never forge a turn marker.
+ */
+export interface BionicPromptSegment {
+  text: string;
+  special: boolean;
+}
+function renderGemmaPromptSegments(
   messages: Array<{
     role: string;
     content: string;
   }>,
-): string {
-  let out = "";
+): BionicPromptSegment[] {
+  const segments: BionicPromptSegment[] = [];
+  const marker = (text: string) => {
+    const last = segments[segments.length - 1];
+    if (last?.special) last.text += text;
+    else segments.push({ text, special: true });
+  };
   for (const m of messages) {
     const content = m.content.trim();
     if (!content) continue;
-    out += `<|turn>${roleForGemmaPrompt(m.role)}\n${content}<turn|>\n`;
+    marker(`<|turn>${roleForGemmaPrompt(m.role)}\n`);
+    segments.push({ text: content, special: false });
+    marker("<turn|>\n");
   }
-  return `${out}<|turn>model\n`;
+  marker("<|turn>model\n");
+  return segments;
 }
 
-/** Gemma 4 framing from the shipped GGUF chat template. Older Gemma turn
- * markers tokenize as ordinary text with this model and must not be rendered. */
-export function buildGemmaBionicPrompt(params: GenerateTextParams): string {
+/**
+ * Gemma 4 framing from the shipped GGUF chat template, as segments. Older
+ * Gemma turn markers tokenize as ordinary text with this model and must not be
+ * rendered. A caller's prompt is always content; only `preFramed` (internal
+ * callers that built the markers themselves) sends it as template text.
+ */
+export function buildGemmaBionicPromptSegments(
+  params: GenerateTextParams,
+  options: { preFramed?: boolean } = {},
+): BionicPromptSegment[] {
   const prompt = typeof params.prompt === "string" ? params.prompt : "";
-  // If the caller already handed us a complete Gemma prompt, use it verbatim.
-  if (prompt.includes("<|turn>") && prompt.includes("<|turn>model")) {
-    return prompt;
-  }
+  if (options.preFramed && prompt) return [{ text: prompt, special: true }];
   const msgs = prompt.includes("<|im_start|>")
     ? collectChatMlPromptMessages(prompt, params.system)
     : collectMessagesForNativeTemplate(params);
   if (!msgs || msgs.length === 0) {
-    return `<|turn>user\n${flattenChatParamsForPrompt(params).trim()}<turn|>\n<|turn>model\n`;
+    return renderGemmaPromptSegments([
+      { role: "user", content: flattenChatParamsForPrompt(params) },
+    ]);
   }
-  return renderGemmaPromptMessages(msgs);
+  return renderGemmaPromptSegments(msgs);
+}
+
+/** {@link buildGemmaBionicPromptSegments} joined into one string. */
+export function buildGemmaBionicPrompt(
+  params: GenerateTextParams,
+  options: { preFramed?: boolean } = {},
+): string {
+  return buildGemmaBionicPromptSegments(params, options)
+    .map((segment) => segment.text)
+    .join("");
 }
 function bionicHostGenerate(
   socketName: string,
   request: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<BionicGenerateResponse> {
   return requestBionicHost(
     socketName,
     request,
     getBionicRequestTimeoutMs(),
+    signal,
   ) as Promise<BionicGenerateResponse>;
 }
 /**
@@ -1698,33 +1859,70 @@ function bionicHostGenerate(
  * terminal {type:"done",ok,tokens,ms,tokS,text} frame, which resolves the
  * buffered final result. Lets the chat SSE render tokens as the GPU host decodes
  * them (first paint at the first token) instead of waiting for the whole reply.
+ *
+ * Tokens are delivered in order, one callback at a time; a callback that throws
+ * or rejects fails the stream. Aborting `signal` closes the connection, and the
+ * host stops decoding at its next frame write.
  */
 function bionicHostGenerateStream(
   socketName: string,
   request: Record<string, unknown>,
-  onToken: (text: string) => void,
+  onToken: (text: string) => void | Promise<void>,
+  signal?: AbortSignal,
 ): Promise<BionicGenerateResponse> {
   const payload = Buffer.from(JSON.stringify(request), "utf8");
   const frame = Buffer.allocUnsafe(4 + payload.length);
   frame.writeUInt32BE(payload.length, 0);
   payload.copy(frame, 4);
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError(signal));
+      return;
+    }
     const sock = net.connect({ path: `\0${socketName}` });
     let settled = false;
     let chunks = Buffer.alloc(0);
+    let delivery: Promise<void> = Promise.resolve();
+    let terminal = false;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (err: Error | null, value?: BionicGenerateResponse) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(totalTimer);
+      clearTimeout(idleTimer);
+      signal?.removeEventListener("abort", onAbort);
       sock.destroy();
       err ? reject(err) : resolve(value as BionicGenerateResponse);
     };
-    const timer = setTimeout(
+    const onAbort = () => finish(abortError(signal));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const idleTimeoutMs = getBionicStreamIdleTimeoutMs();
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(
+        () =>
+          finish(
+            new Error(
+              `[mobile-device-bridge] bionic host sent nothing for ${idleTimeoutMs}ms`,
+            ),
+          ),
+        idleTimeoutMs,
+      );
+    };
+    const totalTimer = setTimeout(
       () => finish(new Error("[mobile-device-bridge] bionic host timed out")),
       getBionicRequestTimeoutMs(),
     );
+    armIdle();
+    const deliver = (text: string) => {
+      delivery = delivery.then(() => onToken(text));
+      delivery.catch((err: unknown) =>
+        finish(err instanceof Error ? err : new Error(String(err))),
+      );
+    };
     sock.on("connect", () => sock.write(frame));
     sock.on("data", (d: Buffer) => {
+      if (terminal) return;
       chunks = Buffer.concat([chunks, d]);
       // Drain every complete frame currently buffered (>=1 per data event).
       for (;;) {
@@ -1754,11 +1952,18 @@ function bionicHostGenerateStream(
           return;
         }
         if (msg.type === "token") {
-          if (typeof msg.text === "string" && msg.text) onToken(msg.text);
+          armIdle();
+          if (typeof msg.text === "string" && msg.text) deliver(msg.text);
           continue;
         }
-        // Terminal {type:"done"} frame (or any non-token frame) ends the stream.
-        finish(null, msg);
+        // Terminal {type:"done"} frame (or any non-token frame) ends the
+        // stream once every earlier token has been delivered.
+        terminal = true;
+        clearTimeout(idleTimer);
+        delivery.then(
+          () => finish(null, msg),
+          () => undefined,
+        );
         return;
       }
     });
@@ -1768,7 +1973,7 @@ function bionicHostGenerateStream(
       ),
     );
     sock.on("close", () => {
-      if (!settled)
+      if (!settled && !terminal)
         finish(new Error("[mobile-device-bridge] bionic host closed early"));
     });
   });
@@ -1826,21 +2031,25 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
     const bionicSock = bionicSocketName();
     if (bionicSock) {
       const installed = resolveLocalLoadArgs(slot);
+      // The host tokenizes each segment on its own, template markers with
+      // control-token parsing and message content without it.
+      const promptSegments = buildGemmaBionicPromptSegments(params);
+      const promptText = promptSegments.map((segment) => segment.text).join("");
       const lane = resolveMobileLaneBudget(
         priority,
-        buildGemmaBionicPrompt(params),
+        promptText,
         params.maxTokens,
       );
       const baseRequest: {
         bundleDir: string;
         drafterPath: string;
-        prompt: string;
+        promptSegments: BionicPromptSegment[];
         maxTokens?: number;
         stopSequences: string[];
       } = {
         bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
         drafterPath: installed?.draftModelPath ?? "",
-        prompt: lane.prompt,
+        promptSegments,
         stopSequences: resolveBionicStopSequences(params.stopSequences),
         // Omit an absent limit from the wire request: the native host owns its
         // model capacity (mirrors the canonical BionicHostLoader contract in
@@ -1893,11 +2102,16 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
           // streaming knee (8) when the agent-side knob is unset.
           let accumulated = "";
           return typeof onChunk === "function"
-            ? bionicHostGenerateStream(bionicSock, wireRequest, (text) => {
-                accumulated += text;
-                void onChunk(text, undefined, accumulated);
-              })
-            : bionicHostGenerate(bionicSock, wireRequest);
+            ? bionicHostGenerateStream(
+                bionicSock,
+                wireRequest,
+                async (text) => {
+                  accumulated += text;
+                  await onChunk(text, undefined, accumulated);
+                },
+                params.signal,
+              )
+            : bionicHostGenerate(bionicSock, wireRequest, params.signal);
         },
       );
       if (!res.ok) {
@@ -1905,12 +2119,16 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
           `[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
         );
       }
-      if (
-        res.incomplete === true ||
-        (typeof res.tokens === "number" &&
-          typeof baseRequest.maxTokens === "number" &&
-          res.tokens >= baseRequest.maxTokens)
-      ) {
+      // The host's own receipt is authoritative: a reply that stopped on its
+      // last allowed token is complete. Only an older host that omits it is
+      // judged by its token count.
+      const incomplete =
+        typeof res.incomplete === "boolean"
+          ? res.incomplete
+          : typeof res.tokens === "number" &&
+            typeof baseRequest.maxTokens === "number" &&
+            res.tokens >= baseRequest.maxTokens;
+      if (incomplete) {
         throw new ElizaError(
           "Bionic local model output reached the decode boundary before a stop condition",
           {
@@ -1932,6 +2150,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
     }
     // Device-bridge (renderer WebSocket) path: needs a real on-device model
     // file to load + format-chat against, so resolve (with auto-download) here.
+    assertDeviceBridgeAttached(slot);
     const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
     if (!loadArgs) {
       throw new Error(
@@ -1984,57 +2203,26 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
     );
   };
 }
+/**
+ * The handlers stay registered after the device leaves, so with no device they
+ * fail the way an unregistered provider does and chat shows the provider hint.
+ */
+function assertDeviceBridgeAttached(slot: string): void {
+  if (mobileDeviceBridge.status().connected) return;
+  throw new NoModelProviderConfiguredError(
+    `No provider registered for ${slot}: no Capacitor llama device bridge is attached.`,
+  );
+}
 // Reshape `params` into the `[{role, content}, ...]` list the native
-// `getFormattedChat` call expects. Returns null if `params.messages` is
-// empty (caller falls back to plain-text flatten).
+// `getFormattedChat` call expects. Returns null for a plain prompt with no
+// system text (caller passes it through unchanged).
 function collectMessagesForNativeTemplate(params: GenerateTextParams):
   | {
       role: string;
       content: string;
     }[]
   | null {
-  const messages = params.messages ?? [];
-  if (messages.length === 0 && typeof params.prompt === "string") {
-    return collectRoleLabeledPromptMessages(params.prompt, params.system);
-  }
-  const result: {
-    role: string;
-    content: string;
-  }[] = [];
-  const hasSystemMessage = messages.some(
-    (m: { role?: string }) => m.role === "system",
-  );
-  if (!hasSystemMessage && typeof params.system === "string" && params.system) {
-    result.push({ role: "system", content: params.system });
-  }
-  for (const m of messages) {
-    const content =
-      typeof (
-        m as {
-          content?: unknown;
-        }
-      ).content === "string"
-        ? (
-            m as {
-              content: string;
-            }
-          ).content
-        : "";
-    if (!content) continue;
-    const role = (
-      (
-        m as {
-          role?: string;
-        }
-      ).role ?? "user"
-    ).toLowerCase();
-    const safeRole =
-      role === "system" || role === "assistant" || role === "user"
-        ? role
-        : "user";
-    result.push({ role: safeRole, content });
-  }
-  return result.length > 0 ? result : null;
+  return chatParamsToTurns(params);
 }
 function collectRoleLabeledPromptMessages(
   prompt: string,
@@ -2150,6 +2338,7 @@ function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
       if (!admitted && readiness === pending) readiness = undefined;
     }
     assertEnabled();
+    if (!bionicSocketName()) assertDeviceBridgeAttached("TEXT_EMBEDDING");
     let loadArgs: LocalInferenceLoadArgs | null =
       resolveLocalLoadArgs("TEXT_EMBEDDING");
     let modelPath = loadArgs?.modelPath ?? null;
@@ -2214,10 +2403,11 @@ export interface MobileDeviceBridgeServingStatus {
   /** Which path bound the capacitor-llama handlers (null = not registered). */
   registeredTrigger: "bionic-host" | "device-bridge" | null;
   /**
-   * True ONLY when the handlers were bound via the in-process bionic host
-   * AND its abstract UDS accepts a connection right now — i.e. the host can
-   * actually serve a generate/embed call (#11498). Never true from mere
-   * plugin presence or env configuration alone.
+   * True ONLY when the TEXT handlers were bound via the in-process bionic host
+   * (which happens only when the host reports a text model, or is too old to
+   * report) AND its abstract UDS accepts a connection right now (#11498).
+   * Never true from mere plugin presence, env configuration, or a host that
+   * serves only embeddings or speech.
    */
   bionicHostServing: boolean;
 }
@@ -2246,6 +2436,52 @@ function probeBionicHostSocket(socketName: string): Promise<boolean> {
     sock.on("error", () => finish(false));
   });
 }
+/** What the bionic host can serve, from its bundle's files (op="capabilities"). */
+export interface BionicHostCapabilities {
+  text: boolean;
+  embedding: boolean;
+  vision: boolean;
+  asr: boolean;
+  tts: boolean;
+}
+/**
+ * Ask the host what its bundle holds, without loading a model. An installed
+ * chat model's bundle is checked when one exists, since generate sends it.
+ * Returns null when the host predates the op or cannot answer.
+ */
+async function queryBionicHostCapabilities(
+  socketName: string,
+): Promise<BionicHostCapabilities | null> {
+  const installed = resolveLocalLoadArgs("TEXT_LARGE");
+  const bundleDir = installed ? deriveBionicBundleDir(installed.modelPath) : "";
+  let res: { ok?: unknown; capabilities?: unknown; error?: unknown };
+  try {
+    res = (await requestBionicHost(
+      socketName,
+      { op: "capabilities", bundleDir },
+      getBionicProbeTimeoutMs(),
+    )) as typeof res;
+  } catch (err) {
+    logger.warn(
+      `[mobile-device-bridge] bionic host capabilities unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+  const caps = res?.capabilities as Record<string, unknown> | undefined;
+  if (res?.ok !== true || !caps || typeof caps.text !== "boolean") {
+    logger.warn(
+      `[mobile-device-bridge] bionic host did not report capabilities (${typeof res?.error === "string" ? res.error : "no answer"}); registering every handler`,
+    );
+    return null;
+  }
+  return {
+    text: caps.text,
+    embedding: caps.embedding === true,
+    vision: caps.vision === true,
+    asr: caps.asr === true,
+    tts: caps.tts === true,
+  };
+}
 /**
  * The true "in-process bionic host can serve" signal for readiness surfaces
  * (GET /api/local-inference/providers → capacitor-llama.servingVia). The
@@ -2256,6 +2492,7 @@ export async function getMobileDeviceBridgeServingStatus(): Promise<MobileDevice
   const socketName = bionicSocketName();
   const bionicHostServing =
     registeredModelTrigger === "bionic-host" &&
+    registeredTextHandlers &&
     socketName !== null &&
     (await probeBionicHostSocket(socketName));
   return { registeredTrigger: registeredModelTrigger, bionicHostServing };
@@ -2307,7 +2544,10 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
     if (registeredRuntimes.delete(runtime)) {
       registeredRuntimeCount = Math.max(0, registeredRuntimeCount - 1);
     }
-    if (registeredRuntimeCount === 0) registeredModelTrigger = null;
+    if (registeredRuntimeCount === 0) {
+      registeredModelTrigger = null;
+      registeredTextHandlers = false;
+    }
   }
 }
 /**
@@ -2395,13 +2635,26 @@ function makeBionicImageDescriptionHandler() {
     const prompt =
       typeof params === "object" && params ? params.prompt : undefined;
     const imageBase64 = await imageUrlToBase64(url);
-    const res = await bionicHostGenerate(socketName, {
+    const request = {
       op: "image",
       bundleDir: "",
       imageBase64,
       mmprojPath: "",
       prompt: prompt ?? "",
-    });
+    };
+    // The host drops a larger frame unread. The agent has no image codec to
+    // shrink it, so refuse it here with the limit in the error.
+    const byteLength = Buffer.byteLength(JSON.stringify(request), "utf8");
+    if (byteLength > BIONIC_PAYLOAD_FRAME_LIMIT_BYTES) {
+      throw new ElizaError(
+        `Image is too large for on-device description (limit ${BIONIC_PAYLOAD_FRAME_LIMIT_BYTES} bytes per request)`,
+        {
+          code: "IMAGE_TOO_LARGE",
+          context: { byteLength, limitBytes: BIONIC_PAYLOAD_FRAME_LIMIT_BYTES },
+        },
+      );
+    }
+    const res = await bionicHostGenerate(socketName, request);
     if (!res.ok) {
       throw new Error(
         `[mobile-device-bridge] bionic image describe failed: ${res.error ?? "unknown error"}`,
@@ -2431,6 +2684,7 @@ function makeBionicImageDescriptionHandler() {
 function registerMobileDeviceBridgeModels(
   runtime: AgentRuntime,
   trigger: "bionic-host" | "device-bridge",
+  hostCapabilities: BionicHostCapabilities | null = null,
 ): boolean {
   if (registeredRuntimes.has(runtime)) {
     logger.debug("[mobile-device-bridge] Handlers already registered");
@@ -2446,23 +2700,32 @@ function registerMobileDeviceBridgeModels(
     );
     return false;
   }
-  runtimeWithRegistration.registerModel(
-    ModelType.TEXT_SMALL,
-    makeGenerateHandler("TEXT_SMALL"),
-    PROVIDER,
-    LOCAL_INFERENCE_PRIORITY,
-  );
-  runtimeWithRegistration.registerModel(
-    ModelType.TEXT_LARGE,
-    makeGenerateHandler("TEXT_LARGE"),
-    PROVIDER,
-    LOCAL_INFERENCE_PRIORITY,
-  );
+  // A bionic host that reports no text model must not own the TEXT slots:
+  // chat then fails as "no provider" instead of on a missing GGUF. A host too
+  // old to report (null) keeps the earlier always-register behaviour.
+  const serveText = hostCapabilities?.text ?? true;
+  const registered: string[] = [];
+  if (serveText) {
+    runtimeWithRegistration.registerModel(
+      ModelType.TEXT_SMALL,
+      makeGenerateHandler("TEXT_SMALL"),
+      PROVIDER,
+      LOCAL_INFERENCE_PRIORITY,
+    );
+    runtimeWithRegistration.registerModel(
+      ModelType.TEXT_LARGE,
+      makeGenerateHandler("TEXT_LARGE"),
+      PROVIDER,
+      LOCAL_INFERENCE_PRIORITY,
+    );
+    registered.push("TEXT_SMALL", "TEXT_LARGE");
+  }
   // Pre-warm the chat-model download in the background so the user
   // doesn't pay the multi-hundred-MB latency on their first turn. Same
   // idempotency guard inside downloadRecommendedModelFor() prevents a
   // duplicate fetch if a real generate() call races us.
   if (
+    serveText &&
     !resolveLocalLoadArgs("TEXT_SMALL") &&
     process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
   ) {
@@ -2483,6 +2746,7 @@ function registerMobileDeviceBridgeModels(
       PROVIDER,
       LOCAL_INFERENCE_PRIORITY,
     );
+    registered.push("TEXT_EMBEDDING");
   }
   // On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
   // bionic host op="image" so the GET_SCREEN describe loop runs on the GPU
@@ -2490,18 +2754,26 @@ function registerMobileDeviceBridgeModels(
   // delegation is active; the handler self-checks the socket and throws
   // cleanly otherwise (so a non-bionic build just falls through to the next
   // registered provider).
-  if (bionicSocketName()) {
+  if (bionicSocketName() && (hostCapabilities?.vision ?? true)) {
     runtimeWithRegistration.registerModel(
       ModelType.IMAGE_DESCRIPTION,
       makeBionicImageDescriptionHandler(),
       PROVIDER,
       LOCAL_INFERENCE_PRIORITY,
     );
-    logger.info(
-      "[mobile-device-bridge] Registered bionic IMAGE_DESCRIPTION handler (op=image)",
+    registered.push("IMAGE_DESCRIPTION");
+  }
+  let embeddingModelPath: string | null = null;
+  try {
+    embeddingModelPath =
+      resolveLocalLoadArgs("TEXT_EMBEDDING")?.modelPath ?? null;
+  } catch (err) {
+    // A configured non-BGE or missing embedding path fails each embed call
+    // with its own code; registration only reports it.
+    logger.warn(
+      `[mobile-device-bridge] Embedding model check failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
   if (
     !isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) &&
     !embeddingModelPath &&
@@ -2519,11 +2791,12 @@ function registerMobileDeviceBridgeModels(
     );
   }
   logger.info(
-    `[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
+    `[mobile-device-bridge] Registered ${PROVIDER} handlers for ${registered.join(" / ") || "nothing"} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
   );
   registeredRuntimes.add(runtime);
   registeredRuntimeCount += 1;
   registeredModelTrigger = trigger;
+  registeredTextHandlers = serveText;
   return true;
 }
 export async function ensureMobileDeviceBridgeInferenceHandlers(
@@ -2543,8 +2816,14 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
   }
   // Bionic-host delegation: the in-process GPU host serves TEXT/embed over
   // the abstract UDS, so the handlers are live from boot.
-  if (bionicSocketName()) {
-    return registerMobileDeviceBridgeModels(runtime, "bionic-host");
+  const bionicSock = bionicSocketName();
+  if (bionicSock) {
+    const capabilities = await queryBionicHostCapabilities(bionicSock);
+    return registerMobileDeviceBridgeModels(
+      runtime,
+      "bionic-host",
+      capabilities,
+    );
   }
   // A device bridge is already attached (agent restart while the WebView
   // stayed connected): the handlers can serve immediately.

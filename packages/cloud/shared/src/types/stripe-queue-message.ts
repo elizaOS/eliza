@@ -1,12 +1,12 @@
 /**
- * Stripe queue payloads for the Redis-backed webhook fan-out queue.
+ * Stripe delivery payloads, stored in the webhook_events outbox row.
  */
 
 import type Stripe from "stripe";
 import type { AppBillingWebhookTrigger } from "./app-billing-webhook";
 
 /**
- * Verified Stripe event handed off from the webhook route to the consumer.
+ * Verified Stripe event the webhook route records for the consumer.
  */
 export type StripeEventMessage = {
   kind: "stripe.event";

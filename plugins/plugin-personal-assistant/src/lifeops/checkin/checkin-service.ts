@@ -379,7 +379,7 @@ export function renderMorningCheckinReport(
   for (const list of lists) {
     if (report.collectorErrors[list.key]) {
       unavailable.push(list.title);
-      continue;
+      if (list.rows.length === 0) continue;
     }
     if (list.rows.length === 0) {
       if (list.key !== "yesterdaysWins" && !clearDay)
@@ -895,10 +895,35 @@ async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
   timezone: string,
+  source?: CheckinSourceService,
 ): Promise<CollectorResult<MeetingEntry>> {
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
   try {
+    if (source?.getCalendarFeed) {
+      const feed = await source.getCalendarFeed(
+        INTERNAL_URL,
+        {
+          side: "owner",
+          timeMin: day.start.toISOString(),
+          timeMax: day.end.toISOString(),
+          timeZone: timezone,
+        },
+        now,
+      );
+      return {
+        rows: feed.events.map((event) => ({
+          id: event.id,
+          title: event.title,
+          startAt: event.startAt,
+          endAt: event.endAt,
+          status: event.status,
+          isAllDay: event.isAllDay,
+        })),
+        error:
+          feed.state === "complete" ? null : `Calendar view is ${feed.state}`,
+      };
+    }
     const rows = await executeRawSql(
       runtime,
       `SELECT id, title, start_at, end_at, status, is_all_day
@@ -923,7 +948,7 @@ async function collectTodaysMeetings(
     const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "todays-meetings",
-      `meetings collector unavailable (app_calendar.life_calendar_events not ready): ${message}`,
+      `Calendar meeting collector unavailable: ${message}`,
     );
     return { rows: [], error: message };
   }
@@ -1121,6 +1146,7 @@ async function collectXFeedSection(
 }
 async function collectInboxSection(
   source: CheckinSourceService | undefined,
+  includeGmail: boolean,
 ): Promise<CheckinBriefingSection> {
   if (!source?.getInbox) {
     return unavailableSection(
@@ -1130,12 +1156,13 @@ async function collectInboxSection(
     );
   }
   try {
-    // Gmail/X have dedicated status-gated collectors. Keep other cached
-    // channels without re-reading those accounts through the aggregate inbox.
+    // Use the dedicated triage result when available. Ordinary connected
+    // Gmail remains readable through the canonical Inbox without that scope.
     const inbox = await source.getInbox({
       limit: 50,
       channels: LIFEOPS_INBOX_CHANNELS.filter(
-        (channel) => channel !== "gmail" && channel !== "x_dm",
+        (channel) =>
+          (includeGmail || channel !== "gmail") && channel !== "x_dm",
       ),
     });
     const counts = Object.entries(inbox.channelCounts)
@@ -1613,6 +1640,7 @@ async function collectBriefingSections(args: {
   if (xStatus?.reason === "needs_reauth")
     xError = "The configured X connection needs reauthorization.";
   const readableX = xStatus?.connected;
+  const gmail = collectGmailSection(args.source, args.now);
   const sections = await Promise.all([
     ...(xError ? [Promise.resolve(unavailableSection("x", "X", xError))] : []),
     ...(readableX && xStatus?.dmRead ? [collectXDmSection(args.source)] : []),
@@ -1632,8 +1660,10 @@ async function collectBriefingSections(args: {
           ),
         ]
       : []),
-    collectInboxSection(args.source),
-    collectGmailSection(args.source, args.now),
+    gmail.then((section) =>
+      collectInboxSection(args.source, section === undefined),
+    ),
+    gmail,
     collectGitHubSection(args.runtime, args.now, args.timezone),
     collectCalendarChangeSection(args.runtime, args.now, args.timezone),
     collectContactSection(args.runtime, args.now, args.timezone),
@@ -1728,7 +1758,12 @@ export class CheckinService {
           now,
           habitCollector.pausedDefinitionIds,
         ),
-        collectTodaysMeetings(this.runtime, now, timezone),
+        collectTodaysMeetings(
+          this.runtime,
+          now,
+          timezone,
+          this.options.sources,
+        ),
         collectCompletedWins(this.runtime, kind, now, timezone),
         collectBriefingSections({
           runtime: this.runtime,

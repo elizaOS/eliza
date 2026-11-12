@@ -178,6 +178,19 @@ function readHeaderValue(
   return value && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Every Authentication-Results value exactly as Gmail returned it, in Gmail's header order. A
+ * sender can write this header, so a reader must decide which value to trust by position.
+ */
+function readAuthenticationResults(headers: GoogleGmailMetadataHeader[] | undefined): string[] {
+  return (headers ?? []).flatMap((header) =>
+    header.name?.trim().toLowerCase() === "authentication-results" &&
+    typeof header.value === "string"
+      ? [header.value]
+      : [],
+  );
+}
+
 function normalizeSnippet(value: string | undefined): string {
   return value?.replace(/\s+/g, " ").trim() || "";
 }
@@ -754,7 +767,7 @@ export async function readManagedGoogleGmailMessage(args: {
   grantId?: string;
   personalContextRead?: true;
   messageId: string;
-}): Promise<ManagedGoogleGmailReadResult> {
+}): Promise<ManagedGoogleGmailReadResult & { authenticationResults: string[] }> {
   const connectorStatus = await getManagedGoogleConnectorStatus({
     organizationId: args.organizationId,
     userId: args.userId,
@@ -810,6 +823,7 @@ export async function readManagedGoogleGmailMessage(args: {
     bodyHtml: htmlView.html,
     bodyHtmlStatus: htmlView.status,
     links: parsed.payload ? extractGmailHtmlLinks(parsed.payload) : [],
+    authenticationResults: readAuthenticationResults(parsed.payload?.headers),
     attachments: gmailAttachmentParts(parsed.payload).map((part) => part.descriptor),
   };
 }

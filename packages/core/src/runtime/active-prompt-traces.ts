@@ -10,7 +10,7 @@ export class ActivePromptTraces {
 		const traceIds = this.runToTraces.get(runId);
 		if (!traceIds) return;
 
-		const targetTraceId = (signal as { traceId?: string }).traceId;
+		const targetTraceId = signal.traceId;
 
 		for (const tid of traceIds) {
 			if (targetTraceId && tid !== targetTraceId) continue;
@@ -83,10 +83,9 @@ export class ActivePromptTraces {
 		const runId = trace.runId;
 		if (runId) {
 			this.activeTraces.set(trace.id, trace);
-			if (!this.runToTraces.has(runId)) {
-				this.runToTraces.set(runId, new Set());
-			}
-			this.runToTraces.get(runId)?.add(trace.id);
+			const traceIds = this.runToTraces.get(runId);
+			if (traceIds) traceIds.add(trace.id);
+			else this.runToTraces.set(runId, new Set([trace.id]));
 		}
 	}
 }

@@ -246,6 +246,8 @@ async function main() {
   // knob and is left untouched.
   const agentBaseDomainOverride =
     process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? "https://";
+  const isCloudE2ETestMode =
+    process.env.CLOUD_E2E === "1" && process.env.NODE_ENV === "test";
   const testModeVars = isE2eTestMode
     ? [
         "--var",
@@ -277,8 +279,6 @@ async function main() {
   // cloud E2E runtime. `shared/lib/stripe.ts` independently revalidates the
   // same gates and requires a canonical loopback origin before constructing a
   // client, so these variables cannot become a generic provider redirect.
-  const isCloudE2ETestMode =
-    process.env.CLOUD_E2E === "1" && process.env.NODE_ENV === "test";
   const stripeCloudE2EOrigin = process.env.STRIPE_CLOUD_E2E_API_ORIGIN;
   const stripeE2EDevVars =
     isCloudE2ETestMode && stripeCloudE2EOrigin

@@ -2,10 +2,9 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import * as fs from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import * as path from 'node:path';
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import { windowsWorkflowBackend } from './workflow-worker-lease.windows';
 
-function syncDirectory(value: string) {
+export function syncDirectory(value: string) {
   const fd = fs.openSync(value, 'r');
   try {
     fs.fsyncSync(fd);
@@ -13,7 +12,7 @@ function syncDirectory(value: string) {
     fs.closeSync(fd);
   }
 }
-const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export interface WorkerLeaseInput {
   rootDir: string;
   socketRoot: string;
@@ -26,7 +25,7 @@ export type WorkerLeaseState =
   | { state: 'absent' }
   | { state: 'live'; generation: string; pid: number }
   | { state: 'unknown'; reason: string };
-function ownedDirectory(value: string) {
+export function ownedDirectory(value: string) {
   const stat = fs.lstatSync(value);
   if (
     !stat.isDirectory() ||
@@ -38,56 +37,6 @@ function ownedDirectory(value: string) {
     throw Error('Untrusted worker lease directory');
   return stat;
 }
-/** Leave room for slash + the fixed 20-hex-character socket basename + .sock. */
-const SOCKET_ROOT_BYTE_LIMIT = 100 - 1 - 20 - 5;
-
-/** Stable across parent restarts, private to this UID and canonical home. */
-export function resolveWorkerSocketRoot(
-  home: string,
-  platform: NodeJS.Platform | 'android' = resolveAliasedEnvValue('ELIZA_PLATFORM') === 'android' ||
-  process.env.ELIZA_MOBILE_PLATFORM === 'android'
-    ? 'android'
-    : process.platform
-): string {
-  const canonicalHome = fs.realpathSync(home);
-  let selected = path.join(canonicalHome, '.eliza-worker-ipc');
-  if (Buffer.byteLength(selected) > SOCKET_ROOT_BYTE_LIMIT) {
-    selected = path.join(canonicalHome, '.ew');
-  }
-  if (Buffer.byteLength(selected) > SOCKET_ROOT_BYTE_LIMIT) {
-    // Android must never move its lease outside its application sandbox.
-    if (platform !== 'darwin' && platform !== 'linux') {
-      throw Error('Application-private worker socket root is too long');
-    }
-    const temporary = fs.realpathSync('/tmp');
-    const stat = fs.lstatSync(temporary);
-    if (
-      !stat.isDirectory() ||
-      !(
-        (stat.uid === 0 && (stat.mode & 0o1000) !== 0) ||
-        (stat.uid === process.getuid?.() && (stat.mode & 0o022) === 0)
-      )
-    ) {
-      throw Error('Untrusted short worker socket base');
-    }
-    selected = path.join(
-      temporary,
-      `.ew-${process.getuid?.()}-${digest(canonicalHome).slice(0, 32)}`
-    );
-  }
-  if (Buffer.byteLength(selected) > SOCKET_ROOT_BYTE_LIMIT) {
-    throw Error('Worker socket root exceeds address budget');
-  }
-  try {
-    fs.mkdirSync(selected, { mode: 0o700 });
-    syncDirectory(path.dirname(selected));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-  }
-  ownedDirectory(selected);
-  return selected;
-}
-
 function root(input: WorkerLeaseInput) {
   const canonical = fs.realpathSync(input.rootDir),
     parent = fs.lstatSync(canonical);
@@ -258,6 +207,11 @@ export async function acquireWorkerLease(input: WorkerLeaseInput) {
     throw Error('Worker source identity mismatch');
   }
   const active = root(input);
+  // Validate everything that can fail without side effects before reserving.
+  const socketRoot = fs.realpathSync(input.socketRoot);
+  ownedDirectory(socketRoot);
+  const endpoint = path.join(socketRoot, `${randomBytes(10).toString('hex')}.sock`);
+  if (Buffer.byteLength(endpoint) > 100) throw Error('Worker socket path too long');
   try {
     fs.mkdirSync(active, { mode: 0o700 });
     syncDirectory(path.dirname(active));
@@ -269,13 +223,9 @@ export async function acquireWorkerLease(input: WorkerLeaseInput) {
       );
     throw error;
   }
-  const identity = ownedDirectory(active),
-    generation = randomUUID(),
+  const ownerFile = path.join(active, 'owner.json');
+  const generation = randomUUID(),
     capability = randomBytes(32).toString('hex');
-  const socketRoot = fs.realpathSync(input.socketRoot);
-  ownedDirectory(socketRoot);
-  const endpoint = path.join(socketRoot, `${randomBytes(10).toString('hex')}.sock`);
-  if (Buffer.byteLength(endpoint) > 100) throw Error('Worker socket path too long');
   const sockets = new Set<Socket>();
   const server = createServer((socket) => {
     if (sockets.size >= 4) {
@@ -315,34 +265,63 @@ export async function acquireWorkerLease(input: WorkerLeaseInput) {
       }
     });
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(endpoint, resolve);
-  });
-  fs.chmodSync(endpoint, 0o600);
-  const endpointIdentity = fs.lstatSync(endpoint);
-  const owner = {
-    schemaVersion: nativeIdentity ? 2 : 1,
-    ...(nativeIdentity ? { nativeIdentity, sourcePath } : {}),
-    generation,
-    uid: process.getuid?.(),
-    pid: process.pid,
-    executable: fs.realpathSync(process.execPath),
-    runId: input.runId,
-    versionId: input.versionId,
-    sourceSha256: input.sourceSha256,
-    endpoint,
-    capability,
+  const closeServer = async () => {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   };
-  const fd = fs.openSync(path.join(active, 'owner.json'), 'wx', 0o600);
+  let endpointIdentity: fs.Stats | undefined;
+  // Remove a reservation that never reached the workflow. Nothing ran under it.
+  const release = async () => {
+    await closeServer();
+    if (endpointIdentity && fs.existsSync(endpoint)) {
+      const now = fs.lstatSync(endpoint);
+      if (now.dev !== endpointIdentity.dev || now.ino !== endpointIdentity.ino)
+        throw Error('Worker endpoint replaced');
+      fs.unlinkSync(endpoint);
+    }
+    fs.rmSync(ownerFile, { force: true });
+    fs.rmdirSync(active);
+    syncDirectory(path.dirname(active));
+  };
+  let identity: fs.Stats;
   try {
-    fs.writeFileSync(fd, JSON.stringify(owner));
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
+    identity = ownedDirectory(active);
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(endpoint, resolve);
+    });
+    endpointIdentity = fs.lstatSync(endpoint);
+    fs.chmodSync(endpoint, 0o600);
+    const owner = {
+      schemaVersion: nativeIdentity ? 2 : 1,
+      ...(nativeIdentity ? { nativeIdentity, sourcePath } : {}),
+      generation,
+      uid: process.getuid?.(),
+      pid: process.pid,
+      executable: fs.realpathSync(process.execPath),
+      runId: input.runId,
+      versionId: input.versionId,
+      sourceSha256: input.sourceSha256,
+      endpoint,
+      capability,
+    };
+    const fd = fs.openSync(ownerFile, 'wx', 0o600);
+    try {
+      fs.writeFileSync(fd, JSON.stringify(owner));
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    syncDirectory(active);
+    syncDirectory(path.dirname(active));
+  } catch (error) {
+    try {
+      await release();
+    } catch {
+      // error-policy:J6 a reservation that cannot be removed stays durable unknown.
+    }
+    throw error;
   }
-  syncDirectory(active);
-  syncDirectory(path.dirname(active));
   let finished = false;
   return {
     generation,
@@ -360,22 +339,43 @@ export async function acquireWorkerLease(input: WorkerLeaseInput) {
       const settled = `${active}.settled-${generation}`;
       fs.renameSync(active, settled);
       syncDirectory(path.dirname(active));
+      // Nothing reads a settled journal; commit evidence lives in the Smithers store.
+      try {
+        fs.rmSync(settled, { recursive: true, force: true });
+        syncDirectory(path.dirname(active));
+      } catch {
+        // error-policy:J6 the rename above committed the result; a leftover
+        // settled journal must not turn it into a failed run.
+      }
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve()))
       );
       if (fs.existsSync(endpoint)) {
         const now = fs.lstatSync(endpoint);
-        if (now.dev !== endpointIdentity.dev || now.ino !== endpointIdentity.ino)
+        if (
+          endpointIdentity &&
+          (now.dev !== endpointIdentity.dev || now.ino !== endpointIdentity.ino)
+        )
           throw Error('Worker endpoint replaced');
         fs.unlinkSync(endpoint);
       }
     },
     async abandon() {
-      for (const socket of sockets) socket.destroy();
-      await new Promise<void>((resolve) =>
-        server.close(() => resolve())
-      ); /* Preserve active journal: failed/dead outcome cannot authorize replay. */
+      await closeServer(); /* Preserve active journal: failed/dead outcome cannot authorize replay. */
+    },
+    /** Only before execution-start: no Smithers task ran, so no effect can be replayed. */
+    async releaseUnstarted() {
+      if (finished) return;
+      finished = true;
+      const current = ownedDirectory(active);
+      if (
+        current.dev !== identity.dev ||
+        current.ino !== identity.ino ||
+        readOwner(active).generation !== generation
+      )
+        throw Error('Worker owner replaced; preserve it');
+      await release();
     },
   };
 }

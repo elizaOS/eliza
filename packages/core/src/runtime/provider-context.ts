@@ -7,6 +7,8 @@ import { hashStableJson } from "./context-hash";
 import type { ContextObject, ContextProviderEvent } from "./context-object";
 import { OWNED_CONTEXT_SOURCE_SCOPE } from "./context-object";
 
+const REVIEW_SOURCE_ID = /^[a-zA-Z][a-zA-Z0-9]*$/;
+
 /** Bind source selection to exact authorized bodies, authors, rooms and turn.
  * Discovery-only bodies have not been reviewed and cannot participate. */
 export function providerReviewSources(context: ContextObject) {
@@ -14,6 +16,8 @@ export function providerReviewSources(context: ContextObject) {
 	const providers = context.events.filter(
 		(event): event is ContextProviderEvent =>
 			event.type === "provider" &&
+			(!("referenceBodyDeferred" in event) ||
+				event.referenceBodyDeferred !== true) &&
 			"reviewableSources" in event &&
 			Boolean(event.reviewableSources) &&
 			// Indexed originals may be reviewed after this turn loaded their full
@@ -43,7 +47,7 @@ export function providerReviewSources(context: ContextObject) {
 			if (
 				!source ||
 				typeof source.id !== "string" ||
-				!/^[a-zA-Z][a-zA-Z0-9]*$/.test(source.id) ||
+				!REVIEW_SOURCE_ID.test(source.id) ||
 				ids.has(source.id) ||
 				typeof source.text !== "string" ||
 				!source.text ||
@@ -152,10 +156,13 @@ export function projectDeferredProviders(context: ContextObject): {
 			!event.discoveryText.trim() ||
 			!("text" in event) ||
 			typeof event.text !== "string" ||
-			event.discoveryText.length >= event.text.length ||
+			(source.referenceBodyDeferred !== true &&
+				event.discoveryText.length >= event.text.length) ||
 			!("name" in event) ||
 			typeof event.name !== "string" ||
-			(Array.isArray(loaded) && loaded.includes(event.name))
+			(source.referenceBodyDeferred !== true &&
+				Array.isArray(loaded) &&
+				loaded.includes(event.name))
 		)
 			return event;
 		available.push(event.name);

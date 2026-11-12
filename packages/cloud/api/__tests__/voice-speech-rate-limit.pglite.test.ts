@@ -1,13 +1,11 @@
 /**
  * Worker speech routes run the chat completions rate limiter. A Worker request
- * is decided from the combined auth cache (one read) and the per-organization
- * Durable Object: a cold credential first gets a retryable 503 while its
- * decision hydrates under `waitUntil` (`speak` below retries once after the
- * background work, as the Eliza Cloud client does), and the limiter takes the
- * tier and key cap from that cached decision instead of the primary. Real STT
- * and TTS routes, API-key auth and policy hydration on PGlite; the
- * per-organization Durable Object and the Redis REST endpoint are counting
- * fakes. The Durable Object's own window logic is covered by its miniflare test.
+ * is decided from the combined auth cache (one read) and this isolate's
+ * request windows: the limiter takes the tier and key cap from the cached
+ * decision and makes no Durable Object or Redis call. A cold credential is
+ * decided by the primary once, inline. Real STT and TTS routes, API-key auth
+ * and policy hydration on PGlite; the per-organization Durable Object and the
+ * Redis REST endpoint are counting fakes that the limiter must never reach.
  * The personal agent's platform-funded image and video media count in the same
  * strict window when the turn runs in a Worker.
  */
@@ -29,13 +27,9 @@ import { Hono } from "hono";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-// Production values: strong revocation is off, so the combined auth cache is
-// not qualified and Worker requests authorize authoritatively; the cache-only
-// limiter then finds a cold organization projection and returns the retryable
-// warming contract. The compatibility limiter uses Redis REST, and the cache
-// uses the in-memory test backend.
-process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
-process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
+// A cold key and a cold organization projection are filled from the primary
+// inside the request. The compatibility limiter uses Redis REST, and the
+// cache uses the in-memory test backend.
 process.env.CACHE_BACKEND = "memory";
 process.env.REDIS_RATE_LIMITING = "true";
 process.env.DIRECT_REDIS_BACKEND = "redis-rest";
@@ -75,9 +69,13 @@ const INFERENCE_ADMISSION_GATES = {
           path: new URL(request.url).pathname,
           body: await request.json(),
         };
-        gateCalls.push(call);
+        // The gate is also the revocation boundary and the snapshot
+        // publication target; only limiter decisions are recorded here.
+        if (call.path === "/credential/check")
+          return Response.json({ allowed: true });
         if (call.path !== "/rate-limit")
-          return new Response("unexpected", { status: 404 });
+          return Response.json({ committed: true, hydrated: true });
+        gateCalls.push(call);
         const bump = (window: string) => {
           const count = (gateWindows.get(window) ?? 0) + 1;
           gateWindows.set(window, count);
@@ -258,7 +256,11 @@ afterAll(async () => {
   await closeDatabase?.();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  const { __clearIsolateRateWindows } = await import(
+    "@elizaos/cloud-shared/lib/middleware/rate-limit"
+  );
+  __clearIsolateRateWindows();
   gateCalls.length = 0;
   gateWindows.clear();
   gateDown = false;
@@ -271,13 +273,6 @@ beforeEach(() => {
  * empty TTS text), so an admitted caller gets 400 with no provider work.
  */
 async function speak(route: "stt" | "tts", rawKey: string) {
-  const first = await speakOnce(route, rawKey);
-  if (first.status !== 503) return first;
-  const body = (await first.clone().json()) as {
-    code?: string;
-  };
-  if (body.code !== "auth_cache_warming") return first;
-  expect(first.headers.get("Retry-After")).toBe("1");
   return await speakOnce(route, rawKey);
 }
 
@@ -337,15 +332,7 @@ async function generatePersonalMedia(
   workerTurn: boolean,
   mediaType: "image" | "audio",
 ) {
-  try {
-    return await generatePersonalMediaOnce(workerTurn, mediaType);
-  } catch (error) {
-    // A cold organization projection is a retryable warming signal; its
-    // hydration already ran under the turn's `waitUntil`.
-    if (!(error instanceof Error) || !/warming/i.test(error.message))
-      throw error;
-    return await generatePersonalMediaOnce(workerTurn, mediaType);
-  }
+  return await generatePersonalMediaOnce(workerTurn, mediaType);
 }
 
 async function generatePersonalMediaOnce(
@@ -391,23 +378,16 @@ describe("Worker speech rate limit without an admission snapshot", () => {
       resetInferenceAdmissionMemoryCacheForTests();
       await cache.del(CacheKeys.inference.orgAdmission(ORG));
       const response = await speakOnce(route, keys[`cold_${route}`].raw);
-      // One request: no warming refusal, no client retry. The limiter then
-      // decides from the authoritative projection it just published.
+      // One request: no refusal, no client retry. The cold key's primary
+      // decision carries the organization projection the limiter decides from.
       expect(response.status).not.toBe(503);
-      expect(
-        await cache.get(CacheKeys.inference.orgAdmission(ORG)),
-      ).toMatchObject({
-        rateLimits: { strictRpm: strictRpm },
-      });
     }
-    // The limiter itself takes no Redis round trip; an admitted consent
-    // request then writes its nonce to the consent store.
-    expect(
-      gateCalls.filter((call) => call.path === "/rate-limit"),
-    ).toHaveLength(4);
+    // The limiter takes no Durable Object or Redis round trip; an admitted
+    // consent request then writes its nonce to the consent store.
+    expect(gateCalls).toHaveLength(0);
   });
 
-  test("a cold projection whose hydration is not acknowledged keeps the retryable warming code", async () => {
+  test("a cold projection whose cache write fails is still served from the primary fill", async () => {
     const [
       { cache },
       { CacheKeys },
@@ -426,39 +406,83 @@ describe("Worker speech rate limit without an admission snapshot", () => {
         resetInferenceAdmissionMemoryCacheForTests();
         await cache.del(CacheKeys.inference.orgAdmission(ORG));
         const response = await speakOnce(route, keys[`cold_${route}`].raw);
-        expect(response.status).toBe(503);
-        expect(response.headers.get("Retry-After")).toBe("1");
-        expect(await response.json()).toMatchObject({
-          code: "auth_cache_warming",
-          retryAfterSeconds: 1,
-          details: { retryable: true, retryAfterSeconds: 1 },
-        });
+        expect(response.status).not.toBe(503);
       }
     } finally {
       write.mockRestore();
     }
     expect(gateCalls).toHaveLength(0);
-    expect(redisCalls).toBe(0);
   });
 
-  test("STT and TTS take one Durable Object decision and no Redis round trip", async () => {
+  test("production flags: an app's key keeps its app scope, so another app's route refuses it", async () => {
+    const [{ apps }, { getTableConfig }] = await Promise.all([
+      import("@elizaos/cloud-shared/db/schemas"),
+      import("drizzle-orm/pg-core"),
+    ]);
+    const config = getTableConfig(apps);
+    await pg().exec(
+      `CREATE TABLE IF NOT EXISTS "${config.name}" (${config.columns
+        .map(
+          (column) =>
+            `"${column.name}" ${"enumValues" in column && column.enumValues ? "text" : column.getSQLType()}`,
+        )
+        .join(", ")})`,
+    );
+    const keyId = crypto.randomUUID();
+    const appKey = `eliza_speech_rate_app_${keyId}`;
+    const [ownApp, otherApp] = [crypto.randomUUID(), crypto.randomUUID()];
+    await pg().exec(`INSERT INTO api_keys(id, name, key_hash, key_prefix, organization_id, user_id, rate_limit, is_active, usage_count, created_at, updated_at, user_created) VALUES ('${keyId}', 'app', '${createHash("sha256").update(appKey).digest("hex")}', 'eliza_sp', '${ORG}', '${USER}', 1000, true, 0, now(), now(), true);
+      INSERT INTO apps(id, name, slug, organization_id, created_by_user_id, is_active, is_approved, api_key_id, created_at, updated_at) VALUES
+        ('${ownApp}', 'own', 'own-${ownApp}', '${ORG}', '${USER}', true, true, '${keyId}', now(), now()),
+        ('${otherApp}', 'other', 'other-${otherApp}', '${ORG}', '${USER}', true, true, NULL, now(), now())`);
+    const promoteAssets = new Hono().route(
+      "/apps/:id/promote/assets",
+      (await import("../v1/apps/[id]/promote/assets/route")).default,
+    );
+    // An invalid body: a caller the route admits stops at 400 before provider work.
+    const promote = (rawKey: string, appId: string) =>
+      runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
+        Promise.resolve(
+          promoteAssets.request(
+            `http://cloud.test/apps/${appId}/promote/assets`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${rawKey}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ sizes: "none" }),
+            },
+            {},
+            {
+              waitUntil: () => undefined,
+              passThroughOnException: () => undefined,
+              props: {},
+            },
+          ),
+        ),
+      );
+    // Its own app, another app, and an ordinary key (no app scope) on that app.
+    const responses = [
+      await promote(appKey, ownApp),
+      await promote(appKey, otherApp),
+      await promote(keys.plain.raw, otherApp),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([
+      400, 403, 400,
+    ]);
+    const refusal: unknown = await responses[1]!.json();
+    expect(refusal).toEqual({ error: "Access denied" });
+  });
+
+  test("STT and TTS are limited in the isolate: no Durable Object decision, no Redis round trip", async () => {
     const stt = await speak("stt", keys.plain.raw);
     const tts = await speak("tts", keys.plain.raw);
 
     expect(stt.status).toBe(400);
     expect(tts.status).toBe(400);
     expect(redisCalls).toBe(0);
-    expect(gateCalls).toHaveLength(2);
-    for (const call of gateCalls) {
-      expect(call.name).toBe(`rate-limit:v2:${ORG}`);
-      expect(call.path).toBe("/rate-limit");
-      expect(call.body).toMatchObject({
-        endpointType: "strict",
-        maxRequests: strictRpm,
-        windowMs: 60_000,
-      });
-      expect(call.body.apiKey).toBeUndefined();
-    }
+    expect(gateCalls).toHaveLength(0);
     const timing = stt.headers.get("Server-Timing") ?? "";
     expect(timing).toMatch(/(^|, )upload;dur=\d/);
     expect(timing).toMatch(/(^|, )auth;dur=\d/);
@@ -470,10 +494,7 @@ describe("Worker speech rate limit without an admission snapshot", () => {
 
     expect(refused.status).toBe(429);
     expect(await refused.json()).toMatchObject({ code: "rate_limit_exceeded" });
-    expect(gateCalls.map((call) => call.body.apiKey)).toEqual([
-      { id: keys.capped.id, maxRequests: 1 },
-      { id: keys.capped.id, maxRequests: 1 },
-    ]);
+    expect(gateCalls).toHaveLength(0);
   });
 
   test("an inactive or deleted key is refused before any limiter work", async () => {
@@ -498,19 +519,17 @@ describe("Worker speech rate limit without an admission snapshot", () => {
   });
 
   test("each organization is counted only in its own window", async () => {
-    await speak("stt", keys.plain.raw);
-    await speak("stt", keys.second.raw);
-
-    expect(gateCalls.map((call) => call.name)).toEqual([
-      `rate-limit:v2:${ORG}`,
-      `rate-limit:v2:${SECOND_ORG}`,
-    ]);
+    for (let sent = 1; sent <= strictRpm; sent += 1)
+      expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    expect((await speak("stt", keys.plain.raw)).status).toBe(429);
+    expect((await speak("stt", keys.second.raw)).status).toBe(400);
+    expect(gateCalls).toHaveLength(0);
   });
 
-  test("an unreachable limiter refuses the request", async () => {
+  test("an unreachable gate does not affect the limiter", async () => {
     gateDown = true;
-    expect((await speak("stt", keys.plain.raw)).status).toBe(503);
-    expect((await speak("tts", keys.plain.raw)).status).toBe(503);
+    expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    expect((await speak("tts", keys.plain.raw)).status).toBe(400);
     expect(redisCalls).toBe(0);
   });
 });
@@ -529,12 +548,7 @@ describe("Personal-agent media in the organization's strict window", () => {
     );
 
     expect(redisCalls).toBe(0);
-    expect(gateCalls).toHaveLength(strictRpm + 2);
-    for (const call of gateCalls)
-      expect(call).toMatchObject({
-        name: `rate-limit:v2:${ORG}`,
-        body: { endpointType: "strict", maxRequests: strictRpm },
-      });
+    expect(gateCalls).toHaveLength(0);
   });
 
   test("media without an execution context keeps the Redis window", async () => {

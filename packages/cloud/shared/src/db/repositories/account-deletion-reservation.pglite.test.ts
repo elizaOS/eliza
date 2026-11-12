@@ -31,6 +31,15 @@ import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
 import { accountDeletionRequestsRepository } from "./account-deletion-requests";
 
+const {
+  activateExpiredRecoveryRequests,
+  requeueExportParkedAccountDeletions,
+  toAccountDeletionRequestDto,
+} = await import("../../lib/services/account-deletion");
+const { reconcileAccountDeletionExportRevocations } = await import(
+  "../../lib/services/account-deletion-export"
+);
+
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
 const now = new Date("2026-08-22T12:00:00Z");
@@ -343,6 +352,87 @@ async function seedNonCaptureAdmissionWork(
       ${workKind === "catalog_operation" ? 3 : 6},
       ${now}, ${now}, 1, 0, 50
     )`);
+}
+
+async function readRequestStatus(requestId: string): Promise<string | undefined> {
+  const [request] = await dbWrite
+    .select({ status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.id, requestId));
+  return request?.status;
+}
+
+async function readPhases(requestId: string) {
+  const phases = await dbWrite
+    .select()
+    .from(accountDeletionPhaseReceipts)
+    .where(eq(accountDeletionPhaseReceipts.request_id, requestId));
+  return new Map(phases.map((phase) => [phase.phase, phase]));
+}
+
+/** Reserves, fences and completes Steward deactivation, leaving the export untouched. */
+async function reserveWithStewardDeactivated(requestId: string, tokenSuffix: string) {
+  const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+    reservationInput(requestId, tokenSuffix),
+  );
+  if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+  await expect(activateReservation(tokenSuffix)).resolves.toMatchObject({ outcome: "activated" });
+  const stewardLease = await accountDeletionRequestsRepository.leasePhase({
+    requestId,
+    phase: "steward_deactivation",
+    leaseOwnerDigest: "steward-worker",
+    now,
+    leaseMilliseconds: 60_000,
+  });
+  if (!stewardLease) throw new Error("Steward lease failed");
+  expect(
+    await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
+      requestId,
+      phaseReceiptId: stewardLease.receipt.id,
+      generation: stewardLease.generation,
+      providerReceiptDigest: "steward-receipt",
+      now,
+    }),
+  ).toBe(true);
+  return requestId;
+}
+
+/** Builds and publishes the export the way a user-initiated download does. */
+async function publishExport(requestId: string): Promise<void> {
+  const lease = await accountDeletionRequestsRepository.leasePhase({
+    requestId,
+    phase: "export",
+    leaseOwnerDigest: "export-worker",
+    now,
+    leaseMilliseconds: 60_000,
+  });
+  if (!lease) throw new Error("export lease failed");
+  expect(
+    await accountDeletionRequestsRepository.markExportBuilding({
+      requestId,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      now,
+    }),
+  ).toBe(true);
+  expect(
+    await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+      lease.receipt.id,
+      lease.generation,
+      now,
+    ),
+  ).toBe(true);
+  expect(
+    await accountDeletionRequestsRepository.completeExportPhase({
+      requestId,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      contentDigest: "content-digest",
+      objectReceiptDigest: "object-receipt-digest",
+      byteCount: 123,
+      now,
+    }),
+  ).toBe(true);
 }
 
 async function activateReservation(tokenSuffix: string, activatedAt = now) {
@@ -1473,7 +1563,7 @@ describe("personal account deletion reservation", () => {
     expect(phases.filter((phase) => phase.phase === "export_revoke")).toHaveLength(1);
   });
 
-  test("fails closed at expiry until export and Steward receipts are complete", async () => {
+  test("fails closed at expiry until the Steward receipt is complete, without touching the export", async () => {
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000008", "incomplete"),
     );
@@ -1489,7 +1579,7 @@ describe("personal account deletion reservation", () => {
         exportRevocationNotBefore: new Date(recoveryExpiresAt.getTime() + 60_000),
         now: new Date(recoveryExpiresAt.getTime() + 1),
       });
-    expect(activation).toEqual({ outcome: "export_required" });
+    expect(activation).toEqual({ outcome: "identity_deactivation_required" });
 
     const [request] = await dbWrite
       .select()
@@ -1499,11 +1589,201 @@ describe("personal account deletion reservation", () => {
       .select()
       .from(organizations)
       .where(eq(organizations.id, organizationId));
+    const [exportPhase] = await dbWrite
+      .select()
+      .from(accountDeletionPhaseReceipts)
+      .where(eq(accountDeletionPhaseReceipts.request_id, reserved.request.id))
+      .then((phases) => phases.filter((phase) => phase.phase === "export"));
     expect(request).toMatchObject({ status: "reserved", lifecycle_revision: 1 });
     expect(organization).toMatchObject({
       account_lifecycle_state: "deletion_recovery",
       account_lifecycle_revision: 1,
     });
+    expect(exportPhase).toMatchObject({ status: "pending", last_error_code: null });
+  });
+
+  test("refuses a reservation when the organization keeps an inactive member row", async () => {
+    await dbWrite.insert(users).values({
+      id: "20000000-0000-4000-8000-000000000099",
+      organization_id: organizationId,
+      steward_user_id: "steward-deactivated",
+      role: "member",
+      is_active: false,
+    });
+    await expect(
+      accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+        reservationInput("50000000-0000-4000-8000-000000000020", "inactive-member"),
+      ),
+    ).resolves.toEqual({ outcome: "transfer_required", activeOwnerCount: 1 });
+    expect(await dbWrite.select().from(accountDeletionRequests)).toEqual([]);
+  });
+
+  test("erases at expiry without an export the user never requested", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000021",
+      "no-export",
+    );
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+
+    // The cron revokes expired exports first, then activates; the revocation
+    // pass must leave the export decision to activation.
+    await reconcileAccountDeletionExportRevocations(10, {
+      bucket: { head: async () => null } as never,
+      now: () => expiry,
+    });
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+
+    const phases = await readPhases(requestId);
+    const [exportReceipt] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, requestId));
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+    expect(phases.get("export")).toMatchObject({
+      status: "canceled",
+      last_error_code: "export_not_requested",
+    });
+    expect(phases.get("export_revoke")).toMatchObject({ status: "pending" });
+    expect(exportReceipt?.status).toBe("expired");
+
+    const statusFor = async () => {
+      const record = await accountDeletionRequestsRepository.findByStatusTokenHash(
+        "status-no-export",
+        expiry,
+      );
+      if (!record) throw new Error("status record missing");
+      return toAccountDeletionRequestDto(
+        record.request,
+        record.exportReceipt,
+        record.phaseActionRequired,
+      ).nextAction;
+    };
+    expect(await statusFor()).toBe("wait_for_reconciliation");
+    await dbWrite
+      .update(accountDeletionPhaseReceipts)
+      .set({ status: "action_required" })
+      .where(eq(accountDeletionPhaseReceipts.id, phases.get("export_revoke")!.id));
+    expect(await statusFor()).toBe("contact_support");
+  });
+
+  test("erases at expiry in the same cron pass after a downloaded export", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000022",
+      "downloaded",
+    );
+    await publishExport(requestId);
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+
+    await reconcileAccountDeletionExportRevocations(10, {
+      bucket: { head: async () => null } as never,
+      now: () => expiry,
+    });
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+
+    const phases = await readPhases(requestId);
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+    expect(phases.get("export")?.status).toBe("completed");
+    expect(phases.get("export_revoke")).toMatchObject({ status: "pending" });
+  });
+
+  test("waits for a started export at expiry, then erases once the wait bound ends", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000023",
+      "in-flight",
+    );
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+    const lease = await accountDeletionRequestsRepository.leasePhase({
+      requestId,
+      phase: "export",
+      leaseOwnerDigest: "export-worker",
+      now: expiry,
+      leaseMilliseconds: 60_000,
+    });
+    if (!lease) throw new Error("export lease failed");
+
+    // A live lease keeps the request waiting, without parking it.
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 0,
+      actionRequired: 0,
+    });
+    expect(await readRequestStatus(requestId)).toBe("reserved");
+
+    // A provider call without a receipt may have left an object behind.
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        lease.receipt.id,
+        lease.generation,
+        expiry,
+      ),
+    ).toBe(true);
+    const afterLease = new Date(expiry.getTime() + 120_000);
+    await expect(activateExpiredRecoveryRequests({ now: afterLease, limit: 10 })).resolves.toEqual({
+      activated: 0,
+      actionRequired: 0,
+    });
+    expect(await readRequestStatus(requestId)).toBe("reserved");
+
+    const afterBound = new Date(recoveryExpiresAt.getTime() + 7 * 24 * 60 * 60 * 1_000);
+    await expect(activateExpiredRecoveryRequests({ now: afterBound, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+    const phases = await readPhases(requestId);
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
+    expect(phases.get("export")).toMatchObject({
+      status: "canceled",
+      last_error_code: "export_abandoned_after_expiry",
+    });
+    expect(phases.get("export_revoke")).toMatchObject({ status: "pending" });
+  });
+
+  test("requeues an export-parked request only when applied", async () => {
+    const requestId = await reserveWithStewardDeactivated(
+      "50000000-0000-4000-8000-000000000024",
+      "parked",
+    );
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+    expect(
+      await accountDeletionRequestsRepository.markRecoveryActionRequired({
+        requestId,
+        errorCode: "EXPORT_REQUIRED_BEFORE_ERASURE",
+        now: expiry,
+      }),
+    ).toBe(true);
+
+    const dryRun = await requeueExportParkedAccountDeletions({
+      apply: false,
+      limit: 10,
+      now: expiry,
+    });
+    expect(dryRun).toEqual({
+      apply: false,
+      requests: [
+        {
+          requestId,
+          executeAfter: recoveryExpiresAt.toISOString(),
+          parkedAt: expiry.toISOString(),
+        },
+      ],
+      requeued: [],
+    });
+    expect(await readRequestStatus(requestId)).toBe("action_required");
+
+    await expect(
+      requeueExportParkedAccountDeletions({ apply: true, limit: 10, now: expiry }),
+    ).resolves.toMatchObject({ requeued: [requestId] });
+    expect(await readRequestStatus(requestId)).toBe("reserved");
+    await expect(activateExpiredRecoveryRequests({ now: expiry, limit: 10 })).resolves.toEqual({
+      activated: 1,
+      actionRequired: 0,
+    });
+    expect(await readRequestStatus(requestId)).toBe("scheduled");
   });
 
   test("atomically erases the personal graph while retaining its memberless publisher and customer grants", async () => {

@@ -231,67 +231,6 @@ export function createHandleResponseTool(options?: {
  */
 export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool();
 
-/**
- * Synthetic terminal-sentinel action shapes. REPLY and IGNORE are real
- * runtime Actions (see `features/basic-capabilities/actions/`) but they
- * are not always part of the per-turn action surface. The
- * planner needs a stable, always-available way for the model to end the
- * turn — these shapes are converted into `ToolDefinition`s by
- * {@link CORE_PLANNER_TERMINALS} so every Stage 2 request exposes them.
- *
- * STOP is purely a terminal sentinel (no runtime handler — the planner
- * loop's `isTerminalToolCall` recognises the name).
- */
-const REPLY_TERMINAL_ACTION: Pick<
-	Action,
-	| "name"
-	| "description"
-	| "descriptionCompressed"
-	| "parameters"
-	| "allowAdditionalParameters"
-> = {
-	name: "REPLY",
-	description:
-		"Emit a user-facing reply to terminate the turn. Use this once the work is done and the model has produced the final answer.",
-	descriptionCompressed: "reply to the user with text; terminates the turn",
-	parameters: [
-		{
-			name: "text",
-			description: "The user-facing reply text.",
-			required: false,
-			schema: { type: "string" },
-		},
-	],
-};
-
-const IGNORE_TERMINAL_ACTION: Pick<
-	Action,
-	| "name"
-	| "description"
-	| "descriptionCompressed"
-	| "parameters"
-	| "allowAdditionalParameters"
-> = {
-	name: "IGNORE",
-	description: "Terminate the turn silently. Use when no reply is appropriate.",
-	descriptionCompressed: "terminate the turn silently; emit no reply",
-	parameters: [],
-};
-
-const STOP_TERMINAL_ACTION: Pick<
-	Action,
-	| "name"
-	| "description"
-	| "descriptionCompressed"
-	| "parameters"
-	| "allowAdditionalParameters"
-> = {
-	name: "STOP",
-	description: "Stop the current turn immediately with a terminal stop signal.",
-	descriptionCompressed: "stop the turn with a terminal stop signal",
-	parameters: [],
-};
-
 /** Minimal Action shape consumed by the planner-tool conversion helpers. */
 export type PlannerToolActionShape = Pick<
 	Action,
@@ -307,6 +246,46 @@ export type PlannerToolActionShape = Pick<
 	subActions?: Action["subActions"];
 };
 
+/**
+ * Synthetic terminal-sentinel action shapes. REPLY and IGNORE are real
+ * runtime Actions (see `features/basic-capabilities/actions/`) but they
+ * are not always part of the per-turn action surface. The
+ * planner needs a stable, always-available way for the model to end the
+ * turn — these shapes are converted into `ToolDefinition`s by
+ * {@link CORE_PLANNER_TERMINALS} so every Stage 2 request exposes them.
+ *
+ * STOP is purely a terminal sentinel (no runtime handler — the planner
+ * loop's `isTerminalToolCall` recognises the name).
+ */
+const REPLY_TERMINAL_ACTION: PlannerToolActionShape = {
+	name: "REPLY",
+	description:
+		"Emit a user-facing reply to terminate the turn. Use this once the work is done and the model has produced the final answer.",
+	descriptionCompressed: "reply to the user with text; terminates the turn",
+	parameters: [
+		{
+			name: "text",
+			description: "The user-facing reply text.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
+};
+
+const IGNORE_TERMINAL_ACTION: PlannerToolActionShape = {
+	name: "IGNORE",
+	description: "Terminate the turn silently. Use when no reply is appropriate.",
+	descriptionCompressed: "terminate the turn silently; emit no reply",
+	parameters: [],
+};
+
+const STOP_TERMINAL_ACTION: PlannerToolActionShape = {
+	name: "STOP",
+	description: "Stop the current turn immediately with a terminal stop signal.",
+	descriptionCompressed: "stop the turn with a terminal stop signal",
+	parameters: [],
+};
+
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
 	const baseDescription = action.description;
@@ -314,10 +293,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
 		: baseDescription;
-	const parameters = normalizeActionJsonSchema({
-		parameters: action.parameters,
-		allowAdditionalParameters: action.allowAdditionalParameters,
-	});
+	const parameters = normalizeActionJsonSchema(action);
 	return {
 		name: action.name,
 		description,
@@ -367,10 +343,7 @@ function statePromotedFamilyDescriptionsOnce(
 	);
 	const statedOn = new Map<string, string>();
 	return tools.map((tool, index) => {
-		const action = actions[index];
-		const promoted = action
-			? promotedSubactionDescription(action as Action)
-			: undefined;
+		const promoted = promotedSubactionDescription(actions[index] as Action);
 		const familyDescription = promoted?.parentDescription.trim();
 		if (!promoted || !familyDescription) return tool;
 		if (wireDescriptions.get(promoted.parent)?.includes(familyDescription))
@@ -425,7 +398,7 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
  * as action identity: distinct valid names can normalize to the same value.
  */
 function normalizeParentNameKey(name: string): string {
-	return String(name)
+	return name
 		.trim()
 		.toUpperCase()
 		.replace(/[^A-Z0-9]/g, "");
@@ -439,7 +412,7 @@ function normalizeParentNameKey(name: string): string {
  * snake case), so no case folding is needed.
  */
 function toolIdentityKey(name: string): string {
-	return String(name).trim();
+	return name.trim();
 }
 
 /**
@@ -477,10 +450,6 @@ class ActionLookup {
 		// A second, differently-spelled action answers to the same loose key.
 		// Poison it so the fallback cannot guess.
 		this.loose.set(looseKey, null);
-	}
-
-	has(key: string): boolean {
-		return this.exact.has(toolIdentityKey(key));
 	}
 
 	get(key: string): PlannerToolActionShape | undefined {
@@ -536,11 +505,8 @@ export function buildPlannerToolsFromTieredActions(
 
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
-	for (const action of actions) {
-		if (!actionLookup.has(action.name)) {
-			actionLookup.add(action.name, action);
-		}
-	}
+	// `add` keeps an existing exact entry.
+	for (const action of actions) actionLookup.add(action.name, action);
 
 	const tools: ToolDefinition[] = [];
 	const emittedActions: PlannerToolActionShape[] = [];
@@ -559,35 +525,23 @@ export function buildPlannerToolsFromTieredActions(
 		emittedActions.push(action);
 	};
 
-	const onUnresolved = options.onUnresolvedSubAction ?? ((): void => undefined);
-
 	for (const action of actions) {
 		emit(action);
 		if (options.expandSubActions === false) {
 			continue;
 		}
 		for (const subAction of action.subActions ?? []) {
-			let child: PlannerToolActionShape | undefined;
-			let subActionName = "";
-			if (typeof subAction === "string") {
-				subActionName = subAction;
-			} else if (subAction && typeof subAction === "object") {
-				subActionName = subAction.name;
-				child = requireAuthorizedChild
-					? actionLookup.get(subAction.name)
-					: subAction;
-			}
-			if (typeof subAction === "string" || (requireAuthorizedChild && !child)) {
-				child = actionLookup.get(subActionName);
-				if (!child) {
-					onUnresolved({
-						parentName: action.name,
-						subActionName,
-					});
-					continue;
-				}
-			}
+			const inline = typeof subAction !== "string";
+			const subActionName = inline ? subAction.name : subAction;
+			const child =
+				inline && !requireAuthorizedChild
+					? subAction
+					: actionLookup.get(subActionName);
 			if (!child) {
+				options.onUnresolvedSubAction?.({
+					parentName: action.name,
+					subActionName,
+				});
 				continue;
 			}
 			try {
@@ -613,8 +567,7 @@ export function buildPlannerToolsFromTieredActions(
  * surface. REPLY emits the final user-facing message; IGNORE / STOP terminate
  * without a reply.
  *
- * Computed lazily inside the array so a static import does not pull in the
- * action runtime; the shapes are simple data.
+ * Built once at module load from plain data; no action runtime is involved.
  */
 export const CORE_PLANNER_TERMINALS: ReadonlyArray<ToolDefinition> =
 	buildPlannerToolsFromActions([

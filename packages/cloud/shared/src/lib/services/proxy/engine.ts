@@ -12,11 +12,9 @@ import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { reserveAllowanceEligibleCredits } from "../allowance-first-credits";
 import { InsufficientCreditsError } from "../credits";
-import { isInferenceAdmissionGateWarmingError } from "../inference-admission-gate";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
-import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "../inference-billing-fast-path";
 import {
-  type InferenceCredentialCheck,
   InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
@@ -53,17 +51,19 @@ interface ProxyResolvedAuth {
 
 /**
  * Carries the route boundary's single caller-standing decision into the proxy
- * engine. Worker requests use the combined snapshot and durable admission;
+ * engine. Worker requests use durable admission, from the combined snapshot
+ * when the caller carries one;
  * local compatibility callers remain explicitly pre-resolved and therefore
  * never trigger a second authentication read inside the engine.
  */
 export type ProxyCombinedAdmission =
   | (ProxyResolvedAuth & {
       mode: "combined";
-      admissionSnapshot: InferenceAdmissionSnapshot;
+      /** Absent when the caller was authorized authoritatively; admission then reads the primary. */
+      admissionSnapshot?: InferenceAdmissionSnapshot;
       executionCtx: { waitUntil(promise: Promise<unknown>): void };
-      credential?: InferenceCredentialCheck;
-      credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+      /** Rewrites the caller's cached auth entry off the response (see admission). */
+      refreshAuthEntry?: () => void;
     })
   | (ProxyResolvedAuth & {
       mode: "compatibility";
@@ -279,12 +279,7 @@ export function createHandler(
           },
           executionCtx: combinedAdmission.executionCtx,
           admissionSnapshot: combinedAdmission.admissionSnapshot,
-          ...(() => {
-            const credential = combinedAdmission.credentialForAdmission
-              ? combinedAdmission.credentialForAdmission()
-              : combinedAdmission.credential;
-            return credential ? { credential } : {};
-          })(),
+          refreshAuthEntry: combinedAdmission.refreshAuthEntry,
           atomicProviderBoundary: true,
         });
       } else {
@@ -552,7 +547,7 @@ export function createHandler(
 
       if (
         error instanceof InferenceAdmissionUnavailableError ||
-        error instanceof InferenceBalanceCacheWarmingError ||
+        error instanceof InferenceBillingUnavailableError ||
         error instanceof InferenceCredentialRevocationUnavailableError
       ) {
         logger.warn("[Proxy Engine] Combined admission unavailable", {
@@ -564,11 +559,7 @@ export function createHandler(
           {
             success: false,
             error: "Provider admission is unavailable; retry shortly",
-            // Only a confirmed cold dispatch rejection proves that no lease
-            // or provider work started. Ambiguous admission stays terminal.
-            code: isInferenceAdmissionGateWarmingError(error)
-              ? "inference_admission_cache_warming"
-              : "service_unavailable",
+            code: "service_unavailable",
             details: { retryable: true, retryAfterSeconds: 1 },
           },
           { status: 503, headers: { "Retry-After": "1" } },

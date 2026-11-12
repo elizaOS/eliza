@@ -1,0 +1,417 @@
+[
+  {
+    "id": "auth.NativeEnrollmentRecovery",
+    "model": "packages/auth/quint/NativeEnrollmentRecovery.qnt",
+    "sources": ["packages/auth/native-host/cloud-enrollment.mjs"],
+    "invariants": [
+      "ActivateOnlyAcknowledged",
+      "DurableCancelCannotResume",
+      "ConfirmedCancellationClearsTarget",
+      "ClearedCancellationHasReceipt",
+      "RefusedResumeHasNoEffects",
+      "RestartPreservesDurableState"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One host and one already-saved credential receipt. Public operations are modeled at quiescent boundaries, with failures before and after durable/remote effects and five explicit cancel-versus-resume await cuts. Other asynchronous interleavings remain outside this projection.",
+      "Real implementation conformance replays generated Quint traces through private filesystem receipts, loopback HTTP and the actual native-host module. Server proof verification and atomic acknowledgement/revocation are assumed. Restart reconstructs the host against unchanged persisted data; process death, fsync and multi-process coordination are outside this checker.",
+      "Progress assumes weak fairness of a successful complete cancellation retry. Permanent outages, missing retries and expired unacknowledged enrollment have no completion guarantee.",
+      "NativeGoogleAdmission and NativeGoogleMfa cover bounded Google callback and factor admission. Email and phone challenge issuance, verified-owner activation, billing authority, account methods and replacement credentials need separate models. A default cancel after activation receipt removal preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
+    ]
+  },
+  {
+    "id": "auth.NativeEnrollmentAdmissionAndAuthority",
+    "model": "packages/auth/quint/NativeGoogleAdmission.qnt",
+    "sources": [
+      "packages/auth/native-host/cloud-enrollment.mjs",
+      "packages/auth/native-host/account-methods.mjs"
+    ],
+    "invariants": [
+      "TypeOK",
+      "OneExchangePerAttempt",
+      "InvalidShapeOrStateKeepsChallenge",
+      "MatchedFailuresConsumeWithoutDispatch",
+      "ExchangeUsesOwnVerifier",
+      "CancelledExchangeCannotRestoreChallenge"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two Google attempts, one host, one in-flight exchange and one cancellation. Start represents a successful app configuration and an empty active/pending credential slot. State and verifier are opaque identities. Expiry is an explicit event before exchange dispatch.",
+      "Malformed return shape, foreign state, matched malformed code, matched failure link and matched valid code represent native callback branches. The model ends at exchange failure or MFA admission. Browser navigation, provider code cryptography, MFA completion, account methods, billing authority and credential activation are separate.",
+      "Native host tests check the parser and attempt behavior. The loopback check verifies the PKCE binding and the typed cancellation fence after a real HTTP exchange is already pending. The model does not prove provider token validation.",
+      "Email and phone challenge issuance, verified-owner activation, ephemeral account and billing authority, one-use account mutation reviews and replacement credentials remain separate.",
+      "NativeGoogleMfa separately covers a bounded native Google factor challenge, retry, replacement and first Cloud grant admission."
+    ]
+  },
+  {
+    "id": "auth.NativeGoogleMfa",
+    "model": "packages/auth/quint/NativeGoogleMfa.qnt",
+    "sources": [
+      "packages/auth/native-host/cloud-enrollment.mjs",
+      "packages/auth/native-host/cloud-enrollment-google.test.mjs"
+    ],
+    "invariants": [
+      "TypeOK",
+      "CompletionUsesMatchingLiveFactor",
+      "ReplacementCanOnlyShortenDeadline",
+      "ProviderFailureKeepsChallenge",
+      "GrantNeedsCurrentEpochAndEmptyReceipt",
+      "CancelCannotRestoreChallengeOrDispatchGrant"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Google attempt with one admitted MFA challenge, one replacement, three completion submissions, one local cancellation and bounded logical time. TOTP and SMS are submit-capable. Passkey is represented as admitted but unsupported by this operation.",
+      "A rejected provider reply retains the private challenge, and a replacement uses the earlier deadline. The expiry check happens before dispatch. The case ends at the first Cloud grant dispatch, so retries after grant dispatch are outside the bound.",
+      "The stored-receipt read may report an existing receipt or return empty. Cancellation fences an empty result with the epoch. Existing receipt recovery, grant issuance, durable writes, acknowledgement, activation, key revocation and Android handling belong to other models.",
+      "Maintained native-host tests check successful factor completion and exact expiry. A loopback scenario checks retry, private replacement, and cancellation while the post-token receipt read is pending. Provider MFA verification and code replay handling remain external assumptions."
+    ]
+  },
+  {
+    "id": "auth.AccountStorageDeletionAndMigration",
+    "model": "packages/auth/quint/AccountCredentialGeneration.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts"
+    ],
+    "invariants": [
+      "MetadataPreservesCredentials",
+      "ConditionalMetadataHonorsGeneration",
+      "ProviderIsolation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. AccountProviderDeletion and AccountStorageMigration cover provider-wide deletion and per-file migration under separate bounds. Explicit account-list deletion, remaining pool-metadata persistence and route orchestration stay outside these cases.",
+      "AccountStorageLock and AccountStorageReset own cross-process lock and reset recovery. This case assumes atomic locked storage calls and does not cover filesystem failures."
+    ]
+  },
+  {
+    "id": "auth.AccountProviderDeletion",
+    "model": "packages/auth/quint/AccountProviderDeletion.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "OutsideProviderUntouched",
+      "RefusedPlanRetainsFiles",
+      "CompleteValidationBeforeUnlink",
+      "UnlinksStayInsidePlan",
+      "SuccessConfirmsExactlyPlan",
+      "RollbackRestoresCiphertext"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two initial credential files for one provider, one optional new account, and an unrelated provider with the same account id. At most two preflights and one cooperating write between preflight and commit. A noncanonical inventory name can reject preflight.",
+      "The lock prevents other authorized readers and writers during validation, unlinks and rollback. The stat tuple is an opaque fingerprint. The modeled atomic replacement changes that tuple. Restoration preserves ciphertext, while file identity may change.",
+      "The failure branch injects an error on the second unlink after one successful unlink, with successful restoration. Directory sync failure, rollback failure, process death and reset interleavings are outside this bound.",
+      "Explicit account-list plans, nonregular paths, multi-provider plans, byte changes with equal stat tuples and malicious filesystem mutation are separate cases. Cryptographic correctness is assumed. An unsubmitted plan can be abandoned without writing."
+    ]
+  },
+  {
+    "id": "auth.AccountStorageMigration",
+    "model": "packages/auth/quint/AccountStorageMigration.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/vault/crypto.ts",
+      "packages/auth/src/vault/master-key.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "PreservesContentsAndExistingGeneration",
+      "InvalidRecordsStayUntouched",
+      "OneCanonicalRewritePerFile",
+      "FailedReadHasNoResult",
+      "ReturnedRecordsAreCanonical",
+      "FailurePreservesPublicationBoundary",
+      "EarlierListRewriteSurvives"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two present files in one provider, at most two locked load or list calls, and one fixed list order. The finite file kinds represent plaintext, canonical and legacy authenticated envelopes, corrupt bytes and authenticated wrong identity. Initial generation can be absent or present.",
+      "Cryptographic correctness, lock ownership, key availability and atomic rename are assumptions. Credentials and metadata are opaque identities. The first published generation is symbolic, and unobserved candidates discarded before rename are outside generation uniqueness.",
+      "A failure before rename preserves original bytes. A directory sync failure after rename returns an error with the canonical file visible in this process. Earlier files in a list stay migrated if a later file rejects. Filesystem power loss, failed lock release and process death stay outside this model.",
+      "Missing files, arbitrary list lengths, multiple providers, key rotation, explicit writes and reset interleavings are outside this bound. Named scenarios use actual encrypted bytes and controlled filesystem faults. Windows skips the directory sync error scenario because the implementation omits that sync there."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolHealthAndStrategies",
+    "model": "packages/auth/quint/AccountPoolLeastUsed.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts",
+      "packages/auth/src/accounts/account-usage.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "SelectedWithinProvider",
+      "UsageAndEffectiveAgeOrderPicks",
+      "StampsChangeOnlyForFreshPicks",
+      "PersistedRecencySurvivesRestart"
+    ],
+    "status": "partial",
+    "limitations": [
+      "AccountPoolLeastUsed covers provider-scoped selection stamps, preview, affinity reuse and persisted recency under declared bounds. AccountPoolAffinity and AccountPoolHealth separately cover round-robin and bounded health ownership.",
+      "AccountPoolPriority separately covers cold priority ranking and exact eligibility boundaries. Quota-aware and reset-based ranking, mixed strategies, full eligibility and usage clock combinations, arbitrary storage failure and bounded-cache eviction remain gaps."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolPriority",
+    "model": "packages/auth/quint/AccountPoolPriority.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts",
+      "packages/auth/src/accounts/multi-account-rotation.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "PickStaysInRequestedProviderAndIds",
+      "PickRespectsCompletionClock",
+      "PriorityThenPersistedAgeOrdersPicks",
+      "NoPickExactlyWhenNoEligibleAccount"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two providers and three accounts, with the same visible id in both providers. Three cold priority calls, at most one pending call, a singleton or absent allowlist and exclusion, and a stable inventory order. Preview supports the allowlist and no exclusion.",
+      "The completion clock has values0..2. A known cooldown and an optional subscription expiry use time1. An unknown cooldown and parked health remain unavailable. Enabled flags and health snapshots stay fixed while a call waits.",
+      "At most one priority update per account in the primary provider and one recorded-use change. Last-use values represent ordinal recency. These updates occur between calls. The source-linked AccountPoolHealth model covers expiry write guards and generation-aware metadata effects.",
+      "Session affinity, alternate ranking strategies, concurrent metadata writers during the expiry await, failed expiry writes, account replacement, arbitrary lists and credential resolution are outside this case."
+    ]
+  },
+  {
+    "id": "auth.ConsumerQuotaSettlement",
+    "model": null,
+    "sources": ["packages/auth/src/accounts/account-pool-consumer-metering.ts"],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Consumer key revocation, durable quota reservations, settlement, restart and cross-process file locking need source-specific models."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidEnrollment",
+    "model": "packages/auth/quint/NativeAndroidCodeVerification.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [
+      "AttemptBudget",
+      "WaiterHasReadyAttempt",
+      "AtMostOneReply",
+      "PendingHasOneOwner"
+    ],
+    "status": "partial",
+    "limitations": [
+      "NativeAndroidCodeVerification covers one plugin instance, one deployment, two code attempts with prior work still draining, twelve admitted RPC identities and the exact five-failure budget. It checks waiter ownership through retry, cancellation, expiry and MFA transitions under weak fairness of the worker.",
+      "The shared JVM harness executes production verify, MFA, cancel and completion methods with synthetic HTTPS, lifecycle, storage and bridge ports. It reproduces the old split-lock waiter race and checks the exact repair, cancellation with a late wrong-code response, and exhaustion.",
+      "NativeAndroidAckRecovery separately covers startup receipt eligibility and acknowledgement retries, NativeAndroidActivation the in-process acknowledgement of a stored key, NativeAndroidReadiness the per-method readiness cache and return link watch, NativeAndroidKeyRenewal the silent renewal of a saved key and NativeAndroidReturnAdoption a browser return in a new process. Code send and cooldown (per-method server waits and the shared local minimum run in the JVM harness only), Credential Manager admission, the live browser callback, native authorization dialogs, credential issuance and replacement, actual device scheduling and multiple plugin instances remain open."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidAckRecovery",
+    "model": "packages/auth/quint/NativeAndroidAckRecovery.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java"
+    ],
+    "invariants": [
+      "RetryBudget",
+      "AckUsesRunReceipt",
+      "SavedKeyRemovedOnlyWhenDead",
+      "DeadKeyNotLeftSaved",
+      "NewerSignInSurvives",
+      "RemoveOnlyStaleAcknowledgedOrDead",
+      "ReportedOnce"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment, one credential and receipt slot, two startup invocations, three acknowledgement rounds per invocation before Cloud's deadline or one request after it, and one newer sign-in. Deadline, storage availability and response classes are explicit. A confirmed key stays and is announced; a refused or never-confirmed key is removed with its receipt, only while it is the exact saved key, and reported.",
+      "Conformance executes the exact Java startup recovery, acknowledgement, activation and expiry methods with synthetic storage and HTTPS boundaries in the existing JVM harness, including a restart after the deadline, a lost confirmation, a refusal at startup and a restart between background rounds.",
+      "The background rounds after a hand-over are NativeAndroidActivation's. The host's credential intent observation, revocation delivery, other plugin instances, multi-deployment worker composition, storage durability, native device execution and credential issuance remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidActivation",
+    "model": "packages/auth/quint/NativeAndroidActivation.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java"
+    ],
+    "invariants": [
+      "CompletedOnlyWhenConfirmed",
+      "UndecidedKeyStays",
+      "NewerActionWins",
+      "NewerReceiptStays",
+      "RemovedKeyRevoked",
+      "OneRequestAfterDeadline"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment and one stored, unconfirmed key. Up to four background acknowledgement rounds before Cloud's deadline and one after it, one newer credential action and one plugin close.",
+      "Conformance executes the exact background acknowledgement, activation and expiry methods with synthetic storage, HTTPS and lifecycle ports in the JVM harness.",
+      "Revocation delivery and the renderer's handling of the retained events remain separate. A restart between rounds is settled by the next start with the same outcomes: NativeAndroidAckRecovery models it and the JVM harness runs it."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidKeyRenewal",
+    "model": "packages/auth/quint/NativeAndroidKeyRenewal.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRenewal.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java"
+    ],
+    "invariants": [
+      "OldKeyRevokedOnlyAfterInstall",
+      "InstalledKeyIsConfirmed",
+      "WorkingKeyKept",
+      "NewerActionWins",
+      "SavedKeyNotRevoked",
+      "UnsavedKeyRevokedOnlyAfterSavedKeyLeft",
+      "SavedKeyAcceptedOrReportedRefused",
+      "NeverRenewsAfterConfirmedSuccessor",
+      "ConfirmedSuccessorIsRecorded"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment, one saved key and one renewal at a time, two daily requests, three acknowledgement rounds, one sign-in attempt and one newer credential action.",
+      "Conformance executes the exact renewal methods with synthetic storage, HTTPS and lifecycle ports in the JVM harness, and the exact save through plugin-native-agent's ResidentCredentialStore with its real provider admission (the agent is stopped and its admission removed; the savedKeyRenewed hook re-admits it before the old key is revoked). No host in this repository observes its credential intent for renewal yet, so no Android build runs it.",
+      "Cloud's rules for the keys of one sign-in are modeled as the Cloud API states them (a key that revokes itself without naming its confirmed successor ends the sign-in; so does a key that renews after its successor was confirmed). The JVM harness runs the client's exact requests against the same rules, including the two-minute tolerance for an unnamed last step. Neither runs the Cloud routes themselves: packages/cloud tests those.",
+      "The model ends at the first revocation of the replaced key. The stored duty to revoke it (written before the save with the new key's id, retried in the process and on later starts with that id, ended by a 2xx or a 401, never applied to the key that is still saved or to a duty that names no successor) is covered by the JVM harness only.",
+      "A confirmed key that was never saved stays active at Cloud, unused, until the sign-in ends or it expires; the saved key is then never renewed again and the owner signs in when it expires. A duty overwritten by a later renewal before Cloud ever answered is not retried. The Cloud renewal route, the expiry warning's presentation and device execution remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidReadiness",
+    "model": "packages/auth/quint/NativeAndroidReadiness.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInReadiness.java"
+    ],
+    "invariants": [
+      "NegativeIsMeasuredAgain",
+      "FreshAnswerServedAtOnce",
+      "FailedProbeKeepsFreshAnswer",
+      "ResumeProbesOnlyWhenAsked",
+      "CallersJoinOneProbe",
+      "WatchBounded",
+      "WatchSendsNothingUnverified",
+      "ReadyNeedsVerifiedLink",
+      "AnnouncedOnlyChanges",
+      "UnansweredMethodNeverTurnsOn"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment in browser Google mode where only the return link's verification changes. Five probes that can answer, fail, or answer without a usable answer for Google, two waiting callers, six resumes and six local link checks. A fresh answer is served at once and measured behind; a failed measurement keeps it, and one whose Google reads went unanswered keeps Google as it was; resume measures only for a recent sign-in screen.",
+      "Conformance executes the exact measure, status, probe, pause, resume and link-watch methods with a closed clock and queued ports in the JVM harness, including a recheck over a ready cache in which the registration, providers, email route or browser Google reads get no usable answer (no connection, a timeout, 5xx, 408, 429), the growing passive wait over an hour and a day of resumes without a sign-in screen.",
+      "Cloud-side changes of a method, the exact lengths of the growing wait, the stored cache across processes, native Google mode, the browser-closed end of a page in the host's own task (JVM harness only) and Android's actual domain verification remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidReturnAdoption",
+    "model": "packages/auth/quint/NativeAndroidReturnAdoption.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
+      "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java"
+    ],
+    "invariants": [
+      "CompletesOnlyWithoutNewerAction",
+      "SingleUse",
+      "NoLedgerNoCompletion",
+      "AdoptedOwnerBound"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One pending browser record, three processes and three credential actions per process, for a host with or without a durable credential generation.",
+      "Conformance executes the exact callback and adoption methods and the fence's generation methods on a plain JVM. No host in this repository attaches a generation ledger yet, so every Android build still refuses a return in a new process.",
+      "The model assumes ledger writes succeed. A failed write is tried once more and then clears the recorded generation, so a later process adopts nothing; the JVM fixture runs that across processes. Only storage that accepts neither the write nor the clear until that process dies leaves the earlier generation recorded, for at most the record's ten-minute life; a host closes it by removing the pending slot in the action that reserved. The authorization dialog, the Steward exchange and device process death remain separate."
+    ]
+  },
+  {
+    "id": "auth.AccountCredentialGeneration",
+    "model": "packages/auth/quint/AccountCredentialGeneration.qnt",
+    "sources": ["packages/auth/src/auth/account-storage.ts"],
+    "invariants": [
+      "FreshGenerations",
+      "StaleRefreshCannotReplace",
+      "RefreshCannotResurrect",
+      "RefreshPreservesCurrentLabel",
+      "MissingIdTokenIsCarriedForward",
+      "MetadataPreservesCredentials",
+      "ConditionalMetadataHonorsGeneration",
+      "ProviderIsolation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two providers share an account id. Two one-shot refresh or metadata callers and one explicit save bound replacement generations. Atomic storage calls and unique generation UUIDs are assumed.",
+      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. AccountProviderDeletion and AccountStorageMigration separately cover provider-wide deletion and per-file migration. Explicit account-list deletion plans remain a gap.",
+      "Progress assumes weak fairness of completion and eventual access to the storage commit. Caller cancellation and permanent provider or storage failure remain outside this projection."
+    ]
+  },
+  {
+    "id": "auth.NativeSignInAttemptOwnership",
+    "model": "packages/ui/quint/NativeSignInBroker.qnt",
+    "sources": [
+      "packages/auth/src/auth/native-cloud-sign-in.ts",
+      "packages/ui/src/android-cloud/native-cloud-sign-in.ts",
+      "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in.test.ts"
+    ],
+    "invariants": [
+      "OneOpenRequest",
+      "ReturnUsesMatchingOwner",
+      "CancelledOrRetiredCannotSettle"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two successive renderer requests, two deployments and two ports. A retired activation can reply after a successor acquires the broker. The native and storage boundaries are controlled in implementation checks.",
+      "Native attempt/request-id ownership, credential write-intent reservation, partial host activation effects, and browser pending restoration remain open. NativeEnrollmentRecovery covers the private host durable receipt after issuance."
+    ]
+  },
+  {
+    "id": "auth.OAuthAndEnrollmentAuthority",
+    "model": "packages/auth/quint/OAuthAppLinkRedemption.qnt",
+    "sources": [
+      "packages/auth/src/server/api/routes/auth.ts",
+      "packages/auth/src/auth/oauth-flow.ts",
+      "packages/auth/src/server/auth/oauth.ts",
+      "packages/auth/src/server/auth/agent-enroll.ts",
+      "packages/auth/src/server/api/services/oauth-link-pkce.ts"
+    ],
+    "invariants": [
+      "SingleMatchingLockOwner",
+      "RejectedBindingDoesNotSpend",
+      "AtMostOneSuccessfulRedemption",
+      "SuccessRequiresLiveConsume",
+      "ResultUsesIssuedLane"
+    ],
+    "status": "partial",
+    "limitations": [
+      "OAuthAppLinkRedemption covers verifier, redirect, tenant and policy validation before consumption of an issued App Link sign-in code. The result is either the issued session or the issued MFA challenge. This scope relies on the atomic storage primitives covered by AuthStorePublication.",
+      "Generic OAuth issuance and callback state, account-link token consume and native cancellation, single-use agent enrollment claims, identity linking and downstream session and token lifecycle remain open. External provider cryptography and remote service behavior require separate assumptions."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolAffinity",
+    "model": "packages/auth/quint/AccountPoolAffinity.qnt",
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts"
+    ],
+    "invariants": [
+      "SelectedFromCapturedEligibility",
+      "ProviderMembership",
+      "IndependentAffinity",
+      "AffinityReuseKeepsCursor",
+      "EmptySelectionKeepsState",
+      "CacheEntriesStayInProvider",
+      "FailedSelectionHasNoCacheEffects"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Round-robin with two providers, two sessions, three accounts, two concurrent calls, four total calls and one eligibility update. The same external account id exists under both providers. Selection uses captured immutable inventory and live affinity/cursor state after the expiry-write await.",
+      "Generated and specified scenario traces replay through real AccountPool.select with controlled metadata-write promises. A persistence rejection fails selection without changing affinity/cursor. The in-memory adapter does not prove encrypted storage or cross-process metadata locking; existing default-pool tests cover real storage.",
+      "Other strategies, health/time classifiers, repeated eligibility changes, usage polling, 10,000-entry eviction and credential effect admission are separate obligations. Weak fairness of selection completion is the progress assumption. There is no cancellation input in AccountPool.select."
+    ]
+  }
+]

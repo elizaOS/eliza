@@ -1334,12 +1334,13 @@ export class FileMessageInteractionSessionStore
       (document) => {
         let deleted = 0;
         for (const [reference, session] of Object.entries(document.sessions)) {
+          // A committed outcome is ambiguous until reconciled; keep it so
+          // listCommitted finds it and a retry sees in_progress.
+          if (session.consume.state === "committed") continue;
           const terminalAt =
             session.consume.state === "completed"
               ? Date.parse(session.consume.completedAt)
-              : session.consume.state === "committed"
-                ? Date.parse(session.consume.committedAt)
-                : Date.parse(session.expiresAt);
+              : Date.parse(session.expiresAt);
           if (terminalAt <= before) {
             delete document.sessions[reference];
             deleted += 1;

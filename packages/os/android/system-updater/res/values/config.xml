@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="os_update_name">System update</string>
+    <!-- Product release enrollment supplies every value; the generic build performs no requests. -->
+    <bool name="os_update_enabled">false</bool>
+    <string name="os_update_manifest" translatable="false"></string>
+    <string-array name="os_update_hosts" translatable="false"></string-array>
+    <string name="os_update_product" translatable="false"></string>
+    <string name="os_update_device" translatable="false"></string>
+    <string name="os_update_ota_certificate" translatable="false"></string>
+</resources>

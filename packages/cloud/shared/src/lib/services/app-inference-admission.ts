@@ -35,7 +35,7 @@ import {
 } from "./inference-auth-cache";
 import {
   getGateBalanceHint,
-  InferenceBalanceCacheWarmingError,
+  InferenceBillingUnavailableError,
 } from "./inference-billing-fast-path";
 import {
   type InferenceCredentialCheck,
@@ -158,8 +158,8 @@ export function __clearAppInferenceAdmissionStateForTests(): void {
 /**
  * Admit a monetized-app request from cached money state only.
  *
- * A full balance-cache miss throws `InferenceBalanceCacheWarmingError` through
- * `getGateBalanceHint`, after registering its authoritative hydration. A cached
+ * A full balance-cache miss reads the primary once through
+ * `getGateBalanceHint` and serves this request. A cached
  * insufficient balance throws the same typed 402 error as synchronous app
  * reservation without starting model work.
  */
@@ -173,7 +173,6 @@ export async function admitAppInferenceCacheOnly(
   const balanceHint = params.admissionSnapshot
     ? params.admissionSnapshot.balance
     : await getGateBalanceHint(params.organizationId, {
-        cacheOnly: true,
         executionCtx: params.executionCtx,
       });
   if (balanceHint.balanceUsd < estimatedTotalCostUsd) {
@@ -228,7 +227,7 @@ export async function admitAppInferenceCacheOnly(
       );
     }
     if (error instanceof InferenceAdmissionGateUnavailableError) {
-      throw new InferenceBalanceCacheWarmingError();
+      throw new InferenceBillingUnavailableError();
     }
     throw error;
   }
@@ -251,7 +250,7 @@ export async function admitAppInferenceCacheOnly(
         );
       }
       if (error instanceof InferenceAdmissionGateUnavailableError) {
-        throw new InferenceBalanceCacheWarmingError(error);
+        throw new InferenceBillingUnavailableError(error);
       }
       throw error;
     }

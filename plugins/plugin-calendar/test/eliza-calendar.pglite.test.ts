@@ -1,3 +1,10 @@
+import {
+  ResponseHandlerFieldRegistry,
+  runWithStreamingContext,
+} from "@elizaos/core";
+import { calendarReadCoverage } from "../../plugin-assistant/src/runtime/evaluator.js";
+import { calendarReadBindingField } from "../src/read-binding.js";
+import { withCalendarSearchAuthorization } from "../src/search-filter-evidence.js";
 /**
  * Exercises the built-in Eliza calendar through CalendarService against the
  * production PGlite schema. External providers use disconnected or deterministic adapters so default
@@ -513,6 +520,158 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       startAt: originalEvent.startAt,
       endAt: originalEvent.endAt,
     });
+  });
+
+  it("returns empty extraction to the planner for repair without a Calendar effect", async () => {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => ({ rawResponse: "{}", parsed: {} })),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000402",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-11-11T22:00:00Z"),
+        content: { text: "Create a calendar event tomorrow at 5pm." },
+      } as Memory,
+      undefined,
+      { parameters: { subaction: "create_event" } },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        coachingFailure: true,
+        error: "CALENDAR_CREATE_EXTRACTION_INVALID",
+      },
+    });
+    expect(result?.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "CALENDAR_CREATE_EXTRACTION_INVALID",
+        acceptance: "rejected",
+      },
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(0);
+  });
+
+  it("creates an unqualified local-time event in the current client clock instead of the server clock", async () => {
+    const cases = [
+      {
+        id: "00000000-0000-0000-0000-000000000401",
+        title: "Client clock QA without planner zone",
+        plannerTimeZone: undefined,
+        extractedTimeZone: null,
+        requestedZone: "local time",
+        startAt: "2026-11-12T16:17:00",
+        endAt: "2026-11-12T16:22:00",
+        expectedStartAt: "2026-11-13T00:17:00.000Z",
+        expectedEndAt: "2026-11-13T00:22:00.000Z",
+        expectedTimeZone: "America/Los_Angeles",
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000403",
+        title: "Client clock QA with conflicting planner zone",
+        plannerTimeZone: "UTC",
+        extractedTimeZone: null,
+        requestedZone: "local time",
+        startAt: "2026-11-12T16:27:00",
+        endAt: "2026-11-12T16:32:00",
+        expectedStartAt: "2026-11-13T00:27:00.000Z",
+        expectedEndAt: "2026-11-13T00:32:00.000Z",
+        expectedTimeZone: "America/Los_Angeles",
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000404",
+        title: "Client clock QA with requested event zone",
+        plannerTimeZone: "UTC",
+        extractedTimeZone: "America/New_York",
+        requestedZone: "New York time",
+        startAt: "2026-11-12T16:37:00",
+        endAt: "2026-11-12T16:42:00",
+        expectedStartAt: "2026-11-12T21:37:00.000Z",
+        expectedEndAt: "2026-11-12T21:42:00.000Z",
+        expectedTimeZone: "America/New_York",
+      },
+    ];
+    for (const testCase of cases) {
+      const text = `Create "${testCase.title}" on November 12, 2026 from ${testCase.startAt.slice(11, 16)} to ${testCase.endAt.slice(11, 16)} ${testCase.requestedZone}. No guests.`;
+      const extract = vi.fn(
+        async ({
+          actionType,
+          prompt,
+        }: {
+          actionType: string;
+          prompt: string;
+        }) => {
+          if (actionType !== "lifeops.calendar.extract_create_event")
+            return null;
+          expect(prompt).toContain("Current timezone: America/Los_Angeles");
+          expect(prompt).toContain(
+            "Calendar timezone for scheduling: America/Los_Angeles",
+          );
+          return {
+            rawResponse: "{}",
+            parsed: {
+              ...createEvidence(testCase.id, text),
+              title: testCase.title,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              startAt: testCase.startAt,
+              endAt: testCase.endAt,
+              timeZone: testCase.extractedTimeZone,
+            },
+          };
+        },
+      );
+      const action = createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: extract,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      const result = await action.handler(
+        runtime,
+        {
+          id: testCase.id,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse("2026-11-11T22:00:00Z"),
+          content: { text, metadata: { uiTimeZone: "America/Los_Angeles" } },
+        } as Memory,
+        undefined,
+        {
+          parameters: {
+            subaction: "create_event",
+            title: testCase.title,
+            details: testCase.plannerTimeZone
+              ? { timeZone: testCase.plannerTimeZone }
+              : {},
+          },
+        },
+      );
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(result?.data?.event).toMatchObject({
+        startAt: testCase.expectedStartAt,
+        endAt: testCase.expectedEndAt,
+        timezone: testCase.expectedTimeZone,
+      });
+      const stored = await pg.query<{
+        start_at: string;
+        end_at: string;
+        timezone: string;
+      }>(
+        "SELECT start_at, end_at, timezone FROM app_calendar.life_calendar_events WHERE title = $1",
+        [testCase.title],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]?.start_at).toBe(testCase.expectedStartAt);
+      expect(stored.rows[0]?.end_at).toBe(testCase.expectedEndAt);
+      expect(stored.rows[0]?.timezone).toBe(testCase.expectedTimeZone);
+    }
   });
 
   it("ignores invented generated attendees after one original-grounded solo extraction", async () => {
@@ -2276,6 +2435,385 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 
+  it("reports a linked conflict, shows Google's copy, and clears it when the owner keeps Google", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Edited on the phone",
+      startAt: "2026-08-16T19:00:00.000Z",
+      endAt: "2026-08-16T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "conflict-review-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    const link = await links.save(
+      await links.create({
+        agentId: AGENT_ID,
+        localEventId: event.id,
+        ...destination,
+        localRevision: 1,
+      }),
+      {
+        state: "conflicted",
+        pendingOperation: null,
+        providerEventId: "google-conflict-event",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: "older-common-version",
+        lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+      },
+    );
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    const googleCopy = {
+      id: "google-conflict-event",
+      calendarId: destination.providerCalendarId,
+      title: "Edited in Google",
+      description: event.description,
+      location: "Room 2",
+      start: event.startAt,
+      end: event.endAt,
+      timeZone: event.timezone,
+      attendees: [],
+      metadata: { etag: '"g2"' },
+    };
+    const google = {
+      getEvent: async () => googleCopy,
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Review calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent: async () => {
+        throw new Error("Keeping Google must not create an event");
+      },
+      updateEvent: async () => {
+        throw new Error("Keeping Google must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Keeping Google must not delete an event");
+      },
+    };
+    const reviewRuntime = {
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime;
+    const review = new CalendarService(reviewRuntime);
+    // Installed while paused, so the gate's bootstrap drain stays idle.
+    review.setGate(connectedGoogleGate());
+
+    expect((await review.getLinkedCalendarControl()).conflicts).toBe(1);
+    const [view] = (await review.listLinkedCalendarEventViews()).filter(
+      (row) => row.id === link.id,
+    );
+    expect(view?.event?.title).toBe("Edited on the phone");
+    expect(view?.providerEvent).toMatchObject({
+      title: "Edited in Google",
+      location: "Room 2",
+    });
+
+    await controls.resume(selected.revision);
+    const resolved = await review.executeLinkedCalendarConflictResolution(
+      link.id,
+      {
+        strategy: "keep_google",
+        expectedUpdatedAt: link.updatedAt,
+        idempotencyKey: "keep-google-review",
+      },
+    );
+    expect(resolved.outcome).toBe("pulled");
+    expect(resolved.link).toMatchObject({
+      state: "clean",
+      providerEtag: '"g2"',
+    });
+    expect((await review.getCalendarEventById(event.id))?.title).toBe(
+      "Edited in Google",
+    );
+    expect((await review.getLinkedCalendarControl()).conflicts).toBe(0);
+  });
+
+  it("restores a deleted Eliza event from Google when the owner keeps Google", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Deleted on the phone",
+      startAt: "2026-08-17T19:00:00.000Z",
+      endAt: "2026-08-17T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "conflict-restore-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "restore-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    const link = await links.save(
+      await links.create({
+        agentId: AGENT_ID,
+        localEventId: event.id,
+        ...destination,
+        localRevision: 1,
+      }),
+      {
+        state: "conflicted",
+        pendingOperation: null,
+        providerEventId: "google-restore-event",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: "older-common-version",
+        lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+      },
+    );
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    await service.deleteCalendarEvent(INTERNAL_URL, {
+      eventId: event.externalId,
+      expectedProviderVersion: event.metadata.etag,
+      calendarId: event.calendarId,
+      grantId: event.grantId,
+    });
+    expect(await service.getCalendarEventById(event.id)).toBeNull();
+    const google = {
+      getEvent: async () => ({
+        id: "google-restore-event",
+        calendarId: destination.providerCalendarId,
+        title: "Kept in Google",
+        description: "",
+        location: "Room 3",
+        start: event.startAt,
+        end: event.endAt,
+        timeZone: event.timezone,
+        attendees: [],
+        metadata: { etag: '"g2"' },
+      }),
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Restore calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent: async () => {
+        throw new Error("Keeping Google must not create an event");
+      },
+      updateEvent: async () => {
+        throw new Error("Keeping Google must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Keeping Google must not delete an event");
+      },
+    };
+    const review = new CalendarService({
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime);
+    review.setGate(connectedGoogleGate());
+    await controls.resume(selected.revision);
+    const current = await links.getById(AGENT_ID, link.id);
+    if (!current) throw new Error("Expected the conflicted link");
+
+    const resolved = await review.executeLinkedCalendarConflictResolution(
+      link.id,
+      {
+        strategy: "keep_google",
+        expectedUpdatedAt: current.updatedAt,
+        idempotencyKey: "keep-google-restore",
+      },
+    );
+    expect(resolved.outcome).toBe("pulled");
+    expect(resolved.link).toMatchObject({ state: "clean" });
+    const restored = await review.getCalendarEventById(event.id);
+    expect(restored).toMatchObject({
+      id: event.id,
+      title: "Kept in Google",
+      location: "Room 3",
+    });
+    expect(Number(restored?.metadata.version)).toBeGreaterThan(
+      Number(event.metadata.version),
+    );
+  });
+
+  it("lets the owner release a create that never reached Google, then sends it once on resume", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Never landed",
+      startAt: "2026-08-15T19:00:00.000Z",
+      endAt: "2026-08-15T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "never-landed-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    let link = await links.create({
+      agentId: AGENT_ID,
+      localEventId: event.id,
+      ...destination,
+      localRevision: 1,
+    });
+    link = await links.save(link, {
+      state: "quarantined",
+      lastErrorCode: "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
+    });
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    const active = await controls.resume(selected.revision);
+    await controls.acquireDispatch(active.revision, link.id, destination);
+    let paused = await controls.pause(active.revision);
+    let googleEvent: Record<string, unknown> | null = null;
+    let releaseCreate: () => void = () => {};
+    let createStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      createStarted = resolve;
+    });
+    const createEvent = vi.fn(async (input: Record<string, unknown>) => {
+      createStarted();
+      await new Promise<void>((release) => {
+        releaseCreate = release;
+      });
+      googleEvent = {
+        id: "resent-event",
+        calendarId: destination.providerCalendarId,
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        start: input.start,
+        end: input.end,
+        timeZone: input.timeZone,
+        attendees: [],
+        metadata: { etag: '"resent-v1"' },
+      };
+      return googleEvent;
+    });
+    const google = {
+      findEventByIdempotencyKey: vi.fn(async () => googleEvent),
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Recovery calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent,
+      updateEvent: async () => {
+        throw new Error("Recovery must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Recovery must not delete an event");
+      },
+    };
+    const recovery = new CalendarService({
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime);
+    recovery.setGate(connectedGoogleGate());
+
+    // Inside the settle window an absent create proves nothing yet.
+    await expect(
+      recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-too-soon",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_RECOVERY_UNRESOLVED",
+    });
+
+    const aged = "2026-08-01T00:00:00.000Z";
+    await pg.query(
+      "UPDATE app_calendar.linked_calendar_control SET dispatch_acquired_at = $1",
+      [aged],
+    );
+    await pg.query(
+      "UPDATE app_calendar.linked_calendar_events SET updated_at = $1 WHERE id = $2",
+      [aged, link.id],
+    );
+    const recovered = await recovery.executeLinkedCalendarControl(
+      INTERNAL_URL,
+      {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-not-landed",
+      },
+    );
+    expect(recovered.paused).toBe(true);
+    expect(recovered.pendingDispatch).toBeNull();
+    expect(createEvent).not.toHaveBeenCalled();
+    expect(await links.getById(AGENT_ID, link.id)).toMatchObject({
+      state: "dirty",
+      pendingOperation: "create",
+      lastErrorCode: "LINKED_CALENDAR_DISPATCH_NOT_LANDED",
+    });
+
+    const resumed = await recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+      operation: "resume",
+      expectedRevision: recovered.revision,
+      idempotencyKey: "resume-after-not-landed",
+    });
+    await started;
+    paused = await controls.pause(resumed.revision);
+    await expect(
+      recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-while-running",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_DISPATCH_ACTIVE",
+    });
+    releaseCreate();
+    await expect
+      .poll(async () => (await links.getById(AGENT_ID, link.id))?.state)
+      .toBe("clean");
+    expect(createEvent).toHaveBeenCalledOnce();
+    expect(createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: link.idempotencyKey }),
+    );
+    expect((await controls.read()).dispatch).toBeNull();
+  });
+
   it("resolves an unscoped mutation target to the built-in event without hijacking external grants", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Unscoped lookup",
@@ -2404,6 +2942,210 @@ describe("redacted source placeholders (real PGlite)", {
     vi.useRealTimers();
   });
 
+  it.each(["requested_read", "mutation_prerequisite"] as const)(
+    "revision2 full field-dispatch, actual search handler and evaluator preserve %s",
+    async (purpose) => {
+      const seeded = await seedEarlierTodayCoffee();
+      const request = {
+        ...coffeeRequest("00000000-0000-0000-0000-000000000991"),
+        content: {
+          text: purpose === "requested_read" ? "When is that event?" : REQUEST,
+        },
+      };
+      const state = {
+        values: {},
+        text: "",
+        data: {
+          providers: {
+            RECENT_MESSAGES: {
+              data: {
+                recentMessages: [
+                  {
+                    ...request,
+                    id: "prior-coffee",
+                    createdAt: request.createdAt! - 1,
+                    entityId: runtime.agentId,
+                    content: { text: "The drink coffee event." },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const registry = new ResponseHandlerFieldRegistry();
+      registry.register(calendarReadBindingField);
+      const model = vi.fn(async () => {
+        throw Error("No extra model call permitted in typed search");
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: model,
+        runJsonModel: model,
+        recentConversationTexts: async () => [],
+      });
+      const boundRuntime = {
+        ...runtime,
+        actions: [{ name: "CALENDAR_SEARCH_EVENTS" }],
+      } as IAgentRuntime;
+      await runWithStreamingContext(
+        { messageId: request.id, abortSignal: new AbortController().signal },
+        async () => {
+          const fields = await registry.dispatch({
+            runtime: boundRuntime,
+            message: request,
+            state,
+            senderRole: "OWNER",
+            turnSignal: new AbortController().signal,
+            rawParsed: {
+              intents: [request.content.text],
+              calendarReadBindings: [
+                {
+                  intentId: "intent:1",
+                  purpose,
+                  operation: "search_events",
+                  execution: "required",
+                  filterEvidence: [
+                    {
+                      query: "coffee",
+                      quote: "coffee",
+                      origin:
+                        purpose === "requested_read" ? "referent" : "current",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+          const result = await action.handler(boundRuntime, request, state, {
+            parameters: {
+              subaction: "search_events",
+              query: "coffee",
+              details: { timeZone: TIME_ZONE },
+            },
+          });
+          expect(result).toMatchObject({
+            success: true,
+            data: { events: [{ id: seeded.id }] },
+          });
+          expect(fields.parsed.calendarReadBindings).toHaveLength(
+            purpose === "requested_read" ? 1 : 0,
+          );
+          const context = {
+            id: request.id,
+            metadata: {
+              messageId: request.id,
+              roomId: request.roomId,
+              actorId: request.entityId,
+              calendarReadBindings: fields.parsed.calendarReadBindings,
+            },
+          };
+          const trajectory = {
+            context,
+            outcomeIntents: [request.content.text],
+            steps: [
+              {
+                iteration: 1,
+                toolCall: {
+                  id: "search",
+                  name: "CALENDAR_SEARCH_EVENTS",
+                  params: { query: "coffee" },
+                },
+                result,
+              },
+            ],
+            evaluatorOutputs: [],
+            plannedQueue: [],
+          };
+          expect(
+            calendarReadCoverage(
+              {
+                success: true,
+                decision: "FINISH",
+                requestFullyCovered: true,
+                outcomeCoverage: [
+                  {
+                    intentId: "intent:1",
+                    status: "completed",
+                    evidenceStepIds: ["step:1"],
+                  },
+                ],
+              },
+              context,
+              trajectory,
+            ).verified,
+          ).toBe(true);
+          expect(model).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
+
+  it("revision2 rejected filter preserves Notes and allows existing planner feed without another Stage1", async () => {
+    const seeded = await seedEarlierTodayCoffee();
+    const request = {
+      ...coffeeRequest("00000000-0000-0000-0000-000000000992"),
+      content: { text: "Check notes and anything on my calendar today." },
+    };
+    const state = { values: {}, data: {}, text: "" };
+    const model = vi.fn(async () => {
+      throw Error("No extra model call in typed feed");
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: model,
+      runJsonModel: model,
+      recentConversationTexts: async () => [],
+    });
+    const boundRuntime = {
+      ...runtime,
+      actions: [{ name: "CALENDAR_FEED" }],
+    } as IAgentRuntime;
+    const registry = new ResponseHandlerFieldRegistry();
+    registry.register(calendarReadBindingField);
+    await runWithStreamingContext(
+      { messageId: request.id, abortSignal: new AbortController().signal },
+      async () => {
+        const fields = await registry.dispatch({
+          runtime: boundRuntime,
+          message: request,
+          state,
+          senderRole: "OWNER",
+          turnSignal: new AbortController().signal,
+          rawParsed: {
+            intents: ["check notes", "read calendar"],
+            replyText: "No events",
+            calendarReadBindings: [
+              {
+                intentId: "intent:2",
+                purpose: "requested_read",
+                operation: "search_events",
+                execution: "required",
+                filterEvidence: [
+                  { query: "agenda", quote: "agenda", origin: "current" },
+                ],
+              },
+            ],
+          },
+        });
+        expect(fields.parsed.replyText).toBe("");
+        expect(fields.parsed.intents).toEqual(["check notes", "read calendar"]);
+        expect(fields.parsed.calendarReadBindings).toEqual([]);
+        // The existing planner chooses this typed operation from the retained literal request.
+        // This verifies execution compatibility, not the probabilistic model choice itself.
+        const result = await action.handler(boundRuntime, request, state, {
+          parameters: {
+            subaction: "feed",
+            details: { date: "2026-10-29", timeZone: TIME_ZONE },
+          },
+        });
+        expect(result).toMatchObject({
+          success: true,
+          data: { events: [{ id: seeded.id }] },
+        });
+        expect(model).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   it.each([
     [
       "the runtime mask copied as source ids",
@@ -2423,29 +3165,39 @@ describe("redacted source placeholders (real PGlite)", {
         recentConversationTexts: vi.fn(async () => []),
       });
       // The second CALENDAR_SEARCH_EVENTS call from the trajectory, verbatim.
-      const result = await action.handler(
-        runtime,
-        coffeeRequest("00000000-0000-0000-0000-000000000901"),
-        undefined,
+      const request = coffeeRequest("00000000-0000-0000-0000-000000000901");
+      const result = await withCalendarSearchAuthorization(
         {
-          parameters: {
-            subaction: "search_events",
-            intent:
-              "Locate the existing coffee event so its title can be corrected.",
-            query: "coffee",
-            queries: ["drink coffee"],
-            details: {
-              timeZone: TIME_ZONE,
-              timezone: TIME_ZONE,
-              time_zone: TIME_ZONE,
-              includeHiddenCalendars: true,
-              oldTitle: "coffee",
-              query: "coffee",
-              queries: ["coffee", "drink coffee"],
-            },
-            ...sourceIds,
-          },
+          current: request,
+          agentId: runtime.agentId,
+          recent: [],
+          filterEvidence: ["coffee", "drink coffee"].map((query) => ({
+            query,
+            quote: query,
+            origin: "current",
+          })),
+          signal: new AbortController().signal,
         },
+        () =>
+          action.handler(runtime, request, undefined, {
+            parameters: {
+              subaction: "search_events",
+              intent:
+                "Locate the existing coffee event so its title can be corrected.",
+              query: "coffee",
+              queries: ["drink coffee"],
+              details: {
+                timeZone: TIME_ZONE,
+                timezone: TIME_ZONE,
+                time_zone: TIME_ZONE,
+                includeHiddenCalendars: true,
+                oldTitle: "coffee",
+                query: "coffee",
+                queries: ["coffee", "drink coffee"],
+              },
+              ...sourceIds,
+            },
+          }),
       );
       expect(result).toMatchObject({
         success: true,
@@ -2493,18 +3245,26 @@ describe("redacted source placeholders (real PGlite)", {
       runJsonModel: vi.fn(async () => null),
       recentConversationTexts: vi.fn(async () => []),
     });
-    const result = await action.handler(
-      runtime,
-      coffeeRequest("00000000-0000-0000-0000-000000000902"),
-      undefined,
+    const request = coffeeRequest("00000000-0000-0000-0000-000000000902");
+    const result = await withCalendarSearchAuthorization(
       {
-        parameters: {
-          subaction: "search_events",
-          query: "coffee",
-          queries: ["coffee"],
-          details: { timeZone: TIME_ZONE },
-        },
+        current: request,
+        agentId: runtime.agentId,
+        recent: [],
+        filterEvidence: [
+          { query: "coffee", quote: "coffee", origin: "current" },
+        ],
+        signal: new AbortController().signal,
       },
+      () =>
+        action.handler(runtime, request, undefined, {
+          parameters: {
+            subaction: "search_events",
+            query: "coffee",
+            queries: ["coffee"],
+            details: { timeZone: TIME_ZONE },
+          },
+        }),
     );
     expect(ground).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({

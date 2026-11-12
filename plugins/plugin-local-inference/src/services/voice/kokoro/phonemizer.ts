@@ -251,7 +251,8 @@ interface PhonemizeMod {
 		text: string,
 		langOrOpts?: unknown,
 	) => string | string[] | Promise<string | string[]>;
-	default?: { phonemize?: PhonemizeMod["phonemize"] };
+	default?: { phonemize?: PhonemizeMod["phonemize"]; __mobileStub?: unknown };
+	__mobileStub?: unknown;
 }
 
 /**
@@ -273,6 +274,9 @@ export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
 	static async tryLoad(): Promise<NpmPhonemizePhonemizer | null> {
 		try {
 			const mod = (await import("phonemizer")) as PhonemizeMod;
+			// A mobile build that stubs `phonemizer` answers every property with a
+			// throwing function; treat it as absent so the ASCII G2P runs.
+			if (mod.__mobileStub || mod.default?.__mobileStub) return null;
 			const phon = mod.phonemize ?? mod.default?.phonemize;
 			if (typeof phon !== "function") return null;
 			return new NpmPhonemizePhonemizer(mod);

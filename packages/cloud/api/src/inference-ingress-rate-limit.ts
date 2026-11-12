@@ -11,6 +11,7 @@ import type {
   RuntimeRateLimitBinding,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
+import { recordInferenceEntryPhase } from "./inference-entry-timing";
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 600;
@@ -84,6 +85,16 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
       return;
     }
 
+    const ingressStartedAt = performance.now();
+    recordInferenceEntryPhase({
+      environment: c.env?.ENVIRONMENT,
+      traceId: c.get("traceId"),
+      path: c.req.path,
+      phase: "ingress_enter",
+      durationMs: 0,
+      outcome: "entered",
+    });
+    let ingress: "decision" | "failure" | "timeout" | "absent" = "absent";
     const key = `inference:${getRequestIp(c) ?? "unknown"}`;
     const binding = c.env?.GLOBAL_RATE_LIMITER;
     let policy = "cloudflare-native";
@@ -92,6 +103,7 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
 
     if (binding) {
       const outcome = await nativeDecision(binding, key);
+      ingress = outcome.kind;
       if (outcome.kind === "decision") {
         allowed = outcome.success;
       } else {
@@ -124,6 +136,15 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
       );
     }
 
+    recordInferenceEntryPhase({
+      environment: c.env?.ENVIRONMENT,
+      traceId: c.get("traceId"),
+      path: c.req.path,
+      phase: "ingress_decision",
+      durationMs: performance.now() - ingressStartedAt,
+      outcome: allowed ? "allowed" : "denied",
+      ingress,
+    });
     if (allowed) {
       await next();
       return;

@@ -71,6 +71,13 @@ function timing(value: unknown): SpeechCharacterTiming | null {
   };
 }
 
+function decodeBase64(value: string): Uint8Array {
+  const raw = atob(value),
+    bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
 export function createNativeSpeechStream(
   request: NativeSpeechRequest,
   input: SpeechRenderingInput,
@@ -144,64 +151,86 @@ export function createNativeSpeechStream(
       });
     await opening;
   }
+  // Validate one wire frame at `cursor` and advance the stream totals.
+  function accept(value: unknown): SpeechAudioFrame | SpeechEndFrame {
+    const f = record(value);
+    if (f.type === "done") {
+      if (!audioBytes || f.frames !== cursor || f.audioBytes !== audioBytes)
+        throw new Error("Invalid speech completion");
+      return { type: "done", frames: cursor, audioBytes };
+    }
+    if (
+      f.type !== "audio" ||
+      f.sequence !== cursor ||
+      cursor >= 2048 ||
+      f.mimeType !== "audio/mpeg" ||
+      typeof f.audioBase64 !== "string" ||
+      f.audioBase64.length > 11184812 ||
+      f.audioBase64.length % 4 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(f.audioBase64)
+    )
+      throw new Error("Invalid speech audio");
+    const audio = decodeBase64(f.audioBase64);
+    const alignment = timing(f.alignment),
+      normalizedAlignment = timing(f.normalizedAlignment);
+    const size = audioBytes + audio.byteLength;
+    const count =
+      characters +
+      (alignment?.characters.length ?? 0) +
+      (normalizedAlignment?.characters.length ?? 0);
+    if (size > 8 * 1024 * 1024 || count > 50000)
+      throw new Error("Speech stream is too large");
+    audioBytes = size;
+    characters = count;
+    cursor++;
+    return {
+      type: "audio",
+      sequence: f.sequence as number,
+      audio,
+      mimeType: "audio/mpeg",
+      alignment,
+      normalizedAlignment,
+    };
+  }
+  // Frames from the last batch reply that the caller has not pulled yet.
+  const ready: Array<SpeechAudioFrame | SpeechEndFrame> = [];
+  function next(): SpeechAudioFrame | SpeechEndFrame {
+    const frame = ready.shift() as SpeechAudioFrame | SpeechEndFrame;
+    if (frame.type === "done") {
+      complete = true;
+      detach();
+    }
+    return frame;
+  }
   async function pull(): Promise<SpeechAudioFrame | SpeechEndFrame> {
     current();
     if (complete) throw new Error("Speech stream is complete");
     if (pulling) return pulling;
+    if (ready.length) return next();
     pulling = (async (): Promise<SpeechAudioFrame | SpeechEndFrame> => {
       await open();
       current();
+      // One request returns every frame the host has ready after the cursor.
       const value = await request("/voice/tts/stream/pull", {
         streamId,
         cursor,
+        batch: true,
       });
       current();
       try {
-        const v = record(value),
-          f = record(v.frame);
+        const v = record(value);
         if (v.cursor !== cursor) throw new Error("Invalid speech cursor");
-        if (f.type === "done") {
-          if (!audioBytes || f.frames !== cursor || f.audioBytes !== audioBytes)
+        const batch = v.frames;
+        if (!Array.isArray(batch) || !batch.length)
+          throw new Error("Invalid speech batch");
+        const frames = batch.map((f, i) => {
+          const frame = accept(f);
+          if (frame.type === "done" && i !== batch.length - 1)
             throw new Error("Invalid speech completion");
-          complete = true;
-          detach();
-          return { type: "done", frames: cursor, audioBytes };
-        }
-        if (
-          f.type !== "audio" ||
-          f.sequence !== cursor ||
-          cursor >= 2048 ||
-          f.mimeType !== "audio/mpeg" ||
-          typeof f.audioBase64 !== "string" ||
-          f.audioBase64.length > 11184812 ||
-          f.audioBase64.length % 4 ||
-          !/^[A-Za-z0-9+/]*={0,2}$/.test(f.audioBase64)
-        )
-          throw new Error("Invalid speech audio");
-        const raw = atob(f.audioBase64);
-        if (btoa(raw) !== f.audioBase64)
-          throw new Error("Invalid speech encoding");
-        const audio = Uint8Array.from(raw, (c) => c.charCodeAt(0));
-        const alignment = timing(f.alignment),
-          normalizedAlignment = timing(f.normalizedAlignment);
-        const size = audioBytes + audio.byteLength;
-        const count =
-          characters +
-          (alignment?.characters.length ?? 0) +
-          (normalizedAlignment?.characters.length ?? 0);
-        if (size > 8 * 1024 * 1024 || count > 50000)
-          throw new Error("Speech stream is too large");
-        audioBytes = size;
-        characters = count;
-        cursor++;
-        return {
-          type: "audio",
-          sequence: f.sequence as number,
-          audio,
-          mimeType: "audio/mpeg",
-          alignment,
-          normalizedAlignment,
-        };
+          return frame;
+        });
+        ready.push(...frames);
+        return next();
       } catch (error) {
         void cancel().catch(() => {});
         throw error;

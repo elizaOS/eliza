@@ -1,0 +1,49 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/advertising/index.ts",
+    "packages/cloud/shared/src/db/repositories/ad-campaigns.ts",
+    "packages/cloud/shared/src/db/repositories/ad-transactions.ts",
+    "packages/cloud/shared/src/lib/services/credits.ts",
+    "packages/cloud/shared/src/db/helpers.ts",
+    "packages/cloud/shared/src/db/schemas/ad-campaigns.ts",
+    "packages/cloud/shared/src/db/schemas/ad-transactions.ts",
+    "packages/cloud/shared/src/db/schemas/credit-transactions.ts",
+    "packages/cloud/shared/src/lib/services/advertising/campaign-deletion.pglite.test.ts",
+    "packages/cloud/quint/check-ad-campaign-refund.mjs",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/cloud/shared/src/lib/services/advertising/campaign-deletion.postgres.integration.test.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-ad-campaign-refund.mjs",
+  "bounds": {
+    "domain": "One existing campaign with allocation5, initial spent2, two delete callers and at most two attempts each. Money is integral in this instance; a corrupt retained numeric input is an explicit unavailable state. The parent organization and source ownership remain present.",
+    "atomicity": "One primary SQL transaction locks the organization, deletes and returns the current campaign, refunds its unused allocation and inserts both linked financial receipts. Credit, advertising or suppressed-row failure rolls back every mutation; cache invalidation occurs only afterward.",
+    "scope": "Real PGlite service/repository tests check SQL failure and suppressed receipts, linked ledgers, post-commit cache failure, zero refund, corrupt numeric rejection and foreign-organization refusal. SQL lock scheduling, provider truth, external deletion/creation races, debit/budget-update protocols, decimal rounding and general TypeScript refinement are not proved here.",
+    "providerBoundary": "This is the SQL settlement phase after no external campaign exists or its provider deletion was confirmed. Unknown external deletion, stale provider spend, and retries against an already-deleted remote resource remain separate unresolved lifecycle obligations; there is no remote exactly-once claim.",
+    "progress": "Weakly fair SQL and reply continuations settle accepted calls. Failure may preserve the campaign for retry. No provider availability, elapsed deadline, successful deletion or automatic replay guarantee.",
+    "conformance": "Four independent-session PostgreSQL cases observe lock blocking for competing deletes, spend-before-delete, delete-before-spend and rollback-to-waiting-writer. These are selected real SQL histories, not a complete isolation proof."
+  },
+  "cases": [
+    {
+      "name": "atomic-campaign-refund",
+      "main": "ad_campaign_refund",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RequestsSettle"],
+      "temporalChecks": [
+        {
+          "property": "RequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the finite SQL/reply continuations. External provider creation/deletion happens outside this modeled phase."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

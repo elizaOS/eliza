@@ -15,6 +15,7 @@ import {
   isMatchingNotesMutationCompletion,
   isObjectRecord,
   type Memory,
+  normalizeEffectReceipt,
   type RequestOperationIssuer,
   ResponseHandlerFieldRegistry,
   readNotesMutationCompletion,
@@ -43,9 +44,18 @@ import {
 } from "../../../../packages/core/src/actions/task-extraction-context.ts";
 import { executePlannedToolCall as sourceExecutePlannedToolCall } from "../../../../packages/core/src/runtime/execute-planned-tool-call.ts";
 import {
+  applyHistoryRetentionReview,
+  prepareHistoryRetention,
+} from "../../../plugin-assistant/src/runtime/history-retention.ts";
+import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  projectBackgroundHistory,
+  projectReviewedHistory,
+  withBackgroundHistory,
+} from "../../../plugin-assistant/src/services/message/history-discovery.ts";
 import { resolveNotesRequestHostRestriction } from "../../../plugin-assistant/src/services/message/notes-request-issuer.ts";
 import { executeV5PlannedToolCall } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { messageHandlerFromFieldResult } from "../../../plugin-assistant/src/services/message/stage1-output.ts";
@@ -523,6 +533,352 @@ describe("request-bound Notes negative constraints", () => {
         isMatchingNotesMutationCompletion(rejected, corrected, f.issuer),
       ).toBe(true);
       expect(f.writes).toHaveBeenCalledTimes(1);
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  // tj-09ade5745f5f37: a long voice room whose background review deferred a
+  // settled calendar receipt with its request. The requested create was
+  // refused as ACTION_REQUEST_RESTRICTION_INVALID because the projection
+  // mismatch dropped the request binding, and with it the operation attempt.
+  it.each([
+    [{ classification: "mutation_requested", operations: ["create"] }, true],
+    [
+      { classification: "read_only", operations: ["list"] },
+      "REQUEST_OPERATION_RESTRICTED",
+    ],
+    [
+      { classification: "unresolved", operations: [] },
+      "REQUEST_OPERATION_UNRESOLVED",
+    ],
+  ])(
+    "keeps the current request bound when background history defers a settled effect (%j)",
+    async (notesField, expected) => {
+      const f = await fixture(notesField, "Can you make a note for that?");
+      const scope = {
+        agentId: f.runtime.agentId,
+        roomId: String(f.message.roomId),
+        entityId: String(f.message.entityId),
+        roles: ["OWNER"],
+      };
+      const observedAt = "2026-11-01T00:00:00.000Z";
+      const settled = normalizeEffectReceipt({
+        receiptId: "coffee",
+        operation: "calendar.event.create",
+        resource: { kind: "calendar.event", id: "coffee" },
+        artifacts: [],
+        idempotency: { key: "coffee", replayed: false },
+        observedAt,
+        outcome: "applied",
+        commit: { kind: "durable", id: "coffee", committedAt: observedAt },
+      });
+      const original = {
+        ...f.context,
+        events: [
+          ...Array.from({ length: 16 }, (_, i) => ({
+            id: `history:${i}`,
+            type: "segment",
+            source: "prior-dialogue",
+            segment: {
+              id: `history:${i}`,
+              label: i % 2 ? "prior_message:agent" : "prior_message:user",
+              content: `Earlier exchange ${i}`,
+              stable: false,
+              metadata: {
+                roomId: scope.roomId,
+                entityId: i % 2 ? scope.agentId : scope.entityId,
+              },
+            },
+          })),
+          {
+            id: "effect:0",
+            type: "segment",
+            source: "message-service",
+            segment: {
+              id: "effect:0",
+              label: "runtime:historical_effects",
+              content: JSON.stringify({
+                requestSourceEventId: "history:0",
+                scope: "Past outcomes, not new permission.",
+                outcomes: [
+                  {
+                    actionName: "CALENDAR_CREATE_EVENT",
+                    success: true,
+                    receipt: settled,
+                  },
+                ],
+              }),
+              stable: false,
+            },
+          },
+          ...f.context.events.map((event) =>
+            event.type === "message_handler" &&
+            isObjectRecord(event.metadata?.plan)
+              ? {
+                  ...event,
+                  metadata: {
+                    ...event.metadata,
+                    plan: { ...event.metadata.plan, contexts: ["general"] },
+                  },
+                }
+              : event,
+          ),
+        ],
+      } as ContextObject;
+      const prepared = prepareHistoryRetention(
+        original,
+        scope,
+        null,
+        "evidence",
+        6,
+      );
+      const plannerContext = withBackgroundHistory(
+        original,
+        projectReviewedHistory(
+          original,
+          scope,
+          applyHistoryRetentionReview(prepared, {
+            sourceSetId: prepared.sourceSetId,
+            complete: true,
+            retainSourceIds: [],
+            deferSourceIds: prepared.candidates.map((source) => source.id),
+            uncertainSourceIds: [],
+            dependencyGroups: [],
+          }),
+        ),
+      );
+      const background = projectBackgroundHistory(plannerContext);
+      expect(background.applied).toBe(true);
+      expect(
+        background.context.events.some((event) => event.id === "effect:0"),
+      ).toBe(false);
+      try {
+        const result = await executeV5PlannedToolCall({
+          runtime: f.runtime,
+          toolCall: {
+            name: "NOTES_CREATE",
+            params: { content: "News summary for Nov 1" },
+          },
+          plannerContext,
+          executorCtx: {
+            message: f.message,
+            state: f.state,
+            userRoles: ["OWNER"],
+            activeContexts: ["general"],
+            replyOwner: "planner",
+          },
+          plannerRuntime: {
+            useModel: async () => {
+              throw new Error("The registered create needs no sub-planner");
+            },
+          },
+        });
+        if (expected === true) {
+          expect(actionDiagnostic(result)).toMatchObject({
+            success: true,
+            receipts: 1,
+          });
+          expect(f.writes).toHaveBeenCalledTimes(1);
+          expect(readNotesMutationCompletion(result, f.issuer)).toMatchObject({
+            requested: true,
+            status: "current",
+          });
+        } else {
+          expect(actionDiagnostic(result)).toMatchObject({
+            success: false,
+            code: expected,
+            executed: false,
+            notStarted: true,
+            receipts: 0,
+          });
+          expect(f.writes).not.toHaveBeenCalled();
+        }
+      } finally {
+        await f.service.stop();
+      }
+    },
+  );
+
+  it("confirms an explicit update completed by the registered Notes patch edit", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "Edit the ideas note so its text is: edited by QA check.",
+    );
+    let modelCalls = 0;
+    let toolCalls = 0;
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_PATCH",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            if (++modelCalls > 1)
+              throw new Error("The committed edit must not be replayed");
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  name: "NOTES_PATCH",
+                  id: "case5-edit",
+                  arguments: {
+                    target: { kind: "id", value: f.historical.value.id },
+                    changes: [{ field: "body", value: "edited by QA check" }],
+                    expectedRevision: f.before.revision,
+                    eliza_turn_scope: "final",
+                  },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          toolCalls++;
+          return executeV5PlannedToolCall({
+            runtime: f.runtime,
+            toolCall: call,
+            plannerContext: f.context,
+            executorCtx: {
+              message: f.message,
+              state: f.state,
+              userRoles: ["OWNER"],
+              activeContexts: ["notes"],
+              replyOwner: "planner",
+            },
+            plannerRuntime: {
+              useModel: async () => {
+                throw new Error("No patch sub-planner expected");
+              },
+            },
+          });
+        },
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH",
+          thought: "Use the actual durable edit receipt.",
+          messageToUser: "Updated the note.",
+        }),
+      });
+      expect(modelCalls).toBe(1);
+      expect(toolCalls).toBe(1);
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(f.service.snapshot().revision).toBe(f.before.revision + 1);
+      expect(f.service.getNote(f.historical.value.id).body).toBe(
+        "\nedited by QA check",
+      );
+      expect(result.finalMessage).toBe("Updated the note.");
+      expect(result.evaluator?.success).toBe(true);
+      const applied = result.trajectory.steps.find(
+        (step) => step.toolCall?.name === "NOTES_PATCH",
+      )?.result;
+      if (!applied)
+        throw new Error("Expected the actual registered patch result");
+      expect(readNotesMutationCompletion(applied, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: false,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_PATCH", value: "patch" },
+      });
+      expect(applied.effectReceipts?.[0]).toMatchObject({
+        operation: "notes.note.update",
+        outcome: "applied",
+        resource: {
+          id: f.historical.value.id,
+          version: String(f.before.revision + 1),
+        },
+        commit: { kind: "durable", id: f.historical.value.id },
+      });
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("keeps a rejected registered patch required for an explicit update and preserves its raw retry identity", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "Edit the ideas note body.",
+    );
+    const execute = (params: Record<string, unknown>) =>
+      executeV5PlannedToolCall({
+        runtime: f.runtime,
+        toolCall: { name: "NOTES_PATCH", params },
+        plannerContext: f.context,
+        executorCtx: {
+          message: f.message,
+          state: f.state,
+          userRoles: ["OWNER"],
+          activeContexts: ["notes"],
+          replyOwner: "planner",
+        },
+        plannerRuntime: {
+          useModel: async () => {
+            throw new Error("No patch sub-planner expected");
+          },
+        },
+      });
+    try {
+      const target = { kind: "id", value: f.historical.value.id };
+      const rejected = await execute({ target, changes: [] });
+      expect(readNotesMutationCompletion(rejected, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: true,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_PATCH", value: "patch" },
+      });
+      expect(f.writes).not.toHaveBeenCalled();
+      const corrected = await execute({
+        target,
+        changes: [{ field: "body", value: "edited by QA check" }],
+        expectedRevision: f.before.revision,
+      });
+      expect(
+        isMatchingNotesMutationCompletion(rejected, corrected, f.issuer),
+      ).toBe(true);
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(
+        readNotesMutationCompletion(
+          JSON.parse(JSON.stringify(corrected)),
+          f.issuer,
+        ),
+      ).toBeUndefined();
+      f.retire();
+      expect(readNotesMutationCompletion(corrected, f.issuer)?.status).toBe(
+        "stale",
+      );
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("does not classify an ordinary update as requested by a patch-only interpretation", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["patch"] },
+      "Append a line to the ideas note.",
+    );
+    try {
+      const changed = await f.execute("NOTES_UPDATE", {
+        noteId: f.historical.value.id,
+        textEdit: {
+          field: "title",
+          oldText: "ideas",
+          newText: "ideas revised",
+        },
+      });
+      expect(changed.success).toBe(true);
+      expect(readNotesMutationCompletion(changed, f.issuer)).toMatchObject({
+        requested: false,
+        rejected: false,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_UPDATE", value: "update" },
+      });
     } finally {
       await f.service.stop();
     }
@@ -2852,4 +3208,95 @@ describe("request-bound Notes negative constraints", () => {
       await f.service.stop();
     }
   });
+
+  it.each([true, false])(
+    "a settled Notes create defers reply recovery only when its host opts in (%s)",
+    async (defer) => {
+      const f = await fixture(
+        { classification: "mutation_requested", operations: ["create"] },
+        "create a new launch note",
+      );
+      let requests = 0;
+      const executed: string[] = [];
+      try {
+        const pending = diagnosedPlanner(f, {
+          context: f.context,
+          deferInternalReplyRecoveryToCaller: defer,
+          tools: [
+            {
+              name: "NOTES_CREATE",
+              parameters: {
+                type: "object",
+                properties: { content: { type: "string" } },
+                required: ["content"],
+              },
+            },
+          ],
+          runtime: {
+            useModel: async () => {
+              requests++;
+              return requests === 1
+                ? {
+                    text: "",
+                    toolCalls: [
+                      {
+                        id: "settled-create",
+                        name: "NOTES_CREATE",
+                        arguments: {
+                          content: "Launch note",
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ],
+                  }
+                : JSON.stringify({
+                    completed: true,
+                    toolCalls: [],
+                    messageToUser: "Saved the launch note.",
+                  });
+            },
+          },
+          executeToolCall: async (call, current) => {
+            bindTaskExtractionContext(
+              f.state,
+              f.message,
+              current.trajectory.context,
+              current.trajectory.context,
+              f.runtime,
+              getRequestOperationIssuer(f.runtime, f.message),
+            );
+            executed.push(call.name);
+            return actionResultToPlannerToolResult(
+              await f.execute(call.name, call.params ?? {}),
+              { requestOperationIssuer: f.issuer },
+            );
+          },
+          evaluate: async () => ({
+            success: false,
+            decision: "CONTINUE" as const,
+            thought: "The final reply is still incomplete.",
+            requestFullyCovered: false,
+            messageToUser: "",
+          }),
+          config: { maxTerminalOnlyContinuations: 2 },
+        });
+        if (defer) {
+          const result = await pending;
+          expect(result.status).toBe("finished");
+          expect(result.replyRecoveryRequired).toBe(true);
+          expect(result.finalMessage).toBeUndefined();
+        } else
+          await expect(pending).rejects.toMatchObject({
+            kind: "terminal_only_continuations",
+          });
+        expect(executed).toEqual(["NOTES_CREATE"]);
+        expect(f.writes).toHaveBeenCalledTimes(1);
+        expect(f.service.snapshot().notes).toHaveLength(
+          f.before.notes.length + 1,
+        );
+      } finally {
+        await f.service.stop();
+      }
+    },
+  );
 });

@@ -55,9 +55,3 @@ export function getCandidateActionBackstopRules(
 ): readonly CandidateActionBackstopRule[] {
 	return rules.get(runtime) ?? [];
 }
-
-export function __resetCandidateActionBackstopRulesForTests(
-	runtime: IAgentRuntime,
-): void {
-	rules.delete(runtime);
-}

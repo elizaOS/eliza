@@ -15,13 +15,24 @@ import {
   createSelfApiRequestHeaders,
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
+import { getDeviceActionTurn } from "@elizaos/plugin-assistant";
 import { dispatchApiRoute } from "../api/in-process-api.ts";
+import { hasSelfApiTcpListener } from "../api/self-api-endpoint.ts";
 import { listViews, type ViewRegistryEntry } from "../api/views-registry.ts";
 import { getViewClientScope } from "../runtime/view-client-context.ts";
 import {
   resolveViewNavigationTargets,
+  viewEnabledByProfile,
   viewNavigationAvailable,
 } from "../runtime/view-navigation-targets.ts";
+
+/** The authenticated phone's enabled views for this runtime's turn; undefined off-device. */
+export function enabledDeviceViews(
+  runtime: IAgentRuntime,
+): readonly string[] | undefined {
+  const turn = getDeviceActionTurn();
+  return turn?.runtime === runtime ? turn.viewProfile?.views : undefined;
+}
 
 export interface ViewNavigationDelivery {
   runtime: IAgentRuntime;
@@ -66,10 +77,8 @@ async function deliverViewNavigation({
   const scope = getViewClientScope();
   // Cost: the same owned kernel, no loopback RPC or root-credential identity change.
   // An expired scoped request fails closed in the dispatcher; it never falls back.
-  if (
-    scope?.request ||
-    process.env.ELIZA_LOCAL_AGENT_TRANSPORT === "filesystem-v1"
-  ) {
+  // Without a listener of our own, never send the bearer to the loopback port.
+  if (scope?.request || !hasSelfApiTcpListener()) {
     const response = await dispatchApiRoute({
       runtime,
       inProcess: true,
@@ -179,17 +188,29 @@ export function createViewsAction(
           "invalid",
           "Use action=list or action=show with a registered view.",
         );
-      const views = listViews(runtime, { viewType: "gui" }).filter((view) =>
-        satisfiesRoleGate([caller.role], view.roleGate),
+      const completedAction =
+        isObjectRecord(message.content.metadata) &&
+        message.content.metadata.viewDelivery === "completed-action";
+      // A screen the enrolled phone did not enable is never a destination.
+      const enabled = enabledDeviceViews(runtime);
+      const views = listViews(runtime, { viewType: "gui" }).filter(
+        (view) =>
+          satisfiesRoleGate([caller.role], view.roleGate) &&
+          viewEnabledByProfile(view, enabled),
       );
-      if (params.action === "list")
+      if (params.action === "list") {
+        // List never advertises a view that show would refuse.
+        const listed = views.filter((view) =>
+          viewNavigationAvailable(view, completedAction),
+        );
         return {
           success: true,
           text: JSON.stringify(
-            views.map(({ id, label, path }) => ({ id, label, path })),
+            listed.map(({ id, label, path }) => ({ id, label, path })),
           ),
-          data: { views },
+          data: { views: listed },
         };
+      }
       const constraint = getTurnActionConstraint(
         {
           messageId: message.id ?? "",
@@ -221,9 +242,6 @@ export function createViewsAction(
           "No originating renderer is bound to this turn.",
         );
       const handoffId = randomUUID();
-      const completedAction =
-        isObjectRecord(message.content.metadata) &&
-        message.content.metadata.viewDelivery === "completed-action";
       if (!viewNavigationAvailable(view, completedAction))
         return fail(
           "unavailable",

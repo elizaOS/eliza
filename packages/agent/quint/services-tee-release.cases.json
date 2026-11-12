@@ -1,0 +1,25 @@
+{
+  "sources": [
+    "packages/agent/src/services/tee-boot-gate.ts",
+    "packages/agent/src/services/tee-key-release.ts",
+    "packages/agent/src/services/tee-revocation.ts",
+    "packages/agent/src/services/tee-confidential-inference.ts",
+    "packages/agent/src/services/tee-sealed-volume.ts"
+  ],
+  "bounds": {
+    "domain": "One attestation/policy/key lifecycle.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_tee_release",
+      "main": "services_tee_release",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

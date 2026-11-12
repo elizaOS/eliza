@@ -11,9 +11,17 @@ package ai.eliza.plugins.wifi
  * the requested one; it only makes the timeout report `unverified` instead of
  * `notConnected`. A network with a different disclosed name is ignored.
  *
+ * `wrongPassword` comes from the supplicant's authentication error while the
+ * join waits. Android does not name the network in that report, so it counts
+ * only for a [secured] request and only until the requested network is
+ * confirmed.
+ *
  * Pure and Android-free so the decision runs in JVM unit tests.
  */
-internal class ApprovedJoinTracker(private val requestedSsid: String) {
+internal class ApprovedJoinTracker(
+    private val requestedSsid: String,
+    private val secured: Boolean = false,
+) {
     private var sawUnidentified = false
 
     /**
@@ -32,6 +40,13 @@ internal class ApprovedJoinTracker(private val requestedSsid: String) {
         return if (validated) STATUS_CONNECTED else STATUS_CAPTIVE_PORTAL
     }
 
+    /**
+     * Records the supplicant's authentication error.
+     *
+     * @return `wrongPassword` for a secured request, or null to keep waiting.
+     */
+    fun authenticationFailed(): String? = if (secured) STATUS_WRONG_PASSWORD else null
+
     /** The status when no network matching [requestedSsid] was confirmed in time. */
     fun timeoutStatus(): String = if (sawUnidentified) STATUS_UNVERIFIED else STATUS_NOT_CONNECTED
 
@@ -41,5 +56,6 @@ internal class ApprovedJoinTracker(private val requestedSsid: String) {
         const val STATUS_UNVERIFIED = "unverified"
         const val STATUS_NOT_CONNECTED = "notConnected"
         const val STATUS_DECLINED = "declined"
+        const val STATUS_WRONG_PASSWORD = "wrongPassword"
     }
 }

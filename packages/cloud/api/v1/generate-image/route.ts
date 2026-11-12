@@ -1,14 +1,12 @@
 /** Authenticates image requests and delegates the canonical Cloud image transaction. */
 
 import {
-  ApiError,
   failureResponse,
   jsonError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { admitAppInferenceCacheOnly } from "@elizaos/cloud-shared/lib/services/app-inference-admission";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import {
   executeImageGeneration,
   imageGenerationRequestSchema,
@@ -54,10 +52,6 @@ export async function handleGenerateImagePOST(
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => user.organization_id,
-      credential: () => credential,
-    });
     if (pendingResponse) return pendingResponse;
     if (!requestResult.success) throw requestResult.error;
     const request = requestResult.data;
@@ -68,22 +62,7 @@ export async function handleGenerateImagePOST(
       if (appScopeId && appScopeId !== options.requiredAppId) {
         return jsonError(c, 403, "Access denied to this app", "access_denied");
       }
-      const resolution = executionCtx
-        ? await appsService.getByIdCacheOnly(options.requiredAppId, {
-            executionCtx,
-          })
-        : {
-            kind: "ready" as const,
-            app: (await appsService.getById(options.requiredAppId)) ?? null,
-          };
-      if (resolution.kind !== "ready") {
-        throw new ApiError(
-          503,
-          "service_unavailable",
-          "App cache is warming; retry shortly",
-        );
-      }
-      inferenceApp = resolution.app;
+      inferenceApp = (await appsService.getById(options.requiredAppId)) ?? null;
       if (!inferenceApp) {
         return jsonError(c, 404, "App not found", "resource_not_found");
       }
@@ -131,7 +110,7 @@ export async function handleGenerateImagePOST(
             affiliateCode: context.affiliateCode,
             executionCtx,
             admissionSnapshot,
-            credential: credentialGuard.credentialForAdmission(),
+            credential,
             atomicProviderBoundary: true,
             metadata: {
               endpoint: "apps.generate-image",
@@ -146,7 +125,6 @@ export async function handleGenerateImagePOST(
           apiKeyId,
           cost,
           admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: true,
         });
         return { kind: "organization" as const, admission };

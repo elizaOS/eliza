@@ -48,7 +48,16 @@ Inspect the terminal instrumentation result, not only the shell exit status.
 
 The Android `nativeonly` package provides host-configured password custody,
 credential persistence, exact-origin autofill validation and one-shot sessions.
-These are native APIs; they are not registered Capacitor methods. Hosts retain
+These are native APIs; they are not registered Capacitor methods. They are in the
+`android-nativeonly` Gradle module, with no Capacitor or Kotlin. The `android` module
+adds only `SecureStorePlugin` and depends on it, so a Capacitor host also includes it:
+
+```groovy
+include ':elizaos-capacitor-secure-store-nativeonly'
+project(':elizaos-capacitor-secure-store-nativeonly').projectDir = new File(project(':elizaos-capacitor-secure-store').projectDir, '../android-nativeonly')
+```
+
+A host that needs only the native classes includes `android-nativeonly` alone. Hosts retain
 picker UI, signer trust, permission declarations and release/debug policy, and
 must preserve deployed aliases, AAD and filenames when adopting them. Custody
 uses Android API 26+; browser structure parsing requires API 28+. Production
@@ -56,7 +65,6 @@ password keys use device authentication by default. The explicit Android 15+
 device-unlocked policy below is a separate custody version. The unauthenticated
 constructor mode is only for host-restricted synthetic tests. Autofill metadata key strings
 retain their existing browser wire protocol identifiers.
-
 
 `DeviceCredentialSession` owns native Activity challenge/result fencing and absolute
 unlock expiry. Reserve an inclusive request-code range; forward activity results,
@@ -134,6 +142,11 @@ whole record only if that snapshot still matches. Both check ownership inside th
 lock before and after storage. A failed post-check can follow a committed write;
 reconcile using the durable enrollment/revocation receipt. This class validates
 shape, not server authenticity: only trusted host verification may supply a record.
+`ownerIdentity(snapshot)` returns the record owner's stable identity, the same bytes
+as the gateway's `verifiedOwnerIdentity` (`cloud-owner-v1:` and the SHA-256 of
+`[authority,userId,organizationId]`), or null for no record. Use it, not a host copy;
+`bun run --cwd plugins/plugin-native-secure-store test:native-identity` holds it to
+the JavaScript on a JVM.
 No legacy credential slot is read or migrated, no broker route is registered, and
 no product policy or encrypted task database is enabled. Java credential strings
 cannot be reliably erased from memory. Keep all writers in one Android process.
@@ -157,7 +170,13 @@ then the wrapped copy. A wrapped copy whose entry is gone throws
 `adopt(from, to, databaseId, step)` copies one key generation to another account,
 reads it back, runs the host step (for example a file move), and only then erases
 the source. A repeat after a stop resumes; a target with a different key is left
-unchanged. Reserve a new directory and alias prefix for per-slot custody.
+unchanged. Reserve a new directory and alias prefix for per-slot custody. `isPerSlot()` tells
+the two modes apart.
+Read-only accessors name a slot's custody without reading its data key:
+`wrappingKeyAlias(accountId, databaseId)` (per-slot only), `keyProtection(...)`
+(the wrapping key's `KeyInfo`, or null when it is absent; per-slot only) and
+`wrappedFile(...)` (the wrapped copy's file, which may not exist). Hosts use them
+for a custody readout and for tests that remove a Keystore entry.
 
 This helper has no renderer bridge and is not enabled by default. It does not
 provide a database driver, active-key verification, migration, or complete account
