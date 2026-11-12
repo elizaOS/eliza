@@ -224,14 +224,57 @@ test("a failed server search followed by abort retains unknown settlement, not a
 });
 
 /** Tool-use input the provider streams before the client disconnects. */
-const TOOL_INPUT_CHUNK = `{"text":"${"word ".repeat(2_000)}`;
-const TOOL_INPUT_CHUNKS = 20; // about 200k characters, about 50k tokens
-const TOOL_INPUT_TOKENS = Math.ceil(
-  (TOOL_INPUT_CHUNK.length * TOOL_INPUT_CHUNKS) / 4,
-);
+const ESSAY = "word ".repeat(40_000); // 200k characters, about 50k tokens
+const TOOL_INPUT_JSON = JSON.stringify({ text: ESSAY });
+/** `text` in 20 streamed fragments. */
+function fragments(text: string): string[] {
+  const size = Math.ceil(text.length / 20);
+  return Array.from({ length: 20 }, (_, i) =>
+    text.slice(i * size, (i + 1) * size),
+  );
+}
+const AFTER_TOOL = "AFTER-TOOL";
 
-/** A forced tool call whose input streams in large fragments and never finishes. */
-function mockStreamedToolInput() {
+/**
+ * How the provider delivers the tool input before the client disconnects:
+ * - `open`: streamed fragments; the tool input never closes.
+ * - `complete`: streamed fragments, the tool call completes, then text.
+ * - `final-only`: no fragments; the whole input is in the completed tool call,
+ *   then text.
+ */
+type ToolInputMode = "open" | "complete" | "final-only";
+
+/** The text the client has when it disconnects, and the marker it waits for. */
+function deliveredOutput(mode: ToolInputMode): {
+  marker: string;
+  chars: number;
+} {
+  if (mode === "open") {
+    return {
+      marker: "LAST-FRAGMENT",
+      chars: TOOL_INPUT_JSON.length - 2 + "LAST-FRAGMENT".length,
+    };
+  }
+  return {
+    marker: AFTER_TOOL,
+    chars: TOOL_INPUT_JSON.length + AFTER_TOOL.length,
+  };
+}
+
+/**
+ * The exact abort charge: the estimated input plus the delivered output, at
+ * the isolated prices with the platform markup. A doubled tool input fails
+ * this check.
+ */
+async function expectedAbortCharge(mode: ToolInputMode): Promise<number> {
+  const { PLATFORM_MARKUP_MULTIPLIER } = await import(
+    "@elizaos/cloud-shared/lib/pricing"
+  );
+  const outputTokens = Math.ceil(deliveredOutput(mode).chars / 4);
+  return (100 * 3e-6 + outputTokens * 15e-6) * PLATFORM_MARKUP_MULTIPLIER;
+}
+
+function mockToolInputStream(mode: ToolInputMode) {
   const encoder = new TextEncoder();
   return spyOn(globalThis, "fetch").mockImplementation((async (
     input: RequestInfo | URL,
@@ -248,7 +291,7 @@ function mockStreamedToolInput() {
             {
               type: "message_start",
               message: {
-                id: "msg_tool_abort",
+                id: `msg_tool_abort_${mode}`,
                 type: "message",
                 role: "assistant",
                 model: MODEL,
@@ -265,26 +308,41 @@ function mockStreamedToolInput() {
                 type: "tool_use",
                 id: "toolu_essay",
                 name: "write_essay",
-                input: {},
+                input: mode === "final-only" ? { text: ESSAY } : {},
               },
             },
           ];
-          for (let i = 0; i < TOOL_INPUT_CHUNKS; i += 1) {
-            frames.push({
-              type: "content_block_delta",
-              index: 0,
-              delta: {
-                type: "input_json_delta",
-                partial_json:
-                  i === 0 ? TOOL_INPUT_CHUNK : TOOL_INPUT_CHUNK.slice(9),
-              },
-            });
-          }
-          frames.push({
+          const inputDelta = (partial_json: string) => ({
             type: "content_block_delta",
             index: 0,
-            delta: { type: "input_json_delta", partial_json: "LAST-FRAGMENT" },
+            delta: { type: "input_json_delta", partial_json },
           });
+          if (mode === "open") {
+            // The input without its closing `"}`, then a last fragment.
+            for (const fragment of fragments(TOOL_INPUT_JSON.slice(0, -2))) {
+              frames.push(inputDelta(fragment));
+            }
+            frames.push(inputDelta("LAST-FRAGMENT"));
+          } else {
+            if (mode === "complete") {
+              for (const fragment of fragments(TOOL_INPUT_JSON)) {
+                frames.push(inputDelta(fragment));
+              }
+            }
+            frames.push(
+              { type: "content_block_stop", index: 0 },
+              {
+                type: "content_block_start",
+                index: 1,
+                content_block: { type: "text", text: "" },
+              },
+              {
+                type: "content_block_delta",
+                index: 1,
+                delta: { type: "text_delta", text: AFTER_TOOL },
+              },
+            );
+          }
           for (const frame of frames) {
             const type = (frame as { type: string }).type;
             controller.enqueue(
@@ -293,7 +351,7 @@ function mockStreamedToolInput() {
               ),
             );
           }
-          // The tool input never closes. The caller disconnects first.
+          // The message never finishes. The caller disconnects first.
           signal?.addEventListener(
             "abort",
             () => controller.error(signal?.reason),
@@ -322,158 +380,161 @@ async function readUntilThenAbort(
   return output;
 }
 
-test("/v1/chat/completions: an abort after streamed tool arguments bills those arguments", async () => {
-  const { __streamingCreditTestHooks } = await import(
-    "../v1/chat/completions/route"
-  );
-  const abort = new AbortController();
-  const fetchSpy = mockStreamedToolInput();
-  const exactCharges: number[] = [];
-  let unknownSettlements = 0;
-  const settled = Promise.withResolvers<void>();
-  try {
-    const response = await __streamingCreditTestHooks.handleStreamingRequest(
-      `anthropic/${MODEL}`,
-      undefined,
-      [{ role: "user", content: "Put a long essay in text." }],
-      {
-        model: `anthropic/${MODEL}`,
-        messages: [{ role: "user", content: "Put a long essay in text." }],
-        stream: true,
-        max_tokens: 64_000,
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "write_essay",
-              parameters: {
-                type: "object",
-                properties: { text: { type: "string" } },
-                required: ["text"],
+for (const mode of ["open", "complete", "final-only"] as const) {
+  test(`/v1/chat/completions: an abort after ${mode} tool arguments bills them once`, async () => {
+    const { __streamingCreditTestHooks } = await import(
+      "../v1/chat/completions/route"
+    );
+    const abort = new AbortController();
+    const fetchSpy = mockToolInputStream(mode);
+    const exactCharges: number[] = [];
+    let unknownSettlements = 0;
+    const settled = Promise.withResolvers<void>();
+    try {
+      const response = await __streamingCreditTestHooks.handleStreamingRequest(
+        `anthropic/${MODEL}`,
+        undefined,
+        [{ role: "user", content: "Put a long essay in text." }],
+        {
+          model: `anthropic/${MODEL}`,
+          messages: [{ role: "user", content: "Put a long essay in text." }],
+          stream: true,
+          max_tokens: 64_000,
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "write_essay",
+                parameters: {
+                  type: "object",
+                  properties: { text: { type: "string" } },
+                  required: ["text"],
+                },
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "write_essay" } },
-      },
-      {
-        id: "00000000-0000-0000-0000-00000000d012",
-        organization_id: "00000000-0000-0000-0000-00000000d011",
-      },
-      null,
-      null,
-      "tool-abort-completions",
-      "tool-abort-completions",
-      null,
-      Date.now(),
-      abort.signal,
-      10_000,
-      100,
-      async (amount) => {
-        exactCharges.push(amount);
-        settled.resolve();
-        return null;
-      },
-      async () => {
-        unknownSettlements += 1;
-        settled.resolve();
-        return null;
-      },
-      undefined,
-      {},
-      64_000,
-      {},
-      "bitrouter",
-      null,
-      false,
-    );
-    expect(response.status).toBe(200);
-    const output = await readUntilThenAbort(response, "LAST-FRAGMENT", abort);
-    await settled.promise;
-    expect(output).toContain("LAST-FRAGMENT");
-    expect(unknownSettlements).toBe(0);
-    expect(exactCharges).toHaveLength(1);
-    // The client received about 50k tokens of tool arguments. The charge must
-    // cover them, not only the 100 input tokens.
-    expect(exactCharges[0]).toBeGreaterThanOrEqual(TOOL_INPUT_TOKENS * 15e-6);
-  } finally {
-    abort.abort();
-    fetchSpy.mockRestore();
-  }
-});
-
-test("/v1/messages: an abort after streamed tool input bills that input", async () => {
-  const { __messagesStreamingCreditTestHooks } = await import(
-    "../v1/messages/route"
-  );
-  const { jsonSchema } = await import("ai");
-  const abort = new AbortController();
-  const fetchSpy = mockStreamedToolInput();
-  const exactCharges: number[] = [];
-  let unknownSettlements = 0;
-  const settled = Promise.withResolvers<void>();
-  const inputSchema = {
-    type: "object" as const,
-    properties: { text: { type: "string" as const } },
-    required: ["text"],
-  };
-  try {
-    const response = await __messagesStreamingCreditTestHooks.handleStream(
-      `anthropic/${MODEL}`,
-      undefined,
-      [{ role: "user", content: "Put a long essay in text." }],
-      {
-        model: `anthropic/${MODEL}`,
-        max_tokens: 64_000,
-        stream: true,
-        messages: [{ role: "user", content: "Put a long essay in text." }],
-        tools: [{ name: "write_essay", input_schema: inputSchema }],
-        tool_choice: { type: "tool", name: "write_essay" },
-      },
-      {
-        id: "00000000-0000-0000-0000-00000000d022",
-        organization_id: "00000000-0000-0000-0000-00000000d021",
-      },
-      null,
-      null,
-      Date.now(),
-      100,
-      {},
-      {
-        write_essay: {
-          inputSchema: jsonSchema(inputSchema),
-          outputSchema: jsonSchema({
-            type: "object",
-            additionalProperties: true,
-          }),
+          ],
+          tool_choice: { type: "function", function: { name: "write_essay" } },
         },
-      },
-      { type: "tool", toolName: "write_essay" },
-      abort.signal,
-      10_000,
-      async (amount) => {
-        exactCharges.push(amount);
-        settled.resolve();
-        return null;
-      },
-      async () => {
-        unknownSettlements += 1;
-        settled.resolve();
-        return null;
-      },
-      undefined,
-      "bitrouter",
-      "tool-abort-messages",
+        {
+          id: "00000000-0000-0000-0000-00000000d012",
+          organization_id: "00000000-0000-0000-0000-00000000d011",
+        },
+        null,
+        null,
+        `tool-abort-completions-${mode}`,
+        `tool-abort-completions-${mode}`,
+        null,
+        Date.now(),
+        abort.signal,
+        10_000,
+        100,
+        async (amount) => {
+          exactCharges.push(amount);
+          settled.resolve();
+          return null;
+        },
+        async () => {
+          unknownSettlements += 1;
+          settled.resolve();
+          return null;
+        },
+        undefined,
+        {},
+        64_000,
+        {},
+        "bitrouter",
+        null,
+        false,
+      );
+      expect(response.status).toBe(200);
+      const { marker } = deliveredOutput(mode);
+      const output = await readUntilThenAbort(response, marker, abort);
+      await settled.promise;
+      expect(output).toContain(marker);
+      expect(unknownSettlements).toBe(0);
+      expect(exactCharges).toHaveLength(1);
+      // The client received about 50k tokens of tool arguments, once.
+      expect(exactCharges[0]).toBeCloseTo(await expectedAbortCharge(mode), 9);
+    } finally {
+      abort.abort();
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test(`/v1/messages: an abort after ${mode} tool input bills it once`, async () => {
+    const { __messagesStreamingCreditTestHooks } = await import(
+      "../v1/messages/route"
     );
-    expect(response.status).toBe(200);
-    const output = await readUntilThenAbort(response, "LAST-FRAGMENT", abort);
-    await settled.promise;
-    expect(output).toContain("LAST-FRAGMENT");
-    expect(unknownSettlements).toBe(0);
-    expect(exactCharges).toHaveLength(1);
-    expect(exactCharges[0]).toBeGreaterThanOrEqual(TOOL_INPUT_TOKENS * 15e-6);
-  } finally {
-    abort.abort();
-    fetchSpy.mockRestore();
-  }
-});
+    const { jsonSchema } = await import("ai");
+    const abort = new AbortController();
+    const fetchSpy = mockToolInputStream(mode);
+    const exactCharges: number[] = [];
+    let unknownSettlements = 0;
+    const settled = Promise.withResolvers<void>();
+    const inputSchema = {
+      type: "object" as const,
+      properties: { text: { type: "string" as const } },
+      required: ["text"],
+    };
+    try {
+      const response = await __messagesStreamingCreditTestHooks.handleStream(
+        `anthropic/${MODEL}`,
+        undefined,
+        [{ role: "user", content: "Put a long essay in text." }],
+        {
+          model: `anthropic/${MODEL}`,
+          max_tokens: 64_000,
+          stream: true,
+          messages: [{ role: "user", content: "Put a long essay in text." }],
+          tools: [{ name: "write_essay", input_schema: inputSchema }],
+          tool_choice: { type: "tool", name: "write_essay" },
+        },
+        {
+          id: "00000000-0000-0000-0000-00000000d022",
+          organization_id: "00000000-0000-0000-0000-00000000d021",
+        },
+        null,
+        null,
+        Date.now(),
+        100,
+        {},
+        {
+          write_essay: {
+            inputSchema: jsonSchema(inputSchema),
+            outputSchema: jsonSchema({
+              type: "object",
+              additionalProperties: true,
+            }),
+          },
+        },
+        { type: "tool", toolName: "write_essay" },
+        abort.signal,
+        10_000,
+        async (amount) => {
+          exactCharges.push(amount);
+          settled.resolve();
+          return null;
+        },
+        async () => {
+          unknownSettlements += 1;
+          settled.resolve();
+          return null;
+        },
+        undefined,
+        "bitrouter",
+        `tool-abort-messages-${mode}`,
+      );
+      expect(response.status).toBe(200);
+      const { marker } = deliveredOutput(mode);
+      const output = await readUntilThenAbort(response, marker, abort);
+      await settled.promise;
+      expect(output).toContain(marker);
+      expect(unknownSettlements).toBe(0);
+      expect(exactCharges).toHaveLength(1);
+      expect(exactCharges[0]).toBeCloseTo(await expectedAbortCharge(mode), 9);
+    } finally {
+      abort.abort();
+      fetchSpy.mockRestore();
+    }
+  });
+}
