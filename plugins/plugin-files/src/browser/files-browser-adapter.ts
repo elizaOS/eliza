@@ -737,6 +737,21 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     busy = true;
     repaint();
     try {
+      if (
+        d.op === "create" &&
+        d.path === DOWNLOAD_FOLDER &&
+        place.kind === "category" &&
+        place.category === "downloads"
+      ) {
+        const parent = await storage.storageList({ path: DOWNLOAD_FOLDER });
+        if (parent.status === "missing") {
+          const created = await storage.storageCreateFolder({
+            parent: "",
+            name: DOWNLOAD_FOLDER,
+          });
+          if (created.status !== "exists" && failed(created)) return;
+        } else if (failed(parent)) return;
+      }
       const value =
         d.op === "create"
           ? await storage.storageCreateFolder({

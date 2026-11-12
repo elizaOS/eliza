@@ -40,6 +40,7 @@ test("a read-only filter retains its results during Files activation", async (t)
           return stateReads[reads - 1].promise;
         },
         storageCategory: async () => ({ status: "ready", count: 0 }),
+        storageList: async () => ({ status: "ready", entries: [] }),
         storageTrashList: async () => ({ status: "ready", items: [] }),
         storageWatch: async () => watched.resolve(),
         storageQuery() {
