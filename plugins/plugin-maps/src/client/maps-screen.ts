@@ -910,7 +910,7 @@ export class MapsScreenController {
   // ---- directions -----------------------------------------------------------
 
   /** Directions for the selected place; the origin stays explicit. */
-  openDirections(): void {
+  openDirections(useCurrentLocation = false): void {
     const item = this.selected;
     const snapshot = this.state;
     if (!item || !snapshot) return;
@@ -938,6 +938,39 @@ export class MapsScreenController {
           false,
         );
     }
+    this.invalidate();
+    if (useCurrentLocation && this.directions) {
+      const previousOriginText = this.originText;
+      void this.host.locationGranted().then(granted => {
+        if (!granted || this.disposed || !this.host.active() || !this.directions || this.selected !== item || this.originText !== previousOriginText) return;
+        const fix = this.state?.position.value;
+        if (!fix) { this.locate(); return; }
+        this.originText = coordLabel(fix.coordinate);
+        this.message = "";
+        const controller = this.ensure();
+        controller.setOrigin(fix.coordinate, "My location");
+        void controller.planRoute();
+        this.invalidate();
+      });
+    }
+  }
+
+  /** Reverse the selected endpoints without starting navigation. */
+  swapDirections(): void {
+    const state = this.state, destination = this.selected;
+    if (this.disposed || !this.host.active() || !this.directions || this.navigating || !destination || !state?.origin || state.selection.phase !== "ready" || state.provider.status !== "configured") return;
+    const next: MapsScreenSelection = {label: state.originLabel || "Starting point", coordinate: state.origin, origin: "manual"};
+    const controller = this.ensure();
+    ++this.searchIntent;
+    this.selected = next;
+    this.originMode = false;
+    this.originText = destination.label;
+    this.message = "";
+    void controller.select({providerId:state.provider.providerId,id:"manual-origin",name:next.label,coordinate:next.coordinate,attribution:"User-selected location",fetchedAt:this.now()},false).then(() => {
+      if (this.disposed || !this.host.active() || !this.directions || this.selected !== next) return;
+      controller.setOrigin(destination.coordinate, destination.label);
+      void controller.planRoute();
+    });
     this.invalidate();
   }
 
