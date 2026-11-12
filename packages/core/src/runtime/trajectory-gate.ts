@@ -30,12 +30,11 @@ export interface TrajectoryGateDecision {
  *
  * 1. `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` — hard operator opt-out.
  * 2. `ELIZA_TRAJECTORY_LOGGING` explicit — canonical operator knob.
- * 3. `ELIZA_TRAJECTORY_RECORDING` explicit — file-recorder alias.
- * 4. `ELIZA_PROTECTED_PROFILE` non-empty — off (protected deployments never
- * persist trajectories by default; operators may opt in via tier 2/3).
- * 5. `NODE_ENV=test` — off (no background writes during tests).
- * 6. `NODE_ENV=production` — off (SOC2 O-5: operators must opt in via tier 2).
- * 7. otherwise (dev / unset NODE_ENV) — on, for local debugging.
+ * 3. `ELIZA_PROTECTED_PROFILE` non-empty — off (protected deployments never
+ * persist trajectories by default; operators may opt in via tier 2).
+ * 4. `NODE_ENV=test` — off (no background writes during tests).
+ * 5. `NODE_ENV=production` — off (SOC2 O-5: operators must opt in via tier 2).
+ * 6. otherwise (dev / unset NODE_ENV) — on, for local debugging.
  */
 export function resolveTrajectoryGate(
 	env: NodeJS.ProcessEnv = process.env,
@@ -47,11 +46,6 @@ export function resolveTrajectoryGate(
 	const explicit = coerceFlag(env.ELIZA_TRAJECTORY_LOGGING);
 	if (explicit !== undefined) {
 		return { enabled: explicit, reason: "explicit-logging" };
-	}
-
-	const legacy = coerceFlag(env.ELIZA_TRAJECTORY_RECORDING);
-	if (legacy !== undefined) {
-		return { enabled: legacy, reason: "explicit-recording-legacy" };
 	}
 
 	if ((env.ELIZA_PROTECTED_PROFILE ?? "").trim() !== "") {

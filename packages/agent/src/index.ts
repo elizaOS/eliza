@@ -427,12 +427,9 @@ export {
   annotateTrajectoryStep,
   clearPersistedTrajectoryRows,
   completeTrajectoryStepInDatabase,
-  createDatabaseTrajectoryLogger,
-  DatabaseTrajectoryLogger,
   deletePersistedTrajectoryRows,
   flushTrajectoryWrites,
   installDatabaseTrajectoryLogger,
-  pruneOldTrajectories,
   startTrajectoryStepInDatabase,
 } from "./runtime/trajectory-storage.ts";
 export * from "./runtime/version.ts";
