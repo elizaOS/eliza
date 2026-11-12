@@ -17,5 +17,12 @@
   },
   "engines": {
     "bun": ">=1.3.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }
