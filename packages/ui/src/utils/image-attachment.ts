@@ -326,14 +326,15 @@ function readFileAsBase64(file: File): Promise<string> {
 async function fileToChatAttachment(
   file: File,
 ): Promise<TransientClientMediaInput> {
-  let data = await readFileAsBase64(file);
   // The server rejects an empty base64 body with a 400 (validateChatImages),
-  // so a zero-byte file can never send. Refuse it here with a clear reason.
-  if (data.length === 0) {
+  // so a zero-byte file can never send. Refuse it here with a clear reason,
+  // before reading it or deciding whether an image needs re-encoding.
+  if (file.size === 0) {
     throw new UnsendableAttachmentError(
       `"${file.name || "attachment"}" is empty — attach a file with content.`,
     );
   }
+  let data = await readFileAsBase64(file);
   let mimeType = file.type;
   if (imageNeedsReencode(file.type, data.length)) {
     ({ data, mimeType } = await reencodeImageToChatCap(file));
