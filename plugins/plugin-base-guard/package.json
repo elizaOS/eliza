@@ -21,6 +21,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "viem": "^2.23.12",
     "zod": "^3.24.2"
   },

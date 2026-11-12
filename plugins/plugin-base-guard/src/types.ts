@@ -1,88 +1,28 @@
 import { z } from "zod";
+import type {
+  Action as CoreAction,
+  Evaluator as CoreEvaluator,
+  Provider as CoreProvider,
+  Plugin as CorePlugin,
+  IAgentRuntime as CoreIAgentRuntime,
+  Memory as CoreMemory,
+  State as CoreState,
+  HandlerCallback as CoreHandlerCallback,
+} from "@elizaos/core";
 
-/**
- * Standard ElizaOS runtime and plugin interfaces
- */
-export interface Memory {
-  id?: string;
-  userId?: string;
-  agentId?: string;
-  createdAt?: number;
-  content: {
-    text: string;
-    action?: string;
-    source?: string;
-    url?: string;
-    inReplyTo?: string;
-    attachments?: unknown[];
-    [key: string]: unknown;
-  };
-  roomId?: string;
-  embedding?: number[];
-}
-
-export interface State {
-  userId?: string;
-  agentId?: string;
-  bio?: string;
-  lore?: string;
-  messageDirections?: string;
-  postDirections?: string;
-  roomId?: string;
-  actors?: string;
-  recentMessages?: string;
-  recentMessagesData?: Memory[];
-  [key: string]: unknown;
-}
-
-export type HandlerCallback = (
-  response: { text: string; action?: string; [key: string]: unknown },
-  files?: unknown[]
-) => Promise<unknown>;
-
-export interface IAgentRuntime {
-  agentId?: string;
-  serverUrl?: string;
-  getSetting(key: string): string | undefined;
-  getConversationLength?(): number;
-  [key: string]: unknown;
-}
-
-export interface Action {
-  name: string;
-  description: string;
-  similes?: string[];
-  examples?: Array<Array<{ user: string; content: { text: string; [key: string]: unknown } }>>;
-  validate: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
-  handler: (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: Record<string, unknown>,
-    callback?: HandlerCallback
-  ) => Promise<unknown>;
-}
+export type Action = CoreAction;
+export type Provider = CoreProvider;
+export type Plugin = CorePlugin;
+export type IAgentRuntime = CoreIAgentRuntime;
+export type Memory = CoreMemory;
+export type State = CoreState;
+export type HandlerCallback = CoreHandlerCallback;
 
 export interface Evaluator {
   name: string;
   description: string;
   similes?: string[];
-  examples?: Array<{ prompt: string; outcome: string }>;
-  validate: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
   handler: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<unknown>;
-}
-
-export interface Provider {
-  get: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<string | null>;
-}
-
-export interface Plugin {
-  name: string;
-  description: string;
-  actions?: Action[];
-  evaluators?: Evaluator[];
-  providers?: Provider[];
-  services?: unknown[];
 }
 
 /**
@@ -105,8 +45,11 @@ export type VerdictCode =
   | "INVALID_DESTINATION"
   | "UNLIMITED_APPROVAL_ATTACK"
   | "DANGEROUS_CALLDATA"
+  | "UNRECOGNIZED_CALLDATA"
   | "EXCEEDS_SPEND_LIMIT"
   | "X402_EXPIRED"
+  | "X402_EXPIRED_OR_MISSING"
+  | "X402_NONCE_REPLAY"
   | "X402_EXCEEDS_CAP"
   | "X402_MALFORMED"
   | "MALFORMED_VALUE";

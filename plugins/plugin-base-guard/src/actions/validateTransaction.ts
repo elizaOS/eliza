@@ -14,11 +14,11 @@ export function createValidateTransactionAction(engine: BaseGuardEngine): Action
     examples: [
       [
         {
-          user: "{{user1}}",
+          name: "{{user1}}",
           content: { text: "Transfer 0.01 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e" },
         },
         {
-          user: "{{agentName}}",
+          name: "{{agentName}}",
           content: {
             text: "Running pre-flight security evaluation on the planned transfer...",
             action: "VALIDATE_TRANSACTION",
@@ -26,7 +26,12 @@ export function createValidateTransactionAction(engine: BaseGuardEngine): Action
         },
       ],
     ],
-    validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => true,
+    validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
+      const text = message.content?.text || "";
+      const hasTxParams = Boolean(message.content?.to || message.content?.value || message.content?.data);
+      const hasTxKeywords = /(?:transfer|send|approve|pay|swap|0x[a-fA-F0-9]{40})/i.test(text);
+      return hasTxParams || hasTxKeywords;
+    },
     handler: async (
       _runtime: IAgentRuntime,
       message: Memory,
@@ -46,7 +51,7 @@ export function createValidateTransactionAction(engine: BaseGuardEngine): Action
       if (!parseResult.success) {
         const errorText = `[BaseGuard BLOCKED]: Invalid transaction parameters: ${parseResult.error.message}`;
         if (callback) await callback({ text: errorText });
-        return { allowed: false, error: errorText };
+        return { success: false, allowed: false, text: errorText, error: errorText };
       }
 
       const verdict = engine.evaluateTransaction(parseResult.data);
@@ -57,11 +62,14 @@ export function createValidateTransactionAction(engine: BaseGuardEngine): Action
       if (callback) {
         await callback({
           text: outputText,
-          verdict,
         });
       }
 
-      return verdict;
+      return {
+        success: verdict.allowed,
+        text: outputText,
+        ...verdict,
+      };
     },
   };
 }

@@ -18,7 +18,7 @@ const UNLIMITED_APPROVAL_THRESHOLD = BigInt(
 
 interface SpendRecord {
   timestamp: number;
-  asset: "NATIVE" | string;
+  asset: "NATIVE" | "USDC" | string;
   amount: bigint;
 }
 
@@ -26,6 +26,7 @@ export class BaseGuardEngine {
   private policy: GuardPolicy;
   private spendHistory: SpendRecord[] = [];
   private blocklistSet: Set<string>;
+  private usedNonces: Set<string> = new Set();
 
   constructor(policy: GuardPolicy) {
     this.policy = policy;
@@ -40,6 +41,13 @@ export class BaseGuardEngine {
     const cutoff = now - 24 * 60 * 60 * 1000;
     return this.spendHistory
       .filter(item => item.asset === "NATIVE" && item.timestamp >= cutoff)
+      .reduce((acc, item) => acc + item.amount, BigInt(0));
+  }
+
+  public get24hUsdcUsed(now: number = Date.now()): bigint {
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    return this.spendHistory
+      .filter(item => item.asset === "USDC" && item.timestamp >= cutoff)
       .reduce((acc, item) => acc + item.amount, BigInt(0));
   }
 
@@ -94,26 +102,40 @@ export class BaseGuardEngine {
     }
 
     // 3. Inspect calldata
-    if (input.data && input.data !== "0x" && input.data.length >= 10) {
-      const selector = input.data.slice(0, 10).toLowerCase();
-      if (DANGEROUS_SELECTORS[selector]) {
-        return {
-          allowed: false,
-          code: "DANGEROUS_CALLDATA",
-          riskScore: 95,
-          reason: `Blocked critical dangerous selector: ${DANGEROUS_SELECTORS[selector]} (${selector}).`,
-          timestamp,
-        };
+    if (input.data && input.data !== "0x" && input.data !== "0x0") {
+      if (input.data.length >= 10) {
+        const selector = input.data.slice(0, 10).toLowerCase();
+        if (DANGEROUS_SELECTORS[selector]) {
+          return {
+            allowed: false,
+            code: "DANGEROUS_CALLDATA",
+            riskScore: 95,
+            reason: `Blocked critical dangerous selector: ${DANGEROUS_SELECTORS[selector]} (${selector}).`,
+            timestamp,
+          };
+        }
       }
 
+      let decodedSuccessfully = false;
       try {
         const decoded = decodeFunctionData({
           abi: ERC20_ABI,
           data: input.data as `0x${string}`,
         });
 
+        decodedSuccessfully = true;
+
         if (decoded.functionName === "approve") {
-          const [, amount] = decoded.args as [string, bigint];
+          const [spender, amount] = decoded.args as [string, bigint];
+          if (!isAddress(spender) || this.blocklistSet.has(spender.toLowerCase())) {
+            return {
+              allowed: false,
+              code: "DESTINATION_BLOCKLISTED",
+              riskScore: 95,
+              reason: `Approval spender '${spender}' is blocklisted or invalid.`,
+              timestamp,
+            };
+          }
           if (amount >= UNLIMITED_APPROVAL_THRESHOLD) {
             return {
               allowed: false,
@@ -126,7 +148,29 @@ export class BaseGuardEngine {
         }
 
         if (decoded.functionName === "transfer") {
-          const [, amount] = decoded.args as [string, bigint];
+          const [recipient, amount] = decoded.args as [string, bigint];
+
+          // Validate ERC-20 recipient
+          if (!isAddress(recipient)) {
+            return {
+              allowed: false,
+              code: "INVALID_DESTINATION",
+              riskScore: 90,
+              reason: `ERC-20 transfer recipient '${recipient}' is not a valid Ethereum address.`,
+              timestamp,
+            };
+          }
+
+          if (this.blocklistSet.has(recipient.toLowerCase())) {
+            return {
+              allowed: false,
+              code: "DESTINATION_BLOCKLISTED",
+              riskScore: 100,
+              reason: `ERC-20 transfer recipient '${recipient}' is in the security blocklist.`,
+              timestamp,
+            };
+          }
+
           const isUsdc = normalizedTo === BASE_USDC || normalizedTo === BASE_SEPOLIA_USDC;
           const decimals = isUsdc ? 6 : 18;
           const limitUnits = parseUnits(this.policy.maxUsdcPerTx, decimals);
@@ -140,23 +184,62 @@ export class BaseGuardEngine {
               timestamp,
             };
           }
+
+          // Enforce 24h cumulative USDC spend cap
+          if (isUsdc) {
+            const dailyUsed = this.get24hUsdcUsed(now);
+            const maxDailyUnits = parseUnits(this.policy.maxUsdcDaily, decimals);
+            if (dailyUsed + amount > maxDailyUnits) {
+              return {
+                allowed: false,
+                code: "EXCEEDS_SPEND_LIMIT",
+                riskScore: 80,
+                reason: `Cumulative 24h USDC spend exceeds daily limit of ${this.policy.maxUsdcDaily} USDC.`,
+                timestamp,
+              };
+            }
+            this.spendHistory.push({ timestamp: now, asset: "USDC", amount });
+          }
         }
       } catch {
-        // Not a standard ERC20 call, proceed to native check
+        // Decoding failed
+      }
+
+      // Fail-closed on unverified/unknown calldata if strictMode is active
+      if (!decodedSuccessfully && this.policy.strictMode) {
+        return {
+          allowed: false,
+          code: "UNRECOGNIZED_CALLDATA",
+          riskScore: 90,
+          reason: "Blocked unverified calldata in strict mode. Only allowlisted contract calls are permitted.",
+          timestamp,
+        };
       }
     }
 
     // 4. Validate native spend limits
     if (input.value && input.value !== "0" && input.value !== "0x" && input.value !== "0x0") {
+      const cleanVal = input.value.trim();
+      // Disallow negative values, hex, or non-numeric strings
+      if (!/^\d+(\.\d+)?$/.test(cleanVal)) {
+        return {
+          allowed: false,
+          code: "MALFORMED_VALUE",
+          riskScore: 85,
+          reason: `Malformed or non-numeric native value: '${input.value}'. Negative values and hex notation are disallowed.`,
+          timestamp,
+        };
+      }
+
       let valueWei: bigint;
       try {
-        valueWei = input.value.includes(".") ? parseEther(input.value) : BigInt(input.value);
+        valueWei = parseEther(cleanVal);
       } catch {
         return {
           allowed: false,
           code: "MALFORMED_VALUE",
           riskScore: 85,
-          reason: `Malformed native value: ${input.value}`,
+          reason: `Failed to parse native value: ${input.value}`,
           timestamp,
         };
       }
@@ -213,19 +296,53 @@ export class BaseGuardEngine {
       };
     }
 
-    if (challenge.deadline < nowSec) {
+    // Nonce replay check
+    if (!challenge.nonce || typeof challenge.nonce !== "string" || challenge.nonce.trim() === "") {
       return {
         allowed: false,
-        code: "X402_EXPIRED",
-        riskScore: 75,
-        reason: `x402 challenge expired at timestamp ${challenge.deadline}.`,
+        code: "X402_MALFORMED",
+        riskScore: 80,
+        reason: "Missing or invalid x402 payment nonce.",
         timestamp,
       };
     }
 
-    const requestedAmount = parseFloat(challenge.amountUsdc);
+    if (this.usedNonces.has(challenge.nonce)) {
+      return {
+        allowed: false,
+        code: "X402_NONCE_REPLAY",
+        riskScore: 95,
+        reason: `Blocked x402 replay attack: Nonce '${challenge.nonce}' has already been consumed.`,
+        timestamp,
+      };
+    }
+
+    // Deadline check (must be explicitly provided and strictly in the future)
+    if (!challenge.deadline || typeof challenge.deadline !== "number" || challenge.deadline <= nowSec) {
+      return {
+        allowed: false,
+        code: "X402_EXPIRED_OR_MISSING",
+        riskScore: 75,
+        reason: `x402 challenge expired or has invalid future deadline (${challenge.deadline}).`,
+        timestamp,
+      };
+    }
+
+    // Strict decimal validation for amountUsdc (rejects negative numbers, hex like '0x10', etc.)
+    const cleanAmount = (challenge.amountUsdc || "").trim();
+    if (!/^\d+(\.\d+)?$/.test(cleanAmount)) {
+      return {
+        allowed: false,
+        code: "X402_MALFORMED",
+        riskScore: 85,
+        reason: `Invalid x402 amount format: '${challenge.amountUsdc}'. Must be a positive decimal number.`,
+        timestamp,
+      };
+    }
+
+    const requestedAmount = parseFloat(cleanAmount);
     const maxAllowed = parseFloat(this.policy.maxPaymentPerX402);
-    if (isNaN(requestedAmount) || requestedAmount > maxAllowed) {
+    if (requestedAmount <= 0 || requestedAmount > maxAllowed) {
       return {
         allowed: false,
         code: "X402_EXCEEDS_CAP",
@@ -234,6 +351,9 @@ export class BaseGuardEngine {
         timestamp,
       };
     }
+
+    // Mark nonce consumed
+    this.usedNonces.add(challenge.nonce);
 
     return {
       allowed: true,
@@ -244,7 +364,9 @@ export class BaseGuardEngine {
       diagnostics: {
         merchant: getAddress(challenge.merchant),
         amountUsdc: challenge.amountUsdc,
+        nonce: challenge.nonce,
       },
     };
   }
 }
+

@@ -9,16 +9,19 @@ export function createGetPolicyAction(engine: BaseGuardEngine): Action {
     examples: [
       [
         {
-          user: "{{user1}}",
+          name: "{{user1}}",
           content: { text: "What are your spending limits on Base?" },
         },
         {
-          user: "{{agentName}}",
+          name: "{{agentName}}",
           content: { text: "Checking active security policy boundaries...", action: "GET_SECURITY_POLICY" },
         },
       ],
     ],
-    validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => true,
+    validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
+      const text = message.content?.text || "";
+      return /(?:limit|ceiling|spend|policy|security)/i.test(text);
+    },
     handler: async (
       _runtime: IAgentRuntime,
       _message: Memory,
@@ -35,8 +38,12 @@ export function createGetPolicyAction(engine: BaseGuardEngine): Action {
         `• Max x402 Payment: ${policy.maxPaymentPerX402} USDC\n` +
         `• Strict Injection Defense: ${policy.strictMode ? "ENABLED" : "DISABLED"}`;
 
-      if (callback) await callback({ text, policy });
-      return policy;
+      if (callback) await callback({ text });
+      return {
+        success: true,
+        text,
+        ...policy,
+      };
     },
   };
 }

@@ -103,6 +103,102 @@ describe("ElizaOS BaseGuard Plugin", () => {
       expect(result.allowed).toBe(false);
       expect(result.code).toBe("EXCEEDS_SPEND_LIMIT");
     });
+
+    it("should treat integer value '1' as 1 ETH (not 1 wei) and block exceeding limit", async () => {
+      const msg: Memory = {
+        content: {
+          text: "Send 1 ETH",
+          to: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          value: "1", // 1 ETH exceeds 0.05 ETH cap
+          data: "0x",
+        },
+      };
+
+      const result: any = await actionValidate.handler(mockRuntime, msg);
+      expect(result.allowed).toBe(false);
+      expect(result.code).toBe("EXCEEDS_SPEND_LIMIT");
+    });
+
+    it("should reject negative or hex native values", async () => {
+      const msgNeg: Memory = {
+        content: {
+          to: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          value: "-1",
+          data: "0x",
+        },
+      };
+      const resNeg: any = await actionValidate.handler(mockRuntime, msgNeg);
+      expect(resNeg.allowed).toBe(false);
+      expect(resNeg.code).toBe("MALFORMED_VALUE");
+
+      const msgHex: Memory = {
+        content: {
+          to: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          value: "0x10",
+          data: "0x",
+        },
+      };
+      const resHex: any = await actionValidate.handler(mockRuntime, msgHex);
+      expect(resHex.allowed).toBe(false);
+      expect(resHex.code).toBe("MALFORMED_VALUE");
+    });
+
+    it("should block multicall, permit, and increaseAllowance selectors", async () => {
+      const multicallMsg: Memory = {
+        content: {
+          to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          data: "0xac9650d800000000000000000000000000000000",
+        },
+      };
+      const resMulti: any = await actionValidate.handler(mockRuntime, multicallMsg);
+      expect(resMulti.allowed).toBe(false);
+      expect(resMulti.code).toBe("DANGEROUS_CALLDATA");
+
+      const permitMsg: Memory = {
+        content: {
+          to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          data: "0xd505accf00000000000000000000000000000000",
+        },
+      };
+      const resPermit: any = await actionValidate.handler(mockRuntime, permitMsg);
+      expect(resPermit.allowed).toBe(false);
+      expect(resPermit.code).toBe("DANGEROUS_CALLDATA");
+    });
+
+    it("should block ERC-20 transfer to 0x0 or 0xdead blocklisted addresses", async () => {
+      const abi = parseAbi(["function transfer(address to, uint256 amount) returns (bool)"]);
+      const calldataDead = encodeFunctionData({
+        abi,
+        functionName: "transfer",
+        args: ["0x000000000000000000000000000000000000dead", 1000000n], // 1 USDC to dead
+      });
+
+      const msgDead: Memory = {
+        content: {
+          to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          value: "0",
+          data: calldataDead,
+        },
+      };
+
+      const resDead: any = await actionValidate.handler(mockRuntime, msgDead);
+      expect(resDead.allowed).toBe(false);
+      expect(resDead.code).toBe("DESTINATION_BLOCKLISTED");
+    });
+
+    it("should block unrecognized calldata in strict mode", async () => {
+      const msgUnknown: Memory = {
+        content: {
+          to: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          value: "0",
+          data: "0x12345678abcdef0123456789",
+        },
+      };
+
+      const resUnknown: any = await actionValidate.handler(mockRuntime, msgUnknown);
+      expect(resUnknown.allowed).toBe(false);
+      expect(resUnknown.code).toBe("UNRECOGNIZED_CALLDATA");
+    });
   });
 
   describe("VERIFY_X402_PAYMENT Action", () => {
@@ -113,7 +209,7 @@ describe("ElizaOS BaseGuard Plugin", () => {
           merchant: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
           amountUsdc: "1.00",
           resourceUri: "https://api.ai-data.org/v1/intel",
-          nonce: "nonce_123",
+          nonce: "nonce_fresh_1",
           deadline: Math.floor(Date.now() / 1000) + 3600,
         },
       };
@@ -123,6 +219,48 @@ describe("ElizaOS BaseGuard Plugin", () => {
       expect(result.code).toBe("APPROVED");
     });
 
+    it("should block replayed x402 nonces", async () => {
+      const msg: Memory = {
+        content: {
+          merchant: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          amountUsdc: "1.00",
+          resourceUri: "https://api.ai-data.org/v1/intel",
+          nonce: "nonce_fresh_1", // Replay previously used nonce
+          deadline: Math.floor(Date.now() / 1000) + 3600,
+        },
+      };
+
+      const result: any = await actionX402.handler(mockRuntime, msg);
+      expect(result.allowed).toBe(false);
+      expect(result.code).toBe("X402_NONCE_REPLAY");
+    });
+
+    it("should reject negative or hex amounts in x402 challenge", async () => {
+      const msgNeg: Memory = {
+        content: {
+          merchant: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          amountUsdc: "-1",
+          nonce: "nonce_neg_1",
+          deadline: Math.floor(Date.now() / 1000) + 3600,
+        },
+      };
+      const resNeg: any = await actionX402.handler(mockRuntime, msgNeg);
+      expect(resNeg.allowed).toBe(false);
+      expect(resNeg.code).toBe("X402_MALFORMED");
+
+      const msgHex: Memory = {
+        content: {
+          merchant: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          amountUsdc: "0x10",
+          nonce: "nonce_hex_1",
+          deadline: Math.floor(Date.now() / 1000) + 3600,
+        },
+      };
+      const resHex: any = await actionX402.handler(mockRuntime, msgHex);
+      expect(resHex.allowed).toBe(false);
+      expect(resHex.code).toBe("X402_MALFORMED");
+    });
+
     it("should block x402 challenge exceeding payment ceiling", async () => {
       const msg: Memory = {
         content: {
@@ -130,7 +268,7 @@ describe("ElizaOS BaseGuard Plugin", () => {
           merchant: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
           amountUsdc: "10.00", // limit is 5.0 USDC
           resourceUri: "https://api.ai-data.org/v1/intel",
-          nonce: "nonce_124",
+          nonce: "nonce_over_limit",
           deadline: Math.floor(Date.now() / 1000) + 3600,
         },
       };
@@ -166,10 +304,36 @@ describe("ElizaOS BaseGuard Plugin", () => {
   describe("GUARD_POLICY_PROVIDER", () => {
     it("should provide contextual security instructions for LLM prompt", async () => {
       const msg: Memory = { content: { text: "Hello" } };
-      const context = await providerPolicy.get(mockRuntime, msg);
-      expect(context).toContain("[SECURITY POLICY IN EFFECT]");
-      expect(context).toContain("0.05 ETH per transaction");
-      expect(context).toContain("50.0 USDC per transaction");
+      const context: any = await providerPolicy.get(mockRuntime, msg);
+      expect(context.text).toContain("[SECURITY POLICY IN EFFECT]");
+      expect(context.text).toContain("0.05 ETH per transaction");
+      expect(context.text).toContain("50.0 USDC per transaction");
+    });
+  });
+
+  describe("createGuardedWallet (Signing Path Interceptor)", () => {
+    it("should intercept and block unsafe sendTransaction before broadcast", async () => {
+      const rawWallet = {
+        sendTransaction: async (tx: any) => "0xhash_broadcasted",
+      };
+
+      const guardedWallet = plugin.guardWallet(rawWallet);
+
+      // 1. Benign transfer passes
+      const txSuccess = await guardedWallet.sendTransaction({
+        to: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        value: "0.01",
+      });
+      expect(txSuccess).toBe("0xhash_broadcasted");
+
+      // 2. Unsafe transfer to blocklisted address throws before broadcast
+      await expect(
+        guardedWallet.sendTransaction({
+          to: "0x000000000000000000000000000000000000dead",
+          value: "0.01",
+        })
+      ).rejects.toThrow("BaseGuard FIREWALL BLOCKED");
     });
   });
 });
+

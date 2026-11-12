@@ -52,16 +52,16 @@ flowchart TD
 
 ### 1. Installation
 ```bash
-npm install eliza-plugin-base-guard
+npm install @elizaos/plugin-base-guard
 # or
-pnpm add eliza-plugin-base-guard
+pnpm add @elizaos/plugin-base-guard
 ```
 
 ### 2. Add to your Eliza Character
 In your Eliza character configuration file (`character.json` or `agent.ts`):
 
 ```typescript
-import { baseGuardPlugin } from "eliza-plugin-base-guard";
+import { baseGuardPlugin } from "@elizaos/plugin-base-guard";
 
 export const defaultCharacter = {
   name: "BaseAgent",
@@ -73,16 +73,33 @@ export const defaultCharacter = {
 };
 ```
 
-### 3. Customizing Guardrail Policies
+### 3. Binding the Signing Path (Pre-Broadcast Interceptor)
+To guarantee all wallet signing and broadcast calls are strictly inspected:
+
 ```typescript
-import { createBaseGuardPlugin } from "eliza-plugin-base-guard";
+import { baseGuardPlugin } from "@elizaos/plugin-base-guard";
+
+// Wrap your agent's wallet or signer before broadcasting
+const guardedWallet = baseGuardPlugin.guardWallet(walletProvider);
+
+// Transfers violating spending caps or target blocklists throw before signing
+await guardedWallet.sendTransaction({
+  to: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+  value: "0.01",
+});
+```
+
+### 4. Customizing Guardrail Policies
+```typescript
+import { createBaseGuardPlugin } from "@elizaos/plugin-base-guard";
 
 const customGuard = createBaseGuardPlugin({
   maxNativePerTx: "0.02", // Max 0.02 ETH per transaction
   maxNativeDaily: "0.10", // Max 0.10 ETH rolling 24 hours
   maxUsdcPerTx: "25.0",   // Max 25 USDC per transaction
+  maxUsdcDaily: "100.0",  // Max 100 USDC rolling 24 hours
   maxPaymentPerX402: "2.0", // Max 2 USDC per x402 challenge
-  strictMode: true,
+  strictMode: true,       // Fail-closed on unknown calldata
 });
 ```
 
@@ -90,15 +107,18 @@ const customGuard = createBaseGuardPlugin({
 
 ## 🧩 Components Included
 
-### 1. Actions
-* **`VALIDATE_TRANSACTION`**: Pre-flight security audit of recipient address, calldata (blocks `approve(..., 2^256-1)` and ownership changes), and native/token spend ceilings.
-* **`VERIFY_X402_PAYMENT`**: Validates Coinbase HTTP 402 challenge deadlines, merchant addresses, and Base USDC payment caps.
+### 1. Interceptors & Helpers
+* **`guardWallet / createGuardedWallet`**: Pre-broadcast proxy interceptor that binds directly to wallet signing/sending methods (`sendTransaction`, `request`) to fail-closed before any transaction reaches sequencers.
+
+### 2. Actions
+* **`VALIDATE_TRANSACTION`**: Pre-flight security audit of recipient address, calldata (blocks `approve(..., 2^256-1)`, `multicall`, `permit`, `increaseAllowance`, and ownership changes), ERC-20 recipient validation, and native/USDC spend ceilings.
+* **`VERIFY_X402_PAYMENT`**: Validates Coinbase HTTP 402 challenge deadlines, merchant addresses, nonce replay prevention, and Base USDC payment caps.
 * **`GET_SECURITY_POLICY`**: Queries active spending boundaries and blocklists.
 
-### 2. Evaluators
+### 3. Evaluators
 * **`PROMPT_SAFETY_EVALUATOR`**: Scans conversation context and incoming user inputs for instruction overrides (`ignore previous instructions`, `drain wallet`) and flags hostile intent.
 
-### 3. Providers
+### 4. Providers
 * **`GUARD_POLICY_PROVIDER`**: Injects active spending caps, remaining 24-hour budgets, and safety guidelines directly into the agent prompt context.
 
 ---
@@ -108,24 +128,35 @@ const customGuard = createBaseGuardPlugin({
 Run the full unit test suite:
 
 ```bash
+bun test
+# or
 npm test
 ```
 
 ```text
-✓ test/plugin.test.ts (10 tests)
+✓ __tests__/plugin.test.ts (18 tests)
   ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should approve benign transaction within limits
   ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block prompt injection attempts in message text
   ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block unlimited ERC-20 approvals
   ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block dangerous selectors like transferOwnership
   ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block transactions exceeding per-tx native limits
+  ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should treat integer value '1' as 1 ETH and block exceeding limit
+  ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should reject negative or hex native values
+  ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block multicall, permit, and increaseAllowance selectors
+  ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block ERC-20 transfer to 0x0 or 0xdead blocklisted addresses
+  ✓ ElizaOS BaseGuard Plugin > VALIDATE_TRANSACTION Action > should block unrecognized calldata in strict mode
   ✓ ElizaOS BaseGuard Plugin > VERIFY_X402_PAYMENT Action > should approve valid x402 challenge under ceiling
+  ✓ ElizaOS BaseGuard Plugin > VERIFY_X402_PAYMENT Action > should block replayed x402 nonces
+  ✓ ElizaOS BaseGuard Plugin > VERIFY_X402_PAYMENT Action > should reject negative or hex amounts in x402 challenge
   ✓ ElizaOS BaseGuard Plugin > VERIFY_X402_PAYMENT Action > should block x402 challenge exceeding payment ceiling
   ✓ ElizaOS BaseGuard Plugin > PROMPT_SAFETY_EVALUATOR > should flag hostile injection message
   ✓ ElizaOS BaseGuard Plugin > PROMPT_SAFETY_EVALUATOR > should pass benign conversation
   ✓ ElizaOS BaseGuard Plugin > GUARD_POLICY_PROVIDER > should provide contextual security instructions for LLM prompt
+  ✓ ElizaOS BaseGuard Plugin > createGuardedWallet (Signing Path Interceptor) > should intercept and block unsafe sendTransaction before broadcast
 ```
 
 ---
 
 ## 📄 License
 MIT © 2026 meanusarcanus.
+
