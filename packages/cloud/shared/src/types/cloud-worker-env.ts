@@ -722,6 +722,13 @@ export interface Variables {
    * server-side only, so retries of one sign-in get the same answer.
    */
   stewardAccountCreated?: true;
+  /**
+   * Why a verified Steward session could not be resolved to a Cloud account
+   * during first-sign-in provisioning. `requireUser` reports `unavailable` as
+   * a retryable `account_not_ready` 503 and `conflict` as an
+   * `identity_conflict` 409; an unclassified failure sets nothing and stays 401.
+   */
+  stewardAccountSyncFailure?: "conflict" | "unavailable";
 }
 
 export type AppEnv = {

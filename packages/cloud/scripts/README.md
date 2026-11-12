@@ -32,7 +32,10 @@ The helper copies the canonical Pages configuration into a
 private temporary directory, keeps its other bindings and uses the existing
 built Worker. Pinned Wrangler reads that directory without `--config` or
 `--env`. The release verifies each public fallback body and privacy header after
-deployment, then removes the temporary configuration. This does not register an
+deployment, then removes the temporary configuration. For a callback that ends
+in `/auth/callback` it also probes the derived checkout return
+(`/billing/return`) and requires the exact script-free page that forwards only
+a well-formed session id and the result. This does not register an
 OAuth client or change Android App Link verification.
 
 Gateway deployment, verification, homepage readiness, and DNS operations belong
