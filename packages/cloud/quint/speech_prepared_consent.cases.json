@@ -6,10 +6,13 @@
     "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
     "packages/cloud/api/__tests__/voice-speech-mint.test.ts",
     "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
-    "packages/cloud/api/test/fixtures/speech-relay-worker.ts"
+    "packages/cloud/api/test/fixtures/speech-relay-worker.ts",
+    "packages/cloud/api/src/lib/generative-route-auth.ts",
+    "packages/cloud/shared/src/lib/services/inference-credential-revocation.ts",
+    "packages/cloud/api/__tests__/voice-speech-rate-limit.pglite.test.ts"
   ],
   "conformance": "packages/cloud/quint/check-speech-prepared-consent.mjs",
-  "bounds": "One new prepared consent, matching or foreign owner and nonce, expiry, retirement, restart, and legacy-route attempts. Existing random recovery IDs retain the Redis path. Storage commit and acknowledgement are atomic in this model. Lost acknowledgements and provider/billing activity retain the existing retirement protocol and are not proved here. Repeated rejected attempts remain stuttering transitions; their unused count is omitted so the state space is finite. No rejection path is removed. No liveness promise or fairness assumption is made. Bootstrap expiry and the prepared record commit together; a failed preparation retains neither. The real SQLite Worker test verifies the stored record and alarm after acknowledgement.",
+  "bounds": "One new prepared consent, matching or foreign owner and nonce, expiry, retirement, restart, and legacy-route attempts. Existing random recovery IDs retain the Redis path. Storage commit and acknowledgement are atomic in this model. Lost acknowledgements and provider/billing activity retain the existing retirement protocol and are not proved here. Repeated rejected attempts remain stuttering transitions; their unused count is omitted so the state space is finite. No rejection path is removed. No liveness promise or fairness assumption is made. Bootstrap expiry and the prepared record commit together; a failed preparation retains neither. The real SQLite Worker test verifies the stored record and alarm after acknowledgement. One timed-out credential read permits one recheck before preparation. Denial, a second timeout and cancellation refuse preparation. The existing replay, owner, expiry and retirement checks remain included.",
   "cases": [
     {
       "name": "prepared-single-use",

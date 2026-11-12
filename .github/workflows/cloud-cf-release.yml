@@ -236,6 +236,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
+
       - name: Validate caller-admitted Telegram public identity
         id: telegram
         env:
@@ -338,33 +342,28 @@ jobs:
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const { appendFileSync } = require('node:fs');
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { selectNativeAuthCallback } from './packages/app/functions/_native-auth-callback-config.ts';
           try {
             const environment = process.env.TARGET_ENVIRONMENT;
             if (environment !== 'staging' && environment !== 'production') throw new Error();
             const raw = process.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON || '';
             let normalized = '';
             if (raw.trim()) {
-              const entries = JSON.parse(raw);
               const origins = environment === 'production'
                 ? ['https://eliza.app', 'https://cloud.eliza.app']
                 : ['https://staging.eliza.app', 'https://cloud-staging.eliza.app'];
-              if (!Array.isArray(entries)) throw new Error();
-              // Project only the public fields. The bundled helper applies the
-              // complete serving contract before any Pages deployment.
+              // Reuse the serving validator before publishing any configuration.
+              selectNativeAuthCallback(raw, new URL(origins[0]));
+              const entries = JSON.parse(raw);
+              const expectedApi = environment === 'production' ? 'https://api.eliza.app' : 'https://api-staging.eliza.app';
+              const expectedTenant = environment === 'production' ? 'elizacloud' : 'elizacloud-staging';
               normalized = JSON.stringify(entries.map((entry) => {
-                if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
-                    Object.keys(entry).length !== 3 ||
-                    Object.keys(entry).some((key) => !['redirectUri', 'androidPackage', 'appName'].includes(key)) ||
-                    typeof entry.redirectUri !== 'string' ||
-                    typeof entry.androidPackage !== 'string' ||
-                    !/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(entry.androidPackage) ||
-                    typeof entry.appName !== 'string' || !entry.appName.trim()) throw new Error();
-                const url = new URL(entry.redirectUri);
-                if (!origins.includes(url.origin) || url.username || url.password ||
-                    url.search || url.hash || url.href !== entry.redirectUri) throw new Error();
-                return { redirectUri: entry.redirectUri, androidPackage: entry.androidPackage, appName: entry.appName };
+                if (!origins.includes(new URL(entry.redirectUri).origin)) throw new Error();
+                const browser = entry.browserSignIn;
+                if (browser !== undefined && (browser.apiOrigin !== expectedApi || browser.tenant !== expectedTenant)) throw new Error();
+                return entry;
               }));
             }
             appendFileSync(process.env.GITHUB_OUTPUT,
