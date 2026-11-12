@@ -149,9 +149,8 @@ export function parseArgs(argv) {
   return a;
 }
 const args = parseArgs(process.argv.slice(2));
-// Resolve --static-dir against the invocation cwd (repo root in CI via the
-// ui-story-gate workflow, the package dir for the audit:stories scripts), the
-// standard CLI convention. Resolving against pkgRoot doubled a repo-root-
+// Resolve --static-dir against the invocation cwd (the package dir for the
+// audit:stories scripts), the standard CLI convention. Resolving against pkgRoot doubled a repo-root-
 // relative arg (packages/ui/packages/ui/storybook-static) and the gate hard-
 // failed with "missing index.json" on every develop run.
 const staticDir = resolve(process.cwd(), args.staticDir);

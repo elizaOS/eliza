@@ -135,7 +135,7 @@ assert.equal(
   shardJob.steps.find((step) => step.name === "Checkout candidate source").with
     .ref,
 );
-assert.equal(validateWorkflowTriggerPolicy(root).developPushWorkflows, 1);
+assert.equal(validateWorkflowTriggerPolicy(root).promotionPushWorkflows, 1);
 const canonical = parse(
   await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8"),
 );
@@ -299,7 +299,7 @@ for (const event of [
     );
     const fullExpected =
       ["push", "workflow_dispatch"].includes(event) &&
-      ["develop", "staging", "main"].includes(branch);
+      ["staging", "main"].includes(branch);
     assert.equal(evaluate(fullPlan.if), fullExpected);
     eventMatrix.push({
       event,
@@ -327,7 +327,8 @@ for (const branch of ["develop", "staging", "main"])
         fromJSON: JSON.parse,
       }),
     );
-    assert.equal(selected, kind === "heads");
+    const admitted = kind === "heads" && branch !== "develop";
+    assert.equal(selected, admitted);
     const checked = spawnSync("bash", ["-c", dispatchGuard.run], {
       cwd: root,
       env: {
@@ -340,7 +341,7 @@ for (const branch of ["develop", "staging", "main"])
       },
       encoding: "utf8",
     });
-    assert.equal(checked.status, kind === "heads" ? 0 : 1);
+    assert.equal(checked.status, admitted ? 0 : 1);
     dispatchResults.push({
       ref: github.ref,
       planSelected: selected,

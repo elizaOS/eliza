@@ -56,10 +56,14 @@ public final class HeldVerificationReplay {
         static void schedule(Context context, boolean immediate) { context.schedules++; }
     }
     static final class UpdateChannel {
-        final Candidate offer;
-        Candidate next;
-        UpdateChannel(Candidate candidate) { offer = next = candidate; }
-        Candidate discover() { return next; }
+        Candidate initial, next;
+        int discoveries, unavailableAt;
+        UpdateChannel(Candidate candidate) { initial = next = candidate; }
+        Candidate discover() throws IOException {
+            int attempt = ++discoveries;
+            if (attempt == unavailableAt) throw new IOException("Fixture could not read the offer");
+            return attempt == 1 ? initial : next;
+        }
         File download(Candidate candidate, File directory) { throw new AssertionError("Held candidate downloaded"); }
         static final class DownloadDeferred extends IOException { }
         static final class Candidate {
@@ -141,7 +145,10 @@ public final class HeldVerificationReplay {
         android.os.Build.FINGERPRINT = SOURCE;
         android.os.Build.VERSION.SECURITY_PATCH = "2026-01-01";
         boolean before = args[2].equals("before");
-        for (String mode : before ? List.of("missing") : List.of("missing", "invalid", "symlink", "missing-archive", "changed", "ineligible", "engine-idle", "ready")) {
+        var cases = List.of("missing", "invalid", "symlink", "missing-archive", "changed", "ineligible",
+                "engine-idle", "ready", "initial-absent", "initial-different", "initial-unavailable",
+                "recheck-absent", "recheck-unavailable");
+        for (String mode : before ? List.of("missing") : cases) {
             Path directory = Files.createDirectory(root.resolve(mode));
             Path input = ota(directory);
             String digest = HexFormat.of().formatHex(hash(Files.readAllBytes(input)));
@@ -165,12 +172,20 @@ public final class HeldVerificationReplay {
             UpdateEngine.status = mode.equals("ready") ? UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT : 0;
             context.eligible = !mode.equals("ineligible");
             UpdateChannel channel = new UpdateChannel(candidate);
-            if (mode.equals("changed")) channel.next = new UpdateChannel.Candidate("b".repeat(64), candidate.bytes);
+            var different = new UpdateChannel.Candidate("b".repeat(64), candidate.bytes);
+            switch (mode) {
+                case "initial-absent" -> channel.initial = null;
+                case "initial-different" -> channel.initial = different;
+                case "initial-unavailable" -> channel.unavailableAt = 1;
+                case "changed" -> channel.next = different;
+                case "recheck-absent" -> channel.next = null;
+                case "recheck-unavailable" -> channel.unavailableAt = 2;
+            }
             List<String> files = contents(directory);
             Path retained = Files.isRegularFile(payload, java.nio.file.LinkOption.NOFOLLOW_LINKS) ? payload : legacy;
             byte[] retainedBytes = Files.readAllBytes(retained);
             try (var open = Files.newInputStream(retained)) {
-                new UpdateRunner(context).replay(store, channel, channel.offer);
+                new UpdateRunner(context).replay(store, channel);
                 check(MessageDigest.isEqual(open.readAllBytes(), retainedBytes), "An open retained descriptor changed");
             }
             check(context.finishes == 1, "Held job did not finish exactly once");
@@ -182,12 +197,16 @@ public final class HeldVerificationReplay {
             boolean ready = mode.equals("ready"), observed = ready || mode.equals("engine-idle");
             check(UpdateEngine.binds == (observed ? 1 : 0) && UpdateEngine.binds == UpdateEngine.unbinds, "Engine observation crossed held verification");
             check(context.power.reboots == (ready ? 1 : 0) && JournalStore.writes == (ready ? 1 : 0), "Unexpected reboot or journal write");
-            check(context.schedules == (mode.equals("ineligible") || mode.equals("changed") ? 1 : 0), "Unexpected retry dispatch");
+            boolean retry = List.of("ineligible", "changed", "recheck-absent").contains(mode);
+            boolean rechecked = List.of("changed", "engine-idle", "ready", "recheck-absent", "recheck-unavailable").contains(mode);
+            check(context.schedules == (retry ? 1 : 0), "Unexpected retry dispatch: " + mode);
+            check(channel.discoveries == (rechecked ? 2 : 1), "Unexpected offer reads: " + mode);
             check(store.read().phase == (ready ? UpdateJournal.Phase.REBOOT_INTENT : UpdateJournal.Phase.REBOOT_READY), "Held phase changed");
             List<String> after = contents(directory);
             if (ready) { files.removeIf(row -> row.startsWith("journal.fixture=")); after.removeIf(row -> row.startsWith("journal.fixture=")); }
             check(files.equals(after), "Held verification changed artifact files: " + mode);
-            System.out.println(mode + " " + store.read().phase + " " + UpdateEngine.binds + " " + context.power.reboots);
+            System.out.println(mode + " " + store.read().phase + " " + UpdateEngine.binds + " "
+                    + context.power.reboots + "\t" + context.status);
         }
     }
 }

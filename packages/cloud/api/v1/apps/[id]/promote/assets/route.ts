@@ -15,7 +15,6 @@ import {
   appPromotionAssetsService,
 } from "@elizaos/cloud-shared/lib/services/app-promotion-assets";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { retainGenerativeTask } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
@@ -44,14 +43,9 @@ async function __hono_POST(
   c: AppContext,
   { params }: RouteContext<{ id: string }>,
   caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
-  operationOptions: Parameters<typeof getGenerativeOperationContext>[2],
 ) {
   const { user } = caller;
-  const operationContext = getGenerativeOperationContext(
-    c,
-    caller,
-    operationOptions,
-  );
+  const operationContext = getGenerativeOperationContext(c, caller);
   const { id } = await params;
 
   const app = await appsService.getById(id);
@@ -229,17 +223,10 @@ __hono_app.post("/", async (c) => {
       rateLimitEndpoint: "strict",
       deferStrongCredentialCheck: true,
     });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     return await __hono_POST(
       c,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
-      {
-        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
-      },
     );
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);

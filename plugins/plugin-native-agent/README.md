@@ -491,7 +491,19 @@ duplicate query keys and oversized paths before any route is consulted.
 `CloudConnectionPolicy` is the reviewed Eliza Cloud API route set with the
 product's deployment hosts injected: a flag-off build reaches only the
 production API origin, and opens only the production web/services hosts and the
-declared external providers. `ConnectionTransport` bounds URLs, JSON, bodies,
+declared external providers. Its managed-service set includes device billing with
+the device's own sign-in key: `GET /api/v1/subscriptions/plans` (no query, no
+body) and body-only `POST /api/v1/subscriptions/checkout` and
+`/api/v1/subscriptions/checkout/confirm`. Cloud authorizes both POSTs for an
+owner/admin's acknowledged mobile credential only when the checkout body asks
+for `presentation: "mobile"`; any other presentation is refused with that key,
+and the package's node test fails if those routes go back to session-only
+authorization. A checkout answers a hosted payment
+page on `CloudConnectionPolicy.SUBSCRIPTION_CHECKOUT_HOST`; a host that offers
+checkout must declare that host among its external providers or the page cannot
+be opened. No sign-in route is admitted here: key renewal
+(`/api/v1/app-auth/mobile/renew`) mints an authorization code and stays on the
+native sign-in client. `ConnectionTransport` bounds URLs, JSON, bodies,
 header values and Retry-After; `DelegationCallback` admits a product's Cloud
 delegation return link; `SecureSlotPolicy` keeps native-owned slot namespaces
 out of renderer storage and limits compare-and-exchange to declared draft
@@ -522,6 +534,16 @@ speech keys with compare-and-exchange readback, clears the slot with readback,
 and composes the launch environment in one order: provider admission (or an
 unbound launch), then the native runtime profile's embedding route, so a native
 profile bound to Eliza Cloud keeps on-device BGE embeddings.
+`NativeProviderSlot.clearProviderSlotIfBound` is the intent-free conditional
+clear for an automatic unbound (re)start only: when the slot is empty or already
+retired it writes nothing and reserves no credential intent, so a sign-in
+waiting to bind and its acknowledgement retries are not superseded; when a
+binding is present it reserves and clears exactly as `clearProviderSlot` does.
+Owner-initiated clears (sign-out, provider change) must keep the unconditional
+reserve followed by `clearProviderSlot`, or an in-flight bind would complete
+after the owner signed out. It is a primitive: nothing in this package calls it,
+and the product's unbound-start path must be switched to it for the behaviour to
+change.
 `runtime/ResidentAttachment` decides whether a surface may attach to the running
 resident, including the no-provider generation. Products supply hosts, slot
 namespaces, the plugin name and the packaged route table; `test:native-host`

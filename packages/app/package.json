@@ -31,8 +31,6 @@
     "build:fused-desktop": "bun ./scripts/stage-desktop-fused-lib.ts",
     "build:fused-desktop:ensure": "bun ./scripts/stage-desktop-fused-lib.ts --ensure",
     "build:fused-desktop:check": "bun ./scripts/stage-desktop-fused-lib.ts --check",
-    "build:linux-gtk-artifact": "node ./scripts/package-linux-gtk-artifact.ts produce",
-    "verify:linux-gtk-artifact": "node ./scripts/package-linux-gtk-artifact.ts verify",
     "build:flatpak": "node ./scripts/build-flatpak.ts",
     "build:flatpak:store": "ELIZA_BUILD_VARIANT=store node ./scripts/build-flatpak.ts",
     "build:flatpak:direct": "ELIZA_BUILD_VARIANT=direct node ./scripts/build-flatpak.ts",

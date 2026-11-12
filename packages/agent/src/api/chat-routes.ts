@@ -80,7 +80,6 @@ import {
   isLinkedAccountProviderId,
   type ReadJsonBodyOptions,
   type RouteRequestContext,
-  readAliasedEnv,
 } from "@elizaos/host/protocol";
 import {
   bindDeviceRequestedActionPolicy,
@@ -1418,7 +1417,8 @@ export function isChatGenerationTimeoutError(err: unknown): boolean {
 }
 function isRemoteOllamaEndpointConfigured(): boolean {
   const raw =
-    readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
+    process.env.OLLAMA_BASE_URL?.trim() ||
+    process.env.OLLAMA_API_ENDPOINT?.trim();
   if (!raw?.trim()) return false;
   try {
     const normalized = raw.trim().replace(/\/api\/?$/i, "");
@@ -1436,7 +1436,7 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   ) {
     return Math.max(1, Math.floor(explicit));
   }
-  const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
+  const fromEnv = process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
   if (fromEnv) {
     // Number.parseInt stops at the first non-digit, so "60000junk" parsed to
     // a finite 60000 and was accepted as a deliberate setting instead of

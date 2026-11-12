@@ -208,11 +208,9 @@ async function prepare(
   // Dynamic import keeps the normal storage -> admission dependency acyclic.
   const {
     installDatabaseTrajectoryLogger,
-    DatabaseTrajectoryLogger,
     settleExitedTrajectoryForDevRecovery,
   } = await import("./trajectory-storage.ts");
-  if (!(logger instanceof DatabaseTrajectoryLogger))
-    await installDatabaseTrajectoryLogger(runtime);
+  await installDatabaseTrajectoryLogger(runtime);
   const result = await transport.registerOwner({
     ...owner,
     storageScope: { ...owner.storageScope },

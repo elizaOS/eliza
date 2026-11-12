@@ -2,11 +2,9 @@
 /**
  * validate.ts — Static validator for a brand's AOSP vendor tree + APK.
  *
- * Brand-aware: package id, app name, product name, classPrefix, and
- * envPrefix are read from the brand config (see brand-config.ts).
- * Class names like `<Brand>DialActivity` are derived from
- * `brand.classPrefix`; env vars like `<BRAND>_PIXEL_CODENAME` from
- * `brand.envPrefix`.
+ * Brand-aware: package id, app name, product name, and classPrefix are read
+ * from the brand config (see brand-config.ts). Class names like
+ * `<Brand>DialActivity` are derived from `brand.classPrefix`.
  *
  * The product layer follows the nonprivileged-launcher profile: the launcher is
  * staged from the signed APK into `<vendorDir>/launcher` by image-launcher.ts,
@@ -314,7 +312,7 @@ export function validateProductLayer(vendorDir, brand) {
     `vendor/${brand.brand}/${brand.commonMakefile}`,
     `product (must inherit ${brand.commonMakefile} for shared OS-path invariants)`,
   );
-  assertIncludes(productContract, `${brand.envPrefix}_PRODUCT_TAG`, "product");
+  assertIncludes(productContract, "ELIZA_PRODUCT_TAG", "product");
 
   const common = read(path.join(vendorDir, brand.commonMakefile));
   assertIncludes(common, "PRODUCT_PACKAGES +=", brand.commonMakefile);
@@ -329,7 +327,7 @@ export function validateProductLayer(vendorDir, brand) {
   assertMatches(
     common,
     new RegExp(
-      `^\\$\\(call inherit-product, (?:vendor/${escapeRegExp(brand.brand)}/${LAUNCHER_DIRECTORY}/product\\.mk|\\$\\(${escapeRegExp(brand.envPrefix)}_LAUNCHER_PRODUCT\\))\\)$`,
+      `^\\$\\(call inherit-product, (?:vendor/${escapeRegExp(brand.brand)}/${LAUNCHER_DIRECTORY}/product\\.mk|\\$\\(ELIZA_LAUNCHER_PRODUCT\\))\\)$`,
       "m",
     ),
     brand.commonMakefile,

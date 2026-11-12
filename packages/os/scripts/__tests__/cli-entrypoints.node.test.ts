@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, symlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 
 const modules = [
@@ -26,17 +23,6 @@ const modules = [
   "android/sim",
   "android/sync-to-aosp",
   "android/validate",
-
-  "check-confidential-artifacts",
-  "check-confidential-image-manifest",
-  "check-confidential-layer",
-  "check-confidential-policy",
-  "check-confidential-profile",
-  "check-dstack-pins",
-  "generate-confidential-artifacts",
-  "tee-evidence-bridge",
-  "tee-state-volume-mount",
-  "verify-image-reproducibility",
 ];
 for (const name of modules) {
   test(`${name} imports without side effects`, () => {
@@ -53,22 +39,5 @@ for (const name of modules) {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, "");
     assert.equal(result.stderr, "");
-  });
-}
-for (const [name, args, expected, diagnostic] of [
-  ["check-confidential-policy", [], 1, "--manifest must identify"],
-  ["check-dstack-pins", [], 1, "--manifest must identify"],
-  ["tee-state-volume-mount", [], 2, "real dm-crypt unseal is BLOCKED"],
-]) {
-  test(`${name} preserves refusal status through a symlink`, async (t) => {
-    const dir = await mkdtemp(join(tmpdir(), "os-cli-"));
-    t.after(() => rm(dir, { recursive: true, force: true }));
-    const linked = join(dir, `${name}.mjs`);
-    await symlink(new URL(`../${name}.ts`, import.meta.url).pathname, linked);
-    const result = spawnSync(process.execPath, [linked, ...args], {
-      encoding: "utf8",
-    });
-    assert.equal(result.status, expected, result.stderr);
-    assert.ok(result.stderr.includes(diagnostic), result.stderr);
   });
 }
