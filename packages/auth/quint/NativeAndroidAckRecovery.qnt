@@ -1,5 +1,7 @@
 // Android startup acknowledgement recovery for a stored enrollment receipt.
 // The saved native key remains under the credential store's ownership.
+// The sign-in worker reads and removes the receipt. The requests run apart from
+// that worker, so a newer sign-in can replace the receipt and key meanwhile.
 module NativeAndroidAckRecovery {
   pure val Production = 1
   pure val Staging = 2
@@ -8,13 +10,16 @@ module NativeAndroidAckRecovery {
   pure val NoReceipt = { present: false, parsed: false, environment: 0,
     credential: 0, expired: false }
   pure val NoPost = { environment: 0, credential: 0, saved: 0 }
+  pure val Newer = { present: true, parsed: true, environment: Production,
+    credential: ReplacementCredential, expired: false }
 
   type Receipt = { present: bool, parsed: bool, environment: int,
     credential: int, expired: bool }
   type Post = { environment: int, credential: int, saved: int }
   type State = {
     environment: int, saved: int, initialSaved: int, receipt: Receipt,
-    initialReceipt: Receipt, runReceipt: Receipt, live: bool, runs: int,
+    initialReceipt: Receipt, runReceipt: Receipt, runSaved: int, replaced: bool,
+    live: bool, runs: int,
     phase: str, calls: int, post: Post, removal: str, outcome: str
   }
   var s: State
@@ -24,7 +29,8 @@ module NativeAndroidAckRecovery {
 
   pure def initial(receipt: Receipt, saved: int): State = {
     environment: Production, saved: saved, initialSaved: saved,
-    receipt: receipt, initialReceipt: receipt, runReceipt: NoReceipt, live: true,
+    receipt: receipt, initialReceipt: receipt, runReceipt: NoReceipt, runSaved: 0,
+    replaced: false, live: true,
     runs: 0, phase: "idle", calls: 0, post: NoPost, removal: "none", outcome: "none"
   }
 
@@ -40,7 +46,7 @@ module NativeAndroidAckRecovery {
 
   action begin = all {
     s.phase.in(Set("idle", "finished")), s.runs < 2,
-    s' = { ...s, live: true, runs: s.runs + 1, runReceipt: s.receipt,
+    s' = { ...s, live: true, runs: s.runs + 1, runReceipt: s.receipt, runSaved: s.saved,
       phase: "reading", calls: 0, post: NoPost, outcome: "none" }
   }
 
@@ -58,11 +64,12 @@ module NativeAndroidAckRecovery {
   }
 
   // Each reply that can retry consumes a round. The Java loop sleeps between
-  // calls and checks destruction before sending again.
+  // calls and checks destruction before sending again. Each request carries
+  // the receipt and key that this run read.
   action send = all {
     s.phase == "send", s.calls < 3,
     s' = if (s.live) { ...s, phase: "waiting", calls: s.calls + 1,
-        post: { environment: s.environment, credential: s.receipt.credential, saved: s.saved } }
+        post: { environment: s.environment, credential: s.runReceipt.credential, saved: s.runSaved } }
       else { ...s, phase: "finished", outcome: "kept" }
   }
 
@@ -77,9 +84,18 @@ module NativeAndroidAckRecovery {
   action removeReceipt(removed: bool): bool = all {
     s.phase.in(Set("remove-stale", "remove-acknowledged")),
     not(removed) or s.live,
-    s' = if (removed) { ...s, receipt: NoReceipt, removal: s.phase,
+    s' = if (s.phase == "remove-acknowledged" and s.receipt != s.runReceipt)
+        { ...s, phase: "finished", outcome: "superseded" }
+      else if (removed) { ...s, receipt: NoReceipt, removal: s.phase,
         phase: "finished", outcome: "removed" }
       else { ...s, phase: "finished", outcome: "kept" }
+  }
+
+  // A newer sign-in commits its receipt and key on the sign-in worker. The
+  // worker is free while the requests run and while the removal waits for it.
+  action replace = all {
+    s.phase.in(Set("send", "waiting", "remove-acknowledged")), not(s.replaced),
+    s' = { ...s, replaced: true, receipt: Newer, saved: ReplacementCredential }
   }
 
   action destroy = all {
@@ -96,7 +112,7 @@ module NativeAndroidAckRecovery {
   }
 
   action idle = s' = s
-  action step = any { begin, progress, destroy, idle }
+  action step = any { begin, progress, replace, destroy, idle }
 
   val RetryBudget = all {
     s.calls.in(0.to(3)), s.runs.in(0.to(2)),
@@ -110,7 +126,12 @@ module NativeAndroidAckRecovery {
     s.post.credential == s.runReceipt.credential and s.post.credential == s.post.saved
   })
 
-  val RecoveryNeverReplacesSavedKey = s.saved == s.initialSaved
+  val RecoveryNeverReplacesSavedKey =
+    s.saved == (if (s.replaced) ReplacementCredential else s.initialSaved)
+
+  // A run that read the older receipt never removes the receipt of the newer sign-in.
+  val NewerReceiptSurvives =
+    (s.replaced and s.runReceipt != Newer).implies(s.receipt == Newer)
 
   val RemoveOnlyStaleOrAcknowledged = all {
     (s.initialReceipt.present and not(s.receipt.present)).implies(
@@ -118,7 +139,8 @@ module NativeAndroidAckRecovery {
     (s.removal == "remove-stale").implies(
       s.initialReceipt.expired or s.initialReceipt.credential != s.saved or
         s.initialReceipt.environment != s.environment),
-    (s.outcome == "kept").implies(s.receipt == s.runReceipt)
+    (s.outcome == "kept").implies(
+      s.receipt == s.runReceipt or (s.replaced and s.receipt == Newer))
   }
 
   val Running = not(s.phase.in(Set("idle", "finished")))
@@ -139,6 +161,12 @@ module NativeAndroidAckRecovery {
     .expect(s.outcome == "kept" and s.calls == 3 and s.receipt == Matching)
     .then(begin).then(readReply(true)).then(send).then(reply("acknowledged"))
     .then(removeReceipt(true)).expect(s.runs == 2 and not(s.receipt.present))
+
+  run newerSignInKeepsItsReceiptTest = initMatching.then(begin).then(readReply(true))
+    .then(send).then(replace).then(reply("acknowledged")).then(removeReceipt(true))
+    .expect(s.outcome == "superseded" and s.receipt == Newer and s.saved == ReplacementCredential)
+    .then(begin).then(readReply(true)).then(send).then(reply("acknowledged"))
+    .then(removeReceipt(true)).expect(s.post.credential == ReplacementCredential and not(s.receipt.present))
 
   run foreignEnvironmentNeverPostsTest = initForeign.then(begin)
     .then(readReply(true)).then(removeReceipt(true))

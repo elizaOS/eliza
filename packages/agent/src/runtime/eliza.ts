@@ -27,6 +27,7 @@ import {
   EmbeddingDimensionProbeError,
   type Entity,
   formatError,
+  handoffTaskSchedulerAdapter,
   type IAgentRuntime,
   type IDatabaseAdapter,
   type LogEntry,
@@ -1596,7 +1597,8 @@ export async function closeRuntimeAdapter(
   if (!adapter || typeof adapter.close !== "function") return;
   try {
     logger.debug(`[eliza] ${context}: closing database adapter`);
-    await adapter.close();
+    // Core owns adapter-wide scheduler queries and pending diagnostics.
+    await runtime.close();
     logger.debug(`[eliza] ${context}: database adapter closed`);
   } catch (err) {
     logger.warn(
@@ -1767,16 +1769,40 @@ export async function disposeReplacedRuntime(
   previousRuntime: AgentRuntime,
   activeRuntime: AgentRuntime,
 ): Promise<void> {
+  if (previousRuntime === activeRuntime) return;
   const connection = (runtime: AgentRuntime) =>
     (
       runtime.adapter as { getRawConnection?: () => unknown } | undefined
     )?.getRawConnection?.();
   const shared = connection(previousRuntime);
-  await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
-    fast: true,
-    keepAdapterOpen:
-      shared !== undefined && shared === connection(activeRuntime),
-  });
+  const keepAdapterOpen =
+    shared !== undefined && shared === connection(activeRuntime);
+  const handoff = keepAdapterOpen
+    ? handoffTaskSchedulerAdapter(
+        previousRuntime.adapter,
+        activeRuntime.adapter,
+      )
+    : Promise.resolve();
+  const retire = async () => {
+    try {
+      await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
+        fast: true,
+        // Fast stop clears service lookups at its cap; original callbacks can
+        // still own database work. Keep their original retirement receipt.
+        requireQuiescence: true,
+        keepAdapterOpen,
+      });
+    } finally {
+      await handoff;
+    }
+  };
+  if (keepAdapterOpen) {
+    // Publish the outgoing owner before shutdown's first await. The API has
+    // already published the replacement; concurrent final close must join it.
+    await activeRuntime.retainSharedAdapterRetirement(retire);
+  } else {
+    await retire();
+  }
 }
 interface TrajectoryLoggerControl {
   isEnabled?: () => boolean;
@@ -6315,7 +6341,9 @@ export async function startEliza(
             const teardown = shutdownRuntime(
               runtime,
               "pre-restore runtime disposal",
-              { fast: true },
+              // This process keeps serving after replacement. A fast room
+              // timeout cannot release the old adapter under an admitted owner.
+              { requireQuiescence: true },
             );
             pendingRuntimeTeardown = teardown;
             try {

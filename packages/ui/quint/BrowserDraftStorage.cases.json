@@ -1,13 +1,16 @@
 {
   "sources": [
+    "packages/ui/src/state/durable-draft-controller.ts",
     "packages/ui/src/state/durable-draft.ts",
     "packages/ui/src/platform/browser-document-store.ts",
-    "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs",
+    "packages/scripts/lib/test-output.ts"
   ],
+  "conformance": "packages/ui/quint/check-browser-draft-storage.mjs",
   "bounds": {
-    "domain": "One database and key, two writers with one write each, one external reset, one reopened reader, one serialized write transaction, and initial absence or one legacy draft. The two writes use distinct opaque draft byte values, including a revisioned empty row.",
-    "assumptions": "IndexedDB serializes readwrite transactions on the store and exposes a staged put only on commit. Document revisions are fresh. Two raw no-draft values, absence and reset tombstone, share the draft-layer null value. Once the raw-slot write is dispatched, its caller's signal is not forwarded to the IndexedDB transaction.",
-    "limitations": "The browser conformance command is bun run --cwd packages/ui test:browser-document-store. It exercises the actual adapter and transactions. The strict Quint jobs lack installed browser engines, so the command runs separately. The model excludes arbitrary external byte restoration, Web Locks editing, version upgrades, disk eviction, and generated trace replay."
+    "domain": "The adapter case covers one key, two single-write callers, one external reset, one reopened reader and one serialized write transaction. It starts with absence or one legacy draft and uses distinct opaque byte values, including a revisioned empty row. The same-controller case covers one send, one consume, one optional fresh reader and one optional non-dispatch release over at most two keys and three revisions per key. The cross-tab case covers two controllers, one key, one hold, one consume and one explicit recovery after a stale consume. It uses at most four document revisions and three draft revisions. The restart case covers one marked draft, one non-dispatch release, one shutdown and reopen, and one explicit review followed by reload.",
+    "assumptions": "IndexedDB serializes readwrite transactions and exposes a staged put on commit. Revisions are fresh. Absence and reset tombstones share the draft-layer null value. A dispatched raw-slot write does not receive the caller's signal. The controller cases assume successful fresh writes and a host that honors the restore predicate. The same-controller queue race starts hold first. In the cross-tab case, both controllers open before the first write, and the stale request arrives before the winner settles. In the restart case, a new browser process reuses the same isolated profile and origin.",
+    "limitations": "The mandatory Chromium hook runs 12 adapter groups, five mixed controller groups and two controller restart groups. The direct command bun run --cwd packages/ui test:browser-document-store runs Chromium, Firefox and WebKit, or its selected engines. Only Chromium runs the profile restart groups. The controller cases exclude third-party writes, same-key peer autosave, restore rejection, other terminal outcomes and repeated attempts. The restart case checks page teardown and orderly browser shutdown, with cuts after host apply before acknowledgement and after confirmed release. Unconfirmed newer text is volatile. Power loss, closure during the queued write and host authentication are outside this case. The adapter case excludes arbitrary external byte restoration, Web Locks editing, version upgrades and disk eviction. Generated traces are not replayed."
   },
   "cases": [
     {
@@ -40,6 +43,106 @@
         }
       ],
       "maxSteps": 32,
+      "samples": 1000
+    },
+    {
+      "name": "held-send-and-consume-publication",
+      "main": "BrowserDraftHoldConsume",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "HeldSendOwnsReceipt",
+        "SameKeyConsumeIsRefused",
+        "FreshControllerOffersMarkForReview",
+        "PendingRestoreBlocksRelease",
+        "ReleasePreservesDrafts"
+      ],
+      "temporal": ["UnderFairRestoreAndRelease", "RequestedReleaseSettles"],
+      "temporalChecks": [
+        {
+          "property": "UnderFairRestoreAndRelease",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the eligible host restore acknowledgement and release settlement. A requested release can finish once the host acknowledges the separate form clear. The modeled writes complete successfully."
+          ]
+        },
+        {
+          "property": "RequestedReleaseSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A host restore or an eligible release settlement can stall."
+          ]
+        }
+      ],
+      "maxSteps": 10,
+      "samples": 1000
+    },
+    {
+      "name": "cross-tab-hold-and-consume-receipts",
+      "main": "BrowserDraftCrossTabClaims",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "InitialReceiptHasOneWinner",
+        "StaleConsumePreservesMarkedReceipt",
+        "StaleHoldPreservesClearReceipt",
+        "RecoveryRequiresConfirmation"
+      ],
+      "temporal": [
+        "UnderFairCrossTabRecovery",
+        "StartedOperationsReachOutcome"
+      ],
+      "temporalChecks": [
+        {
+          "property": "UnderFairCrossTabRecovery",
+          "expect": "holds",
+          "assumptions": [
+            "Both callers request their operation. The host acknowledges an admitted clear. In the hold-first case the host requests non-dispatch release, then the form host retries and explicitly confirms its retained text. Each eligible modeled step is weakly fair."
+          ]
+        },
+        {
+          "property": "StartedOperationsReachOutcome",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. One caller, the host acknowledgement or the explicit recovery can stall after a request starts."
+          ]
+        }
+      ],
+      "maxSteps": 8,
+      "samples": 1000
+    },
+    {
+      "name": "release-reload-and-explicit-review",
+      "main": "BrowserDraftReleaseReload",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "UnconfirmedReleaseRetainsMark",
+        "MarkedReloadOffersReview",
+        "ConfirmedReleaseSurvivesReload",
+        "ReviewedCopyHasNewReceipt"
+      ],
+      "temporal": [
+        "UnderFairRestoreWritesAndReopen",
+        "PendingWorkReachesReceiptOrClosure"
+      ],
+      "temporalChecks": [
+        {
+          "property": "UnderFairRestoreWritesAndReopen",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of host restore application and acknowledgement, successful queued writes, and a requested reopen after closure. Explicit review is a host choice. Once chosen, its successful write is weakly fair."
+          ]
+        },
+        {
+          "property": "PendingWorkReachesReceiptOrClosure",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. Host restoration, a write, or a reopen can remain pending."
+          ]
+        }
+      ],
+      "maxSteps": 12,
       "samples": 1000
     }
   ]

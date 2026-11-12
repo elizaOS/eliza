@@ -1,0 +1,65 @@
+{
+  "sources": [
+    "packages/contracts/src/phone-workflow.ts",
+    "packages/contracts/src/workflow-device.ts",
+    "packages/contracts/src/workflow-device.test.ts",
+    "plugins/plugin-assistant/src/services/device-actions/workflow-service.ts",
+    "plugins/plugin-assistant/src/services/device-actions/service.ts",
+    "packages/agent/src/api/device-action-routes.ts",
+    "plugins/plugin-workflow/src/services/phone-workflow-generation.ts",
+    "plugins/plugin-assistant/test/workflow-owner-dispatch.test.ts",
+    "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
+    "plugins/plugin-assistant/quint/workflow-device-admission-conformance.json",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "plugins/plugin-workflow/src/services/phone-workflow-spec.ts",
+    "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+    "plugins/plugin-workflow/src/services/workflow-service.ts",
+    "plugins/plugin-workflow/__tests__/integration/phone-generation-http.test.ts",
+    "plugins/plugin-workflow/__tests__/integration/typed-schedule-e2e.test.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-workflow-device-admission.mjs",
+  "bounds": {
+    "domain": "One relative or fixed Calendar read; peer protocols three through five; one owner, selected calendar set and event count; one day boundary and legacy fifteen-minute review grace; one permission loss and one peer downgrade.",
+    "projection": "New relative proposals resolve from the persisted scheduled occurrence or manual run start and require protocol five. The review resolves the same exact day. An already queued protocol-four proposal retains its original absolute range and review rules. An older run without a queued range cannot create one. Existing absolute windows keep their original protocol and dates.",
+    "conformance": "The contract suite covers exact bindings, anchored and legacy relative resolution, old fixed windows and DST. The PGlite service case covers authorization, protocol admission, exact bounds, repeated steps, cold replay, retained legacy payloads and peer downgrade. The scheduler HTTP case exercises exact occurrence and manual-start review anchors.",
+    "limits": "Finite abstraction of days and protocol versions; no machine-checked refinement, full timezone enumeration or physical device acceptance. Cancellation/permission changes observed after an already admitted native read do not undo it. LLM prompt correctness is separate empirical evidence."
+  },
+  "cases": [
+    {
+      "name": "WorkflowCalendarRunScope",
+      "main": "WorkflowCalendarRunScope",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "OnlyReviewedRead", "InvalidSourceNeverReads"],
+      "temporal": ["ResolutionStaysPinned", "FairSettlement", "Settles"],
+      "temporalChecks": [
+        {
+          "property": "ResolutionStaysPinned",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness is needed for this safety property over consecutive modeled states."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance: a continuously enabled modeled validation, commit or settlement action eventually runs. Provider success and real scheduler fairness are not proved."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness: stuttering can prevent a queued attempt from settling. A temporal loop counterexample is required."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500,
+      "deadlock": false
+    }
+  ]
+}

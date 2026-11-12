@@ -245,6 +245,13 @@ replace the full local-agent APK contract, grant roles, build an image, or quali
 boot, OTA, Chromium signer admission, or physical hardware. Keep those checks
 separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts`.
 
+The import is nonprivileged unless the reviewed descriptor adds
+`privilegedPermissions`, taken only from the closed `REVIEWED_PRIVILEGED_PERMISSIONS`
+set (`android.permission.READ_PRIVILEGED_PHONE_STATE`) and declared by the APK. The
+launcher, never a companion, then installs in `<partition>/priv-app/<module>` with
+its bundled JNI, and `privapp-permissions.xml` allow-lists exactly those permissions
+in `<partition>/etc/permissions`. Eliza's own image profile refuses the field.
+
 To stage a second package of the same product, such as its update supervisor, add
 `companions: [{ moduleName, packageName, apkSha256 }]` to the descriptor and pass
 `--companion MODULE=PATH` for each one. A companion must carry exactly the
@@ -279,7 +286,9 @@ which `cp2a` inherits as true) never reads it. For one, also pass
 refuses the unknown module type. Its base, build/soong `6722dd88`, is the
 `android-17.0.0_r1` revision. `native-libraries.json` then records
 `installRule: "soong-app-native"` and the patch manifest's SHA-256. The default
-(`--native-install make`) is the `Android.mk` rule above.
+(`--native-install make`) is the `Android.mk` rule above. A launcher with
+`privilegedPermissions` uses build/soong's own `prebuilt_priv_app` instead
+(`installRule: "soong-priv-app"`, no patch record).
 
 For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
 launcher descriptor. Both the nonprivileged APK and optional revocable permission
@@ -299,7 +308,8 @@ The explicit Pixel 10a path takes a consumer-owned product descriptor; Eliza's i
 Product name, model, brand, launcher package/module and `vendorDirectory` are
 explicit inputs. Device configuration, the stock kernel, eSIM flags provider,
 source patch templates and SELinux inputs live once under `devices/pixel10a`.
-Main APKs are presigned, nonprivileged product apps.
+Main APKs are presigned product apps, nonprivileged unless the reviewed launcher
+descriptor names `privilegedPermissions`.
 Release admission and signing also take the consumer's parsed product data as
 `composition`; a consumer needs no entry in Eliza's product catalog. It must pass
 the same product validation and match the release descriptor's product name.

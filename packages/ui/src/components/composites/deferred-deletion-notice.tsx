@@ -40,7 +40,7 @@ export interface DeferredDeletionNoticeProps {
   onChanged?: () => void;
   /** Window events that request an immediate refresh. */
   refreshEvents?: readonly string[];
-  /** Poll interval while mounted. */
+  /** Poll interval while a deletion is pending. */
   pollMs?: number;
   className?: string;
   label?: string;
@@ -52,6 +52,8 @@ interface DeletionActionScope {
 }
 
 const STATUS_FAILURES_BEFORE_ERROR = 3;
+/** Poll interval while no deletion is pending. `refreshEvents` report a new deletion sooner. */
+const IDLE_POLL_MS = 5_000;
 /** Failed Undo or dismissal results stay visible after a refresh until the next action. */
 const ACTION_FAILURES: ReadonlySet<string> = new Set([
   UNDO_TOO_LATE,
@@ -110,6 +112,16 @@ export function DeferredDeletionNotice({
     let inflight = false;
     let identityEpoch = 0;
     let failures = 0;
+    let pending = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Poll fast only while a row can change or a failed read is not yet reported.
+    const arm = () => {
+      clearTimeout(timer);
+      if (retired) return;
+      const fast =
+        pending || (failures > 0 && failures < STATUS_FAILURES_BEFORE_ERROR);
+      timer = setTimeout(listener, fast ? pollMs : IDLE_POLL_MS);
+    };
     const hidden = () =>
       (typeof document !== "undefined" && document.hidden) ||
       !!ports.current.concealed?.();
@@ -136,6 +148,8 @@ export function DeferredDeletionNotice({
       if (inflight) return;
       if (hidden()) {
         setNoticeRead(null);
+        pending = false;
+        arm();
         return;
       }
       inflight = true;
@@ -153,10 +167,9 @@ export function DeferredDeletionNotice({
         if (!current()) return;
         signature.current = next;
         failures = 0;
-        setNoticeRead({
-          entries: pendingDeletionNotices(result.deletions),
-          scope,
-        });
+        const entries = pendingDeletionNotices(result.deletions);
+        pending = entries.length > 0;
+        setNoticeRead({ entries, scope });
         setError((shown) =>
           shown?.scope.current() && ACTION_FAILURES.has(shown.text)
             ? shown
@@ -167,10 +180,13 @@ export function DeferredDeletionNotice({
           setError({ text: DELETION_NOTICE_TEXT.statusUnavailable, scope });
       } finally {
         inflight = false;
+        arm();
       }
     };
     refreshRef.current = refresh;
-    const listener = () => void refresh();
+    function listener() {
+      void refresh();
+    }
     let previousIdentity = ports.current.identity?.read() ?? "";
     const unsubscribe = ports.current.identity?.subscribe(() => {
       const next = ports.current.identity?.read() ?? "";
@@ -185,14 +201,13 @@ export function DeferredDeletionNotice({
       void refresh();
     });
     void refresh();
-    const timer = setInterval(listener, pollMs);
     const names = events ? events.split("\n") : [];
     for (const name of names) window.addEventListener(name, listener);
     document.addEventListener("visibilitychange", listener);
     return () => {
       retired = true;
       unsubscribe?.();
-      clearInterval(timer);
+      clearTimeout(timer);
       for (const name of names) window.removeEventListener(name, listener);
       document.removeEventListener("visibilitychange", listener);
     };

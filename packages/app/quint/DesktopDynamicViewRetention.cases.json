@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/app/platforms/electrobun/src/dynamic-views/session-manager.ts",
+    "packages/app/platforms/electrobun/src/dynamic-views/registry.ts",
+    "packages/app/platforms/electrobun/src/dynamic-views/kiosk-canvas.ts",
+    "packages/app/platforms/electrobun/src/rpc-handler-slices.ts",
+    "packages/app/platforms/electrobun/src/dynamic-views/session-retention.test.ts",
+    "packages/app/platforms/electrobun/vitest.electrobun.config.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/app/quint/check-desktop-dynamic-view-retention.mjs",
+  "bounds": {
+    "domain": "Five distinct session IDs in creation order, history target two, one possible initial A2UI publication failure after mount, and one close request per window. Open admission trims historical closed entries in creation order.",
+    "assumptions": "Each modeled open allocates a canvas. Its initial event may fail for the first session. A modeled close retires the canvas when the host returns its destroy acknowledgement. An open can admit above the target when there are too few closed records.",
+    "limitations": "Conformance drives the real desktop RPC slice, registry, session manager and KioskCanvas. Its controlled renderer message port observes the actual mount, A2UI and unmount events. The production-default case opens 201 sessions. A small history case checks pruning and initial-event failure. Native window disposal, renderer mount acknowledgement, launch authorization, close during opening, failed or duplicate concurrent destruction, and process shutdown remain separate."
+  },
+  "cases": [
+    {
+      "name": "owned-canvas-and-closed-history",
+      "main": "DesktopDynamicViewRetention",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "EveryWindowHasAnAddressableOwner",
+        "OnlyClosedReceiptsCanBePruned"
+      ],
+      "temporal": [
+        "OpenTrimsAvailableHistory",
+        "UnderFairCanvasReceipts",
+        "RequestedCanvasOperationsSettle"
+      ],
+      "temporalChecks": [
+        {
+          "property": "OpenTrimsAvailableHistory",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. An admitted open trims all available closed entries needed for the target. If the target is exceeded, the remaining records still own or await a canvas."
+          ]
+        },
+        {
+          "property": "UnderFairCanvasReceipts",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each eligible open completion and close acknowledgement. A caller requests close after open settles. The open may report initial-event failure."
+          ]
+        },
+        {
+          "property": "RequestedCanvasOperationsSettle",
+          "expect": "counterexample",
+          "assumptions": ["No fairness. A canvas operation can remain pending."]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

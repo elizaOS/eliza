@@ -15,14 +15,38 @@
   {
     "id": "GatewayLifecycle",
     "model": "packages/host/quint/GatewayLifecycle.qnt",
-    "sources": ["packages/host/native-host/gateway-lifecycle.mjs"],
-    "invariants": ["invariant"],
-    "status": "modeled",
+    "sources": [
+      "packages/host/native-host/gateway-lifecycle.mjs",
+      "packages/host/native-host/gateway-lifecycle.test.mjs",
+      "packages/host/quint/check-gateway-lifecycle.mjs"
+    ],
+    "invariants": ["invariant", "CleanupRequiresHttpClose"],
+    "status": "partial",
     "limitations": [
-      "Covers returned resource handles and cleanup. Factory-owned partial acquisitions must clean themselves before throwing and are outside this protocol.",
-      "Optional handles represented by presence choices; real HTTP server callbacks and all asynchronous factory implementations need integration evidence.",
-      "Finite verification domain. Four optional returned resources, one startup and cleanup lifecycle, release at most once. Values beyond these bounds are outside this instance; generation and revision values never wrap.",
-      "Returned resource acquisitions are atomic. Partial acquisitions inside factories and a close racing an unresolved factory are not represented; each factory must clean up before rejecting."
+      "One startup, four optional returned resources, one connected HTTP request, an external close and one joined managed close. The close receipt follows request drain before reverse-order release begins.",
+      "A real Node HTTP/file fixture checks a held request during both close paths, reverse-order release, startup rollback and release failures. Fair progress assumes request settlement, the close event and all release continuations.",
+      "Unreturned partial acquisitions, close while a factory is unresolved, forced shutdown, upgraded sockets, concurrent request sets and work that outlives a disconnected client remain outside the model."
+    ]
+  },
+  {
+    "id": "SqlCipherOperationGuard",
+    "model": "packages/host/quint/SqlCipherOperationGuard.qnt",
+    "sources": [
+      "packages/host/native-host/task-sqlcipher.mjs",
+      "packages/host/native-host/errors.mjs",
+      "packages/host/native-host/task-sqlcipher.test.mjs",
+      "packages/host/quint/check-sqlcipher-operation-guard.mjs"
+    ],
+    "invariants": [
+      "RefusalMatchesEffect",
+      "ReplyRequiresSettlement",
+      "ClosedHandleRefusesUse"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One already admitted handle, one serial read or autocommitted write, two owner checks, two close attempts and one closed-handle use. Owner decisions are host inputs.",
+      "Refusal before dispatch prevents an effect. Refusal after a completed native call suppresses the result while a committed write survives. Native exceptions leave effects unknown. An acknowledged close retires the handle, and an unacknowledged close may be retried.",
+      "The strict fixture uses the adapter with a controlled loader and real local SQLite persistence. Key custody, authentication, native encryption and lease behavior, multi-statement transactions, reentrant calls and platform qualification remain outside this proof."
     ]
   }
 ]
