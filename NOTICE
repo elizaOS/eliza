@@ -1,0 +1,22 @@
+eliza-valhalla
+==============
+
+This repository began as a fork of elizaOS/eliza
+(https://github.com/elizaOS/eliza), which is licensed under the MIT License.
+
+Portions of this repository derive from elizaOS/eliza:
+
+    Copyright (c) 2026 Shaw Walters and elizaOS Contributors
+
+TokenJunction's changes since the fork are also released under the MIT License,
+because a derivative work of MIT-licensed code cannot be relicensed more
+restrictively while it still contains that code. The MIT text in LICENSE applies
+to the whole repository.
+
+The fork's git history descends from elizaOS/eliza. Removing the upstream
+copyright notice from a repository whose history and files derive from that
+project does not remove the obligation: MIT requires the notice to be included
+in all copies and substantial portions, and the history is part of the copy.
+
+Modifications by TokenJunction are described in the commit history and in
+CHANGELOG.md where one exists.
