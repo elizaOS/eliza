@@ -13,7 +13,7 @@ import {
 import type {
   ImageAttachment,
   TransientClientMediaInput,
-} from "../api/client-types-chat";
+} from "./chat-attachment-types";
 /**
  * Per-message attachment count cap. Sourced from the SAME shared constant the
  * server's validateChatImages enforces (@elizaos/core/protocol) so
