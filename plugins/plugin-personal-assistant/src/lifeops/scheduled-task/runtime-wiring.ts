@@ -356,13 +356,13 @@ function makeRepositoryBackedStores(
 
 function defaultOwnerFactsProvider(
   runtime: IAgentRuntime,
+  now: () => Date = () => new Date(),
 ): () => Promise<OwnerFactsView> {
   return async () => {
+    const instant = now();
     const store = resolveOwnerFactStore(runtime);
-    // `new Date()` drives the derived `travelActive` — the view reflects
-    // whether the owner is inside a booked/declared travel window at this
-    // instant, which is exactly what the `during_travel` gate needs each tick.
-    const view = ownerFactsToView(await store.read(), new Date());
+    // Travel and baseline freshness use the same clock as the runner's tick.
+    const view = ownerFactsToView(await store.read(), instant);
     // An unset owner zone follows the scheduling setting, runtime setting,
     // then the host zone before owner-local cron is evaluated.
     view.timezone ??=
@@ -375,7 +375,7 @@ function defaultOwnerFactsProvider(
         repo.getScheduleMergedState(runtime.agentId, "cloud", timezone),
       ]);
       const effective = preferEffectiveMergedState({
-        now: new Date(),
+        now: instant,
         local,
         cloud,
       });
@@ -1506,7 +1506,8 @@ function buildLifeOpsRunnerDeps(
     opts.subjectStore ??
     makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
-  const ownerFacts = opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime);
+  const ownerFacts =
+    opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime, opts.now);
 
   return {
     store: stores.store,
@@ -1626,8 +1627,8 @@ export function createRuntimeScheduledTaskRunner(
 export function registerLifeOpsScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
 ): void {
-  registerScheduledTaskRunnerDeps(runtime, (rt, agentId) =>
-    buildLifeOpsRunnerDeps({ runtime: rt, agentId }),
+  registerScheduledTaskRunnerDeps(runtime, (rt, agentId, now) =>
+    buildLifeOpsRunnerDeps({ runtime: rt, agentId, ...(now ? { now } : {}) }),
   );
 }
 
