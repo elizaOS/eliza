@@ -169,6 +169,79 @@ assert(
 const full = parse(
   await readFile(path.join(root, ".github/workflows/develop-full.yml"), "utf8"),
 );
+// Reusable workflows inherit their caller's github context, including a
+// manual caller's event name. Diagnostic selection must remain a direct input
+// of Cloud Tests dispatch; canonical Full callers cannot supply that input.
+const cloudTests = parse(
+  await readFile(path.join(root, ".github/workflows/cloud-tests.yml"), "utf8"),
+);
+const cloudCallSchema = cloudTests.on.workflow_call.inputs;
+assert.equal(Object.hasOwn(cloudCallSchema, "profile_startup_only"), false);
+const profileInput =
+  cloudTests.on.workflow_dispatch.inputs.profile_startup_only;
+assert.equal(profileInput.type, "boolean");
+assert.equal(profileInput.default, false);
+const fullCloudCalls = Object.values(full.jobs).filter(
+  (job) => job.uses === "./.github/workflows/cloud-tests.yml",
+);
+assert.equal(fullCloudCalls.length, 1);
+const fullCloudInputs = fullCloudCalls[0].with ?? {};
+assert.equal(Object.hasOwn(fullCloudInputs, "profile_startup_only"), false);
+assert(
+  Object.keys(fullCloudInputs).every((key) =>
+    Object.hasOwn(cloudCallSchema, key),
+  ),
+  "Canonical Full must pass only declared reusable Cloud inputs",
+);
+const callDefaults = Object.fromEntries(
+  Object.entries(cloudCallSchema).map(([key, input]) => [
+    key,
+    input.default ?? (input.type === "boolean" ? false : ""),
+  ]),
+);
+const diagnosticSelectorResults = [];
+function cloudSelector(event, inputs) {
+  const context = { github: { event_name: event }, inputs };
+  const evaluate = (condition) => {
+    assert.equal(typeof condition, "string");
+    return Boolean(
+      runInNewContext(condition.replace(/^\$\{\{\s*|\s*\}\}$/g, ""), context),
+    );
+  };
+  return {
+    normalChanges: evaluate(cloudTests.jobs.changes.if),
+    startupProfile: evaluate(cloudTests.jobs["startup-profile"].if),
+  };
+}
+for (const event of [
+  "push",
+  "workflow_dispatch",
+  "pull_request",
+  "merge_group",
+]) {
+  const observed = cloudSelector(event, {
+    ...callDefaults,
+    ...fullCloudInputs,
+  });
+  assert.deepEqual(observed, { normalChanges: true, startupProfile: false });
+  diagnosticSelectorResults.push({ mode: "reusable", event, ...observed });
+}
+for (const profile of [undefined, false, true]) {
+  const observed = cloudSelector(
+    "workflow_dispatch",
+    profile === undefined ? {} : { profile_startup_only: profile },
+  );
+  assert.deepEqual(observed, {
+    normalChanges: profile !== true,
+    startupProfile: profile === true,
+  });
+  diagnosticSelectorResults.push({
+    mode: "direct-dispatch",
+    profile: profile ?? "omitted",
+    ...observed,
+  });
+}
+
 const fullPlan = full.jobs.plan;
 const dispatchGuard = fullPlan.steps.find(
   (step) => step.name === "Validate promoted dispatch authority",
@@ -545,6 +618,7 @@ await writeFile(
       canonicalResults,
       eventMatrix,
       dispatchResults,
+      diagnosticSelectorResults,
       shardResults,
       partitions,
     },
@@ -553,5 +627,5 @@ await writeFile(
   )}\n`,
 );
 console.log(
-  `CI admission conformance passed 58 top-level and 18 shard shell outcomes plus canonical/event matrix, seven partition tests and 84 production/ledger tests. Results ${directory}`,
+  `CI admission conformance passed 58 top-level and 18 shard shell outcomes plus canonical/event matrix, seven diagnostic selector contexts, seven partition tests and 84 production/ledger tests. Results ${directory}`,
 );
