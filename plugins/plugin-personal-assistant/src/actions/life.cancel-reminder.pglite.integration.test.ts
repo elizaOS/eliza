@@ -243,6 +243,23 @@ it.each<{
     deleted: 2,
     remaining: ["Call mom", "Call mom about dinner", "Rent"],
   },
+  {
+    // Each delete clause has its own list.
+    text: "delete dentist and rent, then delete parent teacher meeting and call mom about dinner",
+    deleted: 4,
+    remaining: ["Call mom"],
+  },
+  {
+    text: "cancel my subscription, then delete dentist and parent teacher meeting",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
+  {
+    // A negated delete verb names nothing.
+    text: "delete dentist and parent teacher meeting, but don't delete rent",
+    deleted: 2,
+    remaining: ["Call mom", "Call mom about dinner", "Rent"],
+  },
 ])(
   "an enumerated delete removes only the listed titles: $text",
   async ({ text, deleted, remaining, extra = [] }) => {

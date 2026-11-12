@@ -1153,9 +1153,12 @@ function resolveDuplicateByTimeHint(
 const ENUMERATED_DELETE_KEEP_CUE_RE =
   /(?:\bkeep|\bexcept(?:\s+for)?|\bleave|\bbut\s+not|\bdon'?t\s+(?:delete|remove)|\bnot|\bspare)\s*(?:the\s+)?$/i;
 
-/** The verb that opens the enumerated list ("delete A, B and C"). */
+/** The verb that opens an enumerated list ("delete A, B and C"). */
 const ENUMERATED_DELETE_VERB_RE =
-  /\b(?:delete|remove|cancel|clear|erase|trash|drop|get rid of)\b/;
+  /\b(?:delete|remove|cancel|clear|erase|trash|drop|get rid of)\b/g;
+
+/** A negation right before a delete verb ("but don't delete X"). */
+const ENUMERATED_DELETE_NEGATION_RE = /\b(?:don'?t|do not|never|not)\s+$/;
 
 /** Where the sentence stops naming deletions ("..., then remind me to pay rent"). */
 const ENUMERATED_DELETE_CLAUSE_END_RE = /[.;!?]|\bthen\b|\bafter that\b/;
@@ -1180,17 +1183,25 @@ async function resolveEnumeratedDeleteTargets(
   ownerText: string,
   domain?: LifeOpsDomain,
 ): Promise<LifeOpsDefinitionRecord[]> {
-  // Only the list that follows the delete verb nominates records, read title
-  // by title: the list ends at the first word that does not begin a stored
-  // title, so a later step joined by a comma or "and" ("..., remind me to pay
-  // rent") or an earlier one ("remind me to pay rent, then delete ...") never
-  // names a record to delete.
+  // Only the lists that follow a delete verb nominate records, read title by
+  // title: a list ends at the first word that does not begin a stored title,
+  // so a later step joined by a comma or "and" ("..., remind me to pay rent")
+  // or an earlier one ("remind me to pay rent, then delete ...") never names a
+  // record to delete. Each delete clause has its own list ("delete A, then
+  // delete B and C"); a negated verb ("but don't delete D") names nothing.
   const normalized = normalizeTitle(ownerText);
-  const verb = ENUMERATED_DELETE_VERB_RE.exec(normalized);
-  if (!verb) return [];
-  const list = normalized
-    .slice(verb.index + verb[0].length)
-    .split(ENUMERATED_DELETE_CLAUSE_END_RE)[0];
+  const lists = [...normalized.matchAll(ENUMERATED_DELETE_VERB_RE)]
+    .filter(
+      (verb) =>
+        !ENUMERATED_DELETE_NEGATION_RE.test(normalized.slice(0, verb.index)),
+    )
+    .map(
+      (verb) =>
+        normalized
+          .slice(verb.index + verb[0].length)
+          .split(ENUMERATED_DELETE_CLAUSE_END_RE)[0],
+    );
+  if (lists.length === 0) return [];
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
   );
@@ -1206,20 +1217,22 @@ async function resolveEnumeratedDeleteTargets(
   // "call mom" followed by prose.
   const keys = [...byTitle.keys()].sort((a, b) => b.length - a.length);
   const targets: LifeOpsDefinitionRecord[] = [];
-  let index = 0;
-  while (index < list.length) {
-    const key = keys.find((candidate) => phraseAt(list, candidate, index));
-    if (!key) {
-      const glue = ENUMERATED_DELETE_LIST_GLUE_RE.exec(list.slice(index));
-      if (!glue) break;
-      index += glue[0].length;
-      continue;
+  for (const list of lists) {
+    let index = 0;
+    while (index < list.length) {
+      const key = keys.find((candidate) => phraseAt(list, candidate, index));
+      if (!key) {
+        const glue = ENUMERATED_DELETE_LIST_GLUE_RE.exec(list.slice(index));
+        if (!glue) break;
+        index += glue[0].length;
+        continue;
+      }
+      const records = byTitle.get(key) ?? [];
+      // A named title matching more than one record keeps the disambiguation ask.
+      if (records.length !== 1) return [];
+      if (!targets.includes(records[0])) targets.push(records[0]);
+      index += key.length;
     }
-    const records = byTitle.get(key) ?? [];
-    // A named title matching more than one record keeps the disambiguation ask.
-    if (records.length !== 1) return [];
-    if (!targets.includes(records[0])) targets.push(records[0]);
-    index += key.length;
   }
   return targets.length > 1 ? targets : [];
 }
