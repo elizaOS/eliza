@@ -21,6 +21,7 @@ import {
   runAppReview,
 } from "@elizaos/cloud-shared/lib/services/app-review";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -28,7 +29,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../src/lib/generative-route-auth";
 
 const app = new Hono<AppEnv>();
 
@@ -40,6 +41,10 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
       deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
     });
     const { user } = caller;
     const appId = c.req.param("id");
@@ -58,7 +63,9 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     const review = await runAppReview({
       app: appRow,
       triggeredByUserId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
 
     logger.info("[AppReview API] Submitted app for review", {

@@ -441,9 +441,9 @@ test(
     expect(pending.size).toBe(0);
     expect(floor > BigInt(snapshot.authority.generation)).toBe(true);
 
-    // Admission decides from the snapshot it is handed. A snapshot cached
-    // before the hold still admits (the accepted stale window); the snapshot
-    // the primary now projects, which rewrites the cached entry, refuses.
+    // The durable gate rejects the cached pre-hold generation. Admission
+    // refills once from the primary and refuses its current billing hold;
+    // both the stale snapshot and a fresh projection must stop provider work.
     const { loadInferenceAdmissionSnapshot } = await import("../inference-admission-snapshot");
     const admitFrom = (admissionSnapshot: typeof snapshot) =>
       runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: organizationGate }, () =>
@@ -463,7 +463,9 @@ test(
           admissionSnapshot,
         }),
       );
-    await expect(admitFrom(snapshot)).resolves.toBeDefined();
+    await expect(admitFrom(snapshot)).rejects.toMatchObject({
+      name: "BillingHoldActiveError",
+    });
     await expect(admitFrom(await loadInferenceAdmissionSnapshot(held.orgId))).rejects.toMatchObject(
       { name: "BillingHoldActiveError" },
     );
@@ -588,9 +590,8 @@ async function deferredAdmission(
       flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
       executionCtx: { waitUntil() {} },
       admissionSnapshot: snapshot,
-      // The session lane commits its lease when dispatch is marked; request
-      // routes run the same commit, and the same repair, during settlement.
-      commitLeaseAtDispatch: true,
+      // Join the lease and dispatch at the final provider boundary.
+      atomicProviderBoundary: true,
     }),
   );
   return { admission, snapshot, run };

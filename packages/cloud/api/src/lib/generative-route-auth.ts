@@ -18,6 +18,7 @@ import type {
   InferenceAuthRejectionReason,
 } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
+  assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
@@ -36,9 +37,9 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Verified identity metadata for callers that bind a session to it (the speech relay). */
+  /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
   credential?: InferenceCredentialCheck;
-  /** Rewrites the caller's cached auth entry off the response; handed to paid admission. */
+  /** Repair this caller's cached funding standing after settlement. */
   refreshAuthEntry?: () => void;
   appScopeId: string | null;
 }
@@ -214,6 +215,9 @@ export function getGenerativeExecutionContext(
 export function getGenerativeOperationContext(
   c: AppContext,
   caller: GenerativeRouteCaller,
+  options: {
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+  } = {},
 ): GenerativeOperationContext {
   return {
     organizationId: caller.user.organization_id,
@@ -221,7 +225,9 @@ export function getGenerativeOperationContext(
     apiKeyId: caller.apiKeyId,
     requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
     admissionSnapshot: caller.admissionSnapshot,
+    credential: caller.credential,
     refreshAuthEntry: caller.refreshAuthEntry,
+    ...options,
     executionCtx: getGenerativeExecutionContext(c),
   };
 }
@@ -337,17 +343,12 @@ export async function admitFlatGenerativeOperation(params: {
   cost: FlatBillingCost;
   idempotencyKey?: string;
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** The caller's `refreshAuthEntry`; see organization admission. */
+  credential?: InferenceCredentialCheck;
   refreshAuthEntry?: () => void;
+  /** Join the lease and dispatch for an operation that outlives the request. */
+  commitLeaseAtDispatch?: boolean;
   /** Use only when the caller must invoke the returned dispatch marker. */
   atomicProviderBoundary?: boolean;
-  /**
-   * Commit the gate lease at the dispatch marker instead of after the
-   * response. For operations that outlive their request (a provider job that
-   * is still running when the route answers), so the gate alarm charges the
-   * estimate if the Worker never settles.
-   */
-  commitLeaseAtDispatch?: boolean;
 }): Promise<OrganizationInferenceAdmission> {
   const executionCtx = getGenerativeExecutionContext(params.c);
   const { provider, billingSource, requestId } = params.context;
@@ -400,11 +401,10 @@ export async function admitFlatGenerativeOperation(params: {
       executionCtx,
       flatCost: params.cost,
       admissionSnapshot: params.admissionSnapshot,
+      ...(params.credential ? { credential: params.credential } : {}),
       refreshAuthEntry: params.refreshAuthEntry,
       atomicProviderBoundary: params.atomicProviderBoundary === true,
-      ...(params.commitLeaseAtDispatch === true && {
-        commitLeaseAtDispatch: true,
-      }),
+      commitLeaseAtDispatch: params.commitLeaseAtDispatch === true,
     });
   } catch (error) {
     if (
@@ -511,14 +511,6 @@ export async function requireGenerativeRouteCaller(
     deferStrongCredentialCheck?: boolean;
     /** Bounded speech bootstrap may retain verified identity metadata, not a raw credential. */
     includeVerifiedCredential?: boolean;
-    /**
-     * A cached API-key entry is the whole decision: no organization gate call
-     * before the provider. Only the inference hot-path routes (speech
-     * synthesis, transcription, warm) set it and accept cache-propagation
-     * revocation latency. Every other route checks the gate's durable fences
-     * on a cached hit, so a revoked key stops on its next request.
-     */
-    cachedDecisionIsFinal?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const request = options.request ?? c.req.raw;
@@ -554,7 +546,6 @@ export async function requireGenerativeRouteCaller(
       traceId: c.get("traceId") ?? c.get("requestId"),
       executionCtx,
       includeVerifiedCredential: options.includeVerifiedCredential === true,
-      strongCredentialCheck: options.cachedDecisionIsFinal !== true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
         : {}),
@@ -570,7 +561,7 @@ export async function requireGenerativeRouteCaller(
       id: resolution.ctx.userId,
       organization_id: resolution.ctx.orgId,
     };
-    {
+    try {
       c.set("user", user);
       c.set("authMethod", resolution.ctx.apiKeyId ? "api_key" : "session");
       if (resolution.ctx.apiKeyId) {
@@ -579,7 +570,11 @@ export async function requireGenerativeRouteCaller(
       const rateLimitEndpoint = options.rateLimitEndpoint;
       if (rateLimitEndpoint) {
         const [
-          { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError },
+          {
+            enforceOrgRateLimit,
+            inferenceRatePolicyProof,
+            OrgRateLimitCacheNotReadyError,
+          },
           { inferenceRateLimitConfig },
         ] = await timeSpeechPhase(c, "limiter_module_load", () =>
           Promise.all([
@@ -591,9 +586,11 @@ export async function requireGenerativeRouteCaller(
         );
         const limited = await timeSpeechPhase(c, "org_limiter", () =>
           enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
-            // Same limiter as chat completions: decided in the isolate from
-            // the cached snapshot. Without a snapshot the locked primary
-            // policy supplies the limit once, inline.
+            // Same limiter as chat completions: a shared policy lock and one
+            // Durable Object decision. Without a snapshot the locked primary
+            // policy supplies the limit. The compatibility path took the
+            // exclusive policy lock across Redis REST round trips that fail
+            // open, and every origin-authorized key had no snapshot.
             cacheOnly: true,
             executionCtx,
             config: inferenceRateLimitConfig(
@@ -605,6 +602,11 @@ export async function requireGenerativeRouteCaller(
             apiKeyRateLimit:
               "apiKeyRateLimit" in resolution.ctx
                 ? resolution.ctx.apiKeyRateLimit
+                : undefined,
+            // Only an API-key context carries a key cap read with its epoch.
+            ratePolicy:
+              "keyHash" in resolution.ctx
+                ? inferenceRatePolicyProof(resolution.ctx)
                 : undefined,
           }).catch((error: unknown) => {
             if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
@@ -639,6 +641,17 @@ export async function requireGenerativeRouteCaller(
           );
         }
       }
+    } catch (error) {
+      // A deferred credential may leave this helper only through its admission
+      // consumer. If a post-resolution boundary fails first, consume the same
+      // proof with the standalone strong check before exposing that failure.
+      if (resolution.credential) {
+        await assertInferenceCredentialActive(
+          resolution.ctx.orgId,
+          resolution.credential,
+        );
+      }
+      throw error;
     }
     return {
       user,

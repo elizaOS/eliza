@@ -13,6 +13,7 @@ import {
   listHostedBrowserSessions,
   logHostedBrowserFailure,
 } from "@elizaos/cloud-shared/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -21,7 +22,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 
 const createSessionSchema = z.object({
   activityTtl: z.number().int().min(10).max(3600).optional(),
@@ -79,6 +80,10 @@ app.post("/", async (c) => {
     const caller = await requireGenerativeRouteCaller(c, {
       deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     if (pendingResponse) return pendingResponse;
     const { user } = caller;
 
@@ -87,7 +92,9 @@ app.post("/", async (c) => {
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
     return c.json({ session });
   } catch (error) {

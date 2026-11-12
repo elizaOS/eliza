@@ -104,6 +104,8 @@ together: a draft waits on the capture worker for the live source to close (`liv
 with `capture-replaced`); failed cleanup refuses a replacement,
 and a live capture that the user starts finishes the open draft (`recordingStopped`; the draft
 is kept). A cancelled queued start cannot clear this draft’s automatic-reopen fence.
+Separate live and draft owners in the same process share one microphone slot. A competing
+start is refused before it opens a source. Confirmed source cleanup releases that owner's slot.
 For a spoken conversation it also provides: `startLiveCapture` with
 `startMs`/`endHangoverMs` (the VAD start run and end hangover, whole 32 ms windows) and `bargeIn`
 (a `liveCaptureBargeIn` event when speech is sustained while the streamed reply is audible; the

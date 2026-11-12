@@ -1,3 +1,4 @@
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -6,7 +7,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import { type ChatCompletionTool, convertTools } from "./tools";
 
 /**
@@ -154,7 +155,7 @@ import {
   firstNumber,
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
-} from "@/api-app/lib/inference-usage";
+} from "../../../src/lib/inference-usage";
 import {
   ClientClosedBeforeDispatchError,
   joinProviderBoundary,
@@ -1305,8 +1306,12 @@ export async function handleChatCompletionsPOST(
     let admissionCredential: InferenceCredentialCheck | undefined;
     let refreshAuthEntry: (() => void) | undefined;
     let appScopeId: string | null = null;
-    // The cached auth entry is the whole pre-provider decision: identity,
-    // standing and funding come from this one read.
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user?.organization_id,
+      credential: () => admissionCredential,
+    });
+    // Cached identity avoids primary reads; durable fences and funding
+    // admission still decide before the provider can run.
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
@@ -1430,8 +1435,8 @@ export async function handleChatCompletionsPOST(
       });
     };
 
-    // 1b. Per-org tier rate limit. On a Worker this is decided in the isolate
-    // from the cached snapshot (plan limiter, tier RPM, key cap): no store call.
+    // 1b. Per-org tier rate limit. The cached policy avoids primary reads;
+    // the shared Durable Object enforces the tier RPM and per-key cap.
     let orgRateLimited: Response | null = null;
     if (user.organization_id && !options.skipOrgRateLimit) {
       try {
@@ -1703,10 +1708,15 @@ export async function handleChatCompletionsPOST(
           useMonetizedAppBilling,
         })
       ) {
-        // No gate call here: authentication already decided standing. A
-        // cached API-key entry is the whole decision, as in the organization
-        // lane, and a cold decision or a session was checked against the gate
-        // when it was resolved.
+        // This lane uses the team's provider credential and creates no
+        // organization charge, but still rechecks durable caller standing.
+        const pooledCredentialProof = credentialGuard.credentialForAdmission();
+        if (pooledCredentialProof) {
+          await assertInferenceCredentialActive(
+            user.organization_id,
+            pooledCredentialProof,
+          );
+        }
         settleReservation = async () => null;
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
@@ -1749,7 +1759,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             executionCtx: options.executionCtx,
             admissionSnapshot,
-            credential: admissionCredential,
+            credential: credentialGuard.credentialForAdmission(),
             atomicProviderBoundary: true,
           });
           settleReservation = admission.settle;
@@ -1808,6 +1818,8 @@ export async function handleChatCompletionsPOST(
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
           refreshAuthEntry,
         });
         settleReservation = admission.settle;
@@ -2008,8 +2020,8 @@ export async function handleChatCompletionsPOST(
     const tAfterReserve = performance.now();
 
     // The provider boundary. An organization-funded request was admitted from
-    // its cached auth entry and awaits nothing here; an app-funded request
-    // commits its admission. A client that already left never reaches the
+    // its cached auth entry and commits its durable admission here; an
+    // app-funded request does the same. A client that already left never reaches the
     // provider. A refusal is thrown to the catch below, which settles the
     // reservation at zero because the provider was not invoked.
     markProviderDispatched = joinProviderBoundary({

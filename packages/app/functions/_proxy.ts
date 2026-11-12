@@ -17,6 +17,8 @@ import {
 const DEFAULT_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
 const PREVIEW_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 export interface PagesProxyEnv {
+  /** Unset or `eliza` is the eliza.app deployment; anything else is a product Cloud. */
+  CLOUD_DEPLOYMENT_ID?: string;
   API_UPSTREAM?: string;
   ELIZA_NATIVE_AUTH_CALLBACKS_JSON?: string;
   API_WORKER?: {
@@ -27,11 +29,41 @@ export interface PagesProxyContext {
   request: Request;
   env: PagesProxyEnv;
 }
+/** A product Cloud's Pages project has no usable API upstream configured. */
+export class PagesUpstreamConfigurationError extends Error {
+  override readonly name = "PagesUpstreamConfigurationError";
+  constructor() {
+    super("Cloud API upstream is not configured for this deployment");
+  }
+}
+
+/**
+ * The upstream of a product Cloud, which never falls back to Eliza's API: it
+ * must name its own API origin as an exact https origin.
+ */
+function productUpstream(env: PagesProxyEnv): string | null {
+  const id = env.CLOUD_DEPLOYMENT_ID?.trim();
+  if (!id || id === "eliza") return null;
+  const configured = env.API_UPSTREAM?.trim().replace(/\/+$/, "");
+  let url: URL;
+  try {
+    url = new URL(configured ?? "");
+  } catch {
+    // error-policy:J3 A missing or malformed upstream cannot select Eliza's.
+    throw new PagesUpstreamConfigurationError();
+  }
+  if (url.protocol !== "https:" || url.origin !== configured)
+    throw new PagesUpstreamConfigurationError();
+  return url.origin;
+}
+
 export function resolveApiWorkerTarget(
   requestUrl: string,
   env: PagesProxyEnv,
 ): string {
   const incoming = new URL(requestUrl);
+  const product = productUpstream(env);
+  if (product) return `${product}${incoming.pathname}${incoming.search}`;
   const environment = elizaCloudEnvironmentForHostname(incoming.hostname);
   const fallbackUpstream =
     incoming.hostname.endsWith(".pages.dev") || environment === "staging"
@@ -44,7 +76,22 @@ export function proxyToApiWorker(
   context: PagesProxyContext,
 ): Promise<Response> {
   const incoming = new URL(context.request.url);
-  const target = resolveApiWorkerTarget(context.request.url, context.env);
+  let target: string;
+  try {
+    target = resolveApiWorkerTarget(context.request.url, context.env);
+  } catch (error) {
+    if (!(error instanceof PagesUpstreamConfigurationError)) throw error;
+    // error-policy:J3 Fail closed rather than forwarding a product's traffic to Eliza's API.
+    return Promise.resolve(
+      new Response("Cloud API upstream is not configured", {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      }),
+    );
+  }
   const method = context.request.method.toUpperCase();
   const headers = new Headers(context.request.headers);
   // Browsers omit Origin on same-origin GETs, including Steward's wallet nonce

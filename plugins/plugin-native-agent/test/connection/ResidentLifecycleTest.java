@@ -313,6 +313,19 @@ public final class ResidentLifecycleTest {
       check("false".equals(env.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")) && !env.containsKey("ELIZAOS_CLOUD_EMBEDDING_MODEL"), "no Cloud embeddings under " + profile);
       check("1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED")) && model.getAbsolutePath().equals(env.get("ELIZA_LOCAL_EMBEDDING_MODEL_PATH")) && NativeRuntimeEmbeddings.LOCAL_DIMENSIONS.equals(env.get("ELIZA_LOCAL_EMBEDDING_DIMENSIONS")), "local BGE embeddings under " + profile);
     }
+    // A product that runs its own Cloud sends the credential to its own base, never the default one.
+    String productBase = "https://api.cloud.example.org/api/v1";
+    Map<String, String> product = new HashMap<>();
+    check(NativeProviderSlot.applyLaunchEnvironment("native", cloudSelection, cloudCredential, libs, files, product, NOW, productBase)
+        && productBase.equals(product.get("ELIZAOS_CLOUD_BASE_URL")) && "true".equals(product.get("ELIZAOS_CLOUD_USE_INFERENCE")), "product Cloud base reaches the launch");
+    check(!product.containsValue(NativeProviderAdmission.CLOUD_PROVIDER_BASE), "product launch carries no default Cloud base");
+    for (String loose : new String[] {null, "", "http://api.cloud.example.org/api/v1", "https://api.cloud.example.org", "https://api.cloud.example.org/api/v1/",
+        "https://api.cloud.example.org:8443/api/v1", "https://user@api.cloud.example.org/api/v1", "https://api.cloud.example.org/api/v1?x=1", "https://API.cloud.example.org/api/v1"}) {
+      boolean refused = false;
+      try { NativeProviderSlot.applyLaunchEnvironment("native", cloudSelection, cloudCredential, libs, files, new HashMap<>(), NOW, loose); }
+      catch (IllegalArgumentException expected) { refused = true; }
+      check(refused, "loose Cloud provider base refused: " + loose);
+    }
     // The cloud QA profile keeps admission's Cloud embeddings, and admits only elizacloud.
     Map<String, String> qa = new HashMap<>();
     check(NativeProviderSlot.applyLaunchEnvironment("cloud", cloudSelection, cloudCredential, libs, files, qa, NOW) && "true".equals(qa.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")), "cloud QA profile keeps Cloud embeddings");

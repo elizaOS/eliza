@@ -3,6 +3,7 @@ import {
   CloudflareSpeechError,
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
@@ -52,7 +53,7 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
   timeSpeechPhase,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,
@@ -295,13 +296,16 @@ async function __hono_POST(c: AppContext) {
       providerSelection?.ok === true &&
       providerSelection.provider !== "kokoro" &&
       providerSelection.provider !== "cloudflare";
-    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: willAdmit,
-        cachedDecisionIsFinal: true,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     settlementOrganizationId = user.organization_id;
     settlementUserId = user.id;
     timings.authMs = Date.now() - requestStart;
@@ -713,6 +717,7 @@ async function __hono_POST(c: AppContext) {
         cost: billingCost,
         admissionSnapshot,
         refreshAuthEntry,
+        credential: credentialGuard.credentialForAdmission(),
         idempotencyKey: ttsIdempotencyKey ?? undefined,
         atomicProviderBoundary: true,
       });

@@ -35,8 +35,12 @@
   },
   "sideEffects": false,
   "files": [
-    "src"
+    "src",
+    "!src/**/*.test.ts"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*"

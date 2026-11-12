@@ -12,6 +12,7 @@ import {
   appPromotionService,
   type PromotionConfig,
 } from "@elizaos/cloud-shared/lib/services/app-promotion";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
   AppContext,
@@ -23,7 +24,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../src/lib/generative-route-auth";
 
 const SocialPlatformSchema = z.enum([
   "twitter",
@@ -188,6 +189,7 @@ async function __hono_POST(
   c: AppContext,
   { params }: RouteContext<{ id: string }>,
   caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
+  operationOptions: Parameters<typeof getGenerativeOperationContext>[2],
 ) {
   const { user } = caller;
   const { id } = await params;
@@ -284,7 +286,7 @@ async function __hono_POST(
     user.id,
     id,
     config,
-    getGenerativeOperationContext(c, caller),
+    getGenerativeOperationContext(c, caller, operationOptions),
   );
 
   logger.info("[Promote API] Promotion complete", {
@@ -310,10 +312,17 @@ __hono_app.post("/", async (c) => {
       rateLimitEndpoint: "strict",
       deferStrongCredentialCheck: true,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     return await __hono_POST(
       c,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
+      {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      },
     );
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);

@@ -4,6 +4,7 @@ import {
   readPersonalGoogleContextOwner,
 } from "../../../db/repositories/personal-google-context-consent";
 import { secretsRepository } from "../../../db/repositories/secrets";
+import { getCloudDeployment } from "../../deployment/cloud-deployment";
 import {
   type GooglePersonalContextConsent,
   isGooglePersonalContextConsent,
@@ -227,7 +228,7 @@ export async function initiateOAuth2(
     throw new Error(`OAuth not configured: missing authorization endpoint for ${provider.id}`);
   }
 
-  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const callbackUrl = getCallbackUrl(provider, baseUrl);
   const scopes = resolveRequestedScopes(provider, params.scopes);
   const redirectUrl = params.redirectUrl || "/auth/success";
@@ -533,7 +534,7 @@ async function exchangeCodeForTokens(
     throw new Error(`OAuth not configured: missing token endpoint for ${provider.id}`);
   }
 
-  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = getCloudAwareEnv().NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const callbackUrl = redirectUri ?? getCallbackUrl(provider, baseUrl);
 
   // Build token request body

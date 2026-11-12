@@ -3,6 +3,7 @@ import {
   CloudflareSpeechError,
   transcribeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /**
  * Cloud voice transcription route for multipart audio uploads. The request
  * body is size-gated before auth and multipart parsing so rejected uploads do
@@ -70,7 +71,7 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
   timeSpeechPhase,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import {
   calculateCartesiaSttCost,
   parseCartesiaUsdPerCredit,
@@ -530,18 +531,21 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     request = sizeCheckedRequest;
 
     const authStartedAt = performance.now();
-    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry } =
+    const { user, apiKeyId, admissionSnapshot, refreshAuthEntry, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: true,
-        cachedDecisionIsFinal: true,
       }).finally(() => {
         timings.push({
           name: "auth",
           durationMs: performance.now() - authStartedAt,
         });
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -697,6 +701,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           cost: sttCost,
           admissionSnapshot,
           refreshAuthEntry,
+          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: true,
         });
       } catch (error) {
@@ -1297,6 +1302,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
     if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
+      await credentialGuard[Symbol.asyncDispose]();
       const started = performance.now();
       const payload = await transcribeCloudflareAudio(
         env.AI,

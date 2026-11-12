@@ -4,6 +4,7 @@ import ai.eliza.plugins.agent.runtime.NativeProviderAdmission;
 import ai.eliza.plugins.agent.runtime.ResidentCredentialStore;
 import ai.eliza.plugins.securestore.nativeonly.CredentialMutationConductor;
 import java.util.*;
+import java.time.Instant;
 import org.json.JSONObject;
 
 /**
@@ -20,7 +21,7 @@ public class CloudKeyRenewalResidentTest {
  static final String SAVED_ID="00000000-0000-4000-8000-000000000003", SERVER_OLD="00000000-0000-4000-8000-000000000002", SERVER_NEW="00000000-0000-4000-8000-000000000001";
  static final String USER="3b241101-e2bb-4255-8caf-4136c566a962", ORGANIZATION="6ba7b810-9dad-41d1-80b4-00c04fd430c8";
  static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
- static final String PROVIDER="provider", CLOUD="cloud:production", OTHER_CLOUD="cloud:staging", RETIRING="cloud-signin:v1:retire:production";
+ static final String PROVIDER="provider", CLOUD="cloud:production", OTHER_CLOUD="cloud:staging", RETIRING="cloud-signin:v1:retire:production", RECEIPT="cloud-signin:v1:ack:production";
  static final List<String> events=new ArrayList<>();
  /** The saved key's renewal record as the renewal request left it. */
  static final CloudKeyRenewal.Record ASKED=new CloudKeyRenewal.Record(SAVED_ID,0,System.currentTimeMillis(),CloudKeyRenewal.Record.RETRY);
@@ -37,10 +38,10 @@ public class CloudKeyRenewalResidentTest {
  // The host: plain slots behind the real resident policy; a stop is recorded where the conductor would retire the agent.
  final Map<String,String> files=new HashMap<>();
  final Object vault=new Object();
- long epoch,intent;boolean agentRunning=true;Runnable writeGuard=()->{};
+ long epoch,intent;boolean agentRunning=true,failCloudWriteAfterRemoval;Runnable writeGuard=()->{};
  final ResidentCredentialStore store=new ResidentCredentialStore(new ResidentCredentialStore.Slots(){
   public String read(String name){return files.get(name);}
-  public void write(String name,String value){check(Thread.holdsLock(vault),"slot writes hold the vault");files.put(name,value);events.add("write:"+label(name));}
+  public void write(String name,String value){check(Thread.holdsLock(vault),"slot writes hold the vault");if(name.equals(CLOUD)&&failCloudWriteAfterRemoval){failCloudWriteAfterRemoval=false;files.remove(name);events.add("remove:cloud");throw new IllegalStateException("controlled partial selected-key publication");}files.put(name,value);events.add("write:"+label(name));}
   public void remove(String name){check(Thread.holdsLock(vault),"slot removals hold the vault");files.remove(name);events.add("remove:"+label(name));}
  },new ResidentCredentialStore.Authority(){
   public Object credentialLock(){return vault;}
@@ -63,7 +64,7 @@ public class CloudKeyRenewalResidentTest {
   public void cloudChanged(){events.add("cloud-changed");}
   public void clearPendingReturn(){events.add("pending-return-cleared");}
  },PROVIDER,CLOUD,OTHER_CLOUD);
- static String label(String slot){return slot.equals(CLOUD)?"cloud":slot.equals(PROVIDER)?"provider":slot.equals(RETIRING)?"retiring":slot;}
+ static String label(String slot){return slot.equals(CLOUD)?"cloud":slot.equals(PROVIDER)?"provider":slot.equals(RETIRING)?"retiring":slot.equals(RECEIPT)?"receipt":slot;}
 
  CloudSignInConfig config(){return TestRegistration.PRODUCT;}
  /** As a host binds it: every write and removal goes through the resident policy under the caller's guard. */
@@ -83,7 +84,8 @@ public class CloudKeyRenewalResidentTest {
   return outcome;
  }
  final Map<String,CloudKeyRenewal.Record> records=new HashMap<>();
- void storeRenewalRecord(CloudSignInEnvironment environment,CloudKeyRenewal.Record record){records.put(environment.name,record);}
+ CloudKeyRenewal.Record renewalRecord(CloudSignInEnvironment environment){return records.get(environment.name);}
+ boolean storeRenewalRecord(CloudSignInEnvironment environment,CloudKeyRenewal.Record record){records.put(environment.name,record);return true;}
  final List<JSObject> renewed=new ArrayList<>();
  void notifyListeners(String event,JSObject value,boolean retained){check("signInRenewed".equals(event)&&retained,"only the retained renewal is announced");events.add("signInRenewed");renewed.add(value);}
  /** The host hook under test. */
@@ -92,6 +94,7 @@ public class CloudKeyRenewalResidentTest {
   events.add("savedKeyRenewed");
   check(!events.contains("retire:old"),"the hook runs before the replaced key is revoked");
   if(hook.equals("fails"))throw new IllegalStateException("controlled host failure");
+  if(hook.equals("replace-receipt"))files.put(RECEIPT,"newer-receipt");
   if(!hook.equals("readmit"))return;
   // Native re-admission: the same verified account, the new saved credential, then the agent starts again.
   String saved=files.get(CLOUD);
@@ -102,6 +105,9 @@ public class CloudKeyRenewalResidentTest {
  static String selection(String credentialId){return new JSONObject().put("provider","elizacloud").put("model",NativeProviderAdmission.CLOUD_PROVIDER_MODEL).put("environment","production").put("credentialId",credentialId).toString();}
  static JSONObject identity(){return new JSONObject().put("userId",USER).put("organizationId",ORGANIZATION);}
 
+ /* ACTUAL_RENEWAL_COMPARE */
+ /* ACTUAL_RENEWAL_REFUSED */
+ /* ACTUAL_INSTANT */
  /* ACTUAL_RENEWAL_SETTLED */
 
  static void check(boolean value,String label){if(!value)throw new AssertionError(label);}
@@ -118,7 +124,14 @@ public class CloudKeyRenewalResidentTest {
    check(admittedBefore!=null&&generationBefore!=null&&admittedBefore.equals(files.get(PROVIDER)),"the agent is admitted on the saved key");
    events.clear();agentRunning=true;
   }
-  JSObject renew(){return renewalSettled(()->{},TestRegistration.PRODUCTION,ASKED,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,expiresAt+25*86_400_000L,OLD,expiresAt);}
+  CloudKeyRenewal.Receipt stage()throws Exception{
+   JSONObject proof=new JSONObject().put("clientId",config().clientId).put("environment","production").put("redirectUri",TestRegistration.PRODUCTION.callback())
+    .put("code","emac_"+"a".repeat(64)).put("state",CloudSignInFlow.newState()).put("codeVerifier",CloudSignInFlow.newVerifier());
+   CloudKeyRenewal.Receipt receipt=CloudKeyRenewal.Receipt.create(config(),TestRegistration.PRODUCTION,"gen-"+intent,files.get(CLOUD),proof,SERVER_NEW,NEW,expiresAt+25*86_400_000L,System.currentTimeMillis()+30_000);
+   check(credentials(()->{}).compareExchange(RECEIPT,null,receipt.raw),"the successor is staged through the existing encrypted resident slot policy");
+   return CloudKeyRenewal.Receipt.parse(new String(receipt.raw.getBytes(java.nio.charset.StandardCharsets.UTF_8),java.nio.charset.StandardCharsets.UTF_8),config(),TestRegistration.PRODUCTION);
+  }
+  JSObject renew()throws Exception{return renewalSettled(()->{},TestRegistration.PRODUCTION,stage(),CloudSignInFlow.Ack.ACKNOWLEDGED);}
  }
  public static void main(String[] args)throws Exception{
   // 1. What the store does with the renewal's save, with a host that does nothing in the hook.
@@ -158,15 +171,54 @@ public class CloudKeyRenewalResidentTest {
 
   // 5. A credential action reserved meanwhile wins: nothing is written through the store.
   CloudSignInChainHost superseded=host("none");
+  CloudKeyRenewal.Receipt pending=superseded.stage();events.clear();
   String before=superseded.files.get(CLOUD),provider=superseded.files.get(PROVIDER);
-  JSObject refused=superseded.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,ASKED,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,superseded.expiresAt+86_400_000L,OLD,superseded.expiresAt);
+  JSObject refused=superseded.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,pending,CloudSignInFlow.Ack.ACKNOWLEDGED);
   check("deferred".equals(refused.getString("status"))&&before.equals(superseded.files.get(CLOUD))&&provider.equals(superseded.files.get(PROVIDER))&&!superseded.files.containsKey(RETIRING),"a superseded renewal changes neither slot and stores no duty");
   check(!events.contains("agent-stopped")&&events.isEmpty()&&superseded.store.admissionGeneration()!=null,"the agent keeps running on the saved key, and the unsaved new key is not revoked: to Cloud that request would be a sign-out that ends the saved key too");
   // The owner signed out meanwhile: the unsaved key ends with the sign-in it belonged to.
   CloudSignInChainHost signedOut=host("none");
+  CloudKeyRenewal.Receipt abandoned=signedOut.stage();
   signedOut.files.remove(CLOUD);events.clear();
-  signedOut.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,ASKED,CloudSignInFlow.Ack.ACKNOWLEDGED,SERVER_NEW,NEW,signedOut.expiresAt+86_400_000L,OLD,signedOut.expiresAt);
-  check(events.equals(List.of("revoke:new"))&&!signedOut.files.containsKey(CLOUD),"once the saved key is gone the unsaved one is revoked, and nothing is written");
-  System.out.println("PASS renewal save through the resident credential store (5 scenarios)");
+  signedOut.renewalSettled(()->{throw new IllegalStateException("stale intent");},TestRegistration.PRODUCTION,abandoned,CloudSignInFlow.Ack.ACKNOWLEDGED);
+  check(!events.contains("write:cloud")&&!signedOut.files.containsKey(CLOUD),"a signed-out owner cannot be republished through a stale renewal guard");
+
+  // 6. Real org.json serialization retains the only recoverable secret/proof and stable identity.
+  CloudSignInChainHost roundTrip=host("none");
+  CloudKeyRenewal.Receipt stage=roundTrip.stage();
+  check(stage.raw.contains(NEW)&&stage.raw.contains(OLD)&&stage.matchesPredecessor(roundTrip.files.get(CLOUD))&&!stage.matchesSuccessor(roundTrip.files.get(CLOUD)),"the encrypted receipt holds successor custody while the predecessor stays selected");
+  check(!events.contains("agent-stopped")&&roundTrip.store.admissionGeneration()!=null&&roundTrip.agentRunning,"staging the native-only receipt does not retire the resident provider or stop its agent");
+  String proofState=stage.proof().getString("state");
+  stage.proof().put("state","changed-copy");
+  check(proofState.equals(stage.proof().getString("state")),"callers cannot mutate the retained acknowledgement proof");
+  CloudKeyRenewal.Receipt confirmed=CloudKeyRenewal.Receipt.parse(stage.confirmedRecord(),roundTrip.config(),TestRegistration.PRODUCTION);
+  check(confirmed.confirmed&&!stage.confirmed&&stage.installedId.equals(confirmed.installedId)&&stage.successor.equals(confirmed.successor)&&stage.predecessor.equals(confirmed.predecessor)&&stage.acknowledgeBy==confirmed.acknowledgeBy,"confirmation preserves the exact staged identity, both credentials and original deadline");
+  for(String field:List.of("generation","successor","proof")){
+   JSONObject invalid=new JSONObject(stage.raw);
+   if(field.equals("generation"))invalid.put(field,"");
+   else if(field.equals("successor"))invalid.put(field,new JSONObject(stage.successor).put("token",OLD).toString());
+   else invalid.put(field,new JSONObject(stage.proof().toString()).put("environment","staging"));
+   boolean invalidRejected=false;try{CloudKeyRenewal.Receipt.parse(invalid.toString(),roundTrip.config(),TestRegistration.PRODUCTION);}catch(Exception expected){invalidRejected=true;}
+   check(invalidRejected,"a corrupt or differently bound encrypted receipt is rejected: "+field);
+  }
+  check("renewed".equals(roundTrip.renewalSettled(()->{},TestRegistration.PRODUCTION,stage,CloudSignInFlow.Ack.ACKNOWLEDGED).getString("status"))&&!roundTrip.files.containsKey(RECEIPT),"the exact receipt is retired once the durable successor is selected");
+  CloudSignInChainHost newerReceipt=host("replace-receipt");
+  check("renewed".equals(newerReceipt.renew().getString("status"))&&"newer-receipt".equals(newerReceipt.files.get(RECEIPT)),"renewal cleanup leaves a receipt installed by later work intact");
+
+  // 7. A failed selected-file publication already retired the resident admission. Its confirmed
+  // encrypted receipt repairs the missing file under the same intent, then re-admits that identity.
+  CloudSignInChainHost partial=host("readmit");partial.failCloudWriteAfterRemoval=true;
+  check("deferred".equals(partial.renew().getString("status"))&&!partial.files.containsKey(CLOUD)&&!partial.agentRunning&&partial.store.admissionGeneration()==null,"partial publication keeps the resident stop fence and never fabricates a saved key");
+  CloudKeyRenewal.Receipt durable=CloudKeyRenewal.Receipt.parse(partial.files.get(RECEIPT),partial.config(),TestRegistration.PRODUCTION);
+  check(durable.confirmed&&partial.files.containsKey(RETIRING)&&!events.contains("retire:old"),"confirmed custody and the retirement duty survive the failed selected-file write");
+  check("renewed".equals(partial.renewalSettled(()->{},TestRegistration.PRODUCTION,durable,CloudSignInFlow.Ack.ACKNOWLEDGED).getString("status")),"the confirmed receipt repairs partial publication under its existing intent");
+  check(durable.installedId.equals(new JSONObject(partial.files.get(CLOUD)).getString("credentialId"))&&partial.agentRunning&&partial.store.admissionGeneration()!=null&&!partial.files.containsKey(RECEIPT)&&!partial.files.containsKey(RETIRING),"recovery retains the staged identity, re-admits it and retires only its exact receipts");
+
+  CloudSignInChainHost foreignDuty=host("none");
+  String selectedBefore=foreignDuty.files.get(CLOUD),unmatchedDuty=new JSONObject().put("token","eliza_mobile_"+"c".repeat(64)).put("expiresAt",foreignDuty.expiresAt).put("successor",SAVED_ID).toString();
+  foreignDuty.files.put(RETIRING,unmatchedDuty);
+  check("deferred".equals(foreignDuty.renew().getString("status"))&&selectedBefore.equals(foreignDuty.files.get(CLOUD))&&unmatchedDuty.equals(foreignDuty.files.get(RETIRING)),"a different valid retirement duty stays byte-identical and blocks successor publication");
+  check(CloudKeyRenewal.Receipt.parse(foreignDuty.files.get(RECEIPT),foreignDuty.config(),TestRegistration.PRODUCTION).confirmed&&!events.contains("write:cloud")&&!events.contains("savedKeyRenewed")&&!events.contains("retire:old")&&foreignDuty.renewed.isEmpty()&&foreignDuty.agentRunning,"conflicting duty retains confirmed custody without admission, retirement or renderer effects");
+  System.out.println("PASS renewal save through the resident credential store (7 scenarios)");
  }
 }

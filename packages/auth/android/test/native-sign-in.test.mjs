@@ -41,20 +41,36 @@ const support = [
   join(tests, "TestRegistration.java"),
 ];
 
-function runJvm(sources, mainClass, args = []) {
+function runJvm(sources, mainClass, args = [], classpath) {
   const output = mkdtempSync(join(tmpdir(), "eliza-cloud-sign-in-"));
   try {
     execFileSync(
       binary("javac"),
-      ["--release", "17", "-d", output, ...sources],
+      [
+        "--release",
+        "17",
+        ...(classpath ? ["-cp", classpath] : []),
+        "-d",
+        output,
+        ...sources,
+      ],
       {
         timeout: 120000,
       },
     );
-    return execFileSync(binary("java"), ["-cp", output, mainClass, ...args], {
-      encoding: "utf8",
-      timeout: 120000,
-    });
+    return execFileSync(
+      binary("java"),
+      [
+        "-cp",
+        classpath ? `${output}${delimiter}${classpath}` : output,
+        mainClass,
+        ...args,
+      ],
+      {
+        encoding: "utf8",
+        timeout: 120000,
+      },
+    );
   } finally {
     rmSync(output, { recursive: true, force: true });
   }
@@ -262,8 +278,10 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
   });
   try {
     const output = runJvm(
-      [...pure, ...support, file],
+      [...pure, join(tests, "TestRegistration.java"), file],
       "ai.eliza.auth.cloud.CloudSignInChainTest",
+      [],
+      jsonJar(),
     );
     assert.match(
       output,
@@ -697,7 +715,66 @@ test("a browser Google attempt on a Home host ends only by its return, a cancel 
     assert.ok(plugin.includes(hook), hook);
 });
 
-test("silent renewal confirms the new key before saving it, stores the duty to revoke the old key, revokes it last and reserves nothing", () => {
+test("renewal bookkeeping commits before admitting another request and never accepts a failed preference write (plain JVM)", () => {
+  // Only Android's constant is substituted. The preference read/write methods themselves are exact.
+  const methods = between(
+    plugin,
+    " private final Map<String, CloudKeyRenewal.Record> renewalRecords",
+    " /**\n  * The readiness observations",
+  ).replaceAll("android.content.Context.MODE_PRIVATE", "0");
+  const directory = mkdtempSync(join(tmpdir(), "eliza-renewal-record-src-"));
+  const file = join(directory, "CloudRenewalBookkeepingTest.java");
+  writeFileSync(
+    file,
+    `package ai.eliza.auth.cloud;
+import java.util.*;
+public class CloudRenewalBookkeepingTest {
+ static final class Preferences {
+  final Map<String,String> disk=new HashMap<>(); boolean accepts=true,throwsOnCommit;
+  String name,value;
+  String getString(String key,String fallback){return disk.getOrDefault(key,fallback);}
+  Preferences edit(){return this;}
+  Preferences putString(String key,String value){name=key;this.value=value;return this;}
+  boolean commit(){if(throwsOnCommit)throw new IllegalStateException("controlled commit failure");if(!accepts)return false;disk.put(name,value);return true;}
+ }
+ static final class Context { final Preferences preferences;Context(Preferences p){preferences=p;}Preferences getSharedPreferences(String name,int mode){return preferences;} }
+ final Context context;CloudRenewalBookkeepingTest(Preferences p){context=new Context(p);}
+ Context getContext(){return context;}CloudSignInConfig config(){return TestRegistration.PRODUCT;}
+${methods}
+ static void check(boolean yes,String what){if(!yes)throw new AssertionError(what);}
+ public static void main(String[] args){
+  Preferences preferences=new Preferences();CloudRenewalBookkeepingTest host=new CloudRenewalBookkeepingTest(preferences);
+  CloudKeyRenewal.Record first=new CloudKeyRenewal.Record("00000000-0000-4000-8000-000000000001",0,100,CloudKeyRenewal.Record.RETRY);
+  CloudKeyRenewal.Record next=first.attempted(200,CloudKeyRenewal.Record.CONFIRMING);
+  preferences.accepts=false;
+  check(!host.storeRenewalRecord(TestRegistration.PRODUCTION,first)&&host.renewalRecord(TestRegistration.PRODUCTION)==null&&preferences.disk.isEmpty(),"a false commit does not populate disk or memory");
+  preferences.accepts=true;check(host.storeRenewalRecord(TestRegistration.PRODUCTION,first),"a synchronous successful commit is accepted");
+  CloudRenewalBookkeepingTest restarted=new CloudRenewalBookkeepingTest(preferences);
+  check(restarted.renewalRecord(TestRegistration.PRODUCTION).attemptedAt==100,"another host recovers the committed daily attempt");
+  preferences.accepts=false;check(!host.storeRenewalRecord(TestRegistration.PRODUCTION,next)&&host.renewalRecord(TestRegistration.PRODUCTION).attemptedAt==100,"failed replacement retains the last durable memory record");
+  preferences.accepts=true;preferences.throwsOnCommit=true;
+  check(!host.storeRenewalRecord(TestRegistration.PRODUCTION,next)&&new CloudRenewalBookkeepingTest(preferences).renewalRecord(TestRegistration.PRODUCTION).attemptedAt==100,"a thrown commit is explicit and leaves the durable record unchanged");
+  preferences.disk.put("production",next.serialize());
+  check(host.renewalRecord(TestRegistration.PRODUCTION).attemptedAt==200,"another plugin's committed attempt replaces the earlier process-local observation");
+  check(!preferences.disk.get("production").contains("eliza_mobile_"),"plain preferences retain only non-secret bookkeeping");
+  System.out.println("PASS durable renewal preference bookkeeping");
+ }
+}`,
+  );
+  try {
+    assert.match(
+      runJvm(
+        [...pure, ...support, file],
+        "ai.eliza.auth.cloud.CloudRenewalBookkeepingTest",
+      ),
+      /^PASS durable renewal preference bookkeeping/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("silent renewal stages durable custody before confirmation, promotes only confirmed keys, revokes the predecessor last and reserves nothing", () => {
   const renewal = between(
     plugin,
     " // ── Silent key renewal",
@@ -705,81 +782,68 @@ test("silent renewal confirms the new key before saving it, stores the duty to r
   );
   assert.doesNotMatch(
     renewal,
-    /reserveCredentialCommit|requireAuthorization|\.write\(config\(\)\.receiptSlot/,
-    "background renewal reserves no intent, shows no dialog and writes no receipt",
+    /reserveCredentialCommit|requireAuthorization/,
+    "background renewal reserves no intent and shows no dialog",
   );
-  // The only slot a renewal ever removes is its own stored duty to revoke a replaced key.
-  const removals =
-    renewal.match(/(owned|slots|store\(\))\.remove\([^)]*\)/g) || [];
-  assert.deepEqual(removals, [
-    "slots.remove(retiring)",
-    "slots.remove(retiring)",
-  ]);
-  const settled = renewal.slice(
-    renewal.indexOf(" private JSObject renewalSettled("),
-    renewal.indexOf(" private boolean retireReplaced("),
+  const settled = between(
+    renewal,
+    " private JSObject renewalSettled(",
+    " /**\n  * Makes sure a key a renewal replaced",
   );
-  const refusal = settled.indexOf(
-      "if (acknowledged != CloudSignInFlow.Ack.ACKNOWLEDGED) {",
+  const confirmed = settled.indexOf("receipt.confirmedRecord()"),
+    duty = settled.indexOf("renewalCompare(owned, retiring,"),
+    save = settled.indexOf(
+      "owned.compareExchange(slot, selected, receipt.successor)",
     ),
-    duty = settled.indexOf("owned.write(retiring, "),
-    save = settled.indexOf("owned.write(slot, "),
-    readmit = settled.indexOf("savedKeyRenewed(environment, installed)"),
+    cleanup = settled.indexOf(
+      "renewalCompare(owned, receiptSlot, receipt.raw, null)",
+      duty,
+    ),
+    readmit = settled.indexOf(
+      "savedKeyRenewed(environment, receipt.installedId)",
+    ),
     revokeOld = settled.indexOf(
-      "retireReplaced(environment, previous, credentialId)",
+      "retireReplaced(environment, receipt.previousToken, receipt.credentialId)",
     ),
     told = settled.indexOf('notifyListeners("signInRenewed"');
   assert.ok(
-    refusal > 0 &&
-      refusal < duty &&
+    confirmed > 0 &&
+      confirmed < duty &&
       duty < save &&
-      save < readmit &&
+      save < cleanup &&
+      cleanup < readmit &&
       readmit < revokeOld &&
       revokeOld < told,
-    "unconfirmed: nothing saved; confirmed: duty stored, key saved, host re-admitted, old key revoked, renderer told",
+    "confirmation persists before retirement duty and publication; exact receipt cleanup and native admission precede old-key retirement and renderer notification",
   );
-  assert.equal(
-    (renewal.match(/\(environment, previous, credentialId[,)]/g) || []).length,
-    2,
-    "the working key is revoked in exactly one place (and its in-process retry), always naming the new key",
-  );
-  assert.equal((renewal.match(/\.write\(/g) || []).length, 2);
-  // To Cloud a key that revokes itself without naming a confirmed successor is signing out, which
-  // ends every key of the sign-in. A renewal sends that request in one place only: for a new key it
-  // did not save, after the saved key was found to be no longer the one it presented.
-  const selfRevocations = renewal.match(/CloudKeyRevocation\.revoke\(/g) || [];
-  const abandon = between(
+  assert.doesNotMatch(
     renewal,
-    " private void abandonSuccessor(",
-    " /**\n  * Makes sure a key a renewal replaced",
+    /CloudKeyRevocation\.revoke\(/,
+    "an ambiguous or superseded renewal never sends a bare successor revocation that could end the selected predecessor",
   );
-  assert.equal(
-    (
-      abandon.match(
-        /CloudKeyRevocation\.revoke\(config\(\), environment, secret\)/g,
-      ) || []
-    ).length,
-    selfRevocations.length,
-    "a renewal revokes an unsaved key nowhere else",
+  const check = between(
+    renewal,
+    " private JSObject renewNow(",
+    " private void renewalAcknowledgement(",
   );
   assert.ok(
-    abandon.indexOf(
-      "if (previous.equals(token) || secret.equals(token)) return;",
-    ) > 0 &&
-      abandon.indexOf(
-        "if (previous.equals(token) || secret.equals(token)) return;",
-      ) < abandon.indexOf("CloudKeyRevocation.revoke("),
-    "never while the key it was renewed from is still the saved one",
+    check.indexOf("CloudKeyRenewal.Request.create(") <
+      check.indexOf("renewalCompare(owned, receiptSlot, null, request.raw)") &&
+      check.indexOf("renewalCompare(owned, receiptSlot, null, request.raw)") <
+        check.indexOf("CloudKeyRenewal.PATH,") &&
+      check.indexOf("CloudKeyRenewal.Receipt.create(") <
+        check.indexOf(
+          "renewalCompare(owned, receiptSlot, request.raw, receipt.raw)",
+        ) &&
+      check.indexOf(
+        "renewalCompare(owned, receiptSlot, request.raw, receipt.raw)",
+      ) < check.indexOf("return recoverRenewal(environment, current, receipt)"),
+    "exact durable request ownership precedes renewal; the full successor receipt replaces only that claim before any acknowledgement",
   );
-  // The saved key is recorded as possibly superseded before the first confirmation request.
-  const check = renewal.slice(
-    renewal.indexOf(" private JSObject renewNow("),
-    renewal.indexOf(" private void renewalAcknowledgement("),
-  );
-  assert.ok(
-    check.indexOf("CloudKeyRenewal.Record.CONFIRMING") > 0 &&
-      check.indexOf("CloudKeyRenewal.Record.CONFIRMING") <
-        check.indexOf("acknowledge(null, proof, credentialId, secret)"),
+  assert.match(
+    renewal,
+    /acked.status == 409 && "authorization_complete".equals\(acked.data.optString\("error"\)\)\) return CloudSignInFlow.Ack.RETRY;/,
+    "a completed exchange is not a server acknowledgement receipt",
   );
   // A replaced key counts as retired when Cloud revoked it or already refuses it (401), and the
   // request names the key it was renewed into.
@@ -816,7 +880,7 @@ test("silent renewal confirms the new key before saving it, stores the duty to r
   // While Cloud's confirmation of the new key is still awaited, no expiry warning is reported.
   assert.match(
     renewal,
-    /renewalAnswered\(environment, current, renewalOutcome\(environment, "deferred", expiresAt, false\), false\);/,
+    /renewalAnswered\(environment, current, renewalOutcome\(environment, "deferred", receipt.previousExpiresAt, false\), false\);/,
   );
   assert.match(
     plugin,
@@ -876,6 +940,21 @@ function jsonJar() {
 
 test("the exact renewal save through the resident credential store: the agent is stopped and re-admitted by the host hook before the old key is revoked (plain JVM)", () => {
   const { file, directory } = harness("CloudKeyRenewalResidentTest.java.txt", {
+    ACTUAL_RENEWAL_REFUSED: between(
+      plugin,
+      " private static JSObject renewalRefused(",
+      " /** Answers the callers of this check.",
+    ),
+    ACTUAL_RENEWAL_COMPARE: between(
+      plugin,
+      " private boolean renewalCompare(",
+      " /** The original durable generation",
+    ),
+    ACTUAL_INSTANT: between(
+      plugin,
+      " private static long instant(",
+      " private Response post(",
+    ),
     ACTUAL_RENEWAL_SETTLED: between(
       plugin,
       " private JSObject renewalSettled(",
@@ -922,7 +1001,7 @@ test("the exact renewal save through the resident credential store: the agent is
         ],
         { encoding: "utf8", timeout: 120000 },
       ),
-      /^PASS renewal save through the resident credential store \(5 scenarios\)/,
+      /^PASS renewal save through the resident credential store \(7 scenarios\)/,
     );
   } finally {
     rmSync(output, { recursive: true, force: true });
@@ -1161,6 +1240,31 @@ test("actual Android resident credential mutation owns the exact stop and write 
         "    static Runnable reserve()",
         "    /** Read-only request fence",
       ),
+      ACTUAL_CAS: between(
+        source,
+        "            public boolean compareExchange(",
+        "\n        };\n    }\n\n    private static final class Binding",
+      ),
+      ACTUAL_SLOT_KINDS: between(
+        source,
+        "        boolean credentialSlot(",
+        "        boolean compareCredential(",
+      ),
+      ACTUAL_COMPARE: between(
+        source,
+        "        boolean compareCredential(",
+        "        String read(",
+      ),
+      ACTUAL_MUTATE: between(
+        source,
+        "        <T> T mutate(",
+        "        <T> T withLocks(",
+      ),
+      ACTUAL_WITH_LOCKS: between(
+        source,
+        "        <T> T withLocks(",
+        "        CredentialMutationConductor.Host host()",
+      ),
       ACTUAL_HOST: between(
         source,
         "        CredentialMutationConductor.Host host()",
@@ -1191,7 +1295,7 @@ test("actual Android resident credential mutation owns the exact stop and write 
         ],
         "ai.elizaos.app.ResidentCredentialMutationTest",
       ),
-      /^PASS Android resident credential mutation \(7 scenarios\)/,
+      /^PASS Android resident credential mutation \(15 scenarios\)/,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

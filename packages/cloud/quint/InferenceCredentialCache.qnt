@@ -1,6 +1,5 @@
-// One API key on a Worker, or the same key on a host with no revocation
-// boundary. On a Worker a matching cache entry is the whole decision; the
-// gate is read only by a cold primary decision and by the refresh.
+// One API key in the standalone Worker credential-check lane, or the same
+// key on a host with no revocation boundary. Cache data is a projection.
 module InferenceCredentialCache {
   type State = {
     cache: str, originAllows: bool, expired: bool, fences: Set[str],
@@ -38,10 +37,7 @@ module InferenceCredentialCache {
         if (s.expired)
           enqueueRefresh(request, "read_primary").with("phase", "terminal")
             .with("source", "cache").with("result", "denied")
-        else {
-          val refreshed = if (request.aged) enqueueRefresh(request, "read_primary") else request
-          refreshed.with("phase", "terminal").with("source", "cache").with("result", "allowed")
-        }
+        else request.with("phase", "read_gate").with("source", "cache")
       } else if (worker and cacheDenies(s.cache)) {
         val refreshed = if (request.aged) enqueueRefresh(request, "read_primary") else request
         refreshed.with("phase", "terminal").with("source", "cache").with("result", "denied")
@@ -69,7 +65,11 @@ module InferenceCredentialCache {
 
   action deliverGateReply = all {
     s.phase == "reply_gate",
-    s' = s.with("phase", "terminal").with("result", s.gateResult)
+    s' = {
+      val refreshed = if (s.source == "cache" and (s.aged or s.gateResult == "denied"))
+        enqueueRefresh(s, "read_primary") else s
+      refreshed.with("phase", "terminal").with("result", s.gateResult)
+    }
   }
 
   action failRequest = all {
@@ -96,8 +96,6 @@ module InferenceCredentialCache {
     s.refresh == "read_primary",
     s' = s.with("refresh", if (s.originAllows and not(s.expired)) "read_gate" else "publish_deny")
   }
-  // A fence the refresh meets is a decision: it is published as a denial even
-  // though the primary read before it still allowed the key.
   action checkRefreshGate = all {
     s.refresh == "read_gate",
     s' = s.with("refresh", if (gateAllows(s)) "publish_allow" else "publish_deny")
@@ -133,9 +131,8 @@ module InferenceCredentialCache {
   val Safety = and {
     s.result == "allowed" implies and {
       s.phase == "terminal",
-      if (s.worker) (s.source == "cache" or s.gateResult == "allowed") else s.source == "primary"
+      if (s.worker) s.gateResult == "allowed" else s.source == "primary"
     },
-    (s.result == "allowed" and s.source == "cache") implies s.gateResult == "none",
     Set("read_gate", "reply_gate").contains(s.phase) implies s.worker,
     s.gateResult != "none" implies s.worker,
     not(s.worker) implies s.source != "cache"
@@ -144,9 +141,8 @@ module InferenceCredentialCache {
   temporal ExactAuthority = always((all {
     (s.phase == "idle" and next(s.source) == "cache") implies
       (cacheAllows(s.cache) or cacheDenies(s.cache)),
-    (s.phase == "idle" and next(s.result) == "allowed") implies
+    (s.phase == "idle" and next(s.phase) == "read_gate") implies
       (cacheAllows(s.cache) and not(s.expired)),
-    (s.phase == "idle") implies next(s.phase) != "read_gate",
     (s.phase == "read_gate" and next(s.phase) == "reply_gate") implies
       (next(s.gateResult) == (if (gateAllows(s)) "allowed" else "denied")),
     (s.phase == "reply_gate" and next(s.result) == "allowed") implies s.gateResult == "allowed",
@@ -164,12 +160,13 @@ module InferenceCredentialCache {
     .then(readPrimary).then(publishRefresh)
     .expect(s.result == "denied" and s.cache == "fresh_deny")
 
-  run warmEntryDecidesWithoutGateTest = initialize("fresh_allow", true).then(begin(true))
-    .expect(s.phase == "terminal" and s.result == "allowed" and s.source == "cache")
-    .expect(s.gateResult == "none" and s.refresh == "idle")
+  run warmEntryRequiresExactGateTest = initialize("fresh_allow", true).then(begin(true))
+    .expect(s.phase == "read_gate" and s.source == "cache")
+    .then(evaluateGate).then(deliverGateReply)
+    .expect(s.result == "allowed" and s.refresh == "idle")
 
   run staleAllowRefreshesAfterResponseTest = initialize("stale_allow", false).then(begin(true))
-    .expect(s.result == "allowed" and s.gateResult == "none")
+    .then(evaluateGate).then(deliverGateReply).expect(s.result == "allowed")
     .then(readRefreshPrimary).then(publishRefresh).then(finish).then(begin(true))
     .expect(s.result == "denied" and s.source == "cache")
 
@@ -184,50 +181,39 @@ module InferenceCredentialCache {
   run noBoundaryUsesPrimaryTest = initialize("fresh_allow", false).then(begin(false))
     .then(readPrimary).expect(s.result == "denied" and s.source == "primary" and s.refresh == "idle")
 
-  run absentGateReplyFailsClosedTest = initialize("empty", true).then(begin(true))
-    .then(readPrimary).then(evaluateGate).then(failRequest)
-    .expect(s.result == "unavailable" and s.source == "primary")
+  run absentGateReplyFailsClosedTest = initialize("fresh_allow", true).then(begin(true))
+    .then(evaluateGate).then(failRequest)
+    .expect(s.result == "unavailable" and s.source == "cache")
 
-  // A fenced key keeps its retained positive entry until the refresh rewrites it.
-  run retainedPositiveAllowsUntilRefreshTest = initialize("stale_allow", true)
-    .then(setFence("key", true)).then(setPrimary(false)).then(begin(true))
-    .expect(s.result == "allowed" and s.source == "cache")
-    .then(readRefreshPrimary).then(publishRefresh).then(finish).then(begin(true))
-    .expect(s.result == "denied" and s.cache == "fresh_deny")
+  run retainedPositiveCannotClearFenceTest = initialize("stale_deny", true).then(begin(true))
+    .then(readRefreshPrimary).then(checkRefreshGate).then(setFence("key", true))
+    .then(publishRefresh).then(finish).then(begin(true)).then(evaluateGate).then(deliverGateReply)
+    .expect(s.result == "denied" and s.cache == "fresh_allow")
 
-  // The fence alone, with the primary still allowing the key (a revoke that
-  // fenced the gate and then failed its primary write): the refresh publishes
-  // the denial and the next request is refused from the cache.
+  // A retained positive is subordinate to the fence on this request. Its
+  // refresh publishes that same denial even when the primary still allows it.
   run gateFenceAloneRewritesRetainedPositiveTest = initialize("stale_allow", true)
-    .then(setFence("key", true)).then(begin(true))
-    .expect(s.result == "allowed" and s.source == "cache")
+    .then(setFence("key", true)).then(begin(true)).then(evaluateGate).then(deliverGateReply)
+    .expect(s.result == "denied" and s.source == "cache")
     .then(readRefreshPrimary).then(checkRefreshGate).expect(s.refresh == "publish_deny")
-    .then(publishRefresh).then(finish).then(begin(true))
-    .expect(s.result == "denied" and s.source == "cache" and s.cache == "fresh_deny")
+    .then(publishRefresh).expect(s.cache == "fresh_deny")
 
-  run fencedKeyIsNeverRepublishedTest = initialize("stale_deny", true).then(setFence("key", true))
-    .then(begin(true)).then(readRefreshPrimary).then(checkRefreshGate).then(publishRefresh)
-    .expect(s.refresh == "idle" and s.cache == "fresh_deny")
-
-  run clearingOneFenceCannotClearAnotherTest = initialize("empty", true)
+  run clearingOneFenceCannotClearAnotherTest = initialize("fresh_allow", true)
     .then(setFence("account", true)).then(setFence("moderation", true))
-    .then(setFence("moderation", false)).then(begin(true)).then(readPrimary)
-    .then(evaluateGate).then(deliverGateReply)
+    .then(setFence("moderation", false)).then(begin(true)).then(evaluateGate).then(deliverGateReply)
     .expect(s.result == "denied" and s.fences == Set("account"))
-    .then(finish).then(setFence("account", false)).then(begin(true)).then(readPrimary)
-    .then(evaluateGate).then(deliverGateReply)
+    .then(finish).then(setFence("account", false)).then(begin(true)).then(evaluateGate).then(deliverGateReply)
     .expect(s.result == "allowed")
 
-  run earlierGateReplyRetainsItsOwnDecisionTest = initialize("empty", true)
-    .then(begin(true)).then(readPrimary).then(evaluateGate)
-    .then(setFence("organization", true)).then(deliverGateReply)
+  run earlierGateReplyRetainsItsOwnDecisionTest = initialize("fresh_allow", true)
+    .then(begin(true)).then(evaluateGate).then(setFence("organization", true)).then(deliverGateReply)
     .expect(s.result == "allowed")
-    .then(finish).then(begin(true)).then(readPrimary).then(evaluateGate).then(deliverGateReply)
+    .then(finish).then(begin(true)).then(evaluateGate).then(deliverGateReply)
     .expect(s.result == "denied")
 
   run failedRefreshLeavesSlotRetryableTest = initialize("stale_allow", false)
-    .then(begin(true)).then(failRefresh)
+    .then(begin(true)).then(evaluateGate).then(deliverGateReply).then(failRefresh)
     .expect(s.cache == "stale_allow" and s.refresh == "idle")
-    .then(finish).then(begin(true))
+    .then(finish).then(begin(true)).then(evaluateGate).then(deliverGateReply)
     .then(readRefreshPrimary).then(publishRefresh).expect(s.cache == "fresh_deny")
 }

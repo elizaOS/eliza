@@ -50,11 +50,13 @@ import {
   DEFAULT_OUTPUT_TOKENS,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
 import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
   admitOrganizationInference,
@@ -76,7 +78,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 const ROUTE_MAX_DURATION = 800;
 const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
@@ -251,6 +253,12 @@ app.post("/", async (c) => {
     let anonymousCredential: AnonymousChatGateCredential | null = null;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let apiKeyRateLimit: number | undefined;
+    let admissionCredential: InferenceCredentialCheck | undefined;
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
 
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
@@ -293,6 +301,7 @@ app.post("/", async (c) => {
           id: authResolution.ctx.userId,
           organization_id: authResolution.ctx.orgId,
         };
+        guardOrganizationId = user.organization_id ?? undefined;
         apiKey = authResolution.ctx.apiKeyId
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
@@ -301,6 +310,7 @@ app.post("/", async (c) => {
           "apiKeyRateLimit" in authResolution.ctx
             ? authResolution.ctx.apiKeyRateLimit
             : undefined;
+        admissionCredential = authResolution.credential;
         if (invalidRequestResponse) return invalidRequestResponse;
       } else {
         if (invalidRequestResponse) return invalidRequestResponse;
@@ -552,6 +562,7 @@ app.post("/", async (c) => {
           affiliateCode,
           executionCtx,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: Boolean(executionCtx),
         });
         settleReservation = admission.settle;

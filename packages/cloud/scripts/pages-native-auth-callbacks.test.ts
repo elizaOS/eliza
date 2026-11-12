@@ -351,29 +351,68 @@ describe("Pages native callback deployment", () => {
         tenant: "elizacloud-staging",
       },
     };
-    const { config } = prepareConfig(canonical, directory, "staging", JSON.stringify([callback]), {});
-    const request = (url: URL) => onRequest({
-      request: new Request(url),
-      env: config.vars as Record<string, string>,
-      next: async () => new Response("Unexpected SPA"),
-    });
+    const { config } = prepareConfig(
+      canonical,
+      directory,
+      "staging",
+      JSON.stringify([callback]),
+      {},
+    );
+    const request = (url: URL) =>
+      onRequest({
+        request: new Request(url),
+        env: config.vars as Record<string, string>,
+        next: async () => new Response("Unexpected SPA"),
+      });
     expect(await verifyCallbacks(config, "staging", request)).toBe(1);
     const mutations: Array<(body: string, headers: Headers) => string> = [
       (body) => body.replace("sessionStorage.getItem", "sessionStorage.clear"),
-      (body, headers) => { headers.set("content-security-policy", headers.get("content-security-policy") + "; script-src 'unsafe-inline'"); return body; },
+      (body, headers) => {
+        headers.set(
+          "content-security-policy",
+          headers.get("content-security-policy") +
+            "; script-src 'unsafe-inline'",
+        );
+        return body;
+      },
       (body) => body.replace(/ nonce="[^"]*"/, ""),
-      (body, headers) => { headers.set("content-security-policy", headers.get("content-security-policy")!.replace(/ 'nonce-[^']*'/, "")); return body; },
+      (body, headers) => {
+        headers.set(
+          "content-security-policy",
+          headers.get("content-security-policy")!.replace(/ 'nonce-[^']*'/, ""),
+        );
+        return body;
+      },
       (body) => body.replace(/(<script nonce="[^"]*">)/, "$1</script>$1"),
-      (body, headers) => { const csp = headers.get("content-security-policy")!; headers.set("content-security-policy", csp.replace(/('nonce-[^']*')/, "$1 $1")); return body; },
+      (body, headers) => {
+        const csp = headers.get("content-security-policy")!;
+        headers.set(
+          "content-security-policy",
+          csp.replace(/('nonce-[^']*')/, "$1 $1"),
+        );
+        return body;
+      },
       (body) => body.replace(/nonce="[^"]*"/, `nonce="${crypto.randomUUID()}"`),
-      (body, headers) => { const nonce = /nonce="([^"]*)"/.exec(body)![1]; headers.set("content-security-policy", headers.get("content-security-policy")!.replace(nonce, "invalid")); return body.replace(nonce, "invalid"); },
+      (body, headers) => {
+        const nonce = /nonce="([^"]*)"/.exec(body)![1];
+        headers.set(
+          "content-security-policy",
+          headers.get("content-security-policy")!.replace(nonce, "invalid"),
+        );
+        return body.replace(nonce, "invalid");
+      },
     ];
     for (const mutate of mutations) {
-      await expect(verifyCallbacks(config, "staging", async (url) => {
-        const response = await request(url);
-        const headers = new Headers(response.headers);
-        return new Response(mutate(await response.text(), headers), { status: response.status, headers });
-      })).rejects.toThrow();
+      await expect(
+        verifyCallbacks(config, "staging", async (url) => {
+          const response = await request(url);
+          const headers = new Headers(response.headers);
+          return new Response(mutate(await response.text(), headers), {
+            status: response.status,
+            headers,
+          });
+        }),
+      ).rejects.toThrow();
     }
   });
 
@@ -528,6 +567,42 @@ describe("Pages native callback deployment", () => {
     expect(prepareConfig(canonical, directory, "staging", "", {}).count).toBe(
       0,
     );
+  });
+
+  test("a product deployment's callbacks are checked against its own origins", () => {
+    const deployment = {
+      CLOUD_DEPLOYMENT_ID: "alpha",
+      CLOUD_WEB_ORIGIN: "https://alpha.example",
+      NEXT_PUBLIC_APP_URL: "https://cloud.alpha.example",
+      NEXT_PUBLIC_API_URL: "https://api.alpha.example",
+      STEWARD_TENANT_ID: "alphacloud",
+      CLOUD_PUBLIC_SERVICE_NAME: "Alpha Cloud",
+      R2_PUBLIC_HOST: "blob.alpha.example",
+      NEXT_PUBLIC_ASSETS_CDN_URL: "https://assets.alpha.example",
+      SENDGRID_FROM_EMAIL: "noreply@alpha.example",
+      CLOUD_BILLING_URL: "https://cloud.alpha.example/billing",
+    };
+    const own = {
+      ...stage,
+      redirectUri: "https://cloud.alpha.example/auth/example/callback",
+    };
+    expect(callbacks(JSON.stringify([own]), "production", deployment)).toEqual([
+      own,
+    ]);
+    // An Eliza callback is foreign to a product deployment, and a product
+    // callback is foreign to Eliza.
+    expect(() =>
+      callbacks(JSON.stringify([production]), "production", deployment),
+    ).toThrow("native_callback_environment_mismatch");
+    expect(() => callbacks(JSON.stringify([own]), "production", {})).toThrow(
+      "native_callback_environment_mismatch",
+    );
+    // An incomplete product deployment is never checked against Eliza's origins.
+    expect(() =>
+      callbacks(JSON.stringify([production]), "production", {
+        CLOUD_DEPLOYMENT_ID: "alpha",
+      }),
+    ).toThrow(/requires CLOUD_WEB_ORIGIN/);
   });
 
   test("invalid config, cross-environment callbacks and duplicates fail before deployment", () => {
