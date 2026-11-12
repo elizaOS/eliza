@@ -1,13 +1,15 @@
 /**
  * Shared helper for the trust capability that decides whether a message sender
  * should be treated as trusted-admin context: true when they match the
- * configured OWNER_ENTITY_ID or when they hold ADMIN/OWNER role in the resolved
+ * configured OWNER_ENTITY_ID, when core's role resolution (hasAdminAccess)
+ * grants them ADMIN or OWNER, or when they hold ADMIN/OWNER role in the resolved
  * world. Consumed by the securityStatus provider to bypass adversarial-input
  * gating for admins.
  */
 import {
   ChannelType,
   createUniqueUuid,
+  hasAdminAccess,
   type IAgentRuntime,
   type Memory,
   Role,
@@ -22,6 +24,14 @@ export async function resolveAdminContext(
 ): Promise<boolean> {
   const ownerEntityId = runtime.getSetting("OWNER_ENTITY_ID");
   if (ownerEntityId && message.entityId === ownerEntityId) {
+    return true;
+  }
+
+  // The securityStatus provider's ADMIN role gate admits senders through core's
+  // role resolution (world ownership, ELIZA_ADMIN_ENTITY_ID, connector and
+  // linked identities) in every room type, including the app's direct chat.
+  // Recognise the same admins here so they are not analysed as adversarial.
+  if (await hasAdminAccess(runtime, message)) {
     return true;
   }
 
