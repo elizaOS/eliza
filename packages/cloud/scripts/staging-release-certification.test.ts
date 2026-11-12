@@ -608,7 +608,10 @@ describe("deployed renderer compute consent", () => {
 
 describe("exact-source main Full admission", () => {
   const sourceFixture = createSourceAdmissionFixture();
-  afterAll(() => rmSync(sourceFixture.root, { recursive: true, force: true }));
+  afterAll(
+    () => rmSync(sourceFixture.root, { recursive: true, force: true }),
+    30_000,
+  );
 
   function mainFixture(
     validationRepoRoot = repoRoot,
