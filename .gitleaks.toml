@@ -44,6 +44,18 @@ regexes = [
   '''^0d0f3c61\-6f1b\-4e59\-9a55\-0c6f6f4b2a10$''',
 ]
 
+# These are Java assignment expressions in the renewal fixture, not credentials.
+# Match only the exact scanner captures in that fixture, including its history.
+[[allowlists]]
+description = "Java renewal fixture bookkeeping assignments"
+condition = "AND"
+paths = ['''^packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest\.java\.txt$''']
+regexTarget = "secret"
+regexes = [
+  '''^persistedRenewalRecords=new$''',
+  '''^renewalRecords=persistedRenewalRecords$''',
+]
+
 # The reply-draft privacy test uses this fixed text to detect a leaked message
 # body. It is a synthetic discriminator, not a credential. Its duplicated
 # historical additions remain in this branch's required commit-range scan.
