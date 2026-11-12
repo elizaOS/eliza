@@ -1,7 +1,8 @@
 /**
  * A promotion whose ad creative is refused after the campaign was created
- * returns that campaign as a partial result instead of failing the whole
- * request, so a retry does not create and fund a second campaign. The
+ * returns that campaign as a partial result (HTTP 207) instead of failing the
+ * whole request with a 500. The dialog then shows the created campaign and
+ * the refusal, instead of an error that asks the user to launch again. The
  * promotion service is real; the app lookup, the ad-copy model and the
  * advertising service are stubbed. The stub refuses the creative the way the
  * Snap, LinkedIn and Google providers refuse an image creative with no media.
