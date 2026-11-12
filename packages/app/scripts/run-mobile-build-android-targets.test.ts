@@ -102,24 +102,29 @@ describe("Android mobile build target table", () => {
     );
   });
 
-  it("runs the exact mobile CLI through a pre-mutation Android guard", () => {
-    // The production package scripts invoke this CLI with Node. `process.execPath`
-    // points at Bun under `bun test`, which spends long enough compiling this
-    // large orchestrator to hit Bun's per-test timeout before the guard runs.
-    const result = spawnSync("node", [mobileBuildScript, "android"], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        ELIZA_BUILD_VARIANT: "store",
-      },
-    });
+  it.each([
+    { ELIZA_BUILD_VARIANT: "store", ELIZA_PLAY_STORE_BUILD: "" },
+    { ELIZA_BUILD_VARIANT: "", ELIZA_PLAY_STORE_BUILD: "1" },
+  ])(
+    "runs the exact mobile CLI through a pre-mutation Android guard (%o)",
+    (intent) => {
+      // The production package scripts invoke this CLI with Node. `process.execPath`
+      // points at Bun under `bun test`, which spends long enough compiling this
+      // large orchestrator to hit Bun's per-test timeout before the guard runs.
+      const result = spawnSync("node", [mobileBuildScript, "android"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...intent,
+        },
+      });
 
-    expect(result.status).toBe(2);
-    expect(`${result.stdout}\n${result.stderr}`).toContain(
-      "Refusing target `android` under ELIZA_BUILD_VARIANT=store",
-    );
-  });
-
+      expect(result.status).toBe(2);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        "Refusing target `android` under ELIZA_BUILD_VARIANT=store",
+      );
+    },
+  );
   it("resolves Android lane policies without changing android default or cloud-only modes", () => {
     expect(resolveMobileBuildPolicy("android")).toMatchObject({
       capacitorTarget: "android",

@@ -58,10 +58,14 @@ export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be
   // rejected by Play. If CI or a contributor signals Play-Store intent via
   // env vars, fail loudly and point them at the right target.
-  if (env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store") {
+  if (
+    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
+    env.ELIZA_PLAY_STORE_BUILD === "1"
+  ) {
     console.error(
       "[mobile-build] Refusing target `android` under " +
-        "ELIZA_BUILD_VARIANT=store. The default `android` APK embeds the " +
+        "ELIZA_BUILD_VARIANT=store or ELIZA_PLAY_STORE_BUILD=1. " +
+        "The default `android` APK embeds the " +
         "on-device agent runtime and requests Play-rejected permissions " +
         "(MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). Use " +
         "`build:android:cloud` (Play-Store-compliant thin client) or " +
