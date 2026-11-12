@@ -1,0 +1,21 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.integration.test.ts"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-owner-local-timezone.mjs",
+  "bounds": "Six stable source-precedence scenarios use missing, UTC and Los Angeles zones. The generated scenarios check the real runner owner facts and tick preflight with repository-backed state at one winter morning, including duplicate suppression. Travel changes, DST boundaries and concurrent owner changes remain separate existing tests. Resolution is assumed to execute for progress; this bounded model claims safety only.",
+  "cases": [
+    {
+      "name": "owner-clock-precedence",
+      "main": "OwnerLocalTimezone",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ResolvedClock", "NoMissingClock"],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 300
+    }
+  ]
+}
