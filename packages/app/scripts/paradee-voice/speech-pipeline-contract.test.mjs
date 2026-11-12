@@ -7,6 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { microphonePlatform } from "./speech-pipeline/local-microphone-platform.mjs";
 
 // Shared native speech pipeline (ai.eliza.voice): bounded streamed playback, audio focus, VAD
 // segmentation, capture admission/ownership, latency trials and the serial speech owner. Host-JVM
@@ -164,7 +165,7 @@ test("capture source keeps recognition audio unless echo cancellation is availab
   ));
 test("capture resource serializes stop with release", () =>
   run(
-    ["LiveCaptureResource"],
+    ["LiveCaptureResource", "LocalMicrophoneLease"],
     "LiveCaptureResourceTest",
     /^PASS live capture resource/,
   ));
@@ -317,6 +318,86 @@ test("live capture controller orders the agent session, microphone, cancellation
       { encoding: "utf8", timeout: 60000 },
     );
     assert.match(output, /^PASS live capture controller/);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("local microphone owners compete before native source acquisition", async (t) => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "local-microphone-"));
+  try {
+    const android = `${jsonJar}${path.delimiter}${sdk}`;
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        android,
+        "-d",
+        temp,
+        ...javaFiles(voice),
+        path.join(fixtures, "LiveCaptureControllerTest.java"),
+      ],
+      { timeout: 120_000 },
+    );
+    // Compile production against Android's signatures first. Replace only the runtime ports.
+    const ports = Object.entries(microphonePlatform).map(([name, contents]) => {
+      const destination = path.join(temp, "platform", name);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.writeFileSync(destination, contents);
+      return destination;
+    });
+    const classpath = `${temp}${path.delimiter}${android}`;
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        classpath,
+        "-d",
+        temp,
+        ...ports,
+        path.join(fixtures, "ProcessLocalMicrophoneTest.java"),
+      ],
+      { timeout: 120_000 },
+    );
+    for (const scenario of [
+      "two-live-hosts",
+      "draft-then-live",
+      "live-then-draft",
+      "cancel-while-opening",
+      "live-close-unconfirmed",
+      "native-open-failed",
+      "native-open-release-unconfirmed",
+      "clock-setup-failed",
+      "draft-release-retry",
+      "draft-open-failed",
+      "draft-stop-error",
+    ]) {
+      await t.test(scenario, () => {
+        const cache = path.join(temp, scenario);
+        fs.mkdirSync(cache);
+        const result = execFileSync(
+          java("java"),
+          [
+            "-cp",
+            classpath,
+            "ai.eliza.voice.ProcessLocalMicrophoneTest",
+            scenario,
+            cache,
+          ],
+          { encoding: "utf8", timeout: 20_000 },
+        );
+        assert.equal(result.trim(), `PASS ${scenario}`);
+      });
+    }
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
