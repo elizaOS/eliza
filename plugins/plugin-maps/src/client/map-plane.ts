@@ -72,6 +72,8 @@ export type MapOverlay = Readonly<{
   follow?: boolean;
 }>;
 export interface MapPlaneOptions {
+  /** Retain frames for browser hosts that copy the canvas into their preview. */
+  preserveDrawingBuffer?: boolean;
   /** Called when the user taps a result pin. */
   onPin?(id: string): void;
   /** Only direct map gestures interrupt camera following. */
@@ -159,6 +161,9 @@ export class MapPlane {
 
     const mapOptions: MapOptions = {
       container,
+      canvasContextAttributes: {
+        preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
+      },
       center: worldwide ? [0, 20] : [(w + e) / 2, (s + n) / 2],
       zoom: worldwide ? Math.max(2, raster?.minZoom ?? 0) : 14,
       minZoom: worldwide ? (raster?.minZoom ?? 0) : 11,
