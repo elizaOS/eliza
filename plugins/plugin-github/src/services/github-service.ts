@@ -144,18 +144,19 @@ export class GitHubService extends Service implements IGitHubService {
     return this.clients.get(account.accountId)?.client ?? null;
   }
 
-  /** Role of the account `getOctokit` returns for the same selector. */
-  getAccountRole(
+  /** Id and role of the account `getOctokit` returns for the same selector. */
+  getAccount(
     selector:
       | GitHubIdentity
       | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
-  ): GitHubIdentity | null {
-    return (
-      resolveGitHubAccount(
-        Array.from(this.clients.values()).map((record) => record.account),
-        normalizeSelector(selector),
-      )?.role ?? null
+  ): { accountId: string; role: GitHubIdentity } | null {
+    const account = resolveGitHubAccount(
+      Array.from(this.clients.values()).map((record) => record.account),
+      normalizeSelector(selector),
     );
+    return account
+      ? { accountId: account.accountId, role: account.role }
+      : null;
   }
 
   /**

@@ -6,11 +6,20 @@
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+  type GitHubAccountConfig,
+  type GitHubAccountSelection,
+  resolveGitHubAccount,
+} from "../accounts.js";
 import type { GitHubOctokitClient } from "../types.js";
 import { issueOpAction } from "./issue-op.js";
 import { prOpAction } from "./pr-op.js";
 
 const OWNER_ENTITY_ID = "00000000-0000-0000-0000-00000000user";
+const ACCOUNTS: GitHubAccountConfig[] = [
+  { accountId: "agent", role: "agent", token: "agent-token" },
+  { accountId: "owner-gh", role: "user", token: "owner-token" },
+];
 
 function createRuntime(octokit: GitHubOctokitClient): IAgentRuntime {
   const cache = new Map<string, unknown>();
@@ -19,8 +28,8 @@ function createRuntime(octokit: GitHubOctokitClient): IAgentRuntime {
     getService: () => ({
       getOctokit: () => octokit,
       // "owner-gh" is the owner's personal account under a custom id.
-      getAccountRole: (selection: { role: string; accountId?: string }) =>
-        selection.accountId === "owner-gh" ? "user" : selection.role,
+      getAccount: (selection: GitHubAccountSelection) =>
+        resolveGitHubAccount(ACCOUNTS, selection),
     }),
     getSetting: (key: string) =>
       key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ENTITY_ID : null,
@@ -270,6 +279,29 @@ describe("GitHub write confirmation", () => {
 
     expect(prompts.at(-1)).toContain("as user (owner-gh).");
     expect(createComment).not.toHaveBeenCalled();
+  });
+
+  it("names the owner's account that will act when the owner gives no account id", async () => {
+    const createReview = vi.fn();
+    const runtime = createRuntime({
+      pulls: { createReview },
+    } as unknown as GitHubOctokitClient);
+    const prompts: string[] = [];
+
+    await prOpAction.handler(
+      runtime,
+      userTurn("approve a/b#42"),
+      undefined,
+      { op: "review", repo: "a/b", number: 42, review_action: "approve" },
+      async (content: { text?: string }) => {
+        prompts.push(content.text ?? "");
+        return [];
+      },
+    );
+
+    // No account has the legacy id "user", so the role default picks owner-gh.
+    expect(prompts.at(-1)).toContain("as user (owner-gh).");
+    expect(createReview).not.toHaveBeenCalled();
   });
 
   it("does not comment as the owner's account selected by account id for a sender who is not the owner", async () => {

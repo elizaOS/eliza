@@ -11,6 +11,7 @@ import {
   stableStringify,
 } from "@elizaos/core";
 import {
+  defaultGitHubAccountIdForRole,
   type GitHubAccountSelection,
   resolveGitHubAccountSelection,
 } from "./accounts.js";
@@ -263,20 +264,24 @@ export async function buildResolvedClient(
     await service.refreshAccounts?.();
   }
   const client = getClient(runtime, resolvedSelection);
-  const identity = service.getAccountRole(resolvedSelection);
-  if (!client || !identity) {
+  const account = service.getAccount(resolvedSelection);
+  if (!client || !account) {
     return { error: needsClientError(resolvedSelection) };
   }
   if (
-    identity === "user" &&
+    account.role === "user" &&
     !(await hasRoleAccess(runtime, message, "OWNER"))
   ) {
     return { error: OWNER_GITHUB_ACCOUNT_REFUSAL };
   }
   return {
     client,
-    identity,
-    accountId: resolvedSelection.accountId,
+    identity: account.role,
+    // Name the account that acts. The legacy default id adds nothing to the role.
+    accountId:
+      account.accountId === defaultGitHubAccountIdForRole(account.role)
+        ? undefined
+        : account.accountId,
   };
 }
 

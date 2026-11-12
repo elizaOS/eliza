@@ -152,11 +152,12 @@ export interface IGitHubService {
       | GitHubIdentity
       | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
   ): GitHubOctokitClient | null;
-  getAccountRole(
+  /** Id and role of the account `getOctokit` returns for the same selector. */
+  getAccount(
     selector:
       | GitHubIdentity
       | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
-  ): GitHubIdentity | null;
+  ): { accountId: string; role: GitHubIdentity } | null;
 }
 
 export const GITHUB_SERVICE_TYPE = "github";
