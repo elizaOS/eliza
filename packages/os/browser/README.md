@@ -178,13 +178,12 @@ fixtures retain their upstream license in `scripts/chromium/LICENSE.chromium`.
 
 This is an internal OS component, not a standalone workspace or installable
 product. The OS package builds it against the locked
-`@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
-provisioning live in `../scripts/linux/assemble-browser-payload.py` and
-`../scripts/android/prepare-chromium-browser.ts`. Preserve those existing
+`@elizaos/plugin-browser/native-wire` dependency. Signed AOSP provisioning lives
+in `../scripts/android/prepare-chromium-browser.ts`. Preserve its existing
 signed-artifact and certificate checks when changing the component.
 
-For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
-Chromium executable and run `node --conditions=eliza-source
+No image installs the Linux relay. To qualify a Linux Chromium build that has it
+installed by hand, set `ELIZA_BROWSER_EXECUTABLE` to that executable and run `node --conditions=eliza-source
 packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
 component and installed `/usr/libexec/elizaos-browser-native-host` relay without
 unpacked-extension or allowlist-bypass flags.

@@ -45,17 +45,11 @@ const JANITOR_WORKFLOW = "actions-zombie-janitor.yml";
 // `ubuntu-24.04` would not degrade, it would just break. Other literal
 // self-hosted pins require a reviewed, explicitly gated native release job.
 const PHYSICAL_DEVICE_LABELS = new Set(["android-device"]);
-// Native OS releases include RISC-V, which has no hosted substitute.
+// Cuttlefish validation needs KVM, which has no hosted substitute.
 // The hosted validation job fails explicitly when the fleet is unavailable;
 // the build also requires an opt-in before any native runner can be queued.
 const NATIVE_RELEASE_GUARD =
   "github.event_name != 'pull_request' && vars.HETZNER_FLEET_ONLINE == 'true'";
-const NATIVE_BUILD_LABELS = [
-  "self-hosted",
-  "linux",
-  `${EXPRESSION_OPEN} matrix.runner }}`,
-  "elizaos-release-build",
-];
 const NATIVE_RELEASE_WORKFLOWS = {
   "elizaos-cuttlefish.yml": {
     validation: "validate-fleet",
@@ -63,25 +57,6 @@ const NATIVE_RELEASE_WORKFLOWS = {
       "build-and-validate": {
         needs: "validate-fleet",
         labels: ["self-hosted", "linux", "x64", "kvm"],
-      },
-    },
-  },
-  "build-debian-package.yml": {
-    validation: "validate-packaging",
-    jobs: {
-      "build-deb": { needs: "validate-packaging", labels: NATIVE_BUILD_LABELS },
-    },
-  },
-  "build-linux-mkosi.yml": {
-    validation: "validate-fleet",
-    jobs: {
-      "build-and-qemu": {
-        needs: "validate-fleet",
-        labels: NATIVE_BUILD_LABELS,
-      },
-      "sign-and-stage": {
-        needs: "build-and-qemu",
-        labels: ["self-hosted", "linux", "x64", "elizaos-release-signing"],
       },
     },
   },
