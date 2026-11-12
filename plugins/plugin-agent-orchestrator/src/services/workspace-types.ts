@@ -72,8 +72,6 @@ export interface PROptions {
 export interface WorkspaceStatusResult {
   branch: string;
   clean: boolean;
-  /** Local commits on HEAD that no remote ref has yet (to push and submit). */
-  unpushedCommits: number;
   modified: string[];
   staged: string[];
   untracked: string[];

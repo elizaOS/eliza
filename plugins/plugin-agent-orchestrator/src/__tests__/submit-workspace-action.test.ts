@@ -275,6 +275,22 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(replies.join("\n")).toContain(data.commitHash.slice(0, 8));
   });
 
+  it("reports no-changes on a repo with no commits yet", async () => {
+    const { remoteUrl } = makeRepoPair();
+    const work = tempDir("submit-unborn-");
+    execFileSync("git", ["init", "-q", "-b", "feat/submit", work]);
+    const runtime = makeRuntime(tempDir("submit-base-"));
+    const service = await startService(runtime);
+    registerWorkspace(service, work, remoteUrl);
+
+    const { result } = await runSubmit(runtime, {
+      workspaceId: "ws-submit-1",
+      skipPR: true,
+    });
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.text).toBe("No changes to commit in this workspace.");
+  });
+
   it("pushes a commit the sub-agent already made on a clean tree (skipPR)", async () => {
     const { bare, remoteUrl, work } = makeRepoPair();
     const runtime = makeRuntime(tempDir("submit-base-"));

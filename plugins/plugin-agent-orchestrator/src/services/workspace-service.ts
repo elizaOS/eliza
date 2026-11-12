@@ -117,6 +117,7 @@ import {
   getStatus as gitGetStatus,
   headCommit as gitHeadCommit,
   push as gitPush,
+  unpushedCommitCount as gitUnpushedCommitCount,
 } from "./workspace-git-ops.js";
 import {
   gcOrphanedWorkspaces,
@@ -881,6 +882,14 @@ export class CodingWorkspaceService {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
     return gitHeadCommit(workspace.path);
+  }
+
+  async unpushedCommitCount(workspaceId: string): Promise<number> {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+    return gitUnpushedCommitCount(workspace.path);
   }
 
   async commit(workspaceId: string, options: CommitOptions): Promise<string> {

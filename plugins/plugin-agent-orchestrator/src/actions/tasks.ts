@@ -4119,7 +4119,10 @@ async function runSubmitWorkspace(
     const status = await workspaceService.getStatus(workspaceId);
 
     const nothingToCommit = status.clean && status.staged.length === 0;
-    if (nothingToCommit && status.unpushedCommits === 0) {
+    if (
+      nothingToCommit &&
+      (await workspaceService.unpushedCommitCount(workspaceId)) === 0
+    ) {
       const noChangesText = "No changes to commit in this workspace.";
       if (callback) await callback({ text: noChangesText });
       return {
