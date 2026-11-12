@@ -8,7 +8,7 @@ import {
   type CreditReconciliationResult,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   admitOrganizationInference,
   type OrganizationInferenceAdmission,
@@ -105,12 +105,13 @@ export async function reserveSpeechRelayAdmission(input: {
           credential: caller.credential,
           executionCtx,
           atomicProviderBoundary: true,
+          commitLeaseAtDispatch: true,
           requireTerminalSettlementReceipt: input.onProgress !== undefined,
         });
       } catch (error) {
         if (
           error instanceof InsufficientCreditsError ||
-          error instanceof InferenceBalanceCacheWarmingError
+          error instanceof InferenceBillingUnavailableError
         )
           refusedKinds.add(kind);
         throw error;

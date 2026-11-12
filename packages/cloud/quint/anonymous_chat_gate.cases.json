@@ -1,0 +1,55 @@
+{
+  "sources": [
+    "packages/cloud/api/src/anonymous-chat-gate.ts",
+    "packages/cloud/shared/src/lib/services/anonymous-chat-admission.ts",
+    "packages/cloud/shared/src/db/repositories/anonymous-sessions.ts",
+    "packages/cloud/api/v1/chat/route.ts",
+    "packages/cloud/api/__tests__/anonymous-chat-gate.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/anonymous-chat-gate-worker.ts",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "bounds": {
+    "domain": "One fresh anonymous identity, two distinct request IDs retained throughout the model, one or two lifetime slots and one hourly slot. Time ranges from 0 through 9 ticks. Session expiry is tick 8, reservation timeout is 2 ticks, dispatch timeout is 3 ticks and hourly rotation uses a strict 4-tick cutoff. The constants abstract the relevant ordering, not production times.",
+    "atomicity": "Each ledger write represents one serialized Durable Object storage transaction. A committed dispatch receipt can replay without changing its deadline. Alarm persistence is external and may fail. At most one alarm snapshot is in flight, while ordinary snapshots may publish in either order. After restart the ledger and pending alarm survive, while in-flight calls may be lost. The SQL row changes only for a strictly higher revision.",
+    "conformance": "The named cases run the production Durable Object with Workerd SQLite, actual PGlite mirror writes, controlled stored deadlines, and synthetic request inputs. They cover lost or duplicate dispatch acknowledgement, both terminal expiries, retry after reload, stale SQL replay, quota bounds and invalidation.",
+    "gaps": "No arbitrary IDs or receipt eviction, multi-session compositions, real provider behavior, live Cloudflare alarm availability or production SQL contention. The model starts with a fresh SQL snapshot. It does not model account conversion, chat content, request credential hashing or propagation of moderation to already-issued provider work."
+  },
+  "cases": [
+    {
+      "name": "anonymous-quota-and-lease-recovery",
+      "main": "anonymous_chat_gate",
+      "init": "init",
+      "step": "step",
+      "invariants": ["QuotaConserved"],
+      "temporal": ["Authority", "FairAlarm", "ExpiredLeasesSettle"],
+      "temporalChecks": [
+        {
+          "property": "Authority",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The gate serializes requests and uses its own current clock for authorization. The SQL mirror is never an admission authority."
+          ]
+        },
+        {
+          "property": "FairAlarm",
+          "expect": "holds",
+          "assumptions": [
+            "Once deadlines are due, weak fairness lets eligible alarm work and session invalidation run. An in-flight mirror completes with success or failure under weak fairness. No guarantee is made about elapsed time or successful SQL delivery."
+          ]
+        },
+        {
+          "property": "ExpiredLeasesSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An expired lease can remain pending if neither the alarm nor the client resumes."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

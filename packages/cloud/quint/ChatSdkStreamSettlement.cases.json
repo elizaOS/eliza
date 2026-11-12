@@ -1,0 +1,55 @@
+{
+  "sources": [
+    "packages/cloud/api/v1/chat/completions/route.ts",
+    "packages/cloud/api/__tests__/anthropic-web-search-abort.pglite.test.ts",
+    "packages/cloud/shared/src/lib/providers/anthropic-web-search.ts",
+    "packages/cloud/quint/check-chat-sdk-stream-settlement.mjs"
+  ],
+  "bounds": "One already admitted SDK stream, presence or absence of web search and delivered output, one failed search observation, two callback sources, three terminal reasons and three usage classes. One cached promise resolves or rejects.",
+  "cases": [
+    {
+      "name": "first-terminal-callback",
+      "main": "ChatSdkStreamSettlement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": [
+        "SettlementOwnership",
+        "FairSettlement",
+        "SettlementReturns"
+      ],
+      "maxSteps": 30,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SettlementOwnership",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. The first callback retains the only factory and a fulfilled or rejected promise stays terminal."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of accountingWork makes the selected callback finish with success or failure. The provider and SDK may omit terminal callbacks before settlement starts."
+          ]
+        },
+        {
+          "property": "SettlementReturns",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness the selected accounting work can remain pending indefinitely."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One admitted SDK chat stream and two terminal callback sources. The first callback retains its promise through success or failure. The model covers callback ownership and settlement selection, without modeling lower-level accounting retries inside the winning callback.",
+    "Usage is classified as missing, explicit zero or positive. An error with provably unaccepted provider work can select zero before any delivered output. Search aborts and missing usage retain the admitted estimate. Ordinary abort can attempt partial pricing and retain the estimate when pricing fails.",
+    "The conformance test runs the production SDK stream handler, Anthropic decoder and PGlite pricing with controlled SSE and settlement ports. It proves callback selection for failed search followed by abort. It does not settle a live debit or test every model branch.",
+    "Byte framing and passthrough metering have separate evidence. Responses adaptation, complete context and buffering, SDK callback delivery guarantees, live provider behavior and monetary reconciliation remain outside this proof."
+  ],
+  "conformance": "packages/cloud/quint/check-chat-sdk-stream-settlement.mjs"
+}

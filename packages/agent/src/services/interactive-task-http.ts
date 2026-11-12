@@ -19,6 +19,16 @@ const taskRoutePattern = new RegExp(
   `^/tasks/(${taskId})(?:/(pause|cancel|resume))?$`,
 );
 
+/** The HTTP status for a task error code. Unlisted codes are conflicts. */
+export function taskErrorStatus(code: string): number {
+  if (code === "TASK_NOT_FOUND") return 404;
+  if (code === "TASK_INVALID") return 400;
+  if (code === "TASK_ACTION_DENIED") return 403;
+  if (code.startsWith("TASK_STORAGE") || code === "TASK_CLEANUP_UNCONFIRMED")
+    return 503;
+  return 409;
+}
+
 function json(status: number, value: unknown): Response {
   return Response.json(value, {
     status,
@@ -115,12 +125,10 @@ export function createInteractiveTaskHandler(options: {
           return json(401, { code: "TASK_UNAUTHORIZED" });
         const close = input.reason === "close";
         let task = options.runtime.current();
-        // Close still reaches a paused task, so the host removes its guide.
-        if (
-          task &&
-          !["completed", "cancelled"].includes(task.status) &&
-          (task.status !== "paused" || close)
-        )
+        // Every Stop fences, a paused task too: it starts a new epoch, aborts
+        // any work in flight (a step in flight becomes an unknown outcome)
+        // and removes the guide, so nothing started before it can go on.
+        if (task && !["completed", "cancelled"].includes(task.status))
           task = options.runtime.control(
             task.id,
             task.revision,
@@ -173,6 +181,17 @@ export function createInteractiveTaskHandler(options: {
           return json(401, { code: "TASK_UNAUTHORIZED" });
         if (goal.goalRef !== input.goalRef)
           return json(403, { code: "TASK_ACTION_DENIED" });
+        // A repeated start of the current task's goal (its first reply was
+        // lost) gets that task while its authorization stands. Any other
+        // goal, a revoked task, or a finished task that still holds the slot
+        // (a cancel whose step is unverified) is refused.
+        const current = options.runtime.current();
+        if (
+          current?.goalRef === goal.goalRef &&
+          current.authorization.state === "active" &&
+          !["completed", "cancelled"].includes(current.status)
+        )
+          return json(200, { task: view(current) });
         return json(201, { task: view(options.runtime.create(goal)) });
       }
       const match = taskRoutePattern.exec(url.pathname);
@@ -214,18 +233,7 @@ export function createInteractiveTaskHandler(options: {
     } catch (error) {
       if (!(error instanceof ElizaError))
         return json(503, { code: "TASK_UNAVAILABLE" });
-      const status =
-        error.code === "TASK_NOT_FOUND"
-          ? 404
-          : error.code === "TASK_INVALID"
-            ? 400
-            : error.code === "TASK_ACTION_DENIED"
-              ? 403
-              : error.code.startsWith("TASK_STORAGE") ||
-                  error.code === "TASK_CLEANUP_UNCONFIRMED"
-                ? 503
-                : 409;
-      return json(status, { code: error.code });
+      return json(taskErrorStatus(error.code), { code: error.code });
     }
   };
 }

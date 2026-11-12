@@ -45,6 +45,33 @@ public final class PhotoLibraryAccessTest {
     for (int sdk = 29; sdk <= 36; sdk++)
       check(PhotoLibraryAccess.ALIASES.containsAll(Arrays.asList(PhotoLibraryAccess.permissionAliases(sdk))));
 
+    // An images-only host asks only for READ_MEDIA_IMAGES from Android 13, and for nothing before.
+    PhotoLibraryAccess.Profile images = PhotoLibraryAccess.Profile.IMAGES;
+    for (int sdk = 29; sdk <= 32; sdk++)
+      check(PhotoLibraryAccess.permissionAliases(sdk, images).length == 0);
+    for (int sdk = 33; sdk <= 36; sdk++)
+      check(Arrays.equals(PhotoLibraryAccess.permissionAliases(sdk, images), new String[] {"libraryImages"}));
+    check(PhotoLibraryAccess.aliases(images).equals(List.of("libraryImages")));
+    check(PhotoLibraryAccess.aliases(PhotoLibraryAccess.Profile.LIBRARY).equals(PhotoLibraryAccess.ALIASES));
+    // Before 13 it reads only its own photos, even with legacy storage granted; videos never.
+    check(Arrays.equals(PhotoLibraryAccess.access(images, 32, true, false, false, false),
+        new String[] {"owned", "owned", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(images, 34, false, true, true, true),
+        new String[] {"full", "full", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(images, 34, false, false, true, true),
+        new String[] {"denied", "denied", "denied"}));
+    check(PhotoLibraryAccess.readable(access("owned", "owned", "denied")));
+    // The full library profile keeps its answers.
+    PhotoLibraryAccess.Profile library = PhotoLibraryAccess.Profile.LIBRARY;
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 32, true, false, false, false),
+        new String[] {"full", "full", "full"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 32, false, true, true, true),
+        new String[] {"denied", "denied", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 33, false, true, false, true),
+        new String[] {"partial", "full", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 34, false, false, false, true),
+        new String[] {"selected", "selected", "selected"}));
+
     // Scope: full, partial (one kind), Android 14 selected and denied are reported per kind.
     JSONObject full = PhotoLibraryAccess.scope(access("full", "full", "full"), 36, false, "v1", new JSONObject());
     check(full.getString("scope").equals("full") && full.getBoolean("images") && full.getBoolean("videos"));
@@ -95,6 +122,19 @@ public final class PhotoLibraryAccessTest {
     check(PhotoLibraryAccess.revisions(picked).equals(List.of("a", "b")));
     check(PhotoLibraryAccess.anyPermitted(picked));
     check(!PhotoLibraryAccess.anyPermitted(PhotoLibraryAccess.reviewed(items("12", "b", "v:13", "c"), 20)));
+
+    // A permitted bulk change binds all 500 exact ids and revisions in one reviewed request.
+    JSONArray bulk = new JSONArray();
+    for (int i = 0; i < 500; i++) bulk.put(new JSONObject().put("id", "m:external:i:" + (i + 1)).put("revision", "r" + i));
+    List<PhotoLibraryAccess.Reviewed> reviewedBulk = PhotoLibraryAccess.reviewed(bulk, PhotoLibraryAccess.REVIEWED_BATCH);
+    check(reviewedBulk.size() == 500);
+    for (int i = 0; i < 500; i++) {
+      check(reviewedBulk.get(i).id.equals("m:external:i:" + (i + 1)));
+      check(reviewedBulk.get(i).revision.equals("r" + i));
+    }
+    rejects(() -> PhotoLibraryAccess.reviewed(bulk, PhotoLibraryAccess.REVIEWED));
+    bulk.put(new JSONObject().put("id", "m:external:i:501").put("revision", "r500"));
+    rejects(() -> PhotoLibraryAccess.reviewed(bulk, PhotoLibraryAccess.REVIEWED_BATCH));
 
     // Changes: Photos batches and agent album changes; permanent deletion is never an agent change.
     check(Arrays.equals(PhotoLibraryAccess.batchChange("favorite"), new boolean[] {true, true}));

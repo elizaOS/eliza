@@ -3,7 +3,7 @@
  * route returns only raw guest-v1 evidence for an operator nonce; it never
  * reports its own verdict. Operators appraise the evidence off-box with their
  * own pinned dstack-verifier and expected release identity
- * (packages/app/scripts/alpha-dstack.ts verify-attestation).
+ * (packages/app/scripts/dstack.ts verify-attestation).
  */
 import { createHash } from "node:crypto";
 import { logger } from "@elizaos/core";

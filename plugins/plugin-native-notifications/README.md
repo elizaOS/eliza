@@ -101,8 +101,26 @@ process loss between intent and dispatch can leave a notice permanently unknown.
 Approval IDs have the form `approval-` plus 64 lowercase hex characters. Call `withdrawApproval(id, now)` before dropping a decided approval route, even
 if no notice was published. A withdrawal before publish stores an opaque-ID receipt
 for the configured maximum approval lifetime; it needs no missing binding or content.
-A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts. Step receipts are bounded at 512
-and approval receipts at 256; reaching capacity refuses new entries.
+A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts.
+`withdraw(id)` for a result notice not yet recorded stores a withdrawn tombstone, so a publish still
+in flight reports `withdrawn` and posts nothing.
+
+Step receipts and their routes are bounded at 512 rows, and routes at `NoticeRoutes.MAX_BYTES`
+(192 KiB, under a 256 KiB host slot). Post step notices with `NoticeCoordinator.postStep`, which
+frees room first. Oldest first, it retires a route with its receipt when the receipt is succeeded,
+failed or withdrawn, the notice is no longer shown (`Poster.shown`) and the route holds no pending
+tap. It also frees a route whose notice was never recorded and an approval route without a receipt.
+Applying and unknown receipts and pending taps always stay. A retired receipt makes journal recovery
+read `unknown`, which leaves the entry unchanged; nothing is posted again. When nothing can retire,
+the post resolves `failed`: nothing was recorded or shown. Rows written before retention have no
+creation time and retire first. Approval receipts are bounded at 256 and removed at expiry.
+A body over Android's 1024-character text limit matches when the shown text is its exact prefix.
+
+An approval publication failure keeps its original exception. Cleanup removes its
+route only after a definite absent receipt or a validated terminal receipt for the
+same binding, content digest and expiry. An opaque withdrawal intent also blocks
+publication by its approval ID. Unreadable, malformed, foreign and uncertain
+receipts keep their routes; cleanup errors are attached to the publication error.
 
 ## Host notice routes, owner fence and recovery
 
@@ -127,6 +145,13 @@ identifiers, channels, icon and launch actions:
   capture commits, a failed write keeps it for retry and is reported as unavailable rather than "no
   tap", an Ask whose notice is gone settles into a plain open, and consumption needs the exact pending
   tap and the foreground. Retain/release run on the UI thread; everything else on one storage worker.
+  A capture refused for an applying or unknown receipt first rechecks the shown notice
+  (`NoticeDelivery.recheck`), since a tap proves delivery; a tap still refused is dropped. A
+  pending tap whose notice was withdrawn, failed or is gone settles on its own, and
+  `discard(token)` settles one whose target is definitively unavailable, so neither hides older taps. `NotificationsHostPlugin` does not
+  capture a launch intent replayed from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), so a
+  cancelled Ask never reopens after process death; `consumeWorkflowTap({ token, unavailable: true })`
+  calls `discard`.
 
 `test/native-host/notices.node.mjs` runs the synthetic JVM checks for routes, the owner fence,
 approval coordination, recovery and the tap inbox (org.json from `ELIZA_ORG_JSON_JAR` or the Gradle cache).
@@ -177,5 +202,7 @@ advances it; a baseline or expired history starts future observation quietly and
 incomplete catch-up; only hydrated INBOX+UNREAD arrivals (not Sent, Spam or Trash) notify;
 dispatch is reserved before posting and an uncertain post is never replayed; at most 1,000
 unresolved notice identities are kept and overflow refuses the page instead of truncating
-it. Notices name no sender, subject or body; a tap carries only a ledger key and opens no
+it; at most five notices show at once, the oldest withdrawn first. A 403/409 from the history
+route retries and reports `grant-unavailable` after three in a row without withdrawing
+shown notices; a 401 or a failed owner/grant check withdraws them. Notices name no sender, subject or body; a tap carries only a ledger key and opens no
 message. `node --test test/native-host/mail.node.mjs` runs the JVM checks.

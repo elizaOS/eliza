@@ -4,6 +4,7 @@
  * adapters without that exact contract fail before reading because pagination
  * APIs cannot prove complete, duplicate-free, snapshot-coherent results.
  */
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import type {
 	DocumentFragmentQueryParams,
@@ -17,6 +18,7 @@ import type {
 } from "../types/database.js";
 import { type Memory, MemoryType } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
+import { validateUuid } from "../utils/uuid.js";
 
 export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 4 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;
@@ -50,8 +52,6 @@ const DOCUMENT_LIST_SCOPES = new Set([
 	"user-private",
 	"agent-private",
 ]);
-const UUID_PATTERN =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DOCUMENT_SEARCH_SEPARATOR = /[ \t\r\n\f]+/;
 
 function invalidPagination(
@@ -65,7 +65,7 @@ function invalidPagination(
 }
 
 function isUuid(value: unknown): value is UUID {
-	return typeof value === "string" && UUID_PATTERN.test(value);
+	return validateUuid(value) !== null;
 }
 
 function normalizeDocumentListCursor(
@@ -201,10 +201,7 @@ export function documentCreatedAt(memory: Memory): number {
 export function compareDocumentOrder(left: Memory, right: Memory): number {
 	const timeDifference = documentCreatedAt(right) - documentCreatedAt(left);
 	if (timeDifference !== 0) return timeDifference;
-	const leftId = left.id?.toLowerCase() ?? "";
-	const rightId = right.id?.toLowerCase() ?? "";
-	if (leftId === rightId) return 0;
-	return rightId < leftId ? -1 : 1;
+	return compareMemoryIds(right.id ?? "", left.id ?? "");
 }
 
 function documentCursor(
@@ -309,7 +306,7 @@ export function validateDocumentDirectGrantEntityIds(value: unknown): UUID[] {
 			},
 		);
 	}
-	return [...grants].sort();
+	return grants.sort();
 }
 
 function readDocumentRevision(metadata: unknown): number | null {
@@ -382,7 +379,16 @@ export function readDocumentMutationSnapshot(
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
 		...(directGrantEntityIds.length > 0 ? { directGrantEntityIds } : {}),
+		...(metadata.runtimeInternal === true
+			? { runtimeInternal: true as const }
+			: {}),
 	};
+}
+
+function isRuntimeRequester(
+	role: DocumentListQueryParams["requesterRole"],
+): boolean {
+	return role === "AGENT" || role === "RUNTIME";
 }
 
 /** Rejects malformed revision batches before an adapter begins a transaction. */
@@ -507,6 +513,9 @@ export function isDocumentVisibleToRequester(
 	) {
 		return false;
 	}
+	if (snapshot.runtimeInternal) {
+		return isRuntimeRequester(params.requesterRole);
+	}
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
@@ -542,6 +551,9 @@ export function canRequesterMutateDocument(
 	}
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
+	if (snapshot.runtimeInternal && !isRuntimeRequester(params.requesterRole)) {
+		return false;
+	}
 	if (params.requesterRole === "OWNER") return true;
 	if (params.requesterRole === "AGENT" || params.requesterRole === "RUNTIME") {
 		return snapshot.scope === "agent-private";
@@ -559,13 +571,11 @@ export function canRequesterManageDocumentDirectGrants(
 	memory: Memory,
 	params: DocumentRequesterContext,
 ): boolean {
-	if (params.requesterRole === "OWNER") {
-		return readDocumentMutationSnapshot(memory) !== null;
-	}
-	if (params.requesterRole !== "ADMIN") return false;
 	const snapshot = readDocumentMutationSnapshot(memory);
+	if (!snapshot || snapshot.runtimeInternal) return false;
+	if (params.requesterRole === "OWNER") return true;
+	if (params.requesterRole !== "ADMIN") return false;
 	return (
-		snapshot !== null &&
 		params.requesterRoomIds.includes(snapshot.roomId) &&
 		(snapshot.scope === "global" || snapshot.scope === "user-private")
 	);
@@ -673,9 +683,10 @@ export function documentSearchText(memory: Memory): string {
 
 function matchesDocumentQuery(
 	memory: Memory,
-	query: string,
+	queryLexemes: readonly string[],
 	sourceSegmentsByDocument: ReadonlyMap<string, readonly Memory[]>,
 ): boolean {
+	if (queryLexemes.length === 0) return false;
 	const haystack = new Set(
 		portableDocumentSearchTokens(documentSearchText(memory)),
 	);
@@ -686,11 +697,7 @@ function matchesDocumentQuery(
 			haystack.add(token);
 		}
 	}
-	const queryLexemes = portableDocumentSearchTokens(query);
-	return (
-		queryLexemes.length > 0 &&
-		queryLexemes.every((lexeme) => haystack.has(lexeme))
-	);
+	return queryLexemes.every((lexeme) => haystack.has(lexeme));
 }
 
 function assertUniqueDocumentIds(memories: Memory[]): void {
@@ -972,6 +979,11 @@ export function queryDocumentsInMemory(
 		}
 	}
 	const sourceSegmentsByDocument = new Map<string, Memory[]>();
+	// Parent revision fences, resolved once per parent rather than per segment.
+	const parentFences = new Map<
+		string,
+		{ revision: number; attemptId: unknown } | null
+	>();
 	for (const memory of memories) {
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 		if (
@@ -984,21 +996,29 @@ export function queryDocumentsInMemory(
 		}
 		const parent = parents.get(metadata.documentId);
 		if (!parent) continue;
-		const parentSnapshot = readDocumentMutationSnapshot(parent);
+		let fence = parentFences.get(metadata.documentId);
+		if (fence === undefined) {
+			const parentSnapshot = readDocumentMutationSnapshot(parent);
+			fence = parentSnapshot
+				? {
+						revision: parentSnapshot.revision,
+						attemptId: (parent.metadata as Record<string, unknown> | undefined)
+							?.revisionAttemptId,
+					}
+				: null;
+			parentFences.set(metadata.documentId, fence);
+		}
 		const segmentRevision = readDocumentRevision(metadata);
 		if (
-			!parentSnapshot ||
+			!fence ||
 			segmentRevision === null ||
-			segmentRevision !== parentSnapshot.revision
+			segmentRevision !== fence.revision
 		) {
 			continue;
 		}
-		const parentAttempt = (
-			parent.metadata as Record<string, unknown> | undefined
-		)?.revisionAttemptId;
 		if (
-			typeof parentAttempt === "string" &&
-			metadata.revisionAttemptId !== parentAttempt
+			typeof fence.attemptId === "string" &&
+			metadata.revisionAttemptId !== fence.attemptId
 		) {
 			continue;
 		}
@@ -1010,7 +1030,6 @@ export function queryDocumentsInMemory(
 		.filter(
 			(memory) =>
 				memory.agentId === params.agentId &&
-				isDocumentMemory(memory) &&
 				isDocumentVisibleToRequester(memory, params),
 		)
 		.sort(compareDocumentOrder);
@@ -1027,9 +1046,12 @@ export function queryDocumentsInMemory(
 					true),
 	);
 	const normalizedQuery = params.query?.trim();
+	const queryLexemes = normalizedQuery
+		? portableDocumentSearchTokens(normalizedQuery)
+		: [];
 	const matchedDocuments = normalizedQuery
 		? availableDocuments.filter((memory) =>
-				matchesDocumentQuery(memory, normalizedQuery, sourceSegmentsByDocument),
+				matchesDocumentQuery(memory, queryLexemes, sourceSegmentsByDocument),
 			)
 		: availableDocuments;
 	const matchedPage = paginateDocuments(matchedDocuments, params);

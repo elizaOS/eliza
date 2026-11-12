@@ -1,0 +1,81 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/app-deployments.ts",
+    "packages/cloud/shared/src/lib/services/app-deploy-job-service.ts",
+    "packages/cloud/shared/src/lib/services/app-deploy-orchestrator.ts",
+    "packages/cloud/shared/src/lib/services/app-deploy-runner.ts",
+    "packages/cloud/shared/src/lib/services/container-executor-deps.ts",
+    "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+    "packages/cloud/shared/src/lib/services/container-jobs-writer.ts",
+    "packages/cloud/shared/src/db/repositories/apps.ts",
+    "packages/cloud/shared/src/db/repositories/jobs.ts",
+    "packages/cloud/shared/src/node/provisioning-worker.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/app-deploy-failed-attempt.pglite.test.ts",
+    "packages/cloud/quint/reviewed-cloud-checks.json"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One app, two distinct deployment generations, at most two insert attempts, one original job identity, and at most three queue attempts. The second generation only fences the original job.",
+      "Primary compare-and-set and exact-intent insert are atomic. Generation IDs are fresh. Worker dispatch and settlement use the separate provisioning execution lease contract.",
+      "The original worker can commit a provision handoff after losing its lease. A single exact primary child and owning container row confirms the handoff. Missing or conflicting evidence parks the parent job and retains the original app generation.",
+      "An exact child identifies the container for parent or live child publication. The model abstracts child readiness and compares current publication with historical rows. Image builds, tenant database operations, Docker, ingress, and the child execution protocol remain outside the model."
+    ],
+    "progress": "Under weakly fair dispatch, linking, and settlement, a known failure settles while its generation remains current. A recovered parent reaches a linked handoff, an unresolved outcome, or retry exhaustion. An eligible exact child publishes its link under fair current READY publication even after the parent has completed.",
+    "conformance": "The named PGlite scenarios exercise actual admission, durable writes, the default runner, worker claims, and READY publication. Lost responses follow real inserts. The child READY case injects the Docker result and uses real database and job authority. Workerd routing and live providers are outside this evidence."
+  },
+  "cases": [
+    {
+      "name": "app-deploy-generation",
+      "main": "app_deploy_generation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "bounds",
+        "jobHasAdmission",
+        "confirmedHandoffHasClaim",
+        "knownFailureNeverCompletes",
+        "oldJobCannotSetNewPhase",
+        "deployingCompletionRequiresHandoff",
+        "unconfirmedKeepsOriginalFence",
+        "currentHandoffCompletionLinksContainer",
+        "appLinkRequiresHandoff",
+        "currentChildReadinessLinksContainer"
+      ],
+      "temporal": [
+        "KnownFailureSettles",
+        "InterruptedHandoffSettles",
+        "LiveChildLinksTerminalParent"
+      ],
+      "maxSteps": 26,
+      "samples": 1000,
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "KnownFailureSettles",
+          "expect": "holds",
+          "assumptions": [
+            "The scheduler eventually dispatches a continuously available job, and a live worker eventually settles a continuously enabled known failure.",
+            "No healthy build, provider response, or confirmed handoff is assumed."
+          ]
+        },
+        {
+          "property": "InterruptedHandoffSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Pending jobs eventually dispatch. A continuously enabled exact app link, exact-handoff settlement, or unresolved-parent settlement eventually runs.",
+            "An unconfirmed parent may stay parked even if the original child arrives later."
+          ]
+        },
+        {
+          "property": "LiveChildLinksTerminalParent",
+          "expect": "holds",
+          "assumptions": [
+            "The exact child has a live lease and can complete READY publication. A continuously available READY write eventually runs.",
+            "Only current child writers publish READY. Historical pairs with both jobs already terminal require separate reconciliation."
+          ]
+        }
+      ]
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
+}

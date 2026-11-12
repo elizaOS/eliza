@@ -32,6 +32,41 @@ const patchRequestSchema = z.object({
   attendees: z.array(attendeeSchema).optional(),
 });
 
+/**
+ * Reads an optional `If-Match`: one exact Google event `etag`, as the feed
+ * returned it. `*` and lists are refused; Google answers a stale one with 412.
+ */
+function readIfMatch(
+  request: Request,
+): { ok: true; value?: string } | { ok: false } {
+  const raw = request.headers.get("if-match");
+  if (raw === null) return { ok: true };
+  const value = raw.trim();
+  if (
+    !value ||
+    value === "*" ||
+    value.length > 1024 ||
+    value.includes(",") ||
+    !/^[\x20-\x7e]+$/.test(value)
+  )
+    return { ok: false };
+  return { ok: true, value };
+}
+
+const INVALID_IF_MATCH = {
+  error: "If-Match must be one exact event etag from a calendar read.",
+  code: "invalid_if_match",
+};
+
+function connectorFailure(error: { status: number; message: string }) {
+  return Response.json(
+    error.status === 412
+      ? { error: error.message, code: "precondition_failed" }
+      : { error: error.message },
+    { status: error.status },
+  );
+}
+
 async function __hono_PATCH(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
@@ -41,6 +76,8 @@ async function __hono_PATCH(
     const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { user } = auth;
     const { eventId } = await params;
+    const ifMatch = readIfMatch(request);
+    if (!ifMatch.ok) return Response.json(INVALID_IF_MATCH, { status: 400 });
     const decodedRawBody = await decodeRequestJson(request);
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
@@ -67,8 +104,8 @@ async function __hono_PATCH(
         apiKeyHash: auth.apiKey?.key_hash,
         env,
       });
-    return Response.json(
-      await agentGoogleRouteDeps.updateManagedGoogleCalendarEvent({
+    const updated = await agentGoogleRouteDeps.updateManagedGoogleCalendarEvent(
+      {
         organizationId: user.organization_id,
         userId: user.id,
         side: parsed.data.side ?? "owner",
@@ -82,13 +119,19 @@ async function __hono_PATCH(
         endAt: parsed.data.endAt,
         timeZone: parsed.data.timeZone,
         attendees: parsed.data.attendees,
-      }),
+        ...(ifMatch.value ? { ifMatch: ifMatch.value } : {}),
+      },
+    );
+    const etag = updated.event.etag;
+    return Response.json(
+      updated,
+      etag && /^[\x20-\x7e]+$/.test(etag) ? { headers: { ETag: etag } } : {},
     );
   } catch (error) {
     if (error instanceof PrivateOwnerApiError)
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return connectorFailure(error);
     }
     logger.error("[Google Calendar] Failed to update event:", error);
     return Response.json(
@@ -109,6 +152,8 @@ async function __hono_DELETE(
     const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { user } = auth;
     const { eventId } = await params;
+    const ifMatch = readIfMatch(request);
+    if (!ifMatch.ok) return Response.json(INVALID_IF_MATCH, { status: 400 });
     const sideRaw = new URL(request.url).searchParams.get("side");
     const grantId =
       new URL(request.url).searchParams.get("grantId")?.trim() || undefined;
@@ -143,13 +188,14 @@ async function __hono_DELETE(
         grantId,
         calendarId: calendarIdRaw?.trim() || "primary",
         eventId,
+        ...(ifMatch.value ? { ifMatch: ifMatch.value } : {}),
       }),
     );
   } catch (error) {
     if (error instanceof PrivateOwnerApiError)
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return connectorFailure(error);
     }
     logger.error("[Google Calendar] Failed to delete event:", error);
     return Response.json(

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -25,7 +25,7 @@
     "node": ">=24.0.0"
   },
   "bin": {
-    "eliza-autonomous": "./src/bin.ts"
+    "eliza-autonomous": "./dist/bin.js"
   },
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.ts dist dist-mobile dist-mobile-ios dist-mobile-ios-jsc && node ../scripts/clean-stray-dts.ts",
@@ -51,13 +51,14 @@
     "test:e2e": "node scripts/run-vitest-batches.ts",
     "test:integration": "node scripts/run-vitest-batches.ts",
     "test:tee:dstack": "node scripts/run-vitest-batches.ts test/tee-dstack-admission.test.ts test/tee-dstack-protected-profile.test.ts test/tee-dstack-gpu.test.ts test/tee-gpu-nvidia-attestation.test.ts",
-    "test:tee:dstack-live": "node scripts/run-vitest-batches.ts test/tee-dstack-live.test.ts"
+    "test:tee:dstack-live": "node scripts/run-vitest-batches.ts test/tee-dstack-live.test.ts",
+    "test:formal": "node ../scripts/check-quint.ts packages/agent/quint"
   },
   "exports": {
     ".": {
       "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "bun": "./src/index.ts",
+      "bun": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
@@ -82,83 +83,88 @@
     "./package.json": "./package.json",
     "./api/*": {
       "eliza-source": "./src/api/*.ts",
-      "types": "./src/api/*.ts",
-      "bun": "./src/api/*.ts",
+      "types": "./dist/api/*.d.ts",
+      "bun": "./dist/api/*.js",
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
-    "./config/character-schema": "./src/config/character-schema.ts",
+    "./config/character-schema": {
+      "eliza-source": "./src/config/character-schema.ts",
+      "types": "./dist/config/character-schema.d.ts",
+      "import": "./dist/config/character-schema.js",
+      "default": "./dist/config/character-schema.js"
+    },
     "./config/plugin-auto-enable": null,
     "./runtime": null,
     "./runtime/runtime-installation-id": null,
     "./runtime/runtime-installation-id.windows": null,
     "./runtime/*": {
       "eliza-source": "./src/runtime/*.ts",
-      "types": "./src/runtime/*.ts",
-      "bun": "./src/runtime/*.ts",
+      "types": "./dist/runtime/*.d.ts",
+      "bun": "./dist/runtime/*.js",
       "import": "./dist/runtime/*.js",
       "default": "./dist/runtime/*.js"
     },
     "./services/app-session-gate": {
       "eliza-source": "./src/services/app-session-gate.ts",
-      "types": "./src/services/app-session-gate.ts",
-      "bun": "./src/services/app-session-gate.ts",
+      "types": "./dist/services/app-session-gate.d.ts",
+      "bun": "./dist/services/app-session-gate.js",
       "import": "./dist/services/app-session-gate.js",
       "default": "./dist/services/app-session-gate.js"
     },
     "./services/tee-evidence": {
       "eliza-source": "./src/services/tee-evidence.ts",
-      "types": "./src/services/tee-evidence.ts",
-      "bun": "./src/services/tee-evidence.ts",
+      "types": "./dist/services/tee-evidence.d.ts",
+      "bun": "./dist/services/tee-evidence.js",
       "import": "./dist/services/tee-evidence.js",
       "default": "./dist/services/tee-evidence.js"
     },
     "./services/tee-evidence-provider": {
       "eliza-source": "./src/services/tee-evidence-provider.ts",
-      "types": "./src/services/tee-evidence-provider.ts",
-      "bun": "./src/services/tee-evidence-provider.ts",
+      "types": "./dist/services/tee-evidence-provider.d.ts",
+      "bun": "./dist/services/tee-evidence-provider.js",
       "import": "./dist/services/tee-evidence-provider.js",
       "default": "./dist/services/tee-evidence-provider.js"
     },
     "./services/permissions/probers/index": {
       "eliza-source": "./src/services/permissions/probers/index.ts",
-      "types": "./src/services/permissions/probers/index.ts",
-      "bun": "./src/services/permissions/probers/index.ts",
+      "types": "./dist/services/permissions/probers/index.d.ts",
+      "bun": "./dist/services/permissions/probers/index.js",
       "import": "./dist/services/permissions/probers/index.js",
       "default": "./dist/services/permissions/probers/index.js"
     },
     "./services/permissions/probers/*": {
       "eliza-source": "./src/services/permissions/probers/*.ts",
-      "types": "./src/services/permissions/probers/*.ts",
-      "bun": "./src/services/permissions/probers/*.ts",
+      "types": "./dist/services/permissions/probers/*.d.ts",
+      "bun": "./dist/services/permissions/probers/*.js",
       "import": "./dist/services/permissions/probers/*.js",
       "default": "./dist/services/permissions/probers/*.js"
     },
     "./security/access": {
       "eliza-source": "./src/security/access.ts",
-      "types": "./src/security/access.ts",
-      "bun": "./src/security/access.ts",
+      "types": "./dist/security/access.d.ts",
+      "bun": "./dist/security/access.js",
       "import": "./dist/security/access.js",
       "default": "./dist/security/access.js"
     },
     "./services/*": {
       "eliza-source": "./src/services/*.ts",
-      "types": "./src/services/*.ts",
-      "bun": "./src/services/*.ts",
+      "types": "./dist/services/*.d.ts",
+      "bun": "./dist/services/*.js",
       "import": "./dist/services/*.js",
       "default": "./dist/services/*.js"
     },
     "./config/*": {
       "eliza-source": "./src/config/*.ts",
-      "types": "./src/config/*.ts",
-      "bun": "./src/config/*.ts",
+      "types": "./dist/config/*.d.ts",
+      "bun": "./dist/config/*.js",
       "import": "./dist/config/*.js",
       "default": "./dist/config/*.js"
     },
     "./utils/*": {
       "eliza-source": "./src/utils/*.ts",
-      "types": "./src/utils/*.ts",
-      "bun": "./src/utils/*.ts",
+      "types": "./dist/utils/*.d.ts",
+      "bun": "./dist/utils/*.js",
       "import": "./dist/utils/*.js",
       "default": "./dist/utils/*.js"
     },
@@ -296,7 +302,7 @@
     "json5": "^2.2.3",
     "pg": "^8.23.1",
     "pngjs": "^7.0.0",
-    "ws": "^8.21.3",
+    "ws": "^8.22.1",
     "zod": "^4.6.5",
     "@elizaos/auth": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
@@ -341,14 +347,14 @@
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "ai": "^6.0.134",
     "bun-types": "1.4.2",
     "resolve.exports": "2.0.4",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*"
   },
   "elizaos": {

@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "packages/agent/src/api/view-installations.ts",
+    "packages/agent/src/api/native-view-renderer.ts",
+    "packages/agent/src/api/view-interaction-host.ts"
+  ],
+  "bounds": {
+    "domain": "Two installation generations and one renderer claim.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_views",
+      "main": "api_views",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

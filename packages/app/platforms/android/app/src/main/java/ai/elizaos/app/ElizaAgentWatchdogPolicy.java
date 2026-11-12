@@ -29,19 +29,27 @@ final class ElizaAgentWatchdogPolicy {
         DEAD,
     }
 
+    /**
+     * Consecutive BUSY probes (one per watchdog interval, so 3 x 600 s) after
+     * which a live agent that never answers is replaced. BUSY normally means a
+     * long native decode, which finishes in seconds on phones and in minutes on
+     * emulated CPUs; a loop that has not answered for 30 minutes is wedged.
+     */
+    static final int BUSY_RESTART_TICKS = 3;
+    /** Healthy time after which a crash no longer counts toward the restart limit. */
+    static final long STABLE_UPTIME_MS = 300_000L;
+    /** Refused socket connects in a row before the detached child is checked for absence. */
+    static final int ABSENCE_REFUSALS = 2;
+
     static final class HealthDecision {
         final int unhealthyTicks;
+        final int busyTicks;
         final boolean restartRequired;
-        final boolean resetRestartAttempts;
 
-        private HealthDecision(
-            int unhealthyTicks,
-            boolean restartRequired,
-            boolean resetRestartAttempts
-        ) {
+        private HealthDecision(int unhealthyTicks, int busyTicks, boolean restartRequired) {
             this.unhealthyTicks = unhealthyTicks;
+            this.busyTicks = busyTicks;
             this.restartRequired = restartRequired;
-            this.resetRestartAttempts = resetRestartAttempts;
         }
     }
 
@@ -74,20 +82,53 @@ final class ElizaAgentWatchdogPolicy {
     static HealthDecision evaluateHealthProbe(
         ProbeResult probe,
         int unhealthyTicks,
+        int busyTicks,
         int failStrikes
     ) {
         if (probe == ProbeResult.OK) {
-            return new HealthDecision(0, false, true);
+            return new HealthDecision(0, 0, false);
         }
         if (probe == ProbeResult.BUSY) {
-            return new HealthDecision(unhealthyTicks, false, false);
+            // No strike: the process is alive, usually inside a native call.
+            // A run of BUSY with no OK in between still has a ceiling.
+            int nextBusyTicks = busyTicks + 1;
+            if (nextBusyTicks >= BUSY_RESTART_TICKS) {
+                return new HealthDecision(0, 0, true);
+            }
+            return new HealthDecision(unhealthyTicks, nextBusyTicks, false);
         }
 
         int nextUnhealthyTicks = unhealthyTicks + 1;
         if (nextUnhealthyTicks >= failStrikes) {
-            return new HealthDecision(0, true, false);
+            return new HealthDecision(0, 0, true);
         }
-        return new HealthDecision(nextUnhealthyTicks, false, false);
+        return new HealthDecision(nextUnhealthyTicks, busyTicks, false);
+    }
+
+    /**
+     * The restart budget resets only after {@link #STABLE_UPTIME_MS} of health,
+     * so an agent that crashes shortly after every ready still reaches the limit.
+     * {@code healthySinceMs} is 0 while the agent has not been healthy since its
+     * last start or failure.
+     */
+    static int restartAttemptsAfterHealthy(int restartAttempts, long healthySinceMs, long nowMs) {
+        if (healthySinceMs <= 0L || nowMs - healthySinceMs < STABLE_UPTIME_MS) {
+            return restartAttempts;
+        }
+        return 0;
+    }
+
+    /**
+     * A detached agent is proven gone only when its socket refused connects on
+     * consecutive checks AND the child journaled for the current launch has no
+     * live process. A timeout or an unready answer is never absence.
+     */
+    static boolean detachedAbsenceProven(
+        int consecutiveRefusals,
+        boolean childJournaled,
+        boolean childAlive
+    ) {
+        return consecutiveRefusals >= ABSENCE_REFUSALS && childJournaled && !childAlive;
     }
 
     static RestartDecision nextRestart(int restartAttempts, int maxRestartAttempts) {

@@ -1,5 +1,9 @@
 package ai.eliza.plugins.browsersurface;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
 /**
  * Which WebView storage profiles a browser surface keeps, and for how long.
  *
@@ -36,6 +40,16 @@ public final class BrowserProfilePolicy {
 
   public static boolean keyed(String name) {
     return name != null && name.startsWith(KEYED_PREFIX);
+  }
+
+  /**
+   * The surface profiles among {@code names}: every ephemeral and keyed profile, of any owner.
+   * The default profile and any other profile of the host are never included.
+   */
+  public static List<String> surfaceProfiles(Collection<String> names) {
+    List<String> profiles = new ArrayList<>();
+    for (String name : names) if (ephemeral(name) || keyed(name)) profiles.add(name);
+    return profiles;
   }
 
   /**

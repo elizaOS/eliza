@@ -24,7 +24,11 @@ public final class NativeRuntimeSessionTest {
     }
     static void rejected(NativeRuntimeSession session, BooleanSupplier active, NativeRuntimeSession.Request<String> action, String expected) throws Exception {
         try { session.request(active, action, "unavailable", "cancelled"); throw new AssertionError("Accepted retired request"); }
-        catch (NativeProcessSupervisor.LifecycleException failure) { check(expected.equals(failure.getMessage())); }
+        catch (NativeProcessSupervisor.LifecycleException failure) {
+            check(expected.equals(failure.getMessage()));
+            // Only an undispatched request is not-ready; a dispatched one may have had effects.
+            check((failure instanceof NativeRuntimeSession.NotReadyException) == expected.equals("unavailable"));
+        }
     }
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && args[0].equals("child")) {
@@ -62,7 +66,7 @@ public final class NativeRuntimeSessionTest {
             catch (ExecutionException failure) { check(failure.getCause() instanceof NativeProcessSupervisor.LifecycleException); }
             check(requests.get() == 2 && released.get() == 1);
             try { session.request(first, active::get, () -> { throw new AssertionError("Stale selected endpoint dispatched"); }, "unavailable", "cancelled"); throw new AssertionError("Old capture admitted after restart"); }
-            catch (NativeProcessSupervisor.LifecycleException expected) { check("unavailable".equals(expected.getMessage())); }
+            catch (NativeRuntimeSession.NotReadyException expected) { check("unavailable".equals(expected.getMessage())); }
             check("current".equals(session.request(session.snapshot(), active::get, () -> "current", "unavailable", "cancelled")));
             rejected(session, active::get, () -> { active.set(false); return "retired host"; }, "cancelled");
             rejected(session, active::get, () -> { throw new AssertionError("Inactive host called transport"); }, "unavailable");
@@ -79,6 +83,25 @@ public final class NativeRuntimeSessionTest {
             failed.start(); until(() -> failed.snapshot().lifecycle.state == NativeProcessSupervisor.State.FAILED);
             until(() -> failed.snapshot().processes.values().stream().noneMatch(Process::isAlive));
             check(owned.get() != null && !owned.get().isAlive());
+        }
+        // start/awaitReady: two children spawned before either is awaited; a process the scope did
+        // not start is refused; a failed wait ends both children with the launch.
+        AtomicReference<Process> foreign = new AtomicReference<>(), early = new AtomicReference<>();
+        AtomicBoolean refused = new AtomicBoolean();
+        try (NativeRuntimeSession split = new NativeRuntimeSession(scope -> {
+            Process agent = scope.start("agent", child(), log, Arrays.asList("synthetic-private-token"));
+            early.set(scope.start("gateway", child(), log, Arrays.asList("synthetic-private-token")));
+            foreign.set(child().start());
+            try { scope.awaitReady(foreign.get(), () -> true, 2000, 10); }
+            catch (IllegalArgumentException expected) { refused.set(true); }
+            finally { foreign.get().destroyForcibly(); }
+            scope.awaitReady(agent, () -> true, 2000, 10);
+            scope.awaitReady(early.get(), () -> { throw new IllegalStateException("failed readiness"); }, 2000, 10);
+        }, 10, 10, 0)) {
+            split.start(); until(() -> split.snapshot().lifecycle.state == NativeProcessSupervisor.State.FAILED);
+            check(refused.get());
+            until(() -> split.snapshot().processes.size() == 2 && split.snapshot().processes.values().stream().noneMatch(Process::isAlive));
+            check(early.get() != null && !early.get().isAlive());
         }
         // Test-build fault injection ends one named child; the supervisor's own retry restarts it.
         AtomicInteger launches = new AtomicInteger();

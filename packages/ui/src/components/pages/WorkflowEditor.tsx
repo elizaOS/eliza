@@ -1245,10 +1245,18 @@ function WorkflowEditorSession({
                   size="icon-sm"
                   aria-label={
                     restoreArmedId === revision.id
-                      ? "Confirm restore revision"
+                      ? dirty
+                        ? "Confirm restore revision; unsaved changes will be lost"
+                        : "Confirm restore revision"
                       : "Restore revision"
                   }
-                  title={restoreArmedId === revision.id ? "Confirm" : "Restore"}
+                  title={
+                    restoreArmedId === revision.id
+                      ? dirty
+                        ? "Confirm. Unsaved changes will be lost."
+                        : "Confirm"
+                      : "Restore"
+                  }
                   onClick={() => {
                     if (restoreArmedId !== revision.id) {
                       setRestoreArmedId(revision.id);
@@ -1262,6 +1270,7 @@ function WorkflowEditorSession({
                       );
                       setWorkflow(restored);
                       setSavedVersion(JSON.stringify(restored));
+                      onSaved?.(restored);
                       void refreshRevisions();
                     });
                   }}

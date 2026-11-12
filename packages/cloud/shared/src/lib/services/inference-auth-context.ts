@@ -5,15 +5,15 @@
  * moderation chain into one cache decision for API-key and Steward-session
  * inference.
  *
- * Qualified Worker hot path (`cacheOnly`, authorization caching and strong
- * revocation enabled): the request is decided by ONE cache read and
- * never queries Postgres, not even on a miss. Entries are stale-while-
- * revalidate: an entry older than the refresh age is still served, and one
- * coalesced authoritative refresh runs under `waitUntil`; when it finds a
- * suspension, revocation, plan or policy change it rewrites the entry so the
- * next request fails (one stale allow is accepted). A true miss returns a
- * retryable warming result and hydrates under `waitUntil`. Writers (key
- * revoke/delete, ban, org disable) invalidate entries directly.
+ * Worker hot path (the organization gate is bound, so it is the revocation
+ * boundary): a warm request is decided by ONE cache read and never queries
+ * Postgres. Entries are stale-while-revalidate: an entry older than the
+ * refresh age is still served, and one coalesced authoritative refresh runs
+ * under `waitUntil`; when it finds a suspension, revocation, plan or policy
+ * change it rewrites the entry so the next request fails (one stale allow is
+ * accepted). A true miss is decided by the primary once, inline, and projected
+ * into the cache under `waitUntil`. Writers (key revoke/delete, ban, org
+ * disable) invalidate entries directly.
  *
  * API keys (including mobile lifecycle keys, whose revocations invalidate the
  * same key-hash entry) are keyed by their full hash and Steward sessions by a
@@ -25,8 +25,8 @@
  *   - A positive IAC entry is written ONLY for a fully-authorized credential.
  *   - Auth failures (invalid/inactive/no-org) throw from the authoritative chain
  *     and propagate unchanged -> the route maps them to the exact 401/403.
- *   - A Worker cache miss or failure returns an explicit retryable warming
- *     result; hydration never joins the request.
+ *   - A Worker cache miss or failure is decided by the primary; the cache
+ *     projection never joins the request.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -35,6 +35,7 @@ import { dbWrite } from "../../db/helpers";
 import { AuthenticationError, ForbiddenError, getErrorStatusCode } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { setRequestInferenceAuthEntryRefresh } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
 import { apiKeysService } from "./api-keys";
@@ -57,14 +58,13 @@ import {
 } from "./inference-auth-cache";
 import {
   assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
   InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
 } from "./inference-credential-revocation";
 import { isInferencePolicyAdmissionEnabled } from "./inference-funded-budget-admission";
-import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
 import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
 
@@ -105,7 +105,6 @@ export type InferenceAuthCacheWrite =
 export type InferenceAuthResult =
   | "authorized_cache"
   | "authorized_origin"
-  | "warming"
   | "suspended"
   | "slow_path"
   | "rejected"
@@ -152,20 +151,26 @@ export interface ResolveInferenceAuthOptions {
   onTelemetry?(telemetry: InferenceAuthTelemetry): void;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   onCacheWriteTelemetry?(telemetry: InferenceAuthCacheWriteTelemetry): void;
-  /**
-   * Request cache-only resolution when authorization caching is eligible.
-   * With that staged rollout enabled, a miss returns `warming` and hydrates
-   * under `waitUntil`; disabled hosts retain authoritative authorization.
-   */
-  cacheOnly?: boolean;
   /** Internal background refresh: bypass the combined decision and revalidate. */
   forceAuthoritative?: boolean;
   /** Internal hook preserving a bounded authoritative standing reason. */
   onAuthoritativeRejection?(reason: InferenceAuthRejectionReason): void;
-  /** The caller will fuse this strong check into its atomic admission lease. */
+  /**
+   * The caller wants the verified credential back (app-funded admission and
+   * the speech relay bind it). A cached API-key entry is the whole decision;
+   * a cold decision and a session are still checked against the gate here.
+   */
   deferStrongCredentialCheck?: boolean;
   /** Return verified identity metadata for a bounded speech session; never skips an auth check. */
   includeVerifiedCredential?: boolean;
+  /**
+   * Check the organization gate's durable fences on a cached API-key hit,
+   * before returning. For routes that act outside inference (publishing,
+   * hosted browsers, paid upstreams), where a revoked key must stop on the
+   * next request instead of after cache propagation. The inference routes
+   * leave it unset: their cached entry is the whole decision.
+   */
+  strongCredentialCheck?: boolean;
 }
 
 interface MutableInferenceAuthTrace {
@@ -284,14 +289,15 @@ export type InferenceAuthResolution =
       ctx: ResolvedInferenceAuthContext;
       source: "cache" | "origin";
       credential?: InferenceCredentialCheck;
+      /**
+       * Rewrites this credential's cached entry from the primary, off the
+       * response. Routes hand it to paid admission, which calls it when the
+       * entry's funding standing is no longer true.
+       */
+      refreshEntry?: () => void;
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
   | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason }
-  | {
-      kind: "warming";
-      /** Background hydration retained under `waitUntil`; never awaited by the request. */
-      hydration?: Promise<unknown>;
-    }
   | { kind: "slow_path"; reason: "mobile_api_key" | "non_api_key" };
 
 /**
@@ -400,8 +406,7 @@ function getOrCreateApiKeyHydration(
   } = {
     traceId: options.traceId,
     // Background hydration builds a cacheable decision (with its admission
-    // snapshot) but skips the cache read and the warming shortcut.
-    cacheOnly: true,
+    // snapshot) but skips the cache read.
     forceAuthoritative: true,
     deferStrongCredentialCheck: true,
     [SKIP_CACHE_PROJECTION_WRITE]: true,
@@ -423,8 +428,8 @@ function getOrCreateApiKeyHydration(
         // barrier below owns its negative cache write.
         return { kind: "rejected", status, reason };
       }
-      // error-policy:J7 the current request already returned an explicit
-      // warming state; preserve the failure in logs and allow a later retry.
+      // error-policy:J7 the current request was decided by its stale entry;
+      // preserve the refresh failure in logs and allow a later retry.
       logger.warn("[InferenceAuth] background hydration failed", {
         traceId: boundedTraceId(options.traceId),
         errorName: error instanceof Error ? error.name : "UnknownError",
@@ -460,19 +465,49 @@ function getOrCreateApiKeyHydration(
           rateLimit: result.ctx.apiKeyRateLimit,
           expiresAt: result.ctx.apiKeyExpiresAt,
         };
+        // The warm path never calls the gate, so this is where a gate fence
+        // (revoked key, disabled subject or organization) reaches a cached
+        // entry. A fence is a decision: it replaces the entry with a denial
+        // even when the primary row read above still authorizes the key.
+        const checkGate = async (): Promise<InferenceCredentialRevokedError | undefined> => {
+          try {
+            await assertInferenceCredentialActive(result.ctx.orgId, credential);
+            return undefined;
+          } catch (error) {
+            if (error instanceof InferenceCredentialRevokedError) return error;
+            throw error;
+          }
+        };
+        let fenced: InferenceCredentialRevokedError | undefined;
         try {
-          await assertInferenceCredentialActive(result.ctx.orgId, credential);
+          fenced = await checkGate();
         } catch (error) {
           if (!(error instanceof InferenceCredentialRevocationUnavailableError)) throw error;
           // error-policy:J2 background projection may retry one unavailable
           // read with a fresh stub. A cold object can outlive the short check
           // deadline; abandoning the projection leaves every later request
-          // paying origin auth again. Neither attempt authorizes inference,
-          // extends cache freshness, nor retries an explicit revocation.
+          // paying origin auth again. Neither attempt authorizes inference
+          // nor extends cache freshness.
           logger.info("[InferenceAuth] retrying background credential projection", {
             traceId: boundedTraceId(options.traceId),
           });
-          await assertInferenceCredentialActive(result.ctx.orgId, credential);
+          fenced = await checkGate();
+        }
+        if (fenced) {
+          const revoked = fenced.reason === "credential_revoked";
+          const reason = inferenceCredentialRevocationReason(fenced.reason);
+          const write = await writeInferenceApiKeyAuthRejection(
+            keyHash,
+            revoked ? "rejected" : "suspended",
+            revoked ? 401 : 403,
+            reason,
+          );
+          logger.warn("[InferenceAuth] gate fence replaced a cached authorization", {
+            traceId: boundedTraceId(options.traceId),
+            reason,
+            cacheWrite: write.kind,
+          });
+          return;
         }
         const startedAt = performance.now();
         const write = await writeInferenceAuthContext(result.ctx);
@@ -652,19 +687,17 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
-    // A Worker request must not bypass the staged positive-cache and strongly
-    // consistent revocation contract merely by selecting cache-only resolution.
-    const authCacheEnabled = isInferenceAuthCacheEnabled();
+    // The positive authorization cache exists only where the organization gate
+    // is bound (every Worker): writers invalidate the entry and its aged
+    // refresh checks the gate off the response. Other hosts read the primary.
+    const authCacheEnabled = hasInferenceRevocationBoundary();
     const deferStrongCredentialCheck =
-      authCacheEnabled &&
-      options.deferStrongCredentialCheck === true &&
-      isInferenceStrongRevocationEnabled();
+      authCacheEnabled && options.deferStrongCredentialCheck === true;
     const extractStartedAt = performance.now();
     const credential = extractApiKeyCredentialWithSource(req);
     trace.timings.extractMs = durationSince(extractStartedAt);
     if (!credential) {
       const session = await resolveInferenceSessionAuthContext(req, {
-        cacheOnly: authCacheEnabled && options.cacheOnly,
         useAuthCache: authCacheEnabled,
         executionCtx: options.executionCtx,
         deferStrongCredentialCheck,
@@ -678,14 +711,10 @@ export async function resolveInferenceAuthContext(
       trace.cacheAvailability = cache.isAvailable() ? "available" : "unavailable";
       trace.cacheBackend = cache.getBackendKind();
       if (session.kind === "authorized") {
+        if (session.refreshEntry) setRequestInferenceAuthEntryRefresh(session.refreshEntry);
         trace.cacheRead = session.source === "cache" ? "hit" : "miss";
         trace.authoritative = session.source === "origin" ? "authorized" : "not_run";
         trace.result = session.source === "cache" ? "authorized_cache" : "authorized_origin";
-        return session;
-      }
-      if (session.kind === "warming") {
-        trace.cacheRead = cache.isAvailable() ? "miss" : "unavailable";
-        trace.result = "warming";
         return session;
       }
       if (session.kind === "suspended") {
@@ -719,6 +748,7 @@ export async function resolveInferenceAuthContext(
     trace.cacheBackend = cache.getBackendKind();
 
     const keyHash = hashApiKey(credential.rawKey);
+    let refreshEntry: (() => void) | undefined;
     if (authCacheEnabled && cacheAvailable && !options.forceAuthoritative) {
       const cacheReadStartedAt = performance.now();
       const cached = await readInferenceAuthContextWithOutcome(
@@ -744,6 +774,16 @@ export async function resolveInferenceAuthContext(
         const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
         observeHydrationProjection(hydration, hydrationOptions, false);
       };
+      // Post-response accounting rewrites this entry when it finds the
+      // organization can no longer fund a request. A refresh already in flight
+      // may predate that accounting, so the rewrite starts after it.
+      refreshEntry = () => {
+        const executionCtx = options.executionCtx;
+        if (!executionCtx) return;
+        const inFlight = apiKeyHydrations.get(keyHash)?.projection ?? Promise.resolve();
+        executionCtx.waitUntil(inFlight.then(() => scheduleRefresh(0, true)));
+      };
+      setRequestInferenceAuthEntryRefresh(refreshEntry);
       if (cached.kind === "hit" && isExpiredApiKeyContext(cached.ctx)) {
         // The cached key expiry is part of the decision: deny locally and let
         // the refresh persist the authoritative denial.
@@ -760,49 +800,45 @@ export async function resolveInferenceAuthContext(
           rateLimit: cached.ctx.apiKeyRateLimit,
           expiresAt: cached.ctx.apiKeyExpiresAt,
         };
-        const scheduleAgedRefresh = () => scheduleRefresh(cached.ctx.cachedAt);
-        if (deferStrongCredentialCheck) {
-          observeInferenceApiKeyUsage(
-            { kind: "authorized", ctx: cached.ctx, source: "cache" },
-            options.executionCtx,
-          );
-          scheduleAgedRefresh();
-          trace.result = "authorized_cache";
-          return {
-            kind: "authorized",
-            ctx: cached.ctx,
-            source: "cache",
-            credential,
-          };
-        }
-        try {
-          await assertInferenceCredentialActive(cached.ctx.orgId, credential);
-        } catch (error) {
-          if (error instanceof InferenceCredentialRevokedError) {
-            trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
+        if (options.strongCredentialCheck === true) {
+          try {
+            await assertInferenceCredentialActive(cached.ctx.orgId, credential);
+          } catch (error) {
+            if (!(error instanceof InferenceCredentialRevokedError)) throw error;
+            // The forced refresh meets the same fence and writes the denial.
+            scheduleRefresh(cached.ctx.cachedAt, true);
+            const revoked = error.reason === "credential_revoked";
             const reason = inferenceCredentialRevocationReason(error.reason);
+            trace.result = revoked ? "rejected" : "suspended";
             logStandingDenial({
-              status: error.reason === "credential_revoked" ? 401 : 403,
+              status: revoked ? 401 : 403,
               reason,
               source: "authoritative",
             });
-            return error.reason === "credential_revoked"
+            return revoked
               ? { kind: "rejected", status: 401, reason }
               : { kind: "suspended", userId: cached.ctx.userId, reason };
           }
-          throw error;
         }
+        // Otherwise the cached entry is the whole decision: this read is the
+        // request's only store call. Revocation reaches it through writer
+        // invalidation and the aged refresh below, which checks the gate off
+        // the response and replaces the entry with a denial when the gate
+        // holds a fence.
         observeInferenceApiKeyUsage(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
           options.executionCtx,
         );
-        scheduleAgedRefresh();
+        scheduleRefresh(cached.ctx.cachedAt);
         trace.result = "authorized_cache";
         return {
           kind: "authorized",
           ctx: cached.ctx,
           source: "cache",
-          ...(options.includeVerifiedCredential === true ? { credential } : {}),
+          refreshEntry,
+          ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
+            ? { credential }
+            : {}),
         };
       }
       if (cached.kind === "rejected") {
@@ -821,30 +857,60 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    // Cache-only resolution needs a configured cache backend; every deployed
-    // environment has one. Without any backend (local dev, e2e harness) a miss
-    // could never hydrate, so those hosts keep the authoritative path.
-    if (
-      authCacheEnabled &&
-      options.cacheOnly &&
-      !options.forceAuthoritative &&
-      cache.isBackendConfigured()
-    ) {
-      // A true miss (or an unreadable cache) never queries Postgres inline:
-      // the request gets a retryable warming result and the authoritative
-      // decision is projected into the cache under `waitUntil`.
-      trace.authoritative = "not_run";
-      trace.result = "warming";
-      if (cacheAvailable && options.executionCtx) {
-        const hydrationOptions = { ...options, executionCtx: options.executionCtx };
-        const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
-        trace.cacheWrite = "deferred";
-        observeHydrationProjection(hydration, hydrationOptions, true);
-        return { kind: "warming", hydration: hydration.projection };
+    // A true miss (or an unreadable cache) is decided by the primary once per
+    // key (coalesced across concurrent requests) and serves this request; its
+    // positive or negative projection is written under `waitUntil`. The
+    // request never fails because the cache is cold.
+    if (authCacheEnabled && cacheAvailable && options.executionCtx && !options.forceAuthoritative) {
+      const hydrationOptions = { ...options, executionCtx: options.executionCtx };
+      const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
+      trace.cacheWrite = "deferred";
+      observeHydrationProjection(hydration, hydrationOptions, true);
+      const decided = await hydration.decision;
+      if (decided?.kind === "rejected" || decided?.kind === "suspended") {
+        trace.authoritative = decided.kind;
+        trace.result = decided.kind;
+        logStandingDenial({
+          status: decided.kind === "suspended" ? 403 : decided.status,
+          reason: decided.reason,
+          source: "authoritative",
+        });
+        return decided;
       }
-      return { kind: "warming" };
+      if (decided?.kind === "authorized" && decided.credential) {
+        const decidedCredential = decided.credential;
+        // A cold decision always checks the gate's durable fences inline.
+        // Organization admission no longer carries the credential into a
+        // lease, so a deferred check would never run. The warm path is
+        // unaffected: its aged refresh makes the same check off the response
+        // and writes a denial over the entry when the gate holds a fence.
+        try {
+          await assertInferenceCredentialActive(decided.ctx.orgId, decidedCredential);
+        } catch (error) {
+          if (!(error instanceof InferenceCredentialRevokedError)) throw error;
+          const reason = inferenceCredentialRevocationReason(error.reason);
+          const revoked = error.reason === "credential_revoked";
+          trace.result = revoked ? "rejected" : "suspended";
+          logStandingDenial({ status: revoked ? 401 : 403, reason, source: "authoritative" });
+          return revoked
+            ? { kind: "rejected", status: 401, reason }
+            : { kind: "suspended", userId: decided.ctx.userId, reason };
+        }
+        observeInferenceApiKeyUsage(decided, options.executionCtx);
+        trace.authoritative = "authorized";
+        trace.result = "authorized_origin";
+        return {
+          kind: "authorized",
+          ctx: decided.ctx,
+          source: "origin",
+          refreshEntry,
+          ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
+            ? { credential: decidedCredential }
+            : {}),
+        };
+      }
+      // The shared decision failed or exceeded its deadline: decide inline.
     }
-
     trace.authoritative = "error";
     trace.result = "error";
     let { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
@@ -937,12 +1003,20 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: coherent.user.id, reason: "moderation_blocked" };
     }
     if (coherent) ({ user, apiKey } = coherent);
+    // A Worker decision carries the key's app scope even when the combined
+    // cache is not qualified: app routes refuse a sibling app's key from the
+    // decision alone, and an unloaded scope would read as an unscoped key.
+    // The admission snapshot stays optional there; durable admission and the
+    // limiter's bounded hydration read the primary policy themselves.
     const [admission, appScopeId] = authCacheEnabled
       ? await Promise.all([
           coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
           loadInferenceAppKeyScope(apiKey.id),
         ])
-      : [coherent?.admission, null];
+      : [
+          coherent?.admission,
+          options.executionCtx ? await loadInferenceAppKeyScope(apiKey.id) : null,
+        ];
     const ctx: InferenceAuthContext = {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),
@@ -955,8 +1029,16 @@ export async function resolveInferenceAuthContext(
       appScopeId,
       ...(admission ? { admission } : {}),
     };
+    const hydrationOnly =
+      (
+        options as ResolveInferenceAuthOptions & {
+          [SKIP_CACHE_PROJECTION_WRITE]?: true;
+        }
+      )[SKIP_CACHE_PROJECTION_WRITE] === true;
     try {
-      if (!deferStrongCredentialCheck) {
+      // Only the internal hydration leaves this check to its consumer and to
+      // its projection barrier; a request decided inline is checked here.
+      if (!(deferStrongCredentialCheck && hydrationOnly)) {
         await assertInferenceCredentialActive(ctx.orgId, {
           kind: "api_key",
           credentialId: ctx.apiKeyId,
@@ -982,12 +1064,6 @@ export async function resolveInferenceAuthContext(
     }
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
-    const hydrationOnly =
-      (
-        options as ResolveInferenceAuthOptions & {
-          [SKIP_CACHE_PROJECTION_WRITE]?: true;
-        }
-      )[SKIP_CACHE_PROJECTION_WRITE] === true;
     // Internal hydration is not a consumed authorization. Its caller records
     // usage only if it consumes the result; direct requests own their update here.
     if (!hydrationOnly) {

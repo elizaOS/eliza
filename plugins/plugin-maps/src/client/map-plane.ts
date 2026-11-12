@@ -23,7 +23,36 @@ export interface GlobalBasemap {
   styleUrl: string;
   attribution: string;
 }
-export type MapBasemap = RegionalMap | GlobalBasemap;
+/**
+ * Raster tiles fetched through the host's Cloud credential (Cloud Maps
+ * `capabilities.tiles`, for example Google roadmap tiles). The host shows
+ * `attribution`, and the plane reports the provider copyright for the visible
+ * area through `onCopyright`.
+ */
+export interface CloudRasterBasemap {
+  kind: "cloud-raster";
+  attribution: string;
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+  tile(
+    z: number,
+    x: number,
+    y: number,
+    signal: AbortSignal,
+  ): Promise<ArrayBuffer>;
+  copyright?(
+    view: {
+      zoom: number;
+      north: number;
+      south: number;
+      east: number;
+      west: number;
+    },
+    signal: AbortSignal,
+  ): Promise<string>;
+}
+export type MapBasemap = RegionalMap | GlobalBasemap | CloudRasterBasemap;
 /** A search result or other candidate drawn on the map; tapping reports its id. */
 export type MapPin = Readonly<{
   id: string;
@@ -45,6 +74,10 @@ export type MapOverlay = Readonly<{
 export interface MapPlaneOptions {
   /** Called when the user taps a result pin. */
   onPin?(id: string): void;
+  /** Only direct map gestures interrupt camera following. */
+  onInteraction?(): void;
+  /** The centre and zoom of the visible map, each time the map settles. */
+  onViewport?(center: Coordinate, zoom: number): void;
   fontUrl: string;
   workerUrl: string;
   accent: string;
@@ -63,6 +96,13 @@ export interface MapPlaneOptions {
     path: string,
     signal: AbortSignal,
   ): Promise<{ status: number; bytes: Uint8Array<ArrayBuffer> }>;
+  /** Provider copyright for the visible area of a Cloud raster basemap. */
+  onCopyright?(text: string): void;
+  /**
+   * Where a worldwide basemap opens. The default is the whole world around the
+   * prime meridian. A regional map always opens on its own coverage.
+   */
+  initialView?: { center: Coordinate; zoom?: number };
 }
 /** Renderer only: regional transport or explicit public imagery; no search or geolocation. */
 export class MapPlane {
@@ -76,11 +116,16 @@ export class MapPlane {
   private requestedRoute?: Route | null;
   private requestedOverlay: MapOverlay = {};
   private pins = new Map<string, { key: string; marker: Marker }>();
+  private lastPins = "";
   private position?: Marker;
   private lastPosition = "";
   private following = false;
   private readonly protocol?: string;
+  private disposeCopyright?: () => void;
+  private refreshCopyright?: () => void;
   private destroyed = false;
+  /** Set by MapLibre's one-shot "load"; from then on the style accepts sources and layers. */
+  private styleReady = false;
   constructor(
     container: HTMLElement,
     region: MapBasemap,
@@ -89,6 +134,7 @@ export class MapPlane {
     private options: MapPlaneOptions,
   ) {
     const global = region.kind === "global";
+    const raster = region.kind === "cloud-raster" ? region : undefined;
     const styleUrl = global ? new URL(region.styleUrl) : undefined;
     if (
       styleUrl &&
@@ -97,7 +143,8 @@ export class MapPlane {
       throw new Error(
         "Global basemap requires an HTTPS style without credentials",
       );
-    this.globalBasemap = global;
+    // Cloud raster tiles cover the world, so the camera behaves as for a global basemap.
+    this.globalBasemap = global || !!raster;
     if (!global) {
       if (!/^[a-z][a-z0-9+.-]*$/.test(options.protocol))
         throw new Error("Invalid regional map protocol");
@@ -105,18 +152,31 @@ export class MapPlane {
       // Each map owns an entry while another map is mounted or replaced.
       this.protocol = `${options.protocol}-${crypto.getRandomValues(new Uint32Array(2)).join("-")}`;
     }
-    const [w, s, e, n] = global ? [-180, -85, 180, 85] : region.bounds;
+    const [w, s, e, n] =
+      region.kind === "regional" || region.kind === undefined
+        ? region.bounds
+        : [-180, -85, 180, 85];
+    const worldwide = global || !!raster;
+    const regionalBase =
+      region.kind === "regional" || region.kind === undefined
+        ? region.base
+        : "";
     setWorkerUrl(options.workerUrl);
     setWorkerCount(1);
     const protocol = this.protocol;
 
+    const opening = worldwide ? options.initialView : undefined;
     const mapOptions: MapOptions = {
       container,
-      center: global ? [0, 20] : [(w + e) / 2, (s + n) / 2],
-      zoom: global ? 2 : 14,
-      minZoom: global ? 0 : 11,
-      maxZoom: 18,
-      maxBounds: global
+      center: opening
+        ? [opening.center.longitude, opening.center.latitude]
+        : worldwide
+          ? [0, 20]
+          : [(w + e) / 2, (s + n) / 2],
+      zoom: worldwide ? Math.max(opening?.zoom ?? 2, raster?.minZoom ?? 0) : 14,
+      minZoom: worldwide ? (raster?.minZoom ?? 0) : 11,
+      maxZoom: raster ? Math.min(raster.maxZoom, 20) : 18,
+      maxBounds: worldwide
         ? undefined
         : [
             [w - 0.01, s - 0.01],
@@ -137,99 +197,146 @@ export class MapPlane {
         : undefined,
       style: global
         ? region.styleUrl
-        : {
-            version: 8,
-            "font-faces": { "Map Labels": options.fontUrl },
-            sources: {
-              regional: {
-                type: "vector",
-                tiles: [
-                  options.nativeRegion(region.base)
-                    ? `${protocol}://tiles/{z}/{x}/{y}.pbf`
-                    : `${region.base}/tiles/{z}/{x}/{y}.pbf`,
-                ],
-                maxzoom: 14,
-                bounds: [w, s, e, n],
+        : raster
+          ? {
+              version: 8,
+              sources: {
+                cloud: {
+                  type: "raster",
+                  tiles: [`${protocol}://tiles/{z}/{x}/{y}.png`],
+                  tileSize: raster.tileSize,
+                  minzoom: raster.minZoom,
+                  maxzoom: raster.maxZoom,
+                },
               },
+              layers: [
+                {
+                  id: "land",
+                  type: "background",
+                  paint: { "background-color": colors.land },
+                },
+                { id: "cloud-raster", type: "raster", source: "cloud" },
+              ],
+            }
+          : {
+              version: 8,
+              "font-faces": { "Map Labels": options.fontUrl },
+              sources: {
+                regional: {
+                  type: "vector",
+                  tiles: [
+                    options.nativeRegion(regionalBase)
+                      ? `${protocol}://tiles/{z}/{x}/{y}.pbf`
+                      : `${regionalBase}/tiles/{z}/{x}/{y}.pbf`,
+                  ],
+                  maxzoom: 14,
+                  bounds: [w, s, e, n],
+                },
+              },
+              layers: [
+                {
+                  id: "land",
+                  type: "background",
+                  paint: { "background-color": colors.land },
+                },
+                {
+                  id: "water",
+                  type: "fill",
+                  source: "regional",
+                  "source-layer": "water",
+                  paint: { "fill-color": colors.water },
+                },
+                {
+                  id: "park",
+                  type: "fill",
+                  source: "regional",
+                  "source-layer": "landcover",
+                  paint: { "fill-color": colors.park, "fill-opacity": 0.6 },
+                },
+                {
+                  id: "buildings",
+                  type: "fill",
+                  source: "regional",
+                  "source-layer": "building",
+                  paint: { "fill-color": colors.rwy, "fill-opacity": 0.55 },
+                },
+                {
+                  id: "road-outline",
+                  type: "line",
+                  source: "regional",
+                  "source-layer": "transportation",
+                  paint: { "line-color": colors.fwyE, "line-width": 6 },
+                },
+                {
+                  id: "roads",
+                  type: "line",
+                  source: "regional",
+                  "source-layer": "transportation",
+                  paint: { "line-color": colors.major, "line-width": 3 },
+                },
+                {
+                  id: "street-names",
+                  type: "symbol",
+                  source: "regional",
+                  "source-layer": "transportation_name",
+                  layout: {
+                    "symbol-placement": "line",
+                    "text-field": ["get", "name"],
+                    "text-font": ["Map Labels"],
+                    "text-size": 11,
+                  },
+                  paint: {
+                    "text-color": colors.label,
+                    "text-halo-color": colors.land,
+                    "text-halo-width": 1,
+                  },
+                },
+                {
+                  id: "place-names",
+                  type: "symbol",
+                  source: "regional",
+                  "source-layer": "place",
+                  layout: {
+                    "text-field": ["get", "name"],
+                    "text-font": ["Map Labels"],
+                    "text-size": 13,
+                  },
+                  paint: {
+                    "text-color": colors.label,
+                    "text-halo-color": colors.land,
+                    "text-halo-width": 1,
+                  },
+                },
+              ],
             },
-            layers: [
-              {
-                id: "land",
-                type: "background",
-                paint: { "background-color": colors.land },
-              },
-              {
-                id: "water",
-                type: "fill",
-                source: "regional",
-                "source-layer": "water",
-                paint: { "fill-color": colors.water },
-              },
-              {
-                id: "park",
-                type: "fill",
-                source: "regional",
-                "source-layer": "landcover",
-                paint: { "fill-color": colors.park, "fill-opacity": 0.6 },
-              },
-              {
-                id: "buildings",
-                type: "fill",
-                source: "regional",
-                "source-layer": "building",
-                paint: { "fill-color": colors.rwy, "fill-opacity": 0.55 },
-              },
-              {
-                id: "road-outline",
-                type: "line",
-                source: "regional",
-                "source-layer": "transportation",
-                paint: { "line-color": colors.fwyE, "line-width": 6 },
-              },
-              {
-                id: "roads",
-                type: "line",
-                source: "regional",
-                "source-layer": "transportation",
-                paint: { "line-color": colors.major, "line-width": 3 },
-              },
-              {
-                id: "street-names",
-                type: "symbol",
-                source: "regional",
-                "source-layer": "transportation_name",
-                layout: {
-                  "symbol-placement": "line",
-                  "text-field": ["get", "name"],
-                  "text-font": ["Map Labels"],
-                  "text-size": 11,
-                },
-                paint: {
-                  "text-color": colors.label,
-                  "text-halo-color": colors.land,
-                  "text-halo-width": 1,
-                },
-              },
-              {
-                id: "place-names",
-                type: "symbol",
-                source: "regional",
-                "source-layer": "place",
-                layout: {
-                  "text-field": ["get", "name"],
-                  "text-font": ["Map Labels"],
-                  "text-size": 13,
-                },
-                paint: {
-                  "text-color": colors.label,
-                  "text-halo-color": colors.land,
-                  "text-halo-width": 1,
-                },
-              },
-            ],
-          },
     };
-    if (protocol)
+    if (protocol && raster)
+      addProtocol(protocol, async (request, abort) => {
+        if (this.destroyed) throw new Error("Cloud map is disposed");
+        // Match the complete wire format; never accept another target or query.
+        const tile =
+          /^[a-z][a-z0-9+.-]*:\/\/tiles\/([0-9]{1,2})\/([0-9]{1,7})\/([0-9]{1,7})\.png$/.exec(
+            request.url,
+          );
+        if (!tile || !request.url.startsWith(`${protocol}://`))
+          throw new Error("Invalid Cloud tile");
+        const [zoom, column, row] = tile.slice(1).map(Number) as [
+          number,
+          number,
+          number,
+        ];
+        if (
+          zoom < raster.minZoom ||
+          zoom > raster.maxZoom ||
+          column >= 2 ** zoom ||
+          row >= 2 ** zoom
+        )
+          throw new Error("Invalid Cloud tile");
+        const data = await raster.tile(zoom, column, row, abort.signal);
+        if (this.destroyed) throw new Error("Cloud map is disposed");
+        return { data };
+      });
+    else if (protocol)
       addProtocol(protocol, async (request, abort) => {
         if (this.destroyed) throw new Error("Regional map is disposed");
         // WebView's custom-scheme URL parser can put the authority in pathname.
@@ -263,12 +370,23 @@ export class MapPlane {
       if (protocol) removeProtocol(protocol);
       throw error;
     }
+    this.map.on("movestart", (event) => {
+      if (event.originalEvent) options.onInteraction?.();
+    });
     this.map.on("idle", () => {
       if (this.destroyed) return;
       container.dataset.mapZoom = String(this.map.getZoom());
+      if (options.onViewport) {
+        // MapLibre keeps unwrapped longitudes while panning world copies.
+        const center = this.map.getCenter().wrap();
+        options.onViewport(
+          { latitude: center.lat, longitude: center.lng },
+          this.map.getZoom(),
+        );
+      }
       container.dataset.mapFeatureCount = String(
         this.map.queryRenderedFeatures(
-          global ? undefined : { layers: ["roads"] },
+          worldwide ? undefined : { layers: ["roads"] },
         ).length,
       );
       if (this.options.selectionPadding && this.map.isStyleLoaded())
@@ -284,11 +402,112 @@ export class MapPlane {
           : /fetch|request|tile|load/i.test(message)
             ? "resource-load"
             : "render-error";
+      delete container.dataset.mapReady;
       onError();
     });
+    if (raster?.copyright) {
+      const copyright = raster.copyright.bind(raster);
+      type Viewport = Parameters<typeof copyright>[0];
+      let pending: AbortController | undefined;
+      let attributed: { view: Viewport; text: string } | undefined;
+      const canvas = this.map.getCanvas();
+      const visibility = canvas.style.visibility;
+      const viewport = (): Viewport => {
+        const bounds = this.map.getBounds();
+        const west = bounds.getWest(),
+          east = bounds.getEast();
+        const wraps = west < -180 || east > 180 || west > east;
+        return {
+          zoom: Math.round(this.map.getZoom()),
+          north: Math.min(90, bounds.getNorth()),
+          south: Math.max(-90, bounds.getSouth()),
+          east: wraps ? 180 : east,
+          west: wraps ? -180 : west,
+        };
+      };
+      const covers = (area: Viewport | undefined, view: Viewport) =>
+        !!area &&
+        area.zoom === view.zoom &&
+        area.north >= view.north &&
+        area.south <= view.south &&
+        area.east >= view.east &&
+        area.west <= view.west;
+      const hide = () => {
+        canvas.style.visibility = "hidden";
+        delete container.dataset.mapCopyright;
+        delete container.dataset.mapReady;
+        this.options.onCopyright?.("");
+      };
+      const show = (text: string) => {
+        container.dataset.mapCopyright = text;
+        canvas.style.visibility = visibility;
+        if (container.dataset.mapError === "copyright")
+          delete container.dataset.mapError;
+        if (this.styleReady && !container.dataset.mapError)
+          container.dataset.mapReady = "true";
+        this.options.onCopyright?.(text);
+      };
+      const updateVisibility = () => {
+        if (this.destroyed) return;
+        if (attributed && covers(attributed.view, viewport()))
+          show(attributed.text);
+        else hide();
+      };
+      hide();
+      const refresh = () => {
+        if (this.destroyed) return;
+        const view = viewport();
+        if (attributed && covers(attributed.view, view)) {
+          show(attributed.text);
+          return;
+        }
+        pending?.abort();
+        hide();
+        const controller = new AbortController();
+        pending = controller;
+        // One viewport of margin keeps GPS follow animations inside already attributed imagery.
+        const latitudeMargin = view.north - view.south;
+        const longitudeMargin = view.east - view.west;
+        const requested = {
+          ...view,
+          north: Math.min(90, view.north + latitudeMargin),
+          south: Math.max(-90, view.south - latitudeMargin),
+          east: Math.min(180, view.east + longitudeMargin),
+          west: Math.max(-180, view.west - longitudeMargin),
+        };
+        copyright(requested, controller.signal).then(
+          (text) => {
+            if (this.destroyed || controller.signal.aborted) return;
+            if (!covers(requested, viewport())) {
+              refresh();
+              return;
+            }
+            attributed = { view: requested, text };
+            show(text);
+          },
+          () => {
+            if (this.destroyed || controller.signal.aborted) return;
+            if (attributed && covers(attributed.view, viewport())) {
+              show(attributed.text);
+              return;
+            }
+            if (!container.dataset.mapError)
+              container.dataset.mapError = "copyright";
+            onError();
+          },
+        );
+      };
+      this.map.on("move", updateVisibility);
+      this.map.on("moveend", refresh);
+      this.refreshCopyright = refresh;
+      this.disposeCopyright = () => pending?.abort();
+    }
     this.map.on("load", () => {
       if (this.destroyed) return;
-      container.dataset.mapReady = "true";
+      this.styleReady = true;
+      if (!this.refreshCopyright && !container.dataset.mapError)
+        container.dataset.mapReady = "true";
+      this.refreshCopyright?.();
       this.update(this.requested, this.requestedRoute, this.requestedOverlay);
     });
   }
@@ -400,6 +619,23 @@ export class MapPlane {
       duration: newSelection && this.globalBasemap ? 0 : 350,
     });
   }
+  /**
+   * Bring a new set of result pins into view on a worldwide basemap. A selected
+   * place, a route and navigation following each own the camera instead.
+   */
+  private showPins(pins: readonly MapPin[]) {
+    const padding =
+      this.options.selectionPadding?.() ?? this.options.routePadding;
+    const longitudes = pins.map((pin) => pin.coordinate.longitude),
+      latitudes = pins.map((pin) => pin.coordinate.latitude);
+    this.map.fitBounds(
+      [
+        [Math.min(...longitudes), Math.min(...latitudes)],
+        [Math.max(...longitudes), Math.max(...latitudes)],
+      ],
+      { padding, duration: 350, maxZoom: 14 },
+    );
+  }
   update(
     selected?: Coordinate,
     route?: Route | null,
@@ -409,7 +645,8 @@ export class MapPlane {
     this.requested = selected;
     this.requestedRoute = route;
     this.requestedOverlay = overlay;
-    if (!this.map.isStyleLoaded()) return;
+    // isStyleLoaded() also turns false while in-view tiles load; only wait for the first load.
+    if (!this.styleReady && !this.map.isStyleLoaded()) return;
     this.drawPins(overlay.pins || []);
     this.drawPosition(overlay.position, !!overlay.follow);
     // Leaving navigation returns the camera to a north-up overview.
@@ -429,6 +666,25 @@ export class MapPlane {
       }
     }
     this.updateSelectionCamera(selectionChanged);
+    const pins = overlay.pins || [];
+    const pinsKey = JSON.stringify(
+      pins.map((pin) => [
+        pin.id,
+        pin.coordinate.longitude,
+        pin.coordinate.latitude,
+      ]),
+    );
+    const pinsChanged = pinsKey !== this.lastPins;
+    this.lastPins = pinsKey;
+    if (
+      pinsChanged &&
+      pins.length &&
+      this.globalBasemap &&
+      !selected &&
+      !route &&
+      !overlay.follow
+    )
+      this.showPins(pins);
     const routeKey = route?.id || "";
     if (routeKey === this.lastRoute) return;
     this.lastRoute = routeKey;
@@ -472,6 +728,7 @@ export class MapPlane {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.disposeCopyright?.();
     try {
       for (const entry of this.pins.values()) entry.marker.remove();
       this.pins.clear();

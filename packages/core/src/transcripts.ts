@@ -464,6 +464,13 @@ function sharingState(
 	);
 }
 
+const SHARING_KEYS = [
+	"transcript",
+	"notes",
+	"sourceAudio",
+	"artifacts",
+] as const satisfies readonly (keyof TranscriptCaptureSharingState)[];
+
 /**
  * Normalize capture/consent/privacy/retention metadata from a transcript.
  *
@@ -515,20 +522,11 @@ export function transcriptCapturePrivacyState(
 				? "audio_retained"
 				: undefined);
 
-	const normalizedSharing: TranscriptCaptureSharingState = {
-		...(sharingState(metadata, sharing, "transcript")
-			? { transcript: sharingState(metadata, sharing, "transcript") }
-			: {}),
-		...(sharingState(metadata, sharing, "notes")
-			? { notes: sharingState(metadata, sharing, "notes") }
-			: {}),
-		...(sharingState(metadata, sharing, "sourceAudio")
-			? { sourceAudio: sharingState(metadata, sharing, "sourceAudio") }
-			: {}),
-		...(sharingState(metadata, sharing, "artifacts")
-			? { artifacts: sharingState(metadata, sharing, "artifacts") }
-			: {}),
-	};
+	const normalizedSharing: TranscriptCaptureSharingState = {};
+	for (const key of SHARING_KEYS) {
+		const state = sharingState(metadata, sharing, key);
+		if (state) normalizedSharing[key] = state;
+	}
 
 	return {
 		...(captureMode ? { captureMode } : {}),

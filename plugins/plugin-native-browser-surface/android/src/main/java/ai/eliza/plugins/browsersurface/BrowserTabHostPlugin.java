@@ -41,7 +41,7 @@ import java.util.*;
  * once no tab (for example their pop-up) still uses them, and again at the next start.
  *
  * <p>The host owns pop-ups (a tapped {@code target=_blank} or {@code window.open} becomes a tab in
- * the opener's profile), app links ({@code tel:}, {@code mailto:}, {@code intent:}, {@code market:}
+ * the opener's profile), app links ({@code tel:}, {@code mailto:}, {@code sms:}, {@code geo:}, {@code intent:}, {@code market:}
  * handed to Android once per tap), confirmed clearing of all or one site's data, find in page,
  * site permission and HTTP sign-in prompts, engine-attested login fields, downloads, fullscreen
  * video, sharing and the reviewed page excerpt read in an isolated world.
@@ -184,7 +184,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  /** Kept separate from dispatch so resolver changes cannot bypass page/owner checks. */
  private java.util.function.Function<Intent,java.util.List<android.content.pm.ResolveInfo>> externalBrowserResolver =
   intent->getContext().getPackageManager().queryIntentActivities(intent,android.content.pm.PackageManager.MATCH_DEFAULT_ONLY|android.content.pm.PackageManager.GET_RESOLVED_FILTER);
- private static class Tab { BrowserReadingWorld readingWorld; BrowserBlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; FrameLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
+ private static class Tab { BrowserReadingWorld readingWorld; BrowserBlobCapture capture; String findQuery; /** Latest main-frame request or redirect target (any thread). */ volatile String pendingMain; /** Origin of a submitted HTTP sign-in whose result is pending; Save waits for it. */ String authSaveOrigin; int authAttempts; boolean passkeys; String id, profile, opener, url = "", error = "", finishedUrl = "", lastCommittedUrl = ""; WebView web; OccludingSurfaceLayout frame; TextView message; /** Engine-attested login fields (null when the WebView cannot attest field origins). */ BrowserLoginFields fields; boolean priv, handedOff, loading, dead, committed, autofillEnabled; int httpStatus, autofillVirtualId=View.NO_ID; long navigation; Runnable timeout; }
  /** Credentials stay in the framework/provider and the remote document. No bridge API
   * reads fields or replaces Chromium's frame-specific webDomain metadata. The only addition
   * is the committed top-level origin, which the password provider requires to equal the
@@ -291,7 +291,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void clearTimeout(Tab t) { if(t.timeout!=null) navigationHandler.removeCallbacks(t.timeout); t.timeout=null; }
  private void loading(Tab t) { loading(t,false); }
  private void loading(Tab t,boolean startedCallback) {
-  if(reading!=null)reading.cancel();
+  if(reading!=null)reading.cancelFor(t.id);
   if(startedCallback&&t.autofillEnabled&&!paused&&Objects.equals(presentedId,t.id))commitAutofill(t);
   else disableAutofill(t);
   if(downloads!=null)downloads.cancelReview(t.id);
@@ -311,7 +311,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void dispose(Tab t) {
   if(t.readingWorld!=null)t.readingWorld.close();
   if(t.capture!=null)t.capture.close();
-  if(reading!=null)reading.cancel();
+  if(reading!=null)reading.cancelFor(t.id);
   disableAutofill(t);
   if(downloads!=null){downloads.cancelReview(t.id);if(t.priv)downloads.forgetPrivate(t.id);}
   if(siteDialogTab==t)dismissSiteDialogs();
@@ -319,6 +319,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(fileTab==t)cancelFile();
   clearTimeout(t);
   if(t.frame != null && t.frame.getParent() != null) ((ViewGroup)t.frame.getParent()).removeView(t.frame);
+  releaseTabInputRouter();
   // Normal tabs keep the shared persistent profile. A private profile is purged
   // only once no live tab (for example its pop-up) still uses it.
   boolean purge=t.priv&&ephemeralProfile(t.profile)&&tabs.values().stream().noneMatch(other->other!=t&&Objects.equals(other.profile,t.profile));
@@ -404,7 +405,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    t.readingWorld=new BrowserReadingWorld(t.web);
    t.capture=new BrowserBlobCapture(t.web,downloads.captureDirectory());
    t.web.setFindListener((ordinal,count,done)->findResult(t,ordinal,count,done));
-   t.frame = new FrameLayout(getActivity()); t.frame.setClipChildren(true); t.frame.setVisibility(View.GONE); t.frame.addView(t.web, new FrameLayout.LayoutParams(-1,-1));
+   t.frame = new OccludingSurfaceLayout(getActivity(),SurfaceLayer.ABOVE_HOST); t.frame.setClipChildren(true); t.frame.setVisibility(View.GONE); t.frame.addView(t.web, new FrameLayout.LayoutParams(-1,-1));
    // Before any document loads: WebView applies the listener and script only to later documents.
    t.fields=BrowserLoginFields.install(t.web,()->fieldSnapshot(t),config().autofillExtras);
    if(t.fields!=null)t.frame.addView(t.fields.anchor, new FrameLayout.LayoutParams(-1,-1));
@@ -412,9 +413,10 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    t.web.setWebViewClient(new WebViewClient() {
     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
      String target = r.getUrl().toString();
-     // mailto/tel/intent/market belong to other apps. The current page stays.
+     // mailto/tel/sms/geo/intent/market belong to other apps. The current page stays.
      if (BrowserExternalHandoff.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
-     if (!safe(target)) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; }
+     // A page that already shows keeps showing: only a tap gets a notice, a script's scheme probe stays silent.
+     if (!safe(target)) { if (r.isForMainFrame()) { if (t.committed && t.error.isEmpty()) { if (r.hasGesture()) notice(t,"This address type is not supported."); } else fail(t,"This address type is not supported."); } return true; }
      if (r.isForMainFrame()) t.pendingMain=target;
      return false;
     }
@@ -434,7 +436,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
      // retry links and traffic challenges. Transport/TLS failures remain fatal.
      if (r.isForMainFrame()) { t.httpStatus=response.getStatusCode(); emit(t); }
     }
-    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
+    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancelFor(t.id);disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); if(fullscreenTab==t)exitFullscreen(true); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
    });
    t.web.setWebChromeClient(new WebChromeClient() {
     @Override public void onProgressChanged(WebView v,int p) { if(p==100 && t.committed && t.error.isEmpty()) t.loading=false; syncAutofill(t); emit(t); }
@@ -462,7 +464,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
     }
     /** A capture-enabled image input offers the camera only after an explicit choice. */
     private void offerCamera(Tab t,FileChooserParams params) {
-     AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Add a photo?").setMessage(Uri.parse(t.url).getHost()+" asks for a photo. Take one with the camera, or choose an existing file. A camera photo is also saved to Pictures.")
+     AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Add a photo?").setMessage(Uri.parse(t.url).getHost()+" asks for a photo. Camera photos are also saved to Pictures.")
       .setPositiveButton("Use camera",(d,w)->{siteDialogCancel=null;cameraForFile(t);})
       .setNeutralButton("Choose file",(d,w)->{siteDialogCancel=null;if(fileTab==t&&t.navigation==fileNavigation)openPicker(t,params);else{pickerOutstanding=false;cancelFile();}})
       .setNegativeButton("Cancel",null).create();
@@ -488,9 +490,10 @@ public abstract class BrowserTabHostPlugin extends Plugin {
      if(t.dead||tabs.get(t.id)!=t)return null;
      try{return WebViewCompat.getProfile(t.web).getCookieManager().getCookie(url);}catch(Exception unavailable){return null;}
     },agent);
-    if(url!=null&&url.regionMatches(true,0,"blob:",0,5))t.capture.capture(url,(file,type)->{
+    // An ignored tab's blob: files are not prepared at all, so a flood writes nothing to disk.
+    if(url!=null&&url.regionMatches(true,0,"blob:",0,5)){if(!downloads.ignoring(t.id))t.capture.capture(url,(file,type)->{
      if(current.getAsBoolean())downloads.reviewCaptured(source,file,BrowserDownloads.safeName("download",disposition,BrowserDownloads.validMime(mime)?mime:type),BrowserDownloads.validMime(mime)?mime:type,current);else file.delete();
-    },reason->notice(t,reason));
+    },reason->notice(t,reason));}
     else downloads.request(source,url,disposition,mime,length,current);
     emit(t);
    });
@@ -503,20 +506,24 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void showSiteDialog(Tab t,AlertDialog dialog,Runnable cancel){
   dismissSiteDialogs();siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;siteDialogRevoke=null;
   for(Tab tab:tabs.values())disableAutofill(tab);
-  dialog.setOnDismissListener(d->{if(siteDialog!=dialog)return;revokeSiteDialogAutofill();Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();
-   // The overlay is gone: the presented tab may become fillable again.
-   Tab shown=presentedId==null?null:tabs.get(presentedId);if(shown!=null&&!shown.dead)syncAutofill(shown);});
+  dialog.setOnDismissListener(d->{
+   if(siteDialog==dialog){revokeSiteDialogAutofill();Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();}
+   // The overlay is gone (unless a newer prompt replaced it): the presented tab may become fillable again.
+   if(siteDialog!=null)return;Tab shown=presentedId==null?null:tabs.get(presentedId);if(shown!=null&&!shown.dead)syncAutofill(shown);});
   dialog.show();
  }
- /** Dismiss the open site prompt; its request is denied or cancelled exactly once. A prompt
-  * with Autofill fields ends its framework session with cancel() first, so neither the
+ /** Dismiss the open site prompt; its request is denied or cancelled exactly once, here and
+  * now, since the dismiss callback arrives later, possibly after a newer prompt took its place.
+  * A prompt with Autofill fields ends its framework session with cancel() first, so neither the
   * dismissal (a provider may save when all fields become invisible) nor a later commit can
   * offer Save for values the site never accepted. */
  private void dismissSiteDialogs(){
   AlertDialog dialog=siteDialog;if(dialog==null)return;
   revokeSiteDialogAutofill();
   if(siteDialogAutofill){siteDialogAutofill=false;AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.cancel();}
+  Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;
   dialog.dismiss();
+  if(pending!=null)pending.run();
  }
  private void revokeSiteDialogAutofill(){Runnable revoke=siteDialogRevoke;siteDialogRevoke=null;if(revoke!=null)revoke.run();}
  /** Whether the open site prompt has Autofill-bound fields (the HTTP sign-in prompt). */
@@ -782,7 +789,11 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(info.activityInfo!=null&&own.equals(info.activityInfo.packageName))return true;
   return false;
  }
- /** Hand a tapped mailto/tel/intent/market link to Android. The page stays loaded. */
+ /**
+  * Hand a tapped mailto/tel/sms/geo/intent/market link to Android. The page stays loaded. A mail,
+  * phone, text or map link goes to Android also when this host is the handler (a host that is the
+  * dialer still opens its dial pad; no call is placed). Other links never open this host.
+  */
  private void handoff(Tab t,String raw,boolean gesture) {
   if(paused||destroyed||t.dead||tabs.get(t.id)!=t)return;
   // A tapped target=_blank link to another app first opens a pop-up tab whose
@@ -797,7 +808,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(!gesture){notice(t,"Blocked a link to another app that opened without a tap.");return;}
   }
   Intent intent=BrowserExternalHandoff.intentFor(raw,getContext().getPackageName(),config().hostSchemes);
-  if(intent==null||ownsRoute(intent)){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
+  if(intent==null||(!BrowserExternalLinkPolicy.systemLink(raw)&&ownsRoute(intent))){notice(report,"This link type is not supported.");if(fresh)closePopup(t);return;}
   for(Tab tab:tabs.values())disableAutofill(tab);
   try{getActivity().startActivity(intent);if(fresh)closePopup(t);}
   catch(android.content.ActivityNotFoundException missing){
@@ -812,13 +823,79 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void closePopup(Tab t){navigationHandler.post(()->{if(tabs.get(t.id)!=t)return;tabs.remove(t.id);dispose(t);tabClosed(t.id);});}
  @PluginMethod public void navigate(PluginCall call) { String url=call.getString("url"); if (url==null || !safe(url)) { call.reject("Enter an HTTP or HTTPS address without credentials"); return; } run(call,t -> { t.url=url; loading(t); emit(t); if(t.readingWorld!=null)t.readingWorld.prepare(url); t.web.loadUrl(url); }); }
  @PluginMethod public void command(PluginCall call) { run(call,t -> { String expected=call.getString("navigation");if(expected!=null&&(paused||!getActivity().hasWindowFocus()||siteDialog!=null||!expected.equals(String.valueOf(t.navigation))))throw new IllegalStateException("Browser foreground or document changed"); String op=call.getString("command"); if ("back".equals(op)) { if(t.web.canGoBack()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(-1);t.web.goBack();} } else if ("forward".equals(op)) { if(t.web.canGoForward()){loading(t);if(t.readingWorld!=null)t.readingWorld.prepareHistory(1);t.web.goForward();} } else if ("reload".equals(op)) {loading(t);if(t.readingWorld!=null)t.readingWorld.prepare(t.web.getUrl());t.web.reload();} else if ("stop".equals(op)) { clearTimeout(t); if(!t.committed)fail(t,"Loading stopped. Reload from the menu to try again."); else {t.web.stopLoading();t.loading=false;syncAutofill(t);} } else throw new IllegalArgumentException(); emit(t); }); }
+ private BelowHostInputRouter tabInputRouter;
+ /** Below-host tabs use the same gesture router as BrowserSurfacePlugin. */
+ private BelowHostInputRouter ensureTabInputRouter() {
+  if(tabInputRouter==null)tabInputRouter=new BelowHostInputRouter(getActivity(),()->{
+   ArrayList<OccludingSurfaceLayout> shown=new ArrayList<>();
+   if(!paused&&!destroyed)for(Tab tab:tabs.values())
+    if(!tab.dead&&Objects.equals(presentedId,tab.id)&&tab.frame.getLayer()==SurfaceLayer.BELOW_HOST&&tab.frame.isShown())shown.add(tab.frame);
+   return shown;
+  });
+  return tabInputRouter;
+ }
+ private void releaseTabInputRouter() {
+  if(tabs.values().stream().anyMatch(tab->tab.frame!=null&&tab.frame.getLayer()==SurfaceLayer.BELOW_HOST))return;
+  if(tabInputRouter!=null&&tabInputRouter.getParent() instanceof ViewGroup)((ViewGroup)tabInputRouter.getParent()).removeView(tabInputRouter);
+  tabInputRouter=null;
+ }
+ /** Change only the native wrapper; the website, profile, history and form stay alive. */
+ private void presentLayer(Tab tab,SurfaceLayer layer,ViewGroup host,View branch) {
+  if(tab.frame.getLayer()!=layer){
+   OccludingSurfaceLayout before=tab.frame,next=new OccludingSurfaceLayout(getActivity(),layer);
+   next.setClipChildren(true);next.setVisibility(View.GONE);
+   while(before.getChildCount()>0){View child=before.getChildAt(0);before.removeView(child);next.addView(child);}
+   if(before.getParent() instanceof ViewGroup)((ViewGroup)before.getParent()).removeView(before);
+   tab.frame=next;
+   host.addView(next,layer==SurfaceLayer.BELOW_HOST?host.indexOfChild(branch):host.getChildCount());
+  }
+  if(layer==SurfaceLayer.BELOW_HOST){
+   getBridge().getWebView().setBackgroundColor(android.graphics.Color.TRANSPARENT);
+   BelowHostLayerKt.placeRouter(host,branch,ensureTabInputRouter());
+  }else tab.frame.bringToFront();
+  releaseTabInputRouter();
+ }
+ /** Invalid geometry withdraws the old input authority rather than routing through stale chrome. */
+ private void rejectPresentation(PluginCall call,String reason) {
+  presentedId=null;cancelFile();dismissSiteDialogs();exitFullscreen(true);if(reading!=null)reading.check();
+  for(Tab tab:tabs.values()){disableAutofill(tab);tab.frame.setHostRectsReceived(false);tab.frame.setVisibility(View.GONE);}
+  call.reject(reason);
+ }
  @PluginMethod public void present(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return;
   if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; }
   String nextId=call.getString("id");
+  Object rawLayer=call.getData().opt("layer");
+  if(rawLayer==org.json.JSONObject.NULL)rawLayer=null;
+  SurfaceLayer layer=SurfaceLayer.Companion.parse(rawLayer);
+  if(layer==null){rejectPresentation(call,"Unknown browser layer");return;}
+  Tab next=tabs.get(nextId);
+  ViewGroup host=(ViewGroup)getActivity().findViewById(android.R.id.content);
+  View branch=BelowHostLayerKt.hostBranch(host,getBridge().getWebView());
+  float x=call.getFloat("x",0f),y=call.getFloat("y",0f),width=call.getFloat("width",0f),height=call.getFloat("height",0f);
+  ArrayList<RoundedOcclusionRect> hostRects=new ArrayList<>();
+  if(next!=null&&layer==SurfaceLayer.BELOW_HOST){
+   JSArray rawRects=call.getArray("hostRects");
+   float density=getContext().getResources().getDisplayMetrics().density;
+   if(branch==null||rawRects==null||rawRects.length()>128||!(call.getData().opt("x") instanceof Number)||!(call.getData().opt("y") instanceof Number)||!(call.getData().opt("width") instanceof Number)||!(call.getData().opt("height") instanceof Number)||!Float.isFinite(x*density)||!Float.isFinite(y*density)||!Float.isFinite(width*density)||!Float.isFinite(height*density)||width<0||height<0){rejectPresentation(call,"Below-host browser requires current host geometry");return;}
+   for(int index=0;index<rawRects.length();index++){
+    org.json.JSONObject rect=rawRects.optJSONObject(index);
+    if(rect==null){rejectPresentation(call,"Invalid browser host rectangle");return;}
+    double rx=rect.optDouble("x",Double.NaN),ry=rect.optDouble("y",Double.NaN),rw=rect.optDouble("width",Double.NaN),rh=rect.optDouble("height",Double.NaN),radius=rect.optDouble("cornerRadius",0);
+    if(!Double.isFinite(rx)||!Double.isFinite(ry)||!Double.isFinite(rw)||!Double.isFinite(rh)||!Double.isFinite(radius)||rw<0||rh<0||radius<0){rejectPresentation(call,"Invalid browser host rectangle");return;}
+    float left=(float)((rx-x)*density),top=(float)((ry-y)*density),right=(float)((rx-x+rw)*density),bottom=(float)((ry-y+rh)*density),corner=(float)(radius*density);
+    if(!Float.isFinite(left)||!Float.isFinite(top)||!Float.isFinite(right)||!Float.isFinite(bottom)||!Float.isFinite(corner)){rejectPresentation(call,"Invalid browser host rectangle");return;}
+    hostRects.add(new RoundedOcclusionRect(left,top,right,bottom,corner));
+   }
+  }
   // Revoke selected-tab authority before any synchronous framework callback.
   presentedId=nextId;if(reading!=null)reading.check();
   for(Tab old:tabs.values())if(!Objects.equals(old.id,presentedId)){disableAutofill(old);clearFind(old);if(siteDialogTab==old)dismissSiteDialogs();if(fullscreenTab==old)exitFullscreen(true);old.frame.setVisibility(View.GONE);}
-  Tab t=tabs.get(call.getString("id")); if(t!=null) { float d=getContext().getResources().getDisplayMetrics().density; FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(Math.max(0,Math.round(call.getFloat("width",0f)*d)),Math.max(0,Math.round(call.getFloat("height",0f)*d))); p.leftMargin=Math.round(call.getFloat("x",0f)*d); p.topMargin=Math.round(call.getFloat("y",0f)*d); t.frame.setLayoutParams(p); t.frame.setVisibility(paused?View.GONE:View.VISIBLE); syncAutofill(t); } call.resolve();
+  Tab t=tabs.get(call.getString("id")); if(t!=null) { float d=getContext().getResources().getDisplayMetrics().density;
+   presentLayer(t,layer,host,branch);
+   FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(Math.max(0,Math.round(width*d)),Math.max(0,Math.round(height*d)));p.leftMargin=Math.round(x*d);p.topMargin=Math.round(y*d);
+   t.frame.setLayoutParams(p);t.frame.setOcclusions(hostRects);t.frame.setHostRectsReceived(layer==SurfaceLayer.BELOW_HOST&&!paused);
+   t.frame.setVisibility(paused?View.GONE:View.VISIBLE);syncAutofill(t);
+  } call.resolve();
  }); }
  private boolean bookmarkSession(PluginCall call) {
   String requested=call.getString("session");
@@ -895,7 +972,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   Tab tab=tabs.get(call.getString("id"));String owner=session,url=call.getString("url"),navigation=call.getString("navigation");
   java.util.function.BooleanSupplier current=()->!destroyed&&!paused&&Objects.equals(owner,session)&&Objects.equals(session,call.getString("session"))&&tab!=null&&tabs.get(tab.id)==tab&&!tab.dead&&Objects.equals(presentedId,tab.id)&&tab.web.isShown()&&tab.committed&&!tab.loading&&tab.error.isEmpty()&&Objects.equals(url,tab.url)&&Objects.equals(url,tab.web.getUrl())&&Objects.equals(navigation,String.valueOf(tab.navigation))&&url!=null&&url.startsWith("https://");
   if(!current.getAsBoolean()){call.reject("Load a visible HTTPS page before reading");return;}
-  if(question)reading.reviewQuestion(call,tab.web,tab.readingWorld,current);else reading.review(call,tab.web,tab.readingWorld,current);
+  if(question)reading.reviewQuestion(call,tab.id,tab.web,tab.readingWorld,current);else reading.review(call,tab.id,tab.web,tab.readingWorld,current);
  }); }
  @PluginMethod public void cancelReading(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;if(Objects.equals(session,call.getString("session")))reading.cancel();call.resolve();}); }
  /** Releases the approved excerpt once to the host's bound speech request. */
@@ -936,7 +1013,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  /** Whether website password fill can work in this browser (no secrets, no tab state). */
  @PluginMethod public void loginFillStatus(PluginCall call) { JSObject result=new JSObject(); boolean available=BrowserLoginFields.supported(); result.put("available",available); if(!available)result.put("reason",BrowserFieldOrigin.UNSUPPORTED); call.resolve(result); }
  @PluginMethod public void close(PluginCall call) { getActivity().runOnUiThread(() -> {if(closed(call))return; if (!Objects.equals(session,call.getString("session"))) { call.reject("Expired browser session"); return; } Tab t=tabs.remove(call.getString("id")); if(t!=null) dispose(t); call.resolve(); }); }
- @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies();exitFullscreen(true); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
+ @Override protected void handleOnPause() { paused=true;if(reading!=null)reading.cancel();flushCookies();exitFullscreen(true); for(Tab t:tabs.values()) { syncAutofill(t); t.frame.setHostRectsReceived(false);t.frame.setVisibility(View.GONE); if(!t.dead)t.web.onPause(); } }
  /** Persist normal-tab sign-in cookies promptly; the process may be killed in background. */
  private void flushCookies() {
   try{if(WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)){androidx.webkit.Profile profile=ProfileStore.getInstance().getProfile(config().persistentProfile);if(profile!=null)profile.getCookieManager().flush();}}catch(Exception unavailable){/* Chromium also flushes periodically. */}

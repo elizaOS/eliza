@@ -48,6 +48,11 @@ on:
         options:
           - staging
           - production
+      provision_speech_secrets:
+        description: Provision missing staging speech secrets only; do not deploy or change routing
+        required: false
+        default: false
+        type: boolean
       force:
         # Bypass the deploy freshness guard (#14083). The guard SKIPS a deploy
         # when this run's SHA is an ancestor of the currently-served build (a
@@ -113,7 +118,57 @@ permissions:
   actions: read
 
 jobs:
+  provision-staging-speech-secrets:
+    name: Provision existing staging speech secrets
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.provision_speech_secrets == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
+      - name: Copy only missing speech host bindings
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT || secrets.CARTESIA_STT_USD_PER_CREDIT }}
+        run: |
+          node --input-type=module <<'NODE'
+          if (process.env.SOURCE_REF !== 'refs/heads/staging' || process.env.TARGET_ENVIRONMENT !== 'staging') {
+            throw new Error('Secret provisioning is restricted to the staging branch and environment');
+          }
+          const names = ['CARTESIA_API_KEY', 'DATABASE_URL', 'CARTESIA_STT_USD_PER_CREDIT'];
+          const missing = ['CLOUDFLARE_API_TOKEN', ...names].filter(name => !process.env[name]?.trim());
+          if (missing.length) throw new Error(`Protected staging configuration is missing: ${missing.join(', ')}`);
+          const endpoint = 'https://api.cloudflare.com/client/v4/accounts/23cf6feaeaa541f6a0675053c33da768/workers/scripts/eliza-cloud-speech-staging';
+          const headers = { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' };
+          async function call(path, options = {}) {
+            const response = await fetch(endpoint + path, { ...options, headers, redirect: 'error' });
+            const body = await response.json();
+            if (!response.ok || body.success !== true) throw new Error(`Speech configuration request failed (${response.status})`);
+            return body.result;
+          }
+          const before = await call('/secrets');
+          const existing = new Set(before.map(row => row.name));
+          for (const required of ['KV_REST_API_URL', 'KV_REST_API_TOKEN']) {
+            if (!existing.has(required)) throw new Error(`Configure the tested staging Redis binding first: ${required}`);
+          }
+          for (const name of names) {
+            if (!existing.has(name)) await call('/secrets', { method: 'PUT', body: JSON.stringify({ name, text: process.env[name], type: 'secret_text' }) });
+          }
+          const after = new Set((await call('/secrets')).map(row => row.name));
+          for (const name of names) if (!after.has(name)) throw new Error(`Missing secret readback: ${name}`);
+          console.log(`Verified staging speech secret names: ${names.join(', ')}. No deployment or routing change.`);
+          NODE
+
   bind-telegram-release-attempt:
+    if: ${{ inputs.provision_speech_secrets != true }}
     name: Bind Telegram release attempt
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -135,7 +190,7 @@ jobs:
   resolve-telegram-environment-authority:
     name: Resolve protected Telegram configuration authority
     needs: [bind-telegram-release-attempt, validate-deploy-source]
-    if: ${{ always() && needs.bind-telegram-release-attempt.result == 'success' && needs.validate-deploy-source.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && needs.bind-telegram-release-attempt.result == 'success' && needs.validate-deploy-source.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.environment == 'staging') }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     # Keep Environment-only receipt authority and staging binding verification
@@ -260,7 +315,7 @@ jobs:
     name: Validate Canonical Deploy Source
     # A manual dispatch can select an invalid ref, so reject it before any
     # protected admission or release work begins.
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ inputs.provision_speech_secrets != true && (github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -361,7 +416,7 @@ jobs:
   admit-staging:
     name: Authorize and admit staging release
     needs: validate-deploy-source
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -419,7 +474,7 @@ jobs:
   validate-staging-certification:
     name: Validate staging certification for production tree
     needs: validate-deploy-source
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -766,7 +821,7 @@ jobs:
   authorize-production:
     name: Authorize production environment
     needs: [validate-deploy-source, validate-staging-certification]
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Approval only. This job must not share a mutation concurrency group, or
@@ -1021,7 +1076,7 @@ jobs:
   release:
     name: Mutate and verify Cloud CF release
     needs: [bind-telegram-release-attempt, resolve-telegram-environment-authority, validate-deploy-source, admit-staging, validate-staging-certification, authorize-production]
-    if: ${{ always() && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'skipped' && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'success' && needs.admit-staging.outputs.should_deploy == 'true') }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && github.event_name != 'pull_request' && inputs.telegram_authority_canary != true && needs.bind-telegram-release-attempt.result == 'success' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'skipped' && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.resolve-telegram-environment-authority.result == 'success' && needs.admit-staging.outputs.should_deploy == 'true')) }}
     # One critical section for migrate + API + Pages + routing proof.
     # `queue: max` is GitHub's production-deploy contract: up to 100 approved
     # releases wait instead of the default one-pending eviction. FIFO is by
@@ -1129,7 +1184,7 @@ jobs:
     # A freshness-guard skip also ends green without deploying, so only a run
     # that released BOTH the Worker and Pages (and therefore ran their exact
     # commit verification) may certify its tree (#27229/#28746).
-    if: ${{ always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' && needs.release.outputs.api_deployed == 'true' && needs.release.outputs.pages_deployed == 'true' }}
+    if: ${{ inputs.provision_speech_secrets != true && (always() && inputs.telegram_authority_canary != true && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/staging' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' && needs.release.outputs.api_deployed == 'true' && needs.release.outputs.pages_deployed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

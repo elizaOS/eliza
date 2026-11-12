@@ -88,6 +88,8 @@ export const JOB_TYPES = {
    * `pg`/SSH off the workerd request path.
    */
   APP_DEPLOY: "app_deploy",
+  /** Retains the irreversible original app-deletion operation and its recovery. */
+  APP_DELETE: "app_delete",
   /**
    * Tear down an app's ISOLATED per-tenant DB (Apps / Product 2): DROP DATABASE
    * + DROP ROLE and release the cluster slot. The Worker delete path enqueues
@@ -289,6 +291,7 @@ export const APPS_JOB_TYPES = [
   JOB_TYPES.CONTAINER_UPGRADE,
   JOB_TYPES.CONTAINER_LOGS,
   JOB_TYPES.APP_DEPLOY,
+  JOB_TYPES.APP_DELETE,
   JOB_TYPES.APP_DB_DEPROVISION,
   JOB_TYPES.APP_CACHE_INVALIDATE,
 ] as const satisfies readonly ProvisioningJobType[];

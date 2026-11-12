@@ -115,4 +115,20 @@ describe("mobile device bridge registry model resolution (#11669)", () => {
     );
     expect(mobileDeviceBridge.status().modelPath).toBeNull();
   });
+
+  it("never resolves the pinned BGE encoder as the chat model", async () => {
+    const stateDir = useTempStateDir();
+    const models = path.join(stateDir, "local-inference", "models");
+    mkdirSync(models, { recursive: true });
+    writeFileSync(path.join(models, "bge-small-en-v1.5-f16.gguf"), "bge");
+
+    const { mobileDeviceBridge } = await import(
+      "./mobile-device-bridge-bootstrap"
+    );
+    expect(mobileDeviceBridge.status().modelPath).toBeNull();
+
+    const chat = path.join(models, "eliza-1-2b-128k.gguf");
+    writeFileSync(chat, "chat");
+    expect(mobileDeviceBridge.status().modelPath).toBe(chat);
+  });
 });

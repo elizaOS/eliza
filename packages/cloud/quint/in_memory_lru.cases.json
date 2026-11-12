@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.ts",
+    "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.test.ts",
+    "packages/cloud/shared/src/lib/services/shared-runtime/resolve-shared-agent.ts",
+    "packages/cloud/shared/src/lib/services/entity-settings/cache.ts",
+    "packages/cloud/quint/check-in-memory-lru.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Five keys and capacity four. Inserting a new key at capacity evicts the oldest key to the existing 75 percent target before insertion.",
+      "Entries do not expire during this trace. Reads and replacements promote recency; replacement preserves all other keys.",
+      "TTL expiry, wall-clock changes, payload aliasing, prefix matching and caller authorization are outside this finite model.",
+      "Real implementation regressions also exercise replacement at the shared-agent resolver production capacity of 1,000 entries and its 15,000 ms TTL, without claiming full-route latency or authorization proof."
+    ],
+    "progress": "Safety only; no scheduler or provider liveness claim."
+  },
+  "limitations": [
+    "Five keys and capacity four. Inserting a new key at capacity evicts the oldest key to the existing 75 percent target before insertion.",
+    "Entries do not expire during this trace. Reads and replacements promote recency; replacement preserves all other keys.",
+    "TTL expiry, wall-clock changes, payload aliasing, prefix matching and caller authorization are outside this finite model.",
+    "Real implementation regressions also exercise replacement at the shared-agent resolver production capacity of 1,000 entries and its 15,000 ms TTL, without claiming full-route latency or authorization proof.",
+    "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "in-memory-lru",
+      "main": "in_memory_lru",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/cloud/quint/check-in-memory-lru.ts"
+}

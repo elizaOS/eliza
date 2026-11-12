@@ -17,10 +17,20 @@ import {
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
 import {
+  isPhotosViewOperation,
+  type PhotosViewOperation,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
+import {
   isSmsSend,
   smsBindingText,
   validateSmsResult,
 } from "./sms-contract.ts";
+import {
+  isTelephonyAction,
+  telephonyActionReceiptOutcome,
+  validateTelephonyActionResult,
+} from "./telephony-actions-contract.ts";
 
 /** Only call after authenticated proposal lookup and operation-result validation.
  * Proof refers to persisted queue/native operation identities, never payload text. */
@@ -117,6 +127,37 @@ export function deviceActionEffectReceipts(
         }),
       ];
     }
+    if (isPhotosViewOperation(operation)) {
+      // Filter and open change only what Photos shows. An album or share result proves only
+      // that the owner review opened in Photos; neither is proof of a created album or a share.
+      validatePhotosViewResult(operation, provider.result);
+      return [
+        normalizeEffectReceipt({
+          ...base,
+          receiptId: execution.attemptId,
+          operation: "device." + operation.type,
+          resource: { kind: "device.operation", id: provider.operationId },
+          idempotency: {
+            key: execution.providerIdempotencyKey,
+            replayed: false,
+          },
+          outcome: "noop",
+          reason: photosViewReceiptReason(operation),
+        }),
+      ];
+    }
+    // A stored telephony result that names no observed effect or returned item
+    // never becomes an applied receipt, whatever outcome the stored receipt
+    // carries. A call receipt proves a started call, never a connected one.
+    if (
+      isTelephonyAction(operation) &&
+      telephonyActionReceiptOutcome(
+        validateTelephonyActionResult(operation, provider.result),
+      ) !== "applied"
+    )
+      throw new Error(
+        "Telephony receipt outcome conflicts with native evidence",
+      );
     const read = deviceOperationIsRead(operation);
     const noMatch =
       isNamedTargetOperation(operation) &&
@@ -220,6 +261,18 @@ export function deviceApprovalPersistenceReceipt(
   });
 }
 
+function photosViewReceiptReason(operation: PhotosViewOperation): string {
+  switch (operation.type) {
+    case "photos_filter":
+    case "photos_open":
+      return "Changed only what Photos shows; no media was changed or shared.";
+    case "photos_album_create":
+      return "Opened the album review in Photos; no album exists until the owner confirms it there.";
+    case "photos_share":
+      return "Opened the share review in Photos; nothing leaves the phone until the owner confirms there and picks a target in Android's share sheet.";
+  }
+}
+
 /** Exhaustive closed operation union: new operations require explicit classification. */
 function deviceOperationIsRead(operation: DeviceOperation): boolean {
   switch (operation.type) {
@@ -234,9 +287,25 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "read_selected_notes":
     case "read_calendar_range":
     case "read_selected_reminders":
+    case "messages_read_selected":
+    case "voicemail_read_selected":
       return true;
     case "calendar_named":
       return operation.action === "read";
+    // View state only: no data change (receipts are built by photosViewReceiptReason).
+    case "photos_filter":
+    case "photos_open":
+    case "files_filter":
+    case "files_open":
+      return true;
+    // A data change and an outward share, each opened as an owner review.
+    case "photos_album_create":
+    case "photos_share":
+    case "files_share":
+    case "files_move":
+    case "files_trash":
+    case "files_folder_create":
+      return false;
     case "notes_named":
     case "reminder_named":
     case "notes_update":
@@ -251,6 +320,13 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "calendar_delete":
     case "sms_send":
     case "phone_dial":
+    case "phone_call":
+    case "contact_create":
+    case "contact_update":
+    case "contact_delete":
+    case "sms_compose":
+    case "sms_reply_selected":
+    case "voicemail_delete_selected":
     case "clock_handoff":
     case "clock_alarm":
     case "camera_capture_photo":
@@ -259,6 +335,12 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "reminder_create":
     case "open_view":
     case "browser_navigate":
+    case "notes_filter":
+    case "notes_list_filter":
+    case "notes_move":
+    case "notes_folder_create":
+    case "notes_restore":
+    case "notes_record":
     case "post_notification":
     case "speak_text":
       return false;

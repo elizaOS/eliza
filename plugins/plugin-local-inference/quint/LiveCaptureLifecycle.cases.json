@@ -1,0 +1,53 @@
+{
+	"sources": [
+		"plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/LiveCaptureController.java",
+		"packages/app/scripts/paradee-voice/speech-pipeline/LiveCaptureControllerTest.java",
+		"packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs",
+		"packages/app/scripts/paradee-voice/speech-compile-dependencies.json",
+		"plugins/plugin-local-inference/native/android/consumer.gradle",
+		"packages/scripts/lib/test-output.ts"
+	],
+	"bounds": {
+		"domain": "One capture, one original host epoch, one native start, one interruption and one terminal delivery. Startup protection may toggle; retirement of the original host is permanent.",
+		"assumptions": "The existing admission owner serializes capture state and consumes a terminal callback once. Host.open is the current original-epoch delivery check; Host.canStart may be stricter. JVM conformance runs the production admission and capture classes with a controlled microphone source.",
+		"limitations": "Does not model PCM, transport queues, permission dialogs, multiple overlapping captures, device audio focus implementation, arbitrary thread interleavings or actual callback scheduling. Conditional model progress does not prove real Java executor fairness, callback transport success, a time bound or device acceptance.",
+		"progress": "Under weak fairness of deliverEnd, a pending interruption reaches its original host or that host retires. No fairness is assumed for the negative temporal check."
+	},
+	"conformance": "plugins/plugin-local-inference/quint/check-live-capture-lifecycle.mjs",
+	"cases": [
+		{
+			"name": "original-host-delivery",
+			"main": "LiveCaptureLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TerminalDelivered",
+				"NoUnreportedEnd",
+				"RefusedStartDiscarded"
+			],
+			"temporal": [
+				"TerminalDeliverySettles",
+				"TerminalDeliverySettlesWithoutFairness"
+			],
+			"maxSteps": 24,
+			"samples": 1000,
+			"temporalChecks": [
+				{
+					"property": "TerminalDeliverySettles",
+					"expect": "holds",
+					"assumptions": [
+						"Weak fairness of deliverEnd while the phase remains pending-end. No fairness is assumed for startup, protection, interruption or host retirement.",
+						"An original host can retire permanently and startup protection can toggle. Delivery is one atomic successful callback in this model; real executor and transport progress remain outside this proof."
+					]
+				},
+				{
+					"property": "TerminalDeliverySettlesWithoutFairness",
+					"expect": "counterexample",
+					"assumptions": [
+						"No fairness. After an admitted interruption, the terminal callback can wait forever while the original host remains open."
+					]
+				}
+			]
+		}
+	]
+}

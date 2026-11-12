@@ -1,0 +1,64 @@
+{
+  "sources": [
+    "packages/ui/src/android-cloud/native-cloud-sign-in-controller.ts",
+    "packages/ui/src/android-cloud/__e2e__/native-cloud-sign-in-resend.test.ts",
+    "packages/auth/src/auth/native-cloud-sign-in.ts",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+  ],
+  "bounds": {
+    "domain": "One displayed code and one replacement dispatch in a single controller. Two owned request IDs, one foreign request, one native attempt slot. The original code is already admitted. Native code values and attempt IDs are represented by their owning request; verification captures the displayed identity.",
+    "assumptions": "The ordered case assumes a scoped acknowledgement cannot overtake a previously queued start of the same ID. Capacitor Android 8.5.1 posts plugin calls onto one handler, and the source plugin decides start admission and cancel scope under one lock before async provider work. Dropped starts never reach that handler. The model checks both possible native owners after a lost reply.",
+    "limitations": "No Android device execution or transport restart proof. The reordered case documents the limit of renderer-only retirement without ordered delivery. Credential installation, async MFA resumption, more than two uncertain dispatch IDs and arbitrary cross-owner transitions are outside this finite case. Conformance runs the real controller with controlled native admission and receipt ports."
+  },
+  "conformance": "packages/ui/quint/check-native-sign-in-controller.mjs",
+  "cases": [
+    {
+      "name": "ordered-admission-and-retirement",
+      "main": "NativeSignInResend",
+      "init": "initOrdered",
+      "step": "step",
+      "invariants": [
+        "RetirementRequiresReceipts",
+        "ScopedReceiptPreservesOtherAttempt",
+        "VerificationUsesDisplayedOwner",
+        "RetiredOwnsNoNativeAttempt",
+        "NoLateAdmission"
+      ],
+      "temporal": ["UnderFairReplies"],
+      "temporalChecks": [
+        {
+          "property": "UnderFairReplies",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each pending scoped reply, including rejection. Rejection can keep the retirement fence indefinitely until an explicit retry succeeds. Successful acknowledgements follow the native start-admission decision for their own request."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    },
+    {
+      "name": "reordered-delivery-limit",
+      "main": "NativeSignInResend",
+      "init": "initReordered",
+      "step": "step",
+      "invariants": [
+        "RetirementRequiresReceipts",
+        "ScopedReceiptPreservesOtherAttempt",
+        "VerificationUsesDisplayedOwner"
+      ],
+      "temporal": ["NoLateAdmissionEventually"],
+      "temporalChecks": [
+        {
+          "property": "NoLateAdmissionEventually",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The transport can acknowledge cancellation for an absent request before its older start is delivered. A later native admission then leaves a live request after the renderer retired. The witness stays set and the counterexample loops."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

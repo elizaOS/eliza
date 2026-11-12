@@ -5,10 +5,21 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.app.ForegroundServiceStartNotAllowedException;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.content.Context;
 import android.os.Build;
+import android.os.SystemClock;
+import android.service.notification.StatusBarNotification;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+
+import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -57,26 +68,28 @@ public class ElizaAgentWatchdogPolicyInstrumentedTest {
             ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                 ElizaAgentWatchdogPolicy.ProbeResult.BUSY,
                 2,
+                0,
                 3
             );
 
         assertEquals(2, decision.unhealthyTicks);
+        assertEquals(1, decision.busyTicks);
         assertFalse(decision.restartRequired);
-        assertFalse(decision.resetRestartAttempts);
     }
 
     @Test
-    public void okProbeClearsStrikesAndResetsBackoff() {
+    public void okProbeClearsStrikesAndBusyTicks() {
         ElizaAgentWatchdogPolicy.HealthDecision decision =
             ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                 ElizaAgentWatchdogPolicy.ProbeResult.OK,
+                2,
                 2,
                 3
             );
 
         assertEquals(0, decision.unhealthyTicks);
+        assertEquals(0, decision.busyTicks);
         assertFalse(decision.restartRequired);
-        assertTrue(decision.resetRestartAttempts);
     }
 
     @Test
@@ -85,18 +98,21 @@ public class ElizaAgentWatchdogPolicyInstrumentedTest {
             ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                 ElizaAgentWatchdogPolicy.ProbeResult.DEAD,
                 0,
+                0,
                 3
             );
         ElizaAgentWatchdogPolicy.HealthDecision second =
             ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                 ElizaAgentWatchdogPolicy.ProbeResult.DEAD,
                 first.unhealthyTicks,
+                0,
                 3
             );
         ElizaAgentWatchdogPolicy.HealthDecision third =
             ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                 ElizaAgentWatchdogPolicy.ProbeResult.DEAD,
                 second.unhealthyTicks,
+                0,
                 3
             );
 
@@ -150,5 +166,71 @@ public class ElizaAgentWatchdogPolicyInstrumentedTest {
             new RuntimeException("unrelated")
         ));
         assertFalse(ElizaAgentWatchdogPolicy.isForegroundStartDenial(null));
+    }
+
+    /** PID of this app's bun agent (its argv names the bundle), or -1. */
+    private static int residentAgentPid() {
+        File[] entries = new File("/proc").listFiles();
+        if (entries == null) return -1;
+        for (File entry : entries) {
+            int pid;
+            try {
+                pid = Integer.parseInt(entry.getName());
+            } catch (NumberFormatException notAProcess) {
+                continue;
+            }
+            try {
+                String cmdline = new String(Files.readAllBytes(new File(entry, "cmdline").toPath()),
+                    StandardCharsets.UTF_8).replace('\0', ' ');
+                if (cmdline.contains("agent-bundle.js") && !cmdline.contains("launch")) return pid;
+            } catch (Exception unreadable) {
+                // Another user's process or one that just exited.
+            }
+        }
+        return -1;
+    }
+
+    private static String agentNotificationText(Context context) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        for (StatusBarNotification posted : manager.getActiveNotifications()) {
+            if (posted.getId() == 2) {
+                CharSequence text = posted.getNotification().extras.getCharSequence(Notification.EXTRA_TEXT);
+                return text == null ? "" : text.toString();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Device acceptance for the detached-absence check: SIGKILL the running bun
+     * child only, then expect a new child within 75 s and a notification that
+     * stops claiming the agent is ready. Needs a running resident and an
+     * explicit opt-in, since it kills the device's real agent.
+     */
+    @Test
+    public void killedResidentChildIsReplacedAndNotReportedRunning() {
+        Assume.assumeTrue("Explicit resident kill fixture required", "1".equals(
+            InstrumentationRegistry.getArguments().getString("residentKillFixture")));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        int victim = residentAgentPid();
+        Assume.assumeTrue("A running resident agent is required", victim > 0);
+        assertEquals("On-device agent ready", agentNotificationText(context));
+
+        android.os.Process.sendSignal(victim, android.os.Process.SIGNAL_KILL);
+        long deadline = SystemClock.elapsedRealtime() + 75_000L;
+        boolean leftRunning = false;
+        int replacement = -1;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            String text = agentNotificationText(context);
+            if (text != null && !"On-device agent ready".equals(text)) leftRunning = true;
+            int current = residentAgentPid();
+            if (current > 0 && current != victim) {
+                replacement = current;
+                if (leftRunning) break;
+            }
+            SystemClock.sleep(500L);
+        }
+        assertTrue("no replacement agent within 75 s", replacement > 0);
+        assertTrue("the notification kept saying running after the agent died", leftRunning);
     }
 }

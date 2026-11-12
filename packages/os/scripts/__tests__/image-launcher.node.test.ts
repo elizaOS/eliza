@@ -295,6 +295,14 @@ test("staging fails closed before writing an output", (t) => {
       },
       /no companions/,
     ],
+    [
+      {
+        privilegedPermissions: [
+          "android.permission.READ_PRIVILEGED_PHONE_STATE",
+        ],
+      },
+      /no privileged permissions/,
+    ],
   ] as const)
     assert.throws(
       () => reviewDescriptor(policy, brand, { ...reviewed, ...change }),
@@ -360,6 +368,74 @@ test("verification refuses tampered or reprivileged staging", (t) => {
   assert.throws(
     () => verifyStagedLauncher(output, brandFor("eliza_cf_riscv64_phone")),
     /does not belong/,
+  );
+});
+
+test("a brand without the assistant role stages and verifies no assistant default", (t) => {
+  const brand = { ...brandFor("eliza_cf_arm64_phone"), assistantRole: false };
+  const w = workspace(t);
+  assert.throws(
+    () =>
+      stageImageLauncher({
+        brand,
+        apk: w.apk,
+        development: true,
+        output: path.join(w.root, "out"),
+        aapt: w.aapt,
+        apksigner: w.apksigner,
+      }),
+    /enabled ACTION_ASSIST/,
+  );
+  const { output } = stage(t, "eliza_cf_arm64_phone");
+  assert.throws(
+    () => verifyStagedLauncher(output, brand),
+    /must assign only Autofill/,
+  );
+
+  const data = path.join(w.root, "tools", "tool-data.json");
+  const tools = JSON.parse(fs.readFileSync(data, "utf8"));
+  tools.manifestTree = tools.manifestTree.replace(
+    /(E: activity \(line=1\)\n\s+A: android:name\S+ElizaAssistActivity[^\n]*\n)\s+A: android:exported\S+/,
+    "$1        A: android:exported(0x01010010)=(type 0x12)0x0\n        A: android:enabled(0x0101000e)=(type 0x12)0x0",
+  );
+  fs.writeFileSync(data, JSON.stringify(tools));
+  const roleless = path.join(w.root, "roleless");
+  const evidence = stageImageLauncher({
+    brand,
+    apk: w.apk,
+    development: true,
+    output: roleless,
+    aapt: w.aapt,
+    apksigner: w.apksigner,
+  });
+  assert.equal(evidence.provisioning.assistant, null);
+  assert.doesNotMatch(
+    fs.readFileSync(
+      path.join(
+        roleless,
+        "provisioning/overlay/frameworks/base/core/res/res/values/config.xml",
+      ),
+      "utf8",
+    ),
+    /config_defaultAssistant/,
+  );
+  assert.deepEqual(verifyStagedLauncher(roleless, brand), evidence);
+  const config = path.join(
+    roleless,
+    "provisioning/overlay/frameworks/base/core/res/res/values/config.xml",
+  );
+  fs.writeFileSync(
+    config,
+    fs
+      .readFileSync(config, "utf8")
+      .replace(
+        "<resources>",
+        '<resources>\n    <string name="config_defaultAssistant" translatable="false">com.example.other</string>',
+      ),
+  );
+  assert.throws(
+    () => verifyStagedLauncher(roleless, brand),
+    /must assign only Autofill/,
   );
 });
 

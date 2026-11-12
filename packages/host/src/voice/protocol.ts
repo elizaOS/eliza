@@ -32,6 +32,7 @@ export type VoiceDownlinkCodec = "pcm16" | "opus";
 // --- client -> server control frames -------------------------------------
 
 export interface ClientHelloFrame {
+  turnTerminal?: true;
   t: "hello";
   token: string;
   protocol: number;
@@ -68,6 +69,12 @@ export interface ClientBargeInFrame {
 
 export interface ClientByeFrame {
   t: "bye";
+  intent?: {
+    version: 1;
+    kind: "user_stop" | "budget_rotation";
+    generation: string;
+    successorSessionId?: string;
+  };
 }
 
 /**
@@ -102,13 +109,21 @@ export type ServerControlFrame =
       traceId: string;
       uiContext?: boolean;
       playbackCompletion?: boolean;
+      turnTerminal?: true;
     }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
   | { t: "reply_complete"; traceId: string; userMessageId?: string }
+  | {
+      t: "turn_terminal";
+      traceId: string;
+      outcome: "failed" | "ignored";
+      code?: string;
+    }
   | { t: "progress"; text: string; traceId: string }
+  | { t: "activity"; label: string; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
   | { t: "assistant_playing"; active: boolean; traceId: string }
@@ -226,8 +241,45 @@ export function parseClientControlFrame(
         : fail("playback_complete_invalid", "invalid playback trace");
     case "barge_in":
       return { ok: true, value: { t: "barge_in" } };
-    case "bye":
-      return { ok: true, value: { t: "bye" } };
+    case "bye": {
+      if (parsed.intent === undefined) return { ok: true, value: { t: "bye" } };
+      const intent = parsed.intent;
+      if (
+        !intent ||
+        typeof intent !== "object" ||
+        Array.isArray(intent) ||
+        Object.keys(parsed).some((key) => key !== "t" && key !== "intent")
+      )
+        return fail("bye_intent_invalid", "Invalid stop intent");
+      const value = intent as Record<string, unknown>;
+      if (
+        value.version !== 1 ||
+        !["user_stop", "budget_rotation"].includes(String(value.kind)) ||
+        typeof value.kind !== "string" ||
+        typeof value.generation !== "string" ||
+        !value.generation ||
+        value.generation.length > 256 ||
+        Object.keys(value).some(
+          (key) =>
+            !["version", "kind", "generation", "successorSessionId"].includes(
+              key,
+            ),
+        ) ||
+        (value.successorSessionId !== undefined &&
+          (value.kind !== "budget_rotation" ||
+            typeof value.successorSessionId !== "string" ||
+            !value.successorSessionId ||
+            value.successorSessionId.length > 256))
+      )
+        return fail("bye_intent_invalid", "Invalid stop intent");
+      return {
+        ok: true,
+        value: {
+          t: "bye",
+          intent: value as NonNullable<ClientByeFrame["intent"]>,
+        },
+      };
+    }
     case "end_audio":
       return { ok: true, value: { t: "end_audio" } };
     default:
@@ -280,6 +332,9 @@ function parseHello(
   if (v.protocol !== VOICE_SESSION_PROTOCOL_VERSION) {
     return fail("hello_bad_protocol", "unsupported protocol version");
   }
+  if (v.turnTerminal !== undefined && v.turnTerminal !== true) {
+    return fail("hello_bad_capability", "invalid turn-terminal capability");
+  }
   const uplinkCodec = v.uplinkCodec;
   if (
     typeof uplinkCodec !== "string" ||
@@ -303,6 +358,7 @@ function parseHello(
     value: {
       t: "hello",
       token: v.token,
+      ...(v.turnTerminal === true ? { turnTerminal: true as const } : {}),
       protocol: VOICE_SESSION_PROTOCOL_VERSION,
       uplinkCodec: uplinkCodec as VoiceUplinkCodec,
       downlinkCodec: downlinkCodec as VoiceDownlinkCodec,

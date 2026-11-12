@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -49,7 +50,12 @@ const RESERVED_OUTPUT_NAMES = [
  * is in place and before verification, so it always describes the artifacts beside it;
  * a failed Gradle build leaves the previous record with the previous artifacts, and a
  * copy interrupted after Gradle leaves no record. An archive
- * keeps a copy. `archive` is optional. */
+ * keeps a copy. `archive` is optional. `archive.files` is an optional synchronous function,
+ * called after verification with `{ manifest }` (the parsed apk-manifest.json). It returns
+ * other verified files for the archive, as `{ source, name, sha256 }`: `name` is a relative
+ * path inside the archive and `sha256` the hash the verifier recorded. Each file is checked
+ * against its hash and staged with the APKs, so the archive appears with all of them or not
+ * at all. */
 export function buildAndroidConsumer({
   root = process.cwd(),
   environment = process.env,
@@ -142,6 +148,8 @@ export function buildAndroidConsumer({
     metadata = JSON.stringify(archive.metadata, null, 2);
     if (metadata === undefined)
       throw new Error("Android archive metadata is required");
+    if (archive.files !== undefined && typeof archive.files !== "function")
+      throw new Error("Android archive files must be a function");
   }
   let recordText = null;
   if (record !== null) {
@@ -367,6 +375,32 @@ export function buildAndroidConsumer({
     throw new Error("Android verification manifest is missing");
   const files = artifacts.map(({ name }) => path.join(outputDirectory, name));
   if (metadata === null) return { files, archive: null };
+  // Extra files are read and hash-checked before the archive is touched.
+  const reserved = new Set([
+    ...artifacts.map(({ name }) => name),
+    ...RESERVED_OUTPUT_NAMES,
+    ...(recordText === null ? [] : [record.name]),
+  ]);
+  const extras =
+    archive.files?.({ manifest: JSON.parse(fs.readFileSync(manifest)) }) ?? [];
+  if (!Array.isArray(extras))
+    throw new Error("Android archive files must be a list");
+  const extraFiles = extras.map(({ source, name, sha256 }) => {
+    if (
+      typeof source !== "string" ||
+      !safeRelative(name) ||
+      reserved.has(name) ||
+      !/^[a-f0-9]{64}$/.test(sha256 ?? "")
+    )
+      throw new Error("Invalid Android archive file");
+    reserved.add(name);
+    const bytes = fs.readFileSync(path.resolve(root, source));
+    if (createHash("sha256").update(bytes).digest("hex") !== sha256)
+      throw new Error(
+        `Android archive file changed after verification: ${name}`,
+      );
+    return { name, bytes };
+  });
   const destination = path.join(outputDirectory, archive.name);
   const staging = fs.mkdtempSync(
     path.join(outputDirectory, ".android-archive-"),
@@ -389,6 +423,12 @@ export function buildAndroidConsumer({
       path.join(replacement, "build-checks.json"),
       JSON.stringify({ lint, androidTest }, null, 2),
     );
+    for (const { name, bytes } of extraFiles) {
+      fs.mkdirSync(path.dirname(path.join(replacement, name)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(replacement, name), bytes);
+    }
     let moved = false;
     try {
       fs.renameSync(destination, previous);

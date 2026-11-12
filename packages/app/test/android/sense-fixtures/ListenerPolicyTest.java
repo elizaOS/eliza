@@ -98,10 +98,16 @@ public final class ListenerPolicyTest {
    check(ListenerPolicy.processesAudio(state)==(state==State.LISTENING),"only LISTENING processes audio: "+state);
    if(ListenerPolicy.holdsMicrophone(state))check(ListenerPolicy.foreground(state),"an open microphone always has the foreground indicator: "+state);
    check(!(ListenerPolicy.foreground(state)&&ListenerPolicy.needsAttention(state)),"foreground and attention are distinct: "+state);
+   // The notification offers Pause in every foreground state except a user pause, which offers Resume.
+   check(ListenerPolicy.pausable(state)==(ListenerPolicy.foreground(state)&&state!=State.PAUSED_USER),"Pause matches the notification: "+state);
+   if(ListenerPolicy.holdsMicrophone(state))check(ListenerPolicy.pausable(state),"an open microphone can always be paused: "+state);
    String label=ListenerPolicy.label(state);
    check(label!=null&&!label.isEmpty()&&label.length()<64,"lock-screen-safe label: "+state);
   }
   check(!ListenerPolicy.holdsMicrophone(State.PAUSED_USER)&&!ListenerPolicy.holdsMicrophone(State.PAUSED_CALL),"user and call pauses release the microphone");
+  check(ListenerPolicy.pausable(State.PAUSED_MIC_IN_USE)&&ListenerPolicy.pausable(State.PAUSED_CALL)&&ListenerPolicy.pausable(State.PAUSED_SHADE),"a system pause can become a user pause");
+  check(!ListenerPolicy.pausable(State.PAUSED_USER)&&!ListenerPolicy.pausable(State.OFF)&&!ListenerPolicy.pausable(State.SPEECH_UNAVAILABLE),"nothing to pause");
+  check(ListenerPolicy.needsAttention(State.SPEECH_UNAVAILABLE)&&!ListenerPolicy.needsAttention(State.OFF)&&!ListenerPolicy.needsAttention(State.PAUSED_MIC_IN_USE),"attention states unchanged");
   check(!ListenerPolicy.foreground(State.OFF)&&!ListenerPolicy.holdsMicrophone(State.WAITING_FOR_UNLOCK),"off and before-unlock hold nothing");
 
   // ---- crash-loop breaker ----

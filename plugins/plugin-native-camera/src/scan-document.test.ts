@@ -224,6 +224,53 @@ describe("drafts", () => {
     expect(doc.snapshot().draftRevision).toBeUndefined();
   });
 
+  it("removes the automatic draft with the last page but keeps a saved one", async () => {
+    const drafts = memoryDrafts();
+    const doc = createScanDocument<Image, string>({
+      first: image("a"),
+      drafts: drafts.port,
+      autosave: true,
+    });
+    doc.remove(0);
+    await doc.settled();
+    expect(drafts.stored).toBeUndefined();
+    expect(doc.snapshot()).toMatchObject({
+      autoSaved: false,
+      draftRevision: undefined,
+    });
+
+    const saved = memoryDrafts();
+    const kept = createScanDocument<Image, string>({
+      drafts: saved.port,
+      autosave: true,
+    });
+    kept.put(image("b"));
+    expect(await kept.saveDraft()).toBe(true);
+    kept.remove(0);
+    await kept.settled();
+    expect(saved.port.remove).not.toHaveBeenCalled();
+    expect(saved.stored?.pages.map((page) => page.name)).toEqual(["b"]);
+  });
+
+  it("removes the automatic draft when closed right after a confirmed export", async () => {
+    const drafts = memoryDrafts();
+    const remove = drafts.port.remove;
+    drafts.port.remove = vi.fn(async (revision, signal) => {
+      await Promise.resolve();
+      signal?.throwIfAborted();
+      return remove(revision, signal);
+    });
+    const doc = createScanDocument<Image, string>({
+      first: image("a"),
+      drafts: drafts.port,
+      autosave: true,
+    });
+    await doc.settled();
+    doc.exportFinished("exported");
+    doc.close();
+    await vi.waitFor(() => expect(drafts.stored).toBeUndefined());
+  });
+
   it("autosaves the opening page before any change", async () => {
     const drafts = memoryDrafts();
     const doc = createScanDocument<Image, string>({
@@ -287,6 +334,54 @@ describe("drafts", () => {
     expect(await other.deleteDraft(() => true)).toBe(true);
     expect(drafts.stored).toBeUndefined();
     expect(other.snapshot().controls.deleteDraft).toBe(false);
+  });
+
+  it.each(["saved", "loaded"] as const)(
+    "retains a %s draft after later autosaves and confirmed export",
+    async (kind) => {
+      const drafts = memoryDrafts();
+      const doc = createScanDocument<Image, string>({
+        drafts: drafts.port,
+        autosave: true,
+      });
+      if (kind === "saved") {
+        doc.put(image("a"));
+        expect(await doc.saveDraft()).toBe(true);
+      } else {
+        drafts.stored = { revision: "r0", pages: [image("a")] };
+        expect(await doc.loadDraft(() => true)).toBe("loaded");
+      }
+      doc.put(image("b"));
+      doc.setTextLayers(["first", "second"]);
+      await doc.settled();
+      expect(doc.snapshot().autoSaved).toBe(false);
+      await doc.exportPages(async () => ({ status: "exported", message: "" }));
+      await doc.settled();
+      expect(drafts.stored?.pages.map((page) => page.name)).toEqual(["a", "b"]);
+      expect(drafts.stored?.textLayers).toEqual(["first", "second"]);
+      expect(drafts.port.remove).not.toHaveBeenCalled();
+    },
+  );
+
+  it("only an accepted draft deletion resets explicit ownership for later autosaves", async () => {
+    const drafts = memoryDrafts();
+    const doc = createScanDocument<Image, string>({
+      drafts: drafts.port,
+      autosave: true,
+    });
+    doc.put(image("a"));
+    expect(await doc.saveDraft()).toBe(true);
+    expect(await doc.deleteDraft(() => false)).toBe(false);
+    doc.put(image("b"));
+    await doc.settled();
+    expect(doc.snapshot().autoSaved).toBe(false);
+    expect(await doc.deleteDraft(() => true)).toBe(true);
+    doc.put(image("c"));
+    await doc.settled();
+    expect(doc.snapshot().autoSaved).toBe(true);
+    await doc.exportPages(async () => ({ status: "exported", message: "" }));
+    await vi.waitFor(() => expect(drafts.stored).toBeUndefined());
+    expect(drafts.port.remove).toHaveBeenCalledTimes(2);
   });
 
   it("refuses a draft over the document limits before asking to replace the open pages", async () => {

@@ -1,0 +1,30 @@
+{
+  "sources": [
+    "packages/app/src/mobile-lifecycle.ts",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/DeepLinkBufferPlugin.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ReceiptAppPlugin.java",
+    "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/MainActivity.java",
+    "packages/app/scripts/mobile/android/templates/main-activity.ts",
+    "packages/app/scripts/mobile/android/gradle-reconciliation.ts",
+    "packages/app/scripts/mobile/android/overlay.ts"
+  ],
+  "bounds": "Two native capture receipts for one URL, two application attempts per receipt, one renderer replacement. Native unconfirmed disk writes still update visible preference state. Native process disk recovery is outside this instance. Identity allocation never wraps.",
+  "conformance": "packages/app/quint/check-mobile-deep-links.mjs",
+  "cases": [
+    {
+      "name": "same-url-receipts",
+      "main": "MobileDeepLinkReceipt",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "clearedOnlyAfterTerminal",
+        "receiptsStayDistinct",
+        "finiteBounds"
+      ],
+      "temporal": [],
+      "maxSteps": 25,
+      "samples": 1000
+    }
+  ]
+}

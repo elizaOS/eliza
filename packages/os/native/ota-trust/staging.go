@@ -104,7 +104,7 @@ func (s *PreparedStager) validate(directory, admissionDirectory, identity string
 	if err != nil {
 		return nil, err
 	}
-	decision, err := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy)
+	decision, err := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy, 0)
 	if err != nil {
 		return nil, err
 	}

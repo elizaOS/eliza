@@ -4,10 +4,10 @@ import type { SpeechRelayRetirementHandle } from "@elizaos/host/voice/speech-rel
 import { InMemoryVoiceUsageStore } from "@elizaos/host/voice/usage";
 
 class InsufficientCreditsError extends Error {}
-class InferenceBalanceCacheWarmingError extends Error {}
+class InferenceBillingUnavailableError extends Error {}
 mock.module(
   "@elizaos/cloud-shared/lib/services/inference-billing-fast-path",
-  () => ({ InferenceBalanceCacheWarmingError }),
+  () => ({ InferenceBillingUnavailableError }),
 );
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   InsufficientCreditsError,
@@ -66,7 +66,7 @@ mock.module(
                   : value.toFixed(6),
               mode:
                 state.receiptFault === "mode"
-                  ? "synchronous_db_ledger"
+                  ? "synchronous_reservation"
                   : state.receiptFault.startsWith("funded")
                     ? "durable_object_funded_budget"
                     : "durable_object_debit",
@@ -194,9 +194,9 @@ test("proven STT settles while unknown TTS keeps its target undecided", async ()
   expect(state.effects).toEqual([1, 1]);
   expect(state.amounts[1]).toBe(0);
 });
-test("pre-lease warming records no reservation", async () => {
+test("pre-lease billing unavailability records no reservation", async () => {
   state.failAt = 0;
-  state.failure = new InferenceBalanceCacheWarmingError();
+  state.failure = new InferenceBillingUnavailableError();
   const progress: unknown[] = [];
   await expect(
     reserve(async (kind, value) => {
@@ -220,15 +220,15 @@ test("failed no-reservation proof cannot skip rollback or hide its primary cause
   expect(state.amounts[0]).toBe(0);
 });
 
-test("a warming-shaped progress error cannot claim no reservation", async () => {
+test("a billing-unavailable progress error cannot claim no reservation", async () => {
   const progress: string[] = [];
   await expect(
     reserve(async (_kind, value) => {
       progress.push(value.state);
       if (value.state === "reserving")
-        throw new InferenceBalanceCacheWarmingError();
+        throw new InferenceBillingUnavailableError();
     }),
-  ).rejects.toBeInstanceOf(InferenceBalanceCacheWarmingError);
+  ).rejects.toBeInstanceOf(InferenceBillingUnavailableError);
   expect(progress).toEqual(["reserving"]);
 });
 

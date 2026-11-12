@@ -1,0 +1,84 @@
+[
+  {
+    "id": "NativeSpeechRequest",
+    "model": "packages/voice/quint/NativeSpeechRequest.qnt",
+    "sources": ["packages/voice/src/native-speech-request.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models one request and permanent request-binding invalidation. A binding that becomes valid again is excluded.",
+      "Caller-supplied work must race interruption or honor the owned signal, as the API contract requires. Provider bridge cancel may fail without preventing fencing.",
+      "Finite verification domain. One request, permanent binding loss, caller abort, one bridge cancel and terminal outcome. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "VoiceAssistantSpeechPump",
+    "model": "packages/voice/quint/VoiceAssistantSpeechPump.qnt",
+    "sources": [
+      "packages/voice/src/voice-assistant-session.ts",
+      "packages/voice/src/voice-assistant-session.test.ts"
+    ],
+    "invariants": [
+      "InOrderAndAtMostTwoCalls",
+      "HeardIsCompletedPrefix",
+      "TruthfulTerminalReceipt"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One half-duplex pipelined reply and at most three ordered sentences. A late matching frame and confirmed suffix remain queued. One playback failure or user interruption freezes the heard prefix and prevents later adoption of old callbacks.",
+      "The mandatory maintained controller suite checks actual dispatch, wake, played prefix, failed-successor abort and capture drain through controlled host ports. Physical audio and provider qualification remain outside the evidence.",
+      "The case assumes the host settles calls in playback order and honors binding, cancellation and capture ownership. Additional turns, rewritten handed text, pre-confirmation failures, owner-input pause, and transport persistence remain separate."
+    ]
+  },
+  {
+    "id": "VoiceAssistantCaptureOwnership",
+    "model": "packages/voice/quint/VoiceAssistantCaptureOwnership.qnt",
+    "sources": [
+      "packages/voice/src/voice-assistant-session.ts",
+      "packages/voice/src/voice-assistant-session.test.ts"
+    ],
+    "invariants": [
+      "SendNeedsConfirmedClose",
+      "CaptureAdoptionRequiresLiveUnmutedOwner",
+      "StopWaitsForLateCancellation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One half-duplex turn and at most one replacement capture. The turn waits for confirmed close. Mute can win a pending reopen. Stop retires the owner immediately and waits for close, acquisition and any late cancellation to settle.",
+      "The maintained controller suite checks ordinary turn drain, idle Mute and Unmute, rejected reopen, muted reopen close failure, Stop during close, and a returned late capture whose asynchronous cancel remains pending.",
+      "The proof uses controlled host ports. Physical microphone release, cancellation failure recovery, concurrent Stop or restart, binding replacement, and overlap with a new turn while Unmute acquisition is pending are separate."
+    ]
+  },
+  {
+    "id": "live-frame-backlog",
+    "model": "packages/voice/quint/VoiceDeferredState.qnt",
+    "sources": ["packages/voice/src/live-voice-session.ts"],
+    "invariants": [
+      "QueueBounded",
+      "OneOverflowFailure",
+      "FailureSettlesSegments",
+      "CancelFencesResults"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "Bounded backlog projection: two queued frames represent the actual 960-frame boundary; two outstanding segments and one overflow or cancel. Complete owning17-case implementation suite includes actual960 overflow and an abort-ignoring late provider response.",
+      "Not complete live-session coverage. PCM, empty-frame edge floods, every response/event interleaving, host authentication, native capture and physical audio remain outside this finite model. Retained closures release only if the transport promise settles."
+    ]
+  },
+  {
+    "id": "deferred-voice-timing",
+    "model": "packages/voice/quint/VoiceDeferredState.qnt",
+    "sources": ["packages/voice/src/voice-turn-timing.ts"],
+    "invariants": [
+      "MarksDoNoStorageWrite",
+      "SendRequiresReady",
+      "StorageDoesNotRetireTurn",
+      "ClearCannotResurrect"
+    ],
+    "status": "modeled",
+    "limitations": [
+      "One active turn, recording-end/transcript-ready/send ordering, deferred flush, failure and clear. Full owning8-case suite covers additional real diagnostic field validation, sink failures, stale turn boundaries and clear before a pending timer.",
+      "Not all record fields or browser scheduling. No persistence after storage failure, process death, shared-key writers from different instances, native callback delivery or physical latency is established. Diagnostic failure intentionally leaves the voice turn active."
+    ]
+  }
+]

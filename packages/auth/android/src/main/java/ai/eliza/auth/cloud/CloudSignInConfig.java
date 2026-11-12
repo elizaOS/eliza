@@ -19,6 +19,8 @@ public final class CloudSignInConfig {
  public final String productName;
  /** Steward app client id for native Google sign-in. */
  public final String googleClientId;
+ /** Explicit host selection. Native is the default; browser requires verified App Links and an external browser. */
+ public final String googleSignInMode;
  /** Tag of the one bounded Google diagnostic line. */
  public final String logTag;
  /** Plain preferences file that caches non-secret readiness. */
@@ -27,6 +29,11 @@ public final class CloudSignInConfig {
  public final String pendingSlot;
  /** Native-only credential slot prefix of an acknowledgement receipt, per environment. */
  public final String receiptSlotPrefix;
+ /**
+  * Native-only credential slot prefix of a key a renewal replaced and Cloud has not yet confirmed
+  * revoked, per environment. A host that renews keys must store it like the receipt slot.
+  */
+ public final String retiringSlotPrefix;
  /** Credential slot prefix of the minted Cloud key, per environment. */
  public final String credentialSlotPrefix;
  private final List<CloudSignInEnvironment> environments;
@@ -36,10 +43,12 @@ public final class CloudSignInConfig {
   deviceName = label(builder.deviceName, "device name");
   productName = label(builder.productName, "product name");
   googleClientId = required(builder.googleClientId, "[a-z0-9][a-z0-9_-]{2,63}", "Google client id");
+  googleSignInMode = required(builder.googleSignInMode, "native|browser", "Google sign-in mode");
   logTag = required(builder.logTag, "[A-Za-z][A-Za-z0-9_]{0,22}", "log tag");
   readinessPreferences = required(builder.readinessPreferences, "[A-Za-z0-9._:-]{1,200}", "readiness preferences");
   pendingSlot = required(builder.pendingSlot, "[A-Za-z0-9._:-]{1,128}", "pending slot");
   receiptSlotPrefix = required(builder.receiptSlotPrefix, "[A-Za-z0-9._:-]{1,96}", "receipt slot prefix");
+  retiringSlotPrefix = required(builder.retiringSlotPrefix, "[A-Za-z0-9._:-]{1,96}", "retiring slot prefix");
   credentialSlotPrefix = required(builder.credentialSlotPrefix, "[A-Za-z0-9._:-]{1,96}", "credential slot prefix");
   if (builder.environments.isEmpty()) throw new IllegalArgumentException("At least one Cloud environment is required");
   List<String> names = new ArrayList<>();
@@ -67,23 +76,27 @@ public final class CloudSignInConfig {
   throw new IllegalArgumentException("Unsupported Cloud environment");
  }
  public String receiptSlot(CloudSignInEnvironment environment) { return receiptSlotPrefix + environment.name; }
+ public String retiringSlot(CloudSignInEnvironment environment) { return retiringSlotPrefix + environment.name; }
  public String credentialSlot(CloudSignInEnvironment environment) { return credentialSlotPrefix + environment.name; }
 
  public static Builder builder() { return new Builder(); }
  public static final class Builder {
   private String clientId, deviceName, productName, googleClientId, logTag = "ElizaCloudSignIn";
+  private String googleSignInMode = "native";
   private String readinessPreferences = "eliza-cloud-signin-readiness", pendingSlot = "cloud-signin:v1:pending";
-  private String receiptSlotPrefix = "cloud-signin:v1:ack:", credentialSlotPrefix = "cloud:";
+  private String receiptSlotPrefix = "cloud-signin:v1:ack:", retiringSlotPrefix = "cloud-signin:v1:retire:", credentialSlotPrefix = "cloud:";
   private final List<CloudSignInEnvironment> environments = new ArrayList<>();
   private Builder() {}
   public Builder clientId(String value) { clientId = value; return this; }
   public Builder deviceName(String value) { deviceName = value; return this; }
   public Builder productName(String value) { productName = value; return this; }
   public Builder googleClientId(String value) { googleClientId = value; return this; }
+  public Builder googleSignInMode(String value) { googleSignInMode = value; return this; }
   public Builder logTag(String value) { logTag = value; return this; }
   public Builder readinessPreferences(String value) { readinessPreferences = value; return this; }
   public Builder pendingSlot(String value) { pendingSlot = value; return this; }
   public Builder receiptSlotPrefix(String value) { receiptSlotPrefix = value; return this; }
+  public Builder retiringSlotPrefix(String value) { retiringSlotPrefix = value; return this; }
   public Builder credentialSlotPrefix(String value) { credentialSlotPrefix = value; return this; }
   public Builder environment(CloudSignInEnvironment value) { environments.add(value); return this; }
   public CloudSignInConfig build() { return new CloudSignInConfig(this); }

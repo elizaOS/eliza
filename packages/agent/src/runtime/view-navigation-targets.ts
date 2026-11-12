@@ -1,10 +1,17 @@
 /** Shared navigation names for installed registry entries; these names grant no authority. */
-export function viewNavigationAliases(view: { id: string }): readonly string[] {
-  return view.id === "chat"
-    ? ["home"]
-    : view.id === "automations"
-      ? ["workflows"]
-      : [];
+export function viewNavigationAliases(view: {
+  id: string;
+  navigationAliases?: readonly string[];
+}): readonly string[] {
+  const builtin =
+    view.id === "chat"
+      ? ["home"]
+      : view.id === "automations"
+        ? ["workflows"]
+        : [];
+  return view.navigationAliases?.length
+    ? [...builtin, ...view.navigationAliases]
+    : builtin;
 }
 
 /** The caller supplies the already role/availability-filtered registry. Ambiguity stays explicit. */
@@ -33,6 +40,18 @@ export function viewNavigationDestination(view: { id: string; label: string }) {
     label: view.label,
     ...(aliases.length ? { aliases } : {}),
   };
+}
+
+/** An enrolled device's view profile narrows destinations by id or alias; no profile keeps all. */
+export function viewEnabledByProfile(
+  view: { id: string },
+  enabled: readonly string[] | undefined,
+): boolean {
+  return (
+    !enabled ||
+    enabled.includes(view.id) ||
+    viewNavigationAliases(view).some((alias) => enabled.includes(alias))
+  );
 }
 
 /** Hosted availability or a registry-owned native counterpart; a delivery marker adds no view. */

@@ -6,9 +6,10 @@
  * deterministic lifecycle boundaries without wall-clock sampling windows.
  */
 import http from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { type IAgentRuntime, TurnControllerRegistry } from "@elizaos/core";
-import { Telegraf } from "telegraf";
+import { Composer, Context, Telegraf, Telegram, TelegramError } from "telegraf";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageManager } from "./messageManager";
 import { TelegramService } from "./service";
@@ -284,6 +285,211 @@ function initializeBot(
   ).initializeBot(state);
 }
 
+describe("TelegramService cancellation", () => {
+  const require = createRequire(import.meta.url);
+  const { AbortController: LegacyAbortController } = createRequire(
+    require.resolve("telegraf"),
+  )("abort-controller") as { AbortController: new () => AbortController };
+
+  for (const kind of ["native", "legacy", "custom"] as const) {
+    for (const timing of ["pre-abort", "request-started"] as const) {
+      it(`cleans up ${kind} ${timing} cancellation`, async () => {
+        const api = await startStubBotApi();
+        const service = new TelegramService(makeRuntime(api.apiRoot));
+        services.push(service);
+        const bot = service.getBot();
+        if (!bot) throw new Error("Expected the public bot");
+        const controller =
+          kind === "legacy"
+            ? new LegacyAbortController()
+            : new AbortController();
+        const customReason = new Error("Stop this call");
+        const abort = () =>
+          kind === "custom"
+            ? controller.abort(customReason)
+            : controller.abort();
+        if (timing === "pre-abort") abort();
+        const add = vi.spyOn(controller.signal, "addEventListener");
+        const remove = vi.spyOn(controller.signal, "removeEventListener");
+        const pending = bot.telegram
+          .callApi("getUpdates", { timeout: 60 }, { signal: controller.signal })
+          .then(
+            () => {
+              throw new Error("Expected cancellation to reject");
+            },
+            (error: Error) => error,
+          );
+        if (timing === "request-started") {
+          await api.waitForActiveGetUpdates(1);
+          abort();
+        }
+        const callerReason = controller.signal.reason;
+        const callerMessage = callerReason?.message;
+        const error = await pending;
+        await api.waitForActiveGetUpdates(0);
+
+        expect(error.name).toBe(
+          kind === "custom" && process.versions.bun
+            ? customReason.name
+            : "AbortError",
+        );
+        if (kind === "custom" && process.versions.bun) {
+          expect(error).toBe(customReason);
+        }
+        expect(controller.signal.reason).toBe(callerReason);
+        expect(callerReason?.message).toBe(callerMessage);
+        expect(add).toHaveBeenCalledTimes(1);
+        expect(remove).toHaveBeenCalledTimes(1);
+        expect(remove.mock.calls[0]?.[1]).toBe(add.mock.calls[0]?.[1]);
+        expect(api.getUpdatesCalls()).toBe(timing === "pre-abort" ? 0 : 1);
+      });
+    }
+  }
+
+  for (const shared of [false, true]) {
+    it(`owns concurrent calls with ${shared ? "shared" : "distinct"} signals`, async () => {
+      const api = await startStubBotApi();
+      const service = new TelegramService(makeRuntime(api.apiRoot));
+      services.push(service);
+      const bot = service.getBot();
+      if (!bot) throw new Error("Expected the public bot");
+      const first = new AbortController();
+      const second = shared ? first : new AbortController();
+      const observations = [...new Set([first.signal, second.signal])].map(
+        (signal) => ({
+          add: vi.spyOn(signal, "addEventListener"),
+          remove: vi.spyOn(signal, "removeEventListener"),
+        }),
+      );
+      const pending = [first, second].map((controller) =>
+        bot.telegram
+          .callApi("getUpdates", { timeout: 60 }, { signal: controller.signal })
+          .then(
+            () => {
+              throw new Error("Expected cancellation to reject");
+            },
+            (error: Error) => error,
+          ),
+      );
+      await api.waitForActiveGetUpdates(2);
+      first.abort();
+      if (!shared) {
+        await api.waitForActiveGetUpdates(1);
+        expect(second.signal.aborted).toBe(false);
+        expect(observations[1]?.remove).not.toHaveBeenCalled();
+        second.abort();
+      }
+      expect((await Promise.all(pending)).map((error) => error.name)).toEqual([
+        "AbortError",
+        "AbortError",
+      ]);
+      await api.waitForActiveGetUpdates(0);
+      for (const { add, remove } of observations) {
+        expect(add).toHaveBeenCalledTimes(shared ? 2 : 1);
+        expect(remove).toHaveBeenCalledTimes(shared ? 2 : 1);
+        expect(new Set(remove.mock.calls.map((call) => call[1]))).toEqual(
+          new Set(add.mock.calls.map((call) => call[1])),
+        );
+      }
+    });
+  }
+
+  it("preserves a native timeout after the request starts", async () => {
+    const api = await startStubBotApi();
+    const service = new TelegramService(makeRuntime(api.apiRoot));
+    services.push(service);
+    const bot = service.getBot();
+    if (!bot) throw new Error("Expected the public bot");
+    const signal = AbortSignal.timeout(1000);
+    const add = vi.spyOn(signal, "addEventListener");
+    const remove = vi.spyOn(signal, "removeEventListener");
+    const pending = bot.telegram
+      .callApi("getUpdates", { timeout: 60 }, { signal })
+      .then(
+        () => {
+          throw new Error("Expected timeout to reject");
+        },
+        (error: Error) => error,
+      );
+    await api.waitForActiveGetUpdates(1);
+    expect(signal.aborted).toBe(false);
+    const error = await pending;
+    await api.waitForActiveGetUpdates(0);
+    expect(signal.reason).toBeInstanceOf(DOMException);
+    expect(signal.reason.name).toBe("TimeoutError");
+    expect(error.name).toBe(
+      process.versions.bun ? "TimeoutError" : "AbortError",
+    );
+    expect(api.getUpdatesCalls()).toBe(1);
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove.mock.calls[0]?.[1]).toBe(add.mock.calls[0]?.[1]);
+  });
+
+  it("cleans up successful and failed requests and keeps SDK errors", async () => {
+    const api = await startStubBotApi(2);
+    const service = new TelegramService(makeRuntime(api.apiRoot));
+    services.push(service);
+    const bot = service.getBot();
+    if (!bot) throw new Error("Expected the public bot");
+    for (const fails of [false, true]) {
+      const controller = new AbortController();
+      const add = vi.spyOn(controller.signal, "addEventListener");
+      const remove = vi.spyOn(controller.signal, "removeEventListener");
+      const pending = bot.telegram.callApi(
+        "getMe",
+        {},
+        {
+          signal: controller.signal,
+        },
+      );
+      if (fails) await expect(pending).rejects.toBeInstanceOf(TelegramError);
+      else await expect(pending).resolves.toMatchObject({ id: 1 });
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(remove.mock.calls[0]?.[1]).toBe(add.mock.calls[0]?.[1]);
+    }
+  });
+
+  it("keeps external Composer contexts and cancels the update client", async () => {
+    const api = await startStubBotApi();
+    const service = new TelegramService(makeRuntime(api.apiRoot));
+    services.push(service);
+    const bot = service.getBot();
+    if (!bot) throw new Error("Expected the public bot");
+    expect(bot).toBeInstanceOf(Telegraf);
+    expect(bot.telegram).toBeInstanceOf(Telegram);
+    bot.botInfo = {
+      id: 1,
+      is_bot: true,
+      first_name: "stub",
+      username: "stub_bot",
+    };
+    let handlers = 0;
+    bot.use(
+      Composer.compose([
+        async (ctx, next) => {
+          expect(ctx).toBeInstanceOf(Context);
+          expect(ctx.telegram).toBeInstanceOf(Telegram);
+          const controller = new AbortController();
+          controller.abort();
+          await expect(
+            ctx.telegram.callApi("getMe", {}, { signal: controller.signal }),
+          ).rejects.toMatchObject({ name: "AbortError" });
+          handlers += 1;
+          await next();
+        },
+        () => {
+          handlers += 1;
+        },
+      ]),
+    );
+    await bot.handleUpdate({ update_id: 1 });
+    expect(handlers).toBe(2);
+    expect(api.getMeCalls()).toBe(0);
+  });
+});
+
 describe("TelegramService startup wiring", () => {
   it("installs shutdown hooks only after Telegraf assigns a stoppable poller", async () => {
     const api = await startStubBotApi();
@@ -382,7 +588,7 @@ describe("TelegramService startup wiring", () => {
       expect(middlewareRegistration).toHaveBeenCalledTimes(
         commandRegistration.mock.calls.length +
           eventRegistration.mock.calls.length +
-          2,
+          3,
       );
       expect(eventRegistration).toHaveBeenCalledTimes(3);
       expect(handleMessage).toHaveBeenCalledTimes(1);

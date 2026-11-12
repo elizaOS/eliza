@@ -654,7 +654,7 @@ describe("checked-in workflow authority", () => {
     }
   });
 
-  test("the release gate observes completed worker deployments for its own source", async () => {
+  test("the release gate observes the active worker deployment for its own source", async () => {
     const checkedIn = JSON.parse(
       readFileSync(path.join(repoRoot, ".github/staging-effects.json"), "utf8"),
     ) as ReturnType<typeof registry>;
@@ -714,7 +714,6 @@ describe("checked-in workflow authority", () => {
             let accepted = true;
             if (workflow === "cloud-cf-deploy.yml") {
               accepted =
-                ready.get("deploy-apps-worker.yml") === source &&
                 ready.get("deploy-eliza-provisioning-worker.yml") === source;
               releaseAccepted = accepted;
             }

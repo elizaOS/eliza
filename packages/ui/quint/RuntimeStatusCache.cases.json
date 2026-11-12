@@ -1,0 +1,92 @@
+{
+  "sources": [
+    "packages/ui/src/api/runtime-json-client.ts",
+    "packages/ui/src/api/transport.ts",
+    "packages/ui/src/api/__e2e__/runtime-json-client.test.ts"
+  ],
+  "bounds": "Two request identities and one refresh for reuse/default cases. Two requests and two overlapping refreshes for overlap. Each request has at most two probes and two native invocations. Readiness is an abstract success/failure completion of ensure(); generations never wrap.",
+  "conformance": "packages/ui/quint/check-runtime-status-cache.mjs",
+  "cases": [
+    {
+      "name": "reuse",
+      "main": "RuntimeStatusCache",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "dispatchFence",
+        "publicationFence",
+        "noUnsafeReplay",
+        "nativeOwnsAvailableRequests",
+        "finiteBounds"
+      ],
+      "temporal": ["CompletionUnderFairCompletions"],
+      "temporalChecks": [
+        {
+          "property": "CompletionUnderFairCompletions",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each admitted request completion and pending refresh completion. Provider status, readiness and response operations eventually settle; arbitrary permanent provider hangs are outside this progress claim.",
+            "One or two explicit refresh generations are available, so refresh churn cannot continue forever. Native invocation is modeled, not rollback of provider effects already invoked."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "default",
+      "main": "RuntimeStatusCache",
+      "init": "initDefault",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "dispatchFence",
+        "publicationFence",
+        "noUnsafeReplay",
+        "nativeOwnsAvailableRequests",
+        "finiteBounds"
+      ],
+      "temporal": ["CompletionUnderFairCompletions"],
+      "temporalChecks": [
+        {
+          "property": "CompletionUnderFairCompletions",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each admitted request completion and pending refresh completion. Provider status, readiness and response operations eventually settle; arbitrary permanent provider hangs are outside this progress claim.",
+            "One or two explicit refresh generations are available, so refresh churn cannot continue forever. Native invocation is modeled, not rollback of provider effects already invoked."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    },
+    {
+      "name": "refresh-overlap",
+      "main": "RuntimeStatusCache",
+      "init": "initOverlap",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "dispatchFence",
+        "publicationFence",
+        "noUnsafeReplay",
+        "nativeOwnsAvailableRequests",
+        "finiteBounds"
+      ],
+      "temporal": ["CompletionUnderFairCompletions"],
+      "temporalChecks": [
+        {
+          "property": "CompletionUnderFairCompletions",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each admitted request completion and pending refresh completion. Provider status, readiness and response operations eventually settle; arbitrary permanent provider hangs are outside this progress claim.",
+            "One or two explicit refresh generations are available, so refresh churn cannot continue forever. Native invocation is modeled, not rollback of provider effects already invoked."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000
+    }
+  ]
+}

@@ -116,6 +116,24 @@ export function sanitizeGameViewerSandbox(
 }
 
 /**
+ * Whether a postMessage-auth viewer can never complete its handshake under
+ * the given (already sanitized) sandbox. Without `allow-same-origin` the framed
+ * document has an opaque origin: its `*_READY` arrives with origin "null" and
+ * an auth payload targeted at its URL origin is never delivered. Callers show
+ * an explicit unsupported state instead of re-adding `allow-same-origin`.
+ */
+export function isViewerAuthBlockedBySandbox(
+  postMessageAuth: boolean | null | undefined,
+  sanitizedSandbox: string,
+): boolean {
+  if (!postMessageAuth) return false;
+  return !sanitizedSandbox.split(/\s+/).includes(ALLOW_SAME_ORIGIN);
+}
+
+export const VIEWER_AUTH_BLOCKED_MESSAGE =
+  "This app's viewer can't sign in here. It must be served from its own origin.";
+
+/**
  * Resolve the concrete http(s) origin to use as the postMessage targetOrigin
  * for a viewer iframe. Returns `null` when the viewer URL does not resolve to a
  * concrete http(s) origin (non-http(s) scheme, opaque "null" origin, or

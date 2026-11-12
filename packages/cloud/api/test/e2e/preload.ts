@@ -12,6 +12,7 @@
  *           packages/cloud/api/test/e2e
  */
 
+import { afterAll, beforeEach } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
@@ -262,4 +263,53 @@ if (process.env.REQUIRE_E2E_SERVER !== "0") {
         "the accepted response matched the current run receipt",
     );
   }
+}
+
+// The local Worker enqueues deletion; the Node worker owns its execution.
+// Drive that existing worker only against the runner-attested disposable store.
+if (process.env.CLOUD_E2E_DISPOSABLE_DB === "1") {
+  const database = new URL(process.env.TEST_DATABASE_URL || "");
+  if (
+    !process.env.CLOUD_E2E_RUN_RECEIPT ||
+    !["127.0.0.1", "localhost", "::1", "[::1]"].includes(database.hostname)
+  )
+    throw new Error("Deletion worker requires the owned local e2e database");
+  const { provisioningJobService } = await import("@elizaos/cloud-shared/node");
+  const { JOB_TYPES } = await import("@elizaos/cloud-shared/agent-contracts");
+  const jobTypes = [
+    JOB_TYPES.APP_DELETE,
+    JOB_TYPES.APP_DB_DEPROVISION,
+    JOB_TYPES.APP_CACHE_INVALIDATE,
+    JOB_TYPES.CONTAINER_DELETE,
+  ];
+  let pending: Promise<void> | undefined;
+  let failure: unknown;
+  const drain = () =>
+    (pending ??= provisioningJobService
+      .processPendingJobs(25, { jobTypes })
+      .then((result) => {
+        if (result.failed)
+          throw new Error(
+            `App deletion worker failed: ${JSON.stringify(result.errors)}`,
+          );
+      })
+      .catch((error) => {
+        failure = error;
+      })
+      .finally(() => {
+        pending = undefined;
+      }));
+  const timer = setInterval(() => {
+    void drain();
+  }, 250);
+  timer.unref();
+  beforeEach(async () => {
+    await drain();
+    if (failure) throw failure;
+  });
+  afterAll(async () => {
+    clearInterval(timer);
+    await drain();
+    if (failure) throw failure;
+  });
 }

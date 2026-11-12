@@ -3,10 +3,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  createInteractiveTask,
+  type TaskActionProposal,
+  type TaskTransition,
+  transitionInteractiveTask,
+} from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { BrowserDispatchFailure } from "./dispatch-types";
 import {
   androidNativeBrowserSocketPath,
+  CANCEL_CONFIRM_MAX_MS,
   COMMIT_GRANT_MAX_MS,
   commitFormHash,
   currentPageFromTabs,
@@ -15,6 +22,7 @@ import {
   validCommitGrant,
   validCommitRequestTarget,
 } from "./native-socket-target";
+import { NativeTaskActuator, type TaskActionRefusal } from "./task-actuator";
 
 it.skipIf(process.platform !== "linux")(
   "reports expected disconnection only once until a verified profile reconnects",
@@ -311,6 +319,127 @@ it("negotiates cancellation and sends a fence for an aborted native request", as
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("a cancelled request settles only when a cancel-reply peer answers that it stopped", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-cancel-reply-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 10000,
+    replyMs: 300,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "cancel-reply-profile",
+      capabilities: ["list", "cancel", "cancel-reply"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    const commands = () =>
+      peer.messages.filter((message) => message.type === "command");
+    const cancelOne = async () => {
+      const controller = new AbortController();
+      const running = target.execute(
+        { subaction: "list" },
+        { signal: controller.signal },
+      );
+      const rejected = expect(running).rejects.toMatchObject({
+        reason: "request-cancelled",
+      });
+      const before = commands().length;
+      await vi.waitFor(() => expect(commands()).toHaveLength(before + 1));
+      controller.abort();
+      await rejected;
+      return commands().at(-1)?.id;
+    };
+    // The caller's request ends at once; the fence waits for the peer.
+    const id = await cancelOne();
+    let settled = false;
+    const settling = target.settled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(settled).toBe(false);
+    peer.send({
+      type: "result",
+      id,
+      ok: false,
+      error: { kind: "STALE_REF", reason: "request-cancelled" },
+    });
+    await settling;
+    await target.settled();
+    // A peer that never answers: the fence ends the connection, which stops
+    // every request it carried, and that teardown is the fence, so a Pause
+    // that waits on it still answers.
+    await cancelOne();
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(await target.available()).toBe(false);
+    await target.settled();
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("an unconfirmed cancel ends the fence before a renderer's Pause gives up, with the default reply deadline", async () => {
+  // The renderer waits 10 s for a Pause (TASK_PAUSE_TIMEOUT_MS); the default
+  // reply deadline is 30 s, so the fence must not wait for it.
+  const RENDERER_PAUSE_TIMEOUT_MS = 10_000;
+  expect(CANCEL_CONFIRM_MAX_MS).toBeLessThanOrEqual(
+    RENDERER_PAUSE_TIMEOUT_MS / 2,
+  );
+  const directory = await mkdtemp(join(tmpdir(), "native-cancel-cap-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 60000,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "cancel-cap-profile",
+      capabilities: ["list", "cancel", "cancel-reply"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    const controller = new AbortController();
+    const running = target.execute(
+      { subaction: "list" },
+      { signal: controller.signal },
+    );
+    const rejected = expect(running).rejects.toMatchObject({
+      reason: "request-cancelled",
+    });
+    await vi.waitFor(() =>
+      expect(peer.messages.some((m) => m.type === "command")).toBe(true),
+    );
+    controller.abort();
+    await rejected;
+    // The peer never answers the cancel.
+    const started = Date.now();
+    await expect(target.settled()).resolves.toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(RENDERER_PAUSE_TIMEOUT_MS);
+    expect(await target.available()).toBe(false);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 15_000);
 
 it("does not send a cancellable request to an older native peer", async () => {
   const directory = await mkdtemp(join(tmpdir(), "native-no-cancel-"));
@@ -1305,6 +1434,67 @@ it("sends a binding for more than one website only to a task-origins peer", asyn
   }
 });
 
+it("sends the host's commit words only to a peer that applies them", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-commit-pattern-"));
+  const socketPath = join(directory, "browser.sock");
+  const binding = {
+    actorId: "actor",
+    accountId: "account",
+    agentId: "agent",
+    taskId: "task",
+    epoch: 1,
+    tabId: "1",
+    bindingRevision: 1,
+    origin: "https://example.test",
+    expiresAt: Date.now() + 60000,
+    revoked: false,
+    targets: [],
+    commitPattern: "\\b(?:pagar|enviar)\\b",
+  };
+  for (const capabilities of [
+    ["task-bind"],
+    ["task-bind", "task-commit-pattern"],
+  ]) {
+    const target = new NativeSocketBrowserTarget(() => {});
+    let socket: Socket | undefined;
+    try {
+      await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+      socket = createConnection(socketPath);
+      const frames = socketFrames(socket);
+      frames.send({
+        type: "hello",
+        protocol: 2,
+        extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+        profileId: "pattern-profile",
+        capabilities,
+      });
+      await vi.waitFor(async () => expect(await target.available()).toBe(true));
+      if (!capabilities.includes("task-commit-pattern")) {
+        // An older browser would ignore the words and press those controls.
+        await expect(target.bindTask(binding)).rejects.toMatchObject({
+          kind: "UNSUPPORTED",
+        });
+        expect(frames.messages).toHaveLength(0);
+        continue;
+      }
+      const bound = target.bindTask(binding);
+      await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
+      expect(frames.messages[0]).toMatchObject({ type: "task-bind", binding });
+      frames.send({
+        type: "result",
+        id: frames.messages[0].id,
+        ok: true,
+        result: { bound: true },
+      });
+      await expect(bound).resolves.toEqual({ bound: true });
+    } finally {
+      socket?.destroy();
+      await target.stop();
+    }
+  }
+  await rm(directory, { recursive: true, force: true });
+});
+
 it("reduces the one active HTTPS page to its origin and the complete title", () => {
   const tab = {
     id: "7",
@@ -1632,5 +1822,450 @@ describe("commitFormHash", () => {
     expect(commitFormHash(data as unknown as Iterable<[string, string]>)).toBe(
       commitFormHash(new URLSearchParams("amount=12&go=yes")),
     );
+  });
+});
+
+/** A task actuator over a real socket to a browser peer that advertises `capabilities`. */
+async function actuatorOverSocket(
+  capabilities: string[],
+  options: Partial<ConstructorParameters<typeof NativeTaskActuator>[0]> = {},
+) {
+  const directory = await mkdtemp(join(tmpdir(), "native-actuator-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {});
+  await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+  const socket = createConnection(socketPath);
+  const frames = socketFrames(socket);
+  let answered = 0;
+  let snapshots = 0;
+  // The peer answers every request the way a browser that accepts it does.
+  socket.on("data", () => {
+    for (; answered < frames.messages.length; answered++) {
+      const message = frames.messages[answered] as Record<string, never>;
+      const reply = (result: unknown) =>
+        frames.send({ type: "result", id: message.id, ok: true, result });
+      if (message.type === "task-bind") {
+        const binding = message.binding as Record<string, unknown>;
+        reply({
+          bound: true,
+          tabId: binding.tabId,
+          taskId: binding.taskId,
+          epoch: binding.epoch,
+          bindingRevision: binding.bindingRevision,
+        });
+      } else if (message.type === "task-guide")
+        reply(
+          (message.guidance as { kind: string }).kind === "show"
+            ? { accepted: true }
+            : { visible: false },
+        );
+      else if (
+        (message.command as { subaction: string }).subaction === "snapshot"
+      ) {
+        const snapshotId = `00000000-0000-0000-0000-${String(++snapshots).padStart(12, "0")}`;
+        reply({
+          snapshotId,
+          frames: [
+            {
+              frameId: 0,
+              documentId: "document-1",
+              url: "https://bills.example/pay",
+              complete: true,
+              inputRevision: 0,
+              elements: [
+                { selector: `${snapshotId}:0:0`, form: { index: 0 } },
+                {
+                  selector: `${snapshotId}:0:1`,
+                  submits: true,
+                  form: { index: 0 },
+                },
+              ],
+            },
+          ],
+        });
+      } else reply({ dispatched: true });
+    }
+  });
+  frames.send({
+    type: "hello",
+    protocol: 2,
+    extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+    profileId: "profile",
+    capabilities: ["snapshot", "click", "cancel", ...capabilities],
+  });
+  await vi.waitFor(async () => expect(await target.available()).toBe(true));
+  const owner = {
+    actorId: "actor",
+    agentId: "agent",
+    connector: { source: "browser", accountId: "account" },
+  };
+  let task = createInteractiveTask({
+    id: "task-1",
+    owner,
+    goalRef: "goal-1",
+    now: Date.now(),
+    authorization: {
+      decisionId: "grant",
+      policyRevision: "policy",
+      state: "active",
+      decidedAt: new Date().toISOString(),
+      revokedAt: null,
+    },
+    allowedCapabilities: ["browser.click"],
+    allowedOrigins: ["https://bills.example"],
+  });
+  const apply = (change: TaskTransition) => {
+    task = transitionInteractiveTask(
+      task,
+      { owner, expectedRevision: task.revision, now: Date.now() },
+      change,
+    ).task;
+  };
+  let revision = 0;
+  const actuator = new NativeTaskActuator({
+    target,
+    getTask: () => structuredClone(task),
+    policy: () => ({
+      tabId: "1",
+      origin: "https://bills.example",
+      leaseMs: 60000,
+      targets: [{ selector: "#pay", action: "click" }],
+    }),
+    nextBindingRevision: () => ++revision,
+    resolveValue: async () => {
+      throw new Error("No values used");
+    },
+    verify: async () => "succeeded",
+    recordEvidence: async () => "evidence",
+    ...options,
+  });
+  const signal = new AbortController().signal;
+  const observe = async () => {
+    const observation = await actuator.observe({
+      owner,
+      taskId: task.id,
+      signal,
+    });
+    apply({ type: "observe", observation });
+    return observation;
+  };
+  let operations = 0;
+  const click = async (extra: Partial<TaskActionProposal> = {}) => {
+    const observation = await observe();
+    const proposal: TaskActionProposal = {
+      id: `operation-${++operations}`,
+      taskId: task.id,
+      epoch: task.epoch,
+      observationId: observation.id,
+      observationVersion: observation.version,
+      inputRevision: observation.inputRevision,
+      targetRef: `${observation.id}:0:0`,
+      capability: "browser.click",
+      authorizationId: "grant",
+      expiresAt: Date.now() + 30000,
+      ...extra,
+    };
+    apply({ type: "prepare", proposal });
+    apply({ type: "dispatch", operationId: proposal.id });
+    const result = await actuator.execute(proposal, {
+      owner,
+      signal,
+      isCurrent: () => true,
+    });
+    apply({ type: "result", operationId: proposal.id, ...result });
+    return result;
+  };
+  const sent = (type: string) =>
+    frames.messages.filter((message) => message.type === type);
+  return {
+    actuator,
+    owner,
+    signal,
+    observe,
+    click,
+    sent,
+    taskId: task.id,
+    close: async () => {
+      socket.destroy();
+      await target.stop();
+      await rm(directory, { recursive: true, force: true });
+    },
+  };
+}
+
+describe("NativeTaskActuator over the native socket", () => {
+  it("sends an older owned browser only what it advertised", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        assistantName: "Grace",
+        describeAction: () => "I will press the button.",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      const { actuator, owner, signal, taskId, sent } = browser;
+      const observation = await browser.observe();
+      expect(sent("task-bind")[0].binding).not.toHaveProperty("assistantName");
+      await actuator.showGuidance(
+        taskId,
+        owner,
+        {
+          stepId: "step-1",
+          targetRef: `${observation.id}:0:0`,
+          text: "Check the amount.",
+          detail: "Then tap Pay.",
+          tone: "instruction",
+          keepClearRefs: [`${observation.id}:0:1`],
+        },
+        signal,
+      );
+      const shown = sent("task-guide")[0].guidance;
+      expect(shown).toMatchObject({
+        kind: "show",
+        text: "Check the amount. Then tap Pay.",
+      });
+      for (const key of ["detail", "tone", "answers", "keepClear"])
+        expect(shown).not.toHaveProperty(key);
+      await actuator.pauseGuidance({ owner, taskId });
+      expect(sent("task-guide")[1].guidance).toMatchObject({ kind: "hide" });
+      expect(await browser.click()).toMatchObject({ status: "succeeded" });
+      const clicked = sent("command").find(
+        (message) => message.command.subaction === "click",
+      );
+      expect(clicked?.command).not.toHaveProperty("actionText");
+      // A reviewed target this browser cannot check is refused before dispatch.
+      await expect(
+        browser.click({ expectedSelector: "#pay" }),
+      ).rejects.toMatchObject({
+        code: "TASK_ACTION_NOT_DISPATCHED",
+      });
+      expect(refusals).toEqual([
+        {
+          taskId,
+          proposalId: "operation-2",
+          capability: "browser.click",
+          source: "actuator",
+          reason: "expected-target-unsupported",
+        },
+      ]);
+      expect(
+        sent("command").filter(
+          (message) => message.command.subaction === "click",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("refuses a reviewed target the browser cannot check unless the host says omit", async () => {
+    for (const policy of [undefined, "refuse"] as const) {
+      const refusals: TaskActionRefusal[] = [];
+      const browser = await actuatorOverSocket(
+        ["task-bind", "task-guide", "task-action-feedback"],
+        {
+          ...(policy ? { unsupportedExpectedTarget: policy } : {}),
+          onNotDispatched: (refusal) => refusals.push(refusal),
+        },
+      );
+      try {
+        await expect(
+          browser.click({ expectedSelector: "#pay" }),
+        ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+        expect(refusals.map((refusal) => refusal.reason)).toEqual([
+          "expected-target-unsupported",
+        ]);
+        expect(
+          browser
+            .sent("command")
+            .filter((message) => message.command.subaction === "click"),
+        ).toHaveLength(0);
+      } finally {
+        await browser.close();
+      }
+    }
+  });
+
+  it("under omit still refuses a selector that is not a reviewed binding target", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        unsupportedExpectedTarget: "omit",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      await expect(
+        browser.click({ expectedSelector: "#elsewhere" }),
+      ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+      // The binding check runs first: the reason is not the unsupported check.
+      expect(refusals).toEqual([
+        {
+          taskId: browser.taskId,
+          proposalId: "operation-1",
+          capability: "browser.click",
+          source: "actuator",
+          reason: "target-not-reviewed",
+        },
+      ]);
+      expect(
+        browser
+          .sent("command")
+          .filter((message) => message.command.subaction === "click"),
+      ).toHaveLength(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("under omit sends a reviewed target's action without the selector the browser cannot check", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback"],
+      {
+        unsupportedExpectedTarget: "omit",
+        describeAction: () => "I will press the button.",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+      },
+    );
+    try {
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      expect(refusals).toEqual([]);
+      const clicks = browser
+        .sent("command")
+        .filter((message) => message.command.subaction === "click");
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0].command).toMatchObject({ subaction: "click", id: "1" });
+      expect(clicks[0].command).not.toHaveProperty("expectedSelector");
+      expect(clicks[0].command).not.toHaveProperty("actionText");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("never sends a commit grant under omit, since its reviewed control goes unchecked", async () => {
+    const refusals: TaskActionRefusal[] = [];
+    const browser = await actuatorOverSocket(
+      ["task-bind", "task-guide", "task-action-feedback", "task-commit-grant"],
+      {
+        unsupportedExpectedTarget: "omit",
+        onNotDispatched: (refusal) => refusals.push(refusal),
+        commitGrant: (task, proposal) => ({
+          grantId: "yes-1",
+          taskId: task.id,
+          epoch: task.epoch,
+          origin: "https://bills.example",
+          targetRef: proposal.targetRef,
+          selector: "#pay",
+          subaction: "click",
+          expiresAt: Date.now() + 30000,
+        }),
+      },
+    );
+    try {
+      await expect(
+        browser.click({ expectedSelector: "#pay" }),
+      ).rejects.toMatchObject({ code: "TASK_ACTION_NOT_DISPATCHED" });
+      expect(refusals).toMatchObject([
+        { source: "actuator", reason: "commit-grant-mismatch" },
+      ]);
+      expect(
+        browser
+          .sent("command")
+          .filter((message) => message.command.subaction === "click"),
+      ).toHaveLength(0);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("keeps the reviewed target on a browser that checks it, even under omit", async () => {
+    const browser = await actuatorOverSocket(
+      [
+        "task-bind",
+        "task-guide",
+        "task-action-feedback",
+        "task-expected-target",
+      ],
+      { unsupportedExpectedTarget: "omit" },
+    );
+    try {
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      const clicked = browser
+        .sent("command")
+        .find((message) => message.command.subaction === "click");
+      expect(clicked?.command).toMatchObject({ expectedSelector: "#pay" });
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("applies the host's guidance policy, keeps the paused cursor and the generic preview", async () => {
+    const browser = await actuatorOverSocket(
+      [
+        "task-bind",
+        "task-guide",
+        "task-guide-label",
+        "task-guide-keep-clear",
+        "task-action-feedback",
+        "task-expected-target",
+      ],
+      {
+        pausedCursor: true,
+        describeAction: () => "x".repeat(201),
+        // This host never draws page answers and keeps the form's submit clear.
+        presentGuidance: ({ answers: _answers, ...input }, { snapshot }) => ({
+          ...input,
+          tone: input.tone === "offer" ? "instruction" : input.tone,
+          keepClearRefs: snapshot.elements
+            .filter((element) => element.submits === true)
+            .map((element) => element.selector),
+        }),
+      },
+    );
+    try {
+      const { actuator, owner, signal, taskId, sent } = browser;
+      const observation = await browser.observe();
+      await actuator.showGuidance(
+        taskId,
+        owner,
+        {
+          stepId: "step-1",
+          targetRef: `${observation.id}:0:0`,
+          text: "Use your saved card?",
+          tone: "offer",
+          answers: [{ id: "yes", kind: "primary", text: "Yes" }],
+        },
+        signal,
+      );
+      const shown = sent("task-guide")[0].guidance;
+      expect(shown).toMatchObject({
+        tone: "instruction",
+        keepClear: [`${observation.id}:0:1`],
+      });
+      expect(shown).not.toHaveProperty("answers");
+      await actuator.quiesce({ owner, taskId, reason: "pause" });
+      await actuator.quiesce({ owner, taskId, reason: "close" });
+      expect(
+        sent("task-guide").map((message) => message.guidance.kind),
+      ).toEqual(["show", "pause", "hide"]);
+      expect(await browser.click({ expectedSelector: "#pay" })).toMatchObject({
+        status: "succeeded",
+      });
+      const clicked = sent("command").find(
+        (message) => message.command.subaction === "click",
+      );
+      expect(clicked?.command).toMatchObject({ expectedSelector: "#pay" });
+      expect(clicked?.command).not.toHaveProperty("actionText");
+    } finally {
+      await browser.close();
+    }
   });
 });

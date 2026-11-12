@@ -9,6 +9,14 @@ local bindings are derived from root .env/.env.local. Add routes in the file-bas
 tree and run the package codegen script. The build script checks types; typecheck also
 validates router and Worker bundling contracts.
 
+`/api/v1/responses` is a synchronous adapter to the same chat authentication,
+admission and billing owner. It preserves ordered text, image URLs, inline files
+and function-call histories. Unsupported inputs (including stored response IDs,
+streaming, hosted tools and explicit image detail) return `400` before admission.
+Provider token limits remain `incomplete`; malformed provider output returns `503`.
+Numeric tool arguments that the chat SDK cannot preserve are rejected explicitly.
+The adapter does not persist Responses objects.
+
 Delegated inference budgets are off by default. Apply shared migrations 0544–0545
 before setting `INFERENCE_FUNDED_BUDGET_ADMISSION=true`. Keep strong revocation
 enabled and configure the same `INFERENCE_FUNDING_BUDGET_SEAL_SECRET` on the
@@ -16,6 +24,22 @@ Worker and accounting hosts. Enroll an organization through the internal
 `withInferencePolicyMutation({organizationIds, enable: true}, ...)` transaction.
 All policy writers must use the managed mutation service; the database rejects
 an unfenced change for an enrolled organization.
+Request routes (chat, responses, messages, embeddings, speech and the other
+paid routes) never take the delegated lane or its rate window: they are admitted
+from the cached auth entry and counted per isolate whatever the flag says. The
+flag selects the delegated lane only for a fixed-price Worker session that
+commits its lease at dispatch (the speech relay). A host without a Worker
+lifetime never takes the delegated lane: it reserves synchronously against the
+primary, and the flag only switches its rate limit to the budget rate window.
+
+A request route records nothing durable before its provider call. If its
+isolate dies after the provider call and before the post-response lease commit,
+that request's provider cost is not charged; once the lease is committed the
+gate alarm recovers it. Revocation of an API key reaches the inference routes
+through writer invalidation and the entry's aged refresh, which checks the gate
+and writes a denial when the gate holds a fence. Every other route that
+authenticates through `requireGenerativeRouteCaller` checks the gate on each
+request unless it passes `cachedDecisionIsFinal`.
 
 Migration 0553 also rejects an unfenced policy write in a repeatable-read or
 serializable transaction with SQLSTATE `40001`. Restart that whole transaction
@@ -124,9 +148,9 @@ published self-serve overage rate ($65 per million provider credits) in the
 This is an estimate for staging validation, not an assertion about a private
 invoice. Production retains its existing configured account rate.
 
-The speech-only Ink profile uses responsive thresholds and a 1280 ms final-turn
-timeout. `VOICE_SPEECH_END_TIMEOUT_MS` can select an integer clamped to 640–5000
-ms. Eager-end remains a distinct event; it is never promoted to a final transcript.
+Cloud speech uses the shared Cartesia Ink turn-detection settings, just like
+Direct speech. It does not replace them with a faster-ending profile. Eager-end
+remains a distinct event; it is never promoted to a final transcript.
 The streaming route bypasses the legacy SQL audio cache and does not replay
 cached PCM. Its cache stores positive moderation verdicts, not synthesized
 audio. Positive text moderation receipts use a 60-second, exact-input cache bound to
@@ -242,6 +266,104 @@ own their actual Android packages, callbacks, branding and acceptance tests.
 Use `prompt=select_account` for a user gesture before the App Link and
 `mfa=exchange` to finish a required second factor through the existing exchange
 and MFA endpoints. An MFA-required response carries no session tokens.
+
+Native Google sign-in with Play services can do the Cloud half in one call,
+`POST /api/v1/app-auth/mobile/google`, and connect Gmail and Calendar in the
+same step:
+
+1. `POST /steward/auth/oauth/google/native/challenge` (as today) gives
+   `challengeId`, `nonce` and `serverClientId`.
+2. On the phone, Credential Manager returns an id_token carrying that nonce.
+   `Identity.getAuthorizationClient().authorize(...)` with the connector scopes
+   and `requestOfflineAccess(<serverClientId>, true)` returns a
+   `serverAuthCode`. `GET /api/v1/app-auth/mobile/google` returns Cloud's
+   `serverClientId` and `scopes`; it is Cloud's `GOOGLE_CLIENT_ID`, and it must
+   be the same web client as Steward's `GOOGLE_CLIENT_ID`.
+3. `POST /api/v1/app-auth/mobile/google` with
+   `{clientId, environment, redirectUri, state, codeVerifier, deviceName?,
+   steward: {clientId, challengeId, idToken, codeVerifier}, serverAuthCode?}`.
+   Cloud verifies the identity with Steward (signed, with the caller's edge IP).
+   It then syncs the Cloud user and organization and records the app
+   connection. It issues and exchanges a mobile App Auth grant (same lineage,
+   TTL and inactive-until-acknowledged key as `connect` + `mobile/token`) and
+   stores the Google connection when the code belongs to the same Google
+   account (`sub`) and the user owns the organization. Finally it revokes the
+   temporary Steward session. The answer is
+   `{success, status: "signed_in", credentialId, secret, expiresAt, scopes,
+   acknowledgeBy, code, accountCreated, google?}`. `google` is
+   `{connected: true, connectionId, email, scopes, refreshTokenIssued}` or
+   `{connected: false, code}`; a Google failure never fails the sign-in. A
+   second factor answers `{success: true, status: "mfa_required", mfa}` with no
+   key.
+4. `POST /api/v1/app-auth/mobile/ack` (as today) activates the key.
+
+A phone replaces its own key before it expires, without a browser:
+
+1. `POST /api/v1/app-auth/mobile/renew`, authenticated with the current
+   acknowledged, unexpired `eliza_mobile_` key in `Authorization: Bearer`, in
+   `X-API-Key`, or in both when they carry the same key (two different keys
+   are refused with 401; `DELETE /api/v1/api-keys/current` reads the key the
+   same way), with the strict JSON
+   body `{clientId, environment, redirectUri, state, codeChallenge,
+   codeChallengeMethod: "S256", deviceName?}` under the same field rules as the
+   `mobile_pkce` approval. It answers `{success: true, code: "emac_…",
+   codeType, expiresAt, expiresIn}`.
+2. `POST /api/v1/app-auth/mobile/token` and `POST /api/v1/app-auth/mobile/ack`
+   exchange and activate the new key exactly as after a sign-in. Both require
+   the old key to still be active: a key revoked after step 1 gets no
+   successor.
+3. `DELETE /api/v1/api-keys/current` with the old key and the header
+   `X-Renewed-Credential-Id: <credentialId of the new key>` (the id the token
+   exchange returned) revokes the old key only. Until then both keys are
+   valid.
+
+The new grant copies the sign-in time (`mobile_app_auth_grants.session_started_at`;
+a grant without it counts from `created_at`) and the sign-in's `session_id`,
+and records the key that asked in `renewed_from_credential_id` (migration
+`0573_mobile_app_auth_renewal_lineage`; apply it before deploying). Refusals
+use the Cloud API error shape `{success: false, error, code}`: 401
+`authentication_required` (key invalid, expired or revoked; two different
+keys sent; client disabled or registered differently; or the key already has
+an acknowledged successor), 403 `access_denied` (owner inactive, or the key
+is no longer in the owner's open organization), 409 `renewal_window_closed`
+(the sign-in is older than 180 days, or the key already lives until day 180;
+sign in again), 429 `rate_limit_exceeded`, 503 `service_unavailable`
+(retryable), and 400 `validation_error` for a malformed body.
+
+No key of a sign-in outlives its 180-day cap: a renewed key lives one key
+lifetime from its renewal or until day 180 of the sign-in, whichever is
+earlier.
+
+A key has one live successor, and a sign-in is revoked as a whole:
+
+- A second `renew` by the same key while the first code is not yet
+  acknowledged supersedes that code; only the newest can be redeemed.
+- A `renew` by a key whose successor was already acknowledged means the key
+  has two holders. It is refused with 401 and every key of the sign-in is
+  revoked, so the phone must sign in again. After `ack` a client must use the
+  new key and never renew with the old one.
+- Revoking a device from the account (`DELETE
+  /api/v1/app-auth/mobile/credentials/:id`) revokes every key of that sign-in.
+- `DELETE /api/v1/api-keys/current` is a sign-out and revokes every key of the
+  sign-in, keys renewed from the presented one included. It is step 3 above,
+  and revokes only the presented key, when `X-Renewed-Credential-Id` names
+  that key's acknowledged successor. A request without the header is also
+  taken as step 3 during the two minutes after the successor's
+  acknowledgement, for a client that revokes the old key at once without
+  naming the new one; later, or naming any other credential, it is a sign-out.
+  A header that is not a credential id is a 400 `validation_error`.
+- So a copied key that renewed before the phone did ends when the phone signs
+  out with the older key (the phone cannot name the copy's successor), when
+  the phone next renews, when the owner revokes the device, or at the
+  sign-in's cap. A client that retries step 3 later than two minutes after
+  the acknowledgement must send the header, or it ends its own sign-in.
+  Nothing ends the copy's key while the phone only uses the older key or lets
+  it expire.
+
+This needs no new setting beyond those above: `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` on the API Worker and, on Steward,
+`STEWARD_GOOGLE_NATIVE_CLIENT_IDS` mapping the Steward app client to the
+Android OAuth client ids.
 
 Native email sign-in is a six-digit code typed into the app:
 
@@ -455,7 +577,6 @@ prepared reviews without reconstructing a mutation. The existing undo/status
 APIs remain compatible; consumers needing reviewed confirmation use this route.
 Apply migration `0510_subscription_renewal_review_receipts` before deploying.
 
-
 ## Organization upgrade review
 
 `POST /api/v1/subscriptions/upgrade/review` accepts `subscriptionId`, a positive
@@ -491,7 +612,6 @@ period end and `amountDueNowCents` is zero. `recurringEstimate` is a long-term
 estimate, not a guaranteed next invoice. This endpoint creates no provider
 schedule, command, charge or allowance change; downgrade confirmation is not
 yet exposed. Upgrade confirmation rejects a downgrade quote.
-
 
 Organization downgrade confirmation uses `POST /api/v1/subscriptions/downgrade/confirm`
 with only `quoteId` and `idempotencyKey` from an explicitly reviewed original quote.
@@ -569,6 +689,52 @@ each environment:
 - Optional `ELIZA_MAPS_OPERATOR`, `ELIZA_MAPS_ATTRIBUTION` and
   `ELIZA_MAPS_PROVIDER_ID`.
 
+`ELIZA_MAPS_PROVIDER=google` serves the same contract from Google Maps
+Platform instead: Places API (New) text search and place details, Geocoding API
+geocode and reverse, Routes API `computeRoutes` (drive with live traffic, walk,
+bicycle, and transit on published timetables) and Map Tiles API 2D roadmap
+tiles. Ops provision:
+
+- Secret `GOOGLE_MAPS_API_KEY`: a server key restricted to those four APIs
+  (no application restriction usable from Workers; restrict by API). It goes
+  only in request headers or Google's own request URLs and never leaves Cloud.
+- Optional `ELIZA_MAPS_COVERAGE_JSON` (default: one `world` region),
+  `ELIZA_MAPS_LANGUAGE` (BCP-47, e.g. `en-US`), `ELIZA_MAPS_REGION` (CLDR,
+  e.g. `US`; tiles default to `en-US`/`US`), `ELIZA_MAPS_ROUTE_ALTERNATIVES`,
+  `ELIZA_MAPS_DATASET_REVISION` (default `google-maps-platform-live`),
+  `ELIZA_MAPS_PROVIDER_ID` (default `eliza-cloud-google`) and
+  `ELIZA_MAPS_ATTRIBUTION` (default `Google Maps`).
+- `ELIZA_MAPS_TILES=false` turns the tile proxy off; `ELIZA_MAPS_TRAFFIC=none`
+  drops live traffic (traffic-aware routes bill as Routes Pro);
+  `ELIZA_MAPS_TRANSIT=false` drops transit.
+
+`capabilities.traffic` is `live` and `capabilities.transit` is `scheduled`
+while those are on; `modes` then includes `transit`. Drive routes are requested
+`TRAFFIC_AWARE`, carry `traffic: "live"` and `staticDurationSeconds` (the
+free-flow time); walk, bicycle and transit routes carry `traffic: "none"`.
+Transit ride steps carry `transit` (`line`, `vehicle`, `headsign`, stops,
+times, `stopCount`, `color`). `POST routes` accepts an optional `departAt`
+(ISO 8601) for timetables and traffic prediction; a past departure for a
+traffic-aware drive is `400 invalid_request`. Search asks only for basic place
+fields (Text Search Pro); details adds website, phone and opening hours.
+
+`GET /api/v1/maps/tiles/{z}/{x}/{y}` returns one PNG roadmap tile
+(`Cache-Control: private, max-age=86400`) when the provider serves tiles;
+`capabilities.tiles` then gives the URL template, zoom range, tile size and
+the attribution a host must show on the map, and `capabilities.map` is `true`.
+`POST /api/v1/maps/tiles/viewport` with `{zoom, north, south, east, west}`
+returns `{providerId, copyright, maxZoom}`: the copyright for the visible area,
+which the host shows with the tiles (it is metadata like `capabilities`: it
+needs the subscription but no `Idempotency-Key` and consumes no allowance).
+plugin-maps' `createCloudMaps(..., { tileRequest })` and `MapPlane` with a
+`cloud-raster` basemap draw these tiles. Cloud creates the Map Tiles
+session once per isolate, key, language and region, renews it an hour before
+it expires and once more if Google refuses it. Tiles use the same
+authentication, subscription and durable admission as every Maps operation:
+one request unit and a unique `Idempotency-Key` per tile, so size the
+`ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES` plans for map browsing (a screen is
+roughly 12-20 tiles). Other providers answer `503 maps_not_configured`.
+
 `capabilities` also reports `sources` and a location `disclosure`: the services
 that receive a request's text and coordinates and their operator. Cloud records
 only the operation and result code. A self-hostable reference stack with TLS,
@@ -636,3 +802,15 @@ variable through its atomic Worker-binding pipeline. A blank source preserves
 the deployed value. This uses the existing binding mechanism even though the
 content is public. To withdraw published documents, replace the binding with
 `{}` so the endpoint refuses it; an empty source is not a deletion request.
+
+App deletion is asynchronous. `DELETE /api/v1/apps/:id` returns `202` with the
+original `jobId` while teardown is pending, and `200` only for confirmed completion.
+Poll the existing jobs endpoint and require its matching app-deletion receipt before
+removing the app from local state. Cancelling a client wait does not cancel teardown.
+The original deletion fence remains in place after a failed or uncertain provider
+operation; retries read the same job and cannot change its repository-deletion option.
+A missing GitHub deletion acknowledgement reports `operator_reconciliation_required`.
+It does not repeat the DELETE or accept a 404 as success. Escalate the original job
+and repository ID to an operator; this release has no automatic evidence-import
+endpoint. Independent original provider evidence is required before an operator
+can reconcile that receipt. The app and its deletion fence remain retained.

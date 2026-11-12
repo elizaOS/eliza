@@ -40,8 +40,13 @@ export type VoiceSessionPhase =
   | "complete";
 
 export interface VoiceSessionMachineState {
+  /** Client-owned playback barrier, independent of the latest request trace. */
+  playbackTraceId?: string | null;
   phase: VoiceSessionPhase;
-  /** Ephemeral acknowledgement for this turn; not conversation history. */
+  /**
+   * Ephemeral acknowledgement, then each content-free activity name, for this
+   * turn; not conversation history.
+   */
   progressText?: string;
   /** Suppress delayed progress from a locally cancelled turn. */
   progressCancelledTraceId?: string | null;
@@ -185,11 +190,22 @@ export function applyServerEvent(
         interimTranscript: "",
       };
     case "progress":
+    case "activity":
       return state.traceId === event.traceId &&
         state.progressCancelledTraceId !== event.traceId &&
         (state.phase === "thinking" || state.phase === "speaking")
-        ? { ...state, progressText: event.text }
+        ? {
+            ...state,
+            progressText: event.t === "progress" ? event.text : event.label,
+          }
         : state;
+    case "turn_terminal":
+      if (state.traceId !== event.traceId) return state;
+      return {
+        ...state,
+        progressText: undefined,
+        ...(state.phase === "speaking" ? {} : { phase: "complete" as const }),
+      };
     case "reply_complete":
       // Transcript reconciliation is separate from audible playback state.
       return state;

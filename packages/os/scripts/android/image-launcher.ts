@@ -7,7 +7,8 @@
  * The signed Eliza APK is staged as an additive, hash- and certificate-pinned
  * product launcher (stage-launcher-overlay.ts) with the reviewed first-boot
  * runtime grants from android/products/eliza-images.json, the default HOME,
- * assistant role and Autofill offer (launcher-provisioning.mjs), the image
+ * assistant role (unless the brand config sets assistantRole false) and
+ * Autofill offer (launcher-provisioning.mjs), the image
  * capability feature (image-capability.mjs) and the system Clock requirement.
  * No privapp allowlist, platform certificate, priv-app placement, role-app
  * override or dialer/SMS preassignment is produced, and stock apps stay
@@ -212,6 +213,8 @@ export function reviewDescriptor(
     );
   if (descriptor.companions !== undefined)
     throw new Error("Eliza image launchers stage no companions");
+  if (descriptor.privilegedPermissions !== undefined)
+    throw new Error("Eliza image launchers carry no privileged permissions");
   return descriptor;
 }
 
@@ -227,7 +230,12 @@ const NATIVE_BLUEPRINT_HEADER =
 const NATIVE_CONFIG = `\n# Exact executable modes for the admitted resident runtime JNI.\nimage_launcher_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nTARGET_FS_CONFIG_GEN += $(image_launcher_dir)/config.fs\n`;
 
 export interface StageOptions {
-  brand: { productName: string; packageName: string; appName: string };
+  brand: {
+    productName: string;
+    packageName: string;
+    appName: string;
+    assistantRole?: boolean;
+  };
   policy?: ImagesPolicy;
   apk: string;
   descriptor?: string | null;
@@ -305,7 +313,9 @@ export function stageImageLauncher(options: StageOptions) {
       ["dump", "xmltree", launcherApk, "AndroidManifest.xml"],
       { encoding: "utf8", env: options.env, maxBuffer: 64 << 20 },
     );
-    const components = provisioningComponents(xml, descriptor.packageName);
+    const components = provisioningComponents(xml, descriptor.packageName, {
+      assistant: options.brand.assistantRole !== false,
+    });
     let native = null;
     if (product.nativeTarget) {
       native = stageAndroidNative({
@@ -391,7 +401,12 @@ function walk(directory: string, out: string[] = []) {
  */
 export function verifyStagedLauncher(
   directory: string,
-  brand: { productName: string; packageName: string; appName: string },
+  brand: {
+    productName: string;
+    packageName: string;
+    appName: string;
+    assistantRole?: boolean;
+  },
   policy = loadImagesPolicy(),
 ) {
   const at = (name: string) => path.join(directory, name);
@@ -478,13 +493,21 @@ export function verifyStagedLauncher(
     at("provisioning/overlay/frameworks/base/core/res/res/values/config.xml"),
     "utf8",
   );
+  const assistantRole = brand.assistantRole !== false;
   if (
-    !assistant.includes(
-      `<string name="config_defaultAssistant" translatable="false">${descriptor.packageName}</string>`,
-    ) ||
+    (assistantRole
+      ? !assistant.includes(
+          `<string name="config_defaultAssistant" translatable="false">${descriptor.packageName}</string>`,
+        )
+      : /config_defaultAssistant/.test(assistant)) ||
     /config_default(Dialer|Sms)/.test(assistant)
   )
-    fail(directory, "provisioning must assign only the assistant and Autofill");
+    fail(
+      directory,
+      assistantRole
+        ? "provisioning must assign only the assistant and Autofill"
+        : "provisioning must assign only Autofill",
+    );
   const home = fs.readFileSync(
     at("provisioning/preferred-apps/launcher-home.xml"),
     "utf8",

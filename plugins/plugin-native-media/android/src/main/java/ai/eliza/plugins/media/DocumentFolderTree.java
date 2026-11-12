@@ -9,6 +9,7 @@ import android.content.SharedPreferences;
 import android.content.UriPermission;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Bundle;
 import android.provider.DocumentsContract;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -23,34 +24,64 @@ import org.json.JSONObject;
 
 /**
  * One user-selected Storage Access Framework folder tree. The renderer browses it through opaque
- * entry ids ({@link FolderSession}); it never supplies or receives authority from a URI or path,
- * and nothing here asks for broad storage permission or falls back to another provider. Android
- * grants the folder in place: nothing is copied or imported.
+ * entry ids ({@link FolderSession}) and never supplies a URI or path; the tree grant and those ids
+ * are the authority boundary. {@link #select} also returns the document's content URI, which a host
+ * may pass to Capacitor's convertFileSrc for a preview; it reads only through this app's existing
+ * grant and never authorizes a call here. Nothing here asks for broad storage permission or falls
+ * back to another provider. Android grants the folder in place: nothing is copied or imported.
  *
  * <p>Every change names the revision the renderer listed (name, type, size, modification time and
  * provider flags) and is refused when the provider's current row differs. Deletion is permanent
  * (providers have no integrated trash here) and needs an explicit confirmation; only empty folders
- * are deleted. A batch applies each item independently and reports every item's outcome; if access
- * ends mid-batch, the items already changed are still reported. Sharing opens Android's chooser and
- * sends nothing until the owner picks an app.
+ * are deleted, and only once the provider has finished loading them. A batch applies each item
+ * independently and reports every item's outcome; if access ends mid-batch, the items already
+ * changed are still reported. Sharing opens Android's chooser and sends nothing until the owner
+ * picks an app.
  *
  * <p>The host injects the SharedPreferences name that records the chosen tree (installed hosts keep
  * theirs) and how a document from the tree becomes an opaque selected-document capability (normally
- * {@link SelectedDocuments#authorize}). Call every method except {@link #pickerIntent()} from one
- * serial worker thread, through {@link #guarded(Work)}.
+ * {@link SelectedDocuments#authorize}). It may also say how many saved links still depend on a tree
+ * grant; such a grant is kept when the folder is changed or forgotten. Call every method except
+ * {@link #pickerIntent()} from one serial worker thread, through {@link #guarded(Work)}.
  */
 public final class DocumentFolderTree {
   /** One page of a folder. "Load more" continues with an opaque cursor. */
   public static final int PAGE = 250;
 
   private static final String KEY = "root";
+  private static final String NAME_HINT =
+      "Use a different name: no / or \\, not . or .., up to 255 characters.";
   private static final Pattern PREFERENCES = Pattern.compile("[a-z][a-z0-9-]{0,63}");
   private static final int GRANTS =
       Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+  /** The row columns {@link #row} reads, in order. */
+  private static final String[] FIELDS = {
+    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+    DocumentsContract.Document.COLUMN_MIME_TYPE,
+    DocumentsContract.Document.COLUMN_FLAGS,
+    DocumentsContract.Document.COLUMN_SIZE,
+    DocumentsContract.Document.COLUMN_LAST_MODIFIED
+  };
+  private static final String[] CHILD_FIELDS = {
+    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+    DocumentsContract.Document.COLUMN_MIME_TYPE,
+    DocumentsContract.Document.COLUMN_FLAGS,
+    DocumentsContract.Document.COLUMN_SIZE,
+    DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+    DocumentsContract.Document.COLUMN_DOCUMENT_ID
+  };
 
   /** Turns a document from the tree into the host's selected-document capability id. */
   public interface Selector {
     String select(Uri document) throws Exception;
+  }
+
+  /**
+   * How many saved links (for example note source links) still read documents through a tree grant.
+   * A tree with any is dropped as the browsed folder but its grant is kept.
+   */
+  public interface Retention {
+    int linked(Uri tree) throws Exception;
   }
 
   /** A folder operation run on the host's worker. */
@@ -61,16 +92,23 @@ public final class DocumentFolderTree {
   private final Context context;
   private final String preferences;
   private final Selector selector;
+  private final Retention retention;
   private final FolderSession<Uri> session = new FolderSession<>();
   private Uri tree;
 
   public DocumentFolderTree(Context context, String preferences, Selector selector) {
-    if (context == null || selector == null || preferences == null
+    this(context, preferences, selector, tree -> 0);
+  }
+
+  public DocumentFolderTree(
+      Context context, String preferences, Selector selector, Retention retention) {
+    if (context == null || selector == null || retention == null || preferences == null
         || !PREFERENCES.matcher(preferences).matches())
       throw new IllegalArgumentException("Invalid folder tree configuration");
     this.context = context.getApplicationContext();
     this.preferences = preferences;
     this.selector = selector;
+    this.retention = retention;
   }
 
   public static JSObject result(String status, String message) {
@@ -140,88 +178,91 @@ public final class DocumentFolderTree {
   }
 
   private JSObject describe(FolderSession.Entry<Uri> item) throws Exception {
-    String[] fields = {
-      DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-      DocumentsContract.Document.COLUMN_MIME_TYPE,
-      DocumentsContract.Document.COLUMN_FLAGS,
-      DocumentsContract.Document.COLUMN_SIZE,
-      DocumentsContract.Document.COLUMN_LAST_MODIFIED
-    };
-    try (Cursor row = resolver().query(item.location(), fields, null, null, null)) {
+    try (Cursor row = resolver().query(item.location(), FIELDS, null, null, null)) {
       if (row == null || !row.moveToFirst()) throw new FileNotFoundException();
-      String name = row.getString(0), mime = row.getString(1);
-      long flags = row.getLong(2),
-          size = row.isNull(3) ? -1 : row.getLong(3),
-          modified = row.isNull(4) ? -1 : row.getLong(4);
-      boolean directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(mime),
-          write = retained(true);
-      JSObject value = new JSObject();
-      value.put("id", item.id);
-      value.put("parentId", item.parent);
-      value.put("name", name);
-      value.put("mimeType", mime);
-      value.put("directory", directory);
-      value.put("size", size);
-      value.put("modified", modified);
-      value.put("revision", name + "|" + mime + "|" + size + "|" + modified + "|" + flags);
-      value.put(
-          "canCreate",
-          write && directory && (flags & DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE) != 0);
-      value.put(
-          "canRename",
-          write
-              && item.parent != null
-              && (flags & DocumentsContract.Document.FLAG_SUPPORTS_RENAME) != 0);
-      value.put(
-          "canDelete",
-          write
-              && item.parent != null
-              && (flags & DocumentsContract.Document.FLAG_SUPPORTS_DELETE) != 0);
-      value.put(
-          "canMove",
-          write
-              && !directory
-              && item.parent != null
-              && (flags & DocumentsContract.Document.FLAG_SUPPORTS_MOVE) != 0);
-      return value;
+      return row(item, row, retained(true));
     }
   }
 
-  private JSObject list(FolderSession.Entry<Uri> folder) throws Exception {
-    return list(folder, 0);
+  /** One listed entry from a cursor positioned on its {@link #FIELDS} row. */
+  private static JSObject row(FolderSession.Entry<Uri> item, Cursor row, boolean write) {
+    String name = row.getString(0), mime = row.getString(1);
+    long flags = row.getLong(2),
+        size = row.isNull(3) ? -1 : row.getLong(3),
+        modified = row.isNull(4) ? -1 : row.getLong(4);
+    boolean directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(mime);
+    JSObject value = new JSObject();
+    value.put("id", item.id);
+    value.put("parentId", item.parent);
+    value.put("name", name);
+    value.put("mimeType", mime);
+    value.put("directory", directory);
+    value.put("size", size);
+    value.put("modified", modified);
+    value.put("revision", FolderSession.revision(name, mime, size, modified, flags));
+    value.put(
+        "canCreate",
+        write && directory && (flags & DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE) != 0);
+    value.put(
+        "canRename",
+        write
+            && item.parent != null
+            && (flags & DocumentsContract.Document.FLAG_SUPPORTS_RENAME) != 0);
+    value.put(
+        "canDelete",
+        write
+            && item.parent != null
+            && (flags & DocumentsContract.Document.FLAG_SUPPORTS_DELETE) != 0);
+    value.put(
+        "canMove",
+        write
+            && !directory
+            && item.parent != null
+            && (flags & DocumentsContract.Document.FLAG_SUPPORTS_MOVE) != 0);
+    return value;
   }
 
-  /** The cursor is the offset into the provider's child query for this folder. */
-  private JSObject list(FolderSession.Entry<Uri> folder, int offset) throws Exception {
+  private JSObject list(FolderSession.Entry<Uri> folder) throws Exception {
+    return list(folder, 0, null);
+  }
+
+  /**
+   * One page from {@code offset} into the provider's child query for this folder. A later page
+   * continues only while the row before it still has the document id {@code last}; otherwise rows
+   * were added or removed since the previous page and the folder must be reloaded.
+   */
+  private JSObject list(FolderSession.Entry<Uri> folder, int offset, String last)
+      throws Exception {
     if (folder == null)
       return result("unavailable", "Choose a folder in Android to browse its contents.");
     JSObject details = describe(folder);
     if (!details.optBoolean("directory"))
       return result("unsupported", "This selection is not a folder.");
     session.touch(folder);
+    boolean write = retained(true);
     Uri children =
         DocumentsContract.buildChildDocumentsUriUsingTree(
             tree, DocumentsContract.getDocumentId(folder.location()));
     JSArray rows = new JSArray();
-    boolean truncated = false, full = false;
+    String lastShown = null;
+    boolean truncated = false, full = false, loading, error;
     int total;
-    try (Cursor cursor =
-        resolver()
-            .query(
-                children,
-                new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID},
-                null,
-                null,
-                null)) {
+    try (Cursor cursor = resolver().query(children, CHILD_FIELDS, null, null, null)) {
       if (cursor == null) throw new IllegalStateException();
+      // A provider still syncing returns a partial (often empty) first cursor; it is never proof
+      // that a folder is empty.
+      Bundle extras = cursor.getExtras();
+      loading = extras != null && extras.getBoolean(DocumentsContract.EXTRA_LOADING, false);
+      error = extras != null && extras.getString(DocumentsContract.EXTRA_ERROR) != null;
       total = cursor.getCount();
-      if (offset > 0 && !cursor.moveToPosition(offset - 1)) offset = total;
+      if (offset > 0 && (!cursor.moveToPosition(offset - 1) || !last.equals(cursor.getString(5))))
+        return result("conflict", "This folder changed. Reload it to see every item.");
       while (cursor.moveToNext()) {
         if (rows.length() >= PAGE) {
           truncated = true;
           break;
         }
-        Uri uri = DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0));
+        Uri uri = DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(5));
         FolderSession.Entry<Uri> child;
         // Listed entries of this folder stay operable, so a folder larger than the session bound
         // stops here honestly.
@@ -232,14 +273,19 @@ public final class DocumentFolderTree {
           full = true;
           break;
         }
-        rows.put(describe(child));
+        rows.put(row(child, cursor, write));
+        lastShown = cursor.getString(5);
       }
     }
     int shown = offset + rows.length();
     JSObject out =
         result(
             "ready",
-            full
+            loading
+                ? "Still loading from the provider. Refresh to see every entry."
+                : error
+                    ? "The provider reported a problem. Some entries may be missing."
+                    : full
                 ? "Showing "
                     + shown
                     + " of "
@@ -251,11 +297,39 @@ public final class DocumentFolderTree {
     out.put("folder", details);
     out.put("entries", rows);
     out.put("truncated", truncated);
+    out.put("loading", loading);
+    out.put("complete", !loading && !error);
     out.put("rootId", session.rootId());
     out.put("offset", offset);
     out.put("total", total);
-    if (truncated && !full) out.put("cursor", FolderSession.cursor(folder.id, shown));
+    if (truncated && !full) out.put("cursor", FolderSession.cursor(folder.id, shown, lastShown));
     return out;
+  }
+
+  /**
+   * Whether a folder has any child, from one child query of document ids that neither describes
+   * nor authorizes the children, so it never evicts listed entries. Null while the provider is
+   * still loading the folder or reported an error: a partial cursor is never proof of emptiness.
+   */
+  private Boolean hasChildren(FolderSession.Entry<Uri> folder) throws Exception {
+    Uri children =
+        DocumentsContract.buildChildDocumentsUriUsingTree(
+            tree, DocumentsContract.getDocumentId(folder.location()));
+    try (Cursor cursor =
+        resolver()
+            .query(
+                children,
+                new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID},
+                null,
+                null,
+                null)) {
+      if (cursor == null) throw new IllegalStateException();
+      Bundle extras = cursor.getExtras();
+      if (extras != null
+          && (extras.getBoolean(DocumentsContract.EXTRA_LOADING, false)
+              || extras.getString(DocumentsContract.EXTRA_ERROR) != null)) return null;
+      return cursor.getCount() > 0;
+    }
   }
 
   /**
@@ -270,7 +344,12 @@ public final class DocumentFolderTree {
         || !DocumentsContract.isTreeUri(uri)
         || (flags & Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0)
       return result("unsupported", "The provider did not grant readable folder access.");
+    synchronized (store()) {
     String previous = store().getString(KEY, null);
+    int kept =
+        previous == null || previous.equals(uri.toString())
+            ? 0
+            : retention.linked(Uri.parse(previous));
     resolver()
         .takePersistableUriPermission(
             uri,
@@ -282,8 +361,38 @@ public final class DocumentFolderTree {
       return result("failed", "Folder access could not be saved. Choose the folder again.");
     tree = uri;
     session.clear();
-    if (previous != null && !previous.equals(uri.toString())) release(previous);
-    return list(root());
+    if (previous != null && !previous.equals(uri.toString()) && kept == 0) release(previous);
+    JSObject out = list(root());
+    if (kept > 0) out.put("message", out.getString("message") + " " + keptMessage(kept));
+    return out;
+    }
+  }
+
+  private static String keptMessage(int links) {
+    return "Previous folder access kept for "
+        + links
+        + (links == 1 ? " linked note." : " linked notes.");
+  }
+
+  /** The status for an entry id this session no longer holds. */
+  private String missing() {
+    return tree == null ? "revoked" : "stale";
+  }
+
+  /**
+   * Releases a tree grant kept for saved links once nothing links to it and it is not the browsed
+   * folder. Returns whether a grant was released.
+   */
+  public boolean releaseUnlinked(Uri kept) throws Exception {
+    if (kept == null || retention.linked(kept) > 0) return false;
+    String browsed = store().getString(KEY, null);
+    if (kept.toString().equals(browsed)) return false;
+    for (UriPermission permission : resolver().getPersistedUriPermissions())
+      if (kept.equals(permission.getUri())) {
+        release(kept.toString());
+        return true;
+      }
+    return false;
   }
 
   private void release(String recorded) {
@@ -308,13 +417,16 @@ public final class DocumentFolderTree {
   public JSObject list(String id, String cursor) throws Exception {
     FolderSession.Entry<Uri> root = root();
     FolderSession.Entry<Uri> folder = id == null ? root : entry(id);
+    if (root != null && folder == null) return result("stale", "Reload this folder.");
     if (cursor == null) return list(folder);
     int offset =
         folder == null ? FolderSession.OTHER_FOLDER : FolderSession.cursorOffset(cursor, folder.id);
     if (offset == FolderSession.OTHER_FOLDER)
       return result("conflict", "This folder changed. Refresh it before loading more.");
-    if (offset < 1) return result("conflict", "Refresh this folder before loading more.");
-    return list(folder, offset);
+    String last = FolderSession.cursorLast(cursor);
+    if (offset < 1 || last == null)
+      return result("conflict", "Refresh this folder before loading more.");
+    return list(folder, offset, last);
   }
 
   private static JSObject outcome(String id, String status, String message) {
@@ -346,25 +458,39 @@ public final class DocumentFolderTree {
           "Permanently delete the selected items? This provider has no integrated trash or undo.");
     FolderSession.Entry<Uri> destination = move ? entry(destinationId) : null;
     if (move) {
-      if (destination == null) return result("revoked", "Reload the destination folder first.");
+      if (destination == null) return result(missing(), "Reload the destination folder.");
       if (!describe(destination).optBoolean("canCreate"))
         return result("unsupported", "This provider does not allow moving files into that folder.");
+    }
+    // Every confirmed item (and a moved item's listed folder) is resolved before anything changes,
+    // so session eviction during the batch cannot drop an item the owner already confirmed.
+    int count = items.length();
+    String[] ids = new String[count];
+    ArrayList<FolderSession.Entry<Uri>> resolved = new ArrayList<>(), parents = new ArrayList<>();
+    Set<String> seen = new HashSet<>();
+    boolean open = move || root() != null;
+    for (int i = 0; i < count; i++) {
+      JSONObject request = items.optJSONObject(i);
+      ids[i] = request == null ? "" : request.optString("id", "");
+      FolderSession.Entry<Uri> item = open && seen.add(ids[i]) ? session.get(ids[i]) : null;
+      resolved.add(item);
+      parents.add(move && item != null ? session.get(item.parent) : null);
     }
     JSArray outcomes = new JSArray();
     int done = 0;
     boolean expired = false;
-    Set<String> seen = new HashSet<>();
-    for (int i = 0; i < items.length() && !expired; i++) {
+    seen.clear();
+    for (int i = 0; i < count && !expired; i++) {
       JSONObject request = items.optJSONObject(i);
-      String id = request == null ? "" : request.optString("id", "");
+      String id = ids[i];
       String expected = request == null ? "" : request.optString("expectedRevision", "");
       if (!seen.add(id)) {
         outcomes.put(outcome(id, "unsupported", "Duplicate selection."));
         continue;
       }
-      FolderSession.Entry<Uri> item = entry(id);
+      FolderSession.Entry<Uri> item = resolved.get(i);
       if (item == null) {
-        outcomes.put(outcome(id, "revoked", "Reload this folder first."));
+        outcomes.put(outcome(id, missing(), "Reload this folder."));
         continue;
       }
       try {
@@ -378,9 +504,17 @@ public final class DocumentFolderTree {
             outcomes.put(outcome(id, "unsupported", "This provider does not permit deleting it."));
             continue;
           }
-          if (info.optBoolean("directory") && list(item).getJSONArray("entries").length() > 0) {
-            outcomes.put(outcome(id, "unsupported", "Only empty folders can be deleted here."));
-            continue;
+          if (info.optBoolean("directory")) {
+            Boolean nonEmpty = hasChildren(item);
+            if (nonEmpty == null) {
+              outcomes.put(
+                  outcome(id, "conflict", "Still loading from the provider. Refresh first."));
+              continue;
+            }
+            if (nonEmpty) {
+              outcomes.put(outcome(id, "unsupported", "Only empty folders can be deleted here."));
+              continue;
+            }
           }
           if (!DocumentsContract.deleteDocument(resolver(), item.location())) {
             outcomes.put(outcome(id, "failed", "Deletion was not confirmed."));
@@ -400,9 +534,9 @@ public final class DocumentFolderTree {
           }
           // The listed parent can leave the bounded session; the item then needs a reload, not a
           // revoked session.
-          FolderSession.Entry<Uri> parent = entry(item.parent);
+          FolderSession.Entry<Uri> parent = parents.get(i);
           if (parent == null) {
-            outcomes.put(outcome(id, "revoked", "Reload this folder first."));
+            outcomes.put(outcome(id, missing(), "Reload this folder."));
             continue;
           }
           Uri moved =
@@ -413,7 +547,11 @@ public final class DocumentFolderTree {
             continue;
           }
           session.remove(item.id);
-          session.authorize(moved, destination.id);
+          try {
+            session.authorize(moved, destination.id);
+          } catch (IllegalStateException full) {
+            // The move is done; the destination lists it after a reload.
+          }
           outcomes.put(outcome(id, "moved", "Moved."));
           done++;
         }
@@ -475,7 +613,7 @@ public final class DocumentFolderTree {
       String id = request == null ? "" : request.optString("id", "");
       FolderSession.Entry<Uri> item = entry(id);
       if (item == null) {
-        outcomes.put(outcome(id, "revoked", "Reload this folder first."));
+        outcomes.put(outcome(id, missing(), "Reload this folder."));
         continue;
       }
       JSObject info = describe(item);
@@ -537,9 +675,20 @@ public final class DocumentFolderTree {
     return out;
   }
 
-  public JSObject createFolder(String id, String name) throws Exception {
+  /** The trimmed child name, or null when {@link FolderSession#childName} refuses it. */
+  private static String validName(String raw) {
+    try {
+      return FolderSession.childName(raw);
+    } catch (IllegalArgumentException invalid) {
+      return null;
+    }
+  }
+
+  public JSObject createFolder(String id, String raw) throws Exception {
+    String name = validName(raw);
+    if (name == null) return result("unsupported", NAME_HINT);
     FolderSession.Entry<Uri> folder = entry(id);
-    if (folder == null) return result("revoked", "Reload this folder first.");
+    if (folder == null) return result(missing(), "Reload this folder.");
     JSObject info = describe(folder);
     if (!info.optBoolean("canCreate"))
       return result("unsupported", "This provider does not permit folder creation.");
@@ -548,7 +697,7 @@ public final class DocumentFolderTree {
             resolver(),
             folder.location(),
             DocumentsContract.Document.MIME_TYPE_DIR,
-            FolderSession.childName(name));
+            name);
     if (created == null)
       return result(
           "failed", "The provider did not confirm folder creation. Refresh before retrying.");
@@ -557,16 +706,18 @@ public final class DocumentFolderTree {
     return out;
   }
 
-  public JSObject rename(String id, String name, String expectedRevision) throws Exception {
+  public JSObject rename(String id, String raw, String expectedRevision) throws Exception {
+    String name = validName(raw);
+    if (name == null) return result("unsupported", NAME_HINT);
     FolderSession.Entry<Uri> item = entry(id);
-    if (item == null) return result("revoked", "Reload this folder first.");
+    if (item == null) return result(missing(), "Reload this folder.");
     JSObject info = describe(item);
     if (!info.optBoolean("canRename"))
       return result("unsupported", "This provider does not permit renaming this item.");
     if (!current(info, expectedRevision))
       return result("conflict", "This item changed. Refresh before renaming.");
     Uri renamed =
-        DocumentsContract.renameDocument(resolver(), item.location(), FolderSession.childName(name));
+        DocumentsContract.renameDocument(resolver(), item.location(), name);
     if (renamed == null)
       return result("failed", "Rename was not confirmed. Refresh before retrying.");
     session.renamed(item, renamed);
@@ -578,7 +729,7 @@ public final class DocumentFolderTree {
   public JSObject delete(String id, boolean confirmPermanent, String expectedRevision)
       throws Exception {
     FolderSession.Entry<Uri> item = entry(id);
-    if (item == null) return result("revoked", "Reload this folder first.");
+    if (item == null) return result(missing(), "Reload this folder.");
     JSObject info = describe(item);
     if (!info.optBoolean("canDelete"))
       return result("unsupported", "This provider does not permit deletion.");
@@ -589,8 +740,11 @@ public final class DocumentFolderTree {
     if (!current(info, expectedRevision))
       return result("conflict", "This item changed. Refresh before deleting.");
     if (info.optBoolean("directory")) {
-      JSObject contents = list(item);
-      if (contents.getJSONArray("entries").length() > 0)
+      Boolean nonEmpty = hasChildren(item);
+      if (nonEmpty == null)
+        return result(
+            "conflict", "This folder is still loading from the provider. Refresh before deleting.");
+      if (nonEmpty)
         return result(
             "unsupported",
             "Only empty folders can be deleted here. Manage nonempty folders in Android Files.");
@@ -604,7 +758,7 @@ public final class DocumentFolderTree {
   public JSObject move(String id, String destinationId, String expectedRevision) throws Exception {
     FolderSession.Entry<Uri> item = entry(id), destination = entry(destinationId);
     if (item == null || destination == null)
-      return result("revoked", "Reload source and destination folders first.");
+      return result(missing(), "Reload source and destination folders.");
     JSObject info = describe(item), target = describe(destination);
     if (!info.optBoolean("canMove") || !target.optBoolean("canCreate"))
       return result("unsupported", "This provider does not support moving this file to that folder.");
@@ -613,7 +767,7 @@ public final class DocumentFolderTree {
     if (destination.id.equals(item.parent))
       return result("unsupported", "This file is already in that folder.");
     FolderSession.Entry<Uri> parent = entry(item.parent);
-    if (parent == null) return result("revoked", "Reload source and destination folders first.");
+    if (parent == null) return result(missing(), "Reload source and destination folders.");
     Uri moved =
         DocumentsContract.moveDocument(
             resolver(), item.location(), parent.location(), destination.location());
@@ -628,7 +782,7 @@ public final class DocumentFolderTree {
   /** Hands one listed document to the host as a selected-document capability. */
   public JSObject select(String id) throws Exception {
     FolderSession.Entry<Uri> item = entry(id);
-    if (item == null) return result("revoked", "Reload this folder first.");
+    if (item == null) return result(missing(), "Reload this folder.");
     JSObject info = describe(item);
     if (info.optBoolean("directory"))
       return result("unsupported", "Open this folder to browse its contents.");
@@ -643,26 +797,40 @@ public final class DocumentFolderTree {
     return out;
   }
 
-  /** Forgets the recorded tree and releases its grant. Selected documents keep their grants. */
+  /**
+   * Forgets the recorded tree and releases its grant, unless saved links still depend on it.
+   * Selected documents keep their grants.
+   */
   public JSObject forget() throws Exception {
-    Uri old = tree;
-    if (old == null) {
-      String saved = store().getString(KEY, null);
-      if (saved != null) old = Uri.parse(saved);
+    SharedPreferences selected = store();
+    synchronized (selected) {
+      String saved = selected.getString(KEY, null);
+      Uri old = tree;
+      if (old != null && !old.toString().equals(saved))
+        return result("failed", "Folder selection changed. Refresh before retrying.");
+      if (old == null && saved != null) old = Uri.parse(saved);
+      int kept = old == null ? 0 : retention.linked(old);
+      if (old != null && kept == 0) {
+        for (UriPermission permission : resolver().getPersistedUriPermissions())
+          if (old.equals(permission.getUri())) {
+            int flags = (permission.isReadPermission() ? Intent.FLAG_GRANT_READ_URI_PERMISSION : 0)
+                | (permission.isWritePermission() ? Intent.FLAG_GRANT_WRITE_URI_PERMISSION : 0);
+            resolver().releasePersistableUriPermission(old, flags & GRANTS);
+            break;
+          }
+        for (UriPermission permission : resolver().getPersistedUriPermissions())
+          if (old.equals(permission.getUri()))
+            return result("failed", "Folder access could not be released. Retry after refreshing.");
+      }
+      if (!java.util.Objects.equals(saved, selected.getString(KEY, null)))
+        return result("failed", "Folder selection changed. Refresh before retrying.");
+      if (!selected.edit().remove(KEY).commit())
+        return result("failed", "Folder selection could not be forgotten.");
+      tree = null;
+      session.clear();
+      return result("forgotten", kept > 0
+          ? "Folder released here; kept for " + kept + (kept == 1 ? " linked note." : " linked notes.")
+          : "Folder access released.");
     }
-    if (!store().edit().remove(KEY).commit())
-      return result("failed", "Folder selection could not be forgotten.");
-    tree = null;
-    session.clear();
-    if (old != null)
-      for (UriPermission p : resolver().getPersistedUriPermissions())
-        if (old.equals(p.getUri())) {
-          int flags =
-              (p.isReadPermission() ? Intent.FLAG_GRANT_READ_URI_PERMISSION : 0)
-                  | (p.isWritePermission() ? Intent.FLAG_GRANT_WRITE_URI_PERMISSION : 0);
-          resolver().releasePersistableUriPermission(old, flags & GRANTS);
-          break;
-        }
-    return result("forgotten", "Folder access released.");
   }
 }

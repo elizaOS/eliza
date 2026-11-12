@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "packages/agent/src/runtime/trajectory-storage.ts",
+    "packages/agent/src/runtime/trajectory-internals.ts",
+    "packages/agent/src/runtime/trajectory-steps-writer.ts",
+    "packages/agent/src/runtime/trajectory-steps-reader.ts",
+    "packages/agent/src/runtime/dev-trajectory-recovery.ts",
+    "packages/agent/src/runtime/dev-trajectory-recovery-protocol.ts"
+  ],
+  "bounds": {
+    "domain": "Two captures and two execution identities.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "runtime_trajectories",
+      "main": "runtime_trajectories",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

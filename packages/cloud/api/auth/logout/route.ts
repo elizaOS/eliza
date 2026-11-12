@@ -22,7 +22,7 @@ import {
   rateLimit,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
-  isInferenceStrongRevocationEnabled,
+  hasInferenceRevocationBoundary,
   revokeInferenceSessionsThrough,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { markSsoBridgeLogout } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
@@ -121,7 +121,7 @@ app.post("/", async (c) => {
   if (
     verifiedStewardToken &&
     verifiedClaims &&
-    isInferenceStrongRevocationEnabled(c.env)
+    hasInferenceRevocationBoundary(c.env)
   ) {
     try {
       const user = await getCurrentUserForStewardToken(c, verifiedStewardToken);

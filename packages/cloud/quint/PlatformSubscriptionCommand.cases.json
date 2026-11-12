@@ -1,0 +1,92 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+    "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+    "packages/cloud/shared/src/db/migrations/0373_subscription_authority.sql",
+    "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/subscription-checkout.ts",
+    "packages/cloud/shared/src/lib/services/subscription-checkout-contract.ts",
+    "packages/cloud/shared/src/lib/services/subscription-checkout-recovery.pglite.test.ts",
+    "packages/cloud/quint/check-platform-subscription-command.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-platform-subscription-command.ts",
+  "bounds": "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes. Three return classes: the web, embedded or shared-payer return, the native billing return of the caller's registered client, and any other native return.",
+  "fairness": "Verified checkout application requires only weak fairness of its continuously enabled local Apply transaction. There is deliberately no unconditional command termination guarantee.",
+  "limitations": [
+    "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes. Three return classes: the web, embedded or shared-payer return, the native billing return of the caller's registered client, and any other native return.",
+    "Each command mutation is one committed organization/authority/command transaction. Rollback stutters. Row-lock mechanics, SQL isolation, caller authentication and paid-work/deletion admission are not implemented by this abstraction; repository locks alone do not authorize provider I/O.",
+    "Repository dispatch commits OUTCOME_UNKNOWN before external I/O but is not an exclusive provider lease. Multiple callers may replay the same immutable key. Provider acceptance, idempotency retention, network ambiguity and recovery orchestration are excluded; no remote exactly-once claim is made.",
+    "The history set abstracts append-only matching own checkout source/plan/subscription/digest records. Code 3 represents a foreign or mismatched candidate. Current-plan change does not remove history. Cryptographic digest correctness and unbounded histories are not proved.",
+    "Concurrent different command keys, live-checkout uniqueness and contradictory command admission are exercised by the existing SQL fixture but not exhaustively modeled here. Full app-scoped execution, dedicated leased cancellation/resumption, upgrades and scheduled downgrade protocols need their own models.",
+    "Strict conformance requires eight named real PGlite repository scenarios and four named checkout scenarios for the mobile return against a loopback Stripe; it is not trace-by-trace refinement or PostgreSQL multi-session lock evidence.",
+    "The mobile presentation is modeled only as its return class. Hosted, embedded and shared presentations share class 0, so switching among them and the provider session shape are not modeled. The route's derivation of the return from the credential's registration, and Android App Link verification, are outside the instance. SubscriptionCheckoutReadBack models the recovery sweep."
+  ],
+  "sourceMapping": {
+    "Enqueue/RefuseEnqueue": "enqueueCommand and exactCommandReplay; request-equivalence classes. The return class is returnParams, the request digest and sameReturns in submitSubscriptionCheckout, and the mobile branch of checkoutContractSchema",
+    "Dispatch/ReplayDispatch/RefuseDispatch": "markCommandOutcomeUnknown; PREPARED revision/generation CAS and exact OUTCOME_UNKNOWN replay",
+    "Resolve/ReplayResolution/RefuseResolution": "resolveCommandOutcome; exact outcome, digest/error and generation replay",
+    "Supersede/ReplaySupersede/RefuseSupersede": "supersedePreparedCommand; only PREPARED can retire without provider evidence",
+    "RetainRevision/ChangeCurrentPlan/Apply": "append-only billing_subscription_revisions and applyCheckoutResult historical match"
+  },
+  "cases": [
+    {
+      "name": "checkout",
+      "main": "PlatformSubscriptionCommand_checkout",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["VerifiedCheckoutApplies", "StartedCommandsTerminate"],
+      "temporalChecks": [
+        {
+          "property": "VerifiedCheckoutApplies",
+          "expect": "holds",
+          "assumptions": [
+            "Once matching retained history exists, weak fairness of the local Apply(1,3,1) transaction is assumed. No provider completion, request initiation or successful payment is assumed."
+          ]
+        },
+        {
+          "property": "StartedCommandsTerminate",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness is assumed for enqueue, provider resolution or local application. A prepared or uncertain command can remain forever; this negative check prevents an unconditional recovery claim."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000
+    },
+    {
+      "name": "upgrade",
+      "main": "PlatformSubscriptionCommand_upgrade",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 35,
+      "samples": 1000
+    },
+    {
+      "name": "cancel",
+      "main": "PlatformSubscriptionCommand_cancel",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 35,
+      "samples": 1000
+    },
+    {
+      "name": "resume",
+      "main": "PlatformSubscriptionCommand_resume",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 35,
+      "samples": 1000
+    }
+  ]
+}

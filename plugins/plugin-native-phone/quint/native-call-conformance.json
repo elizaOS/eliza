@@ -1,0 +1,35 @@
+[
+  {
+    "className": "ai.eliza.plugins.phone.TelecomCallPresentationTest",
+    "required": [
+      "initialsAreTheFirstAndLastWordsLetters",
+      "aNumberWithNoNameIsAHashAndAWithheldCallerIsBlank",
+      "elapsedTimeGainsAnHourFieldOnlyFromOneHour",
+      "secondaryLineFollowsTheCallState",
+      "timerTicksOnTheCallsOwnSecondBoundary",
+      "aRingingCallOffersOnlyAnswerAndDecline",
+      "aLiveCallOffersEachControlOnlyWhenItCanWork",
+      "anEndedCallOffersNothing",
+      "chipsAndTogglesSayTheirState",
+      "removedCallCannotRepublishAnAlreadyQueuedStateCallback",
+      "removedCallCannotRepublishAnAlreadyQueuedDetailsCallback",
+      "destroyedOwnerCannotRepublishAnAlreadyQueuedCall",
+      "removingOneCallRetainsTheOtherCallAndItsNotification",
+      "currentCallStillPublishesItsNativeStateChange",
+      "callNotificationUsesTheHostIconAndKeepsThePlatformGlyphWithoutOne",
+      "revokedContactsPermissionFencesAnAlreadyRunningNameLookup",
+      "removedCallFencesAnAlreadyRunningNameLookup",
+      "destroyedServiceFencesAnAlreadyRunningNameLookup",
+      "cachedContactNameIsNotReusedAfterPermissionWithdrawal"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.phone.TelecomCallToneTest",
+    "required": [
+      "replacementStopsOriginalAndOldDeadlineCannotStopNewCall",
+      "selectionChangeStopsOwnerEvenWithoutAnotherDigit",
+      "holdAndScreenStopReleaseToneOnce",
+      "rejectedReplacementDoesNotOwnOrRetainATone"
+    ]
+  }
+]

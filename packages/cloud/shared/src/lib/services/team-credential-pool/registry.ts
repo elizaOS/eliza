@@ -78,14 +78,14 @@ export interface TeamPoolCacheExecutionContext {
 
 export type PooledCredentialCacheResolution =
   | { kind: "ready"; credential: SelectedPooledCredential | null }
-  | { kind: "warming" | "unavailable" };
+  | { kind: "pending" };
 
 export class TeamPoolRegistry {
   private readonly pools = new Map<string, OrgPoolEntry>();
   private readonly hotPathSelections = new InMemoryLRUCache<{
     credential: SelectedPooledCredential | null;
   }>(4096, HOT_PATH_SELECTION_TTL_MS);
-  private readonly hotPathHydrations = new Map<string, Promise<void>>();
+  private readonly hotPathHydrations = new Map<string, Promise<SelectedPooledCredential | null>>();
   private hotPathInvalidationGeneration = 0;
   private readonly decryptedCredentials = new Map<string, { apiKey: string; expiresAt: number }>();
   private readonly maxOrgPools: number;
@@ -242,15 +242,15 @@ export class TeamPoolRegistry {
   }
 
   /**
-   * Select from isolate memory only. Cold selection never opens Postgres or
-   * decrypts a vault secret on the inference request promise; the authoritative
-   * selection is coalesced and retained under `waitUntil` for the retry.
-   *
-   * Raw keys intentionally stay in isolate memory rather than shared KV.
+   * Select from isolate memory first. Raw keys intentionally stay in isolate
+   * memory rather than shared KV. A cold selection is coalesced per key and
+   * retained under `waitUntil`; a caller that cannot dispatch without the pool
+   * (`awaitCold`) is served from that selection inline, while an optional pool
+   * stays off the request and the caller uses its platform credential.
    */
   async selectCredentialCacheOnly(
     params: SelectPooledCredentialParams,
-    options: { executionCtx?: TeamPoolCacheExecutionContext } = {},
+    options: { executionCtx?: TeamPoolCacheExecutionContext; awaitCold?: boolean } = {},
   ): Promise<PooledCredentialCacheResolution> {
     const key = this.hotPathSelectionKey(params);
     const cached = this.hotPathSelections.get(key);
@@ -258,36 +258,36 @@ export class TeamPoolRegistry {
       return { kind: "ready", credential: cached.credential };
     }
 
-    if (!options.executionCtx) return { kind: "unavailable" };
-
     let hydration = this.hotPathHydrations.get(key);
     if (!hydration) {
       const generation = this.hotPathInvalidationGeneration;
-      hydration = this.selectCredential(params)
-        .then((credential) => {
-          if (this.hotPathInvalidationGeneration === generation) {
-            this.hotPathSelections.set(key, { credential });
-          }
-        })
-        .catch((error) => {
-          // error-policy:J7 the selection path normally translates failures to
-          // null, but this observer prevents a future stricter implementation
-          // from creating an unhandled waitUntil rejection.
-          logger.warn("[TeamPoolRegistry] hot-path credential hydration failed", {
-            organizationId: params.organizationId,
-            providerId: params.providerId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => {
-          if (this.hotPathHydrations.get(key) === hydration) {
-            this.hotPathHydrations.delete(key);
-          }
-        });
-      this.hotPathHydrations.set(key, hydration);
+      const started = this.selectCredential(params).then((credential) => {
+        if (this.hotPathInvalidationGeneration === generation) {
+          this.hotPathSelections.set(key, { credential });
+        }
+        return credential;
+      });
+      hydration = started;
+      this.hotPathHydrations.set(key, started);
+      const cleanup = () => {
+        if (this.hotPathHydrations.get(key) === started) this.hotPathHydrations.delete(key);
+      };
+      started.then(cleanup, cleanup);
     }
-    options.executionCtx.waitUntil(hydration);
-    return { kind: "warming" };
+    if (options.awaitCold) return { kind: "ready", credential: await hydration };
+    options.executionCtx?.waitUntil(
+      hydration.catch((error) => {
+        // error-policy:J7 the selection path normally translates failures to
+        // null; this observer keeps a stricter implementation from creating an
+        // unhandled waitUntil rejection.
+        logger.warn("[TeamPoolRegistry] hot-path credential hydration failed", {
+          organizationId: params.organizationId,
+          providerId: params.providerId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
+    );
+    return { kind: "pending" };
   }
 
   /**

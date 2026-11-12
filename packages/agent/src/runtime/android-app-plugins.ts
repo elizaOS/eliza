@@ -5,11 +5,14 @@
  * resolves them by name.
  */
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.ts";
+import {
+  ANDROID_APP_PLUGIN_NAMES,
+  androidSmsReplyDraftEnabled,
+} from "./android-app-plugin-loaders.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 
-const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
-const CONTACTS_APP_NAME = "@elizaos/plugin-native-contacts";
-const PHONE_APP_NAME = "@elizaos/plugin-native-phone";
+const [WIFI_APP_NAME, CONTACTS_APP_NAME, PHONE_APP_NAME] =
+  ANDROID_APP_PLUGIN_NAMES;
 
 const [
   { contactsProvider, appContactsPlugin: rawContactsPlugin },
@@ -29,10 +32,18 @@ export const appContactsPlugin = gatePluginSessionForHostedApp(
   rawContactsPlugin,
   CONTACTS_APP_NAME,
 );
-export const appPhonePlugin = gatePluginSessionForHostedApp(
-  rawPhonePlugin,
-  PHONE_APP_NAME,
-);
+const smsReplyDraftOnly = androidSmsReplyDraftEnabled();
+export const appPhonePlugin = smsReplyDraftOnly
+  ? {
+      name: PHONE_APP_NAME,
+      description:
+        "Draft an SMS reply for a conversation selected by its owner.",
+      routes: rawPhonePlugin.routes?.filter(
+        (route) =>
+          route.type === "POST" && route.path === "/api/messages/reply-draft",
+      ),
+    }
+  : gatePluginSessionForHostedApp(rawPhonePlugin, PHONE_APP_NAME);
 
 const appWifiPluginModule = {
   default: appWifiPlugin,
@@ -47,7 +58,7 @@ const appContactsPluginModule = {
 const appPhonePluginModule = {
   default: appPhonePlugin,
   appPhonePlugin,
-  phoneCallLogProvider,
+  ...(smsReplyDraftOnly ? {} : { phoneCallLogProvider }),
 };
 
 // The Object.assign into STATIC_ELIZA_PLUGINS is a consumed side effect that

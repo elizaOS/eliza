@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { sqlRows } from "../../../db/execute-helpers";
+import { installStripeCheckoutTestSchema } from "../test-support/stripe-checkout-test-schema";
 
 const ORG_A = "10000000-0000-4000-8000-000000000001";
 const ORG_B = "10000000-0000-4000-8000-000000000002";
@@ -27,98 +28,7 @@ beforeAll(async () => {
 
   const pglite = client.getPgliteClientForTests();
   if (!pglite) throw new Error("PGlite test client was not initialized");
-  await pglite.exec(`
-    CREATE TABLE organizations (
-      id uuid PRIMARY KEY, name text NOT NULL, slug text NOT NULL UNIQUE,
-      credit_balance numeric(12,6) NOT NULL DEFAULT 0,
-      stripe_customer_id text, settings jsonb NOT NULL DEFAULT '{}',
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE TABLE users (
-      id uuid PRIMARY KEY,
-      organization_id uuid REFERENCES organizations(id)
-    );
-    CREATE TABLE credit_packs (
-      id uuid PRIMARY KEY, name text NOT NULL, description text,
-      credits numeric(10,2) NOT NULL, price_cents integer NOT NULL,
-      stripe_price_id text NOT NULL, stripe_product_id text NOT NULL,
-      is_active boolean NOT NULL DEFAULT true, sort_order integer NOT NULL DEFAULT 0,
-      metadata jsonb NOT NULL DEFAULT '{}',
-      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE TABLE credit_transactions (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      organization_id uuid NOT NULL REFERENCES organizations(id), user_id uuid,
-      amount numeric(12,6) NOT NULL, type text NOT NULL, description text,
-      metadata jsonb NOT NULL DEFAULT '{}', stripe_payment_intent_id text,
-      created_at timestamptz NOT NULL DEFAULT now(), settled_at timestamptz
-    );
-    CREATE UNIQUE INDEX credit_transactions_stripe_payment_intent_idx
-      ON credit_transactions(stripe_payment_intent_id);
-    CREATE TABLE stripe_checkout_orders (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      organization_id uuid NOT NULL REFERENCES organizations(id),
-      initiated_by_user_id uuid NOT NULL REFERENCES users(id),
-      client_request_key text NOT NULL, request_digest text NOT NULL,
-      purchase_type text NOT NULL, credit_pack_id uuid REFERENCES credit_packs(id),
-      credits_to_grant numeric(16,6) NOT NULL, charge_amount_cents bigint NOT NULL,
-      currency text NOT NULL, stripe_customer_id text,
-      stripe_checkout_session_id text, stripe_payment_intent_id text,
-      credit_transaction_id uuid REFERENCES credit_transactions(id),
-      status text NOT NULL DEFAULT 'quoted', provider_error_code text,
-      metadata jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now(), settled_at timestamptz
-    );
-    CREATE UNIQUE INDEX stripe_checkout_orders_session_idx
-      ON stripe_checkout_orders(stripe_checkout_session_id) WHERE stripe_checkout_session_id IS NOT NULL;
-    CREATE UNIQUE INDEX stripe_checkout_orders_payment_intent_idx
-      ON stripe_checkout_orders(stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL;
-    CREATE UNIQUE INDEX stripe_checkout_orders_credit_transaction_idx
-      ON stripe_checkout_orders(credit_transaction_id) WHERE credit_transaction_id IS NOT NULL;
-    CREATE UNIQUE INDEX stripe_checkout_orders_org_request_idx
-      ON stripe_checkout_orders(organization_id, client_request_key);
-    CREATE TABLE stripe_checkout_legacy_quarantine (
-      checkout_session_id text PRIMARY KEY,
-      stripe_payment_intent_id text NOT NULL UNIQUE,
-      organization_id uuid NOT NULL REFERENCES organizations(id),
-      initiated_by_user_id uuid NOT NULL REFERENCES users(id),
-      stripe_customer_id text, credit_pack_id uuid, claimed_credits text,
-      charge_amount_cents bigint, currency text, reason text NOT NULL,
-      provider_receipt jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz
-    );
-    CREATE FUNCTION enforce_test_quarantine_tenant() RETURNS trigger LANGUAGE plpgsql AS $$
-    DECLARE linked_organization_id uuid;
-    BEGIN
-      IF TG_OP = 'UPDATE' THEN
-        IF NEW.checkout_session_id IS DISTINCT FROM OLD.checkout_session_id
-        OR NEW.stripe_payment_intent_id IS DISTINCT FROM OLD.stripe_payment_intent_id
-        OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
-        OR NEW.initiated_by_user_id IS DISTINCT FROM OLD.initiated_by_user_id
-        OR NEW.stripe_customer_id IS DISTINCT FROM OLD.stripe_customer_id
-        OR NEW.credit_pack_id IS DISTINCT FROM OLD.credit_pack_id
-        OR NEW.claimed_credits IS DISTINCT FROM OLD.claimed_credits
-        OR NEW.charge_amount_cents IS DISTINCT FROM OLD.charge_amount_cents
-        OR NEW.currency IS DISTINCT FROM OLD.currency
-        OR NEW.reason IS DISTINCT FROM OLD.reason
-        OR NEW.provider_receipt IS DISTINCT FROM OLD.provider_receipt
-        OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
-          RAISE EXCEPTION 'legacy Stripe quarantine authority is immutable';
-        END IF;
-        RETURN NEW;
-      END IF;
-      SELECT organization_id INTO linked_organization_id
-        FROM users WHERE id = NEW.initiated_by_user_id FOR SHARE;
-      IF NOT FOUND OR linked_organization_id IS DISTINCT FROM NEW.organization_id THEN
-        RAISE EXCEPTION 'legacy Stripe quarantine user organization mismatch';
-      END IF;
-      RETURN NEW;
-    END;
-    $$;
-    CREATE TRIGGER test_quarantine_tenant_trigger
-      BEFORE INSERT OR UPDATE ON stripe_checkout_legacy_quarantine
-      FOR EACH ROW EXECUTE FUNCTION enforce_test_quarantine_tenant();
-  `);
+  await installStripeCheckoutTestSchema((query) => pglite.exec(query));
 });
 
 afterAll(async () => closeDb());
@@ -237,6 +147,79 @@ describe("Stripe Checkout order authority", () => {
     );
   });
 
+  test("concurrent identical quote requests return the same durable winner", async () => {
+    const input = {
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      clientRequestKey: "request-concurrent-same",
+      requestDigest: "d".repeat(64),
+      purchaseType: "custom_amount" as const,
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+    };
+    const quotes = await Promise.all([service.create(input), service.create({ ...input })]);
+    expect(quotes[0]?.id).toBe(quotes[1]?.id);
+    expect((await rows()).orders).toHaveLength(1);
+  });
+
+  test("concurrent conflicting quote requests cannot replace the winner", async () => {
+    const otherMember = "20000000-0000-4000-8000-000000000003";
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id) VALUES (${otherMember}, ${ORG_A})`,
+    );
+    for (const conflict of ["user", "digest"] as const) {
+      const input = {
+        organizationId: ORG_A,
+        initiatedByUserId: USER_A,
+        clientRequestKey: `request-concurrent-${conflict}`,
+        requestDigest: "e".repeat(64),
+        purchaseType: "custom_amount" as const,
+        creditsToGrant: "5.000000",
+        chargeAmountCents: 500,
+        currency: "usd",
+      };
+      const alternate = {
+        ...input,
+        ...(conflict === "user"
+          ? { initiatedByUserId: otherMember }
+          : { requestDigest: "f".repeat(64) }),
+      };
+      const outcomes = await Promise.allSettled([service.create(input), service.create(alternate)]);
+      expect(outcomes.filter((value) => value.status === "fulfilled")).toHaveLength(1);
+      const rejected = outcomes.find((value) => value.status === "rejected");
+      expect(rejected?.status === "rejected" && rejected.reason).toMatchObject({
+        code: "STRIPE_CHECKOUT_IDEMPOTENCY_CONFLICT",
+      });
+      const winner = outcomes.find((value) => value.status === "fulfilled");
+      if (winner?.status !== "fulfilled") throw new Error("Missing quote winner");
+      expect(await service.get(winner.value.id)).toMatchObject({
+        initiated_by_user_id: winner.value.initiated_by_user_id,
+        request_digest: winner.value.request_digest,
+      });
+    }
+    expect((await rows()).orders).toHaveLength(2);
+  });
+
+  test("the same quote request key is independent across organizations", async () => {
+    const base = {
+      clientRequestKey: "request-two-organizations",
+      requestDigest: "a".repeat(64),
+      purchaseType: "custom_amount" as const,
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+    };
+    const [first, second] = await Promise.all([
+      service.create({ ...base, organizationId: ORG_A, initiatedByUserId: USER_A }),
+      service.create({ ...base, organizationId: ORG_B, initiatedByUserId: USER_B }),
+    ]);
+    expect(first.id).not.toBe(second.id);
+    expect(first.organization_id).toBe(ORG_A);
+    expect(second.organization_id).toBe(ORG_B);
+    expect((await rows()).orders).toHaveLength(2);
+  });
+
   test("new orders are $5-$1,000 pay-as-you-go top-ups with no pack or bonus (#22963)", async () => {
     const base = {
       organizationId: ORG_A,
@@ -316,6 +299,30 @@ describe("Stripe Checkout order authority", () => {
     const state = await rows();
     expect(state.credits).toHaveLength(1);
     expect(state.balances[0]?.credit_balance).toBe("5.000000");
+  });
+
+  test("a cache failure after commit preserves the original grant for replay", async () => {
+    const order = await deliveredOrder();
+    const invalidate = creditsService.invalidateCreditCaches;
+    creditsService.invalidateCreditCaches = async () => {
+      throw new Error("cache invalidation unavailable");
+    };
+    try {
+      await expect(service.settle(receipt(order.id))).rejects.toThrow(
+        "cache invalidation unavailable",
+      );
+    } finally {
+      creditsService.invalidateCreditCaches = invalidate;
+    }
+    const committed = await rows();
+    expect(committed.credits).toHaveLength(1);
+    expect(committed.balances[0]?.credit_balance).toBe("5.000000");
+    expect(committed.orders[0]?.status).toBe("settled");
+
+    const replay = await service.settle(receipt(order.id));
+    expect(replay.alreadyApplied).toBe(true);
+    expect(replay.order.credit_transaction_id).toBe(committed.orders[0]?.credit_transaction_id);
+    expect(await rows()).toEqual(committed);
   });
 
   test("trusted webhook or verify receipts recover Session-create ACK loss exactly once", async () => {
@@ -619,4 +626,24 @@ describe("Stripe Checkout order authority", () => {
       },
     ]);
   });
+});
+
+test("a matching late Session acknowledgement preserves a webhook-settled order", async () => {
+  const order = await deliveredOrder();
+  const settled = await service.settle(receipt(order.id));
+  const before = await rows();
+  await service.bindSession(order.id, "cs_a");
+  expect((await service.get(order.id))?.status).toBe("settled");
+  expect((await service.get(order.id))?.credit_transaction_id).toBe(
+    settled.order.credit_transaction_id,
+  );
+  expect(await rows()).toEqual(before);
+});
+
+test("a different late Session acknowledgement cannot replace a settled receipt", async () => {
+  const order = await deliveredOrder();
+  await service.settle(receipt(order.id));
+  const before = await rows();
+  await expect(service.bindSession(order.id, "cs_other")).rejects.toThrow("cannot be bound");
+  expect(await rows()).toEqual(before);
 });

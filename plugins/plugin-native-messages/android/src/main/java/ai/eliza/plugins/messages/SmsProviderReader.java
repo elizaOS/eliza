@@ -18,9 +18,10 @@ import org.json.JSONObject;
 /**
  * Bounded reads of the Android SMS, MMS and conversation providers (READ_SMS). Pages hold at most
  * {@link SmsRecords#MAX_THREADS} threads or {@link SmsRecords#MAX_MESSAGES} messages, take the caller's
- * CancellationSignal, and refuse a row they cannot report completely (a body above
+ * CancellationSignal, and never truncate a row they cannot report completely (a body above
  * {@link SmsRecords#MAX_BODY} characters, more than {@link SmsRecords#MAX_ADDRESSES} addresses, MMS text
- * stored as an attachment) instead of truncating it. Drafts and attachment bytes are never read.
+ * stored as an attachment): that row is returned as {@link #incomplete} with only its ID, date and a
+ * stable reason, and the rest of the page is still read. Drafts and attachment bytes are never read.
  */
 public final class SmsProviderReader {
  private SmsProviderReader() {}
@@ -35,8 +36,25 @@ public final class SmsProviderReader {
  static int intAt(Cursor c, String column, int otherwise) { int i = c.getColumnIndex(column); return i < 0 || c.isNull(i) ? otherwise : c.getInt(i); }
  static String textAt(Cursor c, String column) { int i = c.getColumnIndex(column); return i < 0 || c.isNull(i) ? null : c.getString(i); }
 
+ /** A row that cannot be read completely; it holds no content and the owner opens it in the system messaging app. */
+ static final class Incomplete extends Exception {
+  final String reason;
+  Incomplete(String reason) { super(reason, null, false, false); this.reason = reason; }
+ }
+ /** Stable reasons for {@link Incomplete}, shared with the contract's parsers. */
+ static final String BODY_TOO_LONG = "body-too-long", ADDRESS_TOO_LONG = "address-too-long", TOO_MANY_ADDRESSES = "too-many-addresses",
+  ADDRESS_UNAVAILABLE = "address-unavailable", TEXT_AS_ATTACHMENT = "text-as-attachment", TOO_MANY_PARTS = "too-many-parts";
+ private static String complete(String value, int limit, String reason) throws Incomplete { if (value != null && value.length() > limit) throw new Incomplete(reason); return value == null ? "" : value; }
+ /** The content-free form of a row: its ID and date (which keep the page order and cursor), and why it is incomplete. */
+ private static JSObject incomplete(JSObject row, String reason) {
+  JSObject out = new JSObject();
+  for (String key : new String[] { "id", "kind", "threadId", "date" }) if (row.has(key)) out.put(key, row.opt(key));
+  out.put("incomplete", true);
+  out.put("reason", reason);
+  return out;
+ }
+
  /** Conversation threads, newest first, before an optional date (exclusive). */
- private static String complete(String value, int limit) { if (value != null && value.length() > limit) throw new IllegalStateException("Message exceeds complete read bound; use the system messaging app"); return value == null ? "" : value; }
  public static JSObject threads(Context context, int limit, long before, SmsPageCursor cursor, CancellationSignal cancel) {
   ContentResolver resolver = context.getContentResolver();
   JSArray rows = new JSArray();
@@ -52,11 +70,11 @@ public final class SmsProviderReader {
     if (id <= 0) continue;
     String raw = textAt(c, "recipient_ids");
     String[] members = raw == null || raw.trim().isEmpty() ? new String[0] : raw.trim().split("\\s+");
-    if (members.length > SmsRecords.MAX_ADDRESSES) throw new IllegalStateException("Thread has too many addresses to read completely");
-    for (String member : members) if (member.matches("[0-9]{1,18}")) ids.add(member);
     JSObject row = new JSObject();
     row.put("id", SmsRecords.threadId(id));
     row.put("date", longAt(c, "date"));
+    if (members.length > SmsRecords.MAX_ADDRESSES) { pending.add(incomplete(row, TOO_MANY_ADDRESSES)); recipientIds.add(null); continue; }
+    for (String member : members) if (member.matches("[0-9]{1,18}")) ids.add(member);
     row.put("messageCount", Math.max(0, intAt(c, "message_count", 0)));
     row.put("snippet", SmsRecords.clip(textAt(c, "snippet"), 160));
     row.put("unread", intAt(c, "read", 1) == 0);
@@ -65,10 +83,13 @@ public final class SmsProviderReader {
   }
   java.util.Map<String, String> addresses = canonicalAddresses(resolver, ids, cancel);
   for (int i = 0; i < pending.size(); i++) {
+   if (recipientIds.get(i) == null) { rows.put(pending.get(i)); continue; }
    JSArray people = new JSArray();
-   for (String member : recipientIds.get(i)) { String address = addresses.get(member); if (address == null) throw new IllegalStateException("Thread address unavailable"); people.put(complete(address, 64)); }
-   pending.get(i).put("addresses", people);
-   rows.put(pending.get(i));
+   try {
+    for (String member : recipientIds.get(i)) { String address = addresses.get(member); if (address == null) throw new Incomplete(ADDRESS_UNAVAILABLE); people.put(complete(address, 64, ADDRESS_TOO_LONG)); }
+    pending.get(i).put("addresses", people);
+    rows.put(pending.get(i));
+   } catch (Incomplete partial) { rows.put(incomplete(pending.get(i), partial.reason)); }
   }
   JSObject value = new JSObject();
   boolean more = rows.length() > limit;
@@ -112,13 +133,16 @@ public final class SmsProviderReader {
     String direction = SmsRecords.direction(type), state = SmsRecords.smsStatus(type, status, read);
     if (direction == null || state == null) continue;
     JSObject row = message(false, longAt(c, Telephony.Sms._ID), thread, direction, state, longAt(c, Telephony.Sms.DATE), read, intAt(c, Telephony.Sms.SUBSCRIPTION_ID, -1));
-    JSArray addresses = new JSArray(); String address = textAt(c, Telephony.Sms.ADDRESS); if (address != null) addresses.put(complete(address, 64));
-    row.put("addresses", addresses);
-    row.put("body", complete(textAt(c, Telephony.Sms.BODY), SmsRecords.MAX_BODY));
-    String report = SmsRecords.smsDeliveryReport(type, status);
-    row.put("deliveryReport", report == null ? JSONObject.NULL : report);
-    row.put("attachments", 0);
-    all.add(row); taken++;
+    try {
+     JSArray addresses = new JSArray(); String address = textAt(c, Telephony.Sms.ADDRESS); if (address != null) addresses.put(complete(address, 64, ADDRESS_TOO_LONG));
+     row.put("addresses", addresses);
+     row.put("body", complete(textAt(c, Telephony.Sms.BODY), SmsRecords.MAX_BODY, BODY_TOO_LONG));
+     String report = SmsRecords.smsDeliveryReport(type, status);
+     row.put("deliveryReport", report == null ? JSONObject.NULL : report);
+     row.put("attachments", 0);
+     all.add(row);
+    } catch (Incomplete partial) { all.add(incomplete(row, partial.reason)); }
+    taken++;
    }
   }
   String[] mms = { Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.READ, Telephony.Mms.SUBSCRIPTION_ID };
@@ -139,7 +163,10 @@ public final class SmsProviderReader {
     mmsRows.add(message(true, longAt(c, Telephony.Mms._ID), thread, direction, state, date, read, intAt(c, Telephony.Mms.SUBSCRIPTION_ID, -1)));
    }
   }
-  for (JSObject row : mmsRows) { mmsContent(resolver, row, cancel); all.add(row); }
+  for (JSObject row : mmsRows) {
+   try { mmsContent(resolver, row, cancel); all.add(row); }
+   catch (Incomplete partial) { all.add(incomplete(row, partial.reason)); }
+  }
   all.sort((a, b) -> SmsPageCursor.compare(a.optLong("date"), a.optString("kind"), Long.parseLong(a.optString("id").substring(4)), b.optLong("date"), b.optString("kind"), Long.parseLong(b.optString("id").substring(4))));
   JSArray rows = new JSArray();
   for (int i = 0; i < all.size() && i < limit; i++) rows.put(all.get(i));
@@ -162,16 +189,16 @@ public final class SmsProviderReader {
   return row;
  }
  /** Text parts (bounded) and the attachment count of one MMS; attachment bytes are never read. */
- private static void mmsContent(ContentResolver resolver, JSObject row, CancellationSignal cancel) {
+ private static void mmsContent(ContentResolver resolver, JSObject row, CancellationSignal cancel) throws Incomplete {
   String id = row.optString("id").substring(4);
   StringBuilder body = new StringBuilder(); int attachments = 0;
   try (Cursor c = query(resolver, Uri.parse("content://mms/part"), new String[] { "_id", "ct", "text" }, "mid = ?", new String[] { id }, null, cancel)) {
    if (c == null) throw new IllegalStateException("MMS parts unavailable");
    int seen = 0;
    while (c.moveToNext()) {
-    if (++seen > 32) throw new IllegalStateException("MMS has too many parts to read completely");
+    if (++seen > 32) throw new Incomplete(TOO_MANY_PARTS);
     String type = textAt(c, "ct");
-    if ("text/plain".equals(type)) { String text = textAt(c, "text"); if (text == null) throw new IllegalStateException("MMS text is stored as an attachment; use the system messaging app"); complete(text, SmsRecords.MAX_BODY); body.append(body.length() == 0 ? "" : "\n").append(text); }
+    if ("text/plain".equals(type)) { String text = textAt(c, "text"); if (text == null) throw new Incomplete(TEXT_AS_ATTACHMENT); complete(text, SmsRecords.MAX_BODY, BODY_TOO_LONG); body.append(body.length() == 0 ? "" : "\n").append(text); }
     else if (type != null && !"application/smil".equals(type)) attachments++;
    }
   }
@@ -179,15 +206,15 @@ public final class SmsProviderReader {
   try (Cursor c = query(resolver, Uri.parse("content://mms/" + id + "/addr"), new String[] { "address", "type" }, null, null, null, cancel)) {
    if (c == null) throw new IllegalStateException("MMS addresses unavailable");
    while (c.moveToNext()) {
-    if (addresses.length() >= SmsRecords.MAX_ADDRESSES) throw new IllegalStateException("MMS has too many addresses to read completely");
+    if (addresses.length() >= SmsRecords.MAX_ADDRESSES) throw new Incomplete(TOO_MANY_ADDRESSES);
     int type = intAt(c, "type", 0); String address = textAt(c, "address");
     // Incoming: the sender. Outgoing: the recipients (to, cc, bcc), never this phone's own number.
     if (address == null || "insert-address-token".equals(address)) continue;
-    if ("incoming".equals(direction) ? type == MMS_FROM : type != MMS_FROM) addresses.put(complete(address, 64));
+    if ("incoming".equals(direction) ? type == MMS_FROM : type != MMS_FROM) addresses.put(complete(address, 64, ADDRESS_TOO_LONG));
    }
   }
   row.put("addresses", addresses);
-  row.put("body", complete(body.toString(), SmsRecords.MAX_BODY));
+  row.put("body", complete(body.toString(), SmsRecords.MAX_BODY, BODY_TOO_LONG));
   row.put("deliveryReport", JSONObject.NULL);
   row.put("attachments", attachments);
  }

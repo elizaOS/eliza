@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "packages/cloud/api/src/maps-request-allowance-controller.ts",
+    "packages/cloud/api/__tests__/maps-request-allowance.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/maps-request-allowance-worker.ts",
+    "packages/cloud/quint/check-maps-request-buckets.mjs",
+    "packages/cloud/shared/src/lib/services/maps-request-policy.ts",
+    "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-maps-request-buckets.mjs",
+  "bounds": {
+    "domain": "One existing Maps window and organization, paired burst/sustained buckets, clock0..8 initially4, quarter-token units; two configurations exchange the limiting dimension. Only successful admissions persist refill state.",
+    "atomicity": "A Maps admission and its receipt are one existing Durable Object SQLite transaction. The model starts after credential, policy and window admission.",
+    "progress": "No temporal or fairness claim; a clock that never advances may prevent refill indefinitely."
+  },
+  "limitations": [
+    "No proof of JavaScript floating-point rounding or arbitrary numeric limits.",
+    "Credential ownership, subscription policy, allowance-window transitions, tombstone retention and cross-organization routing remain separate obligations.",
+    "The strict hook executes the real controller on Miniflare SQLite with a controlled fixture clock; this is scenario correspondence, not general TypeScript refinement."
+  ],
+  "cases": [
+    {
+      "name": "burst-limited",
+      "main": "maps_burst_limited",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "sustained-limited",
+      "main": "maps_sustained_limited",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

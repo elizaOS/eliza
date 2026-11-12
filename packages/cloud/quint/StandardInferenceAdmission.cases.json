@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "packages/cloud/api/src/inference-admission-gate.ts",
+    "packages/cloud/shared/src/lib/services/organization-inference-admission.ts",
+    "packages/cloud/shared/src/lib/services/inference-admission-snapshot.ts",
+    "packages/cloud/shared/src/lib/services/inference-admission-gate.ts",
+    "packages/cloud/shared/src/lib/services/inference-admission-recovery.ts",
+    "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/inference-admission-gate-worker.ts",
+    "packages/cloud/shared/src/lib/services/inference-admission-recovery.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/billing-suspension-resume.pglite.test.ts",
+    "packages/cloud/quint/check-standard-inference-admission.mjs"
+  ],
+  "bounds": "One request, one unit of hold against two units of capacity, one-unit direct debit, up to three dispatch attempts before and after one stale-policy refill, two recovery claims, logical time 0..4 with two-tick leases, and policy generations 1 and 2.",
+  "cases": [
+    {
+      "name": "dispatch-and-direct-recovery",
+      "main": "StandardInferenceAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": ["DurableAuthority", "FairMarkReply", "MarkReturns"],
+      "maxSteps": 55,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DurableAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. First durable dispatch, acknowledgement, settlement and recovery writes retain their exact authority."
+          ]
+        },
+        {
+          "property": "FairMarkReply",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finishMark lets a pending dispatch reach a valid acknowledgement or a locally ambiguous result. It assumes neither provider success nor eventual SQL recovery."
+          ]
+        },
+        {
+          "property": "MarkReturns",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness, the transport can leave a caller waiting indefinitely."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One standard organization request has a fixed recovery identity, one exact pre-provider cancellation capability and one initial policy generation. Ordinary and combined dispatch are both explored. Delegated grants, multiple organizations, credential parsing and cross-key revocation are separate.",
+    "The first durable dispatch checks the current policy generation and, for combined admission, standing. A combined commit refused for a superseded generation or an open fence records nothing; the caller refills its snapshot from the primary once and commits the same request again, and a refusal that stands after that ends at zero. The billing hold and funding lane read by the refill are not modeled; they appear only as a refusal that stands. The ordinary lease refill is outside this model. Exact replay can heal a committed acknowledgement without taking a second hold. A caller that commits at dispatch (the speech relay session) invokes the provider only after observing a valid acknowledgement, and can decline the provider (client disconnect) and return the hold at zero. Request routes are admitted from the cached snapshot when it shows no billing hold and enough capacity for the request's estimate, invoke the provider first and run this same commit as the first settlement step; a commit that is then refused or unreachable is skipped and the direct debit still runs, collecting the remaining balance when it cannot cover the charge. A snapshot that would refuse is decided again from the published projection and then the primary before the refusal is returned. That ordering, the refill, and the overspend it allows between a balance change and the rewritten cache entry, are not modeled. A video render commits at dispatch like the speech relay session. Request limits are counted per isolate and are not modeled; an aged snapshot reaches this model only as the balance and policy generation its lease carries.",
+    "Unknown dispatch acknowledgement retains any committed hold. Cancellation requires the live caller to know it has yet to invoke the provider. A retained recovering lease fences the direct debit until the current recovery publishes the authoritative balance.",
+    "A direct debit is idempotent under the original request identity. The model compresses known-cost settlement to one transition and uses one-unit exposure. Widening, partial collection, funding views, settled-ID eviction, authenticated zero-receipt composition and alarm batching remain separate.",
+    "Workerd runs the production Durable Object, with the transport response controlled for acknowledgement loss. PGlite runs actual direct debit recovery with injected write and publication failures. The two suites qualify their boundaries separately, without executing a live provider or the entire alarm-to-SQL composition."
+  ],
+  "conformance": "packages/cloud/quint/check-standard-inference-admission.mjs"
+}

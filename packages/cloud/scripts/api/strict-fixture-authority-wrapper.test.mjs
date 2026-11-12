@@ -177,6 +177,6 @@ test("external Worker cannot borrow a local container receipt", async () => {
   );
   assert.match(
     runner,
-    /strictGroupD\s*&&\s*ownsLocalServer\s*&&\s*!disposableDatabase/,
+    /ownsLocalServer\s*&&\s*!disposableDatabase/,
   );
 });

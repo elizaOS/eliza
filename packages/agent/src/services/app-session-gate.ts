@@ -89,14 +89,14 @@ function gateProviders(
     const prevGet = provider.get;
     return {
       ...provider,
-      get: async (runtime, message, state) => {
+      get: async (runtime, message, state, context) => {
         if (!isHostedAppActiveForAgentActions(runtime, appCanonicalName)) {
           return {
             text: "",
             data: { available: false, appSessionInactive: true },
           };
         }
-        return prevGet(runtime, message, state);
+        return prevGet(runtime, message, state, context);
       },
     };
   });

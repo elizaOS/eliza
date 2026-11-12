@@ -28,7 +28,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: production
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 35
     concurrency:
       group: cloud-production-test-grant
       cancel-in-progress: false

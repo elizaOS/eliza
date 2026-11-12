@@ -1,6 +1,7 @@
 /** Exercises host retention through the real core scheduler and file-backed SQLite, including restart, concurrent sweeps, opt-out and corrupt-storage failure recovery. No model or storage mocks are used. */
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { appendFileSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -17,9 +18,19 @@ import {
 } from "@elizaos/testing/runtime";
 import { afterEach, expect, it } from "vitest";
 import { encodeRecord } from "../../../plugins/plugin-sqlite/record-codec.ts";
+import { loadHooks } from "../src/hooks/loader.ts";
+import {
+  clearHooks,
+  createHookEvent,
+  triggerHook,
+} from "../src/hooks/registry.ts";
 import { LogsRetentionService } from "../src/runtime/logs-retention-service.ts";
 import { MemoryRetentionService } from "../src/runtime/memory-retention-service.ts";
-import { RETENTION_BOUNDS_REQUIRED_SETTING } from "../src/runtime/retention-task.ts";
+import { createAgentProcessLifecycle } from "../src/runtime/process-lifecycle.ts";
+import {
+  RETENTION_BOUNDS_REQUIRED_SETTING,
+  RetentionTask,
+} from "../src/runtime/retention-task.ts";
 import {
   CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
   SANDBOX_AUDIT_LOG_TYPE,
@@ -374,4 +385,92 @@ it("applies log retention through the PostgreSQL query contract without its defa
   expect(await h.runtime.adapter.getLogs({ roomId, limit: 100 })).toHaveLength(
     10,
   );
+});
+
+it("drains a pending retention installation before shutdown releases its worker", async () => {
+  const h = await fixture();
+  const name = `retention-install-race-${randomUUID()}`;
+  const owner = new RetentionTask(h.runtime, name, async () =>
+    h.runtime.getMemoryById(h.older),
+  );
+  cleanups.push(() => owner.stop());
+  const starting = owner.start(60_000);
+  const stopping = owner.stop();
+  await Promise.all([starting, stopping]);
+  await h.scheduler.runDueTasks();
+  expect(await h.runtime.getTasks({ tags: ["queue"] })).toEqual([]);
+  expect(h.runtime.getTaskWorker(name)).toBeUndefined();
+  expect(await h.runtime.getMemoryById(h.older)).not.toBeNull();
+  await expect(owner.start(60_000)).rejects.toMatchObject({
+    code: "RETENTION_SERVICE_STOPPED",
+  });
+});
+
+it("runs host teardown and database closure once when a teardown reenters disposal", async () => {
+  const h = await fixture();
+  const receipt = path.join(path.dirname(h.file), "shutdown.txt");
+  let reentrant: Promise<void> | undefined;
+  let callbacks = 0;
+  const lifecycle = createAgentProcessLifecycle({
+    disposeRuntime: async () => {
+      appendFileSync(receipt, "database-close\n");
+      await h.runtime.close();
+    },
+  });
+  const removeTeardown = lifecycle.addTeardown(() => {
+    callbacks += 1;
+    appendFileSync(receipt, "teardown\n");
+    if (callbacks === 1) reentrant = lifecycle.dispose("reentrant shutdown");
+  });
+  const disposal = lifecycle.dispose("host shutdown");
+  removeTeardown();
+  await disposal;
+  await reentrant;
+  expect(await readFile(receipt, "utf8")).toBe("teardown\ndatabase-close\n");
+});
+
+it("removes previously loaded hook handlers when a reload disables hooks", async () => {
+  const h = await fixture();
+  const hooksDirectory = path.join(path.dirname(h.file), "hooks");
+  const hookDirectory = path.join(hooksDirectory, "delivery");
+  await mkdir(hookDirectory, { recursive: true });
+  const handlerPath = path.join(hookDirectory, "handler.mjs");
+  await writeFile(
+    path.join(hookDirectory, "HOOK.md"),
+    [
+      "---",
+      "name: lifecycle-delivery",
+      "description: Records real hook dispatch for lifecycle acceptance",
+      'metadata: {"eliza":{"events":["command:new"]}}',
+      "---",
+    ].join("\n"),
+  );
+  const receipt = path.join(hooksDirectory, "delivery.txt");
+  await writeFile(
+    handlerPath,
+    [
+      'import { appendFile } from "node:fs/promises";',
+      'export default async (event) => appendFile(event.context.receipt, "delivered\\n");',
+    ].join("\n"),
+  );
+  cleanups.push(async () => clearHooks());
+  const loaded = await loadHooks({
+    bundledDir: hooksDirectory,
+    internalConfig: {
+      enabled: true,
+    },
+  });
+  expect(loaded.registered).toBe(1);
+  await triggerHook(
+    createHookEvent("command", "new", "hook-reload", { receipt }),
+  );
+  expect(await readFile(receipt, "utf8")).toBe("delivered\n");
+  await loadHooks({
+    bundledDir: hooksDirectory,
+    internalConfig: { enabled: false },
+  });
+  await triggerHook(
+    createHookEvent("command", "new", "hook-reload", { receipt }),
+  );
+  expect(await readFile(receipt, "utf8")).toBe("delivered\n");
 });

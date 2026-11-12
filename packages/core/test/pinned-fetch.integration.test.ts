@@ -7,12 +7,16 @@
  * routed through the pinned lookup to 127.0.0.1 at the socket level.
  */
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, createServer as createNetServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fetchRemoteMedia, MediaFetchError } from "../src/media/fetch.ts";
 import { fetchWithSsrfGuard } from "../src/network/fetch-guard.ts";
 import { nodePinnedFetch } from "../src/network/node-pinned-fetch.ts";
-import { type LookupFn, SsrfBlockedError } from "../src/network/ssrf.ts";
+import {
+	createPinnedLookup,
+	type LookupFn,
+	SsrfBlockedError,
+} from "../src/network/ssrf.ts";
 
 // S3-style 403 for an expired signed URL: 232 bytes, longer than the
 // 200-char error snippet.
@@ -23,10 +27,26 @@ describe("pinned fetch through a real local HTTP server", () => {
 	let server: Server;
 	let port: number;
 	const seenRequests: Array<{ host: string | undefined; url: string }> = [];
+	const seenBodies = new Map<
+		string,
+		{ contentType: string | undefined; body: string }
+	>();
 
 	beforeAll(async () => {
 		server = createServer((req, res) => {
 			seenRequests.push({ host: req.headers.host, url: req.url ?? "" });
+			if (req.method === "POST") {
+				const chunks: Buffer[] = [];
+				req.on("data", (chunk: Buffer) => chunks.push(chunk));
+				req.on("end", () => {
+					seenBodies.set(req.url ?? "", {
+						contentType: req.headers["content-type"],
+						body: Buffer.concat(chunks).toString("utf8"),
+					});
+					res.end("ok");
+				});
+				return;
+			}
 			if (req.url === "/stall-body") {
 				res.statusCode = 200;
 				res.setHeader("content-type", "image/png");
@@ -235,5 +255,119 @@ describe("pinned fetch through a real local HTTP server", () => {
 			"HTTP 500 Internal Server Error; body: upstream exploded xxx",
 		);
 		expect(message.split("; body: ")[1]).toHaveLength(200);
+	});
+	async function postBody(path: string, init: RequestInit) {
+		const guarded = await fetchWithSsrfGuard({
+			url: `http://pinned.example.test:${port}${path}`,
+			init: { method: "POST", ...init },
+			lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+			pinnedFetchImpl: nodePinnedFetch,
+			policy: { allowedHostnames: ["pinned.example.test"] },
+			timeoutMs: 5000,
+		});
+		await guarded.response.text();
+		await guarded.release();
+		return seenBodies.get(path);
+	}
+
+	it("sends a FormData body with a parseable multipart boundary", async () => {
+		const form = new FormData();
+		form.append("field", "value");
+		const seen = await postBody("/form", { body: form });
+		const parsed = await new Response(seen?.body, {
+			headers: { "content-type": seen?.contentType ?? "" },
+		}).formData();
+		expect(seen?.contentType).toMatch(/^multipart\/form-data; boundary=/);
+		expect(parsed.get("field")).toBe("value");
+	});
+
+	it("sends URLSearchParams as application/x-www-form-urlencoded", async () => {
+		const seen = await postBody("/urlencoded", {
+			body: new URLSearchParams({ a: "1", b: "two" }),
+		});
+		expect(seen?.contentType).toMatch(/^application\/x-www-form-urlencoded/);
+		expect(seen?.body).toBe("a=1&b=two");
+	});
+
+	it("keeps a caller-set content-type", async () => {
+		const seen = await postBody("/explicit", {
+			body: new URLSearchParams({ a: "1" }),
+			headers: { "content-type": "text/plain" },
+		});
+		expect(seen?.contentType).toBe("text/plain");
+	});
+
+	it("rejects within the deadline when the DNS lookup never answers", async () => {
+		const started = Date.now();
+		await expect(
+			fetchWithSsrfGuard({
+				url: `http://pinned.example.test:${port}/never`,
+				lookupFn: () => new Promise(() => {}),
+				pinnedFetchImpl: nodePinnedFetch,
+				timeoutMs: 50,
+			}),
+		).rejects.toThrow();
+		expect(Date.now() - started).toBeLessThan(1000);
+	});
+});
+
+describe("pinned fetch against out-of-range upstream status codes", () => {
+	let rawServer: ReturnType<typeof createNetServer>;
+	let rawPort: number;
+
+	beforeAll(async () => {
+		rawServer = createNetServer((socket) => {
+			socket.once("data", (chunk) => {
+				const status = /^GET \/(\d+)/.exec(chunk.toString("latin1"))?.[1];
+				socket.end(
+					`HTTP/1.1 ${status} X\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok`,
+				);
+			});
+			socket.on("error", () => {});
+		});
+		await new Promise<void>((resolve) =>
+			rawServer.listen(0, "127.0.0.1", resolve),
+		);
+		rawPort = (rawServer.address() as AddressInfo).port;
+	});
+
+	afterAll(async () => {
+		await new Promise<void>((resolve) => rawServer.close(() => resolve()));
+	});
+
+	function fetchStatus(status: number) {
+		return nodePinnedFetch({
+			url: new URL(`http://raw.example.test:${rawPort}/${status}`),
+			init: {},
+			lookup: createPinnedLookup({
+				hostname: "raw.example.test",
+				addresses: ["127.0.0.1"],
+			}),
+			addresses: ["127.0.0.1"],
+		});
+	}
+
+	it.each([600, 999])(
+		"rejects HTTP %s without an uncaught exception",
+		async (status) => {
+			const uncaught: unknown[] = [];
+			const onUncaught = (error: unknown) => uncaught.push(error);
+			process.on("uncaughtException", onUncaught);
+			try {
+				await expect(fetchStatus(status)).rejects.toThrow(
+					`invalid upstream HTTP status ${status}`,
+				);
+				await new Promise((resolve) => setTimeout(resolve, 20));
+			} finally {
+				process.off("uncaughtException", onUncaught);
+			}
+			expect(uncaught).toEqual([]);
+		},
+	);
+
+	it.each([200, 599])("resolves HTTP %s", async (status) => {
+		const response = await fetchStatus(status);
+		expect(response.status).toBe(status);
+		expect(await response.text()).toBe("ok");
 	});
 });

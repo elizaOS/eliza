@@ -8,6 +8,7 @@ import test from "node:test";
 import { renderProvisioningOverlay } from "../android/launcher-provisioning.mjs";
 import { inspectBootAnimationArchive } from "../android/pixel10a-brand-assets.mjs";
 import {
+  assertPixel10aSourceLayout,
   composePixel10aProduct,
   enforceLauncherLockScreenPolicy,
   renderSensePermissions,
@@ -23,12 +24,40 @@ import {
 function fixture(t, brand) {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "pixel10a-product-"));
   t.after(() => fs.rmSync(output, { recursive: true, force: true }));
-  const product = JSON.parse(
-    fs.readFileSync(
-      new URL(`../../android/products/pixel10a-${brand}.json`, import.meta.url),
-      "utf8",
-    ),
-  );
+  const product =
+    brand === "example"
+      ? {
+          schemaVersion: 1,
+          target: "pixel10a",
+          sourceProfile: "pixel10a",
+          vendorDirectory: "example_phone",
+          productName: "example_stallion_phone",
+          model: "Example Pixel 10a",
+          brand: "Example",
+          manufacturer: "Google",
+          releaseConfig: "cp2a",
+          launcher: {
+            moduleName: "ExamplePhone",
+            packageName: "org.example.phone",
+            refuseLockScreenSurfaces: true,
+            assistantRole: false,
+            imageProvisioning: {
+              module: "ExampleImageCapabilityOverlay",
+              overlayable: "ExampleImageProvisioning",
+              resource: "example_aosp_image_capability",
+            },
+          },
+          releaseQualified: false,
+        }
+      : JSON.parse(
+          fs.readFileSync(
+            new URL(
+              `../../android/products/pixel10a-${brand}.json`,
+              import.meta.url,
+            ),
+            "utf8",
+          ),
+        );
   const launcher = {
     schemaVersion: 1,
     brand,
@@ -47,10 +76,16 @@ function fixture(t, brand) {
   };
 }
 
-for (const brand of ["alpha", "eliza"]) {
+for (const brand of ["example", "eliza"]) {
   test(`${brand} composes the same Pixel 10a hardware with a nonprivileged launcher`, (t) => {
     const f = fixture(t, brand);
-    const result = composePixel10aProduct({ ...f, production: true });
+    const oldUmask = process.umask(0o077);
+    let result: ReturnType<typeof composePixel10aProduct>;
+    try {
+      result = composePixel10aProduct({ ...f, production: true });
+    } finally {
+      process.umask(oldUmask);
+    }
     assert.equal(result.releaseQualified, false);
     assert.equal(result.imageBuilt, false);
     assert.equal(result.imageSigned, false);
@@ -66,7 +101,7 @@ for (const brand of ["alpha", "eliza"]) {
       "utf8",
     );
     assert.match(mk, /vendor\/google_devices\/stallion\/stallion.mk/);
-    assert.match(mk, /vendor\/alphaphone\/product.mk/);
+    assert.ok(mk.includes(`vendor/${f.product.vendorDirectory}/product.mk`));
     assert.doesNotMatch(
       mk,
       /eliza_common|BOARD_AVB|privapp|default-permissions/,
@@ -119,16 +154,127 @@ for (const brand of ["alpha", "eliza"]) {
         false,
       );
     }
+    const hardware = result.hardwareComposition;
+    assert.equal(hardware.vendorDirectory, f.product.vendorDirectory);
     const source = new URL("../../android/devices/pixel10a/", import.meta.url);
-    for (const name of fs.readdirSync(source, { recursive: true })) {
-      const file = new URL(name, source);
-      if (fs.statSync(file).isFile())
-        assert.deepEqual(
-          fs.readFileSync(path.join(f.output, "stallion", name)),
-          fs.readFileSync(file),
-          name,
-        );
+    const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+    const sourceNames = fs
+      .readdirSync(source, { recursive: true })
+      .filter((name) => fs.statSync(new URL(name, source)).isFile())
+      .sort();
+    assert.deepEqual(
+      hardware.files.map((file) => file.sourcePath).sort(),
+      sourceNames,
+    );
+    for (const file of hardware.files) {
+      const before = fs.readFileSync(new URL(file.sourcePath, source));
+      const after = fs.readFileSync(path.join(f.output, file.path));
+      assert.equal(file.sourceSha256, digest(before), file.sourcePath);
+      assert.equal(file.sha256, digest(after), file.path);
+      assert.equal(
+        file.mode,
+        fs.statSync(new URL(file.sourcePath, source)).mode & 0o777,
+        file.sourcePath,
+      );
+      assert.equal(
+        fs.statSync(path.join(f.output, file.path)).mode & 0o777,
+        file.mode,
+        "rendered hardware retains source modes under a private umask",
+      );
+      assert.doesNotMatch(
+        after.toString(),
+        /@VENDOR_DIRECTORY@|@PIXEL_CONFIG_MODULE@/,
+      );
+      if (
+        !before.includes("@VENDOR_DIRECTORY@") &&
+        !before.includes("@PIXEL_CONFIG_MODULE@") &&
+        !file.sourcePath.startsWith("vendor-config/")
+      )
+        assert.deepEqual(after, before, file.sourcePath);
     }
+    const device = fs.readFileSync(
+      path.join(f.output, "stallion/device.mk"),
+      "utf8",
+    );
+    assert.ok(
+      device.includes(
+        `include vendor/${f.product.vendorDirectory}/stallion/device-common.mk`,
+      ),
+    );
+    assert.ok(
+      device.includes(`PRODUCT_PACKAGES += ${hardware.pixelConfig.moduleName}`),
+    );
+    for (const patch of ["eliza-product.patch", "enforce-selinux.patch"])
+      assert.ok(
+        fs
+          .readFileSync(path.join(f.output, "stallion/patches", patch), "utf8")
+          .includes(`vendor/${f.product.vendorDirectory}/stallion/`),
+      );
+    const provider = fs.readFileSync(
+      path.join(
+        f.output,
+        "stallion/vendor-config/src",
+        hardware.pixelConfig.packageName.replaceAll(".", "/"),
+        "FlagsProvider.java",
+      ),
+      "utf8",
+    );
+    assert.ok(
+      provider.startsWith(`package ${hardware.pixelConfig.packageName};`),
+    );
+    assert.ok(provider.includes(`return "${hardware.pixelConfig.mimeType}"`));
+    assert.match(
+      provider,
+      /private static final String AUTHORITY = "com.google.android.gsf.gservices"/,
+    );
+    assert.match(provider, /ApplicationInfo\.FLAG_SYSTEM/);
+    assert.match(
+      provider,
+      /CLIENTS = \{"com.google.euiccpixel", "com.google.android.euicc"\}/,
+    );
+    const sourceProvider = fs.readFileSync(
+      new URL(
+        "vendor-config/src/ai/eliza/hardware/pixelconfig/FlagsProvider.java",
+        source,
+      ),
+      "utf8",
+    );
+    assert.equal(
+      provider,
+      sourceProvider
+        .replaceAll(
+          "ai.eliza.hardware.pixelconfig",
+          hardware.pixelConfig.packageName,
+        )
+        .replaceAll(
+          "vnd.android.cursor.dir/vnd.eliza.pixel-flags",
+          hardware.pixelConfig.mimeType,
+        ),
+      "provider behavior is unchanged outside explicit installed identity",
+    );
+    assert.ok(
+      fs
+        .readFileSync(
+          path.join(f.output, "stallion/vendor-config/AndroidManifest.xml"),
+          "utf8",
+        )
+        .includes(`package="${hardware.pixelConfig.packageName}"`),
+    );
+    assert.ok(
+      fs
+        .readFileSync(
+          path.join(f.output, "stallion/vendor-config/Android.bp"),
+          "utf8",
+        )
+        .includes(`name: "${hardware.pixelConfig.moduleName}"`),
+    );
+    if (brand === "example") {
+      assert.equal(hardware.pixelConfig.moduleName, "PixelConfig");
+      assert.equal(
+        hardware.pixelConfig.packageName,
+        "ai.eliza.hardware.pixelconfig",
+      );
+    } else assert.deepEqual(hardware.pixelConfig, f.product.pixelConfig);
   });
   test(`${brand} listener keeps exactly the two approved privileges`, (t) => {
     const f = fixture(t, brand);
@@ -158,7 +304,7 @@ for (const brand of ["alpha", "eliza"]) {
 }
 
 test("a launcher product that already requires DeskClock keeps one requirement", (t) => {
-  const f = fixture(t, "alpha");
+  const f = fixture(t, "example");
   fs.appendFileSync(
     path.join(f.output, "product.mk"),
     "\n# Brand staging\nPRODUCT_PACKAGES += DeskClock\n",
@@ -261,7 +407,10 @@ test("a pinned brand boot animation is installed exactly; unpinned, compressed o
   );
   assert.match(
     fs.readFileSync(path.join(f.output, `${f.product.productName}.mk`), "utf8"),
-    /^PRODUCT_COPY_FILES \+= vendor\/alphaphone\/brand\/bootanimation\.zip:\$\(TARGET_COPY_OUT_PRODUCT\)\/media\/bootanimation\.zip$/m,
+    new RegExp(
+      `^PRODUCT_COPY_FILES \\+= vendor/${f.product.vendorDirectory}/brand/bootanimation\\.zip:\\$\\(TARGET_COPY_OUT_PRODUCT\\)/media/bootanimation\\.zip$`,
+      "m",
+    ),
   );
   assert.throws(
     () =>
@@ -281,11 +430,49 @@ test("a pinned brand boot animation is installed exactly; unpinned, compressed o
 });
 
 test("changed privilege policy, product identity and qualified claims fail before composition", (t) => {
-  const f = fixture(t, "alpha");
+  const f = fixture(t, "example");
   assert.throws(
     () => validatePixel10aProduct({ ...f.product, releaseQualified: true }),
     /unqualified/,
   );
+  for (const vendorDirectory of [
+    undefined,
+    "",
+    "../escape",
+    "bad/name",
+    "x\nPRODUCT_PACKAGES += Unsafe",
+  ])
+    assert.throws(
+      () => validatePixel10aProduct({ ...f.product, vendorDirectory }),
+      /vendorDirectory/,
+    );
+  for (const pixelConfig of [
+    null,
+    {},
+    { moduleName: "Unsafe", packageName: "bad/name", mimeType: "invalid" },
+    {
+      moduleName: "Unsafe",
+      packageName: "org.example.flags",
+      mimeType: "vnd.android.cursor.dir/vnd.example\nunsafe",
+    },
+    ...[
+      f.product.launcher.packageName,
+      `${f.product.launcher.packageName}.sense`,
+    ].map((packageName) => ({
+      moduleName: "PixelConfig",
+      packageName,
+      mimeType: "vnd.android.cursor.dir/vnd.example.flags",
+    })),
+    {
+      moduleName: ["PixelConfig"],
+      packageName: "org.example.flags",
+      mimeType: "vnd.android.cursor.dir/vnd.example.flags",
+    },
+  ])
+    assert.throws(
+      () => validatePixel10aProduct({ ...f.product, pixelConfig }),
+      /pixelConfig/,
+    );
   assert.throws(
     () =>
       validatePixel10aProduct({
@@ -307,8 +494,37 @@ test("changed privilege policy, product identity and qualified claims fail befor
   assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
 });
 
+test("Pixel source staging rejects a selected layout that differs from the admitted source", (t) => {
+  const f = fixture(t, "example");
+  const file = path.join(
+    f.output,
+    "vendor/google_devices/stallion/stallion.mk",
+  );
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const include = `$(call inherit-product, vendor/${f.product.vendorDirectory}/stallion/device.mk)\n`;
+  fs.writeFileSync(file, include);
+  assert.deepEqual(assertPixel10aSourceLayout(f.output, f.product), {
+    vendorDirectory: f.product.vendorDirectory,
+    path: "vendor/google_devices/stallion/stallion.mk",
+    sha256: createHash("sha256").update(include).digest("hex"),
+  });
+  assert.throws(
+    () =>
+      assertPixel10aSourceLayout(f.output, {
+        ...f.product,
+        vendorDirectory: "other",
+      }),
+    /source layout differs/,
+  );
+  fs.writeFileSync(file, include + include);
+  assert.throws(
+    () => assertPixel10aSourceLayout(f.output, f.product),
+    /source layout differs/,
+  );
+});
+
 test("a brand that leaves lock-screen capture to Camera2 refuses a launcher shown over Keyguard", (t) => {
-  const alpha = fixture(t, "alpha").product;
+  const example = fixture(t, "example").product;
   const eliza = fixture(t, "eliza").product;
   const manifest = (attrs) =>
     [
@@ -316,17 +532,17 @@ test("a brand that leaves lock-screen capture to Camera2 refuses a launcher show
       "  E: manifest (line=2)",
       "    E: application (line=3)",
       "      E: activity (line=4)",
-      `        A: android:name(0x01010003)="${alpha.launcher.packageName}.Ringing" (Raw: "${alpha.launcher.packageName}.Ringing")`,
+      `        A: android:name(0x01010003)="${example.launcher.packageName}.Ringing" (Raw: "${example.launcher.packageName}.Ringing")`,
       ...attrs,
     ].join("\n");
   const locked = manifest([
     "        A: android:showWhenLocked(0x01010003)=(type 0x12)0xffffffff",
   ]);
-  assert.equal(alpha.launcher.refuseLockScreenSurfaces, true);
-  assert.equal(enforceLauncherLockScreenPolicy(alpha, manifest([])), true);
+  assert.equal(example.launcher.refuseLockScreenSurfaces, true);
+  assert.equal(enforceLauncherLockScreenPolicy(example, manifest([])), true);
   assert.throws(
-    () => enforceLauncherLockScreenPolicy(alpha, locked),
-    /Alpha does not implement[\s\S]*Ringing sets android:showWhenLocked/,
+    () => enforceLauncherLockScreenPolicy(example, locked),
+    /Example does not implement[\s\S]*Ringing sets android:showWhenLocked/,
   );
   // Eliza's own launcher keeps its alarm activity over Keyguard.
   assert.equal(eliza.launcher.refuseLockScreenSurfaces, undefined);
@@ -334,10 +550,25 @@ test("a brand that leaves lock-screen capture to Camera2 refuses a launcher show
   assert.throws(
     () =>
       validatePixel10aProduct({
-        ...alpha,
-        launcher: { ...alpha.launcher, refuseLockScreenSurfaces: "yes" },
+        ...example,
+        launcher: { ...example.launcher, refuseLockScreenSurfaces: "yes" },
       }),
     /refuseLockScreenSurfaces must be a boolean/,
+  );
+});
+
+test("only a product that says so stages without the assistant role", (t) => {
+  const example = fixture(t, "example").product;
+  const eliza = fixture(t, "eliza").product;
+  assert.equal(example.launcher.assistantRole, false);
+  assert.equal(eliza.launcher.assistantRole, undefined);
+  assert.throws(
+    () =>
+      validatePixel10aProduct({
+        ...example,
+        launcher: { ...example.launcher, assistantRole: "no" },
+      }),
+    /assistantRole must be a boolean/,
   );
 });
 
@@ -433,13 +664,13 @@ test("Soong native installation uses the pinned source patch without ELF check o
 });
 
 test("development images keep the launcher's provisioning default and malformed provisioning is refused", (t) => {
-  const f = fixture(t, "alpha");
+  const f = fixture(t, "example");
   const result = composePixel10aProduct({ ...f, production: false });
   assert.equal(result.imageProvisioning, null);
   assert.equal(fs.existsSync(path.join(f.output, "image-capabilities")), false);
   for (const imageProvisioning of [
     null,
-    { module: "Alpha", extra: true },
+    { module: "Example", extra: true },
     { resource: "Not-A-Resource" },
   ])
     assert.throws(
@@ -450,4 +681,67 @@ test("development images keep the launcher's provisioning default and malformed 
         }),
       /imageProvisioning|Invalid/,
     );
+});
+
+test("a product can stage the disabled updater with exact source evidence", (t) => {
+  const f = fixture(t, "example");
+  f.product.systemUpdater = true;
+  const result = composePixel10aProduct({ ...f, production: true });
+  assert.equal(result.systemUpdater.staged, true);
+  assert.equal(result.systemUpdater.enabled, false);
+  assert.equal(result.systemUpdater.files.length, 18);
+  for (const file of result.systemUpdater.files) {
+    assert.equal(
+      createHash("sha256")
+        .update(fs.readFileSync(path.join(f.output, file.path)))
+        .digest("hex"),
+      file.sha256,
+    );
+  }
+  assert.match(
+    fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
+    /inherit-product, vendor\/example_phone\/system-updater\/product.mk/,
+  );
+  assert.match(
+    fs.readFileSync(
+      path.join(f.output, "system-updater/res/values/config.xml"),
+      "utf8",
+    ),
+    /<bool name="os_update_enabled">false<\/bool>/,
+  );
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(f.output, "Android.bp"), "utf8"),
+    /privileged/,
+  );
+  assert.equal(result.imageBuilt, false);
+  assert.equal(result.deviceAcceptanceVerified, false);
+});
+
+test("updater enrollment cannot be smuggled into the staging switch", (t) => {
+  const f = fixture(t, "example");
+  f.product.systemUpdater = { enabled: true };
+  assert.throws(
+    () => composePixel10aProduct(f),
+    /systemUpdater must be a boolean/,
+  );
+  assert.equal(fs.existsSync(path.join(f.output, "system-updater")), false);
+  assert.equal(
+    fs.existsSync(path.join(f.output, "physical-product.json")),
+    false,
+  );
+});
+
+test("an existing updater staging directory is retained on refusal", (t) => {
+  const f = fixture(t, "example");
+  f.product.systemUpdater = true;
+  const directory = path.join(f.output, "system-updater");
+  fs.mkdirSync(directory);
+  const marker = path.join(directory, "keep.txt");
+  fs.writeFileSync(marker, "preexisting state");
+  assert.throws(
+    () => composePixel10aProduct(f),
+    /composition already exists: system-updater/,
+  );
+  assert.equal(fs.readFileSync(marker, "utf8"), "preexisting state");
+  assert.deepEqual(fs.readdirSync(directory), ["keep.txt"]);
 });

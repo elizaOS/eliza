@@ -325,6 +325,13 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
     return this.delegate.markExpired(id, subjectUserId);
   }
 
+  revertApprovedToPending(
+    id: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest> {
+    return this.delegate.revertApprovedToPending(id, subjectUserId);
+  }
+
   removePending(id: string, subjectUserId: string): Promise<void> {
     return this.delegate.removePending(id, subjectUserId);
   }

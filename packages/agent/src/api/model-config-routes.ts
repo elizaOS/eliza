@@ -44,7 +44,10 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
-import { isCerebrasMode, resolveOpenAIBaseURL } from "@elizaos/plugin-openai";
+import {
+  isCerebrasMode,
+  resolveOpenAIBaseURL,
+} from "@elizaos/plugin-openai/config";
 import {
   isDevCloudEnvOwnedKey,
   resolveDevCloudEnvAuthority,

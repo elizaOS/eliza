@@ -12,7 +12,7 @@ import {
   NAVIGATION_FIX_LIMITS,
   usableNavigationFix,
 } from "./navigation-fix.ts";
-import type { MapsState } from "./state.ts";
+import type { MapsState, RoutePlanReceipt } from "./state.ts";
 
 /*
  * The phone side of the plugin-maps `MapsDeviceNavigation` contract (../navigation.ts).
@@ -91,6 +91,7 @@ export class DeviceNavigationFailure extends Error {
  * It lasts from Start to End, including while a new route is planned and after arrival.
  */
 export type ActiveGuidance = Readonly<{
+  session: number;
   routeId: string;
   placeName: string;
   travelMode: TravelMode;
@@ -118,8 +119,8 @@ export interface MapsNavigationSurface {
   /** Plans the shown route from this device coordinate; resolves when planning settles. */
   planFrom(origin: Coordinate): Promise<void>;
   guidance(): ActiveGuidance | null;
-  /** The screen's own "Reroute from here"; resolves when the replacement route settles. */
-  reroute(from: Coordinate): Promise<void>;
+  /** The screen's own "Reroute from here"; reports only that guidance's exact route publication. */
+  reroute(from: Coordinate): Promise<RoutePlanReceipt | undefined>;
   /** Ends guidance and its location watch (the screen's End). */
   stop(): Promise<void>;
   /** Called when Maps is left or released; in-flight agent work is cancelled. */
@@ -488,18 +489,19 @@ export class DeviceMapsNavigation implements MapsDeviceNavigation {
         placeName: active.placeName,
         travelMode: active.travelMode,
       };
-      await this.surface.reroute(active.fix.coordinate);
+      const reply = await this.surface.reroute(active.fix.coordinate);
       run.check();
       const next = this.surface.guidance();
-      if (!next) {
-        const route = this.surface.snapshot()?.route;
-        throw route?.phase === "error" && route.error
-          ? deviceNavigationFailure(route.error)
-          : unavailable(
-              "Navigation ended on the phone before the new route was ready.",
-            );
-      }
-      if (next.rerouting || next.routeId === active.routeId)
+      if (next && next.session !== active.session)
+        throw unavailable(
+          "Navigation ended on the phone before the new route was ready.",
+        );
+      if (reply?.error) throw deviceNavigationFailure(reply.error);
+      if (!next)
+        throw unavailable(
+          "Navigation ended on the phone before the new route was ready.",
+        );
+      if (!reply || next.rerouting)
         throw unavailable("The phone kept the previous route.");
       return { state: "navigating", ...status };
     } catch (error) {

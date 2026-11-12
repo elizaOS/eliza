@@ -130,6 +130,10 @@ export function appKey(app: LaunchTarget): string {
   );
 }
 
+const collator = new Intl.Collator(undefined, {
+  sensitivity: "base",
+  numeric: true,
+});
 const fold = (value: string) =>
   value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
 /** Label (then package) match, ignoring case and accents; prefix matches sort first. */
@@ -138,10 +142,6 @@ export function filterLauncherApps(
   query: string,
 ): InstalledApp[] {
   const needle = fold(query.trim());
-  const collator = new Intl.Collator(undefined, {
-    sensitivity: "base",
-    numeric: true,
-  });
   const sorted = [...apps].sort(
     (a, b) =>
       collator.compare(a.label, b.label) ||
@@ -403,7 +403,33 @@ export function createLauncher(
   };
   const installed = (key: string) =>
     state.apps.some((app) => appKey(app) === key);
-  async function load(mode: { quiet?: boolean } = {}) {
+  /** With `reuseIcons`, the read skips icons and keeps the ones from the last read; an entry that
+   * is new or changed its lock state is read again with icons. */
+  const read = async (reuseIcons: boolean) => {
+    if (!options.icons) return bridge.list();
+    if (!reuseIcons || state.status !== "ready")
+      return bridge.list({ icons: true });
+    const light = await bridge.list();
+    if (!Array.isArray(light?.apps)) return light;
+    const known = new Map(state.apps.map((app) => [appKey(app), app] as const));
+    const current = light.apps
+      .filter(valid)
+      .filter((app) => !options.aliases?.[appKey(app)]);
+    if (
+      current.some((app) => {
+        const was = known.get(appKey(app));
+        return !was || !!was.locked !== !!app.locked;
+      })
+    )
+      return bridge.list({ icons: true });
+    return {
+      apps: current.map((app) => {
+        const icon = known.get(appKey(app))?.icon;
+        return icon ? { ...app, icon } : app;
+      }),
+    };
+  };
+  async function load(mode: { quiet?: boolean; reuseIcons?: boolean } = {}) {
     const current = ++generation;
     // A quiet refresh keeps the visible list and any launch error until the new read lands.
     update(
@@ -412,7 +438,7 @@ export function createLauncher(
         : { status: "loading", launchError: null },
     );
     const [listed, dial] = await Promise.allSettled([
-      bridge.list(options.icons ? { icons: true } : undefined),
+      read(!!mode.reuseIcons),
       bridge.resolveDefault
         ? bridge.resolveDefault({ role: "dial" })
         : Promise.reject(Error("Unsupported")),
@@ -524,8 +550,8 @@ export function createLauncher(
     },
     load,
     /** Re-reads after an outside change. Does nothing before the first open; never shows the loading state over a list. */
-    async refresh() {
-      if (state.status !== "idle") await load({ quiet: true });
+    async refresh(mode: { reuseIcons?: boolean } = {}) {
+      if (state.status !== "idle") await load({ quiet: true, ...mode });
     },
     async launch(app: InstalledApp) {
       if (state.launching) return;
@@ -602,10 +628,16 @@ export function createLauncher(
       }
       saveFavorites([...kept, key]);
     },
-    /** Moves a favorite one place among the installed favorites; uninstalled ones keep their slots. */
-    moveFavorite(app: InstalledApp, direction: -1 | 1) {
+    /** Moves a favorite among the visible installed favorites; the others keep their slots. */
+    moveFavorite(
+      app: InstalledApp,
+      direction: -1 | 1,
+      visibleKeys?: ReadonlySet<string>,
+    ) {
       const key = appKey(app),
-        visible = state.favorites.filter(installed),
+        visible = state.favorites.filter(
+          (item) => installed(item) && (!visibleKeys || visibleKeys.has(item)),
+        ),
         at = visible.indexOf(key),
         other = visible[at + direction];
       if (at < 0 || !other) return;
@@ -625,21 +657,32 @@ export function createLauncher(
 }
 export type Launcher = ReturnType<typeof createLauncher>;
 
-/** Share package/resume refresh ownership across hosts; initial inventory remains explicit. */
+/** Share package/resume refresh ownership across hosts; initial inventory remains explicit.
+ * While `appsChanged` is followed, it alone re-reads icons; a return to Home or a resume re-reads
+ * the list without them. Without the listener every resume is a full read, so a paused or
+ * unlocked profile still shows up. */
 export function observeLauncher(
   bridge: LauncherBridge,
   launcher: Launcher,
   options: { follow?: boolean } = {},
 ): () => void {
   let active = true;
+  let following = false;
+  let changedSinceRead = false;
   let pending: ReturnType<typeof setTimeout> | null = null;
-  const refresh = () => {
-    if (pending || !active) return;
+  const schedule = (appsChanged: boolean) => {
+    if (!active) return;
+    if (appsChanged) changedSinceRead = true;
+    if (pending) return;
     pending = setTimeout(() => {
       pending = null;
-      if (active) void launcher.refresh();
+      if (!active) return;
+      const full = changedSinceRead || !following;
+      changedSinceRead = false;
+      void launcher.refresh(full ? {} : { reuseIcons: true });
     }, 120);
   };
+  const refresh = () => schedule(false);
   const visible = () => {
     if (!document.hidden) refresh();
   };
@@ -649,7 +692,13 @@ export function observeLauncher(
   try {
     subscription =
       options.follow !== false && bridge.addListener
-        ? Promise.resolve(bridge.addListener("appsChanged", refresh)).catch(
+        ? Promise.resolve(
+            bridge.addListener("appsChanged", () => schedule(true)),
+          ).then(
+            (handle) => {
+              following = active;
+              return handle;
+            },
             () => null,
           )
         : null;
@@ -657,10 +706,12 @@ export function observeLauncher(
     subscription = null;
   }
   return () => {
+    if (!active) return;
     active = false;
     document.removeEventListener("visibilitychange", visible);
     document.removeEventListener("resume", refresh);
     if (pending) clearTimeout(pending);
+    pending = null;
     void Promise.resolve(subscription)
       .then((handle) => {
         if (
@@ -669,7 +720,7 @@ export function observeLauncher(
           "remove" in handle &&
           typeof handle.remove === "function"
         )
-          handle.remove();
+          return handle.remove();
       })
       .catch(() => {});
   };

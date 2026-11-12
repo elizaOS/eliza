@@ -29,7 +29,8 @@
  * (`services/voice/live-transcript-events.ts`).
  *
  * Sessions: at most 4 (the host's open-stream cap); a session idle for 60 s
- * is disposed. Auth follows the ASR route (`ensureRouteAuthorized`).
+ * is disposed, and a session whose runtime was replaced is disposed and
+ * reopened on the current runtime. Auth follows the ASR route (`ensureRouteAuthorized`).
  */
 
 import type http from "node:http";
@@ -70,6 +71,8 @@ interface LiveAsrLoader {
 }
 
 interface SessionEntry {
+	/** The runtime whose bus and loader this session uses. */
+	runtime: object;
 	session: LiveStreamingAsrSession;
 	vad: PushVadEventSource;
 	disposeEmitter: () => void;
@@ -159,15 +162,19 @@ export async function handleLiveAsrRoute(
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const loader = resolveLoader(state);
 		let streaming: boolean | null = null;
+		let reason: string | null = null;
 		if (loader?.asrStreamSupported) {
+			// A throwing probe means ASR cannot run at all (no installed asr/
+			// bundle); false still serves the route through batch op="asr".
 			try {
 				streaming = await loader.asrStreamSupported();
-			} catch {
-				streaming = null;
+			} catch (err) {
+				reason = err instanceof Error ? err.message : String(err);
 			}
 		}
 		sendJson(res, 200, {
-			ready: loader !== null,
+			ready: loader !== null && reason === null,
+			...(reason !== null ? { reason } : {}),
 			streaming,
 			sessions: sessions.size,
 			maxSessions: LIVE_ASR_MAX_SESSIONS,
@@ -223,6 +230,14 @@ export async function handleLiveAsrRoute(
 	}
 
 	let entry = sessions.get(sessionId);
+	if (entry && entry.runtime !== runtime) {
+		// The runtime was replaced: the old session's emitter and transcriber
+		// belong to it. Drop the session (and any partial turn) and reopen it
+		// on the current runtime.
+		logger.info({ sessionId }, "[live-asr] runtime replaced; session reopened");
+		disposeSession(sessionId);
+		entry = undefined;
+	}
 	if (!entry) {
 		if (body.close === true) {
 			sendJson(res, 200, { ok: true, sessionId, closed: true });
@@ -262,7 +277,13 @@ export async function handleLiveAsrRoute(
 			});
 			return true;
 		}
-		entry = { session, vad, disposeEmitter: emitter.dispose, idleTimer: null };
+		entry = {
+			runtime,
+			session,
+			vad,
+			disposeEmitter: emitter.dispose,
+			idleTimer: null,
+		};
 		sessions.set(sessionId, entry);
 	}
 	touch(sessionId, entry);
@@ -298,10 +319,11 @@ export async function handleLiveAsrRoute(
 	}
 	const closing = body.close === true;
 	try {
-		const final = closing
-			? await session.endTurn()
-			: closesTurn
-				? await session.waitForFinal()
+		// A close that carried its own speech-end already closed the turn above.
+		const final = closesTurn
+			? await session.waitForFinal()
+			: closing
+				? await session.endTurn()
 				: null;
 		sendJson(res, 200, {
 			ok: true,
@@ -315,6 +337,8 @@ export async function handleLiveAsrRoute(
 		sendJson(res, 502, {
 			error: `Live ASR error: ${err instanceof Error ? err.message : String(err)}`,
 			code: "ASR_FAILED",
+			// The finally below disposes the session either way.
+			...(closing ? { closed: true } : {}),
 		});
 	} finally {
 		if (closing) disposeSession(sessionId);

@@ -21,19 +21,11 @@ export class InferenceFundingBudgetUnavailableError extends ElizaError {
 }
 
 export function isFundedBudgetAdmissionEnabled(): boolean {
-  const env = getCloudAwareEnv();
-  return (
-    env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" &&
-    env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
-  );
+  return getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
 }
 
 export function isRatePolicyAdmissionEnabled(): boolean {
-  const env = getCloudAwareEnv();
-  return (
-    env.INFERENCE_RATE_POLICY_ADMISSION === "true" &&
-    env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
-  );
+  return getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION === "true";
 }
 
 /** Both modes use the same mutation epoch, but only the funded mode can spend. */
@@ -256,7 +248,6 @@ export async function admitFundedBudgetInference(
     credential.expiresAt === undefined
   )
     throw new InferenceFundingBudgetUnavailableError("Funded admission proof is incomplete");
-  const { calculateCost, normalizeModelName } = await import("../pricing");
   const { getCachedInferenceAffiliateAttribution } = await import("./inference-affiliate-cache");
   const affiliate = params.affiliateCode?.trim()
     ? await getCachedInferenceAffiliateAttribution({
@@ -266,39 +257,21 @@ export async function admitFundedBudgetInference(
         executionCtx: params.executionCtx,
       })
     : null;
-  const cache = { cacheOnly: true, executionCtx: params.executionCtx };
   const { canonicalFundingAmount } = await import("./allowance-first-credits");
-  const [maximum, estimate] = await Promise.all([
-    params.flatCost ??
-      calculateCost(
-        normalizeModelName(params.context.model),
-        params.context.provider,
-        params.maximumInputTokens!,
-        params.maximumOutputTokens!,
-        params.context.billingSource,
-        cache,
-      ),
-    params.flatCost ??
-      calculateCost(
-        normalizeModelName(params.context.model),
-        params.context.provider,
-        params.estimatedInputTokens,
-        params.estimatedOutputTokens,
-        params.context.billingSource,
-        cache,
-      ),
-  ]);
+  // Only a fixed-price operation reaches this lane (a session that commits at
+  // dispatch): its flat cost is both the provider-enforced bound and the
+  // unknown-outcome estimate.
+  if (!params.flatCost)
+    throw new InferenceFundingBudgetUnavailableError("Funded request upper bound is invalid");
+  const maximum = params.flatCost;
+  const estimate = params.flatCost;
   const markedMicros = (amount: number) =>
     new Decimal(amount)
       .mul(1 + (affiliate?.markupPercent ?? 0))
       .mul(1e6)
       .ceil();
   const maximumMicros = markedMicros(maximum.totalCost);
-  const { COST_BUFFER } = await import("./credits");
-  const unknownMicros = Decimal.min(
-    maximumMicros,
-    markedMicros(estimate.totalCost * (affiliate && !params.flatCost ? COST_BUFFER : 1)),
-  );
+  const unknownMicros = Decimal.min(maximumMicros, markedMicros(estimate.totalCost));
   if (
     !maximumMicros.isFinite() ||
     !maximumMicros.isPositive() ||
@@ -334,8 +307,7 @@ export async function admitFundedBudgetInference(
     policyEpoch: policy.epoch,
     policyGeneration: policy.policyGeneration,
     credential,
-    endpointType: params.fundedBudgetEndpointType ?? "completions",
-    rateReceipt: params.fundedBudgetRateReceipt,
+    endpointType: "completions",
     createdAt,
     expiresAt: createdAt + 20 * 60_000,
     preProviderCancellationToken,

@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/scripts/build-mobile-bundle.ts",
+    "packages/agent/scripts/mobile-bundle-dependencies.ts"
+  ],
+  "bounds": {
+    "domain": "One build, one manifest and a boolean smoke gate.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "tooling_mobile_build",
+      "main": "tooling_mobile_build",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

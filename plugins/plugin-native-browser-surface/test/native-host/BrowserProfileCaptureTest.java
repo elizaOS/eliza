@@ -26,6 +26,11 @@ public final class BrowserProfileCaptureTest {
         "keyed profiles survive the start-up purge");
     check(BrowserProfilePolicy.keyed(BrowserProfilePolicy.KEYED_PREFIX + "abc"), "keyed name");
     check(!BrowserProfilePolicy.keyed("Default"), "the default profile is never keyed");
+    // purgeProfiles({all: true}) takes every surface profile of any owner, and nothing else.
+    check(BrowserProfilePolicy.surfaceProfiles(Arrays.asList("Default", "eliza-browser-1",
+            BrowserProfilePolicy.KEYED_PREFIX + "a", "host-profile", null))
+        .equals(Arrays.asList("eliza-browser-1", BrowserProfilePolicy.KEYED_PREFIX + "a")),
+        "a purge of every profile keeps the default and host profiles");
     // Idle expiry (30 days in the product).
     long now = 100 * day;
     check(!BrowserProfilePolicy.expired(now - 29 * day, now, 30 * day), "used recently");

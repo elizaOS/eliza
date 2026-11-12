@@ -6,6 +6,7 @@ import type {
 	TaskInteraction,
 } from "../types/interactions";
 import { trimEndWhitespace } from "../utils/string-boundaries";
+import { utf8ByteLength } from "../utils/unicode";
 
 function serializeForm(block: FormInteraction): string {
 	const body = {
@@ -92,10 +93,6 @@ export interface EncodeReplyCallbackOptions {
 	maxBytes?: number;
 }
 
-function byteLength(s: string): number {
-	return new TextEncoder().encode(s).length;
-}
-
 /**
  * Encode an answer to be carried as connector callback data. Returns null when
  * the payload would exceed the platform limit — the caller should then link out
@@ -107,7 +104,7 @@ export function encodeReplyCallback(
 ): string | null {
 	const data = `${PREFIX}${value}`;
 	const maxBytes = options.maxBytes ?? MAX_CALLBACK_BYTES;
-	return byteLength(data) <= maxBytes ? data : null;
+	return utf8ByteLength(data) <= maxBytes ? data : null;
 }
 
 export interface DecodedCallback {

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "StripeDeliveryOutbox",
+    "model": "packages/cloud/quint/StripeDeliveryOutbox.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts",
+      "packages/cloud/shared/src/db/repositories/webhook-events.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "One row, two workers, compressed time and attempt budget. Downstream idempotent billing effects and legacy queue adoption are separate obligations.",
+      "The model permits overlapping handlers after lease expiry. Settlement checks token ownership exactly as the repository does.",
+      "Finite verification domain. One row, two workers, four distinct lease tokens, time 0..6, retry budget 3. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "VoiceUsage",
+    "model": "packages/cloud/quint/VoiceUsage.qnt",
+    "sources": [
+      "packages/cloud/api/src/voice-usage-state.ts",
+      "packages/cloud/shared/src/lib/services/voice-usage-meter.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "The model assumes the private namespace routes to the correct organization/day owner. The operator must supply a complete, genuinely quiesced snapshot. The object validates the asserted flag, key shape, and values.",
+      "Caller authorization, positive scaled amount and limits, exact day rollover, key encoding and multiple organizations are outside the finite model. The Workerd suite checks rollover, cross-organization behavior and rejection when metering is missing.",
+      "Live reserve and release have no operation identity. A repeated call after an ambiguous reply can apply a second mutation. Release clamps the counters independently and does not prove aggregate conservation or single settlement.",
+      "The model abstracts a SQL transaction as atomic with a single clock sample. It serializes post-commit schedule and reply phases. It does not prove provider usage settlement, storage availability, precise Cloudflare alarm retries, or a delivery deadline."
+    ]
+  },
+  {
+    "id": "AccountDeletionPhase",
+    "model": "packages/cloud/quint/AccountDeletionPhase.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+      "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "One provider phase, two workers, three attempts. Whole-account phase ordering, cancellation, export, database erasure and billing-specific completion guards require separate models.",
+      "Provider idempotency is abstracted as a monotone applied flag. Adapter inspection is assumed authoritative.",
+      "Finite verification domain. One provider phase, two workers, four lease generations, attempt budget 3, time 0..6. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "RestorePublication",
+    "model": "packages/cloud/quint/RestorePublication.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models coordinator phase/publication ordering. Claim/lease repository CAS, exact attestation crypto, per-await rollback recovery and node/provider lifecycle are separate unmodeled obligations.",
+      "Failure before runtime impact is retryable; post-impact pre-publication failure is represented by completed rollback. Rollback-in-progress failures need a separate model.",
+      "Finite verification domain. One operation and previous/candidate runtime, all explicit coordinator phases, abstract atomic publication and rollback. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  }
+]

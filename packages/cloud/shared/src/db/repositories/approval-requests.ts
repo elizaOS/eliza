@@ -1,5 +1,6 @@
+import { ElizaError } from "@elizaos/core";
 // Persists approval requests records for cloud services through the shared DB boundary.
-import { and, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lte, sql } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {
   type ApprovalChallengeKind,
@@ -125,14 +126,43 @@ function toDbEvent(input: NewApprovalRequestEvent): NewApprovalRequestEventDbRow
   };
 }
 
+function lifecyclePayload(
+  row: ApprovalRequestRow,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...extra,
+    approvalRequestId: row.id,
+    organizationId: row.organizationId,
+    challengeKind: row.challengeKind,
+    expectedSignerIdentityId: row.expectedSignerIdentityId,
+    status: row.status,
+  };
+}
+
 export class ApprovalRequestsRepository {
+  constructor(private readonly database: typeof db = db) {}
+
   async createApprovalRequest(input: NewApprovalRequest): Promise<ApprovalRequestRow> {
-    const [row] = await db.insert(approvalRequests).values(toDbInsert(input)).returning();
-    return toDomain(row);
+    return this.database.transaction(async (tx) => {
+      const [row] = await tx.insert(approvalRequests).values(toDbInsert(input)).returning();
+      if (!row)
+        throw new ElizaError("Failed to create approval-requests", {
+          code: "AUTHORIZATION_INTENT_PERSISTENCE",
+          severity: "ephemeral",
+        });
+      const created = toDomain(row);
+      await tx.insert(approvalRequestEvents).values({
+        approval_request_id: row.id,
+        event_name: "approval.created",
+        redacted_payload: lifecyclePayload(created),
+      });
+      return created;
+    });
   }
 
   async getApprovalRequest(id: string): Promise<ApprovalRequestRow | null> {
-    const [row] = await db
+    const [row] = await this.database
       .select()
       .from(approvalRequests)
       .where(eq(approvalRequests.id, id))
@@ -158,7 +188,7 @@ export class ApprovalRequestsRepository {
     const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
 
-    const rows = await db
+    const rows = await this.database
       .select()
       .from(approvalRequests)
       .where(and(...conditions))
@@ -168,35 +198,76 @@ export class ApprovalRequestsRepository {
     return rows.map(toDomain);
   }
 
-  async setApprovalRequestStatus(
+  async transitionApprovalRequest(
     id: string,
-    status: ApprovalRequestStatus | null,
-    patch: Partial<NewApprovalRequest> = {},
+    status: Exclude<ApprovalRequestStatus, "pending" | "expired">,
+    options: {
+      organizationId?: string;
+      patch?: Pick<NewApprovalRequest, "signatureText" | "signedAt">;
+      eventPayload?: Record<string, unknown>;
+      now?: Date;
+    } = {},
   ): Promise<ApprovalRequestRow | null> {
-    const dbPatch = toDbPatch(patch);
-    const [row] = await db
-      .update(approvalRequests)
-      .set({ ...dbPatch, ...(status ? { status } : {}), updated_at: new Date() })
-      .where(eq(approvalRequests.id, id))
-      .returning();
-    return row ? toDomain(row) : null;
+    const now = options.now ?? new Date();
+    const expected: ApprovalRequestStatus[] =
+      status === "delivered" ? ["pending"] : ["pending", "delivered"];
+    return this.database.transaction(async (tx) => {
+      const [row] = await tx
+        .update(approvalRequests)
+        .set({ ...toDbPatch(options.patch ?? {}), status, updated_at: now })
+        .where(
+          and(
+            eq(approvalRequests.id, id),
+            inArray(approvalRequests.status, expected),
+            gt(approvalRequests.expires_at, options.now ?? sql`clock_timestamp()`),
+            ...(options.organizationId
+              ? [eq(approvalRequests.organization_id, options.organizationId)]
+              : []),
+          ),
+        )
+        .returning();
+      if (!row) return null;
+      const updated = toDomain(row);
+      await tx.insert(approvalRequestEvents).values({
+        approval_request_id: row.id,
+        event_name: `approval.${status}`,
+        redacted_payload: lifecyclePayload(updated, options.eventPayload),
+      });
+      return updated;
+    });
   }
 
   async recordApprovalRequestEvent(
     input: NewApprovalRequestEvent,
   ): Promise<ApprovalRequestEventRow> {
-    const [row] = await db.insert(approvalRequestEvents).values(toDbEvent(input)).returning();
+    const [row] = await this.database
+      .insert(approvalRequestEvents)
+      .values(toDbEvent(input))
+      .returning();
     return row;
   }
 
   async expirePastApprovalRequests(now: Date): Promise<string[]> {
-    const expirable: ApprovalRequestStatus[] = ["pending", "delivered"];
-    const rows = await db
-      .update(approvalRequests)
-      .set({ status: "expired", updated_at: now })
-      .where(and(inArray(approvalRequests.status, expirable), lt(approvalRequests.expires_at, now)))
-      .returning({ id: approvalRequests.id });
-    return rows.map((r) => r.id);
+    return this.database.transaction(async (tx) => {
+      const expirable: ApprovalRequestStatus[] = ["pending", "delivered"];
+      const rows = await tx
+        .update(approvalRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(
+          and(inArray(approvalRequests.status, expirable), lte(approvalRequests.expires_at, now)),
+        )
+        .returning();
+      if (rows.length > 0) {
+        await tx.insert(approvalRequestEvents).values(
+          rows.map((row) => ({
+            approval_request_id: row.id,
+            event_name: "approval.expired" as const,
+            redacted_payload: lifecyclePayload(toDomain(row)),
+          })),
+        );
+      }
+      return rows.map((row) => row.id);
+    });
   }
 }
 

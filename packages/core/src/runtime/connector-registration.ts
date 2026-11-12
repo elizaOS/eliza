@@ -1,13 +1,14 @@
 /** Validates connector registrations, normalizes account routing keys, and copies public connector descriptors. */
 import type {
 	ConnectorAccountRef,
+	ConnectorContentShaping,
 	MessageConnector,
 	MessageConnectorMetadata,
 	PostConnector,
 	PostConnectorMetadata,
 } from "../types/runtime.js";
 
-export function labelFromMessageConnectorSource(source: string): string {
+function labelFromMessageConnectorSource(source: string): string {
 	const label = source
 		.replace(/[_-]+/g, " ")
 		.trim()
@@ -15,14 +16,12 @@ export function labelFromMessageConnectorSource(source: string): string {
 	return label || "Message Connector";
 }
 
-export const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
+const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
 
 export function normalizeConnectorAccountId(
 	accountId: unknown,
 ): string | undefined {
-	return typeof accountId === "string" && accountId.trim()
-		? accountId.trim()
-		: undefined;
+	return (typeof accountId === "string" && accountId.trim()) || undefined;
 }
 
 export function connectorRouteKey(source: string, accountId?: string): string {
@@ -32,10 +31,20 @@ export function connectorRouteKey(source: string, accountId?: string): string {
 }
 
 export function connectorKeySource(key: string): string {
-	return key.split(CONNECTOR_ACCOUNT_KEY_SEPARATOR, 1)[0] ?? key;
+	const separator = key.indexOf(CONNECTOR_ACCOUNT_KEY_SEPARATOR);
+	return separator === -1 ? key : key.slice(0, separator);
 }
 
-export function cloneConnectorAccountRef(
+function cloneContentShaping(
+	shaping: ConnectorContentShaping,
+): ConnectorContentShaping {
+	return {
+		...shaping,
+		constraints: shaping.constraints ? { ...shaping.constraints } : undefined,
+	};
+}
+
+function cloneConnectorAccountRef(
 	account: ConnectorAccountRef,
 	source: string,
 ): ConnectorAccountRef {
@@ -59,7 +68,7 @@ export function cloneConnectorAccountRef(
 	};
 }
 
-export function normalizeConnectorAccountRef(
+function normalizeConnectorAccountRef(
 	source: string,
 	account?: ConnectorAccountRef,
 	accountId?: string,
@@ -93,12 +102,7 @@ export function cloneMessageConnector(
 		contexts: [...connector.contexts],
 		metadata: connector.metadata ? { ...connector.metadata } : undefined,
 		contentShaping: connector.contentShaping
-			? {
-					...connector.contentShaping,
-					constraints: connector.contentShaping.constraints
-						? { ...connector.contentShaping.constraints }
-						: undefined,
-				}
+			? cloneContentShaping(connector.contentShaping)
 			: undefined,
 	};
 }
@@ -113,12 +117,7 @@ export function clonePostConnector(connector: PostConnector): PostConnector {
 		contexts: [...connector.contexts],
 		metadata: connector.metadata ? { ...connector.metadata } : undefined,
 		contentShaping: connector.contentShaping
-			? {
-					...connector.contentShaping,
-					constraints: connector.contentShaping.constraints
-						? { ...connector.contentShaping.constraints }
-						: undefined,
-				}
+			? cloneContentShaping(connector.contentShaping)
 			: undefined,
 	};
 }
@@ -183,12 +182,7 @@ export function normalizeMessageConnector(
 	if (metadata.manageServerHandler)
 		connector.manageServerHandler = metadata.manageServerHandler;
 	if (metadata.contentShaping)
-		connector.contentShaping = {
-			...metadata.contentShaping,
-			constraints: metadata.contentShaping.constraints
-				? { ...metadata.contentShaping.constraints }
-				: undefined,
-		};
+		connector.contentShaping = cloneContentShaping(metadata.contentShaping);
 
 	return connector;
 }
@@ -217,12 +211,7 @@ export function normalizePostConnector(
 	if (metadata.fetchFeed) connector.fetchFeed = metadata.fetchFeed;
 	if (metadata.searchPosts) connector.searchPosts = metadata.searchPosts;
 	if (metadata.contentShaping)
-		connector.contentShaping = {
-			...metadata.contentShaping,
-			constraints: metadata.contentShaping.constraints
-				? { ...metadata.contentShaping.constraints }
-				: undefined,
-		};
+		connector.contentShaping = cloneContentShaping(metadata.contentShaping);
 
 	return connector;
 }

@@ -13,6 +13,7 @@ import {
   type ResultState,
   type Route,
   type TravelMode,
+  transitDetails,
   unavailableCapabilities,
 } from "./contracts.ts";
 import type { MapsLocation, Position } from "./location.ts";
@@ -23,10 +24,17 @@ const idle = <T>(value: T): ResultState<T> => ({
   value,
   error: null,
 });
+/** Exact ready or refused publication by one still-admitted route request. */
+export type RoutePlanReceipt = Readonly<{
+  revision: number;
+  error: MapsFailure | null;
+}>;
 export type MapsState = Readonly<{
   revision: number;
   provider: ProviderConfig;
   query: string;
+  /** The exact area admitted with this search; absent on older host snapshots. */
+  searchNear?: Coordinate | null;
   search: ResultState<readonly Place[]>;
   selection: ResultState<Place | null>;
   origin: Coordinate | null;
@@ -54,6 +62,7 @@ export class MapsController {
   private routeRequest?: AbortController;
   private originRequest?: AbortController;
   private active = true;
+  private locationGeneration = 0;
   constructor(
     private config: ProviderConfig,
     private provider: MapsProvider | undefined,
@@ -64,6 +73,7 @@ export class MapsController {
       revision: 0,
       provider: config,
       query: "",
+      searchNear: null,
       search: idle([]),
       selection: idle(null),
       origin: null,
@@ -109,7 +119,12 @@ export class MapsController {
     this.invalidateRoute();
     this.config = config;
     this.provider = provider;
-    this.update({ provider: config, search: idle([]), selection: idle(null) });
+    this.update({
+      provider: config,
+      searchNear: null,
+      search: idle([]),
+      selection: idle(null),
+    });
   }
   capabilities() {
     return this.config.status === "configured"
@@ -140,6 +155,7 @@ export class MapsController {
   private async queryPlaces(
     text: string,
     signal: AbortSignal,
+    near = this.state.position.value?.coordinate ?? this.state.origin,
   ): Promise<readonly Place[] | undefined> {
     if (!boundedText(text, 300))
       throw new MapsFailure(
@@ -152,7 +168,11 @@ export class MapsController {
         "unsupported",
         "This provider does not support place search.",
       );
-    const result = await provider.search(text, signal);
+    const result = await provider.search(
+      text,
+      signal,
+      near ? { near } : undefined,
+    );
     if (signal.aborted || !this.active) return undefined;
     if (!Array.isArray(result) || result.length > 50)
       throw new MapsFailure(
@@ -211,18 +231,33 @@ export class MapsController {
       item.label.toLocaleLowerCase().includes(text),
     );
   }
-  async search(query: string) {
+  /**
+   * `viewport` is the centre of the visible map when the host knows it. It ranks
+   * results ahead of the device position, because the user is looking there.
+   */
+  async search(query: string, viewport?: Coordinate) {
     this.searchRequest?.abort();
     this.detailRequest?.abort();
     this.invalidateRoute();
     const text = query.trim();
-    this.update({ query: text, selection: idle(null), search: idle([]) });
+    const candidateNear =
+      viewport ??
+      this.state.position.value?.coordinate ??
+      this.state.origin ??
+      this.state.selection.value?.coordinate;
+    const near = text && candidateNear ? coordinate(candidateNear) : undefined;
+    this.update({
+      query: text,
+      searchNear: near ?? null,
+      selection: idle(null),
+      search: idle([]),
+    });
     if (!text) return;
     const request = new AbortController();
     this.searchRequest = request;
     this.update({ search: { phase: "loading", value: [], error: null } });
     try {
-      const items = await this.queryPlaces(text, request.signal);
+      const items = await this.queryPlaces(text, request.signal, near);
       if (!items || this.searchRequest !== request) return;
       this.update({
         search: {
@@ -296,13 +331,24 @@ export class MapsController {
     if (label !== undefined && !boundedText(label, 300))
       throw new MapsFailure("unsupported", "The origin name is invalid.");
     this.cancelOriginSearch();
-    void this.nativeLocation.stop().catch((error) =>
-      this.update({
-        position: { phase: "error", value: null, error: failure(error) },
-      }),
-    );
+    this.retireLocate();
     this.invalidateRoute();
     this.update({ origin, originLabel: label ?? null, position: idle(null) });
+  }
+  /** Stop the location watch. A fix from an earlier request is ignored. */
+  private retireLocate() {
+    const generation = ++this.locationGeneration;
+    void this.nativeLocation.stop().catch((error) => {
+      if (this.active && generation === this.locationGeneration)
+        this.update({
+          position: { phase: "error", value: null, error: failure(error) },
+        });
+    });
+  }
+  /** Cancel a pending location request. The origin and the route do not change. */
+  cancelLocate() {
+    this.retireLocate();
+    this.update({ position: idle(null) });
   }
   /** Use a chosen origin candidate and plan from it. */
   chooseOrigin(candidate: Place | SavedPlace) {
@@ -316,8 +362,14 @@ export class MapsController {
   }
   /** Explicit user request to plan again from a position, for example while off route. */
   reroute(from: Coordinate, label?: string) {
+    const kept = {
+      origin: this.state.origin,
+      originLabel: this.state.originLabel,
+      route: this.state.route,
+      routeOptions: this.state.routeOptions,
+    };
     this.setOrigin(from, label);
-    return this.planRoute();
+    return this.planRoute(kept);
   }
   setMode(mode: TravelMode) {
     if (!["drive", "walk", "bicycle", "transit"].includes(mode))
@@ -326,31 +378,43 @@ export class MapsController {
     this.update({ mode });
   }
   async locate() {
+    const generation = ++this.locationGeneration;
     this.update({ position: { phase: "loading", value: null, error: null } });
     try {
       await this.nativeLocation.start(
         true,
         (position) => {
-          if (!this.active) return;
+          if (!this.active || generation !== this.locationGeneration) return;
           this.setOrigin(position.coordinate);
           this.update({
             position: { phase: "ready", value: position, error: null },
           });
         },
-        (error) =>
-          this.update({ position: { phase: "error", value: null, error } }),
+        (error) => {
+          if (this.active && generation === this.locationGeneration)
+            this.update({ position: { phase: "error", value: null, error } });
+        },
       );
     } catch (error) {
-      this.update({
-        position: { phase: "error", value: null, error: failure(error) },
-      });
+      if (this.active && generation === this.locationGeneration)
+        this.update({
+          position: { phase: "error", value: null, error: failure(error) },
+        });
     }
   }
-  async planRoute() {
+  async planRoute(
+    kept?: Pick<MapsState, "origin" | "originLabel" | "route" | "routeOptions">,
+  ): Promise<RoutePlanReceipt | undefined> {
     this.invalidateRoute();
     const request = new AbortController();
     this.routeRequest = request;
-    this.update({ route: { phase: "loading", value: null, error: null } });
+    this.update({
+      route: {
+        phase: "loading",
+        value: kept?.route.value ?? null,
+        error: null,
+      },
+    });
     try {
       // Directions can be submitted while the native detail request is still
       // resolving. Keep that user's request, but never route a stale selection.
@@ -400,15 +464,27 @@ export class MapsController {
           "invalid-response",
           "The provider returned duplicate routes.",
         );
+      const revision = this.state.revision + 1;
       this.update({
         route: { phase: "ready", value: routes[0] ?? null, error: null },
         routeOptions: routes.length > 1 ? routes : [],
       });
+      return { revision, error: null };
     } catch (error) {
-      if (!request.signal.aborted && this.active)
-        this.update({
-          route: { phase: "error", value: null, error: failure(error) },
-        });
+      if (
+        request.signal.aborted ||
+        !this.active ||
+        this.routeRequest !== request
+      )
+        return;
+      const revision = this.state.revision + 1;
+      const refused = failure(error);
+      this.update(
+        kept?.route.value
+          ? { ...kept, route: { ...kept.route, error: refused } }
+          : { route: { phase: "error", value: null, error: refused } },
+      );
+      return { revision, error: refused };
     }
   }
   /** Choose one of the offered routes. Nothing is requested again. */
@@ -449,7 +525,12 @@ export class MapsController {
       !Number.isFinite(result.fetchedAt) ||
       result.fetchedAt <= 0 ||
       result.fetchedAt > Date.now() + 60000 ||
-      result.traffic !== this.capabilities().traffic
+      // Live traffic applies to driving; walk, cycle and transit durations are free flow.
+      (result.traffic !== "none" &&
+        result.traffic !== this.capabilities().traffic) ||
+      (result.staticDurationSeconds !== undefined &&
+        (!Number.isFinite(result.staticDurationSeconds) ||
+          result.staticDurationSeconds < 0))
     )
       throw new MapsFailure(
         "invalid-response",
@@ -471,6 +552,9 @@ export class MapsController {
         coordinate: coordinate(step.coordinate),
         distanceMeters: step.distanceMeters,
         ...(step.maneuver ? { maneuver: step.maneuver } : {}),
+        ...(step.transit !== undefined
+          ? { transit: transitDetails(step.transit) }
+          : {}),
       };
     });
     return {
@@ -510,7 +594,31 @@ export class MapsController {
     this.savedPlaces.remove(id);
     this.reloadSaved();
   }
+  /** Stop unfinished foreground work without discarding a settled place or route. */
+  async suspend() {
+    ++this.locationGeneration;
+    this.searchRequest?.abort();
+    this.detailRequest?.abort();
+    this.routeRequest?.abort();
+    this.originRequest?.abort();
+    const settled = <T>(result: ResultState<T>): ResultState<T> =>
+      result.phase === "loading" ? idle(result.value) : result;
+    const interrupted =
+      this.state.route.phase === "loading" ? this.state.route.value : null;
+    this.update({
+      ...(interrupted ? { origin: interrupted.from, originLabel: null } : {}),
+      search: settled(this.state.search),
+      selection: settled(this.state.selection),
+      route: interrupted
+        ? { phase: "ready", value: interrupted, error: null }
+        : settled(this.state.route),
+      originSearch: settled(this.state.originSearch),
+      position: settled(this.state.position),
+    });
+    await this.nativeLocation.stop();
+  }
   async leave() {
+    ++this.locationGeneration;
     this.active = false;
     this.searchRequest?.abort();
     this.detailRequest?.abort();

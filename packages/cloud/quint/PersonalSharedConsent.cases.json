@@ -1,0 +1,59 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/personal-shared-group-consent-lifecycle.ts",
+    "packages/cloud/shared/src/db/repositories/personal-shared-group-consent.ts",
+    "packages/cloud/shared/src/db/repositories/personal-shared-groups.ts",
+    "packages/cloud/shared/src/db/repositories/users.ts",
+    "packages/cloud/shared/src/db/schemas/personal-shared-groups.ts",
+    "packages/cloud/shared/src/db/migrations/0312_personal_shared_group_delivery_attempts.sql",
+    "packages/cloud/shared/src/db/repositories/personal-shared-group-consent.integration.test.ts",
+    "packages/cloud/shared/src/db/repositories/personal-shared-groups.integration.test.ts",
+    "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts",
+    "packages/cloud/quint/check-personal-shared-consent.mjs"
+  ],
+  "bounds": "One active binding, one owner, one joiner, two exact source messages, three nonreused lease tokens, two authenticated challenges, one retirement and one reactivation. Authority epochs 1..4 and logical time 0..4. Uncommitted lease length one tick and committed recovery horizon two ticks.",
+  "cases": [
+    {
+      "name": "consent-and-exact-delivery",
+      "main": "PersonalSharedConsent",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": ["DurableAuthority", "FairRetirement", "RetirementSettles"],
+      "maxSteps": 55,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DurableAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. Every reachable action checks current consent and epoch at first commit, retains durable attempt identity and fences the unrelated lease from a late receipt."
+          ]
+        },
+        {
+          "property": "FairRetirement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of tick advances logical time to the finite horizon. New leases and renewals stop before that horizon, so every uncommitted lease can expire.",
+            "Weak fairness of retireAccount represents the caller retrying once the mutation is continuously eligible. The model assumes neither provider receipt delivery nor a fixed wall-clock retirement deadline."
+          ]
+        },
+        {
+          "property": "RetirementSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness a pending retirement can remain blocked or receive no retry."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One already active all-adults binding requires its eligible owner and one eligible linked participant. Exact authority scope represents binding, owner, agent, platform, project, connector and provider chat. Policy, membership, other quorum sizes, and multi-binding transactions remain outside this projection.",
+    "An authenticated confirmation is projected as an exact challenge identifier. Provider identity and control classification are trusted inputs. User eligibility, consent loss, expiry, account retirement and explicit reactivation retain separate transitions.",
+    "The retry request records caller intent in the model. Production has no durable account-mutation queue. A live lease leaves a failed mutation retryable, and retirement keeps existing committed attempt authority.",
+    "A committed slot can retire as uncertain at the recovery horizon. Exact late receipts can reconcile it even after authority changes. Provider proof, partial or conflicting receipt sets, old-writer compatibility, real provider sends, and conversation content are separate coverage.",
+    "The hook executes actual PGlite repository transactions. Account, consent and lease mutations are represented as atomic steps. Database locking implementation, provider idempotency and wall-clock completion are outside this finite proof."
+  ],
+  "conformance": "packages/cloud/quint/check-personal-shared-consent.mjs"
+}

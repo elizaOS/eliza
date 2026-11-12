@@ -37,15 +37,20 @@ import {
 } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { stewardCookieNames } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@elizaos/cloud-shared/lib/steward/sign";
-import {
-  describeSyncError,
-  syncUserFromSteward,
-} from "@elizaos/cloud-shared/lib/steward-sync";
+import { describeSyncError } from "@elizaos/cloud-shared/lib/steward-sync";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
+import {
+  emitStewardLogin,
+  emitStewardLoginFailed,
+  getWorkerExecutionContext,
+  type SyncedStewardUser,
+  stewardLoginRateLimit,
+  syncVerifiedStewardUser,
+} from "../_steward-post-verification";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 function checkOrigin(
@@ -225,6 +230,9 @@ async function callStewardExchange(
 }
 // ─── Route ────────────────────────────────────────────────────────────────
 const app = new Hono<AppEnv>();
+// Same limiter as /api/auth/steward-session: every attempt costs a signed
+// Steward call, so the global per-IP backstop alone is too loose.
+app.use(stewardLoginRateLimit("steward-nonce-exchange"));
 app.post("/", async (c) => {
   const isProduction = c.env.NODE_ENV === "production";
   const originCheck = checkOrigin(c, isProduction);
@@ -373,16 +381,24 @@ app.post("/", async (c) => {
   const claims = await verifyStewardTokenCached(c.env, token);
   if (!claims) {
     logExchange("invalid-token-after-exchange");
+    await emitStewardLoginFailed(c, "invalid_token");
     return c.json(errorBody("Invalid token", "invalid_token"), 401);
   }
-  let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
+  // Telegram continuations are refused above, and this route never honours a
+  // signed telegramId: Telegram sign-in goes through /api/auth/steward-session.
+  const executionCtx = getWorkerExecutionContext(c);
+  let cloudUser: SyncedStewardUser;
   try {
-    cloudUser = await syncUserFromSteward({
-      stewardUserId: claims.userId,
-      email: claims.email,
-      walletAddress: claims.walletAddress ?? claims.address,
-      walletChainType: claims.walletChain,
-    });
+    cloudUser = await syncVerifiedStewardUser(
+      { token, expiration: claims.expiration, env: c.env },
+      executionCtx,
+      {
+        stewardUserId: claims.userId,
+        email: claims.email,
+        walletAddress: claims.walletAddress ?? claims.address,
+        walletChainType: claims.walletChain,
+      },
+    );
   } catch (error) {
     logExchange("sync-failed");
     // Workers Logs indexes only the message STRING — an Error passed in the
@@ -429,6 +445,7 @@ app.post("/", async (c) => {
     maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
   });
   logExchange("ok");
+  await emitStewardLogin(c, executionCtx, cloudUser, "oauth_code_exchange");
   // Returning `token` here so the SPA can mirror it into localStorage. The
   // HttpOnly cookies above are the canonical session; the localStorage copy is
   // what @elizaos/ui's `useAuth()` and the SPA's

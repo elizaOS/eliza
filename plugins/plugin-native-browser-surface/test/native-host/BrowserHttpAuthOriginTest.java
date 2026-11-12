@@ -76,7 +76,9 @@ public final class BrowserHttpAuthOriginTest {
  static String refusal(BrowserHttpAuthOrigin.EngineChallenge e, BrowserHttpAuthOrigin.TabSnapshot t) {
   BrowserHttpAuthOrigin.Decision d = BrowserHttpAuthOrigin.bind(e, t);
   if (d.origin != null) throw new AssertionError("expected refusal, bound " + d.origin);
-  return d.refusal;
+  // The dialog shows one plain sentence for every reason; the code tells the reasons apart.
+  if (!BrowserHttpAuthOrigin.REFUSAL.equals(d.refusal)) throw new AssertionError("refusal text: " + d.refusal);
+  return d.code;
  }
 
  public static void main(String[] args) throws Exception {
@@ -89,6 +91,7 @@ public final class BrowserHttpAuthOriginTest {
   eq("https://example.com:8443", origin(engine("https://example.com:8443/a", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com:8443/a", 7)), "port comes from the engine's request, not WebView's bare host");
   eq("https://example.com:8443", origin(engine("https://example.com:8443/a", "Admin", true, true, 7), tab("example.com:8443", "Admin", "https://example.com:8443/a", 7)), "explicit WebView port agrees");
   eq("https://example.com", origin(engine("https://Example.com:443/a", "Admin", true, true, 7), tab("example.com:443", "Admin", "https://example.com/a", 7)), "default port normalised");
+  eq("https://example.com", origin(engine("https://example.com/a|b?q={x}", "Admin", true, true, 7), tab("example.com", "Admin", "https://example.com/a|b?q={x}", 7)), "unescaped path and query keep the origin");
   // Wrong origin.
   eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://example.com/a", "Admin", true, true, 7), tab("example.com:8443", "Admin", "https://example.com/a", 7)), "WebView port contradicts the engine");
   eq(BrowserHttpAuthOrigin.MISMATCH, refusal(engine("https://example.com/a", "Admin", true, true, 7), tab("accounts.example.com", "Admin", "https://example.com/a", 7)), "subdomain is a different binding");
@@ -125,6 +128,10 @@ public final class BrowserHttpAuthOriginTest {
   BrowserHttpAuthOrigin.TabSnapshot overlaid = tab("example.com", "Admin", E, 7); overlaid.otherPrompt = true;
   eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), overlaid), "another site prompt is open");
   eq(BrowserHttpAuthOrigin.HIDDEN, refusal(engine(E, "Admin", true, true, 7), null), "no tab");
+
+  eq("Your password manager can't fill this sign-in. Type the password yourself.", BrowserHttpAuthOrigin.bind(null, tab("example.com", "Admin", E, 7)).refusal, "one plain sentence");
+  eq(null, BrowserHttpAuthOrigin.bind(engine(E, "Admin", true, true, 7), tab("example.com", "Admin", E, 7)).refusal, "no refusal when bound");
+  eq(7, java.util.Set.of(BrowserHttpAuthOrigin.NO_ENGINE_ORIGIN, BrowserHttpAuthOrigin.FRAME, BrowserHttpAuthOrigin.INSECURE, BrowserHttpAuthOrigin.MISMATCH, BrowserHttpAuthOrigin.REDIRECTED, BrowserHttpAuthOrigin.STALE, BrowserHttpAuthOrigin.HIDDEN).size(), "reason codes stay distinct");
 
   // --- Binding lifetime: lock/unlock, cancel, navigation, tab change ---
   BrowserHttpAuthOrigin.Binding binding = new BrowserHttpAuthOrigin.Binding("https://example.com", 7);

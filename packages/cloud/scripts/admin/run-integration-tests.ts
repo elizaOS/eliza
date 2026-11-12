@@ -224,7 +224,10 @@ export async function main() {
     baseUrl,
     databaseUrl,
   });
-  if (managed) integrationEnv.CLOUD_E2E_DISPOSABLE_DB = "1";
+  if (managed) {
+    integrationEnv.CLOUD_E2E_DISPOSABLE_DB = "1";
+    integrationEnv.CLOUD_E2E_RUN_RECEIPT = context.runId;
+  }
   writeBunfig(context.testCwd);
 
   const childRegistry = createOwnedChildRegistry();

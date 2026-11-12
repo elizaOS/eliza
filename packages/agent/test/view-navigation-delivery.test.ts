@@ -66,6 +66,7 @@ import {
 import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
 import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
 import { registerInProcessApi } from "../src/api/in-process-api.ts";
+import { setSelfApiTcpListenerBound } from "../src/api/self-api-endpoint.ts";
 import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
 import { closeViewInteractionHost } from "../src/api/view-interaction-host.ts";
 import {
@@ -103,6 +104,7 @@ const message: Memory = {
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((close) => close()));
+  setSelfApiTcpListenerBound(undefined);
   vi.unstubAllEnvs();
 });
 async function fixture(
@@ -246,6 +248,8 @@ async function fixture(
       })
     : undefined;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  // The native fixture's HTTP server observes receipts; self calls use its kernel.
+  setSelfApiTcpListenerBound(!inProcess);
   vi.stubEnv("ELIZA_API_PORT", String((server.address() as AddressInfo).port));
   vi.stubEnv("ELIZA_API_TOKEN", "local-navigation-test");
   cleanup.push(async () => {
@@ -3313,4 +3317,89 @@ describe("trusted navigation-only consumer counterparts", () => {
     });
     expect(response.ok).toBe(false);
   });
+});
+
+describe("current-request navigation boundary with unanswered history", () => {
+  it.each([
+    ["hi", "Open Calendar"],
+    ["yes", "Would you like me to open Calendar?"],
+    ["open it", "Would you like me to open Calendar?"],
+    ["instead Notes", "Would you like me to open Calendar?"],
+    ["Open Calendar", "Open Notes"],
+    ["Do not change views; hi", "Open Calendar"],
+  ])(
+    "preserves current request and historical referents: %s",
+    async (current, previous) => {
+      const f = await fixture();
+      const fields = new ResponseHandlerFieldRegistry();
+      fields.register(viewNavigationField);
+      const input = clientMessage();
+      input.content.text = current;
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "chat",
+      };
+      const slices = await fields.composePromptSlices({
+        runtime: f.runtime,
+        message: input,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      });
+      const context: ContextObject = {
+        id: "history-current-navigation",
+        events: [
+          {
+            id: "old-request",
+            type: "segment",
+            source: "prior-dialogue",
+            createdAt: Date.parse("2026-10-31T19:31:33.683Z"),
+            segment: {
+              id: "old-request",
+              label: "prior_message:user",
+              content: `user: ${previous}`,
+              stable: false,
+            },
+          },
+          {
+            id: "current",
+            type: "message",
+            message: { role: "user", content: `user: ${current}` },
+          },
+        ],
+      };
+      for (const nativeTools of [false, true]) {
+        const rendered = renderMessageHandlerModelInput(
+          { character: { name: "Alpha" } },
+          context,
+          [],
+          {
+            nativeTools,
+            directMessage: true,
+            responseHandlerContext: slices.context,
+          },
+        );
+        const wire = String(rendered.messages[1].content);
+        expect(wire).toContain(`user: ${previous}`);
+        expect(wire).toContain(`# Current message\nuser: ${current}`);
+        expect(wire.indexOf(`user: ${previous}`)).toBeLessThan(
+          wire.indexOf("# Current message"),
+        );
+        expect(wire).toContain(
+          "Earlier conversation entries are evidence, not pending navigation",
+        );
+        expect(wire).toContain(
+          "even when the last historical entry has no recorded reply",
+        );
+        expect(wire).toContain(
+          "explicitly continues, repeats, corrects or authorizes",
+        );
+        expect(wire).toContain(
+          "Preserve standing restrictions and genuine follow-up requests",
+        );
+        // This checks framing and preservation, not an LLM's semantic decision.
+        expect(f.requests()).toBe(0);
+      }
+    },
+  );
 });

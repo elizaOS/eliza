@@ -1,0 +1,48 @@
+{
+  "sources": [
+    "packages/auth/src/server/api/routes/auth.ts",
+    "packages/auth/src/server/api/services/auth-lifecycle.ts",
+    "packages/auth/src/server/auth/challenge-store.ts",
+    "packages/auth/src/server/auth/store-backends.ts",
+    "packages/auth/src/server/__tests__/native-app-link-oauth.integration.test.ts"
+  ],
+  "conformance": "packages/auth/quint/check-oauth-app-link-redemption.mjs",
+  "bounds": {
+    "domain": "Redemption of an issued S256 PKCE App Link code at POST /auth/oauth/exchange.",
+    "limitations": [
+      "One immutable issued code, two one-shot requests and four logical clock values. A request either matches all bindings and policy or fails one verifier, redirect, tenant or policy check. The model distinguishes the payload expiry checked after peek from the store TTL checked again at consume.",
+      "The shared store supplies atomic lock acquisition and atomic consume. Each modeled request completes within the lock lease and its cleanup succeeds. Replacement of the same code key, cleanup timeout, lock expiry or takeover, transport and store failures, worker death and independent backend clocks are outside the bound.",
+      "The maintained tests run the real Hono route, PGlite identity records and the default in-memory OAuth code store with synthetic provider HTTP responses. They check wrong bindings followed by one successful redemption, late refusal and an MFA-only response. Concurrent contenders and expiry between peek and consume are explored in Quint.",
+      "Provider authorization, code issuance and digest cryptography are inputs to this model. Device cancellation, account linking, unbound or historical provider-token routes, policy changes during exchange, downstream MFA completion and token lifecycle are outside this bound."
+    ]
+  },
+  "cases": [
+    {
+      "name": "pkce-binding-and-single-use",
+      "main": "OAuthAppLinkRedemption",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "SingleMatchingLockOwner",
+        "RejectedBindingDoesNotSpend",
+        "AtMostOneSuccessfulRedemption",
+        "SuccessRequiresLiveConsume",
+        "ResultUsesIssuedLane"
+      ],
+      "temporal": ["RequestsSettle"],
+      "temporalChecks": [
+        {
+          "property": "RequestsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness for each started request's local work settles it with refusal, contention, a session or an MFA challenge.",
+            "Each in-flight check and store operation returns and lock cleanup completes. Fairness makes no promise about new requests, retries, remote provider calls or wall-clock advance."
+          ]
+        }
+      ],
+      "maxSteps": 16,
+      "samples": 1000
+    }
+  ]
+}

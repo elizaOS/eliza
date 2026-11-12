@@ -20,7 +20,7 @@ export const subscriptionGrantCodes = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     /** HMAC-SHA256 hex of the normalized code under the server pepper. */
     code_hash: text("code_hash").notNull().unique(),
-    family: text("family").notNull().default("alpha_phone"),
+    family: text("family").notNull(),
     plan_key: text("plan_key")
       .$type<"plus_monthly" | "pro_monthly">()
       .notNull()

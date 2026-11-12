@@ -78,8 +78,7 @@ export class RunTerminalOwner {
 			return Promise.resolve();
 		}
 
-		let tracked!: Promise<void>;
-		tracked = Promise.resolve()
+		const tracked: Promise<void> = Promise.resolve()
 			.then(task)
 			.then(() => undefined)
 			.catch((error) => {
@@ -142,6 +141,7 @@ export class RunTerminalOwner {
 				async () => {
 					// request closes admission, so the owned set can only shrink.
 					await Promise.allSettled([...this.pending]);
+					const endTime = Date.now();
 					await this.runtime.emitEvent(EventType.RUN_ENDED, {
 						runtime: this.runtime,
 						source: "messageHandler",
@@ -152,8 +152,8 @@ export class RunTerminalOwner {
 						startTime: this.startTime,
 						status: terminal.outcome.status,
 						outcome: terminal.outcome,
-						endTime: Date.now(),
-						duration: Date.now() - this.startTime,
+						endTime,
+						duration: endTime - this.startTime,
 						...(terminal.error === undefined
 							? {}
 							: {

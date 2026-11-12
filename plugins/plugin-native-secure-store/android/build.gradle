@@ -29,6 +29,8 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    // The bridge adds only SecureStorePlugin; the native-only classes come from android-nativeonly.
+    api project(':elizaos-capacitor-secure-store-nativeonly')
     androidTestImplementation 'androidx.appcompat:appcompat:1.7.1'
     androidTestImplementation 'androidx.test:core:1.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'

@@ -3,11 +3,8 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { getBootConfig, setBootConfig } from '@elizaos/host/protocol';
-import {
-  acquireWorkerLease,
-  inspectWorkerLease,
-  resolveWorkerSocketRoot,
-} from '../../src/services/workflow-worker-lease';
+import { acquireWorkerLease, inspectWorkerLease } from '../../src/services/workflow-worker-lease';
+import { resolveWorkerSocketRoot } from '../../src/services/workflow-worker-socket-root';
 
 test('long desktop homes use an owned bounded root and a real authenticated socket', async () => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'worker-long-home-')));

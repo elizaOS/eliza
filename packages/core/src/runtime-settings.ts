@@ -24,9 +24,7 @@ export function flattenRuntimeSettings(
 	const out: Record<string, string> = {};
 
 	for (const [key, value] of Object.entries(env)) {
-		if (value !== undefined && value !== null && key) {
-			out[key] = String(value);
-		}
+		if (value !== undefined && key) out[key] = value;
 	}
 
 	const settings =
@@ -36,28 +34,13 @@ export function flattenRuntimeSettings(
 	for (const [key, value] of Object.entries(settings)) {
 		if (value === undefined || value === null) continue;
 		if (key === "secrets" && typeof value === "object") continue;
-		out[key] = typeof value === "string" ? value : String(value);
+		out[key] = String(value);
 	}
 
-	const secrets = (
-		character.settings?.secrets &&
-		typeof character.settings.secrets === "object"
-			? character.settings.secrets
-			: {}
-	) as Record<string, unknown>;
-	for (const [key, value] of Object.entries(secrets)) {
-		if (value !== undefined && value !== null) {
-			out[key] = String(value);
-		}
-	}
-
-	const topSecrets =
-		character.secrets && typeof character.secrets === "object"
-			? character.secrets
-			: {};
-	for (const [key, value] of Object.entries(topSecrets)) {
-		if (value !== undefined && value !== null) {
-			out[key] = String(value);
+	for (const secrets of [settings.secrets, character.secrets]) {
+		if (!secrets || typeof secrets !== "object") continue;
+		for (const [key, value] of Object.entries(secrets)) {
+			if (value !== undefined && value !== null) out[key] = String(value);
 		}
 	}
 

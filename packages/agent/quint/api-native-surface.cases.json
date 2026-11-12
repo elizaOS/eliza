@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/native-host/surface-channel.mjs",
+    "packages/agent/native-host/surface-client.mjs"
+  ],
+  "bounds": {
+    "domain": "One session, one pending command and one delivery.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_native_surface",
+      "main": "api_native_surface",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/remote-coding-runner.ts"],
+  "bounds": {
+    "domain": "One runner, two users and two effects.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_remote_runner",
+      "main": "services_remote_runner",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

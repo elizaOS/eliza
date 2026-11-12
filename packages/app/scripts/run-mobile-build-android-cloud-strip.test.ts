@@ -127,70 +127,102 @@ describe("Android push bridge startup", () => {
 });
 
 describe("Android cloud WebView visibility", () => {
-  it("hides the page while the activity is stopped in both variants", () => {
+  // The generated activity inherits the shared WebView lifecycle from the
+  // browser-surface library, which every Cloud variant keeps.
+  const bridgeActivity = fs.readFileSync(
+    path.resolve(
+      scriptsDir,
+      "../../../plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ElizaBridgeActivity.java",
+    ),
+    "utf8",
+  );
+  // Each marker must be present before its position is compared: a missing
+  // marker's indexOf is -1, which would pass any toBeLessThan.
+  const ordered = (block: string, ...markers: string[]) => {
+    const positions = markers.map((marker) => block.indexOf(marker));
+    for (const [i, position] of positions.entries()) {
+      expect(position, markers[i]).toBeGreaterThan(-1);
+      if (i > 0) expect(positions[i - 1], markers[i]).toBeLessThan(position);
+    }
+  };
+  const method = (source: string, signature: string) => {
+    const start = source.indexOf(signature);
+    expect(start, signature).toBeGreaterThan(-1);
+    return source.slice(start, source.indexOf("\n    }\n", start));
+  };
+
+  it("extends the shared bridge activity in both variants", () => {
     for (const launcherKiosk of [false, true]) {
       const source = cloudSafeMainActivityJava("ai.elizaos.app", {
         launcherKiosk,
       });
-      const onStop = source.slice(source.indexOf("public void onStop()"));
-      expect(onStop.indexOf("getWebView().onPause()")).toBeGreaterThan(-1);
-      expect(onStop.indexOf("getWebView().onPause()")).toBeLessThan(
-        onStop.indexOf("super.onStop()"),
+      expect(source).toContain(
+        "import ai.eliza.plugins.browsersurface.ElizaBridgeActivity;",
       );
-      const onStart = source.slice(source.indexOf("public void onStart()"));
-      expect(onStart.indexOf("getWebView().onResume()")).toBeGreaterThan(
-        onStart.indexOf("super.onStart()"),
+      expect(source).toContain(
+        "public class MainActivity extends ElizaBridgeActivity {",
       );
+      // The lifecycle is inherited, never copied into the generated source.
       expect(source).not.toMatch(
-        /void onPause\(\)[^}]*getWebView\(\)\.onPause/,
+        /onRenderProcessGone|rendererGone|void onStart\(|void onStop\(|setMixedContentMode/,
       );
     }
+    expect(bridgeActivity).toContain(
+      "public class ElizaBridgeActivity extends BridgeActivity {",
+    );
+    expect(bridgeActivity).toContain(
+      "setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW)",
+    );
   });
 
-  it("survives renderer death and recreates on the next start in both variants", () => {
-    // Each marker must be present before its position is compared: a missing
-    // marker's indexOf is -1, which would pass any toBeLessThan.
-    const ordered = (block: string, ...markers: string[]) => {
-      const positions = markers.map((marker) => block.indexOf(marker));
-      for (const [i, position] of positions.entries()) {
-        expect(position, markers[i]).toBeGreaterThan(-1);
-        if (i > 0) expect(positions[i - 1], markers[i]).toBeLessThan(position);
-      }
-    };
-    const method = (source: string, signature: string) => {
-      const start = source.indexOf(signature);
-      expect(start, signature).toBeGreaterThan(-1);
-      return source.slice(start, source.indexOf("\n    }\n", start));
-    };
-    for (const launcherKiosk of [false, true]) {
-      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
-        launcherKiosk,
-      });
-      ordered(
-        method(source, "public boolean onRenderProcessGone("),
-        "rendererGone = true;",
-        "removeView(view)",
-        "view.destroy()",
-        "if (started) recreate();",
-        "return true;",
-      );
-      ordered(
-        method(source, "public void onStart()"),
-        "super.onStart()",
-        "started = true;",
-        "if (rendererGone) {",
-        "recreate();",
-        "return;",
-        "getWebView().onResume()",
-      );
-      ordered(
-        method(source, "public void onStop()"),
-        "started = false;",
-        "!rendererGone",
-        "getWebView().onPause()",
-        "super.onStop()",
-      );
-    }
+  it("hides the page while the activity is stopped", () => {
+    ordered(
+      method(bridgeActivity, "public void onStop()"),
+      "getWebView().onPause()",
+      "super.onStop()",
+    );
+    ordered(
+      method(bridgeActivity, "public void onStart()"),
+      "super.onStart()",
+      "getWebView().onResume()",
+    );
+    expect(bridgeActivity).not.toMatch(
+      /void onPause\(\)[^}]*getWebView\(\)\.onPause/,
+    );
+  });
+
+  it("survives renderer death and recreates on the next start", () => {
+    ordered(
+      method(bridgeActivity, "protected void onCreate("),
+      "super.onCreate(savedInstanceState)",
+      "MIXED_CONTENT_NEVER_ALLOW",
+      "addWebViewListener",
+    );
+    ordered(
+      method(bridgeActivity, "public boolean onRenderProcessGone("),
+      "rendererGone = true;",
+      "onRendererGone();",
+      "removeView(view)",
+      "view.destroy()",
+      "if (started) recreate();",
+      "return true;",
+    );
+    ordered(
+      method(bridgeActivity, "public void onStart()"),
+      "super.onStart()",
+      "started = true;",
+      "if (rendererGone) {",
+      "recreate();",
+      "return;",
+      "getWebView().onResume()",
+    );
+    ordered(
+      method(bridgeActivity, "public void onStop()"),
+      "started = false;",
+      "!rendererGone",
+      "getWebView().onPause()",
+      "super.onStop()",
+    );
   });
 
   it("registers the native Cloud sign-in host and never reloads the WebView on an auth callback", () => {
@@ -554,3 +586,68 @@ it.each([false, true])(
     }
   },
 );
+
+it("reconciles one receipt-aware App class before native plugin loading", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-app-receipt-"));
+  try {
+    const app = path.join(fixture, "packages/app");
+    const android = path.join(app, "android");
+    const assets = path.join(android, "app/src/main/assets");
+    fs.mkdirSync(assets, { recursive: true });
+    fs.writeFileSync(path.join(app, "package.json"), '{"type":"module"}');
+    fs.writeFileSync(
+      path.join(app, "app.config.ts"),
+      'export default { appId: "ai.receipt.fixture", appName: "Receipt fixture" };',
+    );
+    fs.writeFileSync(
+      path.join(android, "capacitor.settings.gradle"),
+      "include ':capacitor-app'\n",
+    );
+    const manifest = path.join(assets, "capacitor.plugins.json");
+    fs.writeFileSync(
+      manifest,
+      JSON.stringify([
+        {
+          pkg: "@capacitor/app",
+          classpath: "com.capacitorjs.plugins.app.AppPlugin",
+        },
+      ]),
+    );
+    const context = new URL("./mobile/context.ts", import.meta.url).href;
+    const reconciliation = new URL(
+      "./mobile/android/gradle-reconciliation.ts",
+      import.meta.url,
+    ).href;
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import {androidDir} from ${JSON.stringify(context)};
+         import {reconcilePluginManifestWithGradle} from ${JSON.stringify(reconciliation)};
+         if (androidDir !== ${JSON.stringify(android)}) throw Error("Unsafe fixture path");
+         reconcilePluginManifestWithGradle(${JSON.stringify(assets)});
+         reconcilePluginManifestWithGradle(${JSON.stringify(assets)});`,
+      ],
+      {
+        env: {
+          ...process.env,
+          ELIZA_MOBILE_REPO_ROOT: fixture,
+          ELIZA_ANDROID_USE_APP_DIR: "1",
+          ELIZA_APP_ID: "ai.receipt.fixture",
+        },
+      },
+    );
+    expect(JSON.parse(fs.readFileSync(manifest, "utf8"))).toEqual([
+      {
+        pkg: "@capacitor/app",
+        classpath: "ai.receipt.fixture.ReceiptAppPlugin",
+      },
+    ]);
+    expect(cloudSafeMainActivityJava("ai.receipt.fixture")).not.toContain(
+      "initialPlugins.add(ReceiptAppPlugin.class)",
+    );
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});

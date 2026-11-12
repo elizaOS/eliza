@@ -6,6 +6,7 @@ declare const trustedTenantContextBrand: unique symbol;
 const trustedTenantContexts = new WeakSet<object>();
 const TENANT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 const AUTHORITY_METHOD_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+const TENANT_LOCK_TIMEOUT_MS = 5_000;
 
 export type TenantRlsDriver = "postgres-js" | "pglite";
 
@@ -162,6 +163,15 @@ export async function withTenantRlsTransaction<
         characteristics.readOnly
           ? sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`
           : sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`,
+      );
+    }
+    if (driver !== "pglite") {
+      // Bound every lock wait in the request. The tenant audit advisory lock
+      // is held until commit, so a same-tenant writer that waits too long
+      // fails with SQLSTATE 55P03 (mapped to a retryable 503) instead of
+      // pinning a pool connection indefinitely.
+      await tx.execute(
+        sql.raw(`SET LOCAL lock_timeout = '${TENANT_LOCK_TIMEOUT_MS}ms'`),
       );
     }
     // A non-empty value here means this connection carries a session-level

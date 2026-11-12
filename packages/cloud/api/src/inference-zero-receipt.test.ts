@@ -46,7 +46,7 @@ test.each([
   ["version", 2],
   ["status", "unknown"],
   ["amountUsd", "1.000000"],
-  ["mode", "synchronous_db_ledger"],
+  ["mode", "synchronous_reservation"],
 ])(
   "the actual receipt helper rejects a changed %s on its own previously generated receipt",
   async (field, value) => {

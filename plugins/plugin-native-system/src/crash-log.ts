@@ -73,9 +73,15 @@ export const RENDERER_FAILURE_KINDS: readonly RendererFailureKind[] = [
 
 /** Error class only. A name that is not a plain identifier (it could be text) becomes "Error". */
 export function errorClassOf(error: unknown): string {
-  if (error instanceof Error)
-    return JS_CLASS.test(error.name) ? error.name : "Error";
-  return error === null ? "null" : typeof error;
+  try {
+    if (error instanceof Error) {
+      const name = error.name;
+      return typeof name === "string" && JS_CLASS.test(name) ? name : "Error";
+    }
+    return error === null ? "null" : typeof error;
+  } catch {
+    return "Error";
+  }
 }
 
 /** One native entry with allowlisted fields and shapes, or null. Anything else is dropped, never copied. */

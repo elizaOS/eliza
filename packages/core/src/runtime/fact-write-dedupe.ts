@@ -33,11 +33,6 @@ import type { IAgentRuntime } from "../types/runtime";
 
 const DEDUPE_CANDIDATE_POOL = 120;
 
-/** Exact fact text after trimming outer whitespace; signs, case and spacing carry meaning. */
-export function normalizeFactTextKey(value: string): string {
-	return value.trim();
-}
-
 /**
  * Returns the existing `facts` row equivalent to `memory` (same normalized
  * text, same room, same entity), or null when the write should proceed. Rows
@@ -48,9 +43,9 @@ export async function findEquivalentFact(
 	runtime: Pick<IAgentRuntime, "getMemories">,
 	memory: Memory,
 ): Promise<Memory | null> {
-	const text =
-		typeof memory.content?.text === "string" ? memory.content.text : "";
-	const key = normalizeFactTextKey(text);
+	// Exact text after trimming outer whitespace; signs, case and spacing
+	// carry meaning.
+	const key = memory.content.text?.trim();
 	if (!key || !memory.roomId) return null;
 
 	const existing = await runtime.getMemories({
@@ -63,9 +58,7 @@ export async function findEquivalentFact(
 		if (!isActiveMemoryEvidence(candidate)) continue;
 		if (!candidate.id || candidate.id === memory.id) continue;
 		if ((candidate.entityId ?? null) !== (memory.entityId ?? null)) continue;
-		const candidateText =
-			typeof candidate.content?.text === "string" ? candidate.content.text : "";
-		if (normalizeFactTextKey(candidateText) === key) return candidate;
+		if (candidate.content.text?.trim() === key) return candidate;
 	}
 	return null;
 }

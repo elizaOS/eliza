@@ -19,6 +19,7 @@
  *     "envPrefix":           "ELIZA",                  // env var prefix (ELIZA_AOSP_BUILD, …)
  *     "vendorDir":            "android/vendor/eliza" // source vendor dir relative to repo root
  *     "buildAndroidSystemCmd": ["bun", "run", "--cwd", "packages/app", "build:android:system"]  // command to rebuild the privileged APK
+ *     "assistantRole":       true                      // optional; false when the image does not preassign the assistant role
  *   }
  *
  * Resolution order (first match wins):
@@ -127,6 +128,15 @@ export function loadBrandConfig(configPath) {
       `Brand config ${resolved} has invalid architecture`,
     );
   }
+  if (
+    parsed.assistantRole !== undefined &&
+    typeof parsed.assistantRole !== "boolean"
+  ) {
+    throw new BrandConfigurationError(
+      `Brand config ${resolved} has a non-boolean assistantRole`,
+    );
+  }
+  parsed.assistantRole = parsed.assistantRole ?? true;
   parsed.initRcName = parsed.initRcName ?? `init.${parsed.brand}.rc`;
   parsed.vendorDir = parsed.vendorDir ?? `android/vendor/${parsed.brand}`;
   if (

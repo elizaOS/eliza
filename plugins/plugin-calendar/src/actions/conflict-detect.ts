@@ -343,7 +343,7 @@ function eventMatchesCalendarSource(
   );
 }
 
-function feedSourcesForAvailability(
+export function feedSourcesForAvailability(
   feed: LifeOpsCalendarFeed,
 ): CalendarAvailabilitySource[] {
   const events = feed.events.map(calendarEventForAvailability);
@@ -663,7 +663,7 @@ export function hasExplicitOffset(value: string): boolean {
   );
 }
 
-function validInstantRange(range: ConflictRange): boolean {
+export function validInstantRange(range: ConflictRange): boolean {
   if (!hasExplicitOffset(range.start) || !hasExplicitOffset(range.end)) {
     return false;
   }

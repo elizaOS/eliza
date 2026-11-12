@@ -1477,6 +1477,50 @@ export class AutoTopUpAttemptsRepository {
     return updated ? toAttempt(updated) : null;
   }
 
+  /** Resolve immutable ownership, then lock organization before attempt as provider authorization does. */
+  private async lockAttemptWithOrganization(
+    tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0],
+    attemptId: string,
+  ) {
+    const [snapshot] = await tx
+      .select({ organizationId: autoTopUpAttempts.organization_id })
+      .from(autoTopUpAttempts)
+      .where(eq(autoTopUpAttempts.id, attemptId))
+      .limit(1);
+    if (!snapshot) return null;
+
+    const [organization] = await tx
+      .select({
+        id: organizations.id,
+        balance: organizations.credit_balance,
+        balanceDecreaseRevision: organizations.balance_decrease_revision,
+        coveredBalanceDecreaseRevision: organizations.auto_top_up_covered_balance_decrease_revision,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, snapshot.organizationId))
+      .for("update")
+      .limit(1);
+    if (!organization) {
+      invariantViolation("Auto-top-up attempt organization is missing", {
+        attemptId,
+        organizationId: snapshot.organizationId,
+      });
+    }
+
+    const [attempt] = await tx
+      .select()
+      .from(autoTopUpAttempts)
+      .where(
+        and(
+          eq(autoTopUpAttempts.id, attemptId),
+          eq(autoTopUpAttempts.organization_id, snapshot.organizationId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    return attempt ? { attempt, organization } : null;
+  }
+
   async markCanceled(input: MarkAutoTopUpTerminalInput): Promise<AutoTopUpAttempt | null> {
     requiredString(input.attemptId, "attemptId");
     requiredString(input.leaseToken, "leaseToken");
@@ -1485,12 +1529,8 @@ export class AutoTopUpAttemptsRepository {
     const result = input.result ? jsonObject(input.result, "result") : undefined;
 
     return dbWrite.transaction(async (tx) => {
-      const [attempt] = await tx
-        .select()
-        .from(autoTopUpAttempts)
-        .where(eq(autoTopUpAttempts.id, input.attemptId))
-        .for("update")
-        .limit(1);
+      const locked = await this.lockAttemptWithOrganization(tx, input.attemptId);
+      const attempt = locked?.attempt;
       if (
         !attempt ||
         attempt.lease_token !== input.leaseToken ||
@@ -1566,12 +1606,8 @@ export class AutoTopUpAttemptsRepository {
     const result = input.result ? jsonObject(input.result, "result") : undefined;
 
     return dbWrite.transaction(async (tx) => {
-      const [attempt] = await tx
-        .select()
-        .from(autoTopUpAttempts)
-        .where(eq(autoTopUpAttempts.id, input.attemptId))
-        .for("update")
-        .limit(1);
+      const locked = await this.lockAttemptWithOrganization(tx, input.attemptId);
+      const attempt = locked?.attempt;
       if (
         !attempt ||
         attempt.lease_token !== input.leaseToken ||
@@ -1790,34 +1826,9 @@ export class AutoTopUpAttemptsRepository {
     assertDate(input.now, "now");
 
     return dbWrite.transaction(async (tx) => {
-      const [attempt] = await tx
-        .select()
-        .from(autoTopUpAttempts)
-        .where(eq(autoTopUpAttempts.id, input.attemptId))
-        .for("update")
-        .limit(1);
-      if (!attempt) return null;
-
-      // Match the canonical credit writer's lock order: organization before
-      // credit_transactions. The independent attempt lock cannot participate
-      // in a cycle because provider/webhook credit writers never acquire it.
-      const [lockedOrganization] = await tx
-        .select({
-          balance: organizations.credit_balance,
-          balanceDecreaseRevision: organizations.balance_decrease_revision,
-          coveredBalanceDecreaseRevision:
-            organizations.auto_top_up_covered_balance_decrease_revision,
-        })
-        .from(organizations)
-        .where(eq(organizations.id, attempt.organization_id))
-        .for("update")
-        .limit(1);
-      if (!lockedOrganization) {
-        invariantViolation("Auto-top-up settlement organization is missing", {
-          attemptId: attempt.id,
-          organizationId: attempt.organization_id,
-        });
-      }
+      const locked = await this.lockAttemptWithOrganization(tx, input.attemptId);
+      if (!locked) return null;
+      const { attempt, organization: lockedOrganization } = locked;
 
       if (attempt.status === "credited") {
         if (!attempt.credit_transaction_id) {

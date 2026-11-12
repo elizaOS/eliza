@@ -24,6 +24,15 @@ final class VoiceNative {
 
     private VoiceNative() {}
 
+    /** KOKORO_NUM_THREADS: the speech thread count, read when the first voice loads. */
+    static void setSpeechThreads(int threads) {
+        try {
+            android.system.Os.setenv("KOKORO_NUM_THREADS", Integer.toString(threads), true);
+        } catch (android.system.ErrnoException unset) {
+            throw new IllegalStateException("Cannot set the speech thread count", unset);
+        }
+    }
+
     static native String nativeVoiceAbiVersion();
 
     static native long nativeContextCreate(String bundleDir);

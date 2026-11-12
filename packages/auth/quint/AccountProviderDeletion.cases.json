@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "packages/auth/src/auth/account-storage.ts",
+    "packages/auth/src/auth/credentials.ts"
+  ],
+  "conformance": "packages/auth/quint/check-account-provider-deletion.mjs",
+  "bounds": {
+    "domain": "Provider-wide preflight and commit through the same credential lock, with an intervening authorized writer and a bounded fresh retry.",
+    "limitations": [
+      "Two initial credential files for one provider, one optional new account, and an unrelated provider with the same account id. At most two preflights and one cooperating write between preflight and commit. A noncanonical inventory name can reject preflight.",
+      "The lock prevents other authorized readers and writers during validation, unlinks and rollback. The stat tuple is an opaque fingerprint. The modeled atomic replacement changes that tuple. Restoration preserves ciphertext, while file identity may change.",
+      "The failure branch injects an error on the second unlink after one successful unlink, with successful restoration. Directory sync failure, rollback failure, process death and reset interleavings are outside this bound.",
+      "Explicit account-list plans, nonregular paths, multi-provider plans, byte changes with equal stat tuples and malicious filesystem mutation are separate cases. Cryptographic correctness is assumed. An unsubmitted plan can be abandoned without writing."
+    ]
+  },
+  "cases": [
+    {
+      "name": "provider-plan-admission-and-compensation",
+      "main": "AccountProviderDeletion",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OutsideProviderUntouched",
+        "RefusedPlanRetainsFiles",
+        "CompleteValidationBeforeUnlink",
+        "UnlinksStayInsidePlan",
+        "SuccessConfirmsExactlyPlan",
+        "RollbackRestoresCiphertext"
+      ],
+      "temporal": ["AdmittedCommitSettles"],
+      "temporalChecks": [
+        {
+          "property": "AdmittedCommitSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of commitWork settles an admitted commit after the bounded unlink sequence or compensating restoration.",
+            "Filesystem operations return and the process survives. The recovery branch assumes restoration succeeds. No caller is required to submit a prepared plan."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 1000
+    }
+  ]
+}

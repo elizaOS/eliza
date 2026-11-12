@@ -15,6 +15,11 @@ public final class ActionJournalTest {
   try { body.run(); } catch (Exception error) { if (type.isInstance(error)) return; throw new AssertionError("Check " + checks + ": " + error); }
   throw new AssertionError("Check " + checks + " should have been refused");
  }
+ private static void refusesWith(String message, Failing body) {
+  checks++;
+  try { body.run(); } catch (ActionJournal.Refused error) { if (message.equals(error.getMessage())) return; throw new AssertionError("Check " + checks + ": " + error); } catch (Exception error) { throw new AssertionError("Check " + checks + ": " + error); }
+  throw new AssertionError("Check " + checks + " should have been refused");
+ }
 
  static final class Memory implements ActionJournal.Storage {
   final Map<String, String> slots = new HashMap<>();
@@ -101,10 +106,6 @@ public final class ActionJournalTest {
   check(journal.reserve(SCOPE, "p3", "op-3", HASH, record).created);
   check(new JSONArray(store.read(journal.indexSlot(SCOPE))).length() == 3);
 
-  // Bounded: a full index refuses new proposals but keeps existing replays working.
-  refuses(ActionJournal.Refused.class, () -> journal.reserve(SCOPE, "p4", "op-4", HASH, record));
-  check(!journal.reserve(SCOPE, "p3", "op-3", HASH, record).created);
-
   // Passive list goes through the host view and never rewrites stored private results.
   JSONArray listed = journal.list(SCOPE);
   check(listed.length() == 3 && "p1".equals(listed.getJSONObject(0).getString("proposalId")));
@@ -125,6 +126,38 @@ public final class ActionJournalTest {
   refuses(ActionJournal.Refused.class, () -> journal.update(SCOPE, "absent", entry -> new JSONObject()));
   check(journal.update(SCOPE, "absent", entry -> entry) == null);
   check(HASH.equals(journal.get(SCOPE, "p3").getString("operationHash")));
+
+  // Retention: a full index evicts the oldest settled entry in the same reserve, leaving a
+  // tombstone that refuses replay. In-flight, unknown and natively claimed entries stay.
+  check(journal.reserve(SCOPE, "p4", "op-4", HASH, record).created);
+  check(new JSONArray(store.read(journal.indexSlot(SCOPE))).toString().equals("[\"p2\",\"p3\",\"p4\"]"));
+  check(journal.get(SCOPE, "p1") == null && journal.list(SCOPE).length() == 3);
+  check("evicted".equals(new JSONObject(store.read(journal.entrySlot(SCOPE, "p1"))).getString("phase")));
+  check(!new JSONObject(store.read(journal.entrySlot(SCOPE, "p1"))).has("result"));
+  refusesWith("Proposal already settled", () -> journal.reserve(SCOPE, "p1", "op-1", HASH, record));
+  refusesWith("Proposal is already journaled with a different operation", () -> journal.reserve(SCOPE, "p1", "op-1", OTHER_HASH, record));
+  refuses(ActionJournal.Refused.class, () -> journal.markApplying(SCOPE, "p1", "attempt-9"));
+  refuses(ActionJournal.Refused.class, () -> journal.finish(SCOPE, "p1", "failed", "Late", null));
+  refuses(ActionJournal.Refused.class, () -> journal.update(SCOPE, "p1", entry -> new JSONObject().put("phase", "terminal")));
+  check(journal.reserve(SCOPE, "p5", "op-5", HASH, record).created);
+  check(journal.get(SCOPE, "p2") == null && journal.get(SCOPE, "p3") != null);
+  journal.markApplying(SCOPE, "p3", "attempt-3");
+  journal.update(SCOPE, "p3", entry -> entry.put("nativeDispatchClaim", new JSONObject().put("kind", "deletion")));
+  // A claimed deletion finishes as unknown; only its receipt (through update) settles it.
+  for (String status : new String[] {"succeeded", "failed", "cancelled"})
+   refusesWith("Claimed deletion settles through its receipt", () -> journal.finish(SCOPE, "p3", status, "Done", new JSONObject().put("ok", true)));
+  check("applying".equals(journal.get(SCOPE, "p3").getString("phase")));
+  check("unknown".equals(journal.finish(SCOPE, "p3", "unknown", "Queued", null).getString("status")));
+  journal.update(SCOPE, "p3", entry -> entry.put("status", "succeeded").put("summary", "Recovered").put("result", new JSONObject().put("ok", true)));
+  check("succeeded".equals(journal.get(SCOPE, "p3").getString("status")));
+  journal.finish(SCOPE, "p4", "unknown", "Lost", null);
+  // Reserved (p5), unknown (p4) and claimed (p3) entries fill the journal: a definite refusal.
+  writes = store.writes;
+  refusesWith("Action journal is full", () -> journal.reserve(SCOPE, "p6", "op-6", HASH, record));
+  check(store.writes == writes && !journal.reserve(SCOPE, "p5", "op-5", HASH, record).created);
+  journal.update(SCOPE, "p4", entry -> entry.put("status", "failed").put("summary", "Reconciled"));
+  check(journal.reserve(SCOPE, "p6", "op-6", HASH, record).created && journal.get(SCOPE, "p4") == null);
+  check(journal.get(SCOPE, "p3").has("nativeDispatchClaim"));
 
   // Structural equality ignores key order and treats JSON null like absence only for null.
   check(ActionJournal.sameJson(new JSONObject("{\"a\":1,\"b\":[1,{\"c\":2}]}"), new JSONObject("{\"b\":[1,{\"c\":2}],\"a\":1}")));

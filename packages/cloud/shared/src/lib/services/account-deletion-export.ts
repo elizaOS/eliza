@@ -275,10 +275,15 @@ function normalizeExportValue(value: unknown, fieldName?: string): unknown {
   return String(value);
 }
 
-function stableRows(rows: Array<Record<string, unknown>>): unknown[] {
+/** Orders rows by their serialized form, compared by code unit so the order is locale-independent. */
+export function stableRows(rows: Array<Record<string, unknown>>): unknown[] {
   return rows
-    .map((row) => normalizeExportValue(row))
-    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    .map((row) => {
+      const value = normalizeExportValue(row);
+      return { value, key: JSON.stringify(value) };
+    })
+    .sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0))
+    .map((entry) => entry.value);
 }
 
 async function querySubjectRows(input: {
@@ -452,12 +457,8 @@ export function serializePortableAccountDeletionExport(input: {
     },
     retentionNotice:
       "Security credentials are redacted. Legally required tax, billing, fraud-prevention, and security evidence may be retained only under the disclosed retention schedule and is anonymized at account erasure.",
-    tables: [...input.tables]
-      .sort((left, right) => left.table.localeCompare(right.table))
-      .map((table) => ({
-        ...table,
-        rows: stableRows(table.rows as Array<Record<string, unknown>>),
-      })),
+    // Rows were normalized and ordered by stableRows during collection.
+    tables: [...input.tables].sort((left, right) => left.table.localeCompare(right.table)),
   };
   const bytes = new TextEncoder().encode(JSON.stringify(artifact));
   if (bytes.byteLength > (input.maxBytes ?? MAX_EXPORT_BYTES)) {

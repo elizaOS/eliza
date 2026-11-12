@@ -23,6 +23,10 @@ import {
   isIdempotentBrowserSubaction,
 } from "./dispatch-types.js";
 import {
+  type NativeHistorySelection,
+  observedNativeHistorySelection,
+} from "./native-client-command.js";
+import {
   type NativeBrowserClientTransport,
   readNativeBrowserPage,
 } from "./native-page-reader.js";
@@ -116,6 +120,7 @@ export class BrowserService extends Service {
     command: BrowserWorkspaceCommand,
     targetId?: string,
     clientId?: string,
+    selection?: NativeHistorySelection,
   ): Promise<BrowserWorkspaceCommandResult> {
     if (
       (!targetId || targetId === "chromium-device") &&
@@ -194,7 +199,7 @@ export class BrowserService extends Service {
           "UNAVAILABLE",
           "Native control transport is unavailable.",
         );
-      return await this.transport.executeCommand(clientId, command);
+      return await this.transport.executeCommand(clientId, command, selection);
     } catch (error) {
       // error-policy:J2 uncertain native effects must never be replayed in another browser.
       if (
@@ -294,7 +299,12 @@ export const browserAction: Action = {
       command.direction = direction;
     }
     try {
-      const result = await service.execute(command, undefined, clientId);
+      const result = await service.execute(
+        command,
+        undefined,
+        clientId,
+        observedNativeHistorySelection(message, action),
+      );
       return {
         success: true,
         text: JSON.stringify(result),
@@ -370,4 +380,7 @@ export function isBrowserWorkspaceBridgeConfigured(): boolean {
   return false;
 }
 
-export { parseNativeHistoryCommand } from "./native-client-command.ts";
+export {
+  type NativeHistorySelection,
+  parseNativeHistoryCommand,
+} from "./native-client-command.ts";

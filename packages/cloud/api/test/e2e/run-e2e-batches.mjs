@@ -325,7 +325,7 @@ try {
       !process.env.TEST_PGLITE_DATA_DIR &&
       process.env.TEST_PGLITE_PERSIST !== "1";
     const ownedPostgres =
-      strictGroupD && ownsLocalServer && !disposableDatabase
+      ownsLocalServer && !disposableDatabase
         ? ownedPostgresFixtureAuthority(e2eEnv)
         : null;
     if (strictGroupD && !disposableDatabase && !ownedPostgres)

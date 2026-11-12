@@ -1,21 +1,7 @@
 /**
- * x402 paid-route types: per-route `PaymentConfigDefinition`, the built-in
- * network/asset presets, and character-level payment defaults. Describe how a
- * plugin route declares a price and which chain/asset settles it.
+ * x402 paid-route types: the built-in network/asset presets, a route's price
+ * declaration, and the pre-payment validation result.
  */
-import type { JsonObject } from "./primitives";
-
-/**
- * Payment configuration definition for x402-enabled routes.
- */
-export interface PaymentConfigDefinition {
-	network: string;
-	assetNamespace: string;
-	assetReference: string;
-	paymentAddress: string;
-	symbol: string;
-	chainId?: string;
-}
 
 /** Built-in x402 payment preset names shipped with @elizaos/agent */
 export type BuiltInPaymentConfig =
@@ -26,15 +12,6 @@ export type BuiltInPaymentConfig =
 	| "base_elizaos"
 	| "solana_elizaos"
 	| "solana_degenai";
-
-/**
- * Character-level defaults for paid routes (`x402: true` or partial `x402` on routes).
- * Set under `character.settings.x402`.
- */
-export interface CharacterX402Settings {
-	defaultPaymentConfigs?: (BuiltInPaymentConfig | string)[];
-	defaultPriceInCents?: number;
-}
 
 /**
  * x402 configuration for a paid route.
@@ -54,31 +31,4 @@ export interface X402ValidationResult {
 		message: string;
 		details?: unknown;
 	};
-}
-
-/**
- * x402 "accepts" entry describing payment terms.
- */
-export interface X402Accepts {
-	scheme: "exact";
-	network: string;
-	maxAmountRequired: string;
-	resource: string;
-	description: string;
-	mimeType: string;
-	payTo: string;
-	maxTimeoutSeconds: number;
-	asset: string;
-	outputSchema?: JsonObject;
-	extra?: JsonObject;
-}
-
-/**
- * x402 payment-required response payload.
- */
-export interface X402Response {
-	x402Version: number;
-	error?: string;
-	accepts?: X402Accepts[];
-	payer?: string;
 }

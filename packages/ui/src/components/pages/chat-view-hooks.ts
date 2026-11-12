@@ -930,6 +930,7 @@ export function useChatVoiceController(options: {
     !isComposerLocked &&
     realtime.available &&
     !realtime.error &&
+    !realtime.refused &&
     !realtimeFellBack;
 
   // The batch continuous-chat engine. While the realtime WS session is the
@@ -942,7 +943,8 @@ export function useChatVoiceController(options: {
   const continuous = useContinuousChat({
     voice,
     mode: continuousMode,
-    disabled: isComposerLocked || realtime.active || realtimeWanted,
+    disabled:
+      isComposerLocked || realtime.active || realtimeWanted || realtime.refused,
     latency: continuousChatLatency,
     speaker: voiceSpeaker,
     assistantGenerating: chatSending && !chatFirstTokenReceived,
@@ -1001,6 +1003,12 @@ export function useChatVoiceController(options: {
     }
   }, [realtimeWanted, realtime.active, realtime.connecting]);
 
+  useEffect(() => {
+    if (!realtime.refused) return;
+    realtimeStartPendingRef.current = false;
+    setManualRealtimeIntent(false);
+  }, [realtime.refused, setManualRealtimeIntent]);
+
   // A failed/disabled realtime start hands ownership back to batch. Clear the
   // manual intent as well so the next gesture can take the fallback branch.
   useEffect(() => {
@@ -1036,6 +1044,10 @@ export function useChatVoiceController(options: {
         stopSpeaking();
         void voiceSession.start().then((outcome) => {
           realtimeStartPendingRef.current = false;
+          if (outcome.kind === "refused") {
+            setManualRealtimeIntent(false);
+            return;
+          }
           if (outcome.kind !== "fallback-to-batch") return;
           setManualRealtimeIntent(false);
           beginBatchVoiceCapture(mode);
