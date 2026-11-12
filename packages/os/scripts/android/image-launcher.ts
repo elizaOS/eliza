@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Eliza image launcher staging: the nonprivileged-launcher profile for
- * Eliza's own AOSP products (Cuttlefish, GSI and grizzly), the same
+ * Eliza's own AOSP products (Cuttlefish and GSI), the same
  * least-privilege composition the Pixel 10a Eliza product uses.
  *
  * The signed Eliza APK is staged as an additive, hash- and certificate-pinned

@@ -231,11 +231,6 @@ export class GgmlSileroVad {
 	}
 }
 
-/** @deprecated Use `GgmlSileroVad`. Kept as an alias while callers migrate
- *  off the legacy ONNX-era name. */
-export const NativeSileroVad = GgmlSileroVad;
-export type NativeSileroVad = GgmlSileroVad;
-
 // ---------------------------------------------------------------------------
 // Tier 1: cheap always-on RMS energy gate.
 // ---------------------------------------------------------------------------

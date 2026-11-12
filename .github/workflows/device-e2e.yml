@@ -69,7 +69,6 @@ jobs:
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
       ELIZA_WEBVIEW_DEBUG: "1"
-      ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
       # This host-backed mobile lane does not use desktop fused inference.
       ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"

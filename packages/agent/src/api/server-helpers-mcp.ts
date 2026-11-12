@@ -4,7 +4,6 @@
 
 import type http from "node:http";
 import { validateMcpServerConfig } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 
 import { hasBlockedObjectKeyDeep } from "./blocked-object-keys.ts";
 
@@ -70,7 +69,7 @@ export function resolveMcpTerminalAuthorizationRejection(
     return null;
   }
 
-  const expected = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
+  const expected = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
   if (!expected) {
     return {
       status: 403,

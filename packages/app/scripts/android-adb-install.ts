@@ -29,24 +29,7 @@ const args = new Set(process.argv.slice(2));
 const serial = readFlag("--serial") ?? process.env.ANDROID_SERIAL ?? null;
 const apkArg = readFlag("--apk");
 const shouldBuild = args.has("--build");
-const launcherMode = args.has("--launcher");
-const shouldLaunch = !args.has("--no-launch") && !launcherMode;
-const homeTimeoutMs =
-  // Number.parseInt stops at the first non-digit, so "5000junk" parsed to
-  // 5000 and was silently accepted instead of being treated as malformed.
-  // Require the whole trimmed value to be decimal, mirroring
-  // resolveGenerationTimeoutMs in the discord plugin.
-  (() => {
-    const raw = (readFlag("--home-timeout-ms") ?? "120000").trim();
-    return /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
-  })();
-
-if (
-  launcherMode &&
-  (!Number.isSafeInteger(homeTimeoutMs) || homeTimeoutMs < 1)
-) {
-  fail("--home-timeout-ms must be a positive integer");
-}
+const shouldLaunch = !args.has("--no-launch");
 
 function run(command, commandArgs, options = {}) {
   return spawnSync(command, commandArgs, {
@@ -273,79 +256,6 @@ if (shouldLaunch) {
   });
   if (launch.status !== 0) {
     fail("installed app, but launch failed");
-  }
-}
-
-if (launcherMode) {
-  const picker = run(
-    "adb",
-    adbArgs(["shell", "am", "start", "-a", "android.settings.HOME_SETTINGS"]),
-    { stdio: "inherit" },
-  );
-  if (picker.status !== 0) {
-    fail("installed launcher, but could not open Android's Home-app picker");
-  }
-
-  console.log(
-    `Select ${appId} as the Home app on the device; waiting up to ${Math.ceil(homeTimeoutMs / 1000)} seconds for verification.`,
-  );
-  const deadline = Date.now() + homeTimeoutMs;
-  let homeVerified = false;
-  let roleOutput = "";
-  let resolverOutput = "";
-  while (Date.now() < deadline) {
-    const role = run(
-      "adb",
-      adbArgs([
-        "shell",
-        "cmd",
-        "role",
-        "get-role-holders",
-        "--user",
-        "0",
-        "android.app.role.HOME",
-      ]),
-    );
-    const resolver = run(
-      "adb",
-      adbArgs([
-        "shell",
-        "cmd",
-        "package",
-        "resolve-activity",
-        "--brief",
-        "-a",
-        "android.intent.action.MAIN",
-        "-c",
-        "android.intent.category.HOME",
-      ]),
-    );
-    roleOutput = `${role.stdout ?? ""}${role.stderr ?? ""}`.trim();
-    resolverOutput = `${resolver.stdout ?? ""}${resolver.stderr ?? ""}`.trim();
-    if (
-      role.status === 0 &&
-      resolver.status === 0 &&
-      roleOutput.split(/\s+/).includes(appId) &&
-      resolverOutput.includes(`${appId}/`)
-    ) {
-      const home = run("adb", adbArgs(["shell", "input", "keyevent", "HOME"]), {
-        stdio: "inherit",
-      });
-      if (home.status !== 0)
-        fail("HOME role verified, but sending HOME failed");
-      console.log(
-        `Android HOME verified for ${appId}: role holder and intent resolver agree.`,
-      );
-      homeVerified = true;
-      break;
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
-  }
-  if (!homeVerified) {
-    fail(
-      `timed out waiting for ${appId} to become the Home app`,
-      `ROLE_HOME: ${roleOutput || "<empty>"}\nHOME resolver: ${resolverOutput || "<empty>"}`,
-    );
   }
 }
 

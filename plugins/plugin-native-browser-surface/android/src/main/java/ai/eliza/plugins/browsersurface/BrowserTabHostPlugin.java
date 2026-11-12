@@ -76,7 +76,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   }
  };
  private void resetHostDocument() {
-  presentedId=null;cancelFile();if(reading!=null)reading.cancel();
+  selectPresentation(null);cancelFile();if(reading!=null)reading.cancel();
   if(downloads!=null)downloads.dismissDialogs();
   dismissSiteDialogs();exitFullscreen(true);
   ArrayList<Tab> all=new ArrayList<>(tabs.values());tabs.clear();
@@ -89,6 +89,13 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private String session;
  private long sequence;
  private String presentedId;
+ private long presentationRevision;
+ private void selectPresentation(String id) {
+  if(!Objects.equals(presentedId,id)){
+   presentedId=id;
+   presentationRevision++;
+  }
+ }
  private boolean paused;
  private boolean destroyed;
  private BrowserDownloads downloads;
@@ -567,8 +574,11 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   * BrowserSitePrompt plans the request: only the selected, shown page may use a device sensor, even
   * with a stored Allow; private tabs never read or store decisions. The result lists the kinds granted. */
  private void sitePermission(Tab t,String origin,List<String> kinds,java.util.function.Consumer<Set<String>> result){
-  long revision=t.navigation;
-  java.util.function.BooleanSupplier current=()->!destroyed&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision&&Objects.equals(origin,BrowserWebOrigin.of(t.web.getUrl()));
+  long revision=t.navigation, selection=presentationRevision;
+  // Android's permission dialog can pause the host without changing its selected presentation.
+  // An explicit withdrawal or tab switch retires the request even if this tab returns.
+  java.util.function.BooleanSupplier current=()->!destroyed&&!t.dead&&tabs.get(t.id)==t&&t.navigation==revision
+   &&presentationRevision==selection&&Objects.equals(presentedId,t.id)&&Objects.equals(origin,BrowserWebOrigin.of(t.web.getUrl()));
   BrowserSitePrompt.Plan plan=BrowserSitePrompt.plan(origin,kinds,promptable(t),t.priv,this::grantable,sessionStore::permission);
   for(String kind:plan.unavailable)notice(t,BrowserSitePrompt.unavailableNotice(kind));
   java.util.function.Consumer<Set<String>> runtime=decided->{
@@ -577,6 +587,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    if(missing.isEmpty()){result.accept(decided);return;}
    if(runtimeResult!=null){result.accept(Collections.emptySet());return;}
    runtimeResult=answers->{
+    if(!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
     LinkedHashSet<String> final_=new LinkedHashSet<>();for(String kind:decided)if(androidGranted(kind))final_.add(kind);else notice(t,"Android has not allowed "+config().appName+" to use your "+kind+". You can allow it in Android Settings.");
     result.accept(current.getAsBoolean()?final_:Collections.emptySet());
    };
@@ -585,10 +596,12 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   if(plan.asked.isEmpty()){runtime.accept(plan.granted(false));return;}
   boolean[] answered={false};
   AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle(BrowserSitePrompt.title(plan.asked)).setMessage(BrowserSitePrompt.message(Uri.parse(origin).getHost(),plan.asked,t.priv))
-   .setPositiveButton("Allow",(d,w)->{answered[0]=true;siteDialogCancel=null;
+   .setPositiveButton("Allow",(d,w)->{if(answered[0]||siteDialog!=d)return;answered[0]=true;siteDialogCancel=null;
+    if(!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
     if(!t.priv)for(String kind:plan.asked)try{sessionStore.setPermission(origin,kind,true);}catch(Exception unavailable){}
     runtime.accept(plan.granted(true));})
-   .setNegativeButton("Don't allow",(d,w)->{answered[0]=true;siteDialogCancel=null;
+   .setNegativeButton("Don't allow",(d,w)->{if(answered[0]||siteDialog!=d)return;answered[0]=true;siteDialogCancel=null;
+    if(!current.getAsBoolean()){result.accept(Collections.emptySet());return;}
     if(!t.priv)for(String kind:plan.asked)try{sessionStore.setPermission(origin,kind,false);}catch(Exception unavailable){}
     runtime.accept(plan.granted(false));})
    .create();
@@ -857,7 +870,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  }
  /** Invalid geometry withdraws the old input authority rather than routing through stale chrome. */
  private void rejectPresentation(PluginCall call,String reason) {
-  presentedId=null;cancelFile();dismissSiteDialogs();exitFullscreen(true);if(reading!=null)reading.check();
+  selectPresentation(null);cancelFile();dismissSiteDialogs();exitFullscreen(true);if(reading!=null)reading.check();
   for(Tab tab:tabs.values()){disableAutofill(tab);tab.frame.setHostRectsReceived(false);tab.frame.setVisibility(View.GONE);}
   call.reject(reason);
  }
@@ -888,7 +901,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
    }
   }
   // Revoke selected-tab authority before any synchronous framework callback.
-  presentedId=nextId;if(reading!=null)reading.check();
+  selectPresentation(nextId);if(reading!=null)reading.check();
   for(Tab old:tabs.values())if(!Objects.equals(old.id,presentedId)){disableAutofill(old);clearFind(old);if(siteDialogTab==old)dismissSiteDialogs();if(fullscreenTab==old)exitFullscreen(true);old.frame.setVisibility(View.GONE);}
   Tab t=tabs.get(call.getString("id")); if(t!=null) { float d=getContext().getResources().getDisplayMetrics().density;
    presentLayer(t,layer,host,branch);

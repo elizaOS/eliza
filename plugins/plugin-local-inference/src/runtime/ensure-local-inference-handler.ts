@@ -49,7 +49,6 @@ import {
 	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
@@ -240,7 +239,7 @@ function getRuntimeMode(runtime: IAgentRuntime): string {
 		if (fromEnv) return fromEnv;
 	}
 	if (
-		readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" ||
+		process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1" ||
 		process.env.ELIZAOS_CLOUD_ENABLED === "1"
 	) {
 		return "cloud";
@@ -1806,8 +1805,8 @@ export async function ensureLocalInferenceHandler(
 		// cloud clients must not activate local text, voice, or model loaders.
 		if (
 			runtimeMode === "cloud" &&
-			readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" &&
-			readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+			process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1" &&
+			process.env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS?.trim() === "1" &&
 			process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !==
 				"true" &&
 			!isLocalEmbeddingDisabledByEnv()

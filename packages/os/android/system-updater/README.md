@@ -22,12 +22,16 @@ An oversized partial or a complete partial with a wrong digest is cleared under
 the download lock. A later attempt can fetch the same candidate again.
 If payload verification needs more free space, an unapplied candidate keeps
 its journal and files. A later check can retry after space is available.
+An explicit Android space or quota error during scratch creation, writing or
+sync before payload publication also defers the attempt.
 Before apply, extraction uses one private scratch file. After process death,
 a matching unapplied journal can reclaim the file before the space checks. This
 does not retire old downloads, verified payloads or recovery files.
 When an applied update waits for restart, a later check verifies the retained
 archive and payload without writing either file. Missing or invalid files keep
-the candidate held for review.
+the candidate held for review. A missing, different or unreadable offer leaves
+automatic restart on hold. The status distinguishes those cases from waiting
+for the phone to become idle.
 The ordinary app remains nonprivileged. Android's shutdown path owns the reboot.
 
 The durable journal records an apply intent before Binder. An unsettled apply
@@ -41,7 +45,8 @@ and generated traces replayed through its real Java implementation. The download
 has real loopback HTTPS and file-backed retry/range checks with compile-only
 Android ports. The host model covers interruption and fair completion after
 space becomes available. Its replay runs the storage guard and failure
-transition with real files and controlled host ports. These do
+transition with real files and controlled host ports. Scratch replays inject
+numeric space, quota and other I/O errors without filling the host disk. These do
 not prove Android execution, package-signature rejection, power/call constraints
 or preservation of app data across an OS update.
 
