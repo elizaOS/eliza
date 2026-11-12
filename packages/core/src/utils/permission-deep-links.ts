@@ -79,7 +79,17 @@ function detectPlatform(): Platform {
 		// be excluded before the Mac check: iOS has no
 		// x-apple.systempreferences settings panes.
 		if (/iPhone|iPad|iPod/.test(ua)) return "unknown";
-		if (/Mac/.test(ua)) return "darwin";
+		if (/Mac/.test(ua)) {
+			// iPadOS 13+ sends a desktop Mac agent; only a touch screen
+			// tells them apart.
+			if (
+				typeof (navigator as Navigator).maxTouchPoints === "number" &&
+				navigator.maxTouchPoints > 1
+			) {
+				return "unknown";
+			}
+			return "darwin";
+		}
 		if (/Win/.test(ua)) return "win32";
 		if (/Linux/.test(ua)) return "linux";
 	}
