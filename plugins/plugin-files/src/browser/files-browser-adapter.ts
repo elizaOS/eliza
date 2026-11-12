@@ -419,7 +419,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       } else {
         const value =
           at.kind === "category"
-            ? await storage.storageCategory({ category: at.category })
+            ? at.category === "downloads"
+              ? await storage.storageList({ path: DOWNLOAD_FOLDER })
+              : await storage.storageCategory({ category: at.category })
             : await storage.storageList({
                 path: at.path,
                 ...onVolume(at.volume),
