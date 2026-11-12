@@ -1287,7 +1287,7 @@ async function executeSolanaSwap(
   // already performs this same comparison before signing.
   if (!keypair.publicKey.equals(walletPublicKey)) {
     throw new Error(
-      `Solana wallet key mismatch: configured public key ${walletPublicKey.toBase58()} does not match the public key ${keypair.publicKey.toBase58()} derived from the configured private key. Check SOLANA_PUBLIC_KEY / SOLANA_PRIVATE_KEY (or WALLET_PUBLIC_KEY / WALLET_PRIVATE_KEY).`,
+      `Solana wallet key mismatch: configured public key ${walletPublicKey.toBase58()} does not match the signing keypair's public key ${keypair.publicKey.toBase58()}. Check SOLANA_PUBLIC_KEY / SOLANA_PRIVATE_KEY (or WALLET_PUBLIC_KEY / WALLET_PRIVATE_KEY).`,
     );
   }
   transaction.sign([keypair]);
