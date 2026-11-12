@@ -145,6 +145,20 @@ describe("processDueScheduledTasks — production wiring", () => {
           ...(status === "fired" ? { firedAt: "2026-11-11T21:00:00Z" } : {}),
         },
       });
+      if (status === "scheduled") {
+        const repo = new LifeOpsRepository(runtime);
+        await repo.upsertScheduledTask(runtime.agentId, task, {
+          nextFireAtIso: "2026-11-12T21:00:00Z",
+        });
+        const due = await repo.listScheduledTasks(runtime.agentId, {
+          status: ["scheduled", "fired"],
+          dueAtOrBeforeIso: now.toISOString(),
+          reevaluateOwnerLocalCron: true,
+        });
+        expect(due.map((candidate) => candidate.taskId)).not.toContain(
+          task.taskId,
+        );
+      }
       const prompts = resolvePendingPromptsStore(runtime);
       await prompts.record({
         roomId: `approval:${approval.id}`,
