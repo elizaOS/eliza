@@ -344,9 +344,9 @@ export class MapsScreenController {
         // Initial discovery can settle after an early search was refused.
         // Resume only the still-visible query from this same screen.
         const query = this.searching ? this.query.trim() : "";
-        if (query && !this.initialization) {
-          queueMicrotask(() => {
-            if (!this.disposed && this.host.active() && this.searching && this.query.trim() === query) this.submit();
+        if (query) {
+          void Promise.resolve(this.initialization).then(() => {
+            if (!this.disposed && this.host.active() && this.searching && this.query.trim() === query && this.state?.search.phase === "idle") this.submit();
           });
         }
       } else this.release(false);
