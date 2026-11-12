@@ -288,7 +288,7 @@ jobs:
         run: |
           bash packages/app/scripts/prepare-ios-cocoapods.sh
           bun run --cwd packages/app cap:sync:ios
-          node packages/app/scripts/run-mobile-build.ts ios-overlay
+          bun packages/app/scripts/run-mobile-build.ts ios-overlay
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.plan.outputs.ios_marketing_version }}
           ELIZAOS_VERSION_CODE: ${{ steps.plan.outputs.ios_build_number }}

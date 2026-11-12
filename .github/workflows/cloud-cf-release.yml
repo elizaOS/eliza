@@ -236,6 +236,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
+
       - name: Validate caller-admitted Telegram public identity
         id: telegram
         env:
@@ -338,33 +342,28 @@ jobs:
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const { appendFileSync } = require('node:fs');
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { selectNativeAuthCallback } from './packages/app/functions/_native-auth-callback-config.ts';
           try {
             const environment = process.env.TARGET_ENVIRONMENT;
             if (environment !== 'staging' && environment !== 'production') throw new Error();
             const raw = process.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON || '';
             let normalized = '';
             if (raw.trim()) {
-              const entries = JSON.parse(raw);
               const origins = environment === 'production'
                 ? ['https://eliza.app', 'https://cloud.eliza.app']
                 : ['https://staging.eliza.app', 'https://cloud-staging.eliza.app'];
-              if (!Array.isArray(entries)) throw new Error();
-              // Project only the public fields. The bundled helper applies the
-              // complete serving contract before any Pages deployment.
+              // Reuse the serving validator before publishing any configuration.
+              selectNativeAuthCallback(raw, new URL(origins[0]));
+              const entries = JSON.parse(raw);
+              const expectedApi = environment === 'production' ? 'https://api.eliza.app' : 'https://api-staging.eliza.app';
+              const expectedTenant = environment === 'production' ? 'elizacloud' : 'elizacloud-staging';
               normalized = JSON.stringify(entries.map((entry) => {
-                if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
-                    Object.keys(entry).length !== 3 ||
-                    Object.keys(entry).some((key) => !['redirectUri', 'androidPackage', 'appName'].includes(key)) ||
-                    typeof entry.redirectUri !== 'string' ||
-                    typeof entry.androidPackage !== 'string' ||
-                    !/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(entry.androidPackage) ||
-                    typeof entry.appName !== 'string' || !entry.appName.trim()) throw new Error();
-                const url = new URL(entry.redirectUri);
-                if (!origins.includes(url.origin) || url.username || url.password ||
-                    url.search || url.hash || url.href !== entry.redirectUri) throw new Error();
-                return { redirectUri: entry.redirectUri, androidPackage: entry.androidPackage, appName: entry.appName };
+                if (!origins.includes(new URL(entry.redirectUri).origin)) throw new Error();
+                const browser = entry.browserSignIn;
+                if (browser !== undefined && (browser.apiOrigin !== expectedApi || browser.tenant !== expectedTenant)) throw new Error();
+                return entry;
               }));
             }
             appendFileSync(process.env.GITHUB_OUTPUT,
@@ -383,8 +382,6 @@ jobs:
     # Hosted unconditionally: CI must never contend with production
     # agent-placement nodes for disk or CPU (#17881).
     runs-on: ubuntu-latest
-    # Job-level concurrency groups are repo-wide, so this also serializes
-    # against an explicitly dispatched legacy cloud-deploy-backend migration.
     # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
     # queued run (25907128646) that wedged the workflow-level v3 group also
     # pins cloud-db-migrate-staging, so migration jobs sat pending forever
@@ -476,8 +473,7 @@ jobs:
         run: |
           # A missing secret must fail the deploy, not silently skip the
           # migration — otherwise new code ships against a stale schema
-          # (the exact #11208 landmine, and the pre-2026-05-20 silent-skip
-          # regression in cloud-deploy-backend before it).
+          # (the exact #11208 landmine).
           echo "::error::DATABASE_URL / RAILWAY_DATABASE_URL / NEON_DATABASE_URL secret is missing on this environment. The schema cannot be migrated, so the Worker would deploy against a stale DB."
           echo "Add the secret in: Settings → Environments → Environment secrets."
           exit 1
@@ -510,7 +506,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
-          node packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
+          bun packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
 
       - name: Validate Railway PostgreSQL resilience gate configuration
         id: database_resilience
@@ -884,7 +880,7 @@ jobs:
             bunx wrangler deploy --env production --dry-run \
               --outdir "$evidence_dir/worker-bundle"
           ) > "$evidence_dir/dry-run.stdout" 2> "$evidence_dir/dry-run.stderr"
-          node packages/cloud/scripts/canonical-deploy-source-guard.ts \
+          bun packages/cloud/scripts/canonical-deploy-source-guard.ts \
             --run-sha "$GITHUB_SHA" \
             --canonical-ref refs/heads/main \
             > "$evidence_dir/freshness.stdout" \
@@ -924,7 +920,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
-          node packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
+          bun packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
           # The migrator evaluates identity after acquiring its advisory lock,
           # on the exact PostgreSQL session that performs the schema writes.
           bun run db:cloud:migrate
@@ -1241,7 +1237,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
+          bun packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
 
       - name: Validate canonical routing contract
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -1316,7 +1312,7 @@ jobs:
         env:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
-        run: node packages/cloud/scripts/verify-blooio-environment-isolation.ts
+        run: bun packages/cloud/scripts/verify-blooio-environment-isolation.ts
 
       - name: Validate protected mobile App Auth registration
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -1329,7 +1325,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients
+          bun packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients
 
       - name: Verify Steward provider discovery before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
@@ -1340,7 +1336,7 @@ jobs:
           STEWARD_UPSTREAM_URL: ${{ vars.ELIZA_LOGIN_API_URL || 'https://login-staging.eliza.app' }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
+          bun packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$STEWARD_UPSTREAM_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface upstream
@@ -1360,7 +1356,7 @@ jobs:
           set -euo pipefail
           STAGING_SPEECH_HOST="$(bun packages/cloud/speech-worker/verify-staging-contract.ts --selected-host)"
           export STAGING_SPEECH_HOST
-          fingerprint="$(node packages/cloud/scripts/speech-host-cutover-admission.mjs)"
+          fingerprint="$(bun packages/cloud/scripts/speech-host-cutover-admission.mjs)"
           printf 'fingerprint=%s\n' "$fingerprint" >> "$GITHUB_OUTPUT"
           printf 'selected_host=%s\n' "$STAGING_SPEECH_HOST" >> "$GITHUB_OUTPUT"
 
@@ -1383,8 +1379,8 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
-          node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
-          if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
+          bun "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
+          if ! result=$(bun "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
             STAGING_SESSION_EXCHANGE_ENABLED --env staging); then
             echo "::error::Could not confirm staging session exchange is off before cutover"
             exit 1
@@ -1652,7 +1648,7 @@ jobs:
             source_args+=(--force)
           fi
           recheck_canonical_source() {
-            node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
+            bun "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
           }
           restore_legacy_onboarding_secrets() {
             if [ "$legacy_onboarding_secret_removed" != "true" ]; then
@@ -1670,7 +1666,7 @@ jobs:
             local name="$1"
             local result
             recheck_canonical_source
-            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
+            if ! result=$(bun "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
               --versions "$name" --env staging); then
               echo "::error::Could not retire legacy staging secret binding $name."
               return 1
@@ -1696,16 +1692,16 @@ jobs:
           args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var ELIZA_APP_TELEGRAM_BOT_ID:"$ELIZA_APP_TELEGRAM_BOT_ID" --var ELIZA_APP_TELEGRAM_BOT_USERNAME:"$ELIZA_APP_TELEGRAM_BOT_USERNAME" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           # keep_vars retains deployed selectors. Omit a Redis default only if
           # its binding is absent; otherwise explicitly publish the selected backend.
-          backend_vars=$(node "$CHECKOUT_DIR/packages/cloud/scripts/worker-state-backend-vars.mjs")
+          backend_vars=$(bun "$CHECKOUT_DIR/packages/cloud/scripts/worker-state-backend-vars.mjs")
           while IFS= read -r backend_var; do
             if [ -n "$backend_var" ]; then args+=(--var "$backend_var"); fi
           done <<< "$backend_vars"
           if [ -n "${LOGIN_API_URL:-}" ]; then
-            node "$CHECKOUT_DIR/packages/cloud/scripts/verify-steward-upstream-binding.ts"
+            bun "$CHECKOUT_DIR/packages/cloud/scripts/verify-steward-upstream-binding.ts"
             args+=(--var LOGIN_API_URL:"$LOGIN_API_URL")
           fi
           if [ -n "${DISCORD_GATEWAY_URL:-}" ]; then
-            node "$CHECKOUT_DIR/packages/cloud/scripts/verify-discord-gateway-binding.ts"
+            bun "$CHECKOUT_DIR/packages/cloud/scripts/verify-discord-gateway-binding.ts"
             args+=(--var ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL:"$DISCORD_GATEWAY_URL")
           fi
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
@@ -1721,7 +1717,7 @@ jobs:
             # reads them, and the Worker needs room below 350 text bindings.
             for name in FORCE_REDIS_EVENTS NEXT_PUBLIC_NETWORK DATABASE_REGION; do
               recheck_canonical_source
-              node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
+              bun "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
                 --versions --plain-text "$name" --env staging
             done
           fi
@@ -1764,7 +1760,7 @@ jobs:
             fi
             # Re-read live admission/namespace state and recheck expiry immediately
             # before the API binding changes. A stale preflight is not authority.
-            node "$CHECKOUT_DIR/packages/cloud/scripts/speech-host-cutover-admission.mjs" >/dev/null
+            bun "$CHECKOUT_DIR/packages/cloud/scripts/speech-host-cutover-admission.mjs" >/dev/null
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
@@ -1782,7 +1778,7 @@ jobs:
         if: ${{ always() && steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' }}
         run: |
           set -euo pipefail
-          node "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.ts" \
+          bun "$CHECKOUT_DIR/packages/cloud/scripts/worker-secrets-file.ts" \
             remove-all "$RUNNER_TEMP"
 
       - name: Verify required Worker secret binding names
@@ -1797,7 +1793,7 @@ jobs:
         run: |
           set -euo pipefail
           secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
-          printf '%s' "$secret_inventory" | node -e '
+          printf '%s' "$secret_inventory" | bun -e '
             const fs = require("node:fs");
             const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
             const entries = Array.isArray(parsed)
@@ -1882,8 +1878,8 @@ jobs:
             tmp="$(mktemp)"
             code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$health_url" || echo "000")"
             if [ "$code" = "200" ] && head -c 1 "$tmp" | grep -q '[{[]'; then
-              observed_commit="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.commit || '')" "$tmp")"
-              observed_environment="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.environment || '')" "$tmp")"
+              observed_commit="$(bun -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.commit || '')" "$tmp")"
+              observed_environment="$(bun -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.environment || '')" "$tmp")"
               if [ "$observed_commit" = "$expected_commit" ] && [ "$observed_environment" = "$expected_environment" ]; then
                 echo "API health serves commit ${observed_commit} for ${observed_environment}."
                 rm -f "$tmp"
@@ -1906,7 +1902,7 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
-        run: node packages/cloud/scripts/verify-served-webhook-gateway.ts
+        run: bun packages/cloud/scripts/verify-served-webhook-gateway.ts
 
       - name: Verify deployed Telegram identity readiness
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -1941,7 +1937,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/verify-steward-provider-discovery.ts \
+          bun packages/cloud/scripts/verify-steward-provider-discovery.ts \
             --base-url "$API_URL" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --surface proxy
@@ -1956,7 +1952,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients --skip-database --verify-live
+          bun packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients --skip-database --verify-live
 
       - name: Canary authenticated staging realtime and rollback on failure
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
@@ -2058,7 +2054,7 @@ jobs:
           expected_enabled="$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"
 
           rollback_gate() {
-            if node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
+            if bun "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.ts" \
               STAGING_SESSION_EXCHANGE_ENABLED --env staging >/dev/null; then
               echo "Staging session exchange activation is off."
               return 0
@@ -2691,7 +2687,7 @@ jobs:
             if [ "$FORCE" = "true" ]; then
               source_args+=(--force)
             fi
-            node packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
+            bun packages/cloud/scripts/canonical-deploy-source-guard.ts "${source_args[@]}"
           fi
           if output=$(bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>&1); then
             printf '%s\n' "$output"
@@ -2723,7 +2719,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
+          bun packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
 
       - name: Prepare native callback Pages binding
         id: native-callbacks
@@ -2802,7 +2798,7 @@ jobs:
           fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
             recheck_canonical_source() {
-              node "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
+              bun "$CHECKOUT_DIR/packages/cloud/scripts/canonical-deploy-source-guard.ts" "${source_args[@]}"
             }
           else
             recheck_canonical_source() { :; }
@@ -2832,7 +2828,7 @@ jobs:
             fi
             if [ "$deploy_succeeded" = "true" ]; then
               if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-                pages_alias="$(node "$CHECKOUT_DIR/packages/cloud/scripts/pages-deployment-authority.ts" parse \
+                pages_alias="$(bun "$CHECKOUT_DIR/packages/cloud/scripts/pages-deployment-authority.ts" parse \
                   --input "$wrangler_output" \
                   --output "$PAGES_AUTHORITY_FILE" \
                   --expected-project "$PAGES_PROJECT" \
@@ -2881,7 +2877,7 @@ jobs:
             served_frontends+=("$PAGES_ALIAS")
           fi
           for served_url in "${served_frontends[@]}"; do
-            node packages/cloud/scripts/verify-pages-frontend-cli.ts \
+            bun packages/cloud/scripts/verify-pages-frontend-cli.ts \
               --served-url "$served_url" \
               --dist packages/app/web-dist \
               --require-text "Signing in to your agent" \
@@ -2901,7 +2897,7 @@ jobs:
               rm -f "$body"
               exit 1
             fi
-            node -e '
+            bun -e '
               const fs = require("node:fs");
               const [path, check, expectedEnvironment, expectedIssuer] = process.argv.slice(1);
               const value = JSON.parse(fs.readFileSync(path, "utf8"));
@@ -2938,7 +2934,7 @@ jobs:
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-              node packages/cloud/scripts/verify-steward-provider-discovery.ts \
+              bun packages/cloud/scripts/verify-steward-provider-discovery.ts \
                 --base-url "$served_url" \
                 --environment "$DEPLOY_ENVIRONMENT" \
                 --surface proxy
@@ -2947,7 +2943,7 @@ jobs:
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
               tenant_id="elizacloud-staging"
             fi
-            node packages/cloud/scripts/verify-steward-oauth-callbacks.ts \
+            bun packages/cloud/scripts/verify-steward-oauth-callbacks.ts \
               --base-url "$served_url" \
               --callback-url "$served_url/login" \
               --environment "$DEPLOY_ENVIRONMENT" \
@@ -3167,7 +3163,7 @@ jobs:
           export ELIZA_UI_SMOKE_DEPLOYED_BROWSER_EVIDENCE_PATH="$REMOTE_SMOKE_PATH"
           export ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH="$LATENCY_PATH"
           export ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH="$CONTINUITY_PATH"
-          started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          started_ms="$(bun -e 'process.stdout.write(String(Date.now()))')"
           echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
           set +e
           bunx playwright test \
@@ -3176,7 +3172,7 @@ jobs:
             test/ui-smoke/cloud-live.spec.ts
           smoke_status=$?
           set -e
-          completed_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          completed_ms="$(bun -e 'process.stdout.write(String(Date.now()))')"
           echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
           exit "$smoke_status"
 
@@ -3193,7 +3189,7 @@ jobs:
         if: ${{ always() && steps.deployed-browser.outcome != 'skipped' }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/pages-deployment-authority.ts verify \
+          bun packages/cloud/scripts/pages-deployment-authority.ts verify \
             --authority "$AUTHORITY_PATH" \
             --api-base https://api-staging.eliza.app \
             --phase postflight \
@@ -3202,7 +3198,7 @@ jobs:
       - name: Close deployed renderer proof
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/pages-deployment-authority.ts combine \
+          bun packages/cloud/scripts/pages-deployment-authority.ts combine \
             --authority "$AUTHORITY_PATH" \
             --preflight "$PREFLIGHT_PATH" \
             --remote-smoke "$REMOTE_SMOKE_PATH" \
@@ -3220,7 +3216,7 @@ jobs:
             echo "::error::Continuity evidence did not close"
             exit 1
           }
-          node packages/scripts/write-staging-cloud-receipt.ts \
+          bun packages/scripts/write-staging-cloud-receipt.ts \
             --output "$RECEIPT_PATH" \
             --source-sha "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" \

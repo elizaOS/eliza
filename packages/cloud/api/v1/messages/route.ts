@@ -104,13 +104,13 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 import {
   type FinishedStepUsageSource,
   firstNumber,
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
-} from "@/api-app/lib/inference-usage";
+} from "../../src/lib/inference-usage";
 
 const ROUTE_MAX_DURATION = 800;
 

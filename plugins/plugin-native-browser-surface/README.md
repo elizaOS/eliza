@@ -230,7 +230,7 @@ Android device tests exercise ownership, storage isolation, real WebView page
 reads, navigation/back/reload, and visibility after rejected presentation:
 
 ```bash
-node packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5554 --plugin plugin-native-browser-surface
 ```
 
 The bridge fixture exports native screenshots and complete page-read results.
@@ -258,7 +258,7 @@ those.
 isolated world. This checks DOM effects and document/reference isolation, not
 Android installation or the native reply proxy. The generated native asset shares
 the existing browser command implementation; `build` regenerates it and
-`node plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
+`bun plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check`
 checks that it is current.
 The same test routes commands through the authenticated native-host HTTP gateway
 and surface client. It checks complete observations, real click/fill readback,

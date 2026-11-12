@@ -10,7 +10,7 @@
  *     never written, and dropping the param restores the main app.
  *
  * Usage:
- *   ELIZA_UI_PORT=2190 node scripts/onboarding-replay-evidence.ts --out <dir>
+ *   ELIZA_UI_PORT=2190 bun scripts/onboarding-replay-evidence.ts --out <dir>
  *
  * Exits non-zero when any invariant breaks; writes numbered screenshots and a
  * summary.json into the output directory for PR evidence.

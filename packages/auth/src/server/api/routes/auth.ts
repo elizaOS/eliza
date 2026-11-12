@@ -5595,18 +5595,7 @@ auth.get("/test/sms-inbox/:phone", (c) => {
  * membership for arbitrary users.
  */
 auth.post("/test/token", async (c) => {
-  // ⚠️ SECURITY WARNING — STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN ⚠️
-  // This endpoint mints a real, fully-privileged session token for a tenant's
-  // test-account credentials. It is hard-disabled in production by default.
-  // Setting STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN=true in a production
-  // environment is DANGEROUS: anyone who learns the (often static) test-account
-  // email/phone/OTP can obtain a valid session. Only enable it for short,
-  // supervised app-review / automation windows and disable it immediately
-  // afterward. Never leave it enabled on an internet-reachable prod deploy.
-  if (
-    process.env.NODE_ENV === "production" &&
-    process.env.STEWARD_ENABLE_PROD_TEST_ACCOUNT_TOKEN !== "true"
-  ) {
+  if (process.env.NODE_ENV === "production") {
     return c.json<ApiResponse>(
       { ok: false, error: "Test account token exchange is disabled" },
       404,

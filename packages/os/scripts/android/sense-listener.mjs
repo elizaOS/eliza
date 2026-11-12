@@ -177,7 +177,7 @@ export function checkListenerSpeechBundle(entries, voiceHost, readEntry) {
   const names = new Set(entries);
   if (!names.has(LISTENER_BUNDLE_MANIFEST))
     throw new Error(
-      `The listener APK has no ${LISTENER_BUNDLE_MANIFEST}: build it after the voice outputs are staged (node scripts/android-stage-voice-models.mjs), or it can never listen`,
+      `The listener APK has no ${LISTENER_BUNDLE_MANIFEST}: build it after the voice outputs are staged (bun scripts/android-stage-voice-models.mjs), or it can never listen`,
     );
   if (readEntry) {
     let paths;

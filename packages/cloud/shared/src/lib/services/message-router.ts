@@ -17,6 +17,7 @@ import {
 import { agentPhoneContacts } from "../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../db/schemas/agent-phone-numbers";
 import { userCharacters } from "../../db/schemas/user-characters";
+import { getCloudDeployment } from "../deployment/cloud-deployment";
 import { boundedProviderFetch } from "../utils/bounded-provider-fetch";
 import { logger } from "../utils/logger";
 import { splitMessageLosslessly } from "../utils/message-chunking";
@@ -1000,7 +1001,7 @@ class MessageRouterService {
       canVoice?: boolean;
     };
   }): Promise<{ id: string; webhookUrl: string }> {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
     const webhookUrl = `${baseUrl}/api/webhooks/${params.provider}/${params.organizationId}`;
 
     const [record] = await dbWrite

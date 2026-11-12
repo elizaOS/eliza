@@ -159,7 +159,7 @@ Browser consumers can qualify the recorder and PCM conversion in headless Chromi
 
 ```sh
 bun run --cwd packages/voice build
-node packages/voice/test/consumer.mjs
+bun packages/voice/test/consumer.mjs
 ```
 
 It uses real MediaRecorder and Web Audio, never opens a physical microphone and makes no

@@ -25,7 +25,7 @@ import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+import { createTransactionalAudit } from "../../src/services/audit-transactional";
 
 import { createApiKeySchema } from "./schemas";
 

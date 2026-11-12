@@ -78,11 +78,25 @@ describe.skipIf(!url)("managed inference user lock order", () => {
     scopedUrl = parsed.toString();
     await setup.query(`
       CREATE TABLE organizations(id uuid PRIMARY KEY);
+      CREATE TABLE billing_subscriptions(id uuid PRIMARY KEY,organization_id uuid,UNIQUE(id,organization_id));
       CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid);
       CREATE TABLE api_keys(id uuid PRIMARY KEY,organization_id uuid,user_id uuid);
       CREATE TABLE inference_policy_authorities(organization_id uuid PRIMARY KEY,enabled boolean,rate_enabled boolean,epoch bigint,updated_at timestamptz);
       CREATE TABLE inference_policy_mutations(organization_id uuid,mutation_id text,fence_token text,permit_expires_at timestamptz,applying_txid bigint,phase text,epoch bigint,updated_at timestamptz);
     `);
+    // Standing publication now consults subscription authority before commit.
+    // Keep its real table/constraints while leaving this lock-only fixture
+    // without an authority row, as an organization with no snapshot.
+    const authorityMigration = await readFile(
+      new URL("../../db/migrations/0379_subscription_account_authority.sql", import.meta.url),
+      "utf8",
+    );
+    await setup.query(authorityMigration.split("--> statement-breakpoint")[0]);
+    const policyMigration = await readFile(
+      new URL("../../db/migrations/0380_organization_policy_authority.sql", import.meta.url),
+      "utf8",
+    );
+    await setup.query(`${policyMigration.split(";")[0]};`);
     // Use the migration's exact shared/exclusive lock implementation.
     const migration = await readFile(
       new URL("../../db/migrations/0553_inference_policy_snapshot_fence.sql", import.meta.url),
