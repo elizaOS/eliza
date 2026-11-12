@@ -205,7 +205,7 @@
     "limitations": [
       "NativeAndroidCodeVerification covers one plugin instance, one deployment, two code attempts with prior work still draining, twelve admitted RPC identities and the exact five-failure budget. It checks waiter ownership through retry, cancellation, expiry and MFA transitions under weak fairness of the worker.",
       "The shared JVM harness executes production verify, MFA, cancel and completion methods with synthetic HTTPS, lifecycle, storage and bridge ports. It reproduces the old split-lock waiter race and checks the exact repair, cancellation with a late wrong-code response, and exhaustion.",
-      "NativeAndroidAckRecovery separately covers startup receipt eligibility and acknowledgement retries. Code send and cooldown, Credential Manager admission, legacy browser callbacks, native authorization dialogs, credential issuance and replacement, process death, actual device scheduling and multiple plugin instances remain open."
+      "NativeAndroidAckRecovery separately covers startup receipt eligibility and acknowledgement retries, NativeAndroidActivation the in-process acknowledgement of a stored key, NativeAndroidReadiness the per-method readiness cache and return link watch, NativeAndroidKeyRenewal the silent renewal of a saved key and NativeAndroidReturnAdoption a browser return in a new process. Code send and cooldown (per-method server waits and the shared local minimum run in the JVM harness only), Credential Manager admission, the live browser callback, native authorization dialogs, credential issuance and replacement, actual device scheduling and multiple plugin instances remain open."
     ]
   },
   {
@@ -217,15 +217,115 @@
     ],
     "invariants": [
       "RetryBudget",
-      "AckUsesCurrentUnexpiredReceipt",
-      "RecoveryNeverReplacesSavedKey",
-      "RemoveOnlyStaleOrAcknowledged"
+      "AckUsesRunReceipt",
+      "SavedKeyRemovedOnlyWhenDead",
+      "DeadKeyNotLeftSaved",
+      "NewerSignInSurvives",
+      "RemoveOnlyStaleAcknowledgedOrDead",
+      "ReportedOnce"
     ],
     "status": "partial",
     "limitations": [
-      "One Android deployment, one credential and receipt slot, two startup invocations and three acknowledgement rounds per invocation. Deadline, storage availability and response classes are explicit.",
-      "Conformance executes the exact Java startup recovery and acknowledgement methods with synthetic storage and HTTPS boundaries in the existing JVM harness.",
-      "The model assumes a stable credential and receipt during an invocation. Other plugin instances, multi-deployment worker composition, storage durability, native device execution and credential issuance remain separate."
+      "One Android deployment, one credential and receipt slot, two startup invocations, three acknowledgement rounds per invocation before Cloud's deadline or one request after it, and one newer sign-in. Deadline, storage availability and response classes are explicit. A confirmed key stays and is announced; a refused or never-confirmed key is removed with its receipt, only while it is the exact saved key, and reported.",
+      "Conformance executes the exact Java startup recovery, acknowledgement, activation and expiry methods with synthetic storage and HTTPS boundaries in the existing JVM harness, including a restart after the deadline, a lost confirmation, a refusal at startup and a restart between background rounds.",
+      "The background rounds after a hand-over are NativeAndroidActivation's. The host's credential intent observation, revocation delivery, other plugin instances, multi-deployment worker composition, storage durability, native device execution and credential issuance remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidActivation",
+    "model": "packages/auth/quint/NativeAndroidActivation.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java"
+    ],
+    "invariants": [
+      "CompletedOnlyWhenConfirmed",
+      "UndecidedKeyStays",
+      "NewerActionWins",
+      "NewerReceiptStays",
+      "RemovedKeyRevoked",
+      "OneRequestAfterDeadline"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment and one stored, unconfirmed key. Up to four background acknowledgement rounds before Cloud's deadline and one after it, one newer credential action and one plugin close.",
+      "Conformance executes the exact background acknowledgement, activation and expiry methods with synthetic storage, HTTPS and lifecycle ports in the JVM harness.",
+      "Revocation delivery and the renderer's handling of the retained events remain separate. A restart between rounds is settled by the next start with the same outcomes: NativeAndroidAckRecovery models it and the JVM harness runs it."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidKeyRenewal",
+    "model": "packages/auth/quint/NativeAndroidKeyRenewal.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRenewal.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java"
+    ],
+    "invariants": [
+      "OldKeyRevokedOnlyAfterInstall",
+      "InstalledKeyIsConfirmed",
+      "WorkingKeyKept",
+      "NewerActionWins",
+      "SavedKeyNotRevoked",
+      "UnsavedKeyRevokedOnlyAfterSavedKeyLeft",
+      "SavedKeyAcceptedOrReportedRefused",
+      "NeverRenewsAfterConfirmedSuccessor",
+      "ConfirmedSuccessorIsRecorded"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment, one saved key and one renewal at a time, two daily requests, three acknowledgement rounds, one sign-in attempt and one newer credential action.",
+      "Conformance executes the exact renewal methods with synthetic storage, HTTPS and lifecycle ports in the JVM harness, and the exact save through plugin-native-agent's ResidentCredentialStore with its real provider admission (the agent is stopped and its admission removed; the savedKeyRenewed hook re-admits it before the old key is revoked). No host in this repository observes its credential intent for renewal yet, so no Android build runs it.",
+      "Cloud's rules for the keys of one sign-in are modeled as the Cloud API states them (a key that revokes itself without naming its confirmed successor ends the sign-in; so does a key that renews after its successor was confirmed). The JVM harness runs the client's exact requests against the same rules, including the two-minute tolerance for an unnamed last step. Neither runs the Cloud routes themselves: packages/cloud tests those.",
+      "The model ends at the first revocation of the replaced key. The stored duty to revoke it (written before the save with the new key's id, retried in the process and on later starts with that id, ended by a 2xx or a 401, never applied to the key that is still saved or to a duty that names no successor) is covered by the JVM harness only.",
+      "A confirmed key that was never saved stays active at Cloud, unused, until the sign-in ends or it expires; the saved key is then never renewed again and the owner signs in when it expires. A duty overwritten by a later renewal before Cloud ever answered is not retried. The Cloud renewal route, the expiry warning's presentation and device execution remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidReadiness",
+    "model": "packages/auth/quint/NativeAndroidReadiness.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInReadiness.java"
+    ],
+    "invariants": [
+      "NegativeIsMeasuredAgain",
+      "FreshAnswerServedAtOnce",
+      "FailedProbeKeepsFreshAnswer",
+      "ResumeProbesOnlyWhenAsked",
+      "CallersJoinOneProbe",
+      "WatchBounded",
+      "WatchSendsNothingUnverified",
+      "ReadyNeedsVerifiedLink",
+      "AnnouncedOnlyChanges",
+      "UnansweredMethodNeverTurnsOn"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment in browser Google mode where only the return link's verification changes. Five probes that can answer, fail, or answer without a usable answer for Google, two waiting callers, six resumes and six local link checks. A fresh answer is served at once and measured behind; a failed measurement keeps it, and one whose Google reads went unanswered keeps Google as it was; resume measures only for a recent sign-in screen.",
+      "Conformance executes the exact measure, status, probe, pause, resume and link-watch methods with a closed clock and queued ports in the JVM harness, including a recheck over a ready cache in which the registration, providers, email route or browser Google reads get no usable answer (no connection, a timeout, 5xx, 408, 429), the growing passive wait over an hour and a day of resumes without a sign-in screen.",
+      "Cloud-side changes of a method, the exact lengths of the growing wait, the stored cache across processes, native Google mode, the browser-closed end of a page in the host's own task (JVM harness only) and Android's actual domain verification remain separate."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidReturnAdoption",
+    "model": "packages/auth/quint/NativeAndroidReturnAdoption.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
+      "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java"
+    ],
+    "invariants": [
+      "CompletesOnlyWithoutNewerAction",
+      "SingleUse",
+      "NoLedgerNoCompletion",
+      "AdoptedOwnerBound"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One pending browser record, three processes and three credential actions per process, for a host with or without a durable credential generation.",
+      "Conformance executes the exact callback and adoption methods and the fence's generation methods on a plain JVM. No host in this repository attaches a generation ledger yet, so every Android build still refuses a return in a new process.",
+      "The model assumes ledger writes succeed. A failed write is tried once more and then clears the recorded generation, so a later process adopts nothing; the JVM fixture runs that across processes. Only storage that accepts neither the write nor the clear until that process dies leaves the earlier generation recorded, for at most the record's ten-minute life; a host closes it by removing the pending slot in the action that reserved. The authorization dialog, the Steward exchange and device process death remain separate."
     ]
   },
   {

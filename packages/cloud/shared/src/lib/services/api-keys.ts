@@ -11,6 +11,10 @@ import type { DbTransaction } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { writeTransaction } from "../../db/helpers";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
+import {
+  type MobileSessionRetirementCause,
+  mobileAppAuthGrantsRepository,
+} from "../../db/repositories/mobile-app-auth-grants";
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
@@ -817,6 +821,90 @@ export class ApiKeysService {
     return credentials.map((credential) => mobileCredentialSummary(credential, now));
   }
 
+  /**
+   * Plans what retiring this mobile credential takes with it (see
+   * `MobileSessionRetirementCause`) and fences those credentials before any
+   * primary write, like the credential's own revocation. `retire` runs inside
+   * the caller's tombstone transaction, ahead of the credential's own row.
+   * `settle` runs after the commit: it fences any credential that joined the
+   * session after the plan was read and evicts every retired secret.
+   * `retireAlone` repairs the session on a retry whose credential is already
+   * tombstoned. `successorCredentialId` is what a self-revocation named as the
+   * credential it was renewed into; the repository decides with it whether
+   * the request is a renewal's last step or a sign-out.
+   */
+  private async planMobileSessionRetirement(
+    credential: Pick<ApiKey, "id" | "organization_id">,
+    cause: MobileSessionRetirementCause,
+    successorCredentialId: string | null = null,
+  ) {
+    const planned = await mobileAppAuthGrantsRepository.planSessionRetirement(
+      credential.id,
+      cause,
+      { successorCredentialId, now: new Date() },
+    );
+    for (const member of planned) await revokeInferenceApiKey(member.organization_id, member.id);
+    const fenced = new Set(planned.map((member) => member.id));
+    const retired = new Map<string, ApiKey>();
+    const retire = async (tx: DbTransaction | undefined): Promise<void> => {
+      if (!tx) {
+        throw new ElizaError("Mobile session retirement requires its tombstone transaction", {
+          code: "MOBILE_API_KEY_SESSION_RETIREMENT_UNFENCED",
+          severity: "fatal",
+        });
+      }
+      const rows = await mobileAppAuthGrantsRepository.retireSessionInTransaction(
+        tx,
+        credential.id,
+        cause,
+        { successorCredentialId, now: new Date() },
+      );
+      for (const row of rows) retired.set(row.id, row);
+    };
+    const settle = async (): Promise<string[]> => {
+      for (const member of retired.values()) {
+        if (!fenced.has(member.id)) {
+          await revokeInferenceApiKey(member.organization_id, member.id);
+        }
+        await this.invalidateCache(member.key_hash);
+      }
+      if (retired.size > 0) {
+        logger.warn("[ApiKeys] Mobile sign-in retired with its credential", {
+          credentialId: credential.id,
+          organizationId: credential.organization_id,
+          cause,
+          retiredCredentialIds: [...retired.keys()],
+        });
+      }
+      return [...retired.keys()];
+    };
+    const retireAlone = async (): Promise<string[]> => {
+      if (planned.length === 0) return [];
+      await withMutationAudit(retire, undefined, undefined, [credential.organization_id]);
+      return await settle();
+    };
+    return { retire, settle, retireAlone };
+  }
+
+  /**
+   * Ends the sign-in of a mobile credential that asked to renew although its
+   * successor was already acknowledged: the secret has two holders, and the
+   * server cannot tell which one is the phone. Every credential of the
+   * sign-in is tombstoned, the presenting one included. Returns their ids.
+   */
+  async revokeMobileSessionForReuse(
+    credentialId: string,
+    organizationId: string,
+  ): Promise<string[]> {
+    if (!isUuid(credentialId) || !isUuid(organizationId)) return [];
+    return await (
+      await this.planMobileSessionRetirement(
+        { id: credentialId, organization_id: organizationId },
+        "reuse",
+      )
+    ).retireAlone();
+  }
+
   /** Revokes one account-owned mobile credential without requiring the lost secret. */
   async revokeMobileCredentialForAccount(
     credentialId: string,
@@ -835,15 +923,20 @@ export class ApiKeysService {
     // Fence the immutable identity before mutation, including response-loss
     // retries. A failed primary write leaves the credential denied safely.
     await revokeInferenceApiKey(existing.organization_id, existing.id);
+    // Revoking a device ends its sign-in: every credential renewed from it,
+    // or that it was renewed from, goes with it.
+    const session = await this.planMobileSessionRetirement(existing, "owner");
     const existingReceipt = mobileRevocationReceipt(existing);
     if (existingReceipt) {
+      await session.retireAlone();
       await this.invalidateCache(existing.key_hash);
       return { receipt: existingReceipt, revokedNow: false };
     }
 
     const receipt = await withMutationAudit(
-      async (tx) =>
-        mobileRevocationReceipt(
+      async (tx) => {
+        await session.retire(tx);
+        return mobileRevocationReceipt(
           await apiKeysRepository.tombstoneMobileByOwner(
             credentialId,
             userId,
@@ -851,7 +944,8 @@ export class ApiKeysService {
             new Date(),
             tx,
           ),
-        ),
+        );
+      },
       audit
         ? async (tx, revoked) => {
             if (revoked) await audit(tx, { receipt: revoked, revokedNow: true });
@@ -860,6 +954,7 @@ export class ApiKeysService {
       undefined,
       [organizationId],
     );
+    await session.settle();
     if (receipt) {
       await this.invalidateCache(existing.key_hash);
       return { receipt, revokedNow: true };
@@ -883,25 +978,41 @@ export class ApiKeysService {
    * Revokes a mobile row proven by its secret, including expired/inactive retries.
    * Fence the immutable identity before the primary tombstone, then confirm
    * auth-cache eviction before reporting success. Retries repair both fences.
+   *
+   * `successorCredentialId` is the credential the caller says this one was
+   * renewed into. Only then (or right after that renewal's acknowledgement)
+   * is the revocation a renewal's last step that leaves the successor alone;
+   * otherwise it is a sign-out that ends every credential of the sign-in.
    */
   async revokePresentedMobileCredential(
     secret: string,
     audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+    successorCredentialId: string | null = null,
   ): Promise<MobileApiKeySelfRevocationResult | null> {
+    if (successorCredentialId !== null && !isUuid(successorCredentialId)) return null;
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
     const existing = await apiKeysRepository.findByHashConsistent(keyHash);
     if (!existing || !isUuid(existing.source_app_id)) return null;
     await revokeInferenceApiKey(existing.organization_id, existing.id);
+    const session = await this.planMobileSessionRetirement(existing, "self", successorCredentialId);
     const existingResult = mobileSelfRevocationResult(existing, false);
     if (existingResult) {
+      await session.retireAlone();
       await this.invalidateCache(keyHash);
       return existingResult;
     }
 
     const tombstone = await withMutationAudit(
-      (tx) =>
-        apiKeysRepository.tombstoneExactMobileCredential(existing.id, keyHash, new Date(), tx),
+      async (tx) => {
+        await session.retire(tx);
+        return await apiKeysRepository.tombstoneExactMobileCredential(
+          existing.id,
+          keyHash,
+          new Date(),
+          tx,
+        );
+      },
       audit
         ? async (tx, revoked) => {
             const result = mobileSelfRevocationResult(revoked, true);
@@ -911,6 +1022,7 @@ export class ApiKeysService {
       undefined,
       [existing.organization_id],
     );
+    await session.settle();
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(keyHash),
@@ -992,12 +1104,18 @@ export class ApiKeysService {
     return result;
   }
 
-  /** Revokes only the exact active mobile row proven at the request boundary. */
+  /**
+   * Revokes the exact active mobile row proven at the request boundary, and
+   * with it the rest of its sign-in unless this is a renewal's last step (see
+   * `revokePresentedMobileCredential`).
+   */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,
     audit?: ApiKeyMutationAudit<MobileApiKeySelfRevocationResult>,
+    successorCredentialId: string | null = null,
   ): Promise<MobileApiKeySelfRevocationResult> {
     if (
+      (successorCredentialId !== null && !isUuid(successorCredentialId)) ||
       !isUuid(credential.id) ||
       !/^[0-9a-f]{64}$/i.test(credential.key_hash) ||
       !isUuid(credential.source_app_id)
@@ -1018,6 +1136,13 @@ export class ApiKeysService {
       );
       if (result?.receipt.credentialId === credential.id) {
         await revokeInferenceApiKey(result.organizationId, credential.id);
+        await (
+          await this.planMobileSessionRetirement(
+            { id: credential.id, organization_id: result.organizationId },
+            "self",
+            successorCredentialId,
+          )
+        ).retireAlone();
         await this.invalidateCache(credential.key_hash);
         return result;
       }
@@ -1029,14 +1154,17 @@ export class ApiKeysService {
     }
 
     await revokeInferenceApiKey(exact.organization_id, exact.id);
+    const session = await this.planMobileSessionRetirement(exact, "self", successorCredentialId);
     const tombstone = await withMutationAudit(
-      (tx) =>
-        apiKeysRepository.tombstoneExactMobileCredential(
+      async (tx) => {
+        await session.retire(tx);
+        return await apiKeysRepository.tombstoneExactMobileCredential(
           credential.id,
           credential.key_hash,
           new Date(),
           tx,
-        ),
+        );
+      },
       audit
         ? async (tx, revoked) => {
             const result = mobileSelfRevocationResult(revoked, true);
@@ -1046,6 +1174,7 @@ export class ApiKeysService {
       undefined,
       [exact.organization_id],
     );
+    await session.settle();
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(credential.key_hash),

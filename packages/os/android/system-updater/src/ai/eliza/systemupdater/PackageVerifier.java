@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-/** Validate the complete OTA with Android's verifier, then extract its signed A/B payload. */
+/** Validate the complete OTA and its signed A/B payload. Only a pre-apply scratch owner can extract. */
 final class PackageVerifier {
     private static final int METADATA_LIMIT = 64 * 1024;
     private static final long MAX_PACKAGE = 12L * 1024 * 1024 * 1024;
@@ -89,7 +89,8 @@ final class PackageVerifier {
                 throw new IOException("Payload directory is unavailable");
             }
             File destination = new File(outputDirectory, expectedSha256 + ".payload");
-            boolean retained = hasRetainedPayload(destination, scratch);
+            boolean retained = hasRetainedPayload(destination);
+            if (!retained && scratch == null) throw new IOException("Held update payload is unavailable");
             requirePayloadSpace(outputDirectory, destination, size);
             if (retained) {
                 if (!destination.isFile() || !destination.getCanonicalFile().equals(destination.getAbsoluteFile())
@@ -97,9 +98,7 @@ final class PackageVerifier {
                     throw new IOException("Retained payload differs");
                 }
             } else {
-                Path partial = scratch == null
-                        ? File.createTempFile("payload-", ".partial", outputDirectory).toPath()
-                        : createExtractionScratch(scratch);
+                Path partial = createExtractionScratch(scratch);
                 extractPayload(zip, entry, partial, destination.toPath(), size, fileHash);
             }
             String[] headers = {"FILE_HASH=" + fileHash, "FILE_SIZE=" + size,
@@ -110,8 +109,7 @@ final class PackageVerifier {
         }
     }
 
-    static boolean hasRetainedPayload(File destination, Path scratch) throws IOException {
-        if (scratch == null) return destination.exists();
+    static boolean hasRetainedPayload(File destination) throws IOException {
         BasicFileAttributes retained = attributes(destination.toPath());
         if (retained == null) return false;
         if (!retained.isRegularFile()) throw new IOException("Invalid retained payload path");

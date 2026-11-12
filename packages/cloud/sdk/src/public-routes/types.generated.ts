@@ -152,6 +152,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/app-auth/delegations/registration": Record<never, never>;
   "GET /api/v1/app-auth/mobile/config": Record<never, never>;
   "GET /api/v1/app-auth/mobile/credentials": Record<never, never>;
+  "GET /api/v1/app-auth/mobile/google": Record<never, never>;
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
   "GET /api/v1/approval-requests": Record<never, never>;
@@ -296,6 +297,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/google/accounts": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/calendars": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/feed": Record<never, never>;
+  "GET /api/v1/eliza/google/gmail/history": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/inbox-v1": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/read": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/search": Record<never, never>;
@@ -421,6 +423,8 @@ export interface PublicRoutePathParams {
   "GET /api/v1/solana/token-accounts/{address}": { address: string | number };
   "GET /api/v1/solana/transactions/{address}": { address: string | number };
   "GET /api/v1/steward/tenants/credentials": Record<never, never>;
+  "GET /api/v1/subscription/entitlement": Record<never, never>;
+  "GET /api/v1/subscription/entitlement-keys": Record<never, never>;
   "GET /api/v1/subscriptions/cancel/{commandId}": {
     commandId: string | number;
   };
@@ -456,6 +460,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/voice/jobs": Record<never, never>;
   "GET /api/v1/voice/list": Record<never, never>;
   "GET /api/v1/voice/session/ws": Record<never, never>;
+  "GET /api/v1/voice/speech": Record<never, never>;
   "GET /api/v1/whatsapp/status": Record<never, never>;
   "GET /api/v1/x/dms/digest": Record<never, never>;
   "GET /api/v1/x/feed": Record<never, never>;
@@ -549,6 +554,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/app-auth/delegations/revoke": Record<never, never>;
   "POST /api/v1/app-auth/delegations/token": Record<never, never>;
   "POST /api/v1/app-auth/mobile/ack": Record<never, never>;
+  "POST /api/v1/app-auth/mobile/google": Record<never, never>;
+  "POST /api/v1/app-auth/mobile/renew": Record<never, never>;
   "POST /api/v1/app-auth/mobile/token": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
   "POST /api/v1/approval-requests": Record<never, never>;
@@ -649,6 +656,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/connections/{platform}": { platform: string | number };
   "POST /api/v1/containers": Record<never, never>;
   "POST /api/v1/credits/checkout": Record<never, never>;
+  "POST /api/v1/decisions": Record<never, never>;
   "POST /api/v1/device-bus/devices": Record<never, never>;
   "POST /api/v1/device-bus/intents": Record<never, never>;
   "POST /api/v1/discord/channels/refresh": Record<never, never>;
@@ -731,6 +739,7 @@ export interface PublicRoutePathParams {
   };
   "POST /api/v1/eliza/google/calendar/events": Record<never, never>;
   "POST /api/v1/eliza/google/connect/initiate": Record<never, never>;
+  "POST /api/v1/eliza/google/connect/native": Record<never, never>;
   "POST /api/v1/eliza/google/disconnect": Record<never, never>;
   "POST /api/v1/eliza/google/gmail/message-send": Record<never, never>;
   "POST /api/v1/eliza/google/gmail/reply-send": Record<never, never>;
@@ -753,6 +762,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/generate-prompts": Record<never, never>;
   "POST /api/v1/generate-sfx": Record<never, never>;
   "POST /api/v1/generate-video": Record<never, never>;
+  "POST /api/v1/inference/warm": Record<never, never>;
   "POST /api/v1/marketing/influencers": Record<never, never>;
   "POST /api/v1/marketing/influencers/bookings": Record<never, never>;
   "POST /api/v1/marketing/influencers/bookings/{bookingId}/accept": {
@@ -834,6 +844,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/solana/rpc": Record<never, never>;
   "POST /api/v1/steward/tenants": Record<never, never>;
   "POST /api/v1/stripe/checkout": Record<never, never>;
+  "POST /api/v1/subscription/redeem": Record<never, never>;
   "POST /api/v1/subscriptions/cancel": Record<never, never>;
   "POST /api/v1/subscriptions/cancel/undo": Record<never, never>;
   "POST /api/v1/subscriptions/cancel/undo/confirm": Record<never, never>;
@@ -867,6 +878,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/voice/session": Record<never, never>;
   "POST /api/v1/voice/session/{id}/revoke": { id: string | number };
   "POST /api/v1/voice/session/consent": Record<never, never>;
+  "POST /api/v1/voice/speech": Record<never, never>;
   "POST /api/v1/voice/stt": Record<never, never>;
   "POST /api/v1/voice/tts": Record<never, never>;
   "POST /api/v1/web-push/subscriptions": Record<never, never>;
@@ -1015,6 +1027,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/app-auth/delegations/registration": never;
   "GET /api/v1/app-auth/mobile/config": never;
   "GET /api/v1/app-auth/mobile/credentials": never;
+  "GET /api/v1/app-auth/mobile/google": never;
   "GET /api/v1/app-auth/session": never;
   "GET /api/v1/app-credits/balance": never;
   "GET /api/v1/approval-requests": never;
@@ -1110,6 +1123,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/google/accounts": never;
   "GET /api/v1/eliza/google/calendar/calendars": never;
   "GET /api/v1/eliza/google/calendar/feed": never;
+  "GET /api/v1/eliza/google/gmail/history": never;
   "GET /api/v1/eliza/google/gmail/inbox-v1": never;
   "GET /api/v1/eliza/google/gmail/read": never;
   "GET /api/v1/eliza/google/gmail/search": never;
@@ -1194,6 +1208,8 @@ export interface PublicRouteHeaders {
   "GET /api/v1/solana/token-accounts/{address}": never;
   "GET /api/v1/solana/transactions/{address}": never;
   "GET /api/v1/steward/tenants/credentials": never;
+  "GET /api/v1/subscription/entitlement": never;
+  "GET /api/v1/subscription/entitlement-keys": never;
   "GET /api/v1/subscriptions/cancel/{commandId}": never;
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": never;
   "GET /api/v1/subscriptions/cancel/undo/review": never;
@@ -1221,6 +1237,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/voice/jobs": never;
   "GET /api/v1/voice/list": never;
   "GET /api/v1/voice/session/ws": never;
+  "GET /api/v1/voice/speech": never;
   "GET /api/v1/whatsapp/status": never;
   "GET /api/v1/x/dms/digest": never;
   "GET /api/v1/x/feed": never;
@@ -1297,6 +1314,8 @@ export interface PublicRouteHeaders {
   "POST /api/v1/app-auth/delegations/revoke": never;
   "POST /api/v1/app-auth/delegations/token": never;
   "POST /api/v1/app-auth/mobile/ack": never;
+  "POST /api/v1/app-auth/mobile/google": never;
+  "POST /api/v1/app-auth/mobile/renew": never;
   "POST /api/v1/app-auth/mobile/token": never;
   "POST /api/v1/app/agents": never;
   "POST /api/v1/approval-requests": never;
@@ -1371,6 +1390,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/connections/{platform}": never;
   "POST /api/v1/containers": never;
   "POST /api/v1/credits/checkout": never;
+  "POST /api/v1/decisions": never;
   "POST /api/v1/device-bus/devices": never;
   "POST /api/v1/device-bus/intents": never;
   "POST /api/v1/discord/channels/refresh": never;
@@ -1416,6 +1436,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/eliza/gateway-relay/sessions/{sessionId}/responses": never;
   "POST /api/v1/eliza/google/calendar/events": never;
   "POST /api/v1/eliza/google/connect/initiate": never;
+  "POST /api/v1/eliza/google/connect/native": never;
   "POST /api/v1/eliza/google/disconnect": never;
   "POST /api/v1/eliza/google/gmail/message-send": never;
   "POST /api/v1/eliza/google/gmail/reply-send": never;
@@ -1438,6 +1459,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/generate-prompts": never;
   "POST /api/v1/generate-sfx": never;
   "POST /api/v1/generate-video": never;
+  "POST /api/v1/inference/warm": never;
   "POST /api/v1/marketing/influencers": never;
   "POST /api/v1/marketing/influencers/bookings": never;
   "POST /api/v1/marketing/influencers/bookings/{bookingId}/accept": never;
@@ -1495,6 +1517,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/solana/rpc": never;
   "POST /api/v1/steward/tenants": never;
   "POST /api/v1/stripe/checkout": never;
+  "POST /api/v1/subscription/redeem": never;
   "POST /api/v1/subscriptions/cancel": never;
   "POST /api/v1/subscriptions/cancel/undo": never;
   "POST /api/v1/subscriptions/cancel/undo/confirm": never;
@@ -1526,6 +1549,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/voice/session": never;
   "POST /api/v1/voice/session/{id}/revoke": never;
   "POST /api/v1/voice/session/consent": never;
+  "POST /api/v1/voice/speech": never;
   "POST /api/v1/voice/stt": never;
   "POST /api/v1/voice/tts": never;
   "POST /api/v1/web-push/subscriptions": never;

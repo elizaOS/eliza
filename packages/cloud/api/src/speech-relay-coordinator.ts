@@ -366,9 +366,12 @@ export class SpeechRelayCoordinator {
           !(url.pathname === "/revoke" && request.method === "POST")
         )
           return response(404, "speech_unavailable");
-        // Instantiates this object ahead of /initialize. It reads and stores nothing.
-        if (url.pathname === "/warm" && request.method === "POST")
+        // Warm speech code ahead of /initialize without reserving credits or
+        // opening a provider. Keep its billing graph out of Worker startup.
+        if (url.pathname === "/warm" && request.method === "POST") {
+          await import("./speech-relay-admission");
           return new Response(null, { status: 200 });
+        }
         if (
           (url.pathname === "/prepare" || url.pathname === "/initialize") &&
           request.method === "POST"
@@ -529,6 +532,15 @@ export class SpeechRelayCoordinator {
           error?: unknown,
           code: "unavailable" | "unauthorized" = "unavailable",
         ) => {
+          if (error instanceof InsufficientCreditsError) {
+            logger.error("[SpeechRelay] credit admission refused", {
+              organizationId: ledger.caller.user.organization_id,
+              sessionId: ledger.sessionId,
+              requiredUsd: error.required,
+              availableUsd: error.available,
+              reason: error.reason,
+            });
+          }
           try {
             server.send(
               JSON.stringify({
@@ -749,6 +761,7 @@ export class SpeechRelayCoordinator {
         import("@elizaos/cloud-shared/lib/services/voice-usage-meter"),
         import("./speech-relay-admission"),
       ]);
+      this.current();
       await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
         runWithDbCacheAsync(async () => {
           const key = this.env.CARTESIA_API_KEY?.trim(),

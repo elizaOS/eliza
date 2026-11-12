@@ -1,4 +1,5 @@
 /** The server admits every Notes/Calendar review the phone offers, and no exact-target review without a phone selection. */
+import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -124,6 +125,40 @@ async function admitted(
 }
 
 describe("device Notes/Calendar admission", () => {
+  it("admits canonical Notes filtering only from the authenticated live list", async () => {
+    const type = "notes_list_filter",
+      caps = [NOTES_LIST_FILTER_CAPABILITY];
+    const selectedObject = {
+      kind: "canonical-note-source",
+      id: "notes",
+      revision: "12",
+    };
+    const list = { view: "notes", sensitive: false, selectedObject };
+    expect((await admitted(list, [type], caps)).admitted[type]).toBe(true);
+    for (const context of [
+      { ...list, view: "home" },
+      { ...list, sensitive: true },
+      { ...list, selectedObject: undefined },
+      { ...list, selectedObject: note },
+      {
+        ...list,
+        selectedObject: { ...selectedObject, kind: "canonical-note" },
+      },
+      { ...list, selectedObject: { ...selectedObject, revision: "old" } },
+    ])
+      expect((await admitted(context, [type], caps)).admitted[type]).toBe(
+        false,
+      );
+    expect(
+      (
+        await admitted(
+          list,
+          [type],
+          ["notes.organize.v1", "notes.local-record.v1"],
+        )
+      ).admitted[type],
+    ).toBe(false);
+  });
   it("admits every no-selection review the phone accepts on that screen", async () => {
     const ports = {
       namedCalendarReadTarget: () => ({ id: "event" }),

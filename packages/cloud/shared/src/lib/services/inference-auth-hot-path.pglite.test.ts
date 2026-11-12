@@ -31,6 +31,7 @@ setDefaultTimeout(120_000);
 
 import { closeDatabaseConnectionsForTests, getPgliteClientForTests } from "../../db/client";
 import { apiKeys } from "../../db/schemas/api-keys";
+import { mobileAppAuthGrants } from "../../db/schemas/mobile-app-auth-grants";
 import { userModerationStatus } from "../../db/schemas/moderation-violations";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
@@ -210,6 +211,8 @@ beforeAll(async () => {
   await createTable(organizations);
   await createTable(users);
   await createTable(apiKeys);
+  // Mobile revocation reads the credential's sign-in session from its grant.
+  await createTable(mobileAppAuthGrants);
   await createTable(userModerationStatus);
   const db = getPgliteClientForTests();
   await db.query(

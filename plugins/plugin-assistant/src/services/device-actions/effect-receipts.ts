@@ -336,6 +336,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "open_view":
     case "browser_navigate":
     case "notes_filter":
+    case "notes_list_filter":
     case "notes_move":
     case "notes_folder_create":
     case "notes_restore":
