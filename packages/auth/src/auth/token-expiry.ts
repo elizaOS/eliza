@@ -16,7 +16,7 @@ const REFRESH_TOKEN_EXPIRED_PATTERN =
   /\brefresh[_ ]token[_ ](?:(?:has|is)[_ ])?expired\b/i;
 
 const TOKEN_EXPIRED_PATTERN =
-  /\b(?:token[_ ](?:(?:has|is)[_ ])?expired|expired[_ ]?token|(?:oauth|access)[_ ]token[_ ](?:(?:has|is)[_ ])?expired|jwt[_ ]expired|session[_ ]expired)\b/i;
+  /\b(?:token[_ ](?:(?:has|is)[_ ])?expired|expired[_ ]?token|(?:oauth|access)[_ ]token[_ ](?:(?:has|is)[_ ])?expired|jwt[_ ]expired|session[_ ](?:(?:has|is)[_ ])?expired)\b/i;
 
 /** Returns true for explicit REFRESH-token expiry language — a genuinely
  * dead credential (the holder can no longer self-refresh), distinct from a
