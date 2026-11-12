@@ -14,8 +14,8 @@ import {
 import { EXTRA_SCRIPT_NAMES } from "../lib/script-metadata.ts";
 
 const ROOT_SCRIPTS = {
-  "test:server": "node run-all-tests.ts --lane=server --no-cloud",
-  "test:client": "node run-all-tests.ts --lane=client --no-cloud",
+  "test:server": "bun run-all-tests.ts --lane=server --no-cloud",
+  "test:client": "bun run-all-tests.ts --lane=client --no-cloud",
 };
 
 function pkg(dir, scripts, name = dir) {

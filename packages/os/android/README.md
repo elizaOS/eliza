@@ -3,7 +3,7 @@
 AOSP vendor overlays and build orchestration for Cuttlefish and supported Pixel
 products. A full image build requires a Linux x86_64 builder, the pinned AOSP
 checkout, Android build dependencies, and Eliza workspace dependencies. Cuttlefish
-launches require KVM except for the RISC-V TCG path.
+launches require KVM.
 
 From the repository root:
 
@@ -14,26 +14,23 @@ make -C packages/os/android build ARCH=x86_64 AOSP_ROOT=/path/to/aosp \
   ARGS="--allow-development-browser"
 ```
 
-`ARCH` accepts `x86_64`, `arm64`, or `riscv64`. `build` stages native inference,
+`ARCH` accepts `x86_64` or `arm64`. `build` stages native inference,
 rebuilds the unsigned image APK, syncs the vendor tree with the staged launcher,
 builds AOSP, then launches and validates Cuttlefish. Sign that APK and pass it as
 `ARGS="--launcher-apk /absolute/signed.apk --development-launcher"` (or
 `--launcher-descriptor` for a reviewed release), or stage it first; see
 [Eliza image launcher](#eliza-image-launcher). `make -C packages/os/android help`
 lists hardware-specific commands. Building an image does not flash a physical device.
-The Pixel 11 Pro lock targets stock B1 (`CD1A.260905.001.B1`) with the pinned
-Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference is
-a build input; physical installation still requires qualification and a signed contract.
 The shared `pixel10a` profile in `aosp.lock.json` pins the Pixel 10a (`stallion`)
 Android 17 source inventory in `sources/pixel10a-stallion.json`. Independent
 products can consume it; branding does not select a different hardware source.
-It is distinct from Pixel 10 (`frankel`/`blazer`/`mustang`) and Pixel 11 Pro.
+It is distinct from Pixel 10 (`frankel`/`blazer`/`mustang`).
 
 Verify the full prepared source tree and matching factory archive without writing
 to either input:
 
 ```bash
-node packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
+bun packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
   --aosp-root /absolute/aosp --vendor-archive /absolute/stallion-factory.zip
 ```
 
@@ -68,8 +65,8 @@ therefore stays installer- and lab-ineligible, and `releaseQualified` stays fals
 The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
 images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,
-are userdebug-only, and `generic-mediatek-gsi` stays blocked in
-`hardware-targets.json`. Every product requires Android 17 (SDK 37).
+are userdebug-only, and no GSI target is installer-eligible. Every product
+requires Android 17 (SDK 37).
 Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 
@@ -92,7 +89,7 @@ Staging verifies hashes, pinned APK signatures, package identities, versions and
 AOSP sync rejects missing or changed artifacts. Both apps remain nonprivileged and
 signed by their pinned publishers. Chromium pins select separate x86_64 and ARM64 development
 snapshots and stage them under architecture-specific directories. Use `ARCH=arm64`
-for Pixel builds. Neither snapshot is release-qualified; RISC-V has no pinned artifact.
+for Pixel builds. Neither snapshot is release-qualified.
 Bitwarden remains locked until the user signs in and enables Android Autofill and
 passkeys. Its F-Droid build requires manual vault sync. The launcher's Passwords
 screen provides setup, backup and recovery guidance without accessing vault data.
@@ -146,7 +143,7 @@ is unchanged. Development unpacked-extension proofs do not qualify release build
   to a reviewed SKU/baseline. Missing values remain incomplete:
 
   ```bash
-  node packages/os/scripts/android/device-qualify.ts --serial SERIAL \
+  bun packages/os/scripts/android/device-qualify.ts --serial SERIAL \
     [--requirements product.json] [--fastboot]
   ```
 
@@ -175,8 +172,7 @@ The rendered frames and `bootanimation.zip` are gitignored build outputs.
 
 ## Eliza image launcher
 
-Eliza's own Cuttlefish (x86_64, arm64, riscv64, riscv64 E1), GSI and grizzly
-products install Eliza with the nonprivileged-launcher profile, as the Pixel 10a
+Eliza's own Cuttlefish (x86_64, arm64) and GSI products install Eliza with the nonprivileged-launcher profile, as the Pixel 10a
 Eliza product does. There is no priv-app placement, platform certificate, privapp
 allowlist, init grant or app SELinux policy, and no Soong override removes a stock
 app: the stock launcher, dialer, messaging and Clock stay installed as recovery
@@ -188,7 +184,7 @@ Sign it (the release signer for a release; a developer key for development
 images), then stage it:
 
 ```bash
-node packages/os/scripts/android/image-launcher.ts \
+bun packages/os/scripts/android/image-launcher.ts \
   --brand-config packages/os/scripts/android/brand.eliza.json \
   --apk /absolute/signed.apk --development --source-commit ELIZA_COMMIT
 ```
@@ -201,8 +197,7 @@ else `/product`) and its native installation target. A reviewed descriptor must
 match that policy exactly. Staging pins the APK hash and certificate, writes
 `vendor/eliza/launcher/` (gitignored) and `image-launcher.json` staging evidence,
 and refuses a product it was not staged for when the product makefile is read.
-`sync-to-aosp.ts`, `validate.ts` and `build-grizzly-bundle.ts` re-verify those
-pins.
+`sync-to-aosp.ts` and `validate.ts` re-verify those pins.
 
 The launcher runs as `untrusted_app`, which may not execute app data (AOSP's W^X
 neverallow), so the resident runtime must be installed beside the APK. Only
@@ -227,7 +222,7 @@ Stage an independently built HOME application without replacing the Eliza runtim
 or inheriting its permission list:
 
 ```bash
-node packages/os/scripts/android/stage-launcher-overlay.ts \
+bun packages/os/scripts/android/stage-launcher-overlay.ts \
   --descriptor /absolute/launcher.json --apk /absolute/launcher.apk \
   --output /absolute/new-vendor-directory
 ```
@@ -244,6 +239,13 @@ and additive. Device provisioning must select the HOME role. The helper does not
 replace the full local-agent APK contract, grant roles, build an image, or qualify
 boot, OTA, Chromium signer admission, or physical hardware. Keep those checks
 separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts`.
+
+The import is nonprivileged unless the reviewed descriptor adds
+`privilegedPermissions`, taken only from the closed `REVIEWED_PRIVILEGED_PERMISSIONS`
+set (`android.permission.READ_PRIVILEGED_PHONE_STATE`) and declared by the APK. The
+launcher, never a companion, then installs in `<partition>/priv-app/<module>` with
+its bundled JNI, and `privapp-permissions.xml` allow-lists exactly those permissions
+in `<partition>/etc/permissions`. Eliza's own image profile refuses the field.
 
 To stage a second package of the same product, such as its update supervisor, add
 `companions: [{ moduleName, packageName, apkSha256 }]` to the descriptor and pass
@@ -279,18 +281,15 @@ which `cp2a` inherits as true) never reads it. For one, also pass
 refuses the unknown module type. Its base, build/soong `6722dd88`, is the
 `android-17.0.0_r1` revision. `native-libraries.json` then records
 `installRule: "soong-app-native"` and the patch manifest's SHA-256. The default
-(`--native-install make`) is the `Android.mk` rule above.
+(`--native-install make`) is the `Android.mk` rule above. A launcher with
+`privilegedPermissions` uses build/soong's own `prebuilt_priv_app` instead
+(`installRule: "soong-priv-app"`, no patch record).
 
 For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
 launcher descriptor. Both the nonprivileged APK and optional revocable permission
 file then install in `/system`; the default remains `/product`. Inherit the staged
 `product.mk` in the consumer's own AOSP product. This does not select an Android
 release, add Treble compatibility patches, or import Eliza's launcher identity.
-
-`lenovo-ideatab-tb336fu` records an observed stock candidate and remains blocked.
-The linked community Android 16 package is an unofficial GSI retaining Lenovo's
-`.271` vendor/kernel stack, not a device source port or evidence for Eliza's
-Android 17 target. Read-only stock qualification cannot enable installation.
 
 ## Common Pixel 10a product composition
 
@@ -299,12 +298,13 @@ The explicit Pixel 10a path takes a consumer-owned product descriptor; Eliza's i
 Product name, model, brand, launcher package/module and `vendorDirectory` are
 explicit inputs. Device configuration, the stock kernel, eSIM flags provider,
 source patch templates and SELinux inputs live once under `devices/pixel10a`.
-Main APKs are presigned, nonprivileged product apps.
+Main APKs are presigned product apps, nonprivileged unless the reviewed launcher
+descriptor names `privilegedPermissions`.
 Release admission and signing also take the consumer's parsed product data as
 `composition`; a consumer needs no entry in Eliza's product catalog. It must pass
 the same product validation and match the release descriptor's product name.
 Signer, pinned source, target-files, AVB and qualification checks remain mandatory.
-`eliza_common.mk` is not included by this target. The Cuttlefish, grizzly and GSI
+`eliza_common.mk` is not included by this target. The Cuttlefish and GSI
 products use the same nonprivileged-launcher profile through `eliza_common.mk`
 (see [Eliza image launcher](#eliza-image-launcher)).
 

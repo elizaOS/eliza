@@ -441,10 +441,11 @@ test(
     expect(pending.size).toBe(0);
     expect(floor > BigInt(snapshot.authority.generation)).toBe(true);
 
-    // A previously clear cached hold cannot lease after the hold commits: the
-    // gate refuses its superseded generation, admission refills the snapshot
-    // from the primary and refuses on the hold it now carries.
-    await expect(
+    // The durable gate rejects the cached pre-hold generation. Admission
+    // refills once from the primary and refuses its current billing hold;
+    // both the stale snapshot and a fresh projection must stop provider work.
+    const { loadInferenceAdmissionSnapshot } = await import("../inference-admission-snapshot");
+    const admitFrom = (admissionSnapshot: typeof snapshot) =>
       runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: organizationGate }, () =>
         admitOrganizationInference({
           context: {
@@ -459,10 +460,15 @@ test(
           estimatedOutputTokens: 0,
           flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
           executionCtx: { waitUntil() {} },
-          admissionSnapshot: snapshot,
+          admissionSnapshot,
         }),
-      ),
-    ).rejects.toMatchObject({ name: "BillingHoldActiveError" });
+      );
+    await expect(admitFrom(snapshot)).rejects.toMatchObject({
+      name: "BillingHoldActiveError",
+    });
+    await expect(admitFrom(await loadInferenceAdmissionSnapshot(held.orgId))).rejects.toMatchObject(
+      { name: "BillingHoldActiveError" },
+    );
 
     // Funds that land without settling the shortfall do not lift the hold.
     await creditsService.addCredits({
@@ -484,6 +490,222 @@ test(
     expect(await checkAgentCreditGate(held.orgId)).toMatchObject({ allowed: true });
     await reconcileAll();
     expect(await resumeJobs(held.agentId)).toHaveLength(1);
+  },
+  TEST_TIMEOUT,
+);
+
+/**
+ * The organization gate as a deferred provider-boundary commit sees it: a
+ * commit carrying a policy generation below the committed floor is refused
+ * and records nothing; any other commit records the dispatched lease.
+ */
+function deferredCommitGate() {
+  const state = {
+    floor: 0n,
+    pending: new Set<string>(),
+    commits: [] as { requestId: string; policyGeneration: string; capability: string }[],
+    committed: new Set<string>(),
+    otherPaths: [] as string[],
+  };
+  const binding = {
+    getByName() {
+      return {
+        async fetch(request: Request) {
+          const path = new URL(request.url).pathname;
+          const body = (await request.json()) as {
+            requestId?: string;
+            mutationId?: string;
+            policyGeneration?: string;
+            preProviderCancellationToken?: string;
+          };
+          if (path === "/policy-fence/begin") {
+            state.pending.add(String(body.mutationId));
+            return Response.json({ blocked: true });
+          }
+          if (path === "/policy-fence/commit" || path === "/policy-fence/abort") {
+            state.pending.delete(String(body.mutationId));
+            if (path === "/policy-fence/commit" && body.policyGeneration) {
+              const committed = BigInt(body.policyGeneration);
+              if (committed > state.floor) state.floor = committed;
+            }
+            return Response.json({ committed: true });
+          }
+          if (path === "/hydrate") {
+            if (body.policyGeneration && BigInt(body.policyGeneration) > state.floor)
+              state.floor = BigInt(body.policyGeneration);
+            return Response.json({ hydrated: true });
+          }
+          if (path === "/lease-dispatched") {
+            state.commits.push({
+              requestId: String(body.requestId),
+              policyGeneration: String(body.policyGeneration),
+              capability: String(body.preProviderCancellationToken),
+            });
+            if (state.pending.size > 0 || BigInt(body.policyGeneration ?? "0") < state.floor)
+              return Response.json(
+                { success: false, code: "inference_admission_policy_stale" },
+                { status: 409 },
+              );
+            state.committed.add(String(body.requestId));
+            return Response.json({
+              admitted: true,
+              dispatched: true,
+              availableUsd: 1,
+              requiredUsd: 0.1,
+            });
+          }
+          state.otherPaths.push(path);
+          throw new Error(`unexpected gate path ${path}`);
+        },
+      };
+    },
+  };
+  return { state, binding };
+}
+
+async function deferredAdmission(
+  orgId: string,
+  userId: string,
+  binding: unknown,
+  requestId: string,
+) {
+  const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+  const { admitOrganizationInference } = await import("../organization-inference-admission");
+  const { loadInferenceAdmissionSnapshot } = await import("../inference-admission-snapshot");
+  const snapshot = await loadInferenceAdmissionSnapshot(orgId);
+  const run = <T>(work: () => Promise<T>) =>
+    runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: binding }, work);
+  const admission = await run(() =>
+    admitOrganizationInference({
+      context: {
+        organizationId: orgId,
+        userId,
+        model: "openai/gpt-5-mini",
+        provider: "openai",
+        billingSource: "openai",
+        requestId,
+      },
+      estimatedInputTokens: 0,
+      estimatedOutputTokens: 0,
+      flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+      executionCtx: { waitUntil() {} },
+      admissionSnapshot: snapshot,
+      // Join the lease and dispatch at the final provider boundary.
+      atomicProviderBoundary: true,
+    }),
+  );
+  return { admission, snapshot, run };
+}
+
+test(
+  "a deferred commit refused for a superseded policy generation refills once and dispatches a healthy organization",
+  async () => {
+    const healthy = await seedBillingSuspendedAgent(FUNDED);
+    const { state, binding } = deferredCommitGate();
+    const requestId = crypto.randomUUID();
+    const { admission, snapshot, run } = await deferredAdmission(
+      healthy.orgId,
+      healthy.userId,
+      binding,
+      requestId,
+    );
+    expect(snapshot.billingHold).toBe(false);
+    // The snapshot was carried before a policy change (renewal, override or a
+    // cleared hold) advanced the generation the gate has since adopted.
+    await dbWrite.execute(
+      sql`UPDATE organization_subscription_authorities SET policy_generation = policy_generation + 1 WHERE organization_id = ${healthy.orgId}`,
+    );
+    const current = BigInt(snapshot.authority.generation) + 1n;
+    state.floor = current;
+
+    let providerCalls = 0;
+    const dispatch = async () => {
+      await admission.markProviderDispatched?.();
+      providerCalls += 1;
+    };
+    await run(dispatch);
+
+    expect(providerCalls).toBe(1);
+    expect(state.commits.map((commit) => commit.policyGeneration)).toEqual([
+      snapshot.authority.generation,
+      current.toString(),
+    ]);
+    // One request identity and one cancellation capability across the retry.
+    expect(new Set(state.commits.map((commit) => commit.requestId))).toEqual(new Set([requestId]));
+    expect(new Set(state.commits.map((commit) => commit.capability)).size).toBe(1);
+    expect([...state.committed]).toEqual([requestId]);
+
+    // The repair is spent: a second superseded generation fails closed after
+    // one refill and one retry, and the provider is not reached.
+    const second = await deferredAdmission(
+      healthy.orgId,
+      healthy.userId,
+      binding,
+      crypto.randomUUID(),
+    );
+    state.commits.length = 0;
+    state.floor = current + 10n;
+    await expect(
+      run(async () => {
+        await second.admission.markProviderDispatched?.();
+        providerCalls += 1;
+      }),
+    ).rejects.toMatchObject({ name: "InferenceAdmissionUnavailableError", statusCode: 503 });
+    await expect(
+      run(async () => {
+        await second.admission.markProviderDispatched?.();
+        providerCalls += 1;
+      }),
+    ).rejects.toMatchObject({ name: "InferenceAdmissionUnavailableError" });
+    expect(state.commits).toHaveLength(3);
+    expect(providerCalls).toBe(1);
+    expect(state.committed.size).toBe(1);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a deferred commit whose refill finds a billing hold returns the hold and settles at zero",
+  async () => {
+    const held = await seedBillingSuspendedAgent(FUNDED);
+    const { creditsService } = await import("../credits");
+    const { state, binding } = deferredCommitGate();
+    const requestId = crypto.randomUUID();
+    const { admission, snapshot, run } = await deferredAdmission(
+      held.orgId,
+      held.userId,
+      binding,
+      requestId,
+    );
+    expect(snapshot.billingHold).toBe(false);
+    const clawback = await run(() =>
+      creditsService.clawbackCredits({
+        organizationId: held.orgId,
+        amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
+        description: "refund clawback",
+        stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
+      }),
+    );
+    expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
+    expect(state.floor > BigInt(snapshot.authority.generation)).toBe(true);
+
+    let providerCalls = 0;
+    await expect(
+      run(async () => {
+        await admission.markProviderDispatched?.();
+        providerCalls += 1;
+      }),
+    ).rejects.toMatchObject({ name: "BillingHoldActiveError" });
+    expect(providerCalls).toBe(0);
+    expect(state.commits).toHaveLength(1);
+    expect(state.committed.size).toBe(0);
+
+    // The gate holds no lease for this request, so zero settlement is a local
+    // terminal release with no further gate call.
+    const settled = await run(() => admission.settle(0));
+    expect(settled).toMatchObject({ actualCost: 0, collectedAmount: 0, adjustmentType: "none" });
+    expect(state.commits).toHaveLength(1);
+    expect(state.otherPaths).toEqual([]);
   },
   TEST_TIMEOUT,
 );

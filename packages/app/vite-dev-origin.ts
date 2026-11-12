@@ -75,17 +75,9 @@ function withPublicClientPort(
 export function resolveViteDevServerRuntime(
   env: Record<string, string | undefined>,
   uiPort: number,
-  brandedPrefix = "ELIZA",
 ): ViteDevServerRuntime {
-  const branded = (suffix: string) => `${brandedPrefix}_${suffix}`;
-  const explicitOrigin = parseHttpOrigin(
-    env[branded("VITE_ORIGIN")] ?? env.ELIZA_VITE_ORIGIN,
-  );
-  const explicitHmrHost = (
-    env[branded("HMR_HOST")] ??
-    env.ELIZA_HMR_HOST ??
-    ""
-  ).trim();
+  const explicitOrigin = parseHttpOrigin(env.ELIZA_VITE_ORIGIN);
+  const explicitHmrHost = (env.ELIZA_HMR_HOST ?? "").trim();
 
   if (explicitOrigin) {
     return {
@@ -101,12 +93,7 @@ export function resolveViteDevServerRuntime(
     };
   }
 
-  if (
-    envFlagEnabled(env, [
-      branded("VITE_LOOPBACK_ORIGIN"),
-      "ELIZA_VITE_LOOPBACK_ORIGIN",
-    ])
-  ) {
+  if (envFlagEnabled(env, ["ELIZA_VITE_LOOPBACK_ORIGIN"])) {
     return {
       origin: `http://127.0.0.1:${uiPort}`,
       hmr: {

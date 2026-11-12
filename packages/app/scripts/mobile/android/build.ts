@@ -15,7 +15,6 @@ import { resolveAndroidGradleCommandsForTarget } from "../android-gradle.ts";
 import {
   auditAndroidCloudArtifact,
   auditAndroidHostE2eArtifact,
-  auditAndroidLauncherArtifact,
   auditAndroidSideloadArtifact,
   auditAndroidSmsGatewayArtifact,
   auditAndroidSystemArtifact,
@@ -40,11 +39,7 @@ import {
 } from "../platform-sync.ts";
 import { resolveAndroidSdkRoot, resolveJavaHome } from "../toolchain.ts";
 import { buildWeb, ensureRendererDistMatchesLane } from "../web-build.ts";
-import {
-  enforceAndroidLp3ColorPolicyBuildPolicy,
-  enforceAndroidLp3RemoteFallbackBuildPolicy,
-  resolveAndroidLp3ColorPolicyBuildEnv,
-} from "./cloud-policy.ts";
+import { enforceAndroidVpsSidecarBuildPolicy } from "./cloud-policy.ts";
 import { patchAndroidGradle } from "./gradle.ts";
 import {
   overlayAndroid,
@@ -53,7 +48,6 @@ import {
 } from "./overlay.ts";
 import {
   auditAndroidCloudSource,
-  auditAndroidLauncherSource,
   auditAndroidSmsGatewaySource,
   auditAndroidSystemSource,
 } from "./source-audit.ts";
@@ -64,13 +58,14 @@ export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be
   // rejected by Play. If CI or a contributor signals Play-Store intent via
   // env vars, fail loudly and point them at the right target.
-  const playStoreFlagged =
-    env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
-  if (playStoreFlagged) {
+  if (
+    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
+    env.ELIZA_PLAY_STORE_BUILD === "1"
+  ) {
     console.error(
-      "[mobile-build] Refusing target `android` under ELIZA_PLAY_STORE_BUILD / " +
-        "ELIZA_BUILD_VARIANT=store. The default `android` APK embeds the " +
+      "[mobile-build] Refusing target `android` under " +
+        "ELIZA_BUILD_VARIANT=store or ELIZA_PLAY_STORE_BUILD=1. " +
+        "The default `android` APK embeds the " +
         "on-device agent runtime and requests Play-rejected permissions " +
         "(MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). Use " +
         "`build:android:cloud` (Play-Store-compliant thin client) or " +
@@ -112,7 +107,6 @@ export const ANDROID_SOURCE_STRIPS = Object.freeze({
 
 export const ANDROID_SOURCE_AUDITS = Object.freeze({
   cloud: auditAndroidCloudSource,
-  launcher: auditAndroidLauncherSource,
   smsGateway: auditAndroidSmsGatewaySource,
   system: auditAndroidSystemSource,
 });
@@ -123,12 +117,9 @@ export const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
-  launcher: ({ androidSdkRoot, env, javaHome }) =>
-    auditAndroidLauncherArtifact({ androidSdkRoot, env, javaHome }),
   smsGateway: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
-  system: ({ androidSdkRoot, javaHome }) =>
-    auditAndroidSystemArtifact({ androidSdkRoot, javaHome }),
+  system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
 });
 
 export const ANDROID_POST_BUILDS = Object.freeze({
@@ -218,16 +209,12 @@ export async function runAndroidBuild(
   targetName,
   { debug = false, env = process.env } = {},
 ) {
-  const resolvedEnv = resolveAndroidLp3ColorPolicyBuildEnv(env);
+  const resolvedEnv = { ...env };
   const target = resolveAndroidBuildTarget(targetName, { debug });
   const targetEnv = { ...resolvedEnv, ...target.env };
-  enforceAndroidLp3ColorPolicyBuildPolicy({
+  enforceAndroidVpsSidecarBuildPolicy({
     targetName: target.target,
-    env: resolvedEnv,
-    appId: APP.appId,
-  });
-  enforceAndroidLp3RemoteFallbackBuildPolicy({
-    targetName: target.target,
+    debug,
     env: resolvedEnv,
   });
   runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", {
@@ -297,8 +284,8 @@ export async function runAndroidBuild(
     env: resolvedEnv,
     javaHome: jdk,
   });
-  const { buildArgs, metadataArgs } = resolveAndroidGradleCommands(
-    target.target,
+  const { buildArgs, metadataArgs } = resolveAndroidGradleCommandsForTarget(
+    target,
     {
       env: resolvedEnv,
       settingsGradle: readAndroidSettingsGradle(),

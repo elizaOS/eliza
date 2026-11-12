@@ -20,7 +20,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { ElizaError, redactSensitiveText } from '@elizaos/core';
-import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from '@elizaos/host/protocol';
 import type {
   WorkflowDefinitionResponse,
   WorkflowExecutionMode,
@@ -42,7 +41,7 @@ export async function publishWorkflowSource(sourcePath: string, source: string):
   if (process.platform === 'win32')
     return windowsWorkflowBackend.publishWorkflowSource(sourcePath, source);
   if (
-    resolveAliasedEnvValue('ELIZA_PLATFORM') === 'android' ||
+    process.env.ELIZA_PLATFORM?.trim() === 'android' ||
     process.env.ELIZA_MOBILE_PLATFORM === 'android'
   )
     return publishAndroidWorkflowSource(sourcePath, source);

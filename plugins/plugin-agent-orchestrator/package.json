@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -109,7 +109,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@types/bun": "1.4.2",
@@ -117,17 +117,17 @@
     "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "playwright": "^1.64.1",
+    "playwright": "^1.65.0",
     "tsup": "^9.0.0",
     "vite": "^8.3.3",
     "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -146,9 +146,9 @@
     "build": "bun run build.ts && bun run build:ui",
     "build:ts": "bun run build.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "build:ui": "tsc6 --noCheck -p ui/tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts plugins/plugin-agent-orchestrator && bun run build:views",
+    "build:ui": "tsc6 --noCheck -p ui/tsconfig.build.json && bun ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts plugins/plugin-agent-orchestrator && bun run build:views",
     "typecheck:ui": "tsc --noEmit -p ui/tsconfig.build.json",
-    "test:e2e:cockpit-browser": "node ui/test/browser-e2e/run-cockpit-browser-e2e.mjs",
+    "test:e2e:cockpit-browser": "bun ui/test/browser-e2e/run-cockpit-browser-e2e.mjs",
     "test:e2e:ui": "vitest run --root ui --config vitest.live.config.ts",
     "test:live:task-agent-live-smoke": "bun --conditions=eliza-source test/live/task-agent-live-smoke.ts"
   },

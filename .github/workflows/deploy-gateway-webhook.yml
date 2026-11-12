@@ -183,7 +183,7 @@ jobs:
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
-        run: node packages/cloud/scripts/verify-blooio-environment-isolation.ts
+        run: bun packages/cloud/scripts/verify-blooio-environment-isolation.ts
 
       - name: Verify protected runtime settings and credential equality
         shell: bash
@@ -274,7 +274,7 @@ jobs:
             "TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_ID" \
             "TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_USERNAME" \
             "TELEGRAM_ATTESTATION_CONTEXT=$TARGET_ENVIRONMENT" \
-            node packages/cloud/scripts/verify-telegram-bot-identity.ts
+            bun packages/cloud/scripts/verify-telegram-bot-identity.ts
           gateway_ELIZA_APP_TELEGRAM_BOT_TOKEN=""
           gateway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET=""
           shred -u "$variables_raw_path"
@@ -388,7 +388,7 @@ jobs:
           echo "Canonical routing values and required sensitive variable names are present; sensitive values were not printed or changed."
 
       - name: Verify paired release credentials before mutation
-        run: node packages/cloud/scripts/verify-cloudflare-gateway-release-config.ts --candidate-only
+        run: bun packages/cloud/scripts/verify-cloudflare-gateway-release-config.ts --candidate-only
 
       - name: Deploy exact gateway source and settings to Cloudflare
         id: cloudflare_deploy
@@ -397,7 +397,7 @@ jobs:
           umask 077
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
-          node packages/cloud/scripts/cloudflare-gateway-deployment.ts > "$RUNNER_TEMP/gateway-before.json"
+          bun packages/cloud/scripts/cloudflare-gateway-deployment.ts > "$RUNNER_TEMP/gateway-before.json"
           image_tag="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$EXPECTED_SERVICE_NAME:$GITHUB_SHA"
           docker build --platform linux/amd64 \
             --build-arg "ELIZA_GATEWAY_SOURCE_SHA=$GITHUB_SHA" \
@@ -424,7 +424,7 @@ jobs:
             --containers-rollout immediate > "$RUNNER_TEMP/gateway-deploy.log"
           version_id="$(sed -nE 's/^Current Version ID: ([a-f0-9-]+)$/\1/p' "$RUNNER_TEMP/gateway-deploy.log")"
           [[ "$version_id" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]
-          EXPECTED_GATEWAY_IMAGE="$GATEWAY_RELEASE_IMAGE" EXPECTED_GATEWAY_VERSION="$version_id" node packages/cloud/scripts/cloudflare-gateway-deployment.ts > "$RUNNER_TEMP/gateway-after.json"
+          EXPECTED_GATEWAY_IMAGE="$GATEWAY_RELEASE_IMAGE" EXPECTED_GATEWAY_VERSION="$version_id" bun packages/cloud/scripts/cloudflare-gateway-deployment.ts > "$RUNNER_TEMP/gateway-after.json"
           test "$(jq -r .versionId "$RUNNER_TEMP/gateway-before.json")" != "$version_id"
           echo "version_id=$version_id" >> "$GITHUB_OUTPUT"
           echo "image=$GATEWAY_RELEASE_IMAGE" >> "$GITHUB_OUTPUT"
@@ -442,7 +442,7 @@ jobs:
             EXPECTED_GATEWAY_IMAGE="${{ steps.cloudflare_deploy.outputs.image }}" \
             EXPECTED_GATEWAY_DEPLOYMENT="$DEPLOYMENT_ID" \
             EXPECTED_GATEWAY_VERSION="${{ steps.cloudflare_deploy.outputs.version_id }}" \
-              node packages/cloud/scripts/cloudflare-gateway-deployment.ts > /dev/null
+              bun packages/cloud/scripts/cloudflare-gateway-deployment.ts > /dev/null
           }
 
           assert_active_deployment before
@@ -468,7 +468,7 @@ jobs:
             exit 1
           fi
 
-          node packages/cloud/scripts/verify-cloudflare-gateway-release-config.ts
+          bun packages/cloud/scripts/verify-cloudflare-gateway-release-config.ts
 
           forwarder_probe_path="$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json"
           if ! forwarder_probe_status=$(curl \

@@ -18,7 +18,7 @@ import { Hono } from "hono";
 import {
   executeGuardedPaidProxyRequest,
   withGuardedPaidProxyAdmission,
-} from "@/api-app/lib/guarded-paid-proxy";
+} from "../../../src/lib/guarded-paid-proxy";
 
 const CORS_METHODS = "POST, OPTIONS";
 

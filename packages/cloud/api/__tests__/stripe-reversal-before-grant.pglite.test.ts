@@ -68,6 +68,8 @@ const { organizationPaymentReversalHolds } = await import(
 const { referralCodes, referralSignups } = await import(
   "@elizaos/cloud-shared/db/schemas/referrals"
 );
+const { earningsSourceEnum, ledgerEntryTypeEnum, redeemableEarningsLedger } =
+  await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
 const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
@@ -88,6 +90,9 @@ beforeAll(async () => {
         organizationPaymentReversalHolds,
         referralCodes,
         referralSignups,
+        earningsSourceEnum,
+        ledgerEntryTypeEnum,
+        redeemableEarningsLedger,
         invoices,
       },
       empty.id,

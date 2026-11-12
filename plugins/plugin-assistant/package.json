@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-assistant",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -103,14 +103,15 @@
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run && node --test --import=tsx --conditions=eliza-source src/services/message/*.test.mjs",
-    "test:device-actions": "node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts",
+    "test:device-actions": "bun ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts",
+    "test:files-review": "node --test --test-reporter=tap test/files-review-browser.test.mjs",
     "lint": "bunx @biomejs/biome check --write src",
     "lint:check": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
     "test:templates": "node --test test/templates/*.test.js",
-    "test:clock-review-export": "node ../../packages/scripts/run-vitest.ts run --config vitest.clock-review.config.ts",
+    "test:clock-review-export": "bun ../../packages/scripts/run-vitest.ts run --config vitest.clock-review.config.ts",
     "perf:providers": "bun run scripts/provider-latency-report.ts"
   },
   "dependencies": {
@@ -136,9 +137,9 @@
     "typescript": "^6.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^9.0.0",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@elizaos/plugin-sql": "workspace:*",
     "esbuild": "^0.28.0",
     "@electric-sql/pglite": "^0.4.0"

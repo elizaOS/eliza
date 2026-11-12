@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-desktop",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Adds tray icons, global shortcuts, notifications, and other desktop-only controls.",
   "keywords": [
     "desktop",
@@ -34,8 +34,8 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-desktop -- bun run build:unlocked",
-    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build": "bun ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-desktop -- bun run build:unlocked",
+    "clean": "bun ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "watch": "tsc6 --watch",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
@@ -48,10 +48,10 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.65.0",
+    "rollup": "^4.68.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

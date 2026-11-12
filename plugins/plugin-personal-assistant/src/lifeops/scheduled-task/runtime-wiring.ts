@@ -613,7 +613,8 @@ export async function composeOwnerFacingScheduledTaskText(
     );
     const { LifeOpsService } = await import("../service.js");
     const assembled = await assembleMorningBrief(runtime, {
-      timezone: facts.timezone ?? resolveConfiguredTimeZone(runtime),
+      timezone:
+        record.timezone ?? facts.timezone ?? resolveConfiguredTimeZone(runtime),
       now,
       sources: new LifeOpsService(runtime),
     });

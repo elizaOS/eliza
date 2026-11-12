@@ -1070,7 +1070,8 @@ export class DurableDraftController<Recovery = unknown> {
 
   /**
    * Clear the saved copy for a form whose own save is the effect, only while
-   * the editor still holds `expectedText` (compared trimmed).
+   * the editor still holds `expectedText` (compared trimmed). A held send for
+   * this binding prevents a form clear until the send settles.
    */
   async consume(
     expectedText: string,
@@ -1080,6 +1081,7 @@ export class DurableDraftController<Recovery = unknown> {
     if (
       !binding?.ready ||
       binding.failed ||
+      this.held?.binding.key === binding.key ||
       this.restoring.has(binding) ||
       this.state.consuming
     )
@@ -1089,6 +1091,7 @@ export class DurableDraftController<Recovery = unknown> {
     if (
       this.active !== binding ||
       binding.failed ||
+      this.held?.binding.key === binding.key ||
       this.restoring.has(binding) ||
       this.state.consuming ||
       !current() ||

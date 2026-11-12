@@ -46,6 +46,7 @@ it("packs the cold trigger API with its real paused-prompt handler and retains o
     corePort,
     [
       `export * from ${JSON.stringify(path.join(root, "packages/core/src/utils/string-to-uuid.ts"))};`,
+      `export {hashStableJson} from ${JSON.stringify(path.join(root, "packages/core/src/runtime/context-hash.ts"))};`,
       `export * from ${JSON.stringify(path.join(root, "packages/core/src/services/trigger-scheduling.ts"))};`,
       `export * from ${JSON.stringify(path.join(root, "packages/core/src/types/trigger.ts"))};`,
       `export const logger={debug(message){if(message.includes('Cannot find package')&&message.includes('@elizaos/plugin-workflow'))globalThis.workflowModuleMissing=true;},warn(message){if(message.includes('Cannot find package')&&message.includes('@elizaos/plugin-workflow'))globalThis.workflowModuleMissing=true;}};`,

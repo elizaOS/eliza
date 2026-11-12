@@ -251,13 +251,6 @@ export interface AppConfig {
   /** Full branding overrides (colors, URLs, etc.) */
   branding: Partial<BrandingConfig>;
 
-  /**
-   * Env var prefix for this app.
-   * When set, the app's brand-env layer aliases `{PREFIX}_PORT` → `ELIZA_PORT`, etc.
-   * Example: "ELIZA" generates ELIZA_PORT → ELIZA_PORT.
-   */
-  envPrefix?: string;
-
   /** Path to default character JSON (relative to project root) */
   defaultCharacter?: string;
 
@@ -301,7 +294,6 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   repoName: "eliza",
   cliName: "eliza",
   description: "Open-source AI agents for everyone",
-  envPrefix: "ELIZA",
   namespace: "eliza",
   defaultApps: ["@elizaos/plugin-personal-assistant"],
   desktop: {

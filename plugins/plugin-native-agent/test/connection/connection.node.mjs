@@ -113,3 +113,60 @@ test("connection and resident lifecycle JVM contracts pass", () => {
     fs.rmSync(output, { recursive: true, force: true });
   }
 });
+
+// The allowlist names only Cloud routes this repository serves, and no sign-in route.
+test("device billing routes exist in the Cloud API and exclude sign-in", () => {
+  const policy = fs.readFileSync(
+    source("connection/CloudConnectionPolicy"),
+    "utf8",
+  );
+  const plans = policy.match(/SUBSCRIPTION_PLANS_PATH = "([^"]+)"/)?.[1];
+  const posts = policy
+    .match(/DEVICE_BILLING_POSTS =\s*setOf\(([^)]*)\)/)?.[1]
+    .match(/"[^"]+"/g)
+    ?.map((value) => value.slice(1, -1));
+  assert.equal(plans, "/api/v1/subscriptions/plans");
+  assert.deepEqual(posts, [
+    "/api/v1/subscriptions/checkout",
+    "/api/v1/subscriptions/checkout/confirm",
+  ]);
+  const cloudApi = path.resolve(root, "../../packages/cloud/api");
+  for (const [route, method] of [
+    [plans, "GET"],
+    ...posts.map((route) => [route, "POST"]),
+  ]) {
+    assert.ok(!route.includes("/app-auth/"), `${route} is a sign-in route`);
+    const file = path.join(cloudApi, route.replace(/^\/api\//, ""), "route.ts");
+    assert.ok(fs.existsSync(file), `${route} has no Cloud route at ${file}`);
+    const served = fs.readFileSync(file, "utf8");
+    assert.match(
+      served,
+      new RegExp(`\\.${method.toLowerCase()}\\(`),
+      `${route} does not serve ${method}`,
+    );
+    if (method !== "POST") continue;
+    // This transport carries the device's mobile sign-in key, never a browser
+    // session. A billing POST that Cloud authorizes for sessions only answers
+    // 401 session_auth_required to every request made from here.
+    assert.match(
+      served,
+      /authorize: requireCurrentBillingManager,/,
+      `${route} does not accept the device's mobile credential`,
+    );
+    assert.doesNotMatch(
+      served,
+      /requireCurrentBillingManagerSession/,
+      `${route} is authorized for browser sessions only`,
+    );
+  }
+  // The authority those routes name must itself admit the mobile credential.
+  const authority = fs.readFileSync(
+    path.resolve(cloudApi, "../shared/src/lib/auth/workers-hono-auth.ts"),
+    "utf8",
+  );
+  const body = authority.slice(
+    authority.indexOf("export async function requireCurrentBillingManager("),
+  );
+  assert.match(body.slice(0, 2000), /isMobileApiKeySecret\(presented\)/);
+  assert.match(body.slice(0, 2000), /mobileCredential: credential/);
+});

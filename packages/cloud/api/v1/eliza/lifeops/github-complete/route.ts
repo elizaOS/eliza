@@ -10,6 +10,7 @@
  * org-scoped lookups when the user later acts on the connection.
  */
 
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   createLifeOpsGithubReturnResponse,
   normalizePostMessageTargetOrigin,
@@ -24,7 +25,7 @@ async function __hono_GET(
   env?: Pick<AppEnv["Bindings"], "NEXT_PUBLIC_APP_URL">,
 ) {
   const searchParams = new URL(request.url).searchParams;
-  const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = env?.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const targetOrigin = normalizePostMessageTargetOrigin(baseUrl);
   const githubConnected = searchParams.get("github_connected");
   const githubError = searchParams.get("github_error");

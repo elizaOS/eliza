@@ -149,7 +149,7 @@ function pathExists(filePath) {
 
 function removeDirectoryRecursive(filePath) {
   try {
-    execFileSync("node", [recursiveCleanupScript, filePath], {
+    execFileSync("bun", [recursiveCleanupScript, filePath], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: "pipe",

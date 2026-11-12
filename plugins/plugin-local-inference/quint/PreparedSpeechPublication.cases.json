@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java",
+    "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/SpeechRequestGate.java",
+    "plugins/plugin-local-inference/quint/PreparedSpeechPublicationProbe.java.in"
+  ],
+  "conformance": "plugins/plugin-local-inference/quint/check-prepared-speech-publication.mjs",
+  "bounds": [
+    "One admitted request, one prior playback slot, and one main-thread publication attempt. An empty slot, a prepared clip and a stream are separate states. Cancellation wins before publication.",
+    "The JVM check runs the actual bridge publication method and request gate with controlled playback and scheduler ports. It checks refusal, prior playback, the new cache file, byte cleanup, and the owning request.",
+    "The model excludes worker admission races, actual Android media, I/O failure, runtime timeouts and physical output. The progress property assumes a pending main-thread publication settles."
+  ],
+  "cases": [
+    {
+      "name": "publication-with-existing-playback",
+      "main": "PreparedSpeechPublication",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "BusyRetainsPlayback",
+        "CancellationRetainsPlayback",
+        "InterruptsOnlyWithReplacement"
+      ],
+      "temporal": ["PublicationSettles"],
+      "temporalChecks": [
+        {
+          "property": "PublicationSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of an enabled publication attempt after the worker has prepared its bytes. An unavailable main thread or a wall-clock deadline is outside this obligation."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500
+    }
+  ]
+}

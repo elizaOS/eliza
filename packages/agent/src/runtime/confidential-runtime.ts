@@ -15,7 +15,6 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
-import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { z } from "zod";
 import {
   confidentialHostConfiguration,
@@ -133,8 +132,7 @@ export async function startConfidentialRuntime(
   const admit = await createConfidentialLocalAdmission(env);
   if (
     process.env.ELIZA_MOCK_OPENAI_BASE !== undefined ||
-    resolveAliasedEnvValue("ELIZA_STATE_DIR") !==
-      configuration.host.stateDirectory ||
+    process.env.ELIZA_STATE_DIR !== configuration.host.stateDirectory ||
     (process.env.ELIZA_TRAJECTORY_DIR !== undefined &&
       process.env.ELIZA_TRAJECTORY_DIR !==
         join(configuration.host.stateDirectory, "trajectories"))

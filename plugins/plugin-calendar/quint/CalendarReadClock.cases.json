@@ -1,13 +1,24 @@
 {
   "sources": [
     "plugins/plugin-calendar/src/actions/calendar-handler.ts",
+    "plugins/plugin-calendar/src/actions/calendar-read-selected.ts",
+    "plugins/plugin-calendar/src/actions/calendar-read-selected.test.ts",
     "plugins/plugin-calendar/src/internal/format.ts",
     "plugins/plugin-calendar/src/calendar-read-result.ts",
     "plugins/plugin-calendar/src/actions/calendar-weekday-window.test.ts",
     "plugins/plugin-calendar/src/internal/next-event-time-reference.test.ts",
-    "plugins/plugin-calendar/test/calendar-read-projection.test.ts"
+    "plugins/plugin-calendar/test/calendar-read-projection.test.ts",
+    "plugins/plugin-personal-assistant/test/calendar-action-effect-receipts.pglite.test.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runtime-wiring.ts",
+    "plugins/plugin-scheduling/src/scheduled-task/runner.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts",
+    "plugins/plugin-calendar/quint/check-calendar-read-clock.mjs",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/lib/test-output.ts",
+    "plugins/plugin-calendar/test/eliza-calendar.pglite.test.ts"
   ],
-  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption.",
+  "bounds": "One read, UTC/Los Angeles/New York, absent or invalid client hints, winter/summer offset classes and a fixed19:00UTC instant. Source tests use Intl and the real action handler. The selected-read case models one provider filter over millisecond fractions0,500,999 and durations1/1000ms with exclusive whole-second bounds. One selected payload and one adjacent record are symbolic; owner, exact source/revision, complete-feed and current-selection facts may become invalid before publication. Payload17 means the complete selected record. Concrete tests retain a long description through its final marker and exclude an adjacent event. The host/request identity facts are not authorization or cryptography proofs; provider pagination, recurrence expansion, physical UI state and unbounded date/size domains remain external. Its progress requires weak fairness of query return and local settlement, while a no-fairness stuttering counterexample is required. Provider authorization, concurrent owner changes and model phrasing remain outside this clock model. The deterministic resolve/project transition order reaches display in two steps without a fairness assumption. The full personal-assistant composition uses the shared producer projection; its database-backed check requires that the local display time survives the canonical executor. Scheduled briefing conformance reads connected events through the canonical feed and retains the occurrence clock through dispatch. The selected civil-date case uses UTC minutes0/1439, source/viewer offsets-480/0/+840, one symbolic complete canonical event17, and civil day3 (Wednesday, November11,2026). All-day dates retain their ISO civil prefix regardless of offsets; timed dates use the current turn zone and may cross to day2/4. Concrete selected-action tests require19 exact cases without skips, including all-day offset preservation, Intl weekdays in UTC/LosAngeles/Kiritimati, complete128KB description, instants and versioned receipts. The sequential projection completes in one enabled transition; no temporal fairness claim is needed. This is not a proof of arbitrary calendars, locale/Intl databases, native CalendarProvider semantics or live model interpretation. Selected projection explicitly retains the entire selected event, including authorized accountEmail/calendarSummary, while general aggregate projection keeps its existing source presentation policy. Raw unselected feed-source inventory is not added to selected canonical output. Concrete fixture assertions populate both source fields and an unselected sentinel, so context loss and scope widening fail the required selected suite. Creation adds one local 16:17 wall time, UTC/Los Angeles/New York winter offsets and explicit/client/owner precedence. Planner proposals vary independently and cannot select the client/owner extraction context. The real PGlite action test checks absent/conflicting planner zones, an unstated extracted zone, a source-extracted explicit New York zone, and the persisted UTC intervals. Native empty-extraction refusal is covered separately by the native create test, outside this clock projection. Existing provider authorization, cancellation and write admission remain outside this clock projection.",
   "cases": [
     {
       "name": "local-display",
@@ -24,6 +35,68 @@
       "temporal": [],
       "maxSteps": 4,
       "samples": 200
+    },
+    {
+      "name": "selected-provider-second-precision",
+      "main": "SelectedCalendarSecondWindow",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "WholeSecondMarginIncludesSelection",
+        "PublicationNeedsExactCurrentAuthority",
+        "FullSelectedPayload"
+      ],
+      "temporal": ["FairReadSettles", "ReadSettles"],
+      "temporalChecks": [
+        {
+          "property": "FairReadSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the provider query returning and local settlement. Authority, source, complete feed, selection or cancellation may instead invalidate the read; no successful provider or physical UI proof is assumed."
+          ]
+        },
+        {
+          "property": "ReadSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An admitted provider query can remain pending without a result."
+          ]
+        }
+      ],
+      "maxSteps": 20,
+      "samples": 500,
+      "deadlock": false
+    },
+    {
+      "name": "selected-civil-date-projection",
+      "main": "SelectedCalendarCivilDate",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CanonicalEventRetained",
+        "CivilAllDayIndependentOfOffsets",
+        "TimedDateUsesCurrentTurnZone"
+      ],
+      "temporal": [],
+      "maxSteps": 3,
+      "samples": 200
+    },
+    {
+      "name": "creation-current-client-clock",
+      "main": "CalendarCreateClock",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "ContextClockIgnoresPlanner",
+        "RequestClockSelected",
+        "NoProjectionBeforeResolution",
+        "StoredClockMatchesRequest"
+      ],
+      "temporal": [],
+      "maxSteps": 4,
+      "samples": 200
     }
-  ]
+  ],
+  "conformance": "plugins/plugin-calendar/quint/check-calendar-read-clock.mjs"
 }

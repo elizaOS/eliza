@@ -422,7 +422,7 @@ jobs:
       - name: Pin deployed production renderer identity
         if: ${{ !inputs.production_credential_preflight_only }}
         run: |
-          node --input-type=module <<'NODE'
+          bun - <<'NODE'
           import { appendFileSync } from "node:fs";
           const response = await fetch("https://cloud.eliza.app/eliza-renderer-build.json", {
             redirect: "error", cache: "no-store", signal: AbortSignal.timeout(20_000),
@@ -576,7 +576,7 @@ jobs:
           set -euo pipefail
           rm -f -- "$ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH"
           rm -f -- "$ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH"
-          started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          started_ms="$(bun -e 'process.stdout.write(String(Date.now()))')"
           echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
           set +e
           bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium >/dev/null 2>&1
@@ -587,7 +587,7 @@ jobs:
           else
             echo "::error::Staging Cloud login/chat failed (category=cloud-live-staging-failed; exit=${test_status}; raw-output=suppressed)."
           fi
-          completed_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          completed_ms="$(bun -e 'process.stdout.write(String(Date.now()))')"
           echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
           exit "$test_status"
 
@@ -648,7 +648,7 @@ jobs:
           FIRST_TURN_LATENCY_MS: ${{ steps.staging-cloud-receipt-evidence.outputs.first_turn_latency_ms || 'unavailable' }}
           CONTINUITY_EVIDENCE: ${{ steps.staging-cloud-receipt-evidence.outputs.continuity_evidence || 'unavailable' }}
         run: |
-          node packages/scripts/write-staging-cloud-receipt.ts \
+          bun packages/scripts/write-staging-cloud-receipt.ts \
             --output artifacts/app-live-e2e/cloud-staging-receipt.json \
             --source-sha "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" \
@@ -807,7 +807,7 @@ jobs:
       # Build the packaged desktop app (catches build/packaging breaks). Run from
       # the repo root so desktop-build.ts resolves packages/app.
       - name: Build the Electrobun desktop app
-        run: node packages/app/scripts/desktop-build.ts build
+        run: bun packages/app/scripts/desktop-build.ts build
 
       # Launch + drive the packaged app under a virtual display + software GL.
       - name: Run packaged desktop e2e (xvfb)

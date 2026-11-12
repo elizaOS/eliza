@@ -14,12 +14,27 @@ for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await seedAppStorage(page);
       await installDefaultAppRoutes(page);
-      await openAppPath(page, "/camera");
+      // Keep the Phone view absent for the initial load and successful retry.
+      await page.route("**/api/views", async (route) => {
+        const response = await route.fetch();
+        expect(response.ok(), "view registry fixture must load").toBe(true);
+        const payload = (await response.json()) as {
+          views: { id: string }[];
+        };
+        await route.fulfill({
+          response,
+          json: {
+            ...payload,
+            views: payload.views.filter((view) => view.id !== "phone"),
+          },
+        });
+      });
+      await openAppPath(page, "/phone");
       await page.evaluate((size) => {
         document.documentElement.style.fontSize = `${size}px`;
       }, fontSize);
       const recovery = page.locator(
-        '[data-view-status="unavailable"][data-view-id="camera"]',
+        '[data-view-status="unavailable"][data-view-id="phone"]',
       );
       await expect(recovery).toBeVisible();
       let release: (() => void) | undefined;

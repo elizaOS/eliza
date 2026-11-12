@@ -7,6 +7,7 @@
 import crypto from 'node:crypto';
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,
+  hashStableJson,
   type IAgentRuntime,
   stringToUuid,
   type Task,
@@ -99,6 +100,8 @@ export interface TriggerTaskMetadata {
     | CoreTriggerRunRecord[];
 }
 export interface TriggerSummary {
+  removedAt?: number;
+  revision?: string;
   id: UUID;
   taskId: UUID;
   displayName: string;
@@ -207,6 +210,12 @@ export interface TriggerRouteContext extends RouteRequestContext {
   assertCurrentRuntime: (runtime: IAgentRuntime) => void;
   /** Host resolves an optional app conversation selector; a client never supplies a delivery room. */
   resolvePromptDeliveryRoom: (runtime: IAgentRuntime, conversationId?: string) => Promise<UUID>;
+  /** Host task activity fence, required for recoverable removal. */
+  serializeTaskMutation?: (
+    runtime: IAgentRuntime,
+    taskId: UUID,
+    operation: () => Promise<boolean>
+  ) => Promise<boolean>;
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
@@ -298,6 +307,55 @@ async function findTask(
   );
 }
 export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boolean> {
+  const match = /^\/api\/triggers\/([^/]+)(?:\/(archive|restore))?$/.exec(ctx.pathname);
+  const ownerEntityId = ctx.ownerEntityId;
+  const localOwnerEntityId = ctx.localOwnerEntityId;
+  const mutation =
+    ctx.method === 'PUT' || ctx.method === 'DELETE' || (ctx.method === 'POST' && !!match?.[2]);
+  if (
+    ctx.runtime &&
+    ctx.serializeTaskMutation &&
+    mutation &&
+    match &&
+    ownerEntityId &&
+    localOwnerEntityId
+  ) {
+    const id = decodePathComponent(match[1]);
+    if (id !== null) {
+      const runtime = ctx.runtime;
+      const task = await findTask(
+        runtime,
+        id,
+        async (current) =>
+          (await ctx.listTriggerTasks(current)).filter((row) =>
+            isTriggerTaskOwnedBy(row, ownerEntityId, localOwnerEntityId, current.agentId)
+          ),
+        ctx.readTriggerConfig
+      );
+      if (task?.id) {
+        try {
+          return await ctx.serializeTaskMutation(runtime, task.id, () =>
+            handleTriggerRoutesUnlocked(ctx)
+          );
+        } catch (failure) {
+          if (
+            failure &&
+            typeof failure === 'object' &&
+            'code' in failure &&
+            failure.code === 'TRIGGER_TASK_BUSY'
+          ) {
+            ctx.error(ctx.res, 'This automation is running. Try again after it finishes.', 409);
+            return true;
+          }
+          throw failure;
+        }
+      }
+    }
+  }
+  return handleTriggerRoutesUnlocked(ctx);
+}
+
+async function handleTriggerRoutesUnlocked(ctx: TriggerRouteContext): Promise<boolean> {
   const {
     method,
     pathname,
@@ -323,7 +381,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     TRIGGER_TASK_TAGS,
   } = ctx;
   const listResponse = (triggers: TriggerSummary[], status = 200): void => {
-    json(res, { triggers }, status);
+    json(res, { triggers, recovery: !!ctx.serializeTaskMutation }, status);
   };
   const itemResponse = (
     summary: TriggerSummary,
@@ -375,9 +433,74 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
   }
+  const recoveryMatch = /^\/api\/triggers\/([^/]+)\/(archive|restore)$/.exec(pathname);
+  if (method === 'POST' && recoveryMatch) {
+    if (!ctx.serializeTaskMutation) {
+      error(res, 'Automation recovery is unavailable on this host', 501);
+      return true;
+    }
+    const id = decodePathComponent(recoveryMatch[1]);
+    const task =
+      id === null ? null : await findTask(runtime, id, listOwnedTriggerTasks, readTriggerConfig);
+    if (!task?.id) {
+      error(res, 'Trigger not found', 404);
+      return true;
+    }
+    if (
+      isAgentOwnedHeartbeat(task, runtime.agentId) ||
+      isWorkflowManagedSchedule(task, readTriggerConfig)
+    ) {
+      error(res, 'This automation is managed by its owner', 403);
+      return true;
+    }
+    const trigger = readTriggerConfig(task);
+    if (!trigger) {
+      error(res, 'Trigger metadata is invalid', 500);
+      return true;
+    }
+    const metadata = (task.metadata ?? {}) as TriggerTaskMetadata;
+    const removed = typeof metadata.removedAt === 'number';
+    const archive = recoveryMatch[2] === 'archive';
+    if (removed !== archive) {
+      const body = await readJsonBody<Record<string, unknown>>(req, res);
+      if (!body) return true;
+      if (
+        typeof body.expectedRevision !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(body.expectedRevision)
+      ) {
+        error(res, 'Refresh the automation before changing it', 400);
+        return true;
+      }
+      if (body.expectedRevision !== hashStableJson(task)) {
+        error(res, 'This automation changed. Refresh it before continuing.', 409);
+        return true;
+      }
+      const { removedAt: _removedAt, removedWasEnabled: _removedWasEnabled, ...kept } = metadata;
+      const next: TriggerTaskMetadata = {
+        ...kept,
+        paused: archive,
+        updatedAt: Math.max(Date.now(), (metadata.updatedAt ?? 0) + 1),
+        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+        trigger: { ...trigger, enabled: false },
+        ...(archive ? { removedAt: Date.now(), removedWasEnabled: trigger.enabled } : {}),
+      };
+      if (!canPersist()) return true;
+      await runtime.updateTask(task.id, { metadata: next as Task['metadata'] });
+    }
+    const saved = await runtime.getTask(task.id);
+    if (!saved || (typeof saved.metadata?.removedAt === 'number') !== archive) {
+      error(res, 'Automation recovery could not be confirmed', 409);
+      return true;
+    }
+    json(res, { ok: true, trigger: taskToTriggerSummary(saved) });
+    return true;
+  }
   if (method === 'GET' && pathname === '/api/triggers') {
     const tasks = await listOwnedTriggerTasks(runtime);
+    const onlyRemoved =
+      new URL(req.url || '/', 'http://localhost').searchParams.get('removed') === '1';
     const triggers = tasks
+      .filter((task) => (typeof task.metadata?.removedAt === 'number') === onlyRemoved)
       .map(taskToTriggerSummary)
       .filter((summary): summary is TriggerSummary => summary !== null)
       .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
@@ -689,6 +812,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
   }
   if (method === 'PUT') {
     const task = await findTask(runtime, triggerId, listOwnedTriggerTasks, readTriggerConfig);
+    if (typeof task?.metadata?.removedAt === 'number') {
+      error(res, 'Restore this automation before editing it', 409);
+      return true;
+    }
     if (!task?.id) {
       error(res, 'Trigger not found', 404);
       return true;

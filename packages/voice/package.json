@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/voice",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Portable voice turn analysis, acoustic processing and speech metrics.",
   "type": "module",
   "license": "MIT",
@@ -96,13 +96,13 @@
     }
   },
   "scripts": {
-    "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/voice",
+    "build": "tsc6 --noCheck -p tsconfig.emit.json && bun ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/voice",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check src test package.json",
     "lint": "bunx @biomejs/biome check --write src test package.json",
     "prepublishOnly": "bun run build",
     "test": "vitest run",
-    "test:browser:consumer": "node test/consumer.mjs"
+    "test:browser:consumer": "bun test/consumer.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
@@ -112,7 +112,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "publishConfig": {
     "access": "public"
