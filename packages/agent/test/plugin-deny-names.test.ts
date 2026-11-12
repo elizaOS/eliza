@@ -162,6 +162,13 @@ it("does not load the browser after the owner switches the Browser capability of
       ui: { capabilities: { browser: false } },
     } as ElizaConfig).has(BROWSER),
   ).toBe(false);
+  // An allow-list entry does not bring it back.
+  expect(
+    collectPluginNames({
+      plugins: { allow: [BROWSER] },
+      ui: { capabilities: { browser: false } },
+    } as ElizaConfig).has(BROWSER),
+  ).toBe(false);
   // Only an explicit false disables it.
   expect(
     collectPluginNames({

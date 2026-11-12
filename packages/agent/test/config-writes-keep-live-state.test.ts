@@ -23,6 +23,7 @@ import {
   type MiscRouteContext,
 } from "../src/api/misc-routes.ts";
 import { loadElizaConfig, saveElizaConfig } from "../src/config/config.ts";
+import { collectPluginNames } from "../src/runtime/plugin-collector.ts";
 import { ElizaCharacterPersistenceService } from "../src/services/character-persistence.ts";
 
 let dir: string;
@@ -239,6 +240,12 @@ it("keeps chat setting changes and character edits after a full save of the live
       ui?: { capabilities?: Record<string, boolean>; ownerName?: string };
     };
     expect(saved.ui?.capabilities?.browser).toBe(false);
+    // The plugin collector reads the same field: the browser is not loaded.
+    vi.stubEnv("ELIZA_PLATFORM", "linux");
+    vi.stubEnv("ELIZA_PLUGIN_SET", "");
+    expect(collectPluginNames(saved).has("@elizaos/plugin-browser")).toBe(
+      false,
+    );
     expect(saved.ui?.ownerName).toBe("Dana");
     expect(saved.models?.large).toBe("claude-test-large");
     expect(saved.agents?.list?.[0]?.bio).toEqual(["new bio from chat"]);
