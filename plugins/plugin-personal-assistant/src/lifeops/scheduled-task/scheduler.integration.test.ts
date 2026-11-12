@@ -374,6 +374,37 @@ describe("processDueScheduledTasks — production wiring", () => {
     expect(transitions).toContain("fired");
   });
 
+  it("fires owner-local cron from the runtime zone when owner and scheduling zones are unset", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = new Date("2026-11-12T16:01:00.000Z");
+    vi.setSystemTime(now);
+    runtime.getSetting = (key) =>
+      key === "TIMEZONE" ? "America/Los_Angeles" : undefined;
+    const seed = await seedScheduledTask(runtime, {
+      kind: "reminder",
+      promptInstructions: "Morning timezone regression check.",
+      trigger: { kind: "cron", expression: "0 8 * * *", tz: "owner_local" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      ownerVisible: true,
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-11-12T12:11:46.968Z",
+      },
+      metadata: { createdAtIso: "2026-11-12T11:47:19.264Z" },
+    });
+    const request = { runtime, agentId: runtime.agentId, now, limit: 5 };
+    const result = await processDueScheduledTasks(request);
+    expect(result.errors).toEqual([]);
+    expect(result.fires.map((fire) => fire.taskId)).toEqual([seed.taskId]);
+    expect(result.fires[0]?.occurrenceAtIso).toBe("2026-11-12T16:00:00.000Z");
+    expect((await processDueScheduledTasks(request)).fires).toEqual([]);
+  });
+
   it("fires owner-local cron after travel changes the zone despite a future home-zone index", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
