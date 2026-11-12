@@ -29,11 +29,17 @@ async function createRuntime(): Promise<AgentRuntime> {
 
 /**
  * Seeds a world and room the way the app's conversation routes do: the world
- * records its owner in `ownership.ownerId`, and no `roles` entry is written.
+ * records its owner in `ownership.ownerId`. Extra world metadata (stored roles
+ * and their sources) is merged in when a case needs it.
  */
 async function seedRoom(
   runtime: AgentRuntime,
-  options: { type: ChannelType; source: string; ownerId: UUID },
+  options: {
+    type: ChannelType;
+    source: string;
+    ownerId: UUID;
+    metadata?: Record<string, unknown>;
+  },
 ): Promise<UUID> {
   const worldId = crypto.randomUUID() as UUID;
   const roomId = crypto.randomUUID() as UUID;
@@ -41,7 +47,7 @@ async function seedRoom(
     id: worldId,
     agentId: runtime.agentId,
     name: "Owner world",
-    metadata: { ownership: { ownerId: options.ownerId } },
+    metadata: { ownership: { ownerId: options.ownerId }, ...options.metadata },
   });
   await runtime.createRoom({
     id: roomId,
@@ -128,6 +134,39 @@ describe("resolveAdminContext", () => {
       roomId,
       "client_chat",
     );
+
+    expect(await hasAdminAccess(runtime, message)).toBe(false);
+    expect(await resolveAdminContext(runtime, message)).toBe(false);
+  });
+
+  it("follows core when it folds a stored OWNER role without a manual grant", async () => {
+    const runtime = await createRuntime();
+    const senderId = crypto.randomUUID() as UUID;
+    const roomId = await seedRoom(runtime, {
+      type: ChannelType.GROUP,
+      source: "discord",
+      ownerId: crypto.randomUUID() as UUID,
+      metadata: { roles: { [senderId]: "OWNER" } },
+    });
+    const message = messageFrom(runtime, senderId, roomId, "discord");
+
+    expect(await hasAdminAccess(runtime, message)).toBe(false);
+    expect(await resolveAdminContext(runtime, message)).toBe(false);
+  });
+
+  it("follows core when a connector-admin role matches no whitelist entry", async () => {
+    const runtime = await createRuntime();
+    const senderId = crypto.randomUUID() as UUID;
+    const roomId = await seedRoom(runtime, {
+      type: ChannelType.GROUP,
+      source: "discord",
+      ownerId: crypto.randomUUID() as UUID,
+      metadata: {
+        roles: { [senderId]: "ADMIN" },
+        roleSources: { [senderId]: "connector_admin" },
+      },
+    });
+    const message = messageFrom(runtime, senderId, roomId, "discord");
 
     expect(await hasAdminAccess(runtime, message)).toBe(false);
     expect(await resolveAdminContext(runtime, message)).toBe(false);
