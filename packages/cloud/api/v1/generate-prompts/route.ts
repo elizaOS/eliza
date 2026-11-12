@@ -10,7 +10,6 @@ import { openai } from "@ai-sdk/openai";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { estimateTokens } from "@elizaos/cloud-shared/lib/pricing";
 import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -35,10 +34,6 @@ app.post("/", async (c) => {
     const caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
       deferStrongCredentialCheck: true,
-    });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
     });
 
     const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
@@ -100,7 +95,6 @@ Random seed: ${promptSeed}`;
       estimatedOutputTokens: 128,
       executionCtx,
       admissionSnapshot: caller.admissionSnapshot,
-      credential: credentialGuard.credentialForAdmission(),
       atomicProviderBoundary: Boolean(executionCtx),
     });
     await admission.markProviderDispatched?.();

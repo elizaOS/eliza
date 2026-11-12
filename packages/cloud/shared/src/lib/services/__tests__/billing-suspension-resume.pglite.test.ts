@@ -441,10 +441,11 @@ test(
     expect(pending.size).toBe(0);
     expect(floor > BigInt(snapshot.authority.generation)).toBe(true);
 
-    // A previously clear cached hold cannot lease after the hold commits: the
-    // gate refuses its superseded generation, admission refills the snapshot
-    // from the primary and refuses on the hold it now carries.
-    await expect(
+    // Admission decides from the snapshot it is handed. A snapshot cached
+    // before the hold still admits (the accepted stale window); the snapshot
+    // the primary now projects, which rewrites the cached entry, refuses.
+    const { loadInferenceAdmissionSnapshot } = await import("../inference-admission-snapshot");
+    const admitFrom = (admissionSnapshot: typeof snapshot) =>
       runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: organizationGate }, () =>
         admitOrganizationInference({
           context: {
@@ -459,10 +460,13 @@ test(
           estimatedOutputTokens: 0,
           flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
           executionCtx: { waitUntil() {} },
-          admissionSnapshot: snapshot,
+          admissionSnapshot,
         }),
-      ),
-    ).rejects.toMatchObject({ name: "BillingHoldActiveError" });
+      );
+    await expect(admitFrom(snapshot)).resolves.toBeDefined();
+    await expect(admitFrom(await loadInferenceAdmissionSnapshot(held.orgId))).rejects.toMatchObject(
+      { name: "BillingHoldActiveError" },
+    );
 
     // Funds that land without settling the shortfall do not lift the hold.
     await creditsService.addCredits({
@@ -584,7 +588,9 @@ async function deferredAdmission(
       flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
       executionCtx: { waitUntil() {} },
       admissionSnapshot: snapshot,
-      atomicProviderBoundary: true,
+      // The session lane commits its lease when dispatch is marked; request
+      // routes run the same commit, and the same repair, during settlement.
+      commitLeaseAtDispatch: true,
     }),
   );
   return { admission, snapshot, run };

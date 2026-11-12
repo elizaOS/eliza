@@ -1,13 +1,11 @@
 /**
  * Worker speech routes run the chat completions rate limiter. A Worker request
- * is decided from the combined auth cache (one read) and the per-organization
- * Durable Object: a cold credential first gets a retryable 503 while its
- * decision hydrates under `waitUntil` (`speak` below retries once after the
- * background work, as the Eliza Cloud client does), and the limiter takes the
- * tier and key cap from that cached decision instead of the primary. Real STT
- * and TTS routes, API-key auth and policy hydration on PGlite; the
- * per-organization Durable Object and the Redis REST endpoint are counting
- * fakes. The Durable Object's own window logic is covered by its miniflare test.
+ * is decided from the combined auth cache (one read) and this isolate's
+ * request windows: the limiter takes the tier and key cap from the cached
+ * decision and makes no Durable Object or Redis call. A cold credential is
+ * decided by the primary once, inline. Real STT and TTS routes, API-key auth
+ * and policy hydration on PGlite; the per-organization Durable Object and the
+ * Redis REST endpoint are counting fakes that the limiter must never reach.
  * The personal agent's platform-funded image and video media count in the same
  * strict window when the turn runs in a Worker.
  */
@@ -258,7 +256,11 @@ afterAll(async () => {
   await closeDatabase?.();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  const { __clearIsolateRateWindows } = await import(
+    "@elizaos/cloud-shared/lib/middleware/rate-limit"
+  );
+  __clearIsolateRateWindows();
   gateCalls.length = 0;
   gateWindows.clear();
   gateDown = false;
@@ -380,11 +382,9 @@ describe("Worker speech rate limit without an admission snapshot", () => {
       // decision carries the organization projection the limiter decides from.
       expect(response.status).not.toBe(503);
     }
-    // The limiter itself takes no Redis round trip; an admitted consent
-    // request then writes its nonce to the consent store.
-    expect(
-      gateCalls.filter((call) => call.path === "/rate-limit"),
-    ).toHaveLength(4);
+    // The limiter takes no Durable Object or Redis round trip; an admitted
+    // consent request then writes its nonce to the consent store.
+    expect(gateCalls).toHaveLength(0);
   });
 
   test("a cold projection whose cache write fails is still served from the primary fill", async () => {
@@ -411,9 +411,7 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     } finally {
       write.mockRestore();
     }
-    expect(
-      gateCalls.filter((call) => call.path === "/rate-limit"),
-    ).toHaveLength(4);
+    expect(gateCalls).toHaveLength(0);
   });
 
   test("production flags: an app's key keeps its app scope, so another app's route refuses it", async () => {
@@ -477,24 +475,14 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     expect(refusal).toEqual({ error: "Access denied" });
   });
 
-  test("STT and TTS take one Durable Object decision and no Redis round trip", async () => {
+  test("STT and TTS are limited in the isolate: no Durable Object decision, no Redis round trip", async () => {
     const stt = await speak("stt", keys.plain.raw);
     const tts = await speak("tts", keys.plain.raw);
 
     expect(stt.status).toBe(400);
     expect(tts.status).toBe(400);
     expect(redisCalls).toBe(0);
-    expect(gateCalls).toHaveLength(2);
-    for (const call of gateCalls) {
-      expect(call.name).toBe(`rate-limit:v2:${ORG}`);
-      expect(call.path).toBe("/rate-limit");
-      expect(call.body).toMatchObject({
-        endpointType: "strict",
-        maxRequests: strictRpm,
-        windowMs: 60_000,
-      });
-      expect(call.body.apiKey).toBeUndefined();
-    }
+    expect(gateCalls).toHaveLength(0);
     const timing = stt.headers.get("Server-Timing") ?? "";
     expect(timing).toMatch(/(^|, )upload;dur=\d/);
     expect(timing).toMatch(/(^|, )auth;dur=\d/);
@@ -506,10 +494,7 @@ describe("Worker speech rate limit without an admission snapshot", () => {
 
     expect(refused.status).toBe(429);
     expect(await refused.json()).toMatchObject({ code: "rate_limit_exceeded" });
-    expect(gateCalls.map((call) => call.body.apiKey)).toEqual([
-      { id: keys.capped.id, maxRequests: 1 },
-      { id: keys.capped.id, maxRequests: 1 },
-    ]);
+    expect(gateCalls).toHaveLength(0);
   });
 
   test("an inactive or deleted key is refused before any limiter work", async () => {
@@ -534,19 +519,17 @@ describe("Worker speech rate limit without an admission snapshot", () => {
   });
 
   test("each organization is counted only in its own window", async () => {
-    await speak("stt", keys.plain.raw);
-    await speak("stt", keys.second.raw);
-
-    expect(gateCalls.map((call) => call.name)).toEqual([
-      `rate-limit:v2:${ORG}`,
-      `rate-limit:v2:${SECOND_ORG}`,
-    ]);
+    for (let sent = 1; sent <= strictRpm; sent += 1)
+      expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    expect((await speak("stt", keys.plain.raw)).status).toBe(429);
+    expect((await speak("stt", keys.second.raw)).status).toBe(400);
+    expect(gateCalls).toHaveLength(0);
   });
 
-  test("an unreachable limiter refuses the request", async () => {
+  test("an unreachable gate does not affect the limiter", async () => {
     gateDown = true;
-    expect((await speak("stt", keys.plain.raw)).status).toBe(503);
-    expect((await speak("tts", keys.plain.raw)).status).toBe(503);
+    expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    expect((await speak("tts", keys.plain.raw)).status).toBe(400);
     expect(redisCalls).toBe(0);
   });
 });
@@ -565,12 +548,7 @@ describe("Personal-agent media in the organization's strict window", () => {
     );
 
     expect(redisCalls).toBe(0);
-    expect(gateCalls).toHaveLength(strictRpm + 2);
-    for (const call of gateCalls)
-      expect(call).toMatchObject({
-        name: `rate-limit:v2:${ORG}`,
-        body: { endpointType: "strict", maxRequests: strictRpm },
-      });
+    expect(gateCalls).toHaveLength(0);
   });
 
   test("media without an execution context keeps the Redis window", async () => {
