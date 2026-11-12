@@ -146,9 +146,12 @@ function fixture() {
   let row: SpeechLifecycleRecord | undefined,
     queue = Promise.resolve(),
     failProof = false,
+    failAlarm = false,
     beforeTransaction: (() => void) | undefined;
   let alarmSets = 0,
-    alarmDeletes = 0;
+    alarmDeletes = 0,
+    transactionActive = false;
+  const alarmTransactions: boolean[] = [];
   const getRow = () => {
     if (!row) throw Error("Missing persisted speech fixture");
     return row;
@@ -165,17 +168,33 @@ function fixture() {
       row = structuredClone(value);
     },
     async setAlarm() {
+      if (failAlarm) {
+        failAlarm = false;
+        throw Error("alarm write failed");
+      }
+      alarmTransactions.push(transactionActive);
       alarmSets++;
     },
     async deleteAlarm() {
       alarmDeletes++;
     },
     transaction(fn: (tx: unknown) => Promise<unknown>) {
-      const next = queue.then(() => {
+      const next = queue.then(async () => {
         const before = beforeTransaction;
         beforeTransaction = undefined;
         before?.();
-        return fn(storage);
+        transactionActive = true;
+        const previous = structuredClone(row),
+          previousAlarms = alarmSets;
+        try {
+          return await fn(storage);
+        } catch (error) {
+          row = previous;
+          alarmSets = previousAlarms;
+          throw error;
+        } finally {
+          transactionActive = false;
+        }
       });
       queue = next.then(
         () => {},
@@ -256,6 +275,11 @@ function fixture() {
     revoke,
     open,
     alarms: () => ({ sets: alarmSets, deletes: alarmDeletes }),
+    alarmTransactions,
+    storedRecord: () => structuredClone(row),
+    failNextAlarm() {
+      failAlarm = true;
+    },
     beforeNextTransaction(fn: () => void) {
       beforeTransaction = fn;
     },
@@ -288,6 +312,31 @@ beforeEach(() =>
     finalizerFailure: undefined,
   }),
 );
+test("failed bootstrap alarm rolls back the prepared session", async () => {
+  const f = fixture();
+  f.failNextAlarm();
+  expect((await f.post(f.c, "prepare", f.input)).status).toBe(409);
+  expect(f.storedRecord()).toBeUndefined();
+  expect((await f.post(f.c, "prepare", f.input)).status).toBe(200);
+  expect(f.row.phase).toBe("prepared");
+});
+test("bootstrap session and expiry use one storage transaction", async () => {
+  const f = fixture();
+  expect((await f.post(f.c, "prepare", f.input)).status).toBe(200);
+  expect(f.alarmTransactions).toEqual([true]);
+  expect((await f.post(f.c, "prepare", f.input)).status).toBe(200);
+  expect(f.alarmTransactions).toEqual([true]);
+  expect(
+    (
+      await f.post(f.make(), "initialize", {
+        ...f.input,
+        tokenDigest: "b".repeat(64),
+        consentDigest: f.input.tokenDigest,
+      })
+    ).status,
+  ).toBe(200);
+  expect(f.alarmTransactions).toEqual([true, true]);
+});
 test("a prepared session can retire after restart and reject a delayed mint", async () => {
   const f = fixture();
   expect((await f.post(f.c, "prepare", f.input)).status).toBe(200);
@@ -331,6 +380,40 @@ test("the same prepared consent and owner can mint once after recreation", async
       })
     ).status,
   ).toBe(409);
+  // The saved consent is bound to both principal and organization after recreation.
+  for (const user of [
+    { id: org, organization_id: org },
+    { id: owner, organization_id: owner },
+  ]) {
+    expect(
+      (
+        await f.post(f.make(), "initialize", {
+          ...mint,
+          caller: { user },
+        })
+      ).status,
+    ).toBe(409);
+    expect(f.row.phase).toBe("prepared");
+    expect(f.row.tokenDigest).toBe(f.input.tokenDigest);
+  }
+  const expired = fixture();
+  expect((await expired.post(expired.c, "prepare", expired.input)).status).toBe(
+    200,
+  );
+  expired.beforeNextTransaction(() => {
+    expired.row.expiresAt = Date.now() - 1;
+  });
+  expect(
+    (
+      await expired.post(expired.make(), "initialize", {
+        ...expired.input,
+        tokenDigest: "b".repeat(64),
+        consentDigest: expired.input.tokenDigest,
+      })
+    ).status,
+  ).toBe(409);
+  expect(expired.row.phase).toBe("prepared");
+  expect(control.opens).toBe(0);
   expect((await f.post(restarted, "initialize", mint)).status).toBe(200);
   expect(f.row.phase).toBe("minted");
   expect(f.row.tokenDigest).toBe(mint.tokenDigest);

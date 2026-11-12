@@ -21,6 +21,7 @@ import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
+import * as taskCreate from "../actions/lib/extract-task-plan.js";
 import { PersonalAssistantStartupService } from "../startup-work.js";
 import {
   ensureLifeOpsSchedulerTask,
@@ -1065,6 +1066,27 @@ it("native owner creation and a current body edit deliver exact UTF text once th
       text: `In two minutes, remind me once in Eliza. Title: ${title}. Body: ${originalBody} Use my usual in-app and Android notifications.`,
     },
   };
+  const createPlan = {
+    mode: "create",
+    multiStep: false,
+    requestKind: "reminder",
+    nativeProjection: "in_app_only",
+    notificationMode: "default",
+    timeOfDay: null,
+    timeZone: null,
+    title,
+    description: originalBody,
+    cadenceKind: "once",
+    dueDate: null,
+    dueInDays: null,
+    dueWeekday: null,
+    dueInMinutes: 2,
+  };
+  const verifiedPlan = taskCreate.buildTaskCreatePlan(createPlan);
+  if (!verifiedPlan) throw new Error("Invalid reminder extraction fixture");
+  const extraction = vi
+    .spyOn(taskCreate, "extractTaskCreatePlanWithLlm")
+    .mockResolvedValue(verifiedPlan);
   try {
     await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
     const ordinary = await service.createDefinition({
@@ -1113,25 +1135,17 @@ it("native owner creation and a current body edit deliver exact UTF text once th
         name: "OWNER_REMINDERS_CREATE",
         params: {
           intent: message.content.text,
-          createPlan: {
-            mode: "create",
-            multiStep: false,
-            requestKind: "reminder",
-            nativeProjection: "in_app_only",
-            notificationMode: "default",
-            timeOfDay: null,
-            timeZone: null,
-            title,
-            description: originalBody,
-            cadenceKind: "once",
-            dueDate: null,
-            dueInDays: null,
-            dueWeekday: null,
-            dueInMinutes: 2,
-          },
+          createPlan,
         },
       },
     );
+    expect(extraction).toHaveBeenCalledOnce();
+    const verification = extraction.mock.calls[0]?.[0];
+    expect(verification?.intent).toBe(
+      `In two minutes, remind me once in Eliza. Title: ${title}. Body: Clock scope reminder QA, verification cdfaacf9. Résumé — café ☕; keep punctuation! Use my usual in-app and Android notifications.`,
+    );
+    expect(verification?.message?.id).toBe(message.id);
+    expect(verification?.message?.content.text).toBe(message.content.text);
     expect(created.success, JSON.stringify(created)).toBe(true);
     const applied = created.effectReceipts?.find(
       (receipt) => receipt.operation === "lifeops.definition.create",
@@ -1204,6 +1218,7 @@ it("native owner creation and a current body edit deliver exact UTF text once th
     emit.mockRestore();
     model.mockRestore();
   } finally {
+    extraction.mockRestore();
     await f.cleanup();
   }
 }, 120000);

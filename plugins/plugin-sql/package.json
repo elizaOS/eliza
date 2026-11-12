@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -62,14 +62,14 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.8",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "tsup": "^9.0.0"
   },
   "peerDependencies": {

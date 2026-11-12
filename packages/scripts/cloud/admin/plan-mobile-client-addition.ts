@@ -264,6 +264,15 @@ export function buildRegistryAddition(input: AdditionInput, appId: string) {
       existing.redirectUri !== input.redirectUri)
   )
     fail("client_already_registered_differently");
+  // A renamed first-party client may still have unexpired installed credentials.
+  // Retain it as an explicit alias only when the complete authority matches.
+  const original = before.registrations.find(
+    (entry) =>
+      entry.aliasOf === undefined &&
+      entry.enabled &&
+      entry.appId.toLowerCase() === appId.toLowerCase() &&
+      entry.redirectUri === input.redirectUri,
+  );
   // Canonical JSON gives the reviewed candidate one exact byte representation,
   // including when the requested registration was already present.
   const candidate = JSON.stringify(
@@ -276,6 +285,16 @@ export function buildRegistryAddition(input: AdditionInput, appId: string) {
             appId,
             redirectUri: input.redirectUri,
             enabled: true,
+            ...(original
+              ? {
+                  aliasOf: original.clientId,
+                  ...(original.credentialTtlSeconds === undefined
+                    ? {}
+                    : {
+                        credentialTtlSeconds: original.credentialTtlSeconds,
+                      }),
+                }
+              : {}),
           },
         ],
   );

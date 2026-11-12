@@ -1,9 +1,12 @@
 # Staging speech host Worker
 
-This Worker exports the canonical API `SpeechRelayCoordinator` in a small
-isolate. It has no public route, cron or service binding. The staging API reaches
-it through its `SPEECH_RELAY_SESSIONS` binding with `script_name`. Production
-keeps the coordinator in the API Worker until staging shows the change works.
+This candidate Worker exports the canonical API `SpeechRelayCoordinator` in a
+small isolate. It has no public route, cron or service binding. Staging and
+production keep speech sessions in their existing API namespaces. A reviewed
+staging binding change can select this host after provisioning, freeze, drain
+and protected attestation are complete. Routine API-host releases do not publish
+or require this unused candidate; live inventory must confirm the API still owns
+the selected namespace, so an active speech host cannot silently roll back.
 
 ## Why a separate Worker
 
@@ -35,8 +38,8 @@ sessions. Minting can advance the preparation expiry, and older clients can
 request renewable session windows. The staging API therefore keeps
 its `SpeechRelayCoordinator` export, with no transfer and no deletion. Objects
 created before the binding switch run their retirement alarms there and
-settle as before. New sessions are created in this Worker's namespace, which
-the declarative `[exports]` entry creates on the first deploy.
+settle as before. After activation, new sessions use this Worker's namespace,
+which the declarative `[exports]` entry creates on the first deploy.
 
 The binding switch does not route pre-switch session tokens to the old
 namespace. A client that connects with an old session or consumes an old
@@ -82,8 +85,9 @@ does not verify that record. Never put provider credentials in it.
 }
 ```
 
-The ordinary staging release cannot perform the first cutover until host
-provisioning, freeze, drain and attestation are complete. First provision only
+The committed staging binding stays local. Activation requires a reviewed change
+that adds `script_name = "eliza-cloud-speech-staging"` to that binding. The release
+then enforces the first-cutover checks above. First provision only
 the target host from the candidate source; this command does not deploy the API
 or change its binding. Use the staging account and the same voice usage backend
 as the API, then provision the required secrets through the protected operator
@@ -134,7 +138,7 @@ The source contract checks the following:
 
 - Declarations, aliases and defines match the canonical staging API.
 - The API keeps exporting its namespace.
-- Staging binds this host and production does not.
+- Staging selects exactly the API or this host; production stays on the API.
 - Hyperdrive and KV reuse the existing staging IDs.
 - Each `env.*` variable the coordinator reads matches the staging API.
 - No secret is declared as a plain-text variable.
@@ -144,12 +148,11 @@ The Voice Live E2E staging measurement in the PR checklist covers those.
 
 ## Rollback
 
-Before reverting, stop clients and freeze admission on the speech-host side;
+After activation, stop clients and freeze admission on the speech-host side;
 confirm its in-flight requests and sessions have settled and retired. A revert
-alone does not drain that namespace. Revert the speech host change and run the
-staging release. Removing only
-`script_name` from `SPEECH_RELAY_SESSIONS` fails the source contract and blocks
-the API deploy. After the revert, new sessions return to the retained API
+alone does not drain that namespace. The routine release refuses to move an
+active speech-host namespace back to the API. A reverse cutover needs its own
+reviewed drain and admission procedure before new sessions return to the API
 namespace. Keep the speech Worker, its class, and its secrets until the last
 sessions expire and their settlement and retirement are confirmed.
 

@@ -126,6 +126,41 @@ public final class CloudConnectionPolicyTest {
   check(!ROUTES.managedService("/api/v1/subscription/redeem","code=x","POST",true,false),"redemption never carries a query");
   check(!ROUTES.managedService("/api/v1/subscription/redeem",null,"GET",false,false),"redemption is POST only");
   check(!ROUTES.managedService("/api/v1/subscription/redeem/",null,"POST",true,false)&&!ROUTES.managedService("/api/v1/subscription/redeem/x",null,"POST",true,false),"neighbouring redemption paths refused");
+  // Paid plans from the phone: a bare catalogue read, and body-only checkout and confirmation.
+  check(ROUTES.managedService("/api/v1/subscriptions/plans",null,"GET",false,false),"plan catalogue read allowed");
+  check(!ROUTES.managedService("/api/v1/subscriptions/plans","currency=usd","GET",false,false)&&!ROUTES.managedService("/api/v1/subscriptions/plans","","GET",false,false),"plan catalogue never carries a query");
+  check(!ROUTES.managedService("/api/v1/subscriptions/plans",null,"GET",true,false),"plan catalogue read has no body");
+  for(String method:new String[]{"POST","PUT","PATCH","DELETE","get",null})check(!ROUTES.managedService("/api/v1/subscriptions/plans",null,method,"POST".equals(method),false),"plan catalogue is GET only: "+method);
+  for(String path:new String[]{"/api/v1/subscriptions/checkout","/api/v1/subscriptions/checkout/confirm"}){
+   check(ROUTES.managedService(path,null,"POST",true,false),"device billing POST allowed "+path);
+   check(!ROUTES.managedService(path,null,"POST",false,false),"device billing POST needs a body "+path);
+   check(!ROUTES.managedService(path,"sessionId=x","POST",true,false)&&!ROUTES.managedService(path,"","POST",true,false),"device billing POST never carries a query "+path);
+   for(String method:new String[]{"GET","PUT","PATCH","DELETE","post",null}){
+    check(!ROUTES.managedService(path,null,method,false,false)&&!ROUTES.managedService(path,null,method,true,false),"device billing route is POST only "+path+" "+method);
+   }
+   for(String spelling:new String[]{path+"/",path+"/x","/"+path,path.replace("/v1/","/v1//"),path.replace("/api/","/api/%2e%2e/api/"),path.replace("/api/v1/","/api/v2/"),path.toUpperCase(java.util.Locale.ROOT)})
+    check(!ROUTES.managedService(spelling,null,"POST",true,false),"neighbouring device billing path refused "+spelling);
+   check(!CloudConnectionPolicy.mapsRequestIdentity("idempotency-key","request_1",path,"POST"),"device billing routes carry no idempotency header "+path);
+  }
+  // Everything else under subscriptions and mobile app-auth stays off this transport.
+  for(String path:new String[]{"/api/v1/subscriptions","/api/v1/subscriptions/cancel","/api/v1/subscriptions/portal","/api/v1/subscriptions/upgrade","/api/v1/subscriptions/downgrade","/api/v1/subscriptions/plan-change","/api/v1/subscriptions/commands",
+   "/api/v1/subscriptions/checkout/payer","/api/v1/subscriptions/plans/pro","/api/v1/subscription/checkout","/api/v1/subscription/plans","/api/v1/signup-code","/api/v1/signup-code/redeem","/api/v1/signup-codes","/api/v1/referrals","/api/v1/referrals/apply","/api/v1/affiliates","/api/v1/affiliates/link",
+   "/api/v1/app-auth/mobile","/api/v1/app-auth/mobile/token","/api/v1/app-auth/mobile/ack","/api/v1/app-auth/mobile/config","/api/v1/app-auth/mobile/credentials","/api/v1/app-auth/mobile/google","/api/v1/app-auth/mobile/renew","/api/v1/app-auth/mobile/renew/","/api/v1/app-auth/mobile/renew/all","/api/v1/app-auth/session","/api/v1/app-auth/connect"})
+   for(String method:new String[]{"GET","POST","DELETE"})for(boolean body:new boolean[]{false,true})check(!ROUTES.managedService(path,null,method,body,false),"unreviewed billing or sign-in path refused "+method+" "+path);
+  // Key renewal mints an authorization code: it belongs to the native sign-in client, in every spelling.
+  for(String method:new String[]{"GET","POST","PUT","PATCH","DELETE"})for(boolean body:new boolean[]{false,true})for(String query:new String[]{null,"","state=x"})
+   check(!ROUTES.managedService("/api/v1/app-auth/mobile/renew",query,method,body,false),"sign-in key renewal never rides the managed transport "+method);
+  // The hosted payment page opens only where the host declares it: default port, HTTPS, exact host.
+  check("checkout.stripe.com".equals(CloudConnectionPolicy.SUBSCRIPTION_CHECKOUT_HOST),"checkout host is the hosted payment page");
+  check(!ROUTES.externalHost("https",CloudConnectionPolicy.SUBSCRIPTION_CHECKOUT_HOST,-1,false)&&!ROUTES.externalHost("https",CloudConnectionPolicy.SUBSCRIPTION_CHECKOUT_HOST,-1,true),"a host that does not declare the checkout host cannot open it");
+  CloudConnectionPolicy paying=new CloudConnectionPolicy(new CloudConnectionPolicy.Hosts("api.eliza.app","api-staging.eliza.app","eliza.app","staging.eliza.app","cloud.eliza.app","cloud-staging.eliza.app",Set.of("accounts.google.com",CloudConnectionPolicy.SUBSCRIPTION_CHECKOUT_HOST)));
+  check(paying.managedService("/api/v1/subscriptions/checkout",null,"POST",true,false),"declaring the checkout host does not change the route set");
+  check(paying.externalHost("https","checkout.stripe.com",-1,false)&&paying.externalHost("https","checkout.stripe.com",443,false)&&paying.externalHost("https","CHECKOUT.STRIPE.COM",-1,false),"declared checkout host opens on the default port");
+  check(!paying.externalHost("https","checkout.stripe.com",8443,false)&&!paying.externalHost("http","checkout.stripe.com",-1,false)&&!paying.externalHost("http","checkout.stripe.com",80,false),"checkout host is HTTPS on the default port only");
+  for(String host:new String[]{"stripe.com","www.stripe.com","billing.stripe.com","buy.stripe.com","js.stripe.com","checkout.stripe.com.","checkout.stripe.com.evil.example","evil-checkout.stripe.com","x.checkout.stripe.com","checkout.stripe.co"})
+   check(!paying.externalHost("https",host,-1,false)&&!paying.externalHost("https",host,-1,true),"checkout lookalike refused "+host);
+  check(!paying.admittedOrigin("https","checkout.stripe.com",-1,false),"the checkout host is opened, never requested");
+  check(CloudConnectionPolicy.admittedHeader("authorization",false)&&!CloudConnectionPolicy.admittedHeader("idempotency-key",false)&&!CloudConnectionPolicy.admittedHeader("stripe-signature",false)&&!CloudConnectionPolicy.admittedHeader("x-api-key",false),"device billing uses the ordinary headers only");
   check(ROUTES.managedService("/api/v1/billing/limits",null,"GET",false,false),"billing snapshot read allowed");
   check(!ROUTES.managedService("/api/v1/billing/limits",null,"POST",true,false),"billing snapshot write refused");
   check(!ROUTES.managedService("/api/v1/credits/balance",null,"GET",false,false),"credit balance retired");
@@ -168,6 +203,6 @@ public final class CloudConnectionPolicyTest {
   CloudConnectionPolicy other=new CloudConnectionPolicy(new CloudConnectionPolicy.Hosts("api.example.test","api-staging.example.test","example.test","staging.example.test","cloud.example.test","cloud-staging.example.test",Set.of()));
   check(other.admittedOrigin("https","api.example.test",-1,false)&&!other.admittedOrigin("https","api.eliza.app",-1,false),"origin follows injected hosts");
   check(!other.externalHost("https","accounts.google.com",-1,false)&&other.externalHost("https","cloud.example.test",-1,false),"external providers are injected");
-  System.out.println("PASS cloud connection policy: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin, managed-service routes (Maps included) and openExternal hosts");
+  System.out.println("PASS cloud connection policy: retired pairing, exact Cloud self-revocation, the flag-off Cloud API origin, managed-service routes (Maps and device billing included) and openExternal hosts");
  }
 }

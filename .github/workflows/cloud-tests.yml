@@ -15,6 +15,11 @@ on:
         type: boolean
         default: false
   workflow_dispatch:
+    inputs:
+      profile_startup_only:
+        description: Build and profile Worker startup without deployment
+        type: boolean
+        default: false
 
 # Develop Full owns latest-tip cancellation for called runs.
 concurrency:
@@ -34,6 +39,7 @@ permissions:
 
 jobs:
   changes:
+    if: ${{ !inputs.profile_startup_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -84,17 +90,50 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 25
+    timeout-minutes: 90
+    services:
+      quint-postgres:
+        image: ${{ !inputs.source_checks_in_canonical_ci && 'postgres:16-alpine' || '' }}
+        env:
+          POSTGRES_USER: qa_quint
+          POSTGRES_DB: quint_protocol
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       # Match canonical source checks: one compiler fits the hosted runner,
       # including the cloud API's larger declaration graph.
       NODE_OPTIONS: --max-old-space-size=8192
       RUN_TURBO_CONCURRENCY: "1"
+      INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Setup Java for Quint verification
+        if: ${{ !inputs.source_checks_in_canonical_ci }}
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install local Redis for protocol conformance
+        if: ${{ !inputs.source_checks_in_canonical_ci }}
+        run: |
+          if ! command -v redis-server >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Lint and typecheck cloud workspaces
         if: ${{ !inputs.source_checks_in_canonical_ci }}
+        env:
+          # Embedded suites use PGlite; lock checks use the separate qa_* fixture.
+          DATABASE_URL: pglite://memory
+          TEST_DATABASE_URL: pglite://memory
         run: bun run verify:cloud
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
@@ -283,3 +322,53 @@ jobs:
     uses: ./.github/workflows/cloud-stability.yml
     with:
       real_model: false
+
+  startup-profile:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.profile_startup_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24.15.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build linked workspaces
+        run: bun run build:core
+      - name: Verify speech transport and retirement
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/cloud-startup
+          for test_file in \
+            packages/cloud/api/src/speech-retirement-coordinator.test.ts \
+            packages/cloud/api/src/speech-retirement-composition.test.ts \
+            packages/cloud/api/__tests__/speech-relay-worker.test.ts; do
+            bun test "./$test_file" 2>&1 | tee -a test-results/cloud-startup/speech-tests.log
+          done
+      - name: Profile local Worker startup
+        working-directory: packages/cloud/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$GITHUB_WORKSPACE/test-results/cloud-startup"
+          mkdir -p "$output"
+          git rev-parse HEAD > "$output/source.txt"
+          bunx --no-install wrangler deploy --env staging --dry-run \
+            --outfile "$output/worker.bundle" 2>&1 | tee "$output/bundle.log"
+          bunx --no-install wrangler check startup --worker "$output/worker.bundle" \
+            --outfile "$output/worker.cpuprofile" 2>&1 | tee "$output/profile.log"
+      - name: Upload startup profile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cloud-local-startup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/cloud-startup
+          if-no-files-found: warn
+          retention-days: 7

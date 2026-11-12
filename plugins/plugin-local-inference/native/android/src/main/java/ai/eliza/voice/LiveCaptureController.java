@@ -48,12 +48,19 @@ public final class LiveCaptureController {
   boolean open(long epoch);
   /** Startup may be stricter than delivery of an interrupted capture. */
   default boolean canStart(long epoch){return open(epoch);}
+  /** Runs on the serial capture worker immediately before native acquisition.
+   * Hosts release another microphone mode here, or throw to refuse the start. */
+  default void beforeCapture(long epoch,boolean reopen)throws Exception{}
   /** The capture for {@code id} (normally {@code new LiveVoiceCapture(context,inference,id,sink,echoCancel)}). */
   LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,boolean echoCancel)throws Exception;
+  /** The capture for {@code id} with the gate timing and barge-in reports of {@code options}; a host that honours them overrides this. */
+  default LiveVoiceCapture capture(String id,LiveVoiceCapture.Sink sink,LiveCaptureOptions options)throws Exception{return capture(id,sink,options.echoCancel);}
   void frames(String id,JSONArray frames,JSONArray vad,float peak);
   void ended(String id,String error);
   /** A piped final transcript ({@code error} null) or a pipe failure code ({@code value} null). */
   default void transcript(String id,JSONObject value,String error){}
+  /** Sustained speech on a barge-in capture; see {@link LiveVoiceCapture.Sink#bargeIn}. Runs on the capture thread. */
+  default boolean bargeIn(String id,long atMs){return true;}
  }
  /** Opens the owner-bound transport for one capture's pipe; throws when no owner is enrolled. */
  public interface Route { LiveSegmentPipe.Transport open()throws Exception; }
@@ -95,15 +102,18 @@ public final class LiveCaptureController {
   * automatic reopen after a busy hold) is refused after a call or pause since the last capture; a
   * user-initiated start clears that.
   */
- public void start(LiveCaptureAdmission.Ticket ticket,boolean echoCancel,Route route,String roomId,boolean reopen,Started result){
+ public void start(LiveCaptureAdmission.Ticket ticket,boolean echoCancel,Route route,String roomId,boolean reopen,Started result){start(ticket,LiveCaptureOptions.of(echoCancel),route,roomId,reopen,result);}
+ /** As above, with the gate timing and barge-in reports of {@code options}. */
+ public void start(LiveCaptureAdmission.Ticket ticket,LiveCaptureOptions options,Route route,String roomId,boolean reopen,Started result){
   final String id=ticket.id;final long epoch=ticket.epoch;
   submit(worker,()->{
    String since=interrupted;
    if(reopen&&since!=null){result.refused(CANCELLED.equals(since)?CANCELLED:INTERRUPTED,CANCELLED.equals(since)?null:since);return;}
-   if(!reopen)interrupted=null;
    final Startup startup=new Startup();
    if(!host.canStart(epoch)||!admission.current(ticket)){refuse(ticket,startup,result);return;}
-   if(live!=null){String old=live.captureId();live.stop();live=null;current=null;closePipe(old,true,now());}
+   if(!reopen)interrupted=null;
+   try{if(live!=null){String old=live.captureId();live.stopAndWait();live=null;current=null;closePipe(old,true,now());}}
+   catch(RuntimeException unconfirmed){result.refused("Microphone release is unconfirmed",CAPTURE);return;}
    final LiveSegmentPipe pipe;
    try{
     pipe=route==null?null:new LiveSegmentPipe(route.open(),new LiveSegmentPipe.Sink(){
@@ -132,11 +142,14 @@ public final class LiveCaptureController {
    if(!host.canStart(epoch)||!admission.current(ticket)){closePipe(id,true,now());refuse(ticket,startup,result);return;}
    final LiveVoiceCapture next;
    try{
+    host.beforeCapture(epoch,reopen);
+    if(!host.canStart(epoch)||!admission.current(ticket)){closePipe(id,true,now());refuse(ticket,startup,result);return;}
     next=host.capture(id,new LiveVoiceCapture.Sink(){
      private boolean admitted(){return host.open(epoch)&&admission.events(ticket);}
      public void frames(String captureId,JSONArray frames,JSONArray vad,float peak){if(!admitted())return;host.frames(captureId,pipe==null?frames:new JSONArray(),vad,peak);if(pipe!=null)pipe.offer(frames,vad);}
      public void ended(String captureId,String error){if(!host.open(epoch)||!admission.end(ticket))return;host.ended(captureId,error);if(error!=null&&pipe!=null)pipe.close(true,now());}
-    },echoCancel);
+     public boolean bargeIn(String captureId,long atMs){return admitted()&&host.bargeIn(captureId,atMs);}
+    },options);
    }catch(Exception|Error unavailable){closePipe(id,true,now());result.refused("Live capture could not start",CAPTURE);return;}
    // Publish cancellation before native startup. The callback only marks and schedules: no join on the caller.
    if(!admission.attach(ticket,()->{next.cancelPending();if(pipe!=null&&!admission.events(ticket))pipe.close(true,now());submit(stopWorker,next::requestStop,()->{/* The capture worker's cleanup still stops this source. */});})){closePipe(id,true,now());refuse(ticket,startup,result);return;}
@@ -144,12 +157,13 @@ public final class LiveCaptureController {
     next.start();
     // Published before the ticket runs: an interrupt either refuses this start or reaches the capture.
     current=next;
-    if(!host.canStart(epoch)||!admission.run(ticket)||!startup.report()){admission.discard(ticket);current=null;next.stop();closePipe(id,true,now());refuse(ticket,startup,result);return;}
+    if(!host.canStart(epoch)||!admission.run(ticket)||!startup.report()){admission.discard(ticket);boolean released=retire(next);closePipe(id,true,now());if(!released)result.refused("Microphone release is unconfirmed",CAPTURE);else refuse(ticket,startup,result);return;}
     live=next;result.started(id,LiveVoiceCapture.SAMPLE_RATE,next.echoCancelled(),pipe!=null);
    }catch(Exception|Error failure){
-    current=null;next.stop();closePipe(id,true,now());
+    boolean released=retire(next);closePipe(id,true,now());
     // A cancellation or call during native startup fails it on purpose: refuse with that cause.
-    if(host.canStart(epoch)&&admission.current(ticket))result.refused("Live capture could not start",CAPTURE);else refuse(ticket,startup,result);
+    if(!released)result.refused("Microphone release is unconfirmed",CAPTURE);
+    else if(host.canStart(epoch)&&admission.current(ticket))result.refused("Live capture could not start",CAPTURE);else refuse(ticket,startup,result);
    }
   },()->result.refused("Voice unavailable",null));
  }
@@ -168,7 +182,10 @@ public final class LiveCaptureController {
   if(pipe!=null&&(discard||!pipe.ready().isDone()))pipe.close(true,cutoff);
   submit(worker,()->{
    long duration=0;
-   if(live!=null&&live.captureId().equals(id)){duration=live.stop();live=null;current=null;}
+   if(live!=null&&live.captureId().equals(id)){
+    try{duration=live.stopAndWait();live=null;current=null;}
+    catch(RuntimeException unconfirmed){closePipe(id,true,cutoff);result.stopped(id,0,false);return;}
+   }
    result.stopped(id,duration,closePipe(id,discard,cutoff));
   },()->result.stopped(id,0,false));
  }
@@ -185,7 +202,7 @@ public final class LiveCaptureController {
   LiveCaptureAdmission.Ticket ended=admission.pause(waiting);
   if(report&&ended!=null)host.ended(ended.id,PAUSED);
   for(LiveSegmentPipe pipe:pipes.values())pipe.close(true,now());
-  submit(worker,()->{if(live!=null){live.stop();live=null;current=null;}for(String id:pipes.keySet())closePipe(id,true,now());},()->{/* Shut down: its last task stopped the capture. */});
+  submit(worker,()->{if(live!=null)retire(live);for(String id:pipes.keySet())closePipe(id,true,now());},()->{/* Shut down: its last task stopped the capture. */});
  }
 
  /**
@@ -200,6 +217,25 @@ public final class LiveCaptureController {
   if(warming!=null)warming.close(true,now());
   LiveVoiceCapture active=current;
   if(active!=null)submit(stopWorker,()->active.interrupt(reason),()->{/* Shut down: the capture already stopped. */});
+ }
+
+ /** Fences capture immediately and admits another microphone mode only after
+  * the original startup and resource release finish on this same worker. */
+ public void interruptAndDrain(String reason,Runnable drained,Runnable refused){
+  interrupt(reason);
+  submit(worker,()->{
+   try{
+    if(live!=null){live.interrupt(reason);live.stopAndWait();live=null;current=null;}
+    for(String id:pipes.keySet())closePipe(id,true,now());
+   }catch(RuntimeException unconfirmed){refused.run();return;}
+   drained.run();
+  },refused);
+ }
+
+ /** Preserve an unconfirmed original owner so no later acquisition can bypass it. */
+ private boolean retire(LiveVoiceCapture capture){
+  try{capture.stopAndWait();if(live==capture)live=null;if(current==capture)current=null;return true;}
+  catch(RuntimeException unconfirmed){live=capture;current=capture;return false;}
  }
 
  /** Runs {@code work} on the capture worker (serialized with start/stop), else {@code refused} on the caller. */

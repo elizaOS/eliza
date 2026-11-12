@@ -24,7 +24,6 @@ import {
   createDataPart,
   createMessage,
   createTask,
-  createTaskStatus,
   createTextPart,
   jsonRpcError,
   jsonRpcSuccess,
@@ -32,10 +31,9 @@ import {
   type MessageSendParams,
   type Task,
   type TaskGetParams,
-  type TaskState,
 } from "../../types/a2a";
 import { logger } from "../../utils/logger";
-import { safeUnknownErrorMessage } from "../cloud-worker-errors";
+import { NotFoundError, safeUnknownErrorMessage } from "../cloud-worker-errors";
 import {
   A2AJsonRpcRequestSchema,
   jsonRpcIdFromUnknown,
@@ -299,23 +297,13 @@ async function getValidatedPlatformTask(c: AppContext, { id, historyLength }: Ta
 export async function handlePlatformTasksCancel(c: AppContext, params: Record<string, unknown>) {
   const user = await requireUserOrApiKeyWithOrg(c);
   const id = typeof params.id === "string" ? params.id : "";
-  const entry = await a2aTaskStoreService.get(id, user.organization_id);
-  if (!entry) {
-    throw new Error(`Task not found: ${id}`);
-  }
-  const terminalStates: TaskState[] = ["completed", "canceled", "failed", "rejected"];
-  if (terminalStates.includes(entry.task.status.state)) {
-    throw new Error(`Task ${id} is already in terminal state: ${entry.task.status.state}`);
-  }
-
   const canceled = await a2aTaskStoreService.updateTaskState(
     id,
     user.organization_id,
     "canceled",
     createMessage("agent", [createTextPart("Task canceled")]),
   );
-  if (!canceled) throw new Error(`Failed to update task: ${id}`);
-  canceled.status = createTaskStatus("canceled", canceled.status.message);
+  if (!canceled) throw NotFoundError(`Task not found: ${id}`);
   return canceled;
 }
 

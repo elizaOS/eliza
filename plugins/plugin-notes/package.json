@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-notes",
-  "version": "2.0.12-beta.0",
+  "version": "2.0.5",
   "type": "module",
   "description": "Cloud Notes view with durable agent-driven CRUD.",
   "main": "./dist/index.js",
@@ -73,7 +73,7 @@
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {

@@ -1,5 +1,26 @@
 [
   {
+    "id": "DesktopDynamicViewRetention",
+    "model": "packages/app/quint/DesktopDynamicViewRetention.qnt",
+    "sources": [
+      "packages/app/platforms/electrobun/src/dynamic-views/session-manager.ts",
+      "packages/app/platforms/electrobun/src/dynamic-views/registry.ts",
+      "packages/app/platforms/electrobun/src/dynamic-views/kiosk-canvas.ts",
+      "packages/app/platforms/electrobun/src/rpc-handler-slices.ts",
+      "packages/app/platforms/electrobun/src/dynamic-views/session-retention.test.ts"
+    ],
+    "invariants": [
+      "EveryWindowHasAnAddressableOwner",
+      "OnlyClosedReceiptsCanBePruned"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Five sessions and a retained record target of two. An open trims acknowledged closed history. Opening, open, and failed-initialization canvas owners remain addressable until the managed close succeeds.",
+      "The real kiosk host RPC and canvas implementation check 201 mounts at the production default, a failed initial A2UI send, exact unmount events, and pruning several acknowledged records. The renderer message port is controlled.",
+      "Actual native window closure, renderer delivery, concurrent close of an opening session, failed destruction, session restart and launch authorization are separate obligations."
+    ]
+  },
+  {
     "id": "AppStartup",
     "model": "packages/app/quint/AppStartup.qnt",
     "sources": ["packages/app/src/runtime/startup-state.ts"],

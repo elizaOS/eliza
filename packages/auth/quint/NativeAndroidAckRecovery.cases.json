@@ -6,9 +6,9 @@
     "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
   ],
   "bounds": {
-    "domain": "One selected Android deployment, one receipt slot, one saved credential slot, at most two startup worker invocations and three acknowledgement requests per invocation. Initial receipts may be absent, malformed, expired, foreign-deployment, foreign-credential or current. A second server credential identity and absent credential distinguish mismatched readback.",
-    "assumptions": "A startup worker uses its selected deployment and there is no concurrent replacement of that deployment's receipt or saved key during this case. Receipt read and remove return or fail as one abstract operation. A failed remove leaves the receipt in this model. The acknowledged response includes the exact expected credential ID, or the authenticated server returns its idempotent authorization-complete conflict. Wall-clock backoff and deadlines are projected to retry rounds and the expiry check at receipt read.",
-    "limitations": "This case covers the Android Java startup acknowledgement worker. It excludes key issuance, new credential writes, overlapping plugin instances, other deployments' workers, device process death, storage durability, actual transport scheduling, and cleanup of credential-slot records after the receipt is gone. The JVM fixture executes the exact recovery and acknowledgement methods against synthetic slot, HTTPS and lifecycle ports."
+    "domain": "One selected Android deployment, one receipt slot, one saved credential slot, at most two startup worker invocations, three acknowledgement requests per invocation before Cloud's deadline or one request after it, and one newer sign-in that replaces the receipt and saved key while those requests run or a settlement waits. Initial receipts may be absent, malformed, expired, foreign-deployment, foreign-credential or current. A second server credential identity and absent credential distinguish mismatched readback.",
+    "assumptions": "A startup worker uses its selected deployment. The sign-in worker serializes the receipt read, the stale removal and each settlement (confirmation or expiry) with a sign-in, so a newer sign-in can replace the receipt and saved key only while the requests run or while a settlement waits. A settlement compares the exact saved key and receipt it read. Receipt read and remove return or fail as one abstract operation. A failed remove leaves the receipt in this model. The acknowledged response includes the exact expected credential ID, or the authenticated server returns its idempotent authorization-complete conflict. Wall-clock backoff and deadlines are projected to retry rounds and the expiry check at receipt read. With no settling answer before the deadline the run hands over to the background rounds, which NativeAndroidActivation models.",
+    "limitations": "This case covers the Android Java startup acknowledgement worker. It excludes key issuance, the steps of the newer sign-in, the host's credential intent observation (the exact-key comparison is the modeled bound), the background rounds after a hand-over, delivery of the revocation, overlapping plugin instances, other deployments' workers, device process death, storage durability and actual transport scheduling. The JVM fixture executes the exact recovery, acknowledgement, activation and expiry methods against synthetic slot, HTTPS and lifecycle ports, including a restart after the deadline, a lost confirmation and a refusal at startup."
   },
   "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
   "cases": [
@@ -19,17 +19,23 @@
       "step": "step",
       "invariants": [
         "RetryBudget",
-        "AckUsesCurrentUnexpiredReceipt",
-        "RecoveryNeverReplacesSavedKey",
-        "RemoveOnlyStaleOrAcknowledged"
+        "AckUsesRunReceipt",
+        "SavedKeyRemovedOnlyWhenDead",
+        "DeadKeyNotLeftSaved",
+        "NewerSignInSurvives",
+        "RemoveOnlyStaleAcknowledgedOrDead",
+        "ReportedOnce"
       ],
-      "temporal": ["UnderFairReplies", "EachRunSettles"],
+      "temporal": [
+        "UnderFairReplies",
+        "EachRunSettles"
+      ],
       "temporalChecks": [
         {
           "property": "UnderFairReplies",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of the worker's storage, network and retry progress actions. A reply can reject, exhaust the budget, or keep the receipt. The Java delay eventually elapses while the worker remains available. No fairness assumes eventual acknowledgement or that another startup occurs."
+            "Weak fairness of the worker's storage, network, retry and settlement progress actions. A reply can refuse, exhaust the budget, hand over to the background rounds or keep the receipt. The Java delay eventually elapses while the worker remains available. No fairness assumes eventual acknowledgement or that another startup occurs."
           ]
         },
         {

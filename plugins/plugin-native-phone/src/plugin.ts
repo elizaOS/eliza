@@ -6,18 +6,22 @@
  * Android adapter applies hosted-app session gating when this package's
  * `/plugin` export is registered.
  *
+ * Serves `POST /api/messages/reply-draft` (`./routes/reply-draft-route.ts`),
+ * the suggested-reply draft for the Messages composer.
+ *
  * Also declares the Phone Companion (Capacitor pairing/chat-mirror surface)
  * via `app.navTabs`, so the app shell can resolve and mount it dynamically
  * when the companion bundle runs alongside the desktop UI.
  */
 
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin } from "@elizaos/host/protocol";
 import { phoneCallLogProvider } from "./providers/call-log";
+import { replyDraftRoute } from "./routes/reply-draft-route";
 import { PHONE_VIEW_CAPABILITIES } from "./view-capabilities";
 
 const PHONE_APP_NAME = "@elizaos/plugin-native-phone";
 
-export const appPhonePlugin: Plugin = {
+export const appPhonePlugin: HttpPlugin = {
   name: PHONE_APP_NAME,
   description:
     "Phone overlay: Android dialer + recent-calls context. Recent calls are " +
@@ -29,6 +33,9 @@ export const appPhonePlugin: Plugin = {
   // app plugin read-only until the Android dialer provider is wired.
   actions: [],
   providers: [phoneCallLogProvider],
+  // Served here, not from plugin-native-messages, because the resident Android
+  // agent loads this plugin and does not load the Messages one.
+  routes: [replyDraftRoute],
   views: [
     // One shipped GUI declaration drawn from PhoneView. The modality enum is
     // retained in the contract for future alternate view entries.

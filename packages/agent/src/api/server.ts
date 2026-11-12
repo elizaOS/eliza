@@ -30,6 +30,7 @@ import {
   resolveOwnerEntityIdOrDefault,
   resolveStateDir,
   ServiceType,
+  type UUID,
 } from "@elizaos/core";
 import {
   readJsonBody as parseJsonBody,
@@ -136,6 +137,7 @@ import {
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import { withTriggerTaskActivity } from "../triggers/activity.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -1308,7 +1310,7 @@ async function applyRuntimeRestart(
   if (state.runtimeStopPromise) {
     return false;
   }
-  if (state.agentState === "restarting") {
+  if (state.agentState === "starting" || state.agentState === "restarting") {
     return false;
   }
   const previousState = state.agentState;
@@ -2286,8 +2288,20 @@ async function handleRequestForViewClient(
       pathname,
       runtime: state.runtime,
       ownerEntityId: automationOwnerEntityId,
-      resolvePromptDeliveryRoom: (runtime: IAgentRuntime) =>
-        resolvePromptDeliveryRoom(state, runtime),
+      assertCurrentRuntime: (runtime: IAgentRuntime) => {
+        if (
+          runtime !== state.runtime ||
+          resolveOwnerEntityIdOrDefault(runtime) !== automationOwnerEntityId
+        ) {
+          throw new ElizaError("Agent changed before saving automation", {
+            code: "AUTOMATION_RUNTIME_CHANGED",
+          });
+        }
+      },
+      resolvePromptDeliveryRoom: (
+        runtime: IAgentRuntime,
+        conversationId?: string,
+      ) => resolvePromptDeliveryRoom(state, runtime, conversationId),
       localOwnerEntityId: state.runtime
         ? resolveOwnerEntityIdOrDefault(state.runtime)
         : undefined,
@@ -2295,6 +2309,14 @@ async function handleRequestForViewClient(
       json,
       error,
       executeTriggerTask,
+      serializeTaskMutation: (
+        runtime: IAgentRuntime,
+        taskId: UUID,
+        operation: () => Promise<boolean>,
+      ) =>
+        withTriggerTaskActivity(runtime, taskId, operation, {
+          rejectIfBusy: true,
+        }),
       getTriggerHealthSnapshot,
       getTriggerLimit,
       listTriggerTasks,

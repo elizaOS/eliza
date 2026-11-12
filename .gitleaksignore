@@ -666,6 +666,9 @@ e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/del
 # RFC 6455 sample WebSocket handshake nonce in a local relay test.
 991c73b88cff98527ddfcd4eedb9dfd56e8c3382:packages/cloud/scripts/admin/daemons/agent-router.test.ts:generic-api-key:319
 
+# Historical formal-model bounds prose; this finding contains no credential.
+a6d79b19b6ea9911ee79ba32a5caa73ac3492fc5:packages/agent/quint/SecurityEscapeRetirement.cases.json:generic-api-key:29
+
 # packages/core/test/runtime-settings.test.ts
 # Synthetic secret values in the character secret-map redaction test; not credentials.
 fd42b8ccf4da1f81c9d6125c4ef1923b73d68298:packages/core/test/runtime-settings.test.ts:generic-api-key:287

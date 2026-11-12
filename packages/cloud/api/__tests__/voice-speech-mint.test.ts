@@ -30,6 +30,7 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   }),
 }));
 mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
+  CONSENT_NONCE_TTL_SECONDS: 300,
   issueConsentNonce: async () => ({
     nonce: NONCE,
     expiresAt: new Date(Date.now() + 300_000).toISOString(),
@@ -238,4 +239,16 @@ test("a consent session name is a UUID bound to its user and nonce", async () =>
     speechSessionIdForConsent(USER, "44444444-4444-4444-8444-444444444444"),
   ).not.toBe(id);
   expect(id).not.toContain(NONCE.slice(0, 8));
+});
+
+test("prepared consent names remain compatible with existing speech clients", async () => {
+  const { preparedSpeechSessionIdForConsent } = await import(
+    "../src/speech-relay-coordinator"
+  );
+  const id = preparedSpeechSessionIdForConsent(USER, NONCE);
+  expect(id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  expect(preparedSpeechSessionIdForConsent(USER, NONCE)).toBe(id);
+  expect(preparedSpeechSessionIdForConsent(ORG, NONCE)).not.toBe(id);
 });

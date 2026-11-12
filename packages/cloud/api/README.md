@@ -24,6 +24,22 @@ Worker and accounting hosts. Enroll an organization through the internal
 `withInferencePolicyMutation({organizationIds, enable: true}, ...)` transaction.
 All policy writers must use the managed mutation service; the database rejects
 an unfenced change for an enrolled organization.
+Request routes (chat, responses, messages, embeddings, speech and the other
+paid routes) never take the delegated lane or its rate window: they are admitted
+from the cached auth entry and counted per isolate whatever the flag says. The
+flag selects the delegated lane only for a fixed-price Worker session that
+commits its lease at dispatch (the speech relay). A host without a Worker
+lifetime never takes the delegated lane: it reserves synchronously against the
+primary, and the flag only switches its rate limit to the budget rate window.
+
+A request route records nothing durable before its provider call. If its
+isolate dies after the provider call and before the post-response lease commit,
+that request's provider cost is not charged; once the lease is committed the
+gate alarm recovers it. Revocation of an API key reaches the inference routes
+through writer invalidation and the entry's aged refresh, which checks the gate
+and writes a denial when the gate holds a fence. Every other route that
+authenticates through `requireGenerativeRouteCaller` checks the gate on each
+request unless it passes `cachedDecisionIsFinal`.
 
 Migration 0553 also rejects an unfenced policy write in a repeatable-read or
 serializable transaction with SQLSTATE `40001`. Restart that whole transaction
@@ -281,6 +297,69 @@ same step:
    key.
 4. `POST /api/v1/app-auth/mobile/ack` (as today) activates the key.
 
+A phone replaces its own key before it expires, without a browser:
+
+1. `POST /api/v1/app-auth/mobile/renew`, authenticated with the current
+   acknowledged, unexpired `eliza_mobile_` key in `Authorization: Bearer`, in
+   `X-API-Key`, or in both when they carry the same key (two different keys
+   are refused with 401; `DELETE /api/v1/api-keys/current` reads the key the
+   same way), with the strict JSON
+   body `{clientId, environment, redirectUri, state, codeChallenge,
+   codeChallengeMethod: "S256", deviceName?}` under the same field rules as the
+   `mobile_pkce` approval. It answers `{success: true, code: "emac_…",
+   codeType, expiresAt, expiresIn}`.
+2. `POST /api/v1/app-auth/mobile/token` and `POST /api/v1/app-auth/mobile/ack`
+   exchange and activate the new key exactly as after a sign-in. Both require
+   the old key to still be active: a key revoked after step 1 gets no
+   successor.
+3. `DELETE /api/v1/api-keys/current` with the old key and the header
+   `X-Renewed-Credential-Id: <credentialId of the new key>` (the id the token
+   exchange returned) revokes the old key only. Until then both keys are
+   valid.
+
+The new grant copies the sign-in time (`mobile_app_auth_grants.session_started_at`;
+a grant without it counts from `created_at`) and the sign-in's `session_id`,
+and records the key that asked in `renewed_from_credential_id` (migration
+`0573_mobile_app_auth_renewal_lineage`; apply it before deploying). Refusals
+use the Cloud API error shape `{success: false, error, code}`: 401
+`authentication_required` (key invalid, expired or revoked; two different
+keys sent; client disabled or registered differently; or the key already has
+an acknowledged successor), 403 `access_denied` (owner inactive, or the key
+is no longer in the owner's open organization), 409 `renewal_window_closed`
+(the sign-in is older than 180 days, or the key already lives until day 180;
+sign in again), 429 `rate_limit_exceeded`, 503 `service_unavailable`
+(retryable), and 400 `validation_error` for a malformed body.
+
+No key of a sign-in outlives its 180-day cap: a renewed key lives one key
+lifetime from its renewal or until day 180 of the sign-in, whichever is
+earlier.
+
+A key has one live successor, and a sign-in is revoked as a whole:
+
+- A second `renew` by the same key while the first code is not yet
+  acknowledged supersedes that code; only the newest can be redeemed.
+- A `renew` by a key whose successor was already acknowledged means the key
+  has two holders. It is refused with 401 and every key of the sign-in is
+  revoked, so the phone must sign in again. After `ack` a client must use the
+  new key and never renew with the old one.
+- Revoking a device from the account (`DELETE
+  /api/v1/app-auth/mobile/credentials/:id`) revokes every key of that sign-in.
+- `DELETE /api/v1/api-keys/current` is a sign-out and revokes every key of the
+  sign-in, keys renewed from the presented one included. It is step 3 above,
+  and revokes only the presented key, when `X-Renewed-Credential-Id` names
+  that key's acknowledged successor. A request without the header is also
+  taken as step 3 during the two minutes after the successor's
+  acknowledgement, for a client that revokes the old key at once without
+  naming the new one; later, or naming any other credential, it is a sign-out.
+  A header that is not a credential id is a 400 `validation_error`.
+- So a copied key that renewed before the phone did ends when the phone signs
+  out with the older key (the phone cannot name the copy's successor), when
+  the phone next renews, when the owner revokes the device, or at the
+  sign-in's cap. A client that retries step 3 later than two minutes after
+  the acknowledgement must send the header, or it ends its own sign-in.
+  Nothing ends the copy's key while the phone only uses the older key or lets
+  it expire.
+
 This needs no new setting beyond those above: `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` on the API Worker and, on Steward,
 `STEWARD_GOOGLE_NATIVE_CLIENT_IDS` mapping the Steward app client to the
@@ -498,7 +577,6 @@ prepared reviews without reconstructing a mutation. The existing undo/status
 APIs remain compatible; consumers needing reviewed confirmation use this route.
 Apply migration `0510_subscription_renewal_review_receipts` before deploying.
 
-
 ## Organization upgrade review
 
 `POST /api/v1/subscriptions/upgrade/review` accepts `subscriptionId`, a positive
@@ -534,7 +612,6 @@ period end and `amountDueNowCents` is zero. `recurringEstimate` is a long-term
 estimate, not a guaranteed next invoice. This endpoint creates no provider
 schedule, command, charge or allowance change; downgrade confirmation is not
 yet exposed. Upgrade confirmation rejects a downgrade quote.
-
 
 Organization downgrade confirmation uses `POST /api/v1/subscriptions/downgrade/confirm`
 with only `quoteId` and `idempotencyKey` from an explicitly reviewed original quote.

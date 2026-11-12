@@ -13,7 +13,6 @@ import {
   listHostedBrowserSessions,
   logHostedBrowserFailure,
 } from "@elizaos/cloud-shared/lib/services/browser-tools";
-import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -80,10 +79,6 @@ app.post("/", async (c) => {
     const caller = await requireGenerativeRouteCaller(c, {
       deferStrongCredentialCheck: pendingResponse === undefined,
     });
-    await using credentialGuard = deferredCredentialAdmissionGuard({
-      organizationId: () => caller.user.organization_id,
-      credential: () => caller.credential,
-    });
     if (pendingResponse) return pendingResponse;
     const { user } = caller;
 
@@ -92,9 +87,7 @@ app.post("/", async (c) => {
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
-      operationContext: getGenerativeOperationContext(c, caller, {
-        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
-      }),
+      operationContext: getGenerativeOperationContext(c, caller),
     });
     return c.json({ session });
   } catch (error) {
