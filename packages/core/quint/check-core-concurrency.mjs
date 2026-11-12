@@ -10,6 +10,27 @@ const root = path.resolve(import.meta.dirname, "../../..");
 const core = path.resolve(import.meta.dirname, "..");
 const suites = new Map([
 	[
+		"EmbeddingWriteSettlement.qnt",
+		{
+			file: "test/embedding.activation-retry.pglite.test.ts",
+			tests: [
+				"EmbeddingGenerationService late activation persists and retrieves a named vector after the model registers post-boot",
+				"EmbeddingGenerationService late activation failure withdraws a failed activation so the next registration retries it",
+				"EmbeddingGenerationService late activation failure completes teardown when stop races an activation that fails",
+				...[
+					"single observer rejection",
+					"batch observer rejection",
+					"committed log rejection",
+					"stale source log rejection",
+					"uncommitted write rejection",
+				].map(
+					(mode) =>
+						`EmbeddingGenerationService write settlement settles the queued item after ${mode}`,
+				),
+			],
+		},
+	],
+	[
 		"Semaphore.qnt",
 		{
 			file: "test/semaphore.test.ts",

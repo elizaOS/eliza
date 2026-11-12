@@ -75,6 +75,34 @@
 		]
 	},
 	{
+		"id": "core-EmbeddingWriteSettlement",
+		"model": "packages/core/quint/EmbeddingWriteSettlement.qnt",
+		"sources": [
+			"packages/core/src/services/embedding.ts",
+			"packages/core/src/utils/batch-queue.ts",
+			"packages/core/src/runtime/data-mutations.ts",
+			"packages/core/src/runtime.ts",
+			"plugins/plugin-sql/src/base.ts",
+			"packages/core/test/embedding.activation-retry.pglite.test.ts"
+		],
+		"invariants": [
+			"TypeOK",
+			"ExactSourceReceipt",
+			"ReceiptClosesRetry",
+			"OnlyStoredNotifies"
+		],
+		"status": "partial",
+		"limitations": [
+			"One queued item or one batch of two. The batch inference result supplies both items. The batch settles its writes and observers in order before any failed item falls back to a single request. Each item has at most two single attempts in this projection.",
+			"The adapter atomically compares the admitted source with one possible edit. The confirmed result is a stored vector or a stale-source refusal. A modeled write rejection occurs before commit. Diagnostic logging and completion publication may fail after the result, and neither starts another attempt.",
+			"Real AgentRuntime, repeat worker and PGlite cases verify stored vector readback, exact stale-source refusal, preservation of each batch item, and retry after a known uncommitted write rejection. Inference is a local fixture and diagnostic failures are controlled at their caller boundaries.",
+			"Independent batches, source reversion, lost storage acknowledgement, provider durability, task shutdown and individual event subscribers remain outside this projection. The fairness assumption does not guarantee successful inference, storage or observation."
+		],
+		"implementationTests": [
+			"packages/core/test/embedding.activation-retry.pglite.test.ts"
+		]
+	},
+	{
 		"id": "core-FactWriteDedupe",
 		"model": "packages/core/quint/FactWriteDedupe.qnt",
 		"sources": [
