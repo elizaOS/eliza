@@ -461,10 +461,10 @@ describe("processDueScheduledTasks — production wiring", () => {
   it("fires owner-local cron after travel changes the zone despite a future home-zone index", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
-    // The scheduler preflight and runner must observe the same instant.
-    // Otherwise the runner correctly rechecks the cron against today's clock.
+    // A replayed tick inside travel must use its clock even when the host
+    // clock has advanced beyond that travel window.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-11T00:01:00.000Z"));
+    vi.setSystemTime(new Date("2026-11-12T16:01:00.000Z"));
     const facts = resolveOwnerFactStore(runtime);
     const provenance = {
       source: "profile_save" as const,
