@@ -39,7 +39,11 @@ function runtimeWith(result: Record<string, unknown>): IAgentRuntime {
 const message = {
   id: "11111111-1111-4111-8111-111111111111",
   roomId: "22222222-2222-4222-8222-222222222222",
-  entityId: "33333333-3333-4333-8333-333333333333",
+  // Same id as the stub runtime's agentId: the control path runs the
+  // task-agent access gate first, and only the agent itself passes it
+  // without a room lookup — otherwise the test fails at FORBIDDEN and
+  // never reaches the delivery-receipt check it is meant to cover.
+  entityId: "00000000-0000-4000-8000-000000000001",
   content: { text: "Assign the task to the coding agent." },
 } as Memory;
 
@@ -102,5 +106,8 @@ describe("TASKS send delivery receipt", () => {
       JSON.stringify(result, null, 2)?.slice(0, 1200),
     );
     expect(result?.success).toBe(false);
+    // Pin the failure to the delivery-receipt check: success alone also
+    // passes on the FORBIDDEN access-gate failure, which never reaches it.
+    expect(result?.error).toBe("SEND_NOT_DELIVERED");
   });
 });
