@@ -189,6 +189,8 @@ type Place =
   | { kind: "trash" };
 /** Trash rows from every mounted volume; restore and delete go back to the row's volume. */
 type TrashRow = TrashEntry & { volume?: string };
+const trashKey = (row: Pick<TrashRow, "id" | "volume">) =>
+  JSON.stringify([row.volume || "primary", row.id]);
 /** The storage* argument naming a non-primary volume (the primary needs none). */
 const onVolume = (volume?: string) => (volume ? { volume } : {});
 type Dialog =
@@ -209,7 +211,7 @@ type Dialog =
     }
   /** The rows the owner is shown and confirms; Empty deletes only these. */
   | { kind: "empty"; items: TrashRow[] }
-  | { kind: "trashItem"; item: TrashRow; confirmDelete: boolean };
+  | { kind: "trashItem"; item: TrashRow };
 /** StorageBrowser.BATCH_MAX: ids per storageEmptyTrash call. */
 const EMPTY_BATCH = 500;
 
@@ -447,7 +449,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       if (filter && !pendingFilter) await runFilter(filter, current);
       if (!current()) return;
       if (selection) {
-        const listed = new Set(entries.map((e) => e.path));
+        const listed = new Set(
+          at.kind === "trash"
+            ? trashItems.map(trashKey)
+            : entries.map((e) => e.path),
+        );
         selection = new Set([...selection].filter((path) => listed.has(path)));
       }
       loaded = true;
@@ -678,7 +684,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           ids.length === outcomes.length
             ? `${countLabel(ids.length)} moved to Trash`
             : `${ids.length} of ${outcomes.length} moved to Trash`,
-          { undo: () => void restore(ids, volume) },
+          { undo: () => void restore(ids.map((id) => ({ id, volume }))) },
         );
       else toast("Nothing was moved to Trash.");
     } catch {
@@ -689,17 +695,27 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       void reload();
     }
   }
-  async function restore(ids: string[], volume?: string) {
+  async function restore(items: Array<Pick<TrashRow, "id" | "volume">>) {
+    if (busy || !items.length) return;
     busy = true;
     repaint();
     try {
-      const value = await storage.storageRestore({ ids, ...onVolume(volume) });
-      if (!failed(value))
+      const byVolume = new Map<string | undefined, string[]>();
+      for (const row of items)
+        byVolume.set(row.volume, [...(byVolume.get(row.volume) ?? []), row.id]);
+      for (const [volume, ids] of byVolume) {
+        const value = await storage.storageRestore({
+          ids,
+          ...onVolume(volume),
+        });
+        if (failed(value)) break;
         summarize(value.outcomes || [], "restored", "Restored");
+      }
     } catch {
       toast("The operation could not be confirmed.");
     } finally {
       busy = false;
+      selection = null;
       dialog = undefined;
       void reload();
     }
@@ -707,6 +723,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   /** Permanent deletion of the rows the owner confirmed, on each row's volume. Items that reached
    * Trash after the confirmation was shown are not deleted. */
   async function emptyTrash(items: TrashRow[]) {
+    if (busy || !items.length) return;
     busy = true;
     repaint();
     try {
@@ -729,6 +746,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       toast("The operation could not be confirmed.");
     } finally {
       busy = false;
+      selection = null;
       dialog = undefined;
       void reload();
     }
@@ -1175,7 +1193,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       currentApi.set({ menu: false });
     };
     out.toolbar = {
-      ready: granted && !busy && !!primary && place.kind !== "trash",
+      ready: granted && !busy && !!primary,
       canCreate:
         place.kind === "browse" ||
         place.kind === "folder" ||
@@ -1285,7 +1303,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           : primary?.name || "Internal storage";
       const title =
         at.kind === "trash"
-          ? "Trash"
+          ? "Recently deleted"
           : at.kind === "category"
             ? (CATEGORIES.find((c) => c.id === at.category)?.label ??
               at.category)
@@ -1297,7 +1315,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       let items: Record<string, unknown>[] = [];
       if (at.kind === "trash") {
         items = trashItems.map((item) => ({
-          id: item.id,
+          id: trashKey(item),
           name: item.name,
           sub: [
             item.directory ? "" : formatSize(item.size),
@@ -1312,21 +1330,28 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           d: iconFor(item),
           isFolder: false,
           isFile: true,
-          selOn: false,
-          selOff: false,
-          rowCss: "",
-          label: item.name,
+          selOn: !!selection?.has(trashKey(item)),
+          selOff: !!selection && !selection.has(trashKey(item)),
+          rowCss: selection?.has(trashKey(item)) ? "background: var(--s2)" : "",
+          label: selection
+            ? (selection.has(trashKey(item)) ? "Deselect " : "Select ") +
+              item.name
+            : item.name,
           down: () => {},
           up: () => {},
           cancel: () => {},
           context: () => {},
           tap: (event: Event) => {
             if (busy) return;
+            if (selection) {
+              toggle(trashKey(item));
+              return;
+            }
             dialogTrigger =
               event?.currentTarget instanceof HTMLElement
                 ? event.currentTarget
                 : null;
-            dialog = { kind: "trashItem", item, confirmDelete: false };
+            dialog = { kind: "trashItem", item };
             repaint();
           },
         }));
@@ -1361,10 +1386,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             ),
         );
       const listed =
+        at.kind === "trash" ||
         at.kind === "folder" ||
         (at.kind === "category" && !["images", "videos"].includes(at.category));
       const paths = () => [...(selection || [])];
-      out.fd = {
+      const detail = {
         name: title,
         items,
         empty: loaded && !busy && items.length === 0 && !error,
@@ -1394,13 +1420,16 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             : [],
         hasCrumbs: at.kind === "folder",
         isTrash: at.kind === "trash",
+        notTrash: at.kind !== "trash",
+        menuLabel:
+          at.kind === "trash" ? "Recently deleted options" : "Sort and more",
         canEmpty: at.kind === "trash" && trashItems.length > 0 && !busy,
         empty_: () => {
           if (busy || !trashItems.length) return;
           dialog = { kind: "empty", items: [...trashItems] };
           repaint();
         },
-        hasMenu: at.kind !== "trash",
+        hasMenu: true,
         openMenu: () => currentApi.set({ menu: true }),
         moreD: ICONS.more,
         menuRows: [
@@ -1455,6 +1484,11 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             : []),
         ],
       };
+      if (at.kind === "trash")
+        detail.menuRows = detail.menuRows.filter(
+          (row: { id: string }) => row.id === "select",
+        );
+      out.fd = detail;
       out.selCount = selection ? `${selection.size} selected` : "";
       out.selectionBusy = busy;
       out.selectionDisabled = busy || !selection?.size;
@@ -1467,7 +1501,10 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
       };
       out.selAll = () => {
         if (busy) return;
-        const all = entries.map((e) => e.path);
+        const all =
+          at.kind === "trash"
+            ? trashItems.map(trashKey)
+            : entries.map((e) => e.path);
         selection = new Set(selection?.size === all.length ? [] : all);
         repaint();
       };
@@ -1483,7 +1520,22 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         beginDest("move", paths(), event?.currentTarget, volumeHere);
       out.selCopy = (event: Event) =>
         beginDest("copy", paths(), event?.currentTarget, volumeHere);
-      out.selDel = () => void trash(paths(), volumeHere);
+      out.selRestore = () =>
+        void restore(
+          trashItems.filter((item) => selection?.has(trashKey(item))),
+        );
+      out.selectionDeleteLabel =
+        at.kind === "trash" ? "Delete selected files permanently" : "Delete";
+      out.selDel = () => {
+        if (busy || !selection?.size) return;
+        if (at.kind === "trash") {
+          dialog = {
+            kind: "empty",
+            items: trashItems.filter((item) => selection?.has(trashKey(item))),
+          };
+          repaint();
+        } else void trash(paths(), volumeHere);
+      };
       out.selRename = (event: Event) => {
         const only = paths();
         if (only.length !== 1 || busy) return;
@@ -1500,7 +1552,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         };
         repaint();
       };
-      out.canRename = selection?.size === 1;
+      out.canRename = at.kind !== "trash" && selection?.size === 1;
       out.icons = ICONS;
       out.menuOpen = !!state.menu;
       out.closeMenu = () => currentApi.set({ menu: false });
@@ -1568,18 +1620,16 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
                   ? "New folder"
                   : "Rename"
                 : d.kind === "empty"
-                  ? "Empty Trash?"
+                  ? "Delete permanently?"
                   : d.item.name,
           message:
             d.kind === "empty"
               ? `${countLabel(d.items.length)} will be deleted permanently.`
               : d.kind === "trashItem"
-                ? d.confirmDelete
-                  ? "Delete permanently?"
-                  : [
-                      volumeLabel(d.item.volume),
-                      ...(d.item.origin || "").split("/").filter(Boolean),
-                    ].join(" › ")
+                ? [
+                    volumeLabel(d.item.volume),
+                    ...(d.item.origin || "").split("/").filter(Boolean),
+                  ].join(" › ")
                 : "",
           at:
             d.kind === "dest"
@@ -1623,7 +1673,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
                   ? "Create"
                   : "Rename"
                 : d.kind === "empty"
-                  ? "Empty"
+                  ? "Delete permanently"
                   : "",
           confirmDisabled:
             busy ||
@@ -1652,22 +1702,14 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             }
           },
           restore: () => {
-            if (d.kind === "trashItem")
-              void restore([d.item.id], d.item.volume);
+            if (d.kind === "trashItem") void restore([d.item]);
           },
           deleteNow: () => {
             if (d.kind !== "trashItem" || busy) return;
-            if (!d.confirmDelete) {
-              dialog = { ...d, confirmDelete: true };
-              repaint();
-              return;
-            }
-            void emptyTrash([d.item]);
+            dialog = { kind: "empty", items: [d.item] };
+            repaint();
           },
-          deleteLabel:
-            d.kind === "trashItem" && d.confirmDelete
-              ? "Delete permanently"
-              : "Delete now",
+          deleteLabel: "Delete permanently",
           cancel: () => {
             if (!busy) {
               dialog = undefined;

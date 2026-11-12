@@ -186,3 +186,164 @@ test("a denied folder read updates the permission label without a second state r
   assert.equal(denied.deniedLabel, "Allow storage access");
   view.onLeave();
 });
+
+async function trashFixture(t) {
+  const previousDocument = globalThis.document;
+  globalThis.document = new EventTarget();
+  const state = {};
+  const calls = [];
+  const rows = new Map([
+    [
+      undefined,
+      [
+        {
+          id: "same-id",
+          name: "Local.txt",
+          origin: "",
+          size: 4,
+          mimeType: "text/plain",
+          deletedAt: Date.now(),
+        },
+      ],
+    ],
+    [
+      "external",
+      [
+        {
+          id: "same-id",
+          name: "External.txt",
+          origin: "",
+          size: 4,
+          mimeType: "text/plain",
+          deletedAt: Date.now(),
+        },
+      ],
+    ],
+  ]);
+  const view = { render: () => ({}) };
+  const api = {
+    get: () => state,
+    set: (patch) => Object.assign(state, patch),
+    toast() {},
+    isActive: () => true,
+  };
+  const apply = (action, input) => {
+    calls.push({ action, ...input });
+    rows.set(
+      input.volume,
+      rows.get(input.volume).filter((row) => !input.ids.includes(row.id)),
+    );
+    return {
+      status: "ready",
+      outcomes: input.ids.map((id) => ({ path: id, status: "restored" })),
+    };
+  };
+  installFilesBrowserAdapter(
+    view,
+    async () => {},
+    () => {},
+    {
+      storage: {
+        storageState: async () => ({
+          status: "ready",
+          access: "granted",
+          volumes: [
+            { id: "primary", name: "Storage", primary: true },
+            { id: "external", name: "External", primary: false },
+          ],
+        }),
+        storageList: async () => ({ status: "ready", entries: [] }),
+        storageCategory: async () => ({ status: "ready", count: 0 }),
+        storageTrashList: async ({ volume } = {}) => ({
+          status: "ready",
+          items: rows.get(volume),
+        }),
+        storageRestore: async (input) => apply("restore", input),
+        storageEmptyTrash: async (input) => apply("delete", input),
+        storageWatch: async () => ({ status: "ready" }),
+        storageUnwatch: async () => ({}),
+        addListener: async () => ({ remove: async () => {} }),
+      },
+      createInlineModal: () => ({ ref() {} }),
+      menuFocus: () => null,
+      forgetSelected: async () => {},
+    },
+  );
+  const render = () => view.render(state, api);
+  const settle = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  t.after(() => {
+    view.onLeave();
+    globalThis.document = previousDocument;
+  });
+  render();
+  await settle();
+  render().browse.openTrash();
+  await settle();
+  return { render, settle, calls, rows, document: globalThis.document };
+}
+
+test("deleted Files selection restores the selected volume even when trash IDs match", async (t) => {
+  const f = await trashFixture(t);
+  assert.equal(f.render().fd.name, "Recently deleted");
+  assert.deepEqual(
+    f.render().fd.menuRows.map((row) => row.id),
+    ["select"],
+  );
+  assert.notEqual(f.render().fd.items[0].id, f.render().fd.items[1].id);
+  f.render().fd.menuRows[0].go();
+  f.render()
+    .fd.items.find((row) => row.name === "External.txt")
+    .tap();
+  assert.equal(f.render().selCount, "1 selected");
+  f.render().selRestore();
+  await f.settle();
+  assert.deepEqual(f.calls, [
+    { action: "restore", ids: ["same-id"], volume: "external" },
+  ]);
+  assert.equal(f.rows.get(undefined).length, 1);
+  assert.equal(f.render().isSel, false);
+});
+
+test("deleted Files cancellation has no effect and confirmation keeps its reviewed selection", async (t) => {
+  const f = await trashFixture(t);
+  f.render().fd.menuRows[0].go();
+  f.render()
+    .fd.items.find((row) => row.name === "Local.txt")
+    .tap();
+  f.render().selDel();
+  assert.equal(f.render().dlg.title, "Delete permanently?");
+  assert.equal(f.calls.length, 0);
+  f.render().dlg.cancel();
+  assert.equal(f.calls.length, 0);
+  f.render().selDel();
+  f.rows.get(undefined).push({
+    id: "later",
+    name: "Later.txt",
+    origin: "",
+    size: 1,
+    mimeType: "text/plain",
+    deletedAt: Date.now(),
+  });
+  f.render().dlg.confirm();
+  await f.settle();
+  assert.deepEqual(f.calls, [
+    { action: "delete", ids: ["same-id"], confirmed: true },
+  ]);
+  assert.equal(f.rows.get(undefined)[0].id, "later");
+  assert.equal(f.rows.get("external").length, 1);
+});
+
+test("refresh keeps only deleted Files that remain in the current listing selected", async (t) => {
+  const f = await trashFixture(t);
+  f.render().fd.menuRows[0].go();
+  f.render().selAll();
+  f.rows.set("external", []);
+  f.document.dispatchEvent(new Event("visibilitychange"));
+  await f.settle();
+  assert.equal(f.render().selCount, "1 selected");
+  f.render().selRestore();
+  await f.settle();
+  assert.deepEqual(f.calls, [{ action: "restore", ids: ["same-id"] }]);
+});

@@ -1,0 +1,38 @@
+{
+  "sources": [
+    "plugins/plugin-files/src/browser/files-browser-adapter.ts",
+    "plugins/plugin-files/test/browser-agent-filter.test.mjs"
+  ],
+  "conformance": "plugins/plugin-files/quint/check-trash-selection.mjs",
+  "bounds": {
+    "domain": "Three distinct volume and trash-id pairs, one visible selection, one confirmation and one in-flight storage operation.",
+    "assumptions": "Each identity represents a distinct volume/id pair. Storage success or failure is observed once. The storage backend retains ownership, revision and transactional checks.",
+    "limitations": "The model covers selection, refresh pruning, cancellation and captured effect targets. Native durability, permission changes during an operation and filesystem rollback remain covered by the storage implementation checks.",
+    "progress": "A dispatched storage operation settles only under weak fairness of its finish step. Provider success is not assumed."
+  },
+  "cases": [
+    {
+      "name": "selected-recovery-and-deletion",
+      "main": "FilesTrashSelection",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OnlyReviewedItemsChange",
+        "ReviewDoesNotMutate"
+      ],
+      "temporal": ["SettlesUnderStorageFairness"],
+      "temporalChecks": [
+        {
+          "property": "SettlesUnderStorageFairness",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the finish step for dispatched restore/delete operations, allowing either success or failure."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 500
+    }
+  ]
+}
