@@ -1,5 +1,6 @@
 /** Exercises missing collectors, failed generation, and report persistence against real PGlite. No provider request is made. */
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { LIFEOPS_INBOX_CHANNELS, type LifeOpsInbox } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -1119,6 +1120,59 @@ describe("check-in source availability and generation failures", () => {
     );
     expect(stored.rows[0].payload_json.summaryText).toBe(modelResponse);
   });
+
+  const summaryCases: Array<{
+    outcome: number;
+    called: boolean;
+    writes: number;
+  }> = process.env.ELIZA_CHECKIN_SUMMARY_MODEL_CASES
+    ? JSON.parse(
+        readFileSync(process.env.ELIZA_CHECKIN_SUMMARY_MODEL_CASES, "utf8"),
+      )
+    : [
+        { outcome: 0, called: true, writes: 1 },
+        { outcome: 1, called: true, writes: 0 },
+        { outcome: 2, called: false, writes: 0 },
+        { outcome: 3, called: true, writes: 0 },
+        { outcome: 4, called: true, writes: 0 },
+      ];
+  it.each(summaryCases)(
+    "matches the generated summary persistence outcome $outcome",
+    async ({ outcome, called, writes }) => {
+      modelResponse = outcome === 1 ? "   " : "A concise morning summary.";
+      if (outcome === 2)
+        Object.defineProperty(runtime, "useModel", { value: undefined });
+      if (outcome === 3) modelResponse = undefined;
+      if (outcome === 4) {
+        const adapter = runtime.adapter as unknown as {
+          db: { execute: (query: RawSqlQuery) => Promise<unknown> };
+        };
+        const execute = adapter.db.execute;
+        vi.spyOn(adapter.db, "execute").mockImplementation((query) => {
+          const statement = query.queryChunks
+            .map((chunk) => chunk.value ?? "")
+            .join("");
+          if (
+            statement.includes("INSERT INTO app_lifeops.life_checkin_reports")
+          ) {
+            throw new Error("Report storage unavailable");
+          }
+          return execute(query);
+        });
+      }
+      const result = new CheckinService(runtime).runMorningCheckin({
+        timezone: "America/Los_Angeles",
+        now: new Date("2026-11-12T16:45:00Z"),
+      });
+      if (outcome === 0) expect((await result).summaryText).toBe(modelResponse);
+      else await expect(result).rejects.toThrow();
+      expect(prompts.length).toBe(called ? 1 : 0);
+      const stored = await db.query(
+        "SELECT id FROM app_lifeops.life_checkin_reports",
+      );
+      expect(stored.rows).toHaveLength(writes);
+    },
+  );
 
   it.each(["morning", "night"] as const)(
     "rejects blank %s model output without persisting a completion marker",

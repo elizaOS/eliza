@@ -1,0 +1,20 @@
+{
+  "sources": [
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts",
+    "plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-availability.pglite.test.ts"
+  ],
+  "conformance": "plugins/plugin-personal-assistant/quint/check-checkin-summary.mjs",
+  "bounds": "Five outcomes cover one morning summary with a valid model response, blank text, absent model, rejected generation, or rejected report write. The implementation check uses the real CheckinService and PGlite with controlled model and storage outcomes. Collector accuracy, provider output quality, scheduling, delivery and cancellation at the scheduler boundary remain separate checks. Safety is unconditional. Completion assumes collection, model resolution and storage resolution each eventually return.",
+  "cases": [
+    {
+      "name": "summary-generation-persistence",
+      "main": "CheckinSummary",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ValidSummaryOnly", "FailureKeepsStorage", "SingleWrite"],
+      "temporal": [],
+      "maxSteps": 5,
+      "samples": 300
+    }
+  ]
+}
