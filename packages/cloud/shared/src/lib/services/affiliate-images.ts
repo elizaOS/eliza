@@ -2,7 +2,7 @@
  * Service for processing and uploading affiliate character images.
  */
 
-import { getTrustedBlobHosts, uploadBase64Image, uploadFromUrl } from "../blob";
+import { isValidBlobUrl, uploadBase64Image, uploadFromUrl } from "../blob";
 import type {
   AffiliateImageReference,
   AffiliateMetadata,
@@ -46,22 +46,6 @@ function isValidHttpUrl(str: string): boolean {
   try {
     const url = new URL(str);
     return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Checks if a URL is hosted on our managed R2 blob storage.
- *
- * @param str - URL string to check.
- * @returns True if URL hostname matches a trusted blob host.
- */
-function isManagedBlobUrl(str: string): boolean {
-  if (!isValidHttpUrl(str)) return false;
-  try {
-    const url = new URL(str);
-    return getTrustedBlobHosts().some((host) => url.hostname === host);
   } catch {
     return false;
   }
@@ -113,7 +97,7 @@ async function uploadSingleImage(
     );
     return result.url;
   } else if (isValidHttpUrl(imageData)) {
-    if (isManagedBlobUrl(imageData)) {
+    if (isValidBlobUrl(imageData)) {
       logger.debug(`[AffiliateImages] URL image ${index} already on managed blob storage`);
       return imageData;
     }

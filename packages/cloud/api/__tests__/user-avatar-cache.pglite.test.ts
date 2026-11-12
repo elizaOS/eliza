@@ -6,7 +6,7 @@
  * in-memory store), real Hono routes. Authentication, quota accounting and R2
  * are stubbed.
  */
-import { afterAll, beforeAll, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, expect, mock, spyOn, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 
 const PGLITE_DATABASE_URL = "pglite://memory";
@@ -93,6 +93,10 @@ const { usersService } = await import(
   "@elizaos/cloud-shared/lib/services/users"
 );
 const { Hono } = await import("hono");
+const { runWithCloudBindingsAsync } = await import(
+  "@elizaos/cloud-shared/lib/runtime/cloud-bindings"
+);
+const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
 const { default: userRoute } = await import("../v1/user/route");
 const { default: avatarRoute } = await import("../v1/user/avatar/route");
 
@@ -273,3 +277,73 @@ test("clearing the avatar deletes the uploaded object; external URLs are left al
   expect(deletedKeys).toEqual([keyOf(uploaded)]);
   expect(releases).toHaveLength(1);
 });
+
+for (const host of ["", "r2.example.test:99999"]) {
+  for (const background of [false, true]) {
+    test(`avatar replacement preserves committed state when cleanup config is ${host || "missing"} (${background ? "waitUntil" : "inline"})`, async () => {
+      expect(schemaFailure).toBe("");
+      const previous = await uploadAvatar();
+      expect(await getCurrentAvatar()).toBe(previous);
+      deletedKeys.length = 0;
+      releases.length = 0;
+      const warning = spyOn(logger, "warn").mockImplementation(() => {});
+      try {
+        const requestApp = new Hono();
+        requestApp.use("*", (c, next) =>
+          runWithCloudBindingsAsync(c.env, next),
+        );
+        requestApp.route("/api/v1/user", userRoute);
+        const target = background ? OLD_AVATAR : "";
+        const settled: Promise<{ fulfilled: boolean }>[] = [];
+        const executionCtx = {
+          waitUntil(promise: Promise<unknown>) {
+            settled.push(
+              promise.then(
+                () => ({ fulfilled: true }),
+                () => ({ fulfilled: false }),
+              ),
+            );
+          },
+          passThroughOnException() {},
+          props: {},
+        };
+        const response = await requestApp.request(
+          "/api/v1/user",
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ avatar: target }),
+          },
+          {
+            ...workerEnv,
+            CLOUD_DEPLOYMENT_ID: "example-product",
+            R2_PUBLIC_HOST: host,
+          },
+          background ? executionCtx : undefined,
+        );
+        expect(response.status).toBe(200);
+        expect(await Promise.all(settled)).toEqual(
+          background ? [{ fulfilled: true }] : [],
+        );
+        const [row] = await dbWrite
+          .select({ avatar: users.avatar })
+          .from(users);
+        expect(row?.avatar).toBe(target || null);
+        expect(await getCurrentAvatar()).toBe(target || null);
+        expect(objects.has(keyOf(previous))).toBe(true);
+        expect(deletedKeys).toEqual([]);
+        expect(releases).toEqual([]);
+        expect(warning).toHaveBeenCalledWith(
+          "[User Avatar] Failed to remove replaced avatar",
+          {
+            organizationId: expect.any(String),
+            userId: expect.any(String),
+            errorType: "CloudDeploymentConfigError",
+          },
+        );
+      } finally {
+        warning.mockRestore();
+      }
+    });
+  }
+}

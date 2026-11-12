@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   checkElizaMutatingRequestOrigin,
   isPermittedElizaBrowserOrigin,
@@ -629,4 +629,123 @@ describe("resolveCloudCallbackOrigins", () => {
       resolveCloudCallbackOrigins({ CLOUD_DEPLOYMENT_ID: "alpha" }, "production"),
     ).toThrow(CloudDeploymentConfigError);
   });
+});
+
+describe("CloudFilesService deployment validation before effects", () => {
+  async function fixture(host: string) {
+    const { CloudFilesService } = await import("../services/cloud-files");
+    const effects: string[] = [];
+    const service = new CloudFilesService(
+      {
+        create: async (row: unknown) => {
+          effects.push("metadata-create");
+          return row;
+        },
+      } as never,
+      {
+        tryReserveBytes: async () => {
+          effects.push("quota-reserve");
+          return 5n;
+        },
+        releaseBytes: async () => {
+          effects.push("quota-release");
+        },
+      },
+    );
+    const bindings = {
+      ...ALPHA,
+      R2_PUBLIC_HOST: host,
+      BLOB: {
+        put: async () => {
+          effects.push("object-put");
+        },
+        delete: async () => {
+          effects.push("object-delete");
+        },
+      },
+    } as unknown as import("../../types/cloud-worker-env").Bindings;
+    const upload = () =>
+      runWithCloudBindings(bindings, () =>
+        service.upload(bindings, {
+          organizationId: "example-org",
+          file: new File(["notes"], "notes.txt", { type: "text/plain" }),
+        }),
+      );
+    return { effects, upload };
+  }
+
+  for (const host of ["", "blob.example.org:65536", "blob.example.org:99999"]) {
+    test(`upload refuses product blob host ${host || "missing"} before quota and object effects`, async () => {
+      const { effects, upload } = await fixture(host);
+      await expect(upload()).rejects.toBeInstanceOf(CloudDeploymentConfigError);
+      expect(effects).toEqual([]);
+    });
+  }
+
+  test("upload records a configured explicit-port public URL", async () => {
+    const { effects, upload } = await fixture("blob.example.org:8443");
+    const row = await upload();
+    expect(row.storage_url).toStartWith("https://blob.example.org:8443/cloud-files/example-org/");
+    expect(effects).toEqual(["quota-reserve", "object-put", "metadata-create"]);
+  });
+});
+
+describe("affiliate images use the canonical managed blob authority", () => {
+  const cases = [
+    {
+      name: "configured non-default port",
+      host: "blob.alpha.example:8443",
+      url: "https://blob.alpha.example:8443/image.png",
+      managed: true,
+    },
+    {
+      name: "canonical default port",
+      host: "blob.alpha.example:443",
+      url: "https://blob.alpha.example/image.png",
+      managed: true,
+    },
+    {
+      name: "unconfigured port",
+      host: "blob.alpha.example",
+      url: "https://blob.alpha.example:8443/image.png",
+      managed: false,
+    },
+    {
+      name: "HTTP",
+      host: "blob.alpha.example",
+      url: "http://blob.alpha.example/image.png",
+      managed: false,
+    },
+    {
+      name: "userinfo",
+      host: "blob.alpha.example",
+      url: "https://user:pass@blob.alpha.example/image.png",
+      managed: false,
+    },
+  ];
+  for (const entry of cases) {
+    test(entry.name, async () => {
+      const blob = await import("../blob");
+      const uploadedUrl = "https://blob.alpha.example/affiliate/converted.png";
+      const upload = spyOn(blob, "uploadFromUrl").mockResolvedValue({
+        url: uploadedUrl,
+        pathname: "affiliate/converted.png",
+        contentType: "image/png",
+        size: 1,
+      });
+      try {
+        const { processAffiliateImages } = await import("../services/affiliate-images");
+        const result = await asAlpha(
+          () => processAffiliateImages({ imageUrls: [entry.url] }, "character-1"),
+          { R2_PUBLIC_HOST: entry.host },
+        );
+        expect(upload).toHaveBeenCalledTimes(entry.managed ? 0 : 1);
+        expect(result.referenceImageUrls).toEqual([entry.managed ? entry.url : uploadedUrl]);
+        expect(result.failedUploads).toBe(0);
+        if (!entry.managed) expect(upload.mock.calls[0]?.[0]).toBe(entry.url);
+      } finally {
+        upload.mockRestore();
+      }
+    });
+  }
 });
