@@ -6,12 +6,6 @@
  * and trajectory-export modules. Not intended for direct external consumption.
  */
 
-import { once } from "node:events";
-import { createWriteStream } from "node:fs";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { createGzip } from "node:zlib";
 import {
   asObjectRecord as asRecord,
   logger as coreLogger,
@@ -21,7 +15,6 @@ import {
   ModelType,
   parseTrajectorySemanticStages,
   redactBasicEmails,
-  resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
   type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
@@ -511,7 +504,6 @@ const observationFlushTimers = new WeakMap<
   ReturnType<typeof setTimeout>
 >();
 const observationFlushInProgress = new WeakMap<object, boolean>();
-export const TRAJECTORY_ARCHIVE_DIRNAME = "trajectory-archive";
 function getObservationBuffer(runtime: IAgentRuntime): BufferedExchange[] {
   const key = runtime as object;
   let buffer = observationBuffers.get(key);
@@ -993,54 +985,6 @@ async function initializeTrajectoriesTable(
         archetype TEXT
       )`,
     );
-    // Archive table
-    await executeRawSql(
-      runtime,
-      `CREATE TABLE IF NOT EXISTS trajectory_archive (
-        id TEXT PRIMARY KEY,
-        agent_id TEXT NOT NULL,
-        source TEXT NOT NULL DEFAULT 'runtime',
-        status TEXT NOT NULL DEFAULT 'completed',
-        start_time BIGINT NOT NULL,
-        end_time BIGINT,
-        duration_ms BIGINT,
-        step_count INTEGER NOT NULL DEFAULT 0,
-        llm_call_count INTEGER NOT NULL DEFAULT 0,
-        provider_access_count INTEGER NOT NULL DEFAULT 0,
-        total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
-        total_completion_tokens INTEGER NOT NULL DEFAULT 0,
-        total_cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
-        total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
-        total_reward REAL NOT NULL DEFAULT 0,
-        scenario_id TEXT,
-        batch_id TEXT,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        observations TEXT NOT NULL DEFAULT '[]',
-        archive_blob_path TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        archived_at TEXT NOT NULL
-      )`,
-    );
-    // Best-effort forward migration for existing archive tables.
-    await addColumnIfMissing(
-      runtime,
-      "trajectory_archive",
-      "archive_blob_path",
-      "TEXT",
-    );
-    await addColumnIfMissing(
-      runtime,
-      "trajectory_archive",
-      "total_cache_read_input_tokens",
-      "INTEGER NOT NULL DEFAULT 0",
-    );
-    await addColumnIfMissing(
-      runtime,
-      "trajectory_archive",
-      "total_cache_creation_input_tokens",
-      "INTEGER NOT NULL DEFAULT 0",
-    );
     // Best-effort forward migration for grouping columns.
     await addColumnIfMissing(runtime, "trajectories", "scenario_id", "TEXT");
     await executeRawSql(
@@ -1052,13 +996,6 @@ async function initializeTrajectoriesTable(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
     );
-    await addColumnIfMissing(
-      runtime,
-      "trajectory_archive",
-      "scenario_id",
-      "TEXT",
-    );
-    await addColumnIfMissing(runtime, "trajectory_archive", "batch_id", "TEXT");
     let trajectoryStepsExisted = true;
     try {
       await executeRawSql(runtime, `SELECT id FROM trajectory_steps LIMIT 1`);
@@ -3926,60 +3863,6 @@ export function readOrchestratorTrajectoryContext(
   )
     return undefined;
   return candidate as OrchestratorTrajectoryContext;
-}
-// ---------------------------------------------------------------------------
-// Archive helpers
-// ---------------------------------------------------------------------------
-export function resolvePreferredTrajectoryArchiveRoot(): string {
-  const explicitWorkspace = process.env.ELIZA_WORKSPACE_DIR?.trim();
-  if (explicitWorkspace) return explicitWorkspace;
-  const workspaceRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
-  if (workspaceRoot) return workspaceRoot;
-  return path.join(resolveStateDir(), "workspace");
-}
-export async function ensureArchiveDirectory(dir: string): Promise<void> {
-  await fs.mkdir(dir, { recursive: true });
-}
-export async function resolveTrajectoryArchiveDirectory(): Promise<string> {
-  const preferred = path.join(
-    resolvePreferredTrajectoryArchiveRoot(),
-    TRAJECTORY_ARCHIVE_DIRNAME,
-  );
-  try {
-    await ensureArchiveDirectory(preferred);
-    return preferred;
-  } catch {
-    const fallback = path.join(
-      process.env.TMPDIR || os.tmpdir(),
-      "eliza",
-      TRAJECTORY_ARCHIVE_DIRNAME,
-    );
-    await ensureArchiveDirectory(fallback);
-    return fallback;
-  }
-}
-export function toArchiveSafeTimestamp(isoTimestamp: string): string {
-  return isoTimestamp.replace(/[:.]/g, "-");
-}
-export function stringifyArchiveRow(row: Record<string, unknown>): string {
-  return JSON.stringify(row, (_key, value) =>
-    typeof value === "bigint" ? value.toString() : value,
-  );
-}
-export async function writeCompressedJsonlRows(
-  archivePath: string,
-  rows: Record<string, unknown>[],
-): Promise<void> {
-  const gzipStream = createGzip({ level: 9 });
-  const outStream = createWriteStream(archivePath);
-  gzipStream.pipe(outStream);
-  for (const row of rows) {
-    if (!gzipStream.write(`${stringifyArchiveRow(row)}\n`, "utf8")) {
-      await once(gzipStream, "drain");
-    }
-  }
-  gzipStream.end();
-  await once(outStream, "finish");
 }
 /**
  * Resolves whether DB trajectory persistence is on by default. Delegates to the
