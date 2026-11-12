@@ -1103,6 +1103,20 @@ describe("check-in source availability and generation failures", () => {
     },
   );
 
+  it("rejects a model summary that gives the current briefing a stale calendar date", async () => {
+    modelResponse =
+      "Good morning. Here is the brief for Saturday, October 3, 2025.";
+    await expect(
+      new CheckinService(runtime).runMorningCheckin({
+        timezone: "America/Los_Angeles",
+        now: new Date("2026-10-03T20:23:00Z"),
+      }),
+    ).rejects.toMatchObject({ code: "CHECKIN_SUMMARY_DATE_MISMATCH" });
+    expect(
+      (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
+    ).toEqual([]);
+  });
+
   it("uses the configured text model for the morning message and retains its result", async () => {
     modelResponse =
       "Your calendar is clear today. Pick one task to focus on this morning.";
