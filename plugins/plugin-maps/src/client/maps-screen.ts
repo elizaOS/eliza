@@ -1294,9 +1294,9 @@ export class MapsScreenController {
           : this.mapState;
     const mapText =
       this.mapState === "error"
-        ? "Map rendering is unavailable. Retry the map, or use coordinates and saved places."
+        ? "The map could not load. Try again."
         : outsideCoverage
-          ? `This location is outside ${coverage?.name ?? ""} ${coverage?.mapRestricted ? "map" : "search and route"} coverage. Its coordinates are retained.`
+          ? `This location is outside ${coverage?.name ?? ""} ${coverage?.mapRestricted ? "map" : "search and route"} coverage.`
           : mapState === "loading"
             ? "Loading map…"
             : !coverage?.mapRestricted
@@ -1348,20 +1348,20 @@ export class MapsScreenController {
           ...savedOrigins.map((item) => ({
             key: `saved:${item.id}`,
             name: item.label,
-            detail: `Saved place · ${coordLabel(item.coordinate)}`,
+            detail: "Saved place",
             saved: true,
           })),
           ...snapshot.originSearch.value.map((item) => ({
             key: `place:${item.providerId}:${item.id}`,
             name: item.name,
-            detail: item.address || coordLabel(item.coordinate),
+            detail: item.address || "",
             saved: false,
           })),
         ]
       : snapshot.search.value.map((item) => ({
           key: `place:${item.providerId}:${item.id}`,
           name: item.name,
-          detail: item.address || coordLabel(item.coordinate),
+          detail: item.address || "",
           saved: false,
         }));
     const mapsAppText = this.mapsAppText();
