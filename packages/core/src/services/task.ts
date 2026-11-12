@@ -48,16 +48,17 @@ function repeatDueAt(task: Task, atomicWake: boolean): number {
 	const meta = task.metadata;
 	const idealNextRun = lastRanAt(task) + (meta?.updateInterval ?? 0);
 	const wakeAt = atomicWake && !meta?.failureCount ? meta?.wakeAt : undefined;
-	const earliest = Math.min(
-		idealNextRun - (meta?.notBefore ?? 0),
-		wakeAt ?? Infinity,
-	);
+	const intervalDue = idealNextRun - (meta?.notBefore ?? 0);
 	// A repeat row with a future dueAt waits for it like a one-shot does.
 	// Without this floor a repeat row that never ran (lastRan 0) fired on the
 	// next tick: the Blooio receipt cleanup scheduled seven days out deleted
 	// its dedupe receipt one second after the webhook was answered.
+	// An explicit wake request still pulls the row forward.
 	const dueMs = resolveDueTime(task);
-	return dueMs == null ? earliest : Math.max(earliest, dueMs);
+	return Math.min(
+		dueMs == null ? intervalDue : Math.max(intervalDue, dueMs),
+		wakeAt ?? Infinity,
+	);
 }
 
 /**

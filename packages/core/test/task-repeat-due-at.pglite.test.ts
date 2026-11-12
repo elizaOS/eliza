@@ -47,6 +47,46 @@ it("a repeat task with a future dueAt does not run before it", async () => {
 		now += WEEK;
 		await service.runDueTasks();
 		expect(runs).toBe(1);
+
+		// After the first run the row repeats on its interval.
+		now += HOUR;
+		await service.runDueTasks();
+		expect(runs).toBe(2);
+	} finally {
+		await service.stop();
+		await f.cleanup();
+	}
+});
+
+it("an explicit wake request still runs a repeat task before its dueAt", async () => {
+	const f = await createTestRuntime({ characterName: "RepeatDueAtWake" });
+	const now = Date.parse("2026-07-01T10:00:00.000Z");
+	let runs = 0;
+	const service = new TaskService(f.runtime, {
+		now: () => now,
+		setInterval: () => 1,
+		clearInterval: () => {},
+	});
+	try {
+		f.runtime.registerTaskWorker({
+			name: "RECEIPT_CLEANUP",
+			execute: async () => {
+				runs++;
+				return undefined;
+			},
+		});
+		const id = await f.runtime.createTask({
+			name: "RECEIPT_CLEANUP",
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: HOUR, maxFailures: 0 },
+			dueAt: now + WEEK,
+		});
+		await service.runDueTasks();
+		expect(runs).toBe(0);
+
+		await f.runtime.patchTaskMetadata(id, { wake: { requestAt: now } });
+		await service.runDueTasks();
+		expect(runs).toBe(1);
 	} finally {
 		await service.stop();
 		await f.cleanup();
