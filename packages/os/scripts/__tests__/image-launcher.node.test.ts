@@ -366,7 +366,7 @@ test("verification refuses tampered or reprivileged staging", (t) => {
   );
   const { output } = stage(t, "eliza_cf_arm64_phone");
   assert.throws(
-    () => verifyStagedLauncher(output, brandFor("eliza_cf_riscv64_phone")),
+    () => verifyStagedLauncher(output, brandFor("eliza_cf_x86_64_phone")),
     /does not belong/,
   );
 });

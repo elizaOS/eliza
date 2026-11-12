@@ -43,12 +43,6 @@ export {
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-  ANDROID_LP3_COLOR_POLICY_ACTIONS,
-  ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS,
-  ANDROID_LP3_COLOR_POLICY_COMPONENTS,
-  ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
-  ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
-  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   ANDROID_NATIVE_SIGN_IN_COMPONENTS,
   ANDROID_NATIVE_SIGN_IN_METADATA_NAMES,
   ANDROID_PLAY_ALLOWED_ACTIONS,
@@ -68,23 +62,15 @@ export {
   ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidCloudSplashTheme,
   applyAndroidPlayManifestHardening,
-  assertAndroidArtifactOmitsLp3ManifestMarkers,
   assertAndroidCloudNativeLibraryAllowlist,
-  assertAndroidLauncherManifest,
   createAndroidPlayManifestPolicy,
-  enforceAndroidLp3ColorPolicyBuildPolicy,
-  enforceAndroidLp3RemoteFallbackBuildPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
-  isAndroidLp3ColorPolicyEnabled,
-  isAndroidLp3RemoteFallbackRequired,
   isAndroidVpsSidecarBuild,
   resolveAndroidCloudAllowedNativeLibraries,
   resolveAndroidCloudAllowedNativePluginPackages,
-  resolveAndroidCloudCapacitorConfigPolicy,
   resolveAndroidCloudStripPolicy,
-  resolveAndroidLp3ColorPolicyBuildEnv,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./mobile/android/cloud-policy.ts";
 export { removeInactiveAndroidJavaSourceRoots } from "./mobile/android/strip.ts";
@@ -111,7 +97,6 @@ export {
 import { auditAndroidCloudArtifact } from "./mobile/artifact-inspection/android-audit.ts";
 
 export {
-  auditAndroidArtifactDexLp3Policy,
   auditAndroidCloudArtifact,
   findAndroidBionicInferenceOffenders,
   findAndroidCloudAab,
@@ -219,51 +204,43 @@ export {
 // ── Entry point ─────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)) {
-  const target = argv[0];
+  const [target, ...options] = argv;
   if (
     target !== "android" &&
-    target !== "android-launcher" &&
     target !== "android-host-e2e" &&
-    target !== "android-cloud-hybrid" &&
     target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
-    target !== "android-cloud-audit" &&
-    target !== "android-cloud-debug" &&
     target !== "android-system" &&
     target !== "ios" &&
     target !== "ios-local" &&
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.ts <android|android-launcher|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.ts <android|android-host-e2e|android-sms-gateway|android-cloud [--debug | --audit [aab-path]]|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
-  } else if (target === "android-launcher") {
-    await runAndroidBuild("android-launcher");
   } else if (target === "android-host-e2e") {
     await runAndroidBuild("android-host-e2e");
-  } else if (target === "android-cloud-hybrid") {
-    await runAndroidBuild("android-cloud-hybrid");
   } else if (target === "android-sms-gateway") {
     await buildAndroidSmsGateway();
-  } else if (target === "android-cloud") {
-    await buildAndroidCloud();
-  } else if (target === "android-cloud-audit") {
+  } else if (target === "android-cloud" && options[0] === "--audit") {
+    // The Gradle bundleRelease finalizer audits the final AAB through this
+    // step, so a direct Gradle or fastlane build gets the same release audit.
     const jdk = resolveJavaHome(process.env);
     if (!jdk) throw mobileBuildError("JDK 21 not found. Set JAVA_HOME.");
     process.env[ANDROID_BUNDLETOOL_JAR_ENV] = await ensureAndroidBundletoolJar({
       env: process.env,
     });
     auditAndroidCloudArtifact({
-      artifact: argv[1],
+      artifact: options[1],
       env: process.env,
       javaHome: jdk,
     });
-  } else if (target === "android-cloud-debug") {
-    await buildAndroidCloud({ debug: true });
+  } else if (target === "android-cloud") {
+    await buildAndroidCloud({ debug: options.includes("--debug") });
   } else if (target === "android-system") {
     await buildAndroidSystem();
   } else if (target === "ios") {

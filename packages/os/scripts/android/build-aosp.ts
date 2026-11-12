@@ -27,14 +27,12 @@ import { resolveElizaSourceRoot } from "../eliza-source.ts";
 import {
   aospLockPath,
   assertExtractedVendorTree,
-  assertGeneratedVendorTree,
   assertPinnedAospCheckout,
   loadAospLock,
   verifyProprietaryArchive,
 } from "./bootstrap-aosp.ts";
 import { loadBrandFromArgv } from "./brand-config.ts";
 import { LAUNCHER_DIRECTORY, stageImageLauncher } from "./image-launcher.ts";
-import { provisionCuttlefishE1 } from "./provision-cuttlefish-e1.ts";
 import { withSisoCompatibility } from "./siso-env.ts";
 import {
   admitBrowserVendor,
@@ -470,8 +468,7 @@ export function assertBuildHost({
       `${brand.distroName} AOSP builds require a Linux x86_64 builder.`,
     );
   }
-  const usesRiscvTcg = brand.productName.includes("riscv64");
-  if (launch && !usesRiscvTcg && !fs.existsSync(kvmPath)) {
+  if (launch && !fs.existsSync(kvmPath)) {
     throw new Error(`${brand.distroName} Cuttlefish launch requires /dev/kvm.`);
   }
 }
@@ -546,7 +543,7 @@ const CUTTLEFISH_GPU_MODES = new Set([
   "none",
 ]);
 
-export function resolveCuttlefishGpuMode(brand, env = process.env) {
+export function resolveCuttlefishGpuMode(env = process.env) {
   const configured = env.ELIZA_CUTTLEFISH_GPU_MODE?.trim();
   if (configured) {
     if (!CUTTLEFISH_GPU_MODES.has(configured)) {
@@ -556,13 +553,11 @@ export function resolveCuttlefishGpuMode(brand, env = process.env) {
     }
     return configured;
   }
-  return brand.productName.includes("riscv64")
-    ? "guest_swiftshader"
-    : "gfxstream";
+  return "gfxstream";
 }
 
 export function cuttlefishLaunchCommand(brand, env = process.env) {
-  const gpuMode = resolveCuttlefishGpuMode(brand, env);
+  const gpuMode = resolveCuttlefishGpuMode(env);
   const rendererFeatures = env.ELIZA_CUTTLEFISH_GPU_RENDERER_FEATURES?.trim();
   if (
     rendererFeatures &&
@@ -710,12 +705,6 @@ export async function main(argv = process.argv.slice(2)) {
     aospRoot: args.aospRoot,
     archivePath,
   });
-  if (brand.aospDeviceOverlay) {
-    provisionCuttlefishE1({
-      aospRoot: args.aospRoot,
-      lockPath: path.resolve(repoRoot, brand.aospDeviceOverlay),
-    });
-  }
   if (lock?.proprietaryArchive) {
     if (!archivePath) {
       throw new Error(
@@ -724,16 +713,6 @@ export async function main(argv = process.argv.slice(2)) {
     }
     await verifyProprietaryArchive(lock, archivePath);
     assertExtractedVendorTree(args.aospRoot, lock);
-  }
-  if (lock?.generatedVendor) {
-    assertGeneratedVendorTree(args.aospRoot, lock);
-    // Fail closed when the generated tree was prepared under different
-    // ELIZAOS_GRIZZLY_* settings than this build is running with — otherwise
-    // renderer/probe "A/B images" silently build from the wrong tree.
-    const { assertPreparedTreeMatchesEnv } = await import(
-      "./prepare-grizzly.ts"
-    );
-    assertPreparedTreeMatchesEnv(args.aospRoot);
   }
 
   const brandConfigArgs = ["--brand-config", brand.brandConfigPath];
