@@ -603,11 +603,15 @@ export async function processDueScheduledTasks(
         task.createdBy !== request.agentId ||
         task.idempotencyKey !== `approval:${requestId}`
       ) {
-        throw new Error("Approval task owner binding is invalid");
+        throw new ElizaError("Approval task owner binding is invalid", {
+          code: "APPROVAL_TASK_OWNER_BINDING_INVALID",
+        });
       }
       const approval = await approvalQueue.byId(requestId, task.subject.id);
       if (!approval)
-        throw new Error("Approval task has no matching owner request");
+        throw new ElizaError("Approval task has no matching owner request", {
+          code: "APPROVAL_TASK_REQUEST_NOT_FOUND",
+        });
       if (approval.state === "pending") {
         heldApprovalTaskIds.delete(task.taskId);
         continue;
@@ -620,6 +624,8 @@ export async function processDueScheduledTasks(
         )
       )
         continue;
+      // Deferred terminal rows stay held until a later tick has cleanup capacity.
+      if (result.completions.length >= limit) continue;
       await resolvePendingPromptsStore(request.runtime).forgetTask(task.taskId);
       const completed = await runner.apply(
         task.taskId,

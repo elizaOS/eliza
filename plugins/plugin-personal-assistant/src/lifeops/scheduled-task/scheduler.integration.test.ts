@@ -202,6 +202,132 @@ describe("processDueScheduledTasks — production wiring", () => {
     },
   );
 
+  it("limits resolved approval cleanup to one task per tick without delivering deferred approvals", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const owner = "approval-budget-owner";
+    const now = new Date("2026-11-11T23:00:00.000Z");
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    const prompts = resolvePendingPromptsStore(runtime);
+    const repo = new LifeOpsRepository(runtime);
+    const tasks: { requestId: string; task: ScheduledTask; roomId: string }[] =
+      [];
+    for (const status of ["scheduled", "fired"] as const) {
+      const approval = await queue.enqueue({
+        requestedBy: owner,
+        subjectUserId: owner,
+        action: "send_email",
+        channel: "email",
+        reason: `Synthetic ${status} approval, no provider dispatch`,
+        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        payload: {
+          action: "send_email",
+          to: ["self@example.test"],
+          cc: [],
+          bcc: [],
+          subject: "Approval cleanup budget QA",
+          body: "Test only",
+          threadId: null,
+          replyToMessageId: null,
+        },
+      });
+      const task = await seedScheduledTask(runtime, {
+        kind: "approval",
+        promptInstructions: "Approval needed",
+        trigger: { kind: "once", atIso: "2026-11-11T21:00:00Z" },
+        priority: "high",
+        respectsGlobalPause: false,
+        source: "plugin",
+        ownerVisible: true,
+        subject: { kind: "self", id: owner },
+        idempotencyKey: `approval:${approval.id}`,
+        metadata: { approvalRequestId: approval.id },
+        completionCheck: {
+          kind: "user_acknowledged",
+          followupAfterMinutes: 60,
+        },
+        state: {
+          status,
+          followupCount: 0,
+          ...(status === "fired" ? { firedAt: "2026-11-11T21:00:00Z" } : {}),
+        },
+      });
+      const roomId = `approval:${approval.id}`;
+      await prompts.record({
+        roomId,
+        taskId: task.taskId,
+        promptSnippet: "Approval needed",
+        firedAt: "2026-11-11T21:00:00Z",
+      });
+      await queue.reject(approval.id, owner, {
+        resolvedBy: owner,
+        resolutionReason: "Owner declined in the review dialog",
+      });
+      tasks.push({ requestId: approval.id, task, roomId });
+    }
+    const notificationCount = getRecordedTestNotifications(runtime).length;
+    const first = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now,
+      limit: 1,
+    });
+    expect(first.errors).toEqual([]);
+    expect(first.completions).toHaveLength(1);
+    expect(first.fires).toEqual([]);
+    expect(first.completionTimeouts).toEqual([]);
+    expect(first.pendingPrompts).toEqual([]);
+    const completedId = first.completions[0]?.taskId;
+    expect(tasks.map(({ task }) => task.taskId)).toContain(completedId);
+    for (const item of tasks) {
+      const completed = item.task.taskId === completedId;
+      const saved = await repo.getScheduledTask(
+        runtime.agentId,
+        item.task.taskId,
+      );
+      expect(saved?.state.status).toBe(
+        completed ? "completed" : item.task.state.status,
+      );
+      const pending = await prompts.list(item.roomId, { now });
+      expect(pending).toHaveLength(completed ? 0 : 1);
+      if (!completed) expect(pending[0]?.taskId).toBe(item.task.taskId);
+      expect((await queue.byId(item.requestId, owner))?.state).toBe("rejected");
+    }
+    expect(
+      await repo.listScheduledTasks(runtime.agentId, { kind: "approval" }),
+    ).toHaveLength(2);
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationCount,
+    );
+
+    const second = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date(now.getTime() + 60_000),
+      limit: 1,
+    });
+    expect(second.errors).toEqual([]);
+    expect(second.completions).toHaveLength(1);
+    expect(second.completions[0]?.taskId).not.toBe(completedId);
+    expect(second.fires).toEqual([]);
+    expect(second.completionTimeouts).toEqual([]);
+    expect(second.pendingPrompts).toEqual([]);
+    for (const item of tasks) {
+      expect(
+        (await repo.getScheduledTask(runtime.agentId, item.task.taskId))?.state
+          .status,
+      ).toBe("completed");
+      expect(await prompts.list(item.roomId, { now })).toEqual([]);
+      expect((await queue.byId(item.requestId, owner))?.state).toBe("rejected");
+    }
+    expect(
+      await repo.listScheduledTasks(runtime.agentId, { kind: "approval" }),
+    ).toHaveLength(2);
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationCount,
+    );
+  });
+
   it("fires a due one-shot reminder via the real runner wired through LifeOpsRepository", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
