@@ -341,6 +341,14 @@ export class MapsScreenController {
           connection.config,
           connection.provider,
         );
+        // Initial discovery can settle after an early search was refused.
+        // Resume only the still-visible query from this same screen.
+        const query = this.searching ? this.query.trim() : "";
+        if (query && !this.initialization) {
+          queueMicrotask(() => {
+            if (!this.disposed && this.host.active() && this.searching && this.query.trim() === query) this.submit();
+          });
+        }
       } else this.release(false);
       this.invalidate();
     });

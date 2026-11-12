@@ -158,13 +158,14 @@ function fixture(options = {}) {
       ? { status: "unconfigured" }
       : config(options.modes, !!options.alternatives),
   };
+  let connectionListener;
   const host = {
     connection: () => ({
       config: connection.config,
       provider:
         connection.config.status === "configured" ? provider : undefined,
     }),
-    onConnectionChange: () => () => {},
+    onConnectionChange: (listener) => {connectionListener=listener;return () => {connectionListener=undefined;};},
     initialize: async () => {
       calls.initialized++;
     },
@@ -246,6 +247,7 @@ function fixture(options = {}) {
     },
     stops: () => stopped,
     emitDevice: (value) => deviceFixListener?.(value),
+    activate: () => {connection.config=config(options.modes, !!options.alternatives);connectionListener?.();},
     setDeviceFix: (value) => {
       deviceFix = value;
     },
@@ -1172,4 +1174,15 @@ test("a GPS origin displays My location and keeps the exact route point internal
   await settle();
   assert.equal(f.screen.view().mode, "origin");
   assert.equal(f.screen.view().directions?.originText, "Destination");
+});
+
+
+test("an early search continues once the first provider becomes available", async () => {
+  const f = fixture({unconfigured:true});
+  f.screen.setQuery("Destination");f.screen.submit();await settle();
+  assert.equal(f.calls.searches.length,0);
+  f.activate();await settle();
+  assert.deepEqual(f.calls.searches,["Destination"]);
+  assert.equal(f.screen.view().results[0].name,"Destination");
+  f.screen.dispose();
 });
