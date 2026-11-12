@@ -560,6 +560,25 @@ console.log(
   };
   let active = first;
   const request = captureMapsSession(() => active);
+  const replacement = {
+    ...first,
+    client: {
+      mapsRequest: async () => {
+        calls++;
+        return { refreshed: true };
+      },
+    },
+  };
+  active = replacement;
+  assert.deepEqual(
+    await request("routes", new AbortController().signal, {
+      from: CASINO,
+      to: PORT,
+    }),
+    { refreshed: true },
+    "the same account can rebuild its client without losing Maps",
+  );
+  active = first;
   const pending = request("routes", new AbortController().signal, {
     from: CASINO,
     to: PORT,
@@ -571,7 +590,7 @@ console.log(
     request("routes", new AbortController().signal, { from: CASINO, to: PORT }),
     (error) => error.code === "unauthorized",
   );
-  assert.equal(calls, 1, "the new account received no retained coordinates");
+  assert.equal(calls, 2, "the new account received no retained coordinates");
 }
 
 assert.equal(
