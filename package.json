@@ -1,5 +1,6 @@
 {
   "private": true,
+  "license": "MIT",
   "dependencies": {
     "@vercel/functions": "^2.2.13",
     "esbuild": "^0.25.12"
