@@ -1,10 +1,13 @@
 /**
- * An org-funded Shared stream the consumer cancels is billed for the reply it
- * already delivered, not for the admitted 500-token output estimate. Real
- * pricing, billing and ledger rows on PGlite; only the reservation settlers
- * are observed (first call wins, as in production).
+ * An org-funded Shared stream that stops after delivery is billed for the
+ * reply it already delivered, not for the admitted 500-token output estimate.
+ * The real `SharedRuntimeChatService.stream` runs; a client disconnect is a
+ * real `request.signal` abort or a real response-body cancel. Real pricing,
+ * billing and ledger rows on PGlite. Only the provider stream, the org rate
+ * limit and the reservation settlers are replaced (first settle wins, as in
+ * production).
  */
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -69,82 +72,160 @@ afterAll(async () => {
   if (closeDb) await closeDb();
 });
 
-function observedBilling(requestId: string) {
-  const outcome: { exact: number[]; unknown: number } = { exact: [], unknown: 0 };
-  let settled = false;
-  const billing = {
-    context: {
-      organizationId: ORG_ID,
-      userId: USER_ID,
-      apiKeyId: null,
-      model: MODEL,
-      provider: "anthropic",
-      billingSource: "bitrouter" as const,
-      requestId,
-    },
-    idempotencyKey: `idem-${requestId}`,
-    estimatedInputTokens: 20,
+const PROVIDER_STOPPED = "provider stopped";
+
+let reservation: { exact: number[]; unknown: number; settled: boolean } = {
+  exact: [],
+  unknown: 0,
+  settled: false,
+};
+let deltas: string[] = [];
+
+const realTurn = await import("./run-shared-agent-turn");
+mock.module("./run-shared-agent-turn", () => ({
+  ...realTurn,
+  resolveSharedAgentTurnModel: () => MODEL,
+  // Delivers `deltas`, then waits like a slow provider until generation stops.
+  runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => ({
+    model: MODEL,
+    degraded: false,
+    parts: (async function* () {
+      for (const text of deltas) yield { type: "text-delta" as const, text };
+      await new Promise((_resolve, reject) => {
+        input.abortSignal?.addEventListener("abort", () => reject(new Error(PROVIDER_STOPPED)), {
+          once: true,
+        });
+      });
+    })(),
+  }),
+}));
+const realRateLimit = await import("../../middleware/rate-limit");
+mock.module("../../middleware/rate-limit", () => ({
+  ...realRateLimit,
+  enforceOrgRateLimit: async () => null,
+}));
+const realAdmission = await import("../organization-inference-admission");
+mock.module("../organization-inference-admission", () => ({
+  ...realAdmission,
+  admitOrganizationInference: async () => ({
     reservation: undefined,
     settle: async (amount: number) => {
-      if (settled) return null;
-      settled = true;
-      outcome.exact.push(amount);
+      if (reservation.settled) return null;
+      reservation.settled = true;
+      reservation.exact.push(amount);
       return null;
     },
     settleUnknown: async () => {
-      if (settled) return null;
-      settled = true;
-      outcome.unknown += 1;
+      if (reservation.settled) return null;
+      reservation.settled = true;
+      reservation.unknown += 1;
       return null;
     },
     markProviderDispatched: () => {},
-  };
-  return { billing, outcome };
+  }),
+}));
+
+const agent = {
+  id: "agent-shared-cancel",
+  organization_id: ORG_ID,
+  user_id: USER_ID,
+  character_id: null,
+  agent_name: "Shared cancel",
+  agent_config: null,
+  execution_tier: "shared",
+} as const;
+
+const historyStore = {
+  load: async () => [],
+  merge: async () => [],
+};
+
+async function billingRows(): Promise<Array<{ usage_total_cost: string }>> {
+  const rows = await dbWrite.execute(
+    `SELECT usage_total_cost FROM ai_billing_records WHERE organization_id = '${ORG_ID}';`,
+  );
+  return rows.rows as Array<{ usage_total_cost: string }>;
 }
 
-type SettleArgs = Parameters<
-  typeof import("./shared-runtime-chat").__sharedStreamSettlementTestHooks.settleInterruptedProviderWork
->;
+/** The ledger row is written after settlement, off the response path. */
+async function waitForBillingRows(count: number): Promise<Array<{ usage_total_cost: string }>> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const rows = await billingRows();
+    if (rows.length >= count) return rows;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return billingRows();
+}
 
-test("a canceled stream is billed for the reply it delivered", async () => {
-  const { __sharedStreamSettlementTestHooks } = await import("./shared-runtime-chat");
-  const { estimateInputTokens } = await import("../ai-billing");
-  const delivered = "The quick brown fox jumps over the lazy dog. ".repeat(400);
-  const deliveredTokens = estimateInputTokens([{ content: delivered }]);
-  expect(deliveredTokens).toBeGreaterThan(2_000);
-
-  const { billing, outcome } = observedBilling("shared-cancel-delivered");
-  await __sharedStreamSettlementTestHooks.settleInterruptedProviderWork(
-    { id: "agent-shared-cancel" } as SettleArgs[0],
-    billing as SettleArgs[1],
-    delivered,
-    "write a long report",
-    "consumer canceled stream",
+/**
+ * Streams `delivered` to the client, then disconnects it with `disconnect`
+ * and waits until the turn is settled.
+ */
+async function streamThenDisconnect(
+  delivered: string[],
+  disconnect: "request-abort" | "body-cancel",
+): Promise<void> {
+  const { sharedRuntimeChatService } = await import("./shared-runtime-chat");
+  reservation = { exact: [], unknown: 0, settled: false };
+  deltas = delivered;
+  const request = new AbortController();
+  const response = await sharedRuntimeChatService.stream(
+    agent as never,
+    {
+      jsonrpc: "2.0",
+      id: `shared-cancel-${disconnect}`,
+      method: "message.send",
+      params: { roomId: "cancel-room", text: "write a long report" },
+    },
+    { abortSignal: request.signal, historyStore, funding: "organization-credits" },
   );
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let received = "";
+  while (received.split("event: chunk").length - 1 < delivered.length) {
+    const next = await reader.read();
+    if (next.done) throw new Error("stream ended before delivery");
+    received += decoder.decode(next.value);
+  }
+  if (disconnect === "request-abort") {
+    request.abort();
+    // The stream fails and closes; finalization may finish after the close.
+    while (!(await reader.read()).done) {}
+  } else {
+    await reader.cancel("client closed the tab");
+  }
+  for (let attempt = 0; attempt < 100 && !reservation.settled; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
 
-  expect(outcome.unknown).toBe(0);
-  expect(outcome.exact).toHaveLength(1);
-  expect(outcome.exact[0]).toBeGreaterThanOrEqual(deliveredTokens * OUTPUT_PRICE);
-  expect(outcome.exact[0]).toBeGreaterThan(500 * OUTPUT_PRICE * 4);
-  const rows = await dbWrite.execute(
-    `SELECT usage_total_cost, idempotency_key FROM ai_billing_records WHERE organization_id = '${ORG_ID}';`,
-  );
-  expect(rows.rows).toHaveLength(1);
-  const [row] = rows.rows as Array<{ usage_total_cost: string; idempotency_key: string }>;
-  expect(row.idempotency_key).toBe("idem-shared-cancel-delivered");
-  expect(Number(row.usage_total_cost)).toBeCloseTo(outcome.exact[0], 5);
-});
+const longReply = Array.from({ length: 40 }, () =>
+  "The quick brown fox jumps over the lazy dog. ".repeat(10),
+);
 
-test("a stream canceled within the admitted estimate keeps the estimate", async () => {
-  const { __sharedStreamSettlementTestHooks } = await import("./shared-runtime-chat");
-  const { billing, outcome } = observedBilling("shared-cancel-short");
-  await __sharedStreamSettlementTestHooks.settleInterruptedProviderWork(
-    { id: "agent-shared-cancel" } as SettleArgs[0],
-    billing as SettleArgs[1],
-    "A short start.",
-    "write a long report",
-    "consumer canceled stream",
-  );
-  expect(outcome.exact).toEqual([]);
-  expect(outcome.unknown).toBe(1);
-});
+for (const disconnect of ["request-abort", "body-cancel"] as const) {
+  test(`a ${disconnect} after delivery is billed for the delivered reply`, async () => {
+    const { estimateInputTokens } = await import("../ai-billing");
+    const deliveredTokens = estimateInputTokens([{ content: longReply.join("") }]);
+    expect(deliveredTokens).toBeGreaterThan(2_000);
+    const before = (await billingRows()).length;
+
+    await streamThenDisconnect(longReply, disconnect);
+
+    expect(reservation.unknown).toBe(0);
+    expect(reservation.exact).toHaveLength(1);
+    expect(reservation.exact[0]).toBeGreaterThanOrEqual(deliveredTokens * OUTPUT_PRICE);
+    expect(reservation.exact[0]).toBeGreaterThan(500 * OUTPUT_PRICE * 4);
+    const rows = await waitForBillingRows(before + 1);
+    expect(rows).toHaveLength(before + 1);
+    expect(Number(rows.at(-1)?.usage_total_cost)).toBeCloseTo(reservation.exact[0], 5);
+  });
+
+  test(`a ${disconnect} within the admitted estimate keeps the estimate`, async () => {
+    const before = (await billingRows()).length;
+    await streamThenDisconnect(["A short start."], disconnect);
+    expect(reservation.exact).toEqual([]);
+    expect(reservation.unknown).toBe(1);
+    expect(await billingRows()).toHaveLength(before);
+  });
+}

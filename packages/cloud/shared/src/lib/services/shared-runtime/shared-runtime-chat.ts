@@ -1302,8 +1302,6 @@ async function settleInterruptedProviderWork(
   await settleAmbiguousProviderWork(agent, billing, reason);
 }
 
-export const __sharedStreamSettlementTestHooks = { settleInterruptedProviderWork } as const;
-
 function settleAmbiguousProviderWorkOffPath(
   agent: SharedRuntimeAgent,
   billing: BillingTurn | null,
@@ -1395,10 +1393,9 @@ function settleFailedProviderWorkOffPath(
   executionCtx: BridgeExecutionContext | undefined,
   error: unknown,
   reason: string,
-  providerOutputObserved = false,
 ): Promise<void> {
   if (!billing) return Promise.resolve();
-  if (!providerOutputObserved && isProvablyZeroProviderFailure(error)) {
+  if (isProvablyZeroProviderFailure(error)) {
     return settleOffResponsePath(executionCtx, async () => {
       await billing.settle(0);
     });
@@ -2361,6 +2358,15 @@ export class SharedRuntimeChatService {
             const interruptedReply = streamedReply;
             await checkpointInterruptedTurn(interruptedReply);
             const finalization = finalizeMessages(interruptedReply, true, async () => {
+              // A request abort (client disconnect) lands here, not in cancel:
+              // delivered text is billed the same way on both paths.
+              if (interruptedReply.length > 0) {
+                await settleInterruptedTurn(
+                  "provider stream failed after dispatch",
+                  interruptedReply,
+                );
+                return;
+              }
               if (!terminalSettlementStarted) {
                 terminalSettlementStarted = true;
                 await settleFailedProviderWorkOffPath(
@@ -2369,7 +2375,6 @@ export class SharedRuntimeChatService {
                   options.executionCtx,
                   error,
                   "provider stream failed after dispatch",
-                  interruptedReply.length > 0,
                 );
               }
             });
