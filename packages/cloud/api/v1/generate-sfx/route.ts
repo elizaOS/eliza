@@ -24,6 +24,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
@@ -45,7 +46,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 const DEFAULT_SFX_MODEL = "elevenlabs/sound_effects_v1";
 const MAX_PROMPT_LENGTH = 500;
@@ -141,11 +142,15 @@ app.post("/", async (c) => {
       );
     }
 
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (pendingResponse) return pendingResponse;
     if (!request || !definition) {
       throw new Error("Validated SFX request was not retained");
@@ -207,6 +212,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
         atomicProviderBoundary: true,
       });
     } catch (error) {

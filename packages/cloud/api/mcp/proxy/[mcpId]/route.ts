@@ -28,11 +28,13 @@ import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
 } from "@elizaos/cloud-shared/lib/cors-constants";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { assertSafeOutboundUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
 import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
 import { affiliatesService } from "@elizaos/cloud-shared/lib/services/affiliates";
 import { containersService } from "@elizaos/cloud-shared/lib/services/containers";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { assertInferenceCredentialActive } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import {
   RETIRED_MCP_LISTING_PRICE_POINTS,
@@ -46,7 +48,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 import {
   createMcpProxyHopDeadline,
   isMcpProxyHopDeadline,
@@ -250,7 +252,7 @@ app.get("/", async (c) => {
     return c.json({ error: "MCP not found" }, 404);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? "https://cloud.eliza.app";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? getCloudDeployment().appOrigin;
   const apiMcp = userMcpsService.toApiMcp(mcp);
 
   return c.json({
@@ -303,6 +305,10 @@ app.post("/", async (c) => {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
   try {
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     const user = caller.user;
 
     const mcp = await userMcpsService.getById(mcpId);
@@ -552,7 +558,7 @@ app.post("/", async (c) => {
         if (chargeReceipt.totalAmountUsd <= 0) {
           // Nothing to reserve. Run the deferred strong credential check now,
           // before the upstream call, instead of at disposal.
-          const credential = caller.credential;
+          const credential = credentialGuard.credentialForAdmission();
           if (credential) {
             await assertInferenceCredentialActive(
               user.organization_id,
@@ -599,7 +605,7 @@ app.post("/", async (c) => {
             },
             apiKeyId: caller.apiKeyId,
             admissionSnapshot: caller.admissionSnapshot,
-            refreshAuthEntry: caller.refreshAuthEntry,
+            credential: credentialGuard.credentialForAdmission(),
             atomicProviderBoundary: true,
             cost: {
               baseTotalCost: chargeReceipt.baseAmountUsd,

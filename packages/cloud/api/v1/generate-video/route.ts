@@ -1,3 +1,4 @@
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /** Handles authenticated video generation, billing, and pending-job reconciliation. */
 
 import {
@@ -54,7 +55,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 const MAX_PROMPT_LENGTH = 4000;
 
@@ -288,11 +289,15 @@ app.post("/", async (c) => {
         : "Video generation is not configured";
       pendingResponse = jsonError(c, 503, message, "internal_error");
     }
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: pendingResponse === undefined,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (pendingResponse) return pendingResponse;
     if (!request) throw new Error("Validated video request was not retained");
 
@@ -380,6 +385,7 @@ app.post("/", async (c) => {
           cost: candidate.cost,
           idempotencyKey: candidate.billingContext.requestId ?? undefined,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: true,
           // A render is polled for minutes and can outlive this request. The
           // lease is committed before the provider call, so the gate alarm

@@ -105,7 +105,7 @@ module StandardInferenceAdmission {
   }
 
   // The caller holds the acknowledgement and declines to invoke the provider:
-  // the client left before the provider call.
+  // the rate verdict joined at the boundary denied it, or the client left.
   // The live zero settlement returns the hold; no debit exists to collect.
   action abandonAuthorized = all {
     s.phase == "dispatched" and s.client == "authorized" and not(s.invoked),

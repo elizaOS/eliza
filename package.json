@@ -118,6 +118,7 @@
     "packages/app/platforms/*",
     "packages/app/deploy/cloud-agent-template",
     "packages/cloud/api",
+    "packages/cloud/deploy",
     "packages/cloud/scripts",
     "packages/cloud/infra",
     "packages/cloud/routing",

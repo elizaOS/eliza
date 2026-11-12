@@ -1,8 +1,8 @@
 /**
  * Funding decisions of Worker inference admission against a real primary.
  *
- * An admitted request is decided from its cached snapshot and makes no store
- * call. A snapshot that would refuse is decided again from the primary before
+ * A locally affordable request obtains a shared durable lease. A snapshot
+ * that would refuse is decided again from the primary before
  * the refusal is returned, and a debit the balance cannot cover collects what
  * is left, so no organization can repeat a call it did not pay for and none is
  * refused after it paid. Real PGlite, real credit ledger and real projection
@@ -56,7 +56,8 @@ const gate = {
           gatePaths.push(path);
           const reply = gateReply?.(path);
           if (reply) return reply;
-          // One reply that satisfies every gate schema this suite reaches.
+          const body = (await request.json()) as { estimatedCostUsd?: number };
+          // The controlled gate acknowledges the exact requested exposure.
           return Response.json({
             hydrated: true,
             admitted: true,
@@ -64,7 +65,7 @@ const gate = {
             availableUsd: 1,
             requiredUsd: 0.01,
             settlementFenced: true,
-            estimatedCostUsd: 0.01,
+            estimatedCostUsd: body.estimatedCostUsd ?? 0.01,
             settled: true,
             published: true,
             allowed: true,
@@ -252,11 +253,11 @@ test("a balance below the request's estimate is refused before the provider with
   expect(decision.error).toMatchObject({ required: 1, available: 0.1 });
   expect(decision.primaryStatements).toBe(0);
   expect(decision.gateCalls).toEqual([]);
-  // The same balance funds a request it can pay for, again with no store call.
+  // A locally affordable request still obtains a shared durable lease.
   const affordable = await decide(org, await carriedSnapshot(org.organizationId, FRESH), 0.05);
   expect(affordable.admitted?.mode).toBe("durable_object_debit");
   expect(affordable.primaryStatements).toBe(0);
-  expect(affordable.gateCalls).toEqual([]);
+  expect(affordable.gateCalls).toEqual(["/lease"]);
 });
 
 test("an aged refusing snapshot is decided again from the primary and still refuses a balance below the estimate", async () => {
@@ -324,11 +325,11 @@ test("an entry showing no credit admits the very next request after a credit gra
   expect(admitted.primaryStatements).toBeGreaterThan(0);
   expect(admitted.entryRefreshes).toBe(1);
 
-  // The refilled projection now admits in this isolate with no store call.
+  // The refilled projection avoids primary reads; the shared lease remains required.
   const warm = await decide(org, carried, 0.05);
   expect(warm.admitted?.mode).toBe("durable_object_debit");
   expect(warm.primaryStatements).toBe(0);
-  expect(warm.gateCalls).toEqual([]);
+  expect(warm.gateCalls).toEqual(["/lease"]);
 });
 
 test("a refusal read from the primary in the last second is not read again, and is after that", async () => {
@@ -436,37 +437,17 @@ test("a recovery of the same request after a top-up collects nothing on top of t
   expect(direct.debits.filter((amount) => amount < 0)).toEqual([-0.1]);
 });
 
-test("a gate that refuses the lease and fails the balance publication still leaves the debit committed and the cached standing refreshed", async () => {
+test("a refused durable dispatch leaves the original hold and performs no unfenced debit", async () => {
   const org = await seedOrganization("0.100000");
   const decision = await decide(org, await carriedSnapshot(org.organizationId, FRESH), 0.05);
   expect(decision.admitted?.mode).toBe("durable_object_debit");
-
-  // After the response the gate refuses the lease commit and cannot take the
-  // debit's balance publication either.
+  expect(decision.gateCalls).toEqual(["/lease"]);
   gateReply = (path) =>
-    path === "/lease-dispatched"
-      ? Response.json({ admitted: false, availableUsd: 0, requiredUsd: 0.05 }, { status: 402 })
-      : path === "/hydrate"
-        ? new Response("unavailable", { status: 503 })
-        : undefined;
-  let settlementError: unknown;
-  let reconciliation: unknown;
-  try {
-    reconciliation = await bindings.runWithCloudBindingsAsync(gate, () =>
-      decision.admitted!.settle(0.1),
-    );
-  } catch (error) {
-    settlementError = error;
-  }
-  // Whether the settlement reports the publication failure or not, the
-  // provider's cost was collected and the entry rewrite was requested.
-  expect(await ledger(org.organizationId)).toEqual({
-    balance: 0,
-    debits: [-0.1],
-  });
-  expect(decision.entryRefreshes).toBeGreaterThanOrEqual(1);
-  expect(settlementError !== undefined || reconciliation !== undefined).toBe(true);
-  await drain(decision);
+    path === "/dispatch" ? new Response("unavailable", { status: 503 }) : undefined;
+  await expect(
+    bindings.runWithCloudBindingsAsync(gate, () => decision.admitted!.markProviderDispatched!()),
+  ).rejects.toBeDefined();
+  expect(await ledger(org.organizationId)).toEqual({ balance: 0.1, debits: [] });
 });
 
 test("a gate that cannot settle the lease still refreshes the cached standing", async () => {
@@ -474,8 +455,8 @@ test("a gate that cannot settle the lease still refreshes the cached standing", 
   const decision = await decide(org, await carriedSnapshot(org.organizationId, FRESH), 0.05);
   // The lease is committed and fenced; only the final settlement is lost.
   gateReply = (path) =>
-    path === "/lease-dispatched"
-      ? Response.json({ admitted: true, dispatched: true, availableUsd: 5, requiredUsd: 0.05 })
+    path === "/dispatch"
+      ? Response.json({ dispatched: true })
       : path === "/settlement-fence"
         ? Response.json({ settlementFenced: true, estimatedCostUsd: 0.05 })
         : path === "/settle"

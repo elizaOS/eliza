@@ -6,6 +6,7 @@ import {
   DOCUMENT_CONSTANTS,
   isValidFilename,
 } from "@elizaos/cloud-shared/lib/constants/documents";
+import { resolveCloudBlobHost } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import type {
   AppEnv,
@@ -56,10 +57,7 @@ export function publicBlobUrl(
   c: { env: AppEnv["Bindings"] },
   key: string,
 ): string {
-  const host =
-    typeof c.env.R2_PUBLIC_HOST === "string" && c.env.R2_PUBLIC_HOST.trim()
-      ? c.env.R2_PUBLIC_HOST.trim()
-      : "blob.eliza.app";
+  const host = resolveCloudBlobHost(c.env);
   return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${key}`;
 }
 

@@ -1,3 +1,4 @@
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 /**
  * POST /api/v1/embeddings
  *
@@ -80,7 +81,7 @@ import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];
@@ -136,6 +137,11 @@ app.post("/", async (c) => {
   try {
     const native = await prepareNativeApplicationInference(c);
     const inferenceRequest = native.request;
+    let guardOrganizationId: string | undefined;
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => guardOrganizationId,
+      credential: () => admissionCredential,
+    });
     const request = (await inferenceRequest
       .json()
       .catch(() => null)) as EmbeddingsRequest | null;
@@ -214,6 +220,7 @@ app.post("/", async (c) => {
         id: resolution.ctx.userId,
         organization_id: resolution.ctx.orgId,
       };
+      guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
       apiKeyRateLimit =
@@ -249,6 +256,7 @@ app.post("/", async (c) => {
           credentialId: apiKeyId,
           userId: user.id,
         };
+        guardOrganizationId = user.organization_id;
       } else {
         user = await requireUserOrApiKeyWithOrg(c);
         // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
@@ -466,6 +474,7 @@ app.post("/", async (c) => {
           executionCtx,
           admissionSnapshot,
           refreshAuthEntry,
+          credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: Boolean(executionCtx),
         });
         settleReservation = admission.settle;

@@ -31,6 +31,7 @@ import {
   jsonError,
   ValidationError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { resolveCloudBlobHost } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   RateLimitPresets,
   rateLimit,
@@ -41,6 +42,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { calculateVoiceCloneCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import type { VoiceCloneFailureReason } from "@elizaos/cloud-shared/lib/services/voice-clone-failure";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -55,13 +57,12 @@ import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB combined
 const ELEVENLABS_API = "https://api.elevenlabs.io";
-const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 type CloneType = "instant" | "professional";
 type DurableCloneResponse = {
@@ -339,6 +340,10 @@ app.post("/", async (c) => {
       deferStrongCredentialCheck:
         pendingConfigResponse === undefined && validationError === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     user = caller.user;
     apiKeyId = caller.apiKeyId;
     if (pendingConfigResponse) return pendingConfigResponse;
@@ -448,6 +453,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost: cloneCost,
         admissionSnapshot: caller.admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
         atomicProviderBoundary: true,
       });
     } catch (error) {
@@ -475,7 +481,7 @@ app.post("/", async (c) => {
     // 1) Upload samples to R2 in parallel. Persisted alongside the DB row so
     //    we have a backup independent of ElevenLabs. Failure here aborts the
     //    clone, matching the compatibility service behavior when a token was set.
-    const r2Host = c.env.R2_PUBLIC_HOST || DEFAULT_R2_PUBLIC_HOST;
+    const r2Host = resolveCloudBlobHost(c.env);
     const sampleRecords = await Promise.all(
       files.map(async (file) => {
         const safeName =

@@ -774,6 +774,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/voice": "workspace:*",
@@ -795,7 +796,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
-        "@elizaos/plugin-network": "workspace:*",
         "@elizaos/plugin-sqlite": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
@@ -808,6 +808,16 @@
         "pg": "^8.23.1",
         "typescript": "^6.0.3",
         "ws": "^8.22.1",
+      },
+    },
+    "packages/cloud/deploy": {
+      "name": "@elizaos/cloud-deploy",
+      "version": "0.0.0",
+      "bin": {
+        "cloud-deploy": "src/cli.ts",
+      },
+      "devDependencies": {
+        "@typescript/native": "npm:typescript@^7.0.2",
       },
     },
     "packages/cloud/e2e": {
@@ -3935,6 +3945,8 @@
     "@elizaos/claude-subscription-gateway": ["@elizaos/claude-subscription-gateway@workspace:packages/benchmarks/harnesses/transports/claude-subscription-gateway"],
 
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud/api"],
+
+    "@elizaos/cloud-deploy": ["@elizaos/cloud-deploy@workspace:packages/cloud/deploy"],
 
     "@elizaos/cloud-e2e": ["@elizaos/cloud-e2e@workspace:packages/cloud/e2e"],
 

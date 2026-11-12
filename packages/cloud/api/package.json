@@ -4,6 +4,33 @@
   "version": "2.0.3-beta.0",
   "type": "module",
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/index.ts",
+    "./wrangler.toml": "./wrangler.toml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "README.md",
+    "wrangler.toml",
+    "**/*.ts",
+    "**/*.tsx",
+    "!**/*.test.ts",
+    "!**/*.test.tsx",
+    "!**/__tests__/**",
+    "!**/*-test-harness.ts",
+    "!**/*-test-provider.ts",
+    "!**/*-test-fixtures.ts",
+    "!src/services/audit/testing.ts",
+    "!test/*.ts",
+    "!test/*.md",
+    "!test/e2e/**",
+    "!test/fixtures/**",
+    "!test/native-worker/**"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -56,7 +83,8 @@
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*",
-    "@elizaos/voice": "workspace:*"
+    "@elizaos/voice": "workspace:*",
+    "@elizaos/plugin-network": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/plugin-todos": "workspace:*",
@@ -71,7 +99,6 @@
     "pg": "^8.23.1",
     "typescript": "^6.0.3",
     "ws": "^8.22.1",
-    "@elizaos/plugin-sqlite": "workspace:*",
-    "@elizaos/plugin-network": "workspace:*"
+    "@elizaos/plugin-sqlite": "workspace:*"
   }
 }

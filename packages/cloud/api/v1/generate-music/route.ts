@@ -17,6 +17,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
 import {
   checkGenerativeProviderHealth,
@@ -44,7 +45,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../src/lib/generative-route-auth";
 
 const DEFAULT_MUSIC_MODEL = "fal-ai/minimax-music/v2.6";
 const MAX_PROMPT_LENGTH = 4100;
@@ -150,11 +151,15 @@ app.post("/", async (c) => {
           `music:${preflightProvider}:${preflightRequest.model}`,
         ).degraded,
     );
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
         deferStrongCredentialCheck: willAdmit,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
       return c.json({ error: "Invalid JSON body" }, 400);
@@ -306,6 +311,7 @@ app.post("/", async (c) => {
         apiKeyId,
         cost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
         atomicProviderBoundary: true,
       });
     } catch (error) {

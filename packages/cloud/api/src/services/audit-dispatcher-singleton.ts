@@ -7,11 +7,7 @@
  */
 
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
-import {
-  AuditDispatcher,
-  type AuditSink,
-  LoggerSink,
-} from "@/api-app/services/audit";
+import { AuditDispatcher, type AuditSink, LoggerSink } from "./audit";
 import { auditEventsSink } from "./audit-events";
 
 let dispatcher: AuditDispatcher | null = null;

@@ -259,26 +259,32 @@
     "sources": [
       "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
       "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRenewal.java",
-      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java"
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudKeyRevocation.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudCredentialSlots.java",
+      "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaResidentCredentials.java"
     ],
     "invariants": [
+      "AckRequiresDurableCustody",
+      "ActiveSuccessorRecoverable",
+      "PublicationRequiresConfirmedReceipt",
+      "PartialPublicationRecoverable",
       "OldKeyRevokedOnlyAfterInstall",
-      "InstalledKeyIsConfirmed",
       "WorkingKeyKept",
       "NewerActionWins",
-      "SavedKeyNotRevoked",
-      "UnsavedKeyRevokedOnlyAfterSavedKeyLeft",
+      "NewerJournalPreserved",
+      "NoBareSuccessorRevocation",
       "SavedKeyAcceptedOrReportedRefused",
       "NeverRenewsAfterConfirmedSuccessor",
-      "ConfirmedSuccessorIsRecorded"
+      "OnePredecessorDispatch",
+      "AnnouncedOnlyWhenRenewed",
+      "RetryBudget"
     ],
     "status": "partial",
     "limitations": [
-      "One Android deployment, one saved key and one renewal at a time, two daily requests, three acknowledgement rounds, one sign-in attempt and one newer credential action.",
-      "Conformance executes the exact renewal methods with synthetic storage, HTTPS and lifecycle ports in the JVM harness, and the exact save through plugin-native-agent's ResidentCredentialStore with its real provider admission (the agent is stopped and its admission removed; the savedKeyRenewed hook re-admits it before the old key is revoked). No host in this repository observes its credential intent for renewal yet, so no Android build runs it.",
-      "Cloud's rules for the keys of one sign-in are modeled as the Cloud API states them (a key that revokes itself without naming its confirmed successor ends the sign-in; so does a key that renews after its successor was confirmed). The JVM harness runs the client's exact requests against the same rules, including the two-minute tolerance for an unnamed last step. Neither runs the Cloud routes themselves: packages/cloud tests those.",
-      "The model ends at the first revocation of the replaced key. The stored duty to revoke it (written before the save with the new key's id, retried in the process and on later starts with that id, ended by a 2xx or a 401, never applied to the key that is still saved or to a duty that names no successor) is covered by the JVM harness only.",
-      "A confirmed key that was never saved stays active at Cloud, unused, until the sign-in ends or it expires; the saved key is then never renewed again and the owner signs in when it expires. A duty overwritten by a later renewal before Cloud ever answered is not retried. The Cloud renewal route, the expiry warning's presentation and device execution remain separate."
+      "Finite safety projection for one deployment, one predecessor/successor, two same-generation claim contenders, one encrypted journal, six exact ACKs, one newer user action, one partial selected publication and two restarts. Request CAS excludes stale readers, including after another instance has published and cleared its receipt.",
+      "Conformance executes the exact Java renewal/recovery methods against real JSON with synthetic durable slots, HTTPS and lifecycle ports. Faults include failed/uncertain stage writes, crash before/after ACK, ACK response loss past the deadline, refused ACK with possible earlier commit, partial publication, exact cleanup and durable new-intent fencing. Plain preferences are advisory; losing them cannot free an encrypted request or secret receipt.",
+      "The actual resident-store replacement and Eliza host CAS paths are exercised on a JVM, preserving provider/agent retirement. The optional savedKeyRenewed hook is best effort; renewed confirms the acknowledged selected credential, not resident runtime readiness. Current repository hosts do not opt into all renewal capability hooks and return unavailable before network.",
+      "Cloud server rules and exact ACK replay are assumptions checked separately by Cloud tests. Named predecessor retirement delivery, retry timing, warning presentation, cryptography, arbitrary processes and Android device execution remain outside this finite model. An unresolved dispatched pre-secret request requires interactive sign-in rather than unsafe takeover; full secret receipts automatically recover under their original durable generation."
     ]
   },
   {

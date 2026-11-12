@@ -13,6 +13,7 @@ import {
   executeHostedBrowserCommand,
   logHostedBrowserFailure,
 } from "@elizaos/cloud-shared/lib/services/browser-tools";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import type {
   AppContext,
@@ -24,7 +25,7 @@ import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../../../src/lib/generative-route-auth";
 
 const commandSchema = z.object({
   id: z.string().trim().optional(),
@@ -84,6 +85,10 @@ async function handlePOST(
     const caller = await requireGenerativeRouteCaller(c, {
       deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
     if (pendingResponse) return pendingResponse;
 
     const result = await executeHostedBrowserCommand(id, body!, {
@@ -91,7 +96,9 @@ async function handlePOST(
       organizationId: caller.user.organization_id,
       requestSource: "api",
       userId: caller.user.id,
-      operationContext: getGenerativeOperationContext(c, caller),
+      operationContext: getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
     });
 
     return Response.json(result);

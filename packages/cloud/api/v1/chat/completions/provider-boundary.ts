@@ -1,11 +1,9 @@
 /**
  * The last gateway step before a chat-completions provider call.
  *
- * Organization-funded requests were already admitted from their cached auth
- * entry, so nothing is awaited here for them. App-funded requests still commit
- * their admission with dispatch. The provider is invoked only while the caller
- * is still connected; a refusal is thrown before the provider call and the
- * route settles the reservation at zero for it.
+ * Paid requests require a durable dispatch acknowledgement before the provider.
+ * Cancellation is checked on both sides of that acknowledgement; a refusal
+ * prevents provider invocation and settles the reservation at zero.
  */
 
 /** The caller disconnected before the provider was invoked; nothing is owed. */

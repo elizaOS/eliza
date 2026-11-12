@@ -18,6 +18,7 @@ import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
 } from "@elizaos/cloud-shared/lib/cors-constants";
+import { getCloudDeployment } from "@elizaos/cloud-shared/lib/deployment/cloud-deployment";
 import {
   RateLimitPresets,
   rateLimit,
@@ -39,7 +40,9 @@ import {
 } from "@elizaos/cloud-shared/lib/providers/language-model";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -56,7 +59,7 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
+} from "../../../src/lib/generative-route-auth";
 
 const DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS = 4096;
 
@@ -170,7 +173,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     return c.json({ error: "MCP not accessible for this agent" }, 403);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || getCloudDeployment().appOrigin;
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;
@@ -226,6 +229,10 @@ app.post("/", async (c) => {
       compatibility: "hono",
       rateLimitEndpoint: "standard",
       deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
     });
     if (!id) return c.json({ error: "Missing id" }, 400);
 
@@ -333,6 +340,8 @@ app.post("/", async (c) => {
             organization_id: caller.user.organization_id,
             apiKeyId: caller.apiKeyId,
             admissionSnapshot: caller.admissionSnapshot,
+            credentialForAdmission: () =>
+              credentialGuard.credentialForAdmission(),
             executionCtx,
           }),
         );
@@ -377,6 +386,7 @@ export async function handleToolCall(
     organization_id: string;
     apiKeyId?: string | null;
     admissionSnapshot?: InferenceAdmissionSnapshot;
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   },
 ): Promise<Response> {
@@ -485,6 +495,7 @@ export async function handleToolCall(
         },
         executionCtx: authUser.executionCtx,
         admissionSnapshot: authUser.admissionSnapshot,
+        credential: authUser.credentialForAdmission?.(),
         atomicProviderBoundary: Boolean(authUser.executionCtx),
       });
     } catch (error) {

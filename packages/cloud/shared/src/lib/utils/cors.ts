@@ -5,35 +5,13 @@ import {
   CORS_ALLOW_HEADERS,
   isLocalDevLoopbackOrigin,
 } from "../cors-constants";
+import { getCloudDeployment } from "../deployment/cloud-deployment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
-const ALLOWED_ORIGINS = [
-  process.env.NEXT_PUBLIC_APP_URL,
-  "https://eliza.app",
-  "https://cloud.eliza.app",
-  "https://staging.eliza.app",
-  "https://cloud-staging.eliza.app",
-  "https://eliza.ai",
-  "https://www.eliza.ai",
-  // Legacy origins are accepted only during the redirect migration window.
-  "https://elizacloud.ai",
-  "https://www.elizacloud.ai",
-  "https://app.elizacloud.ai",
-  "https://app-staging.elizacloud.ai",
-  // Exact develop branch alias for staging QA. Do not add a broad *.pages.dev
-  // wildcard here; these auth routes can return API keys after login.
-  "https://develop.eliza-app.pages.dev",
-  "https://staging.eliza-app.pages.dev",
-  "https://eliza.ai",
-  "https://www.eliza.ai",
-  // Capacitor native shells (iOS WKWebView / Android WebView). The
-  // Eliza + Eliza mobile apps load from these custom schemes and
-  // call public auth endpoints directly from the WebView.
-  "capacitor://localhost",
-].filter(Boolean) as string[];
-
 function isAllowedOrigin(origin: string): boolean {
-  if (ALLOWED_ORIGINS.includes(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
+  // Deployment web origins plus the Capacitor native shells (iOS WKWebView /
+  // Android WebView), which call public auth endpoints from the WebView.
+  if (getCloudDeployment().authCorsOrigins.has(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
   // Portless https://localhost is the Capacitor WebView origin — first-party

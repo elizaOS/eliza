@@ -110,6 +110,10 @@ listener package, matching signer and control permission. Settings metadata is
 read only from that admitted APK; the target must be an enabled exported
 activity in the same package and UID. Hosts may keep a legacy bridge-name alias.
 
+Pause and Turn off return a successful receipt only after the companion confirms
+the save and reports both listening and microphone capture stopped. A missing or
+inconsistent acknowledgement leaves the action unconfirmed. Status is for display.
+
 `createSenseInvocationController` binds an opaque digest of the current
 authenticated owner/agent/session tuple before consuming native invocations.
 Native origin comes only from Android's caller identity and a same-signer check;

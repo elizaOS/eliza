@@ -4,6 +4,20 @@
   "description": "Shared backend code for Eliza Cloud: billing, db schemas/repositories, services lib, types, and route resolution.",
   "private": true,
   "type": "module",
+  "files": [
+    "README.md",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/*.test.mjs",
+    "!src/**/__tests__/**",
+    "!src/**/__fixtures__/**",
+    "!src/**/fixtures/**",
+    "!src/**/test-support/**"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./billing": "./src/billing/index.ts",
@@ -182,6 +196,7 @@
     "./lib/constants/secrets": "./src/lib/constants/secrets.ts",
     "./lib/cors-constants": "./src/lib/cors-constants.ts",
     "./lib/cors/cloud-api-hono-cors": "./src/lib/cors/cloud-api-hono-cors.ts",
+    "./lib/deployment/cloud-deployment": "./src/lib/deployment/cloud-deployment.ts",
     "./lib/eliza-agent-web-ui": "./src/lib/eliza-agent-web-ui.ts",
     "./lib/eliza/runtime-factory": "./src/lib/eliza/runtime-factory.ts",
     "./lib/analytics/export": "./src/lib/analytics/export.ts",
@@ -366,6 +381,7 @@
     "./lib/services/dedicated-compute-price-acceptance": "./src/lib/services/dedicated-compute-price-acceptance.ts",
     "./lib/services/dedicated-fleet-liveness": "./src/lib/services/dedicated-fleet-liveness.ts",
     "./lib/services/default-agent-character": "./src/lib/services/default-agent-character.ts",
+    "./lib/services/deferred-credential-admission-guard": "./src/lib/services/deferred-credential-admission-guard.ts",
     "./lib/services/direct-wallet-payments": "./src/lib/services/direct-wallet-payments.ts",
     "./lib/services/discord": "./src/lib/services/discord.ts",
     "./lib/services/discord-automation": "./src/lib/services/discord-automation/index.ts",

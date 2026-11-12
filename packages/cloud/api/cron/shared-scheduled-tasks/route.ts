@@ -6,8 +6,8 @@ import { processDueSharedReminders } from "@elizaos/cloud-shared/lib/services/sh
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { isPersonalSharedTelegramEdgeEnabled } from "@/api-app/personal-shared-telegram-edge";
 import { dispatchPersonalTelegramReminder } from "../../eliza-app/webhook/_telegram-edge";
+import { isPersonalSharedTelegramEdgeEnabled } from "../../src/personal-shared-telegram-edge";
 
 const app = new Hono<AppEnv>();
 

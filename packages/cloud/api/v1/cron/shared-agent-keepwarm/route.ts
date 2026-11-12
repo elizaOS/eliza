@@ -75,6 +75,7 @@ async function runKeepwarm(c: AppContext) {
     // 503 (#22552): warm each recently active room's conversation object and
     // turn-ingress modules. Sequential for the same flat-pressure reason.
     let personalRoomsWarmed = 0;
+    let personalOrganizationsWarmed = 0;
     // Select eligible personal rooms independently: the global agent hot set
     // can be filled entirely by newer sandbox agents.
     const rooms =
@@ -89,15 +90,20 @@ async function runKeepwarm(c: AppContext) {
           "SHARED_RUNTIME_CONVERSATIONS binding is required to warm Personal Shared rooms",
         );
       }
+      // Each room reports its verified owner; the owning organization's
+      // rate-limit gate is warmed once per sweep.
+      const warmedOrganizations = new Set<string>();
       for (const room of rooms) {
         if (!isPersonalSharedAgentId(room.agentId)) continue;
         await prewarmPersonalSharedRoom(
           room.agentId,
           room.channelId,
           namespace,
+          warmedOrganizations,
         );
         personalRoomsWarmed++;
       }
+      personalOrganizationsWarmed = warmedOrganizations.size;
     }
 
     await prewarmSharedElizaRuntime();
@@ -107,6 +113,7 @@ async function runKeepwarm(c: AppContext) {
       warmed,
       rowlessPersonal,
       personalRoomsWarmed,
+      personalOrganizationsWarmed,
       missing,
     });
 
@@ -117,6 +124,7 @@ async function runKeepwarm(c: AppContext) {
         warmed,
         rowlessPersonal,
         personalRoomsWarmed,
+        personalOrganizationsWarmed,
         missing,
       },
     });
