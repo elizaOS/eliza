@@ -3868,9 +3868,8 @@ export function readOrchestratorTrajectoryContext(
  * Resolves whether DB trajectory persistence is on by default. Delegates to the
  * single core gate resolver (trajectory-gate.ts) so this DB logger and the file
  * recorder can no longer disagree (#13775): the same SOC2 O-5 precedence — hard
- * opt-out → explicit `ELIZA_TRAJECTORY_LOGGING` → legacy
- * `ELIZA_TRAJECTORY_RECORDING` alias → test off → prod opt-in → dev on — governs
- * both. The env param is retained so callers can probe a synthetic env.
+ * opt-out → explicit `ELIZA_TRAJECTORY_LOGGING` → test off → prod opt-in → dev
+ * on — governs both. The env param is retained so callers can probe a synthetic env.
  */
 export function shouldEnableTrajectoryLoggingByDefault(
   env: NodeJS.ProcessEnv = process.env,

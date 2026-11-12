@@ -31,7 +31,7 @@
  * the two env vars the CLI route requires end-to-end but that a bare provider-env
  * file may omit:
  *     ELIZA_PLANNER_NATIVE_TOOLS=0   text-planner mode (free-text CLI serves the planner)
- *     ELIZA_TRAJECTORY_RECORDING=1   keep the recorder on (it is default-on; set explicit)
+ *     ELIZA_TRAJECTORY_LOGGING=1   keep the recorder on (it is default-on; set explicit)
  *
  * FAMILY
  *   e2e        A live app vitest lane (packages/app/test/live-agent/*). Runs the lane
@@ -252,7 +252,7 @@ function withCliRunEnv(providerEnv) {
   if (!CLI_BACKENDS.has(backend)) return { ...providerEnv };
   return {
     ELIZA_PLANNER_NATIVE_TOOLS: "0",
-    ELIZA_TRAJECTORY_RECORDING: "1",
+    ELIZA_TRAJECTORY_LOGGING: "1",
     ...providerEnv,
   };
 }
