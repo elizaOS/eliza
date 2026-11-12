@@ -384,7 +384,10 @@ describe("processDueScheduledTasks — production wiring", () => {
       key === "TIMEZONE" ? "America/Los_Angeles" : undefined;
     await resolveOwnerFactStore(runtime).clear();
     expect(
-      (await getScheduledTaskRunner(runtime).resolveOwnerFacts()).timezone,
+      (await getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+        now: () => now,
+      }).resolveOwnerFacts()).timezone,
     ).toBe("America/Los_Angeles");
     const seed = await seedScheduledTask(runtime, {
       kind: "reminder",
