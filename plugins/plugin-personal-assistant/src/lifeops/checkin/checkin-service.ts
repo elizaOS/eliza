@@ -322,7 +322,7 @@ function assertSummaryReportDate(
   const named = `(?:${weekdays},?\\s+)?(?:${months}\\s+${day}|${day}\\s+${months})(?:,?\\s+\\d{4})?`;
   const date = `(?:${named}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}/\\d{4}|${weekdays})`;
   const declarations = new RegExp(
-    `\\b(?:as\\s+of|today(?:\\s+is)?|(?:brief(?:ing)?|summary|check-in)\\s+(?:for|dated))\\s+(${date})\\b`,
+    `\\b(?:as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b`,
     "gi",
   );
   const claims = [...summary.matchAll(declarations)];

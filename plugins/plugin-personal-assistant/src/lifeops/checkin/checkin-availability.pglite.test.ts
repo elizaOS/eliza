@@ -1117,6 +1117,49 @@ describe("check-in source availability and generation failures", () => {
     ).toEqual([]);
   });
 
+  it.each([
+    "As of 2025-10-03, here are your priorities.",
+    "Today is Friday, October 3, 2026.",
+    "Morning briefing — October 2, 2026.",
+  ])("refuses an unsupported current-day declaration: %s", async (text) => {
+    modelResponse = text;
+    await expect(
+      new CheckinService(runtime).runMorningCheckin({
+        timezone: "America/Los_Angeles",
+        now: new Date("2026-10-03T20:23:00Z"),
+      }),
+    ).rejects.toMatchObject({ code: "CHECKIN_SUMMARY_DATE_MISMATCH" });
+    expect(
+      (await db.query("SELECT id FROM app_lifeops.life_checkin_reports")).rows,
+    ).toEqual([]);
+  });
+
+  it.each([
+    "As of Saturday, October 3, 2026, your next meeting is on November 24, 2026.",
+    "As of Oct 3, 2026, focus on the review.",
+    "Today is 2026-10-03. Your next meeting is on November 24, 2026.",
+    "Today is 10/3/2026. Focus on the review.",
+  ])(
+    "preserves a grounded current-day declaration and source event dates: %s",
+    async (text) => {
+      modelResponse = text;
+      const report = await new CheckinService(runtime).runMorningCheckin({
+        timezone: "America/Los_Angeles",
+        now: new Date("2026-10-03T20:23:00Z"),
+      });
+      expect(report.summaryText).toBe(text);
+    },
+  );
+
+  it("uses the owner's civil date when UTC is already in the next year", async () => {
+    modelResponse = "As of December 31, 2025, here are your priorities.";
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      timezone: "America/Los_Angeles",
+      now: new Date("2026-01-01T01:00:00Z"),
+    });
+    expect(report.summaryText).toBe(modelResponse);
+  });
+
   it("uses the configured text model for the morning message and retains its result", async () => {
     modelResponse =
       "Your calendar is clear today. Pick one task to focus on this morning.";
@@ -1150,6 +1193,7 @@ describe("check-in source availability and generation failures", () => {
         { outcome: 2, called: false, writes: 0 },
         { outcome: 3, called: true, writes: 0 },
         { outcome: 4, called: true, writes: 0 },
+        { outcome: 5, called: true, writes: 0 },
       ];
   it.each(summaryCases)(
     "matches the generated summary persistence outcome $outcome",
@@ -1158,6 +1202,8 @@ describe("check-in source availability and generation failures", () => {
       if (outcome === 2)
         Object.defineProperty(runtime, "useModel", { value: undefined });
       if (outcome === 3) modelResponse = undefined;
+      if (outcome === 5)
+        modelResponse = "The brief for November 12, 2025 is ready.";
       if (outcome === 4) {
         const adapter = runtime.adapter as unknown as {
           db: { execute: (query: RawSqlQuery) => Promise<unknown> };
