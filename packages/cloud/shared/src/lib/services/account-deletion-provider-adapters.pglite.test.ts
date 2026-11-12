@@ -480,50 +480,56 @@ describe("account deletion restrictive-grant terminal absence", () => {
   });
   test("compute erasure stops a container that belongs to no app and waits for its delete", async () => {
     const containerId = crypto.randomUUID();
-    await getPgliteClientForTests().exec(
+    const db = getPgliteClientForTests();
+    await db.exec(
       "CREATE TABLE IF NOT EXISTS agent_sandbox_replacement_attempts (id uuid PRIMARY KEY, organization_id uuid, state text NOT NULL)",
     );
-    // POST /v1/containers: a running container with no app behind it.
-    await getPgliteClientForTests().query(
-      "INSERT INTO containers(id,organization_id,status) VALUES($1,$2,'running')",
-      [containerId, ORGANIZATION_ID],
+    // The grant inventory created `jobs` with only its user subject column.
+    await db.exec(
+      "ALTER TABLE jobs ADD COLUMN type text, ADD COLUMN status text NOT NULL DEFAULT 'pending', ADD COLUMN organization_id uuid, ADD COLUMN data jsonb",
     );
-    const jobs: Array<{ type: string; organizationId: string; data: unknown }> = [];
+    // POST /v1/containers: a running container with no app behind it.
+    await db.query("INSERT INTO containers(id,organization_id,status) VALUES($1,$2,'running')", [
+      containerId,
+      ORGANIZATION_ID,
+    ]);
+    // The production container lookup runs; billing settlement and the jobs
+    // writer are replaced because their tables are not in this schema.
     const adapter = createAccountDeletionProviderAdapters({
       containerTeardown: {
-        findContainers: async (organizationId) =>
-          (
-            await getPgliteClientForTests().query<{ id: string }>(
-              "SELECT id FROM containers WHERE organization_id=$1 AND status NOT IN ('deleting','deleted')",
-              [organizationId],
-            )
-          ).rows,
         markStoppedForBilling: async (id, organizationId) => {
-          await getPgliteClientForTests().query(
+          await db.query(
             "UPDATE containers SET status='stopped' WHERE id=$1 AND organization_id=$2",
             [id, organizationId],
           );
         },
         jobsWriter: {
           insertJob: async (job) => {
-            jobs.push(job);
-            return { id: crypto.randomUUID() };
+            const id = crypto.randomUUID();
+            await db.query("INSERT INTO jobs(id,type,organization_id,data) VALUES($1,$2,$3,$4)", [
+              id,
+              job.type,
+              job.organizationId,
+              JSON.stringify(job.data),
+            ]);
+            return { id };
           },
         },
       },
     }).compute_containers;
+    const deleteJobs = async () =>
+      (
+        await db.query<{ status: string; container_id: string }>(
+          "SELECT status, data->>'containerId' AS container_id FROM jobs WHERE type='container_delete' AND organization_id=$1 ORDER BY status",
+          [ORGANIZATION_ID],
+        )
+      ).rows;
 
     // The running container keeps the phase open.
     await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
     await adapter.execute(context, "erase-compute");
-    expect(jobs).toEqual([
-      expect.objectContaining({
-        type: "container_delete",
-        organizationId: ORGANIZATION_ID,
-        data: expect.objectContaining({ containerId }),
-      }),
-    ]);
-    const stopped = await getPgliteClientForTests().query<{ status: string }>(
+    expect(await deleteJobs()).toEqual([{ status: "pending", container_id: containerId }]);
+    const stopped = await db.query<{ status: string }>(
       "SELECT status FROM containers WHERE id=$1",
       [containerId],
     );
@@ -531,11 +537,22 @@ describe("account deletion restrictive-grant terminal absence", () => {
     // A queued delete is not a deleted container.
     await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
 
-    // The provisioning daemon finishes the delete.
-    await getPgliteClientForTests().query("UPDATE containers SET status='deleted' WHERE id=$1", [
-      containerId,
+    // The saga retries execute while the daemon has not run: no second delete.
+    await adapter.execute(context, "erase-compute");
+    expect(await deleteJobs()).toEqual([{ status: "pending", container_id: containerId }]);
+
+    // The daemon's delete fails: the next execute queues a new one.
+    await db.query("UPDATE jobs SET status='failed' WHERE type='container_delete'");
+    await adapter.execute(context, "erase-compute");
+    expect(await deleteJobs()).toEqual([
+      { status: "failed", container_id: containerId },
+      { status: "pending", container_id: containerId },
     ]);
+
+    // The provisioning daemon finishes the delete.
+    await db.query("UPDATE containers SET status='deleted' WHERE id=$1", [containerId]);
     await expect(adapter.inspect(context)).resolves.toMatchObject({ state: "complete" });
+    await db.query("DELETE FROM jobs WHERE type='container_delete'");
   });
   test("unconfirmed EVM sweep blocks account erasure inspection", async () => {
     const paymentId = crypto.randomUUID(),

@@ -38,6 +38,7 @@ import {
 import { appBillingDeletionDispositions } from "../../db/schemas/app-billing-deletion-dispositions";
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
+import { jobs } from "../../db/schemas/jobs";
 import { llmTrajectories } from "../../db/schemas/llm-trajectories";
 import { managedDomains } from "../../db/schemas/managed-domains";
 import { organizations } from "../../db/schemas/organizations";
@@ -72,6 +73,7 @@ import { elizaSandboxService } from "./eliza-sandbox";
 import { prepareInferencePolicyForAccountDeletion } from "./inference-policy-fence";
 import { oauthService } from "./oauth";
 import { getAdapter } from "./oauth/connection-adapters";
+import { JOB_TYPES } from "./provisioning-job-types";
 import { secretsService } from "./secrets";
 import {
   deactivateStewardPlatformUser,
@@ -192,7 +194,7 @@ export interface AccountDeletionProviderAdapterDependencies {
   backupDatabase?: AccountDeletionBackupDatabase;
   computeDatabase?: AccountDeletionComputeDatabase;
   /** Container stop backend; the app-delete teardown path, scoped to the organization. */
-  containerTeardown?: AppContainerTeardownDeps;
+  containerTeardown?: Partial<AppContainerTeardownDeps>;
   spoolAuthority?: AccountDeletionSpoolAuthority;
   trajectoryStore?: AccountDeletionTrajectoryStore;
 }
@@ -329,10 +331,21 @@ const defaultBackupDatabase: AccountDeletionBackupDatabase = {
 };
 
 const defaultContainerTeardown: AppContainerTeardownDeps = {
-  findContainers: async (organizationId) =>
-    (await containersRepository.listByOrganization(organizationId)).filter(
-      (container) => container.status !== "deleting" && container.status !== "deleted",
-    ),
+  // A container whose delete job is still pending or running is already on
+  // its way out: execute runs again on every retry until the daemon marks the
+  // row deleted, and must not queue a second delete. A failed job is not
+  // live, so the next execute queues a new one.
+  findContainers: (organizationId) =>
+    dbWrite
+      .select({ id: containers.id })
+      .from(containers)
+      .where(
+        and(
+          eq(containers.organization_id, organizationId),
+          notInArray(containers.status, ["deleting", "deleted"]),
+          sql`NOT EXISTS (SELECT 1 FROM ${jobs} WHERE ${jobs.type} = ${JOB_TYPES.CONTAINER_DELETE} AND ${jobs.organization_id} = ${containers.organization_id} AND ${jobs.status} IN ('pending', 'in_progress') AND ${jobs.data}->>'containerId' = ${containers.id}::text)`,
+        ),
+      ),
   markStoppedForBilling: (containerId, organizationId) =>
     containersRepository.markStoppedForBilling(containerId, organizationId),
   jobsWriter: containerJobsWriter,
@@ -822,7 +835,7 @@ export function createAccountDeletionProviderAdapters(
         // still has; inspection completes only after the daemon deletes them.
         const teardown = await stopAppContainers(
           { id: context.requestId, organization_id: context.organizationId },
-          dependencies.containerTeardown ?? defaultContainerTeardown,
+          { ...defaultContainerTeardown, ...dependencies.containerTeardown },
         );
         if (teardown.errors.length > 0) {
           throw new ElizaError(teardown.errors.join("; "), {
