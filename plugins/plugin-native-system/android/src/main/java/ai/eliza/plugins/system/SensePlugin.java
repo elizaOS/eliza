@@ -27,6 +27,9 @@ public class SensePlugin extends Plugin {
     }
     private void resolve(PluginCall call, Bundle result) {
         JSObject out = new JSObject(); out.put("available", result != null);
+        if (result == null && client().installation() == SenseListenerClient.Installation.ABSENT) {
+            out.put("reason", "not-installed");
+        }
         if (result != null) {
             out.put("state", result.getString("state", "OFF")); out.put("label", result.getString("label", ""));
             out.put("consented", result.getBoolean("consented", false)); out.put("listening", result.getBoolean("listening", false));

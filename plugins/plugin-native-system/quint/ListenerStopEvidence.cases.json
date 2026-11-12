@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "plugins/plugin-native-system/src/sense.ts",
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SenseListenerClient.java",
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SensePlugin.java",
+    "plugins/plugin-native-system/test/sense.test.mjs",
+    "plugins/plugin-native-system/test/sense-client-stubs.json"
+  ],
+  "bounds": "One independent native stop request and five reply classes, timeout and late callback. The pending state has only settling steps, so completion is bounded by two transitions without fairness. The native bridge deadline is represented by timeout; the existing fake-timer test checks its actual five seconds. Package visibility and Android hardware behavior require device checks. The host declares the companion package query. A PackageManager runtime failure remains unknown. No action starts capture.",
+  "conformance": "plugins/plugin-native-system/test/sense.test.mjs",
+  "cases": [
+    {
+      "name": "single-stop-evidence",
+      "main": "ListenerStopEvidence",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "invariant",
+        "OneNativeRequest",
+        "OnlySafeEvidenceConfirms",
+        "NoCaptureStarted"
+      ],
+      "temporal": [],
+      "maxSteps": 5,
+      "samples": 100
+    }
+  ]
+}

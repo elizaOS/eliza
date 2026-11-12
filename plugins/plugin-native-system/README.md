@@ -387,6 +387,8 @@ listener consent does not replace the separate native system/Power receipt rules
 
 Chat-only native hosts call `stopSenseListenerForChatOnly` separately from the
 inert invocation controller. It waits at most five seconds and accepts only a
-raw available/OFF/listening-false/microphone-closed receipt; missing or contradictory
-fields stay unconfirmed. Hosts display that failure and may retry the same stop.
+raw available/OFF/listening-false/microphone-closed receipt, or the native bridge's
+confirmed `not-installed` companion result. Hosts declare visibility for their
+`<applicationId>.sense` package. Failed package reads, missing bridge replies and
+contradictory fields stay unconfirmed. Hosts display that failure and may retry the same stop.
 The helper never requests consent, enables or resumes the listener.
