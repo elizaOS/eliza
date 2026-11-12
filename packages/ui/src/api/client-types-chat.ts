@@ -70,7 +70,6 @@ export interface UiSpecBlock {
 }
 /** Union of all content block types. */
 export type ContentBlock = TextBlock | ConfigFormBlock | UiSpecBlock;
-import type {ImageAttachment, TransientClientMediaInput} from "../utils/chat-attachment-types";
 export type {ImageAttachment, TransientClientMediaInput} from "../utils/chat-attachment-types";
 /**
  * Media kind for a rendered message attachment. Values match `@elizaos/core`
