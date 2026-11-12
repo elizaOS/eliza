@@ -3,12 +3,14 @@ package ai.eliza.systemupdater;
 
 import android.os.Build;
 import android.os.RecoverySystem;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -144,17 +146,74 @@ final class PackageVerifier {
     static Path createExtractionScratch(Path partial) throws IOException {
         Path slot = partial.getParent();
         Path marker = slot.resolve("owner");
-        if (attributes(slot) == null) Files.createDirectory(slot);
-        if (attributes(marker) == null) Files.createFile(marker);
+        if (attributes(slot) == null) {
+            try { Os.mkdir(slot.toString(), 0777); }
+            catch (ErrnoException failure) { throw scratchFailure(failure); }
+        }
+        if (attributes(marker) == null) createScratchFile(marker);
         // Persist the reservation before any payload bytes can exist under it.
-        forceDirectory(slot.getParent());
-        forceDirectory(slot);
-        return Files.createFile(partial);
+        forceScratchDirectory(slot.getParent());
+        forceScratchDirectory(slot);
+        createScratchFile(partial);
+        return partial;
+    }
+
+    private static void createScratchFile(Path path) throws IOException {
+        new ScratchFile(path, OsConstants.O_WRONLY | OsConstants.O_CREAT | OsConstants.O_EXCL, 0666).close();
+    }
+
+    private static void forceScratchDirectory(Path path) throws IOException {
+        try (ScratchFile directory = new ScratchFile(path, OsConstants.O_RDONLY, 0)) {
+            directory.force();
+        }
     }
 
     private static void forceDirectory(Path path) throws IOException {
         try (FileChannel directory = FileChannel.open(path, StandardOpenOption.READ)) {
             directory.force(true);
+        }
+    }
+
+    // NIO may turn a local errno into a generic IOException. Keep the numeric error
+    // at the operations that allocate, write or sync the owned pre-promotion scratch.
+    private static IOException scratchFailure(ErrnoException failure) {
+        return failure.errno == OsConstants.ENOSPC || failure.errno == OsConstants.EDQUOT
+                ? new StorageDeferred(failure) : new IOException(failure);
+    }
+
+    private static void checkScratchInterrupted() throws IOException {
+        if (Thread.currentThread().isInterrupted()) throw new IOException("OTA verification cancelled");
+    }
+
+    private static final class ScratchFile implements AutoCloseable {
+        private final FileDescriptor descriptor;
+
+        ScratchFile(Path path, int flags, int mode) throws IOException {
+            try { descriptor = Os.open(path.toString(), flags | OsConstants.O_NOFOLLOW | OsConstants.O_CLOEXEC, mode); }
+            catch (ErrnoException failure) { throw scratchFailure(failure); }
+        }
+
+        void write(byte[] buffer, int count) throws IOException {
+            int offset = 0;
+            while (offset < count) {
+                checkScratchInterrupted();
+                int written;
+                try { written = Os.write(descriptor, buffer, offset, count - offset); }
+                catch (ErrnoException failure) { throw scratchFailure(failure); }
+                if (written <= 0) throw new IOException("Scratch write made no progress");
+                offset += written;
+            }
+        }
+
+        void force() throws IOException {
+            checkScratchInterrupted();
+            try { Os.fsync(descriptor); }
+            catch (ErrnoException failure) { throw scratchFailure(failure); }
+        }
+
+        @Override public void close() throws IOException {
+            try { Os.close(descriptor); }
+            catch (ErrnoException failure) { throw new IOException(failure); }
         }
     }
 
@@ -169,21 +228,22 @@ final class PackageVerifier {
             MessageDigest hash = MessageDigest.getInstance("SHA-256");
             long copied = 0;
             try (InputStream input = zip.getInputStream(entry);
-                    FileChannel file = FileChannel.open(partial, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
-                OutputStream output = Channels.newOutputStream(file);
+                    ScratchFile file = new ScratchFile(partial, OsConstants.O_WRONLY, 0)) {
                 byte[] buffer = new byte[1024 * 1024];
                 int count;
                 while ((count = input.read(buffer)) != -1) {
-                    if (Thread.currentThread().isInterrupted()) throw new IOException("OTA verification cancelled");
+                    checkScratchInterrupted();
                     copied += count;
                     if (copied > size) throw new IOException("Payload exceeds signed length");
-                    output.write(buffer, 0, count); hash.update(buffer, 0, count);
+                    file.write(buffer, count); hash.update(buffer, 0, count);
                 }
-                file.force(true);
+                file.force();
             }
             if (copied != size || !Base64.getEncoder().encodeToString(hash.digest()).equals(fileHash)) {
                 throw new IOException("Payload hash differs");
             }
+            // A native write or sync can return after the Java task was cancelled.
+            checkScratchInterrupted();
             Files.move(partial, destination, StandardCopyOption.ATOMIC_MOVE);
             if (!partial.getParent().equals(destination.getParent())) {
                 // Both entries must be durable before the runner records a verified payload.
@@ -196,7 +256,8 @@ final class PackageVerifier {
     }
 
     static final class StorageDeferred extends IOException {
-        StorageDeferred() { super("Insufficient space to verify the update payload"); }
+        StorageDeferred() { this(null); }
+        StorageDeferred(Throwable cause) { super("Insufficient space to verify the update payload", cause); }
     }
 
     static void requirePayloadSpace(File outputDirectory, File destination, long size)

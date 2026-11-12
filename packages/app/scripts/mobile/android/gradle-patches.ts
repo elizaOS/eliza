@@ -82,7 +82,6 @@ function envStringBuildConfigFieldLine(name, fallback) {
 
 export function androidSmsGatewayBuildConfigFieldLines() {
   return [
-    `        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
     envStringBuildConfigFieldLine("ELIZA_ANDROID_SMS_GATEWAY_SECRET", ""),
     envStringBuildConfigFieldLine(

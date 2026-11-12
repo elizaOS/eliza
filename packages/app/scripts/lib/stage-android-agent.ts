@@ -1287,7 +1287,6 @@ export async function stageAndroidAgentRuntime({
   cacheDir,
   bunChannel: preferredBunChannel,
   bunTarget: preferredBunTarget,
-  objective = false,
   embeddingModel = true,
   log = console.log,
 } = {}) {

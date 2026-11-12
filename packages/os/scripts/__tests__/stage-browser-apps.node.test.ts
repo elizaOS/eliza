@@ -139,7 +139,7 @@ test("an unsupported architecture cannot inherit the x86 browser", (t) => {
     () =>
       stageBrowserApps({
         ...options,
-        arch: "riscv64",
+        arch: "arm64",
         allowDevelopmentBrowser: true,
       }),
     /explicit supported APK architecture is required/,

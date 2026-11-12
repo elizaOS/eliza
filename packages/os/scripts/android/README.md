@@ -13,8 +13,8 @@ it never applies patches or changes the source tree.
 
 Pixel products keep the factory vendor partition. `vendor-api.mjs` checks that
 the lunch release configuration's `RELEASE_BOARD_API_LEVEL` and the generated
-vendor VINTF sepolicy version both equal the locked `vendorApiLevel` (grizzly's
-lock and the `pixel10a` profile in `android/aosp.lock.json`);
+vendor VINTF sepolicy version both equal the locked `vendorApiLevel` (the
+`pixel10a` profile in `android/aosp.lock.json`);
 `stage-pixel10a-product.ts` refuses a mismatch instead of rewriting VINTF.
 Every brand's Pixel 10a composition also declares its launcher's versioned
 `<package>.aosp_image` system feature in the product partition

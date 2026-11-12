@@ -203,67 +203,6 @@ export function loadAospLock(filePath = aospLockPath) {
       fail(`invalid avbVerification in ${filePath}`);
     }
   }
-  if (
-    lock.resolvedManifest !== undefined &&
-    (!safeRelativePath(lock.resolvedManifest?.path) ||
-      !/^[0-9a-f]{64}$/.test(lock.resolvedManifest?.sha256 ?? "") ||
-      lock.resolvedManifest.sha256 === "0".repeat(64))
-  ) {
-    fail(`invalid resolvedManifest in ${filePath}`);
-  }
-  if (lock.generatedVendor !== undefined) {
-    const generated = lock.generatedVendor;
-    if (generated.referenceSpec !== undefined) {
-      const reference = generated.referenceSpec;
-      if (
-        !safeRelativePath(reference?.path) ||
-        !Number.isSafeInteger(reference?.sizeBytes) ||
-        reference.sizeBytes <= 0 ||
-        !/^[a-f0-9]{64}$/.test(reference?.sha256 ?? "") ||
-        !/^[a-f0-9]{64}$/.test(reference?.baseSha256 ?? "")
-      )
-        fail(`invalid generated vendor reference in ${filePath}`);
-    }
-    if (
-      !Array.isArray(generated.command) ||
-      generated.command.length === 0 ||
-      generated.command.some(
-        (argument) => typeof argument !== "string" || argument.length === 0,
-      ) ||
-      !Array.isArray(generated.requiredFiles) ||
-      generated.requiredFiles.length === 0 ||
-      generated.requiredFiles.some(
-        (requiredPath) => !safeRelativePath(requiredPath),
-      ) ||
-      (generated.requiredTextFiles !== undefined &&
-        (!Array.isArray(generated.requiredTextFiles) ||
-          generated.requiredTextFiles.length === 0 ||
-          generated.requiredTextFiles.some(
-            (entry) =>
-              !safeRelativePath(entry?.path) ||
-              !generated.requiredFiles.includes(entry.path) ||
-              !Array.isArray(entry?.includes) ||
-              entry.includes.length === 0 ||
-              entry.includes.some(
-                (token) => typeof token !== "string" || token.length === 0,
-              ),
-          ))) ||
-      (generated.requiredArtifacts !== undefined &&
-        (!Array.isArray(generated.requiredArtifacts) ||
-          generated.requiredArtifacts.length === 0 ||
-          generated.requiredArtifacts.some(
-            (artifact) =>
-              !safeRelativePath(artifact?.path) ||
-              !generated.requiredFiles.includes(artifact.path) ||
-              !Number.isSafeInteger(artifact?.sizeBytes) ||
-              artifact.sizeBytes <= 0 ||
-              !/^[0-9a-f]{64}$/.test(artifact?.sha256 ?? "") ||
-              artifact.sha256 === "0".repeat(64),
-          )))
-    ) {
-      fail(`invalid generatedVendor in ${filePath}`);
-    }
-  }
   return lock;
 }
 
@@ -579,39 +518,6 @@ export function assertExtractedVendorTree(aospRoot, lock) {
     fail(`licensed vendor extraction is incomplete: ${missing.join(", ")}`);
   }
   return contract.requiredExtractedFiles;
-}
-
-export function assertGeneratedVendorTree(aospRoot, lock) {
-  const contract = lock.generatedVendor;
-  if (!contract) fail("selected AOSP lock has no generated vendor contract");
-  const missing = contract.requiredFiles.filter(
-    (requiredPath) => !fs.existsSync(path.join(aospRoot, requiredPath)),
-  );
-  if (missing.length > 0) {
-    fail(`generated vendor tree is incomplete: ${missing.join(", ")}`);
-  }
-  for (const entry of contract.requiredTextFiles ?? []) {
-    const contents = fs.readFileSync(path.join(aospRoot, entry.path), "utf8");
-    const missingTokens = entry.includes.filter(
-      (token) => !contents.includes(token),
-    );
-    if (missingTokens.length > 0) {
-      fail(
-        `generated vendor contract mismatch in ${entry.path}: ${missingTokens.join(", ")}`,
-      );
-    }
-  }
-  for (const artifact of contract.requiredArtifacts ?? []) {
-    const artifactPath = path.join(aospRoot, artifact.path);
-    const bytes = fs.readFileSync(artifactPath);
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-    if (bytes.length !== artifact.sizeBytes || sha256 !== artifact.sha256) {
-      fail(
-        `generated vendor artifact mismatch in ${artifact.path}: expected ${artifact.sizeBytes}/${artifact.sha256}, got ${bytes.length}/${sha256}`,
-      );
-    }
-  }
-  return contract.requiredFiles;
 }
 
 export function bootstrapAosp({

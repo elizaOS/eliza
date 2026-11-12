@@ -148,9 +148,9 @@ const EXCLUDED_SURFACES = [
 // canonical literal with indirection (#19183).
 const GATE_WORKFLOWS = ["ci.yml", "pr-validation.yml", "cloud-cf-release.yml"];
 
-// Both the post-merge suite and PR Validation must execute the contract and
+// Both the promotion suite and PR Validation must execute the contract and
 // publish an exact-head inventory. Keeping the PR authority here prevents a
-// runtime drift from merging before ci.yml runs on develop.
+// runtime drift from merging before ci.yml runs on staging.
 const CONTRACT_ENFORCEMENT_WORKFLOWS = new Set(["ci.yml", "pr-validation.yml"]);
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.

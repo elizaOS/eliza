@@ -23,8 +23,6 @@ import {
 import type { OracleFetch } from "../lifeops/oracles/http.js";
 
 export { GOOGLE_ROUTES_MATRIX_URL };
-/** @deprecated Use {@link GOOGLE_ROUTES_MATRIX_URL}. */
-export const GOOGLE_DISTANCE_MATRIX_URL = GOOGLE_ROUTES_MATRIX_URL;
 
 export type TravelBufferMethod = "maps-api";
 

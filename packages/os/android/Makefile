@@ -4,20 +4,8 @@
 
 ARCH    ?= x86_64
 AOSP_ROOT ?= $(HOME)/aosp
-AOSP_GRIZZLY_ROOT ?= $(HOME)/aosp-grizzly
 ARGS    ?=
 SUPPORTED_ARCHES := x86_64 arm64
-
-# Reject incomplete bundle requests before make starts any prerequisites,
-# including parallel vendor preparation and native builds.
-ifneq ($(filter bundle-grizzly,$(MAKECMDGOALS)),)
-ifeq ($(strip $(BUNDLE_DIR)),)
-$(error BUNDLE_DIR is required)
-endif
-ifeq ($(strip $(SOURCE_DATE_EPOCH)),)
-$(error SOURCE_DATE_EPOCH is required)
-endif
-endif
 
 HERE      := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT := $(abspath $(HERE)/..)
@@ -44,7 +32,7 @@ INFERENCE_TARGETS_x86_64 := android-arm64-cpu-fused android-x86_64-cpu-fused
 INFERENCE_TARGETS_arm64 := android-arm64-cpu-fused
 INFERENCE_TARGETS := $(INFERENCE_TARGETS_$(ARCH))
 
-.PHONY: stage-pixel10a-eliza stage-pixel10a stage-browser-apps help bootstrap bootstrap-grizzly prepare-grizzly preflight-grizzly evidence-grizzly attest-grizzly verify-grizzly build build-grizzly bundle-grizzly native-inference native-inference-grizzly sim splash bootanimation check-arch
+.PHONY: stage-pixel10a-eliza stage-pixel10a stage-browser-apps help bootstrap build native-inference sim splash bootanimation check-arch
 
 stage-pixel10a-eliza:
 	node "$(DISTRO)/stage-pixel10a-product.ts" --product "$(HERE)products/pixel10a-eliza.json" $(ARGS)
@@ -61,14 +49,6 @@ help:
 	@echo "  make stage-browser-apps ARCH=x86_64 ARGS=... # verify pinned Chromium + Bitwarden APKs"
 	@echo "  make prepare-chromium-browser ARGS=\"--source ... --extension ... --out ... --certificate ...\""
 	@echo "  make bootstrap                           # sync the pinned full AOSP checkout"
-	@echo "  make bootstrap-grizzly                  # sync the pinned Pixel 11 Pro AOSP checkout"
-	@echo "  make prepare-grizzly                    # generate grizzly vendor/device support from stock"
-	@echo "  make preflight-grizzly                  # enforce the dedicated Pixel builder floor"
-	@echo "  make build-grizzly                      # build the Pixel 11 Pro image (does not flash)"
-	@echo "  make bundle-grizzly                     # build the complete Pixel 11 Pro flash handoff"
-	@echo "  make evidence-grizzly                   # capture bootloader/adb/pstore boot evidence"
-	@echo "  make attest-grizzly                     # (build host) verify staged images match the prepare stamp, write sha256 manifest"
-	@echo "  make verify-grizzly MANIFEST=… DIR=…    # (flash host) verify local images against the attestation manifest"
 	@echo "  make build ARCH=x86_64|arm64           # build + launch + boot-validate"
 	@echo "  make sim   ARCH=<arch>                  # validate an already-built image"
 	@echo "  make splash                             # render the boot splash (ELIZA_WHITELABEL_DIR brands it)"
@@ -86,45 +66,12 @@ $(REPO_LAUNCHER):
 bootstrap: provision-repo
 	node "$(DISTRO)/bootstrap-aosp.ts" --repo-bin "$(REPO_LAUNCHER)" --aosp-root "$(AOSP_ROOT)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
 
-bootstrap-grizzly: provision-repo
-	node "$(DISTRO)/bootstrap-aosp.ts" --lock "$(HERE)pixel11pro.lock.json" --repo-bin "$(REPO_LAUNCHER)" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
-
-prepare-grizzly:
-	node "$(DISTRO)/prepare-grizzly.ts" --lock "$(HERE)pixel11pro.lock.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)"
-
-preflight-grizzly:
-	node "$(REPO_ROOT)/scripts/android/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --preflight-only
-
 build: check-arch native-inference
 	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(DISTRO)/build-aosp.ts" --brand-config "$(BRAND_CONFIG)" --aosp-root "$(AOSP_ROOT)" --rebuild-launcher-apk --launch --boot-validate $(ARGS)
 
 native-inference: check-arch
 	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/aosp/compile-libllama.ts --assets-dir "$(ANDROID_AGENT_ASSETS)" $(foreach target,$(INFERENCE_TARGETS),--target $(target))
 	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a --variant cpu
-
-native-inference-grizzly:
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/aosp/compile-libllama.ts --assets-dir "$(ANDROID_AGENT_ASSETS)" --target android-arm64-cpu-fused
-	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a --variant cpu
-
-build-grizzly: prepare-grizzly native-inference-grizzly bootanimation
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-launcher-apk $(ARGS)
-
-ifneq ($(filter bundle-grizzly,$(MAKECMDGOALS)),)
-prepare-grizzly native-inference-grizzly splash: | preflight-grizzly
-endif
-
-bundle-grizzly: preflight-grizzly prepare-grizzly native-inference-grizzly bootanimation
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-launcher-apk --skip-build $(ARGS)
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(REPO_ROOT)/scripts/android/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --output-dir "$(BUNDLE_DIR)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
-
-evidence-grizzly:
-	node "$(DISTRO)/grizzly-evidence.ts" $(ARGS)
-
-attest-grizzly:
-	node "$(DISTRO)/verify-grizzly-artifacts.ts" attest --aosp-root "$(AOSP_GRIZZLY_ROOT)" $(ARGS)
-
-verify-grizzly:
-	node "$(DISTRO)/verify-grizzly-artifacts.ts" check --manifest "$(MANIFEST)" --artifact-dir "$(DIR)"
 
 sim: check-arch
 	node "$(DISTRO)/sim.ts" --brand-config "$(BRAND_CONFIG)" --device-dir "$(DEVICE_DIR)" --aosp-root "$(AOSP_ROOT)" $(ARGS)

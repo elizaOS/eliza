@@ -17,7 +17,6 @@ import type {
   SensitiveRequestDeliveryAdapter,
   SensitiveRequestWithPaymentContext,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 /**
@@ -69,7 +68,7 @@ function resolveCloudBaseUrl(runtime: unknown): string {
       return stripTrailingSlashes(fromSetting.trim());
     }
   }
-  const fromEnv = nonEmpty(readAliasedEnv("ELIZAOS_CLOUD_BASE_URL"));
+  const fromEnv = nonEmpty(process.env.ELIZAOS_CLOUD_BASE_URL?.trim());
   if (fromEnv) return stripTrailingSlashes(fromEnv);
   return stripTrailingSlashes(CLOUD_BASE_FALLBACK);
 }

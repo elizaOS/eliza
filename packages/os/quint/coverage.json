@@ -60,12 +60,18 @@
       "packages/os/android/system-updater/sepolicy/seapp_contexts",
       "packages/os/android/system-updater/AndroidManifest.xml"
     ],
-    "invariants": ["NoUnverifiedApply", "NoReplay", "UnknownNeverActive"],
+    "invariants": [
+      "NoUnverifiedApply",
+      "NoReplay",
+      "UnknownNeverActive",
+      "OfferHoldKeepsApplied"
+    ],
     "status": "partial",
     "limitations": [
       "One candidate, binary eligibility and space availability. The host replay checks the actual space guard and failure transition with real private files and controlled Android and journal-storage ports.",
       "The held verification replay checks the exact verifier, reboot admission and engine observation using real files and controlled Android ports, a fixture trust store and supplied headroom.",
-      "Progress requires enough storage to become and stay available, a valid package, continued eligibility and fair jobs and callbacks.",
+      "The replay compares the status for an absent, different or unreadable offer before and after verification. Each case keeps the held journal and files and preserves its original retry behavior.",
+      "Progress requires enough storage to become and stay available, a valid package, matching offer reads, continued eligibility and fair jobs and callbacks.",
       "Android resource/permission/SELinux admission, download interruptions, storage crashes, real signature checks and physical update/reboot/recovery remain qualification gates."
     ]
   },

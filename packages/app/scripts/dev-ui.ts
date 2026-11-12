@@ -51,11 +51,11 @@ import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.ts";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.ts";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.ts";
 import { extendNodePathEnv } from "./lib/node-path-env.ts";
+import { seedDevEnvDefaults } from "./lib/seed-dev-env-defaults.ts";
 import {
   drainSpawnedChildren,
   resolveShutdownDrainWindowMs,
 } from "./lib/shutdown-drain.ts";
-import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.ts";
 import { chooseElizaRuntime, resolveNodeExecPath } from "./run-node-runtime.ts";
 
 // Load worktree-specific env overrides (ports, state dir) before port resolution.
@@ -172,7 +172,7 @@ const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
   pathToFileURL(_capacitorPluginNamesPath).href
 );
 
-syncElizaEnvAliases();
+seedDevEnvDefaults();
 const devCloud = configureDevCloudEnvironment(
   process.argv.slice(2),
   process.env,

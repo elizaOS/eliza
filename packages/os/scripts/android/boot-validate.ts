@@ -3,8 +3,8 @@
  * boot-validate.ts — Validate that a booted brand-AOSP device is healthy.
  *
  * Brand-aware. Reads brand config (package name, app name, classPrefix,
- * envPrefix, productName) and runs a series of adb checks:
- *   - Boot properties (ro.<envPrefix>.product, <envPrefix>.boot_phase, …)
+ * productName) and runs a series of adb checks:
+ *   - Boot properties (ro.<propertyPrefix>.product, <propertyPrefix>.boot_phase, …)
  *   - Nonprivileged launcher install path (/product/app/<AppName>/ or, on a
  *     system-only GSI, /system/app/<AppName>/), SYSTEM and not PRIVILEGED
  *   - HOME and ASSISTANT role holders == brand package; HOME resolves to it.

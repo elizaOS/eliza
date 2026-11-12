@@ -22,7 +22,6 @@ import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
@@ -352,7 +351,7 @@ export class StewardSidecar {
     }
     // Only the original product owns the historical unnamespaced database.
     const home = process.env.HOME || process.env.USERPROFILE || "";
-    const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
+    const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
     const legacy = path.join(home, ".steward", "data");
     const target = path.join(dir, "data");
     if (
@@ -811,7 +810,7 @@ export class StewardSidecar {
  */
 export function resolveDesktopStewardStateRoot(): string {
   const home = process.env.HOME || process.env.USERPROFILE || "";
-  const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
   const stateHome = xdgStateHome
     ? path.isAbsolute(xdgStateHome)

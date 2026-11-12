@@ -46,8 +46,8 @@ export function readReleaseBoardApi(
 export function assertGeneratedVintfApi(
   aospRoot,
   expectedApi,
-  codename = "grizzly",
-  prefix = "distro-android:grizzly",
+  codename,
+  prefix = `distro-android:${codename}`,
 ) {
   if (!apiLevel.test(expectedApi ?? ""))
     fail(prefix, "Missing locked vendor API level");

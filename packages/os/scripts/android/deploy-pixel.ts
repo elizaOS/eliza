@@ -53,12 +53,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { loadAospLock } from "./bootstrap-aosp.ts";
-import {
-  DEFAULT_BRAND_CONFIG,
-  loadBrandConfig,
-} from "./brand-config.ts";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
+import { loadAospLock } from "./bootstrap-aosp.ts";
+import { DEFAULT_BRAND_CONFIG, loadBrandConfig } from "./brand-config.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const osRepoRoot = path.resolve(here, "../..");
@@ -134,8 +131,7 @@ export function parseArgs(argv) {
 }
 
 // The AOSP product output directory is out/target/product/<PRODUCT_DEVICE>,
-// not <PRODUCT_NAME>: eliza_cf_arm64_phone builds into vsoc_arm64 and
-// eliza_grizzly_phone into grizzly. Derive the device dir from the brand's
+// not <PRODUCT_NAME>: eliza_cf_arm64_phone builds into vsoc_arm64. Derive the device dir from the brand's
 // device tree paths (vsoc_* for Cuttlefish, the vendor device segment for
 // generated Pixel trees) so the APK is resolved where the build put it.
 export function deriveProductOutDir(brand) {

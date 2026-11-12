@@ -47,10 +47,10 @@ test("Android make rejects unsupported targets before build or provisioning", as
       );
     for (const arch of [
       "",
+      "riscv64",
       "x86_64 arm64",
       "%",
       "x86_64;echo injected",
-      "riscv64",
     ]) {
       const result = run("build", arch);
       assert.notEqual(result.status, 0);

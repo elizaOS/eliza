@@ -504,11 +504,6 @@ export async function prepareScenarioExecutionEnvironment(
   return { executionProfile, testMocks, mockedEnvironment };
 }
 
-const SAVE_TRAJECTORY_ENV_FLAGS = [
-  "ELIZA_SAVE_TRAJECTORIES",
-  "SCENARIO_SAVE_TRAJECTORIES",
-] as const;
-
 const SCENARIO_PGLITE_DIR_ENV_VARS = [
   "ELIZA_SCENARIO_PGLITE_DIR",
   "SCENARIO_PGLITE_DIR",
@@ -940,7 +935,7 @@ export function clearLlmWireMockEnvForLiveProvider(
 export function shouldPreserveScenarioTrajectoryDb(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  return SAVE_TRAJECTORY_ENV_FLAGS.some((name) => envFlag(env[name]));
+  return envFlag(env.ELIZA_SAVE_TRAJECTORIES);
 }
 
 export function scenarioPgliteDirOverride(

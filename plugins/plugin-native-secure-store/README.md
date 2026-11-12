@@ -121,6 +121,12 @@ The device suite checks old-frame compatibility, backup recovery, tampering,
 byte limits, lowered limits, concurrent cold writes and competing admissions
 with synthetic JSON.
 
+Run `bun run --cwd plugins/plugin-native-secure-store test:native-slots` with a
+JDK and `org.json:json:20250517` in the Gradle cache or `ELIZA_JSON_JAR`. It checks
+32 MiB authenticated records, retained limits, CAS and tampering in a 192 MiB
+JVM heap with a 24 MiB resident allocation. It uses a synthetic key and host
+filesystem; Android Keystore and device memory qualification remain separate.
+
 `CredentialAccessSession.currentTicket()` binds queued work to the grant that admitted it.
 Check `authenticated(ticket)` before use. `lock(ticket)` cancels only that owner; an old
 Activity cannot revoke a newer challenge or grant. The host must serialize access to the session.

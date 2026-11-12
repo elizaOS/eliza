@@ -383,8 +383,6 @@ jobs:
     # Hosted unconditionally: CI must never contend with production
     # agent-placement nodes for disk or CPU (#17881).
     runs-on: ubuntu-latest
-    # Job-level concurrency groups are repo-wide, so this also serializes
-    # against an explicitly dispatched legacy cloud-deploy-backend migration.
     # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
     # queued run (25907128646) that wedged the workflow-level v3 group also
     # pins cloud-db-migrate-staging, so migration jobs sat pending forever
@@ -476,8 +474,7 @@ jobs:
         run: |
           # A missing secret must fail the deploy, not silently skip the
           # migration — otherwise new code ships against a stale schema
-          # (the exact #11208 landmine, and the pre-2026-05-20 silent-skip
-          # regression in cloud-deploy-backend before it).
+          # (the exact #11208 landmine).
           echo "::error::DATABASE_URL / RAILWAY_DATABASE_URL / NEON_DATABASE_URL secret is missing on this environment. The schema cannot be migrated, so the Worker would deploy against a stale DB."
           echo "Add the secret in: Settings → Environments → Environment secrets."
           exit 1

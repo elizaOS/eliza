@@ -55,7 +55,7 @@
     "lint:check": "bun packages/scripts/run-turbo.ts run lint:check",
     "knip": "NODE_OPTIONS='--max-old-space-size=16384' knip --no-progress --no-exit-code",
     "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' bun packages/scripts/run-turbo.ts run typecheck --concurrency=8",
-    "verify": "bun packages/scripts/check-biome-version-consistency.ts && bun packages/app/scripts/check-i18n.ts && bun packages/scripts/check-generated-system-files.ts && bun plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check && bun packages/cloud/scripts/shared/check-migration-prefix-order.ts && bun packages/scripts/ci-bun-version-contract.ts && bun packages/scripts/ci-turbo-cache-contract.ts && bun packages/scripts/fix-workspace-deps.ts --check && bun packages/scripts/ensure-plugin-test-conventions.ts --check && bun packages/scripts/alias-read-guard.ts && bun packages/scripts/audit-tsconfig-workspace-resolution.ts && bun packages/scripts/verify-publish-graph.ts && NODE_OPTIONS='--max-old-space-size=8192' bun packages/scripts/run-turbo.ts run typecheck lint:check --concurrency=8 && bun packages/core/scripts/verify-package.ts && bun packages/scripts/audit-build-typecheck.ts && bun packages/scripts/audit-turbo-build-deps.ts && bun packages/scripts/audit-tee-secret-leak.ts && bun packages/scripts/hetzner-fleet-routing-contract.ts && bun packages/scripts/workflow-trigger-policy.ts && bun packages/scripts/audit-scripts.ts && bun packages/scripts/audit-test-lane-membership.ts && bun packages/scripts/audit-view-bundle-inventory.ts && bun packages/scripts/audit-plugin-view-inventory.ts && bun packages/scripts/audit-focused-skipped-tests.ts && bun packages/scripts/check-quint.ts --inventory",
+    "verify": "bun packages/scripts/check-biome-version-consistency.ts && bun packages/app/scripts/check-i18n.ts && bun packages/scripts/check-generated-system-files.ts && bun plugins/plugin-native-browser-surface/scripts/build-control-channel.mjs --check && bun packages/cloud/scripts/shared/check-migration-prefix-order.ts && bun packages/scripts/ci-bun-version-contract.ts && bun packages/scripts/ci-turbo-cache-contract.ts && bun packages/scripts/fix-workspace-deps.ts --check && bun packages/scripts/ensure-plugin-test-conventions.ts --check && bun packages/scripts/audit-tsconfig-workspace-resolution.ts && bun packages/scripts/verify-publish-graph.ts && NODE_OPTIONS='--max-old-space-size=8192' bun packages/scripts/run-turbo.ts run typecheck lint:check --concurrency=8 && bun packages/core/scripts/verify-package.ts && bun packages/scripts/audit-build-typecheck.ts && bun packages/scripts/audit-turbo-build-deps.ts && bun packages/scripts/audit-tee-secret-leak.ts && bun packages/scripts/hetzner-fleet-routing-contract.ts && bun packages/scripts/workflow-trigger-policy.ts && bun packages/scripts/audit-scripts.ts && bun packages/scripts/audit-test-lane-membership.ts && bun packages/scripts/audit-view-bundle-inventory.ts && bun packages/scripts/audit-plugin-view-inventory.ts && bun packages/scripts/audit-focused-skipped-tests.ts && bun packages/scripts/check-quint.ts --inventory",
     "check:comment-only": "bun packages/scripts/assert-comment-only-diff.ts",
     "check:pr-evidence": "bun packages/scripts/check-pr-evidence.ts",
     "pre-commit": "bun run packages/scripts/pre-commit-lint.ts",
@@ -116,9 +116,6 @@
   "packageManager": "bun@1.4.2",
   "workspaces": [
     "packages/*",
-    "packages/os/linux/installer",
-    "packages/os/setup",
-    "packages/os/usb-installer",
     "packages/app/platforms/*",
     "packages/app/deploy/cloud-agent-template",
     "packages/cloud/api",

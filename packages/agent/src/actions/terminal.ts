@@ -26,7 +26,7 @@ import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
 } from "@elizaos/host";
-import { isMobilePlatform, readAliasedEnv } from "@elizaos/host/protocol";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import {
   hasSelfApiTcpListener,
   resolveSelfApiTcpBaseUrl,
@@ -646,7 +646,7 @@ export const terminalAction: Action = {
       };
     }
 
-    const terminalToken = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
+    const terminalToken = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };

@@ -16,7 +16,6 @@
       "nativeTarget": "cuttlefish"
     },
     "eliza_cf_arm64_phone": { "partition": "product", "nativeTarget": null },
-    "eliza_grizzly_phone": { "partition": "product", "nativeTarget": null },
     "eliza_gsi_arm64": { "partition": "system", "nativeTarget": null },
     "eliza_gsi_x86_64": { "partition": "system", "nativeTarget": null }
   }

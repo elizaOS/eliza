@@ -119,7 +119,7 @@ by itself; the page executor still checks document, snapshot and target policy.
 Run `bun run --cwd packages/os test:browser` for protocol tests. CI runs this
 lane in the OS verification job (`.github/workflows/os.yml`: `verify:portable`
 runs `test`, which ends with `test:browser`) whenever a change touches
-`packages/os`. That job runs for develop pushes (`develop-full.yml` calls
+`packages/os`. That job runs for staging and main pushes (`develop-full.yml` calls
 `ci.yml`), not in pull request validation. The Chromium scripts
 (`test:browser:page`, `test:browser:guidance`, `test:browser:task-guidance`, `scripts/test-protected-fill.mjs` and
 `scripts/test-page-guard.mjs`) need a browser and are run by hand.
@@ -178,13 +178,12 @@ fixtures retain their upstream license in `scripts/chromium/LICENSE.chromium`.
 
 This is an internal OS component, not a standalone workspace or installable
 product. The OS package builds it against the locked
-`@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
-provisioning live in `../scripts/linux/assemble-browser-payload.py` and
-`../scripts/android/prepare-chromium-browser.ts`. Preserve those existing
+`@elizaos/plugin-browser/native-wire` dependency. Signed AOSP provisioning lives
+in `../scripts/android/prepare-chromium-browser.ts`. Preserve its existing
 signed-artifact and certificate checks when changing the component.
 
-For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
-Chromium executable and run `node --conditions=eliza-source
+No image installs the Linux relay. To qualify a Linux Chromium build that has it
+installed by hand, set `ELIZA_BROWSER_EXECUTABLE` to that executable and run `node --conditions=eliza-source
 packages/os/browser/scripts/test-native-browser.mjs`. The test uses the embedded
 component and installed `/usr/libexec/elizaos-browser-native-host` relay without
 unpacked-extension or allowlist-bypass flags.

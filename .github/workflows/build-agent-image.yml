@@ -20,7 +20,7 @@ on:
           - canonical
           - demo
       source_sha:
-        description: Exact develop SHA supplied by the effect reconciler
+        description: Exact staging or main SHA supplied by the effect reconciler
         required: false
         default: ""
         type: string
@@ -69,7 +69,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF_NAME" == develop || "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
+          [[ "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]] || { echo "::error::Image publication requires a canonical branch"; exit 1; }
           [ "$GITHUB_SHA" = "$SOURCE_SHA" ] || { echo "::error::Workflow source differs from image source"; exit 1; }
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
           [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
@@ -295,13 +295,13 @@ jobs:
           images: ${{ steps.image.outputs.metadata_name }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # develop push  → :develop + :sha-<short>
-          # main push     → :stable + :latest + :sha-<short>
+          # staging build → :staging + :sha-<short>
+          # main build    → :stable + :latest + :sha-<short>
           # Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
-            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/staging' }}
             type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-,format=short
@@ -330,7 +330,7 @@ jobs:
           # cache kept as a read-only fallback. The GHA backend shares one
           # repo-wide 10GB budget with every other workflow; this image's
           # mode=max cache is multi-GB per run, so it was evicted before the
-          # next develop push — recent runs show ZERO cached layers while
+          # next build — recent runs show ZERO cached layers while
           # still spending 4+ min per run exporting a cache nothing ever
           # read (which is also why cache-to no longer writes to gha). The
           # ghcr :buildcache ref persists indefinitely and dedupes by blob

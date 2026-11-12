@@ -136,7 +136,7 @@ export function buildConsumerAndroidRuntime({
   const stageRunner = path.join(output, "stage-runtime.mjs");
   fs.writeFileSync(
     stageRunner,
-    `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},objective:false,embeddingModel:${embeddingModel}});\n`,
+    `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},embeddingModel:${embeddingModel}});\n`,
     { flag: "wx" },
   );
   execute([stageRunner], {
