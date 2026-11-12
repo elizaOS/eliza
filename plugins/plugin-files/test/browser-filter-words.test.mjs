@@ -22,7 +22,8 @@ test("the agent's files_filter narrows a browser volume by a Cyrillic name", asy
     globalThis.document = previousDocument;
   });
   const ready = { status: "ready", access: "granted" };
-  // BrowserStorageVolume.query lists every file and leaves the text to filterMatches.
+  // BrowserStorageVolume.query lists every file of a complete walk and leaves
+  // the text to filterMatches.
   const everyFile = ["Договор аренды.pdf", "notes.pdf", "photo.pdf"].map(file);
   const view = { render: () => ({}) };
   const api = { set() {}, toast() {}, isActive: () => true };
@@ -36,7 +37,11 @@ test("the agent's files_filter narrows a browser volume by a Cyrillic name", asy
         storageCategory: async () => ({ status: "ready", count: 0 }),
         storageTrashList: async () => ({ status: "ready", items: [] }),
         storageWatch: async () => {},
-        storageQuery: async () => ({ status: "ready", entries: everyFile }),
+        storageQuery: async () => ({
+          status: "ready",
+          entries: everyFile,
+          truncated: false,
+        }),
         addListener: async () => ({ remove: async () => {} }),
       },
       createInlineModal: () => ({ ref() {} }),
