@@ -5,7 +5,9 @@
  * file outlives the account. Real pre-upload route and real account-deletion
  * object-storage step; the bucket is in memory and the caller is mocked.
  */
+
 import { expect, mock, test } from "bun:test";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
@@ -176,7 +178,7 @@ for (const host of ["", "blob.example.org:65536", "blob.example.org:99999"]) {
         },
       },
     };
-    const app = new Hono();
+    const app = new Hono<AppEnv>();
     app.use("*", (c, next) => runWithCloudBindingsAsync(c.env, next));
     app.use("*", corsMiddleware);
     app.route("/api/v1/documents/pre-upload", preUploadRoute);
@@ -191,7 +193,7 @@ for (const host of ["", "blob.example.org:65536", "blob.example.org:99999"]) {
       env,
     );
     expect(response.status).toBe(500);
-    expect((await response.json()).success).toBe(false);
+    expect(await response.json()).toMatchObject({ success: false });
     expect(effects).toEqual([]);
   });
 }
@@ -205,7 +207,7 @@ test("pre-upload returns a configured explicit-port URL through No-Origin middle
     R2_PUBLIC_HOST: "blob.example.org:8443",
     BLOB: bucket,
   };
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
   app.use("*", (c, next) => runWithCloudBindingsAsync(c.env, next));
   app.use("*", corsMiddleware);
   app.route("/api/v1/documents/pre-upload", preUploadRoute);
@@ -220,9 +222,15 @@ test("pre-upload returns a configured explicit-port URL through No-Origin middle
     env,
   );
   expect(response.status).toBe(200);
-  const result = await response.json();
-  expect(result.files[0].blobUrl).toStartWith(
-    "https://blob.example.org:8443/documents-pre-upload/",
-  );
+  expect(await response.json()).toMatchObject({
+    success: true,
+    files: [
+      {
+        blobUrl: expect.stringMatching(
+          /^https:\/\/blob\.example\.org:8443\/documents-pre-upload\//,
+        ),
+      },
+    ],
+  });
   expect(bucket.objects.size).toBe(1);
 });

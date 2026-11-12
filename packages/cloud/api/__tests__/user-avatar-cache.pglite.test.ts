@@ -6,7 +6,9 @@
  * in-memory store), real Hono routes. Authentication, quota accounting and R2
  * are stubbed.
  */
+
 import { afterAll, beforeAll, expect, mock, spyOn, test } from "bun:test";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { pushSchema } from "drizzle-kit/api";
 
 const PGLITE_DATABASE_URL = "pglite://memory";
@@ -288,7 +290,7 @@ for (const host of ["", "r2.example.test:99999"]) {
       releases.length = 0;
       const warning = spyOn(logger, "warn").mockImplementation(() => {});
       try {
-        const requestApp = new Hono();
+        const requestApp = new Hono<AppEnv>();
         requestApp.use("*", (c, next) =>
           runWithCloudBindingsAsync(c.env, next),
         );

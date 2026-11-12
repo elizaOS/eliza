@@ -1,5 +1,6 @@
 /** Product configuration rejection must precede character visibility changes. */
 import { beforeEach, expect, mock, test } from "bun:test";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
@@ -53,7 +54,7 @@ const { corsMiddleware } = await import(
   "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors"
 );
 const { default: route } = await import("./route");
-const app = new Hono();
+const app = new Hono<AppEnv>();
 app.use("*", (c, next) => runWithCloudBindingsAsync(c.env, next));
 app.use("*", corsMiddleware);
 app.route("/api/my-agents/characters/:id/share", route);
@@ -84,16 +85,16 @@ for (const nextIsPublic of [true, false]) {
     const body = await response.json();
     if (nextIsPublic) {
       expect(response.status).toBe(500);
-      expect(body.success).toBe(false);
+      expect(body).toMatchObject({ success: false, error: expect.any(String) });
       expect(updates).toBe(0);
       expect(cacheInvalidations).toBe(0);
       expect(isPublic).toBe(false);
     } else {
       expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(body.data.isPublic).toBe(false);
-      expect(body.data.shareUrl).toBeNull();
-      expect(body.data.shareInfo).toBeNull();
+      expect(body).toMatchObject({
+        success: true,
+        data: { isPublic: false, shareUrl: null, shareInfo: null },
+      });
       expect(updates).toBe(1);
       expect(cacheInvalidations).toBe(2);
       expect(isPublic).toBe(false);
@@ -104,11 +105,15 @@ for (const nextIsPublic of [true, false]) {
     const response = await request(nextIsPublic, "https://cloud.example.test");
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.success).toBe(true);
-    expect(body.data.isPublic).toBe(nextIsPublic);
-    expect(body.data.shareUrl).toBe(
-      nextIsPublic ? "https://cloud.example.test/chat/character-1" : null,
-    );
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        isPublic: nextIsPublic,
+        shareUrl: nextIsPublic
+          ? "https://cloud.example.test/chat/character-1"
+          : null,
+      },
+    });
     expect(updates).toBe(1);
     expect(cacheInvalidations).toBe(2);
     expect(isPublic).toBe(nextIsPublic);
