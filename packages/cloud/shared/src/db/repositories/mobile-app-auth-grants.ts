@@ -233,8 +233,7 @@ async function isRenewalLastStep(
   }
   return (
     successor.acknowledgedAt !== null &&
-    request.now.getTime() <
-      successor.acknowledgedAt.getTime() + MOBILE_RENEWAL_RETIREMENT_GRACE_MS
+    request.now.getTime() < successor.acknowledgedAt.getTime() + MOBILE_RENEWAL_RETIREMENT_GRACE_MS
   );
 }
 

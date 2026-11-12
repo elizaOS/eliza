@@ -995,11 +995,7 @@ export class ApiKeysService {
     const existing = await apiKeysRepository.findByHashConsistent(keyHash);
     if (!existing || !isUuid(existing.source_app_id)) return null;
     await revokeInferenceApiKey(existing.organization_id, existing.id);
-    const session = await this.planMobileSessionRetirement(
-      existing,
-      "self",
-      successorCredentialId,
-    );
+    const session = await this.planMobileSessionRetirement(existing, "self", successorCredentialId);
     const existingResult = mobileSelfRevocationResult(existing, false);
     if (existingResult) {
       await session.retireAlone();

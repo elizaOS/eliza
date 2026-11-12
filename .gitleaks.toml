@@ -457,3 +457,21 @@ condition = "AND"
 paths = ['''^packages/cloud/shared/src/lib/services/evm-sweep-authority\.pglite\.test\.ts$''']
 regexTarget = "secret"
 regexes = ['''(?i)^(?:0x)?833589fcd6edb6e08f4c7c32d4f71b54bda02913$''']
+
+# The mobile checkout tests send these invented UUIDs as request idempotency
+# keys. They name a checkout request, not a credential, and they remain in this
+# branch's commit-range scan. Match only each exact value in its owning test
+# file; other values there remain scanned.
+[[allowlists]]
+description = "Synthetic checkout idempotency key in the mobile checkout route test"
+condition = "AND"
+paths = ['''^packages/cloud/api/__tests__/subscription-checkout-mobile-routes\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0b9f5c0e-3a57-4c55-9d0e-1f2f6f1f0a01$''']
+
+[[allowlists]]
+description = "Synthetic checkout idempotency key in the SDK mobile credential test"
+condition = "AND"
+paths = ['''^packages/cloud/sdk/src/mobile-credential\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''^0d0f3c61-6f1b-4e59-9a55-0c6f6f4b2a10$''']
