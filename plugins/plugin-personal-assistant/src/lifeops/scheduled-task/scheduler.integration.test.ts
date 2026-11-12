@@ -53,6 +53,8 @@ const ownerZoneCases: Array<{
   runtimeZone: number;
   hostZone: number;
   selectedZone: number;
+  hostTravel?: boolean;
+  tickTravel?: boolean;
 }> = process.env.ELIZA_OWNER_ZONE_MODEL_CASES
   ? JSON.parse(readFileSync(process.env.ELIZA_OWNER_ZONE_MODEL_CASES, "utf8"))
   : [
@@ -403,7 +405,7 @@ describe("processDueScheduledTasks — production wiring", () => {
       const { runtime } = runtimeResult;
       vi.useFakeTimers({ toFake: ["Date"] });
       const now = new Date("2026-11-12T16:01:00.000Z");
-      vi.setSystemTime(now);
+      vi.setSystemTime(new Date("2026-11-11T16:01:00.000Z"));
       vi.stubEnv("TZ", ownerZoneName(zones.hostZone));
       runtime.getSetting = (key) => {
         const selected =
@@ -421,6 +423,17 @@ describe("processDueScheduledTasks — production wiring", () => {
           { timezone: ownerZoneName(zones.ownerZone) },
           { source: "profile_save", recordedAt: now.toISOString() },
         );
+      if (zones.hostTravel || zones.tickTravel) {
+        const travelDay = zones.tickTravel ? "2026-11-12" : "2026-11-11";
+        await facts.setActiveTravel(
+          {
+            startIso: `${travelDay}T15:00:00.000Z`,
+            endIso: `${travelDay}T17:00:00.000Z`,
+            destinationTimezone: "America/Los_Angeles",
+          },
+          { source: "profile_save", recordedAt: "2026-11-10T00:00:00.000Z" },
+        );
+      }
       expect(
         (
           await getScheduledTaskRunner(runtime, {

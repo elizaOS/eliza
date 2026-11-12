@@ -49,13 +49,15 @@ for (const file of readdirSync(directory)) {
         "selectedZone",
       ].map((key) => [key, Number(state[key]["#bigint"])]),
     );
+    fields.hostTravel = state.hostTravel;
+    fields.tickTravel = state.tickTravel;
     cases.set(fields.scenario, fields);
   }
 }
 assert.equal(
   cases.size,
-  6,
-  "All six source-precedence scenarios must reach conformance",
+  8,
+  "All eight clock and travel scenarios must reach conformance",
 );
 const input = path.join(directory, "cases.json");
 writeFileSync(
@@ -88,8 +90,8 @@ const result = spawnSync(
 if (result.error) throw result.error;
 assert.equal(result.status, 0, "Owner-local runtime conformance failed");
 const summary = JSON.parse(readFileSync(report, "utf8"));
-assert.equal(summary.numPassedTests, 6);
+assert.equal(summary.numPassedTests, 8);
 assert.equal(summary.numFailedTests, 0);
 console.log(
-  "Six model-generated timezone cases match the production runner and tick preflight",
+  "Eight model-generated timezone cases match the production runner and tick preflight",
 );
