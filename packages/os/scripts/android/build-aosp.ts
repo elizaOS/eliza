@@ -596,7 +596,7 @@ function launchCuttlefish(aospRoot, brand) {
 /**
  * Re-build the image APK with brand AOSP env flags so it picks up
  * BuildConfig.AOSP_BUILD=true and the agent bundle is produced with
- * <BRAND>_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
+ * ELIZA_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
  * sign it, then stage it with stageLauncherApk (image-launcher.ts). It is
  * installed as a nonprivileged product launcher, never a priv-app.
  */
@@ -608,9 +608,9 @@ export function rebuildLauncherApk(brand, browserPin) {
       ? bindBrowserCertificate(process.env, browserPin)
       : process.env),
     ELIZAOS_OS_REPO_ROOT: repoRoot,
-    [`${brand.envPrefix}_APP_ID`]: brand.packageName,
-    [`${brand.envPrefix}_AOSP_BUILD`]: "1",
-    [`${brand.envPrefix}_GRADLE_AOSP_BUILD`]: "true",
+    ELIZA_APP_ID: brand.packageName,
+    ELIZA_AOSP_BUILD: "1",
+    ELIZA_GRADLE_AOSP_BUILD: "true",
   };
   const [cmd, ...rest] = brand.buildAndroidSystemCmd;
   run(cmd, rest, { cwd: elizaRoot, env });

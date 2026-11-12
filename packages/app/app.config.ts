@@ -57,7 +57,6 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
     cliName: "eliza",
     description:
       "Eliza manages your digital life so you can focus on what matters.",
-    envPrefix: "ELIZA",
     namespace: identity.namespace,
     defaultApps: ["@elizaos/plugin-personal-assistant"],
     desktop: {

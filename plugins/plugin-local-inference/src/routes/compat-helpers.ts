@@ -16,7 +16,7 @@ import {
 	type AgentRuntime,
 	isTrustedLocalRequest as isCoreTrustedLocalRequest,
 } from "@elizaos/core";
-import { readAliasedEnv, resolveApiToken } from "@elizaos/host/protocol";
+import { resolveApiToken } from "@elizaos/host/protocol";
 
 const MAX_BODY_BYTES = 1_048_576;
 
@@ -71,7 +71,7 @@ export function tokenMatches(expected: string, provided: string): boolean {
 }
 
 function isCloudProvisionedByEnv(): boolean {
-	return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+	return process.env.ELIZA_CLOUD_PROVISIONED?.trim() === "1";
 }
 
 function isLocalAuthRequiredByEnv(): boolean {

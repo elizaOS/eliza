@@ -5,7 +5,6 @@
  */
 import path from "node:path";
 import { resolveHostExecutable } from "@elizaos/host";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 
 export const TERMINAL_TOOL_NAMES = [
   "sh",
@@ -48,13 +47,13 @@ export interface TerminalSupport {
 
 export function isAndroidRuntime(): boolean {
   return (
-    readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() === "android" ||
+    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
 }
 
 function isIosRuntime(): boolean {
-  return readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() === "ios";
+  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
