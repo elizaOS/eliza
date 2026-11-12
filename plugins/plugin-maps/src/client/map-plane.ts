@@ -72,6 +72,8 @@ export type MapOverlay = Readonly<{
   follow?: boolean;
 }>;
 export interface MapPlaneOptions {
+  /** Start at an already-authorized device fix without requesting world tiles first. */
+  initialCenter?: Coordinate;
   /** Retain frames for browser hosts that copy the canvas into their preview. */
   preserveDrawingBuffer?: boolean;
   /** Called when the user taps a result pin. */
@@ -169,8 +171,8 @@ export class MapPlane {
       canvasContextAttributes: {
         preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
       },
-      center: worldwide ? [0, 20] : [(w + e) / 2, (s + n) / 2],
-      zoom: worldwide ? Math.max(2, raster?.minZoom ?? 0) : 14,
+      center: options.initialCenter ? [options.initialCenter.longitude, options.initialCenter.latitude] : worldwide ? [0, 20] : [(w + e) / 2, (s + n) / 2],
+      zoom: options.initialCenter ? Math.min(14, raster?.maxZoom ?? 18) : worldwide ? Math.max(2, raster?.minZoom ?? 0) : 14,
       minZoom: worldwide ? (raster?.minZoom ?? 0) : 11,
       maxZoom: raster ? Math.min(raster.maxZoom, 20) : 18,
       maxBounds: worldwide

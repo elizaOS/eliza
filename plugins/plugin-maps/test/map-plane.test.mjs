@@ -911,3 +911,13 @@ test("map point selection waits for a single tap and cancels zoom or retired ges
   assert.equal(points.length, 1);
   f.plane.destroy();
 });
+
+
+test("an authorized initial location avoids a world-view camera", () => {
+ const f=fixture({kind:"global",styleUrl:"https://tiles.example/style.json",attribution:"Fixture"});
+ const plane=f.create({initialCenter:{latitude:37,longitude:-121}});
+ const map=f.maps.at(-1);
+ assert.deepEqual([...map.options.center],[-121,37]);
+ assert.equal(map.options.zoom,14);
+ plane.destroy();f.plane.destroy();
+});
