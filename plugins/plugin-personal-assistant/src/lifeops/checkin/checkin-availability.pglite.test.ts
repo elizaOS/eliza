@@ -960,6 +960,8 @@ describe("check-in source availability and generation failures", () => {
     "As of 2025-10-03, here are your priorities.",
     "Today is Friday, October 3, 2026.",
     "Morning briefing — October 2, 2026.",
+    "Good morning, here is your brief for Friday, October 2, 2026.",
+    "Good morning, as of October 2, 2026, the review is next.",
   ])("refuses an unsupported current-day declaration: %s", async (text) => {
     modelResponse = text;
     await expect(
@@ -987,6 +989,30 @@ describe("check-in source availability and generation failures", () => {
         now: new Date("2026-10-03T20:23:00Z"),
       });
       expect(report.summaryText).toBe(text);
+    },
+  );
+
+  it.each([
+    "Tomorrow: hotel check-in — Sunday, October 4, 2026 at 3:00 PM.",
+    "Flight check-in for Sunday opens at 9:00 AM.",
+    "The rent payment is overdue as of October 1, 2026.",
+    "Weekly summary: Monday's 1:1 moved to 3 PM.",
+    "Night check-in: Sunday's flight leaves at 9:00 AM.",
+  ])(
+    "keeps a summary whose source event names another date: %s",
+    async (text) => {
+      modelResponse = text;
+      const report = await new CheckinService(runtime).runNightCheckin({
+        timezone: "America/Los_Angeles",
+        now: new Date("2026-10-04T04:30:00Z"),
+      });
+      expect(report.summaryText).toBe(text);
+      const stored = await db.query<{ payload_json: CheckinReport }>(
+        "SELECT payload_json FROM app_lifeops.life_checkin_reports",
+      );
+      expect(stored.rows.map((row) => row.payload_json.summaryText)).toEqual([
+        text,
+      ]);
     },
   );
 

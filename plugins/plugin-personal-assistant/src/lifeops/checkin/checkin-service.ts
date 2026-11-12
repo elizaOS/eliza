@@ -321,11 +321,37 @@ function assertSummaryReportDate(
   const day = "\\d{1,2}(?:st|nd|rd|th)?";
   const named = `(?:${weekdays},?\\s+)?(?:${months}\\s+${day}|${day}\\s+${months})(?:,?\\s+\\d{4})?`;
   const date = `(?:${named}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}/\\d{4}|${weekdays})`;
+  // Capture the word before a declaration so ordinary source events stay out:
+  // "overdue as of <date>", "hotel check-in — <date>" and "Weekly summary:"
+  // describe something else, and a date followed by "'s" names an event.
   const declarations = new RegExp(
-    `\\b(?:as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b`,
-    "gi",
+    `(?:\\b([\\p{L}'’]+)[ \\t]+)?\\b(as\\s+of|today(?:\\s+is)?[,:]?|(?:brief(?:ing)?|summary|check-in)\\s*(?:for|dated|[:–—]))\\s+(${date})\\b(?!['’]s\\b)`,
+    "giu",
   );
-  const claims = [...summary.matchAll(declarations)];
+  const reportLabelLead = new Set([
+    "the",
+    "this",
+    "your",
+    "today's",
+    "today’s",
+    "tonight's",
+    "tonight’s",
+    "morning",
+    "evening",
+    "night",
+    "nightly",
+    "daily",
+  ]);
+  const claims = [...summary.matchAll(declarations)]
+    .filter(([, lead, keyword]) => {
+      if (lead === undefined || /^today/i.test(keyword)) return true;
+      // "As of" declares the report date only where it opens a clause.
+      if (/^as\s/i.test(keyword)) return false;
+      // A report label names this report only after a determiner or a
+      // report kind ("your brief", "Morning briefing").
+      return reportLabelLead.has(lead.toLowerCase());
+    })
+    .map((claim) => claim[3]);
   if (claims.length === 0) return;
   const normalize = (value: string) =>
     value
@@ -388,7 +414,7 @@ function assertSummaryReportDate(
       ),
     );
   }
-  if (claims.some((claim) => !allowed.has(normalize(claim[1])))) {
+  if (claims.some((claim) => !allowed.has(normalize(claim)))) {
     throw new ElizaError(
       "Check-in summary does not match the supplied local report date",
       {
